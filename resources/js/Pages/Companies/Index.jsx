@@ -1,0 +1,215 @@
+import AppLayout from '@/Layouts/AppLayout';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { useForm, Link, router } from '@inertiajs/react';
+import { useState } from 'react';
+import { Plus, Pencil, Eye, Trash2, Building2 } from 'lucide-react';
+import { formatCurrency, formatPercent } from '@/lib/utils';
+
+export default function Companies({ companies, users }) {
+    const [search, setSearch] = useState('');
+    const [open, setOpen] = useState(false);
+    const [editing, setEditing] = useState(null);
+
+    const consultores = users.filter(u => u.role === 'consultor');
+    const mentores = users.filter(u => u.role === 'mentor');
+
+    const filtered = companies.filter(c =>
+        c.name.toLowerCase().includes(search.toLowerCase()) ||
+        (c.segment || '').toLowerCase().includes(search.toLowerCase())
+    );
+
+    const { data, setData, post, put, processing, reset, errors } = useForm({
+        name: '', cnpj: '', adman_account_id: '', adman_store_id: '',
+        ml_store_id: '', segment: '', notes: '', consultor_id: '', mentor_id: '',
+    });
+
+    const openCreate = () => {
+        reset();
+        setEditing(null);
+        setOpen(true);
+    };
+
+    const openEdit = (c) => {
+        setEditing(c);
+        setData({
+            name: c.name || '',
+            cnpj: c.cnpj || '',
+            adman_account_id: c.adman_account_id || '',
+            adman_store_id: c.adman_store_id || '',
+            ml_store_id: c.ml_store_id || '',
+            segment: c.segment || '',
+            notes: c.notes || '',
+            consultor_id: String(c.consultor?.id || ''),
+            mentor_id: String(c.mentor?.id || ''),
+        });
+        setOpen(true);
+    };
+
+    const submit = (e) => {
+        e.preventDefault();
+        if (editing) {
+            put(route('companies.update', editing.id), { onSuccess: () => setOpen(false) });
+        } else {
+            post(route('companies.store'), { onSuccess: () => setOpen(false) });
+        }
+    };
+
+    const destroy = (c) => {
+        if (confirm(`Excluir a empresa "${c.name}"? Esta ação não pode ser desfeita.`)) {
+            router.delete(route('companies.destroy', c.id));
+        }
+    };
+
+    return (
+        <AppLayout title="Empresas">
+            <div className="space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                    <Input
+                        placeholder="Buscar empresa..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="max-w-sm"
+                    />
+                    <Button onClick={openCreate}>
+                        <Plus className="h-4 w-4 mr-1" /> Nova Empresa
+                    </Button>
+                </div>
+
+                <Card>
+                    <CardContent className="p-0">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Empresa</TableHead>
+                                    <TableHead>Segmento</TableHead>
+                                    <TableHead>Analista</TableHead>
+                                    <TableHead>Mentor</TableHead>
+                                    <TableHead>TACOS</TableHead>
+                                    <TableHead>Faturamento</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filtered.map(c => (
+                                    <TableRow key={c.id}>
+                                        <TableCell className="font-medium">{c.name}</TableCell>
+                                        <TableCell className="text-muted-foreground text-sm">{c.segment || '-'}</TableCell>
+                                        <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
+                                        <TableCell className="text-sm">{c.mentor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
+                                        <TableCell>
+                                            {c.tacos ? <span className="text-yellow-400 font-medium">{formatPercent(c.tacos)}</span> : <span className="text-muted-foreground">-</span>}
+                                        </TableCell>
+                                        <TableCell>
+                                            {c.revenue ? <span className="text-blue-400 font-medium">{formatCurrency(c.revenue)}</span> : <span className="text-muted-foreground">-</span>}
+                                        </TableCell>
+                                        <TableCell>
+                                            <Badge variant={c.active ? 'success' : 'destructive'}>
+                                                {c.active ? 'Ativa' : 'Inativa'}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <div className="flex justify-end gap-1">
+                                                <Link href={route('companies.show', c.id)}>
+                                                    <Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button>
+                                                </Link>
+                                                <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
+                                                    <Pencil className="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                                    onClick={() => destroy(c)}
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {filtered.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                                            <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                                            Nenhuma empresa encontrada
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Dialog open={open} onOpenChange={setOpen}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>{editing ? 'Editar Empresa' : 'Nova Empresa'}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                                <Label>Nome *</Label>
+                                <Input value={data.name} onChange={e => setData('name', e.target.value)} required />
+                                {errors.name && <p className="text-destructive text-xs">{errors.name}</p>}
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>CNPJ</Label>
+                                <Input value={data.cnpj} onChange={e => setData('cnpj', e.target.value)} placeholder="00.000.000/0001-00" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>ID Conta Adman</Label>
+                                <Input value={data.adman_account_id} onChange={e => setData('adman_account_id', e.target.value)} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>ID Loja ML</Label>
+                                <Input value={data.ml_store_id} onChange={e => setData('ml_store_id', e.target.value)} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Segmento</Label>
+                                <Input value={data.segment} onChange={e => setData('segment', e.target.value)} placeholder="Ex: Moda, Eletrônicos" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Analista</Label>
+                                <Select value={data.consultor_id} onValueChange={v => setData('consultor_id', v)}>
+                                    <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {consultores.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Mentor</Label>
+                                <Select value={data.mentor_id} onValueChange={v => setData('mentor_id', v)}>
+                                    <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
+                                    <SelectContent>
+                                        {mentores.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="col-span-2 space-y-1.5">
+                                <Label>Observações</Label>
+                                <Textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={2} />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
+                            <Button type="submit" disabled={processing}>
+                                {processing ? 'Salvando...' : editing ? 'Atualizar' : 'Criar'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </AppLayout>
+    );
+}

@@ -1,0 +1,93 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+
+class Company extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
+        'segment', 'active', 'notes',
+    ];
+
+    protected $casts = ['active' => 'boolean'];
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->withPivot('role', 'assigned_at')
+            ->withTimestamps();
+    }
+
+    public function consultor()
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', 'consultor');
+    }
+
+    public function mentor()
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', 'mentor');
+    }
+
+    public function meetings()
+    {
+        return $this->hasMany(Meeting::class);
+    }
+
+    public function npsSurveys()
+    {
+        return $this->hasMany(NpsSurvey::class);
+    }
+
+    public function goals()
+    {
+        return $this->hasMany(Goal::class);
+    }
+
+    public function admanMetrics()
+    {
+        return $this->hasMany(AdmanMetric::class)->orderBy('reference_date', 'desc');
+    }
+
+    public function latestMetrics()
+    {
+        return $this->hasOne(AdmanMetric::class)->latestOfMany('reference_date');
+    }
+
+    public function ppas()
+    {
+        return $this->hasMany(Ppa::class);
+    }
+
+    public function grants()
+    {
+        return $this->hasMany(CompanyGrant::class)->orderBy('created_at', 'desc');
+    }
+
+    public function getActiveGrantAttribute(): ?CompanyGrant
+    {
+        return $this->grants()->where('status', 'active')->first();
+    }
+
+    public function getHasActiveGrantAttribute(): bool
+    {
+        return $this->grants()->where('status', 'active')->exists();
+    }
+
+    public function getAbsenteeismRateAttribute(): float
+    {
+        $total = $this->meetings()->where('status', 'completed')->count();
+        if ($total === 0) return 0;
+        $absences = $this->meetings()->where('status', 'completed')
+            ->where(function ($q) {
+                $q->where('consultant_present', false)->orWhere('mentor_present', false);
+            })->count();
+        return round(($absences / $total) * 100, 2);
+    }
+}

@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    :root {
+        /* ECF Brand — Dark Mode */
+        --background: 240 17% 2%;        /* #050507 */
+        --foreground: 216 14% 93%;       /* #e8eaee */
+
+        --card: 228 18% 7%;              /* #0f1116 */
+        --card-foreground: 216 14% 93%;
+
+        --popover: 228 18% 7%;
+        --popover-foreground: 216 14% 93%;
+
+        /* Yellow ECF #ffe600 → hsl(54,100%,50%) */
+        --primary: 54 100% 50%;
+        --primary-foreground: 0 0% 14%;  /* #252525 dark text on yellow */
+
+        --secondary: 225 16% 12%;
+        --secondary-foreground: 216 14% 93%;
+
+        --muted: 225 16% 12%;
+        --muted-foreground: 220 7% 62%;  /* #9ba0aa */
+
+        --accent: 225 16% 12%;
+        --accent-foreground: 216 14% 93%;
+
+        --destructive: 0 65% 51%;
+        --destructive-foreground: 216 14% 93%;
+
+        --border: 0 0% 100% / 0.08;
+        --input: 225 16% 12%;
+        --ring: 54 100% 50%;
+
+        --radius: 0.625rem;
+
+        /* Sidebar — slightly darker */
+        --sidebar-background: 228 22% 5%;   /* #0b0c10 */
+        --sidebar-foreground: 216 14% 93%;
+        --sidebar-primary: 54 100% 50%;
+        --sidebar-primary-foreground: 0 0% 14%;
+        --sidebar-accent: 228 18% 9%;
+        --sidebar-accent-foreground: 216 14% 93%;
+        --sidebar-border: 0 0% 100% / 0.06;
+        --sidebar-ring: 54 100% 50%;
+
+        /* ECF gradient line */
+        --grad-ecf: linear-gradient(90deg, #171392 0%, #FE4D46 55%, #EDBA06 100%);
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+        box-sizing: border-box;
+    }
+
+    html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+    }
+
+    body {
+        @apply bg-background text-foreground;
+        font-family: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, h5 {
+        font-family: 'Manrope', 'Inter', sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.02em;
+        line-height: 1.08;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.22); }
+}
+
+/* ECF Gradient line utility */
+.ecf-gradient-line {
+    background: var(--grad-ecf);
+}
+
+/* Yellow glow for primary buttons */
+.btn-ecf-primary {
+    background: linear-gradient(180deg, #ffe600 0%, #f5d400 100%);
+    color: #252525;
+    font-weight: 700;
+    box-shadow: 0 8px 28px -8px rgba(255, 230, 0, 0.4);
+    transition: transform 0.18s ease, box-shadow 0.22s ease;
+}
+.btn-ecf-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 36px -8px rgba(255, 230, 0, 0.5);
+}
+
+/* Card shimmer border on hover */
+.card-ecf {
+    border: 1px solid rgba(255,255,255,.07);
+    background: #0f1116;
+    transition: border-color .2s ease;
+}
+.card-ecf:hover {
+    border-color: rgba(255,230,0,.18);
+}

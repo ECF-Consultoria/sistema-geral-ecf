@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(/c/xampp/php/php.exe artisan *)",
+      "Bash(npm run *)",
+      "Bash(bash deploy.sh)"
+    ]
+  }
+}

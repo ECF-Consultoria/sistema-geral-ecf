@@ -1,0 +1,167 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Company;
+use App\Models\Ppa;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+
+class PpaController extends Controller
+{
+    public function index(Request $request)
+    {
+        $user = $request->user();
+
+        $query = Ppa::with(['company', 'mentor'])->orderBy('created_at', 'desc');
+
+        if ($user->isMentor()) {
+            $query->where('mentor_id', $user->id);
+        }
+
+        $ppas = $query->paginate(20)->through(fn($p) => [
+            'id'               => $p->id,
+            'title'            => $p->title,
+            'company_name'     => $p->company->name,
+            'company_id'       => $p->company_id,
+            'mentor_name'      => $p->mentor->name,
+            'status'           => $p->status,
+            'due_date'         => $p->due_date?->format('d/m/Y'),
+            'sent_at'          => $p->sent_at?->format('d/m/Y H:i'),
+            'completed_at'     => $p->completed_at?->format('d/m/Y H:i'),
+            'trello_board_url' => $p->trello_board_url,
+            'workspace_token'  => $p->workspace_token,
+            'tasks_count'      => $p->tasks()->count(),
+            'tasks_done'       => $p->tasks()->where('status', 'done')->count(),
+            'created_at'       => $p->created_at->format('d/m/Y'),
+        ]);
+
+        $companies = $user->isAdmin()
+            ? Company::where('active', true)->get(['id', 'name'])
+            : $user->mentorCompanies()->get(['companies.id', 'companies.name']);
+
+        return Inertia::render('Ppa/Index', [
+            'ppas'      => $ppas,
+            'companies' => $companies,
+        ]);
+    }
+
+    public function store(Request $request)
+    {
+        $data = $request->validate([
+            'company_id'       => 'required|exists:companies,id',
+            'title'            => 'required|string|max:255',
+            'description'      => 'nullable|string',
+            'actions'          => 'nullable|array',
+            'due_date'         => 'nullable|date',
+            'trello_board_url' => 'nullable|url',
+        ]);
+
+        Ppa::create([
+            ...$data,
+            'mentor_id' => $request->user()->id,
+            'status'    => 'draft',
+        ]);
+
+        return back()->with('success', 'PPA criado com sucesso.');
+    }
+
+    public function update(Request $request, Ppa $ppa)
+    {
+        $data = $request->validate([
+            'title'            => 'nullable|string|max:255',
+            'description'      => 'nullable|string',
+            'actions'          => 'nullable|array',
+            'due_date'         => 'nullable|date',
+            'status'           => 'required|in:draft,sent,completed',
+            'trello_board_url' => 'nullable|url',
+        ]);
+
+        if ($data['status'] === 'sent' && $ppa->status !== 'sent') {
+            $data['sent_at'] = now();
+        }
+        if ($data['status'] === 'completed' && $ppa->status !== 'completed') {
+            $data['completed_at'] = now();
+        }
+
+        $ppa->update($data);
+
+        return back()->with('success', 'PPA atualizado.');
+    }
+
+    public function destroy(Ppa $ppa)
+    {
+        $ppa->delete();
+        return back()->with('success', 'PPA removido.');
+    }
+
+    // ── Kanban (admin / mentor) ───────────────────────────────────────────────
+
+    public function kanban(Ppa $ppa)
+    {
+        $ppa->load(['company', 'mentor', 'tasks']);
+
+        $tasks = $ppa->tasks->map(fn($t) => [
+            'id'          => $t->id,
+            'title'       => $t->title,
+            'description' => $t->description,
+            'status'      => $t->status,
+            'order'       => $t->order,
+        ]);
+
+        return Inertia::render('Ppa/Kanban', [
+            'ppa' => [
+                'id'              => $ppa->id,
+                'title'           => $ppa->title,
+                'company_name'    => $ppa->company->name,
+                'mentor_name'     => $ppa->mentor->name,
+                'status'          => $ppa->status,
+                'workspace_token' => $ppa->workspace_token,
+                'workspace_url'   => $ppa->workspace_token
+                    ? route('ppa.workspace', $ppa->workspace_token)
+                    : null,
+            ],
+            'tasks' => $tasks,
+        ]);
+    }
+
+    // ── Workspace público (cliente) ───────────────────────────────────────────
+
+    public function workspace(string $token)
+    {
+        $ppa = Ppa::with(['company', 'tasks'])->where('workspace_token', $token)->firstOrFail();
+
+        $tasks = $ppa->tasks->map(fn($t) => [
+            'id'          => $t->id,
+            'title'       => $t->title,
+            'description' => $t->description,
+            'status'      => $t->status,
+            'order'       => $t->order,
+        ]);
+
+        return Inertia::render('Ppa/Workspace', [
+            'ppa' => [
+                'id'           => $ppa->id,
+                'title'        => $ppa->title,
+                'company_name' => $ppa->company->name,
+                'token'        => $token,
+            ],
+            'tasks' => $tasks,
+        ]);
+    }
+
+    // ── Gerar / revogar link do workspace ────────────────────────────────────
+
+    public function generateWorkspaceLink(Ppa $ppa)
+    {
+        if (!$ppa->workspace_token) {
+            $ppa->update(['workspace_token' => Str::uuid()->toString()]);
+        }
+
+        return back()->with([
+            'success'       => 'Link do quadro gerado.',
+            'workspace_url' => route('ppa.workspace', $ppa->workspace_token),
+        ]);
+    }
+}
