@@ -98,8 +98,21 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
         observacao:  sugador.observacao || '',
     });
 
-    // Info do adgroup vem do raw_data salvo na análise (sem chamada extra à Adman).
-    const adgroupInfo = sugador.tipo === 'adgroup' ? (sugador.raw_data || {}) : null;
+    // Info do adgroup: prioriza colunas tipadas (preenchidas na análise), com fallback
+    // pro raw_data para registros antigos que precederam a migration de metadados.
+    const adgroupInfo = sugador.tipo === 'adgroup' ? (() => {
+        const raw = sugador.raw_data || {};
+        return {
+            thumbnail:       sugador.thumbnail       ?? raw.thumbnail,
+            adGroupType:     sugador.adgroup_type    ?? raw.adGroupType,
+            catalogListing:  sugador.catalog_listing ?? raw.catalogListing,
+            status:          raw.status,
+            limitAcos:       raw.limitAcos,
+            limitTacos:      raw.limitTacos,
+            limitRoas:       raw.limitRoas,
+            name:            sugador.adgroup_name    ?? raw.name,
+        };
+    })() : null;
 
     function submit(e) {
         e.preventDefault();
@@ -275,6 +288,18 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                                     {adgroupInfo.limitAcos  != null && <span>Limite ACOS: <b className="text-white/80">{adgroupInfo.limitAcos}%</b></span>}
                                     {adgroupInfo.limitTacos != null && <span>Limite TACOS: <b className="text-white/80">{adgroupInfo.limitTacos}%</b></span>}
                                     {adgroupInfo.limitRoas  != null && <span>Limite ROAS: <b className="text-white/80">{adgroupInfo.limitRoas}</b></span>}
+                                </div>
+                            )}
+
+                            {(sugador.organic_amount != null || sugador.organic_units != null) && (
+                                <div className="flex flex-wrap gap-3 text-[11px] text-white/60 pt-1">
+                                    <span className="text-white/40 uppercase tracking-wider font-semibold text-[10px]">Contexto orgânico:</span>
+                                    {sugador.organic_units != null && (
+                                        <span>{fmtInt(sugador.organic_units)} venda{Number(sugador.organic_units) !== 1 ? 's' : ''} orgânica{Number(sugador.organic_units) !== 1 ? 's' : ''}</span>
+                                    )}
+                                    {sugador.organic_amount != null && (
+                                        <span>· {fmtBRL(sugador.organic_amount)} de receita orgânica</span>
+                                    )}
                                 </div>
                             )}
 

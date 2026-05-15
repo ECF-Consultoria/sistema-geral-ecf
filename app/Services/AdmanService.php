@@ -356,6 +356,9 @@ class AdmanService
      *   'adgroup_name'    => string|null,
      *   'campaign_id'     => string,
      *   'status'          => string|null,
+     *   'thumbnail'       => string|null,   // URL da imagem do produto
+     *   'adgroup_type'    => string|null,   // CATALOG/PRODUCT/MANUAL
+     *   'catalog_listing' => bool,
      *   'investment'      => float|null,
      *   'revenue'         => float|null,    // derivado de directAmount/totalAmount
      *   'sold_quantity'   => int|null,
@@ -365,6 +368,8 @@ class AdmanService
      *   'ctr'             => float|null,
      *   'acos'            => float|null,
      *   'roas'            => float|null,
+     *   'organic_amount'  => float|null,    // receita orgânica no período (contexto)
+     *   'organic_units'   => int|null,
      *   'raw'             => array,
      * ]
      */
@@ -422,20 +427,25 @@ class AdmanService
                 $revenue = $val('totalAmount') ?? $val('directAmount');
 
                 $all[] = [
-                    'adgroup_id'    => (string) ($ag['adgroupId'] ?? ''),
-                    'adgroup_name'  => $ag['name']        ?? null,
-                    'campaign_id'   => (string) ($ag['campaignId'] ?? ''),
-                    'status'        => $ag['status']      ?? null,
-                    'investment'    => $val('investment')   !== null ? (float) $val('investment')   : null,
-                    'revenue'       => $revenue             !== null ? (float) $revenue             : null,
-                    'sold_quantity' => $val('unitsQuantity') !== null ? (int)  $val('unitsQuantity') : null,
-                    'clicks'        => $val('clicks')       !== null ? (int)   $val('clicks')       : null,
-                    'impressions'   => $val('impressions')  !== null ? (int)   $val('impressions')  : null,
-                    'cpc'           => $val('cpc')          !== null ? (float) $val('cpc')          : null,
-                    'ctr'           => $val('ctr')          !== null ? (float) $val('ctr')          : null,
-                    'acos'          => $val('acos')         !== null ? (float) $val('acos')         : null,
-                    'roas'          => $val('roas')         !== null ? (float) $val('roas')         : null,
-                    'raw'           => $ag,
+                    'adgroup_id'      => (string) ($ag['adgroupId'] ?? ''),
+                    'adgroup_name'    => $ag['name']        ?? null,
+                    'campaign_id'     => (string) ($ag['campaignId'] ?? ''),
+                    'status'          => $ag['status']      ?? null,
+                    'thumbnail'       => $ag['thumbnail']      ?? null,
+                    'adgroup_type'    => $ag['adGroupType']    ?? null,
+                    'catalog_listing' => (bool) ($ag['catalogListing'] ?? false),
+                    'investment'      => $val('investment')   !== null ? (float) $val('investment')   : null,
+                    'revenue'         => $revenue             !== null ? (float) $revenue             : null,
+                    'sold_quantity'   => $val('unitsQuantity') !== null ? (int)  $val('unitsQuantity') : null,
+                    'clicks'          => $val('clicks')       !== null ? (int)   $val('clicks')       : null,
+                    'impressions'     => $val('impressions')  !== null ? (int)   $val('impressions')  : null,
+                    'cpc'             => $val('cpc')          !== null ? (float) $val('cpc')          : null,
+                    'ctr'             => $val('ctr')          !== null ? (float) $val('ctr')          : null,
+                    'acos'            => $val('acos')         !== null ? (float) $val('acos')         : null,
+                    'roas'            => $val('roas')         !== null ? (float) $val('roas')         : null,
+                    'organic_amount'  => $val('organicAmount')        !== null ? (float) $val('organicAmount')        : null,
+                    'organic_units'   => $val('organicUnitsQuantity') !== null ? (int)   $val('organicUnitsQuantity') : null,
+                    'raw'             => $ag,
                 ];
             }
 

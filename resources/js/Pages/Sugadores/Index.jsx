@@ -369,10 +369,34 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                                                     {TIPO_LABELS[s.tipo] || s.tipo}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 text-[12px] text-white/70 max-w-[220px] truncate">
-                                                {s.tipo === 'campanha'
-                                                    ? (s.campaign_name || s.campaign_id)
-                                                    : (s.adgroup_name || s.mlb_titulo || s.adgroup_id || s.campaign_id)}
+                                            <td className="px-4 py-3 text-[12px] text-white/70 max-w-[260px]">
+                                                {s.tipo === 'campanha' ? (
+                                                    <div className="truncate">{s.campaign_name || s.campaign_id}</div>
+                                                ) : (
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        {s.thumbnail ? (
+                                                            <img
+                                                                src={s.thumbnail}
+                                                                alt=""
+                                                                loading="lazy"
+                                                                className="w-9 h-9 rounded-md object-cover bg-white/[0.05] border border-white/[0.06] shrink-0"
+                                                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                                                            />
+                                                        ) : (
+                                                            <div className="w-9 h-9 rounded-md bg-white/[0.04] border border-white/[0.06] shrink-0 flex items-center justify-center">
+                                                                <Tag size={12} className="text-white/30" />
+                                                            </div>
+                                                        )}
+                                                        <div className="min-w-0">
+                                                            <div className="truncate">{s.adgroup_name || s.adgroup_id || s.campaign_id}</div>
+                                                            {(s.adgroup_type || s.catalog_listing) && (
+                                                                <div className="text-[10px] text-white/40 mt-0.5">
+                                                                    {s.catalog_listing ? 'Catálogo' : (s.adgroup_type || '').toLowerCase()}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 text-right text-[13px] text-white/80 font-medium tabular-nums">
                                                 {fmtBRL(s.investimento_periodo)}

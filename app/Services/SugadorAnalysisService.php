@@ -140,6 +140,9 @@ class SugadorAnalysisService
                         'campaign_status'      => null,
                         'adgroup_id'           => $ad['adgroup_id'],
                         'adgroup_name'         => $ad['adgroup_name'],
+                        'thumbnail'            => $ad['thumbnail']       ?? null,
+                        'adgroup_type'         => $ad['adgroup_type']    ?? null,
+                        'catalog_listing'      => (bool) ($ad['catalog_listing'] ?? false),
                         'mlb_id'               => null,
                         'mlb_titulo'           => null,
                         'periodo_inicio'       => $dateFrom,
@@ -153,6 +156,8 @@ class SugadorAnalysisService
                         'ctr'                  => $ad['ctr'],
                         'acos'                 => $ad['acos'],
                         'roas'                 => $ad['roas'],
+                        'organic_amount'       => $ad['organic_amount'] ?? null,
+                        'organic_units'        => $ad['organic_units']  ?? null,
                         'motivos'              => $motivos,
                         'raw_data'             => $ad['raw'] ?? null,
                     ]);
@@ -204,6 +209,9 @@ class SugadorAnalysisService
                         'campaign_status'      => $camp['campaign_status'],
                         'adgroup_id'           => '',
                         'adgroup_name'         => null,
+                        'thumbnail'            => null,
+                        'adgroup_type'         => null,
+                        'catalog_listing'      => false,
                         'mlb_id'               => null,
                         'mlb_titulo'           => null,
                         'periodo_inicio'       => $dateFrom,
@@ -217,6 +225,8 @@ class SugadorAnalysisService
                         'ctr'                  => null,
                         'acos'                 => $camp['acos'],
                         'roas'                 => $camp['roas'],
+                        'organic_amount'       => null,
+                        'organic_units'        => null,
                         'motivos'              => $motivos,
                         'raw_data'             => $camp['raw'] ?? null,
                     ]);
@@ -239,10 +249,13 @@ class SugadorAnalysisService
         // Bulk upsert: 1 query para todos os sugadores desta empresa (em vez de 2N)
         if (!$dryRun && !empty($toUpsert)) {
             Sugador::upsert($toUpsert, ['company_id', 'reference_date', 'tipo', 'campaign_id', 'adgroup_id'], [
-                'campaign_name', 'campaign_status', 'adgroup_name', 'mlb_titulo',
+                'campaign_name', 'campaign_status', 'adgroup_name',
+                'thumbnail', 'adgroup_type', 'catalog_listing',
+                'mlb_titulo',
                 'periodo_inicio', 'periodo_fim',
                 'investimento_periodo', 'faturamento_periodo', 'vendas_periodo',
                 'cliques', 'impressoes', 'cpc_medio', 'ctr', 'acos', 'roas',
+                'organic_amount', 'organic_units',
                 'motivos', 'raw_data', 'status', 'updated_at',
             ]);
         }
@@ -278,7 +291,10 @@ class SugadorAnalysisService
             'campaign_name'        => $data['campaign_name'],
             'campaign_status'      => $data['campaign_status'],
             'adgroup_id'           => $data['adgroup_id'],
-            'adgroup_name'         => $data['adgroup_name'] ?? null,
+            'adgroup_name'         => $data['adgroup_name']    ?? null,
+            'thumbnail'            => $data['thumbnail']       ?? null,
+            'adgroup_type'         => $data['adgroup_type']    ?? null,
+            'catalog_listing'      => (bool) ($data['catalog_listing'] ?? false),
             'mlb_id'               => $data['mlb_id'],
             'mlb_titulo'           => $data['mlb_titulo'],
             'periodo_inicio'       => $data['periodo_inicio'],
@@ -292,6 +308,8 @@ class SugadorAnalysisService
             'ctr'                  => $data['ctr'],
             'acos'                 => $data['acos'],
             'roas'                 => $data['roas'],
+            'organic_amount'       => $data['organic_amount'] ?? null,
+            'organic_units'        => $data['organic_units']  ?? null,
             'motivos'              => json_encode($data['motivos']),
             'raw_data'             => isset($data['raw_data']) ? json_encode($data['raw_data']) : null,
             'status'               => $status,
