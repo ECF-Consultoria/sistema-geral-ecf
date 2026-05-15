@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AnalyzeCompanySugadoresJob;
 use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
@@ -167,53 +168,54 @@ class SugadorController extends Controller
     }
 
     /**
-     * Dispara análise on-demand de uma empresa específica.
+     * Enfileira análise on-demand de uma empresa específica.
+     *
+     * Roda em background via AnalyzeCompanySugadoresJob — contas grandes
+     * (2000+ adgroups) demoram minutos e estouravam o timeout do nginx/php-fpm.
      */
     public function analyzeCompany(Request $request, Company $company)
     {
         Gate::authorize('manage', Sugador::class);
 
-        try {
-            $r = $this->service->analyzeCompany($company);
-        } catch (\Throwable $e) {
-            return back()->with('error', 'Erro: ' . $e->getMessage());
+        if (!$company->adman_account_id) {
+            return back()->with('warning', 'Empresa sem adman_account_id — análise pulada.');
         }
 
-        if ($r['skipped']) {
-            return back()->with('warning', "Empresa pulada: {$r['reason']}");
-        }
+        AnalyzeCompanySugadoresJob::dispatch($company);
 
         return back()->with(
             'success',
-            "Análise concluída: {$r['adgroups']} adgroup(s) e {$r['campanhas']} campanha(s) flagado(s)."
+            "Análise enfileirada para {$company->name}. Os sugadores aparecem na listagem em alguns minutos."
         );
     }
 
     /**
-     * Dispara análise on-demand de TODAS as empresas com config ativa.
+     * Enfileira análise on-demand de TODAS as empresas com config ativa.
      * Permitido a admin + analista/gestor/lider (Policy::analyze).
+     *
+     * Fan-out: 1 job por empresa — assim contas pequenas não esperam as grandes,
+     * e o supervisor (2 workers) processa em paralelo.
      */
     public function analyzeAll()
     {
         Gate::authorize('analyze', Sugador::class);
 
-        set_time_limit(0);
+        $companies = Company::where('active', true)
+            ->whereNotNull('adman_account_id')
+            ->where('adman_account_id', '!=', '')
+            ->where(function ($q) {
+                $q->whereHas('sugadorConfig', fn($q) => $q->where('ativo', true))
+                  ->orWhereDoesntHave('sugadorConfig');
+            })
+            ->get();
 
-        try {
-            $totals = $this->service->analyzeAll();
-        } catch (\Throwable $e) {
-            return back()->with('error', 'Erro: ' . $e->getMessage());
+        foreach ($companies as $company) {
+            AnalyzeCompanySugadoresJob::dispatch($company);
         }
 
         return back()->with(
             'success',
-            sprintf(
-                'Análise concluída: %d empresas analisadas, %d adgroup(s) e %d campanha(s) flagado(s).%s',
-                $totals['companies_analyzed'],
-                $totals['adgroups_flagados'],
-                $totals['campanhas_flagadas'],
-                $totals['companies_failed'] > 0 ? " ({$totals['companies_failed']} com erro)" : ''
-            )
+            "Análise enfileirada para {$companies->count()} empresa(s). Os resultados aparecem na listagem conforme cada empresa termina."
         );
     }
 }
