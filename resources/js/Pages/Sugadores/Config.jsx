@@ -71,7 +71,7 @@ export default function SugadoresConfig({ company, config }) {
         acos_maximo_pct:                 config?.acos_maximo_pct ?? null,
         cliques_minimos_sem_venda:       config?.cliques_minimos_sem_venda ?? null,
         pct_anuncios_para_flag_campanha: config?.pct_anuncios_para_flag_campanha ?? 50,
-        incluir_campanhas:               config?.incluir_campanhas ?? true,
+        incluir_campanhas:               config?.incluir_campanhas ?? false,
         incluir_anuncios:                config?.incluir_anuncios ?? true,
         ativo:                           config?.ativo ?? true,
     });
@@ -173,7 +173,7 @@ export default function SugadoresConfig({ company, config }) {
                         <Field
                             icon={DollarSign}
                             label="Gasto mínimo sem venda"
-                            hint={`Anúncios/campanhas que gastarem ≥ ${data.gasto_minimo_sem_venda ? fmtBRL(data.gasto_minimo_sem_venda) : 'X'} sem registrar nenhuma venda no período serão flagados.`}
+                            hint={`Adgroups (e campanhas, se habilitadas) que gastarem ≥ ${data.gasto_minimo_sem_venda ? fmtBRL(data.gasto_minimo_sem_venda) : 'X'} sem registrar nenhuma venda no período serão flagados.`}
                         >
                             <NumberInput
                                 value={data.gasto_minimo_sem_venda}
@@ -234,29 +234,29 @@ export default function SugadoresConfig({ company, config }) {
 
                     <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
                         <div className="flex items-center gap-3">
-                            <Megaphone size={14} className="text-white/40" />
-                            <div>
-                                <p className="text-white/80 text-sm font-medium">Analisar campanhas</p>
-                                <p className="text-white/40 text-xs">Avalia métricas agregadas de cada campanha</p>
-                            </div>
-                        </div>
-                        <ToggleSwitch checked={data.incluir_campanhas} onChange={v => setData('incluir_campanhas', v)} />
-                    </div>
-
-                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
-                        <div className="flex items-center gap-3">
                             <Tag size={14} className="text-white/40" />
                             <div>
-                                <p className="text-white/80 text-sm font-medium">Analisar anúncios (adgroups)</p>
-                                <p className="text-white/40 text-xs">Granularidade fina — mais ruído, mais precisão</p>
+                                <p className="text-white/80 text-sm font-medium">Analisar adgroups</p>
+                                <p className="text-white/40 text-xs">Granularidade principal — é o nível acionável no painel do ML</p>
                             </div>
                         </div>
                         <ToggleSwitch checked={data.incluir_anuncios} onChange={v => setData('incluir_anuncios', v)} />
                     </div>
 
+                    <div className="flex items-center justify-between p-3 rounded-lg bg-white/[0.02] border border-white/[0.06]">
+                        <div className="flex items-center gap-3">
+                            <Megaphone size={14} className="text-white/40" />
+                            <div>
+                                <p className="text-white/80 text-sm font-medium">Analisar campanhas (opcional)</p>
+                                <p className="text-white/40 text-xs">Avalia métricas agregadas de campanha — útil só pra visão macro</p>
+                            </div>
+                        </div>
+                        <ToggleSwitch checked={data.incluir_campanhas} onChange={v => setData('incluir_campanhas', v)} />
+                    </div>
+
                     <Field
-                        label="% de anúncios sugadores → flag campanha"
-                        hint={`Se ${data.pct_anuncios_para_flag_campanha}% ou mais dos anúncios da campanha forem sugadores, a campanha mãe também é flagada (mesmo que ela não bata os outros critérios).`}
+                        label="% de adgroups sugadores → flag campanha"
+                        hint={`Se ${data.pct_anuncios_para_flag_campanha}% ou mais dos adgroups da campanha forem sugadores, a campanha mãe também é flagada (só se 'Analisar campanhas' estiver ativo).`}
                     >
                         <NumberInput
                             value={data.pct_anuncios_para_flag_campanha}

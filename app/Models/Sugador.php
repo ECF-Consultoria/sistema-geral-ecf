@@ -38,6 +38,7 @@ class Sugador extends Model
         'campaign_name',
         'campaign_status',
         'adgroup_id',
+        'adgroup_name',
         'mlb_id',
         'mlb_titulo',
         'periodo_inicio',
@@ -79,7 +80,7 @@ class Sugador extends Model
     ];
 
     public const TIPO_CAMPANHA = 'campanha';
-    public const TIPO_ANUNCIO  = 'anuncio';
+    public const TIPO_ADGROUP  = 'adgroup';
 
     public const STATUS_PENDENTE   = 'pendente';
     public const STATUS_EM_ACAO    = 'em_acao';

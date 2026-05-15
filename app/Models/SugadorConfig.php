@@ -43,7 +43,7 @@ class SugadorConfig extends Model
         'acos_maximo_pct'                 => null,
         'cliques_minimos_sem_venda'       => null,
         'pct_anuncios_para_flag_campanha' => 50,
-        'incluir_campanhas'               => true,
+        'incluir_campanhas'               => false,
         'incluir_anuncios'                => true,
         'ativo'                           => true,
     ];

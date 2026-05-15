@@ -4,6 +4,7 @@ import {
     AlertTriangle, Building2, ExternalLink, ArrowLeft, Megaphone, Tag,
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
     Clock, User as UserIcon, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
+    Image as ImageIcon, Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -58,15 +59,16 @@ const MOTIVO_INFO = {
         explain: (s) => `${fmtInt(s.cliques)} cliques recebidos sem nenhuma venda.`,
     },
     pct_anuncios_sugadores: {
-        label: '% de anúncios sugadores',
-        explain: () => 'A maioria dos anúncios desta campanha está sangrando — vale reavaliar a estratégia.',
+        label: '% de adgroups sugadores',
+        explain: () => 'A maioria dos adgroups desta campanha está sangrando — vale reavaliar a estratégia.',
     },
 };
 
 const fmtBRL = (n) => 'R$ ' + Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => Number(n ?? 0).toLocaleString('pt-BR');
 const fmtPct = (n) => n == null ? '—' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
-const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
+// Aceita "YYYY-MM-DD" e também ISO datetime do cast 'date' do Laravel.
+const fmtDate = (d) => d ? new Date(String(d).slice(0, 10) + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
 const fmtDateTime = (dt) => dt ? new Date(dt).toLocaleString('pt-BR') : '—';
 
 function Metric({ icon: Icon, label, value, color = 'white' }) {
@@ -96,6 +98,9 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
         observacao:  sugador.observacao || '',
     });
 
+    // Info do adgroup vem do raw_data salvo na análise (sem chamada extra à Adman).
+    const adgroupInfo = sugador.tipo === 'adgroup' ? (sugador.raw_data || {}) : null;
+
     function submit(e) {
         e.preventDefault();
         patch(route('sugadores.update-status', sugador.id), {
@@ -107,7 +112,7 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
     const TipoIcon = sugador.tipo === 'campanha' ? Megaphone : Tag;
     const itemTitle = sugador.tipo === 'campanha'
         ? (sugador.campaign_name || sugador.campaign_id)
-        : (sugador.mlb_titulo || sugador.adgroup_id || sugador.campaign_id);
+        : (sugador.adgroup_name || sugador.mlb_titulo || sugador.adgroup_id || sugador.campaign_id);
 
     return (
         <AppLayout title="Sugador">
@@ -130,7 +135,7 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             </span>
                             <span className="inline-flex items-center gap-1.5 text-white/60 text-xs">
                                 <TipoIcon size={13} />
-                                {sugador.tipo === 'campanha' ? 'Campanha' : 'Anúncio (adgroup)'}
+                                {sugador.tipo === 'campanha' ? 'Campanha' : 'Adgroup'}
                             </span>
                         </div>
 
@@ -218,6 +223,72 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                     })}
                 </ul>
             </div>
+
+            {/* Info do adgroup (só pra tipo=adgroup) — usa raw_data salvo na análise */}
+            {adgroupInfo && (
+                <div className="card-ecf rounded-xl p-5 mb-4">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Layers size={14} className="text-white/40" />
+                        <h2 className="text-white font-display font-semibold text-base">Detalhes do Adgroup</h2>
+                    </div>
+
+                    <div className="flex gap-4 items-start">
+                        {adgroupInfo.thumbnail ? (
+                            <img
+                                src={adgroupInfo.thumbnail}
+                                alt={adgroupInfo.name || ''}
+                                className="w-20 h-20 rounded-lg object-cover border border-white/[0.08] shrink-0"
+                                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                            />
+                        ) : (
+                            <div className="w-20 h-20 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center justify-center shrink-0">
+                                <ImageIcon size={20} className="text-white/30" />
+                            </div>
+                        )}
+
+                        <div className="flex-1 min-w-0 space-y-2">
+                            <div className="flex flex-wrap gap-2 items-center">
+                                {adgroupInfo.adGroupType && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                                        Tipo: {adgroupInfo.adGroupType}
+                                    </span>
+                                )}
+                                {adgroupInfo.status && (
+                                    <span className={cn(
+                                        'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border',
+                                        adgroupInfo.status === 'ACTIVE'
+                                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                            : 'bg-zinc-500/15 text-zinc-300 border-zinc-500/30'
+                                    )}>
+                                        Status: {adgroupInfo.status}
+                                    </span>
+                                )}
+                                {adgroupInfo.catalogListing && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                        Anúncio de catálogo
+                                    </span>
+                                )}
+                            </div>
+
+                            {(adgroupInfo.limitAcos != null || adgroupInfo.limitTacos != null || adgroupInfo.limitRoas != null) && (
+                                <div className="flex flex-wrap gap-3 text-[11px] text-white/60">
+                                    {adgroupInfo.limitAcos  != null && <span>Limite ACOS: <b className="text-white/80">{adgroupInfo.limitAcos}%</b></span>}
+                                    {adgroupInfo.limitTacos != null && <span>Limite TACOS: <b className="text-white/80">{adgroupInfo.limitTacos}%</b></span>}
+                                    {adgroupInfo.limitRoas  != null && <span>Limite ROAS: <b className="text-white/80">{adgroupInfo.limitRoas}</b></span>}
+                                </div>
+                            )}
+
+                            <p className="text-white/30 text-[10px] leading-relaxed">
+                                A API da Adman não expõe a lista de MLBs (anúncios) dentro de um adgroup —
+                                {adgroupInfo.adGroupType === 'CATALOG'  && ' este é um adgroup de catálogo (1 anúncio de catalogo).'}
+                                {adgroupInfo.adGroupType === 'ITEM'     && ' este tipo tem 1 anúncio único.'}
+                                {adgroupInfo.adGroupType === 'FAMILY'   && ' este tipo agrupa variações (N anúncios).'}
+                                {' '}Para ver e gerenciar os MLBs específicos, acesse o painel de Ads do Mercado Livre no botão acima.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 {/* Form de ação */}

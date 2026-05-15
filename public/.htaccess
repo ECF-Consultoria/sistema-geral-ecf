@@ -9,6 +9,14 @@
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 
+    # Handle X-XSRF-Token Header (cookie-based CSRF)
+    RewriteCond %{HTTP:x-xsrf-token} .
+    RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
+
+    # Handle X-CSRF-TOKEN Header (meta-tag-based CSRF — fallback para XAMPP)
+    RewriteCond %{HTTP:x-csrf-token} .
+    RewriteRule .* - [E=HTTP_X_CSRF_TOKEN:%{HTTP:X-Csrf-Token}]
+
     # Redirect Trailing Slashes If Not A Folder...
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$

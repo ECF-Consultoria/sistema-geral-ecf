@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import {
-    AlertTriangle, Building2, Eye, ChevronLeft, ChevronRight,
+    AlertTriangle, Building2, ChevronLeft, ChevronRight,
     PlayCircle, Filter, X, Megaphone, Tag, ListTree,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -22,15 +22,15 @@ const STATUS_BADGE = {
     ignorado:  'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
 };
 
-const TIPO_LABELS = { campanha: 'Campanha', anuncio: 'Anúncio' };
-const TIPO_ICONS  = { campanha: Megaphone, anuncio: Tag };
+const TIPO_LABELS = { adgroup: 'Adgroup', campanha: 'Campanha' };
+const TIPO_ICONS  = { adgroup: Tag, campanha: Megaphone };
 
 const MOTIVO_LABELS = {
     gasto_sem_venda:         'Gasto sem venda',
     cpc_alto:                'CPC alto',
     acos_alto:               'ACOS alto',
     cliques_sem_conversao:   'Cliques sem conversão',
-    pct_anuncios_sugadores:  '% anúncios sugadores',
+    pct_anuncios_sugadores:  '% adgroups sugadores',
 };
 
 const ACAO_LABELS = {
@@ -45,7 +45,9 @@ const ACAO_LABELS = {
 const fmtBRL = (n) => 'R$ ' + Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtInt = (n) => Number(n ?? 0).toLocaleString('pt-BR');
 const fmtPct = (n) => n == null ? '—' : Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
-const fmtDate = (d) => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
+// Aceita "YYYY-MM-DD" e também ISO datetime ("YYYY-MM-DDTHH:mm:ss.SSSZ") do cast 'date' do Laravel.
+// Fixa em meia-noite local para não cair no dia anterior por causa de timezone.
+const fmtDate = (d) => d ? new Date(String(d).slice(0, 10) + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
 // ─── Componentes locais ────────────────────────────────────────────────────
 
@@ -177,9 +179,10 @@ function StatusUpdateModal({ sugador, onClose }) {
 
 // ─── Página principal ──────────────────────────────────────────────────────
 
-export default function SugadoresIndex({ sugadores, companies, filters, total_pendentes, can_manage, can_analyze }) {
+export default function SugadoresIndex({ sugadores, companies, users = [], filters, total_pendentes, can_manage, can_analyze }) {
     const [f, setF] = useState({
         company_id: filters?.company_id || '',
+        user_id:    filters?.user_id || '',
         status:     filters?.status || '',
         tipo:       filters?.tipo || '',
         date_from:  filters?.date_from || '',
@@ -197,7 +200,7 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
     }
 
     function clearFilters() {
-        setF({ company_id: '', status: '', tipo: '', date_from: '', date_to: '' });
+        setF({ company_id: '', user_id: '', status: '', tipo: '', date_from: '', date_to: '' });
         router.get(route('sugadores.index'), {}, { preserveState: true });
     }
 
@@ -227,7 +230,7 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
                             </span>
                         )}
                     </div>
-                    <p className="text-white/40 text-sm mt-1">Anúncios e campanhas que estão drenando investimento sem retorno</p>
+                    <p className="text-white/40 text-sm mt-1">Adgroups (e opcionalmente campanhas) drenando investimento sem retorno</p>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -255,7 +258,7 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
             {/* Filtros */}
             {showFilters && (
                 <div className="card-ecf rounded-xl p-4 mb-4">
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
                         <NativeSelect
                             value={f.company_id}
                             onChange={v => applyFilters({ company_id: v })}
@@ -263,6 +266,15 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
                             options={companies.map(c => ({ value: c.id, label: c.name }))}
                             className="w-full"
                         />
+                        {can_manage && users.length > 0 && (
+                            <NativeSelect
+                                value={f.user_id}
+                                onChange={v => applyFilters({ user_id: v })}
+                                placeholder="Responsável (qualquer)"
+                                options={users.map(u => ({ value: u.id, label: u.name }))}
+                                className="w-full"
+                            />
+                        )}
                         <NativeSelect
                             value={f.status}
                             onChange={v => applyFilters({ status: v })}
@@ -339,8 +351,9 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
                                     return (
                                         <tr
                                             key={s.id}
+                                            onClick={() => router.visit(route('sugadores.show', s.id))}
                                             className={cn(
-                                                'border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors',
+                                                'border-b border-white/[0.04] hover:bg-white/[0.04] transition-colors cursor-pointer',
                                                 isPendente && 'bg-red-500/[0.02]'
                                             )}
                                         >
@@ -359,7 +372,7 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
                                             <td className="px-4 py-3 text-[12px] text-white/70 max-w-[220px] truncate">
                                                 {s.tipo === 'campanha'
                                                     ? (s.campaign_name || s.campaign_id)
-                                                    : (s.mlb_titulo || s.adgroup_id || s.campaign_id)}
+                                                    : (s.adgroup_name || s.mlb_titulo || s.adgroup_id || s.campaign_id)}
                                             </td>
                                             <td className="px-4 py-3 text-right text-[13px] text-white/80 font-medium tabular-nums">
                                                 {fmtBRL(s.investimento_periodo)}
@@ -389,15 +402,8 @@ export default function SugadoresIndex({ sugadores, companies, filters, total_pe
                                             <td className="px-4 py-3 text-[12px] text-white/50">
                                                 {fmtDate(s.reference_date)}
                                             </td>
-                                            <td className="px-4 py-3 text-right">
+                                            <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-1">
-                                                    <Link
-                                                        href={route('sugadores.show', s.id)}
-                                                        className="p-1.5 rounded text-white/50 hover:text-white hover:bg-white/[0.05]"
-                                                        title="Ver detalhes"
-                                                    >
-                                                        <Eye size={14} />
-                                                    </Link>
                                                     {isPendente && (
                                                         <button
                                                             onClick={() => setActionTarget(s)}

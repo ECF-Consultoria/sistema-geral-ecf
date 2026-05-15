@@ -44,7 +44,7 @@ class SugadorAnalysisService
             'companies_skipped'  => 0,
             'companies_failed'   => 0,
             'campanhas_flagadas' => 0,
-            'anuncios_flagados'  => 0,
+            'adgroups_flagados'  => 0,
         ];
 
         foreach ($companies as $company) {
@@ -55,7 +55,7 @@ class SugadorAnalysisService
                 } else {
                     $totals['companies_analyzed']++;
                     $totals['campanhas_flagadas'] += $result['campanhas'];
-                    $totals['anuncios_flagados']  += $result['anuncios'];
+                    $totals['adgroups_flagados']  += $result['adgroups'];
                 }
             } catch (\Throwable $e) {
                 Log::error("[Sugadores] Empresa {$company->id} ({$company->name}): " . $e->getMessage());
@@ -73,7 +73,7 @@ class SugadorAnalysisService
      *   'skipped'    => bool,
      *   'reason'     => string|null,    // se skipped
      *   'campanhas'  => int,            // sugadores tipo=campanha criados/atualizados
-     *   'anuncios'   => int,
+     *   'adgroups'   => int,
      *   'detalhes'   => array,          // lista pra UI: [['tipo', 'id', 'motivos', 'novo' => bool], ...]
      * ]
      */
@@ -83,7 +83,7 @@ class SugadorAnalysisService
         $custId        = $company->adman_account_id;
 
         $skip = function (string $reason) {
-            return ['skipped' => true, 'reason' => $reason, 'campanhas' => 0, 'anuncios' => 0, 'detalhes' => []];
+            return ['skipped' => true, 'reason' => $reason, 'campanhas' => 0, 'adgroups' => 0, 'detalhes' => []];
         };
 
         if (!$custId) return $skip('sem adman_account_id');
@@ -106,7 +106,7 @@ class SugadorAnalysisService
         $toUpsert      = [];
         $detalhes      = [];
         $campanhasCount = 0;
-        $anunciosCount  = 0;
+        $adgroupsCount  = 0;
 
         // Mapeia campaign_id → [total_anuncios, sugadores] para a regra de %
         $campanhaStats = [];
@@ -134,13 +134,14 @@ class SugadorAnalysisService
                     }
 
                     $toUpsert[] = $this->buildRow($company->id, $refDateStr, $existingMap, [
-                        'tipo'                 => Sugador::TIPO_ANUNCIO,
+                        'tipo'                 => Sugador::TIPO_ADGROUP,
                         'campaign_id'          => $cId,
                         'campaign_name'        => null,
                         'campaign_status'      => null,
                         'adgroup_id'           => $ad['adgroup_id'],
+                        'adgroup_name'         => $ad['adgroup_name'],
                         'mlb_id'               => null,
-                        'mlb_titulo'           => $ad['adgroup_name'],
+                        'mlb_titulo'           => null,
                         'periodo_inicio'       => $dateFrom,
                         'periodo_fim'          => $dateTo,
                         'investimento_periodo' => $ad['investment']    ?? 0,
@@ -156,9 +157,9 @@ class SugadorAnalysisService
                         'raw_data'             => $ad['raw'] ?? null,
                     ]);
 
-                    $anunciosCount++;
+                    $adgroupsCount++;
                     $detalhes[] = [
-                        'tipo'         => 'anuncio',
+                        'tipo'         => 'adgroup',
                         'campaign_id'  => $cId,
                         'adgroup_id'   => $ad['adgroup_id'],
                         'nome'         => $ad['adgroup_name'],
@@ -168,7 +169,10 @@ class SugadorAnalysisService
                     ];
                 }
             } catch (\Throwable $e) {
-                Log::warning("[Sugadores] Erro ao buscar adgroups da empresa {$company->id}: " . $e->getMessage());
+                // Falha aqui é crítica: adgroups são a granularidade principal do módulo.
+                // Loga como error (não warning) e re-propaga para o Command/Controller exibir.
+                Log::error("[Sugadores] Erro ao buscar adgroups da empresa {$company->id} ({$company->name}): " . $e->getMessage());
+                throw $e;
             }
         }
 
@@ -199,6 +203,7 @@ class SugadorAnalysisService
                         'campaign_name'        => $camp['campaign_name'],
                         'campaign_status'      => $camp['campaign_status'],
                         'adgroup_id'           => '',
+                        'adgroup_name'         => null,
                         'mlb_id'               => null,
                         'mlb_titulo'           => null,
                         'periodo_inicio'       => $dateFrom,
@@ -234,7 +239,7 @@ class SugadorAnalysisService
         // Bulk upsert: 1 query para todos os sugadores desta empresa (em vez de 2N)
         if (!$dryRun && !empty($toUpsert)) {
             Sugador::upsert($toUpsert, ['company_id', 'reference_date', 'tipo', 'campaign_id', 'adgroup_id'], [
-                'campaign_name', 'campaign_status', 'mlb_titulo',
+                'campaign_name', 'campaign_status', 'adgroup_name', 'mlb_titulo',
                 'periodo_inicio', 'periodo_fim',
                 'investimento_periodo', 'faturamento_periodo', 'vendas_periodo',
                 'cliques', 'impressoes', 'cpc_medio', 'ctr', 'acos', 'roas',
@@ -246,7 +251,7 @@ class SugadorAnalysisService
             'skipped'   => false,
             'reason'    => null,
             'campanhas' => $campanhasCount,
-            'anuncios'  => $anunciosCount,
+            'adgroups'  => $adgroupsCount,
             'detalhes'  => $detalhes,
         ];
     }
@@ -273,6 +278,7 @@ class SugadorAnalysisService
             'campaign_name'        => $data['campaign_name'],
             'campaign_status'      => $data['campaign_status'],
             'adgroup_id'           => $data['adgroup_id'],
+            'adgroup_name'         => $data['adgroup_name'] ?? null,
             'mlb_id'               => $data['mlb_id'],
             'mlb_titulo'           => $data['mlb_titulo'],
             'periodo_inicio'       => $data['periodo_inicio'],

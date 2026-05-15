@@ -25,9 +25,6 @@ use Illuminate\Support\Facades\Route;
 // Redireciona raiz para dashboard
 Route::get('/', fn() => redirect()->route('dashboard'));
 
-// Página pública de instalação da extensão Tampermonkey (sem autenticação)
-Route::get('/instalar-extensao', fn() => inertia('Extensao/Instalar'))->name('extensao.instalar');
-
 // Endpoint interno para sincronização de grants (curl fire-and-forget — sem CSRF)
 Route::post('/internal/grants/sync/run', [GrantController::class, 'syncRun'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])

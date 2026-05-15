@@ -14,7 +14,7 @@ class AnalyzeSugadores extends Command
         {--date=    : Força reference_date (YYYY-MM-DD, padrão: hoje)}
         {--dry-run  : Mostra quem seria flagado sem gravar no banco}';
 
-    protected $description = 'Detecta campanhas e anúncios "sugadores" (drenam investimento sem retorno) via Adman API';
+    protected $description = 'Detecta adgroups (e opcionalmente campanhas) "sugadores" que drenam investimento sem retorno via Adman API';
 
     public function handle(SugadorAnalysisService $service): int
     {
@@ -46,7 +46,7 @@ class AnalyzeSugadores extends Command
                 return self::SUCCESS;
             }
 
-            $this->info("✓ {$r['campanhas']} campanha(s) e {$r['anuncios']} anúncio(s) flagado(s).");
+            $this->info("✓ {$r['adgroups']} adgroup(s) e {$r['campanhas']} campanha(s) flagado(s).");
             $this->printDetalhes($r['detalhes']);
             return self::SUCCESS;
         }
@@ -64,8 +64,8 @@ class AnalyzeSugadores extends Command
                 ['Empresas analisadas', $totals['companies_analyzed']],
                 ['Empresas puladas',    $totals['companies_skipped']],
                 ['Empresas com falha',  $totals['companies_failed']],
+                ['Adgroups flagados',   $totals['adgroups_flagados']],
                 ['Campanhas flagadas',  $totals['campanhas_flagadas']],
-                ['Anúncios flagados',   $totals['anuncios_flagados']],
             ]
         );
 

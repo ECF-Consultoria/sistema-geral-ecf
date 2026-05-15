@@ -14,6 +14,17 @@ SISTEMA.md
 Markdown_/
 ecf_admin/
 documentacao_excel_interno_sistema_completa.md
+# Docs de deploy / patches / modulos — internos, nao versionados
+DEPLOY_*.md
+MODULO_*.md
+PATCH_*.md
+RESUMO_*.md
+prompt_*.md
+# Dumps SQL e composer phar local
+*.sql
+composer.phar
+# SQLite local de desenvolvimento
+/database/database.sqlite
 .env
 .env.backup
 .env.production

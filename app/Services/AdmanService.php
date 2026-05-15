@@ -368,23 +368,43 @@ class AdmanService
      *   'raw'             => array,
      * ]
      */
-    public function fetchAdsMetrics(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 100): array
+    public function fetchAdsMetrics(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50): array
     {
+        // Adman cap: itemsPerPage > 50 retorna HTTP 400 ("itemsPerPage must be less than 50").
+        $itemsPerPage = min($itemsPerPage, 50);
         $all  = [];
         $page = 1;
 
         do {
-            $response = Http::withHeaders($this->headers())
-                ->timeout(60)
-                ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/adgroups/metrics", [
-                    'dateFrom'     => $dateFrom,
-                    'dateTo'       => $dateTo,
-                    'page'         => $page,
-                    'itemsPerPage' => $itemsPerPage,
-                ]);
+            // Adman aplica rate-limit ao endpoint /adgroups/metrics — retry exponencial em 429
+            // e 5xx é necessário pra contas grandes (centenas de páginas).
+            $response = null;
+            $maxAttempts = 5;
+            for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+                $response = Http::withHeaders($this->headers())
+                    ->timeout(60)
+                    ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/adgroups/metrics", [
+                        'dateFrom'     => $dateFrom,
+                        'dateTo'       => $dateTo,
+                        'page'         => $page,
+                        'itemsPerPage' => $itemsPerPage,
+                    ]);
+
+                $status = $response->status();
+                $isTransient = $status === 429 || ($status >= 500 && $status < 600);
+                if (!$isTransient || $attempt === $maxAttempts) {
+                    break;
+                }
+
+                // Respeita Retry-After se a Adman mandar, senão backoff exponencial: 1s, 2s, 4s, 8s
+                $retryAfter = (int) ($response->header('Retry-After') ?? 0);
+                $sleepSec = $retryAfter > 0 ? min($retryAfter, 30) : (2 ** ($attempt - 1));
+                sleep($sleepSec);
+            }
 
             if ($response->failed()) {
-                throw new \RuntimeException("Adman adgroups metrics erro {$response->status()} custId={$custId} page={$page}");
+                $body = trim(substr($response->body(), 0, 300));
+                throw new \RuntimeException("Adman adgroups metrics erro {$response->status()} custId={$custId} page={$page}: {$body}");
             }
 
             $data       = $response->json() ?? [];
@@ -425,4 +445,5 @@ class AdmanService
 
         return $all;
     }
+
 }

@@ -50,6 +50,16 @@ class SugadorController extends Controller
         if ($request->filled('date_to')) {
             $query->where('reference_date', '<=', $request->date_to);
         }
+        // Filtro "responsável pela empresa" — só admin pode usar; filtra sugadores
+        // pelas empresas em que o usuário escolhido aparece em company_users.
+        if ($user->isAdmin() && $request->filled('user_id')) {
+            $userId = (int) $request->user_id;
+            $query->whereIn('company_id', function ($sub) use ($userId) {
+                $sub->select('company_id')
+                    ->from('company_users')
+                    ->where('user_id', $userId);
+            });
+        }
 
         $sugadores = $query->paginate(50)->withQueryString();
 
@@ -60,6 +70,14 @@ class SugadorController extends Controller
         }
         $companies = $companiesQuery->get(['id', 'name']);
 
+        // Usuários para o filtro "Responsável" (admin only): apenas os que têm
+        // ao menos 1 empresa em company_users — outros não fariam diferença no filtro.
+        $users = $user->isAdmin()
+            ? \App\Models\User::whereIn('id', function ($sub) {
+                $sub->select('user_id')->from('company_users');
+            })->orderBy('name')->get(['id', 'name'])
+            : collect();
+
         // Contador de pendentes (na visão atual do usuário)
         $pendentesQuery = Sugador::pendentes();
         if (!$hasGlobalView) {
@@ -68,12 +86,13 @@ class SugadorController extends Controller
         $totalPendentes = $pendentesQuery->count();
 
         return Inertia::render('Sugadores/Index', [
-            'sugadores'      => $sugadores,
-            'companies'      => $companies,
-            'filters'        => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to']),
+            'sugadores'       => $sugadores,
+            'companies'       => $companies,
+            'users'           => $users,
+            'filters'         => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id']),
             'total_pendentes' => $totalPendentes,
-            'can_manage'     => $user->isAdmin(),
-            'can_analyze'    => Gate::allows('analyze', Sugador::class),
+            'can_manage'      => $user->isAdmin(),
+            'can_analyze'     => Gate::allows('analyze', Sugador::class),
         ]);
     }
 
@@ -166,7 +185,7 @@ class SugadorController extends Controller
 
         return back()->with(
             'success',
-            "Análise concluída: {$r['campanhas']} campanha(s) e {$r['anuncios']} anúncio(s) flagado(s)."
+            "Análise concluída: {$r['adgroups']} adgroup(s) e {$r['campanhas']} campanha(s) flagado(s)."
         );
     }
 
@@ -189,10 +208,10 @@ class SugadorController extends Controller
         return back()->with(
             'success',
             sprintf(
-                'Análise concluída: %d empresas analisadas, %d campanha(s) e %d anúncio(s) flagado(s).%s',
+                'Análise concluída: %d empresas analisadas, %d adgroup(s) e %d campanha(s) flagado(s).%s',
                 $totals['companies_analyzed'],
+                $totals['adgroups_flagados'],
                 $totals['campanhas_flagadas'],
-                $totals['anuncios_flagados'],
                 $totals['companies_failed'] > 0 ? " ({$totals['companies_failed']} com erro)" : ''
             )
         );
