@@ -1,9 +1,13 @@
 <?php
 
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AdmanController;
+use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\GoalController;
+use App\Http\Controllers\MlbController;
+use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\MeetingController;
@@ -13,11 +17,16 @@ use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PpaController;
 use App\Http\Controllers\PpaTaskController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\SugadorConfigController;
+use App\Http\Controllers\SugadorController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Redireciona raiz para dashboard
 Route::get('/', fn() => redirect()->route('dashboard'));
+
+// Página pública de instalação da extensão Tampermonkey (sem autenticação)
+Route::get('/instalar-extensao', fn() => inertia('Extensao/Instalar'))->name('extensao.instalar');
 
 // Endpoint interno para sincronização de grants (curl fire-and-forget — sem CSRF)
 Route::post('/internal/grants/sync/run', [GrantController::class, 'syncRun'])
@@ -27,6 +36,13 @@ Route::post('/internal/grants/sync/run', [GrantController::class, 'syncRun'])
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
 Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, 'clientUpdate'])->name('ppa.workspace.task.update');
+
+// Implementação MLB público (sem autenticação) — cliente preenche via token
+Route::get('/implementacao/{token}', [MlbImplementacaoController::class, 'workspace'])->name('implementacao.workspace');
+Route::patch('/implementacao/{token}', [MlbImplementacaoController::class, 'salvarItem'])->name('implementacao.salvar');
+
+// Visão do publicador (sem autenticação, somente leitura)
+Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::class, 'publicador'])->name('implementacao.publicador');
 
 // Google OAuth (público — sem autenticação durante o callback)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
@@ -101,7 +117,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Carteira (portfólio) — cada usuário vê a própria
     Route::get('/portfolio', [PortfolioController::class, 'own'])->name('portfolio.own');
 
+    // ─── Sugadores ──────────────────────────────────────────────────────────
+    // Leitura/escrita gated por SugadorPolicy (admin/gestor/lider veem global;
+    // consultor/mentor/analista veem só carteira). Análise on-demand e config
+    // restritas a admin (Policy::manage).
+    Route::get('/sugadores',                        [SugadorController::class, 'index'])->name('sugadores.index');
+    Route::get('/sugadores/{sugador}',              [SugadorController::class, 'show'])->name('sugadores.show');
+    Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');
+    Route::post('/sugadores/analyze',               [SugadorController::class, 'analyzeAll'])->name('sugadores.analyze-all');
+    Route::post('/sugadores/companies/{company}/analyze', [SugadorController::class, 'analyzeCompany'])->name('sugadores.analyze-company');
+
+    // Config de detecção por empresa (admin only via Policy::manage)
+    Route::get('/companies/{company}/sugador-config', [SugadorConfigController::class, 'show'])->name('sugadores.config.show');
+    Route::put('/companies/{company}/sugador-config', [SugadorConfigController::class, 'update'])->name('sugadores.config.update');
+
     Route::middleware('role:admin')->group(function () {
+        // Log de atividades
+        Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
+
         Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
@@ -124,6 +157,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/users', [UserController::class, 'store'])->name('users.store');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+        Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
+        Route::delete('/users/{id}/force', [UserController::class, 'forceDestroy'])->name('users.force-destroy');
+        Route::delete('/users-opcao-setor', [UserController::class, 'destroyOpcaoSetor'])->name('users.opcao-setor.destroy');
 
         Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
         Route::post('/companies', [CompanyController::class, 'store'])->name('companies.store');
@@ -131,6 +167,67 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
     });
+});
+
+// ─── Módulo MLB — Controle de Publicações ────────────────────────────────────
+Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(function () {
+    Route::get('/dashboard',      [MlbController::class, 'dashboard'])->name('dashboard');
+    Route::get('/projetos',       [MlbController::class, 'projetos'])->name('projetos');
+    Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
+    Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
+    Route::put('/treinamentos/{treinamento}',    [MlbController::class, 'updateTreinamento'])->name('treinamentos.update');
+    Route::delete('/treinamentos/{treinamento}', [MlbController::class, 'destroyTreinamento'])->name('treinamentos.destroy');
+    Route::post('/config',        [MlbController::class, 'salvarConfig'])->name('config');
+    Route::get('/meu-painel',  [MlbController::class, 'meuPainel'])->name('meu-painel');
+    Route::get('/publicacoes',  [MlbController::class, 'publicacoes'])->name('publicacoes');
+    Route::post('/publicacoes', [MlbController::class, 'store'])->name('store');
+    Route::get('/vendas',       [MlbController::class, 'vendas'])->name('vendas');
+    Route::post('/sync-vendas-pub', [MlbController::class, 'syncVendasPublicador'])->name('sync-vendas-pub');
+    Route::get('/historico',   [MlbController::class, 'historico'])->name('historico');
+    Route::get('/revisao',     [MlbController::class, 'revisao'])->name('revisao');
+
+    Route::patch('/pub/{pub}/vendido',           [MlbController::class, 'marcarVendido'])->name('vendido');
+    Route::patch('/pub/{pub}/revisado',          [MlbController::class, 'marcarRevisado'])->name('revisado');
+    Route::patch('/pub/{pub}/comentario',        [MlbController::class, 'salvarComentario'])->name('comentario');
+    Route::patch('/pub/{pub}/resolver',          [MlbController::class, 'resolverComentario'])->name('resolver');
+    Route::patch('/pub/{pub}/problema',          [MlbController::class, 'marcarProblema'])->name('problema');
+    Route::delete('/pub/{pub}',                  [MlbController::class, 'destroy'])->name('destroy');
+
+    // Empresas MLB (Analista / Líder / Gestor)
+    Route::get('/empresas',                       [MlbController::class, 'empresas'])->name('empresas');
+    Route::post('/empresas',                      [MlbController::class, 'storeEmpresa'])->name('empresas.store');
+    Route::put('/empresas/{empresa}',             [MlbController::class, 'updateEmpresa'])->name('empresas.update');
+    Route::delete('/empresas/{empresa}',          [MlbController::class, 'destroyEmpresa'])->name('empresas.destroy');
+    Route::patch('/empresas/{empresa}/sku',       [MlbController::class, 'marcarSku'])->name('empresas.sku');
+    Route::post('/opcao-campo',                   [MlbController::class, 'storeOpcaoCampo'])->name('opcao-campo.store');
+    Route::delete('/opcao-campo',                 [MlbController::class, 'destroyOpcaoCampo'])->name('opcao-campo.destroy');
+    Route::patch('/empresas/{empresa}/problema',  [MlbController::class, 'marcarProblemaEmpresa'])->name('empresas.problema');
+    Route::post('/empresas/{empresa}/sync-vendas', [MlbController::class, 'syncVendasAdman'])->name('empresas.sync-vendas');
+    Route::get('/empresas/{empresa}/debug-sync',  [MlbController::class, 'debugSyncVendas'])->name('empresas.debug-sync');
+    Route::post('/sync-vendas',                   [MlbController::class, 'syncTodasVendasAdman'])->name('sync-vendas');
+
+    // Metas por mês (gestor/admin)
+    Route::get('/metas',           [MlbController::class, 'metasIndex'])->name('metas.index');
+    Route::post('/metas',          [MlbController::class, 'storeMeta'])->name('metas.store');
+    Route::delete('/metas/{id}',   [MlbController::class, 'destroyMeta'])->name('metas.destroy');
+
+    // Implementação MLB (admin)
+    Route::get('/implementacao/indicadores',                  [MlbImplementacaoController::class, 'indicadores'])->name('implementacao.indicadores');
+    Route::get('/implementacao',                              [MlbImplementacaoController::class, 'index'])->name('implementacao.index');
+    Route::post('/implementacao',                             [MlbImplementacaoController::class, 'criar'])->name('implementacao.criar');
+    Route::post('/implementacao-padroes',                     [MlbImplementacaoController::class, 'salvarPadroes'])->name('implementacao.padroes');
+    Route::post('/implementacao/{empresa}/gerar',             [MlbImplementacaoController::class, 'gerarLink'])->name('implementacao.gerar');
+    Route::post('/implementacao/{impl}/tutoriais',            [MlbImplementacaoController::class, 'atualizarTutoriais'])->name('implementacao.tutoriais');
+    Route::post('/implementacao/{impl}/sincronizar-skus',     [MlbImplementacaoController::class, 'sincronizarSkus'])->name('implementacao.sincronizar-skus');
+    Route::delete('/implementacao/{impl}',                    [MlbImplementacaoController::class, 'destroy'])->name('implementacao.destroy');
+});
+
+// ─── Módulo Administrativo ───────────────────────────────────────────────────
+Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')->name('admin.')->group(function () {
+    Route::get('/empresas',   [AdminController::class, 'empresas'])->name('empresas');
+    Route::get('/relatorio',  [AdminController::class, 'relatorio'])->name('relatorio');
+    Route::get('/financeiro', [AdminController::class, 'financeiro'])->name('financeiro');
+    Route::get('/inventario', [AdminController::class, 'inventario'])->name('inventario');
 });
 
 require __DIR__.'/auth.php';

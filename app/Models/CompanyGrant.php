@@ -4,9 +4,27 @@ namespace App\Models;
 
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class CompanyGrant extends Model
 {
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['company_id', 'status', 'granted_at', 'expires_at', 'regranted_at', 'notes'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs()
+            ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
+                'created' => 'Grant criado',
+                'updated' => 'Grant atualizado',
+                'deleted' => 'Grant excluído',
+                default   => $eventName,
+            });
+    }
+
     protected $fillable = [
         'company_id', 'ml_grant_token', 'ml_email', 'ml_phone', 'ml_cust_id',
         'status', 'granted_at', 'expires_at', 'regranted_at', 'notes',

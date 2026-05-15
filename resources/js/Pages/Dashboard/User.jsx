@@ -13,7 +13,7 @@ const PERIOD_OPTIONS = [
     { value: '180', label: 'Últimos 6 meses' },
 ];
 
-export default function UserDashboard({ stats, period, companies, my_surveys, my_ppas }) {
+export default function UserDashboard({ stats, period, companies, my_surveys, my_ppas, sugadores_pendentes_carteira = 0 }) {
     return (
         <AppLayout title="Dashboard">
             <div className="space-y-6">
@@ -103,6 +103,30 @@ export default function UserDashboard({ stats, period, companies, my_surveys, my
                                     </Badge>
                                 </div>
                             ))}
+                        </CardContent>
+                    </Card>
+                )}
+
+                {sugadores_pendentes_carteira > 0 && (
+                    <Card className="border-red-500/30 bg-red-500/[0.02]">
+                        <CardContent className="p-5 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                                <AlertTriangle className="h-8 w-8 text-red-400 shrink-0" />
+                                <div>
+                                    <p className="text-sm font-medium">
+                                        {sugadores_pendentes_carteira} sugador{sugadores_pendentes_carteira !== 1 ? 'es' : ''} pendente{sugadores_pendentes_carteira !== 1 ? 's' : ''} na sua carteira
+                                    </p>
+                                    <p className="text-muted-foreground text-xs mt-0.5">
+                                        Anúncios ou campanhas drenando investimento sem retorno — vale revisar
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => router.visit(route('sugadores.index', { status: 'pendente' }))}
+                                className="inline-flex items-center gap-1.5 px-3 h-8 rounded-md text-xs font-semibold bg-red-500/15 text-red-300 border border-red-500/30 hover:bg-red-500/25"
+                            >
+                                Ver agora
+                            </button>
                         </CardContent>
                     </Card>
                 )}

@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
+use App\Models\Sugador;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -18,8 +19,26 @@ class DashboardController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
+
+        // Equipe de publicação (não-admin): redireciona para a primeira página acessível
+        if ($user->publication_role && !$user->isAdmin()) {
+            $destinations = [
+                'dashboard'   => route('mlb.dashboard'),
+                'meu_painel'  => route('mlb.meu-painel'),
+                'treinamento' => route('mlb.treinamentos'),
+                'publicacoes' => route('mlb.publicacoes'),
+                'historico'   => route('mlb.historico'),
+                'empresas'    => route('mlb.empresas'),
+            ];
+            foreach ($destinations as $perm => $url) {
+                if ($user->hasPubPermission($perm)) {
+                    return redirect($url);
+                }
+            }
+        }
+
         $period = $request->get('period', '30');
-        $since = $this->getSince($period);
+        $since  = $this->getSince($period);
 
         if ($user->isAdmin()) {
             return $this->adminDashboard($request, $since, $period);
@@ -133,6 +152,21 @@ class DashboardController extends Controller
         $totalAdSpend       = $metrics->sum('ad_spend');
         $avgProfitShare     = $metrics->avg('profit_share') ?? 0;
 
+        // Sugadores: total pendentes + top 5 empresas
+        $sugadoresPendentes = Sugador::pendentes()->count();
+        $sugadoresTopEmpresas = Sugador::pendentes()
+            ->selectRaw('company_id, COUNT(*) as total')
+            ->groupBy('company_id')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->with('company:id,name')
+            ->get()
+            ->map(fn($row) => [
+                'company_id'   => $row->company_id,
+                'company_name' => $row->company?->name ?? '—',
+                'total'        => (int) $row->total,
+            ]);
+
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
                 'total_companies'          => $companies->count(),
@@ -178,6 +212,10 @@ class DashboardController extends Controller
                 'consultor' => $c->consultor->first()?->name,
                 'mentor'   => $c->mentor->first()?->name,
             ]),
+            'sugadores_stats' => [
+                'total_pendentes' => $sugadoresPendentes,
+                'top_empresas'    => $sugadoresTopEmpresas,
+            ],
         ]);
     }
 
@@ -223,6 +261,11 @@ class DashboardController extends Controller
     private function userDashboard(User $user, Carbon $since, string $period)
     {
         $companies = $user->companies()->with(['latestMetrics', 'goals'])->get();
+
+        // Sugadores na carteira do usuário (pendentes)
+        $sugadoresCarteira = Sugador::pendentes()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->count();
 
         $metrics = AdmanMetric::whereIn('company_id', $companies->pluck('id'))
             ->where('reference_date', '>=', $since->toDateString())
@@ -273,6 +316,7 @@ class DashboardController extends Controller
             ]),
             'my_surveys' => $myNpsSurveys,
             'my_ppas' => $myPpas,
+            'sugadores_pendentes_carteira' => $sugadoresCarteira,
         ]);
     }
 }

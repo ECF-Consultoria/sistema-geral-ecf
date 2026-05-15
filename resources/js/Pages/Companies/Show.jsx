@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp } from 'lucide-react';
+import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -69,9 +69,19 @@ export default function CompanyShow({ company }) {
                             </div>
                         </div>
                     </div>
-                    <Badge variant={company.active ? 'success' : 'destructive'}>
-                        {company.active ? 'Ativa' : 'Inativa'}
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <Link
+                            href={route('sugadores.config.show', company.id)}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px] font-medium"
+                            title="Configurar detecção de Sugadores"
+                        >
+                            <AlertTriangle size={13} />
+                            Sugadores
+                        </Link>
+                        <Badge variant={company.active ? 'success' : 'destructive'}>
+                            {company.active ? 'Ativa' : 'Inativa'}
+                        </Badge>
+                    </div>
                 </div>
 
                 {/* KPIs rápidos */}

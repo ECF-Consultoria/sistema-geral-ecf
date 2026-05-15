@@ -7,14 +7,23 @@ use App\Models\Company;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
+use App\Models\Publicacao;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class PerformanceController extends Controller
 {
     public function index(Request $request)
     {
+        $setor = $request->get('setor', 'consultoria');
+
+        if ($setor === 'polos') {
+            return $this->indexPolos($request);
+        }
+
         $period = $request->get('period', '30');
         $since = match ($period) {
             '7'   => now()->subDays(7),
@@ -24,7 +33,10 @@ class PerformanceController extends Controller
             default => now()->subDays(30),
         };
 
-        $users = User::where('active', true)->where('role', '!=', 'admin')->get();
+        $users = User::where('active', true)
+            ->whereIn('role', ['consultor', 'mentor'])
+            ->whereNull('publication_role')
+            ->get();
 
         $ranking = $users->map(function ($u) use ($since) {
             // Usa empresas específicas pelo papel do usuário para cálculos de NPS
@@ -105,7 +117,129 @@ class PerformanceController extends Controller
         return Inertia::render('Performance/Index', [
             'ranking' => $ranking,
             'period'  => $period,
+            'setor'   => 'consultoria',
         ]);
+    }
+
+    private function indexPolos(Request $request): \Inertia\Response
+    {
+        $mesRef = $request->get('mes', now()->format('Y-m'));
+        $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
+        $primeiro = $ref->copy()->startOfMonth()->toDateString();
+        $ultimo   = $ref->copy()->endOfMonth()->toDateString();
+
+        $users = User::where('active', true)
+            ->whereIn('publication_role', ['publicador', 'lider'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'publication_role', 'publication_meta']);
+
+        $hoje      = Carbon::today();
+        $primeiroC = $ref->copy()->startOfMonth();
+        $ultimoC   = $ref->copy()->endOfMonth();
+
+        $diasDecorridos = $this->diasUteis($primeiroC, $hoje->lt($ultimoC) ? $hoje : $ultimoC);
+        $diasRestantes  = $hoje->lt($ultimoC) ? $this->diasUteis($hoje->copy()->addDay(), $ultimoC) : 0;
+        $diasTotal      = max($diasDecorridos + $diasRestantes, 1);
+
+        $rawRanking = $users->map(function ($u) use ($primeiro, $ultimo, $diasDecorridos, $diasTotal, $mesRef) {
+            $meta       = $this->metaParaMes($u->id, $mesRef);
+            $feito      = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->count();
+            $vendas     = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('vendido', true)->count();
+
+            $percentual_meta = $meta > 0 ? $feito / $meta : 0.0;
+            $conversao_raw   = $feito > 0 ? $vendas / $feito : 0.0;
+
+            $mediaAtual = $diasDecorridos > 0 ? round($feito / $diasDecorridos, 1) : 0.0;
+            $projecao   = (int) round($mediaAtual * $diasTotal);
+
+            if ($feito >= $meta) {
+                $status = 'Acima da meta';
+            } elseif ($projecao >= $meta * 0.95) {
+                $status = 'No alvo';
+            } else {
+                $status = 'Abaixo da meta';
+            }
+
+            return [
+                'id'              => $u->id,
+                'name'            => $u->name,
+                'pub_role'        => $u->publication_role,
+                'meta'            => $meta,
+                'feito'           => $feito,
+                'vendas'          => $vendas,
+                'percentual'      => $meta > 0 ? round($percentual_meta * 100, 1) : 0.0,
+                'conversao'       => round($conversao_raw * 100, 1),
+                'projecao'        => $projecao,
+                'status'          => $status,
+                // campos intermediários para normalização
+                '_pct_meta'       => $percentual_meta,
+                '_conversao_raw'  => $conversao_raw,
+            ];
+        });
+
+        // Normalização por grupo e cálculo do score final
+        $maxVendas    = max((int) $rawRanking->max('vendas'),   1);
+        $maxConversao = max($rawRanking->max('_conversao_raw'), 0.0001);
+
+        $ranking = $rawRanking->map(function ($u) use ($maxVendas, $maxConversao) {
+            $pctMeta      = min($u['_pct_meta'],      1.0); // limita em 1 para não distorcer
+            $vendasNorm   = $u['vendas']           / $maxVendas;
+            $conversaoNorm = $u['_conversao_raw']  / $maxConversao;
+
+            $score = round(($pctMeta * 0.4 + $vendasNorm * 0.4 + $conversaoNorm * 0.2) * 100, 1);
+
+            return [
+                'id'              => $u['id'],
+                'name'            => $u['name'],
+                'pub_role'        => $u['pub_role'],
+                'meta'            => $u['meta'],
+                'feito'           => $u['feito'],
+                'vendas'          => $u['vendas'],
+                'percentual'      => $u['percentual'],
+                'conversao'       => $u['conversao'],
+                'projecao'        => $u['projecao'],
+                'status'          => $u['status'],
+                'score_final'     => $score,
+            ];
+        })->sortByDesc('score_final')->values();
+
+        $meses = Publicacao::selectRaw("DATE_FORMAT(data, '%Y-%m') as mes")
+            ->distinct()->orderByDesc('mes')->pluck('mes')->toArray();
+        $atual = now()->format('Y-m');
+        if (!in_array($atual, $meses)) array_unshift($meses, $atual);
+
+        return Inertia::render('Performance/Index', [
+            'ranking' => $ranking,
+            'setor'   => 'polos',
+            'mes'     => $mesRef,
+            'meses'   => $meses,
+        ]);
+    }
+
+    private function metaParaMes(int $userId, string $mes): int
+    {
+        $registro = DB::table('mlb_meta_historico')
+            ->where('user_id', $userId)
+            ->where('mes_inicio', '<=', $mes)
+            ->orderByDesc('mes_inicio')
+            ->value('meta');
+
+        if ($registro !== null) return (int) $registro;
+
+        return (int) (User::find($userId)?->publication_meta ?? 220);
+    }
+
+    private function diasUteis(Carbon $start, Carbon $end): int
+    {
+        if ($start->gt($end)) return 0;
+        $count   = 0;
+        $current = $start->copy()->startOfDay();
+        $endDay  = $end->copy()->startOfDay();
+        while ($current->lte($endDay)) {
+            if ($current->isWeekday()) $count++;
+            $current->addDay();
+        }
+        return $count;
     }
 
     public function show(Request $request, User $user): \Inertia\Response

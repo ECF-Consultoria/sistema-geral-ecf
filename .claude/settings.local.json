@@ -3,7 +3,34 @@
     "allow": [
       "Bash(/c/xampp/php/php.exe artisan *)",
       "Bash(npm run *)",
-      "Bash(bash deploy.sh)"
+      "Bash(bash deploy.sh)",
+      "PowerShell(C:\\\\xampp\\\\php\\\\php.exe artisan migrate --path=database/migrations/2026_05_08_000003_add_excluido_to_mlb_campo_opcoes.php 2>&1)",
+      "Bash(echo \"LOG_PID=$!\")",
+      "Bash(grep -n 'mlbsComVenda as $mlbCode => $qty' /c/xampp/htdocs/ecf_admin/app/Http/Controllers/MlbController.php)",
+      "Bash(mkdir -p /tmp/deploy_package)",
+      "Bash(cp --parents app/Http/Controllers/UserController.php /tmp/deploy_package/)",
+      "Bash(cp --parents app/Http/Controllers/MlbController.php /tmp/deploy_package/)",
+      "Bash(cp --parents app/Http/Middleware/HandleInertiaRequests.php /tmp/deploy_package/)",
+      "Bash(cp --parents app/Models/User.php /tmp/deploy_package/)",
+      "Bash(cd /tmp/deploy_package && find . -type f | sort)",
+      "Read(//tmp/**)",
+      "Bash(zip -r /c/xampp/htdocs/ecf_admin/DEPLOY_FILES_08-05-2026.zip .)",
+      "Bash(python -c ' *)",
+      "Bash(Get-ChildItem -Path \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\" -Directory)",
+      "Bash(Get-ChildItem -Path \"C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\resources\\\\js\\\\Pages\" -Filter \"*mlb*\" -Recurse -ErrorAction SilentlyContinue)",
+      "Bash(Find \"C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\resources\\\\js\\\\Pages\" -type f -name \"*.jsx\")",
+      "Bash(Find \"C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\app\\\\Models\" -type f -name \"*.php\")",
+      "Bash(cat \"C:\\\\xampp\\\\apache\\\\conf\\\\extra\\\\httpd-vhosts.conf\" 2>/dev/null | head -60)",
+      "Read(//c/xampp/apache/conf/extra/**)",
+      "Bash(grep -n \"AllowOverride\\\\|DocumentRoot\\\\|Directory\" \"C:\\\\xampp\\\\apache\\\\conf\\\\httpd.conf\" | head -30)",
+      "Read(//c/xampp/apache/conf/**)",
+      "Bash(node -e ' *)",
+      "PowerShell(cd \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\"; & \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"DB::table\\('mlb_implementacoes'\\)->select\\('empresa_id','token'\\)->get\\(\\)->each\\(function\\(\\\\$r\\){ echo 'empresa_id='.\\\\$r->empresa_id.' token='.\\\\$r->token.PHP_EOL; }\\);\")",
+      "Bash(\"C:/xampp/php/php.exe\" artisan *)",
+      "Bash(C:/xampp/php/php.exe artisan *)",
+      "Bash(C:/xampp/php/php.exe -r ' *)",
+      "Bash(powershell -command \"Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::OpenRead\\('ecf_admin_vps.zip'\\).Entries | Select-Object -ExpandProperty FullName | head -100\")",
+      "Bash(powershell -command ' *)"
     ]
   }
 }

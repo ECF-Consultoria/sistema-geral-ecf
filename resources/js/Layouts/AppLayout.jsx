@@ -1,13 +1,23 @@
 import { Link, usePage, router } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
     LayoutDashboard, Building2, Users, CalendarCheck,
     Star, Target, FileText, ChevronLeft, ChevronRight,
-    LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck
+    LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
+    BarChart2, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
+    AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const DEFAULT_PUB_PERMS = {
+    gestor:    ['dashboard', 'meu_painel', 'empresas', 'historico', 'treinamento', 'metas', 'sugadores'],
+    lider:     ['dashboard', 'meu_painel', 'publicacoes', 'vendas', 'historico', 'revisao', 'empresas', 'treinamento', 'sugadores'],
+    publicador:['meu_painel', 'publicacoes', 'vendas', 'historico'],
+    analista:  ['empresas', 'historico', 'sugadores'],
+};
+
 const NAV_ITEMS = [
+    // ── ECF Consultoria (visíveis por role principal) ──────────────────────
     { label: 'Dashboard',  routeName: 'dashboard',         page: 'Dashboard',   icon: LayoutDashboard, roles: ['admin', 'consultor', 'mentor'] },
     { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio',   icon: Briefcase,       roles: ['consultor', 'mentor'] },
     { label: 'Empresas',   routeName: 'companies.index',   page: 'Companies',   icon: Building2,       roles: ['admin'] },
@@ -16,14 +26,35 @@ const NAV_ITEMS = [
     { label: 'NPS',        routeName: 'nps.index',         page: 'Nps',         icon: Star,            roles: ['admin', 'consultor', 'mentor'] },
     { label: 'Metas',      routeName: 'goals.index',       page: 'Goals',       icon: Target,          roles: ['admin', 'consultor', 'mentor'] },
     { label: 'PPA',        routeName: 'ppa.index',         page: 'Ppa',         icon: FileText,        roles: ['admin', 'mentor'] },
-    { label: 'Desempenho', routeName: 'performance.index', page: 'Performance', icon: Trophy,          roles: ['admin'] },
-    { label: 'Grants',     routeName: 'grants.index',      page: 'Grants',      icon: ShieldCheck,     roles: ['admin'] },
+    { label: 'Desempenho', routeName: 'performance.index',  page: 'Performance',     icon: Trophy,      roles: ['admin'] },
+    { label: 'Grants',     routeName: 'grants.index',       page: 'Grants',          icon: ShieldCheck, roles: ['admin'] },
+    { label: 'Log Dev',    routeName: 'activity-log.index', page: 'ActivityLog',     icon: ScrollText,  roles: ['admin'] },
+    { label: 'Sugadores',  routeName: 'sugadores.index',   page: 'Sugadores',   icon: AlertTriangle,   roles: ['admin', 'consultor', 'mentor'], pubPerm: 'sugadores', showBadge: 'sugadores_pendentes' },
+    // ── Publicações MLB ──────────────────────────────────────────────────────
+    { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      roles: ['admin'], pubPerm: 'dashboard',   mlbSeparatorBefore: true },
+    { label: 'Projetos',        routeName: 'mlb.projetos',     page: 'Mlb/Projetos',     icon: FolderKanban,   roles: ['admin'], pubPerm: 'projetos' },
+    { label: 'Treinamentos',    routeName: 'mlb.treinamentos', page: 'Mlb/Treinamentos', icon: BookOpen,       roles: ['admin'], pubPerm: 'treinamento' },
+    { label: 'Meu Painel',      routeName: 'mlb.meu-painel',   page: 'Mlb/MeuPainel',    icon: LayoutList,     roles: [],        pubPerm: 'meu_painel',  excludeRoles: ['admin'] },
+    { label: 'Publicação',      routeName: 'mlb.publicacoes',  page: 'Mlb/Publicacoes',  icon: PlusCircle,     roles: ['admin'], pubPerm: 'publicacoes' },
+    { label: 'Vendas',          routeName: 'mlb.vendas',       page: 'Mlb/Vendas',       icon: ShoppingCart,   roles: ['admin'], pubPerm: 'vendas' },
+    { label: 'Histórico',       routeName: 'mlb.historico',    page: 'Mlb/Historico',    icon: Clock,          roles: ['admin'], pubPerm: 'historico' },
+    { label: 'Revisão',         routeName: 'mlb.revisao',      page: 'Mlb/Revisao',      icon: ClipboardCheck, roles: ['admin'], pubPerm: 'revisao' },
+    { label: 'Empresas',        routeName: 'mlb.empresas',              page: 'Mlb/Empresas',       icon: Store,              roles: ['admin'], pubPerm: 'empresas' },
+    { label: 'Implementação',   routeName: 'mlb.implementacao.index',   page: 'Mlb/Implementacao', icon: ListChecks,         roles: ['admin'], pubPerm: 'empresas' },
+    { label: 'Metas',           routeName: 'mlb.metas.index',           page: 'Mlb/Metas',         icon: SlidersHorizontal,  roles: ['admin'], pubPerm: 'metas' },
+    // ── Administrativo ──────────────────────────────────────────────────────
+    { label: 'Empresas',   routeName: 'admin.empresas',   page: 'Admin/Empresas',   icon: Building2,    roles: ['admin'], adminSeparatorBefore: true },
+    { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, roles: ['admin'] },
+    { label: 'Financeiro', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     roles: ['admin'] },
+    { label: 'Inventário', routeName: 'admin.inventario', page: 'Admin/Inventario', icon: Package2,     roles: ['admin'] },
 ];
 
-const roleLabel = { admin: 'Admin', consultor: 'Analista', mentor: 'Mentor' };
+const roleLabel    = { admin: 'Admin', consultor: 'Analista', mentor: 'Mentor' };
+const pubRoleLabel = { gestor: 'Gestor Pub.', lider: 'Líder Pub.', publicador: 'Publicador', analista: 'Analista Pub.' };
 
 export default function AppLayout({ children, title }) {
-    const { auth, flash, asset_url } = usePage().props;
+    const { auth, flash, asset_url, sugadores_pendentes } = usePage().props;
+    const badgeCounters = { sugadores_pendentes: sugadores_pendentes ?? 0 };
     const { component: pageComponent } = usePage();
     const logoSrc = `${asset_url}/images/logo.png`;
     const user = auth?.user;
@@ -32,7 +63,28 @@ export default function AppLayout({ children, title }) {
     const [mobileOpen, setMobileOpen] = useState(false);
     const [toast, setToast] = useState(null);
 
-    const userNav = NAV_ITEMS.filter(n => n.roles.includes(user?.role));
+    const pubRole  = user?.publication_role;
+    const mainRole = user?.role;
+    const isPurePublicador = pubRole && mainRole !== 'admin';
+
+    const effectivePerms = useMemo(() => {
+        const explicit = user?.publication_permissions;
+        if (explicit !== null && explicit !== undefined) return explicit;
+        return pubRole ? (DEFAULT_PUB_PERMS[pubRole] ?? []) : [];
+    }, [user?.publication_permissions, pubRole]);
+
+    const userNav = useMemo(() =>
+        NAV_ITEMS.filter(n => {
+            if (n.excludeRoles?.includes(mainRole)) return false;
+            if (isPurePublicador) {
+                return n.pubPerm ? effectivePerms.includes(n.pubPerm) : false;
+            }
+            const byRole    = n.roles?.includes(mainRole) ?? false;
+            const byPubPerm = n.pubPerm ? effectivePerms.includes(n.pubPerm) : false;
+            return byRole || byPubPerm;
+        }),
+        [mainRole, isPurePublicador, effectivePerms]
+    );
 
     useEffect(() => {
         if (flash?.success || flash?.error) {
@@ -81,22 +133,42 @@ export default function AppLayout({ children, title }) {
                 {userNav.map(item => {
                     const active = isActive(item.page);
                     return (
-                        <Link
-                            key={item.routeName}
-                            href={route(item.routeName)}
-                            className={cn(
-                                'flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
-                                active
-                                    ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
-                                    : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
+                        <div key={item.routeName}>
+                            {!isPurePublicador && item.mlbSeparatorBefore && (!collapsed || mobile) && (
+                                <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Publicações</span>
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                </div>
                             )}
-                        >
-                            <item.icon className={cn('shrink-0', active ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
-                            {(!collapsed || mobile) && <span className="truncate">{item.label}</span>}
-                            {active && (!collapsed || mobile) && (
-                                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
+                            {item.adminSeparatorBefore && (!collapsed || mobile) && (
+                                <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Administrativo</span>
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                </div>
                             )}
-                        </Link>
+                            <Link
+                                href={route(item.routeName)}
+                                className={cn(
+                                    'flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
+                                    active
+                                        ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
+                                        : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
+                                )}
+                            >
+                                <item.icon className={cn('shrink-0', active ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
+                                {(!collapsed || mobile) && <span className="truncate">{item.label}</span>}
+                                {item.showBadge && badgeCounters[item.showBadge] > 0 && (!collapsed || mobile) && (
+                                    <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold shrink-0">
+                                        {badgeCounters[item.showBadge] > 99 ? '99+' : badgeCounters[item.showBadge]}
+                                    </span>
+                                )}
+                                {active && (!collapsed || mobile) && !item.showBadge && (
+                                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
+                                )}
+                            </Link>
+                        </div>
                     );
                 })}
             </nav>
@@ -111,7 +183,13 @@ export default function AppLayout({ children, title }) {
                         <>
                             <div className="flex-1 min-w-0">
                                 <p className="text-white text-[13px] font-semibold truncate leading-tight">{user?.name}</p>
-                                <p className="text-ecf-yellow text-[11px] font-medium mt-0.5">{roleLabel[user?.role]}</p>
+                                <p className="text-ecf-yellow text-[11px] font-medium mt-0.5">
+                                    {user?.role === 'admin'
+                                        ? 'Admin'
+                                        : user?.publication_role
+                                            ? pubRoleLabel[user.publication_role]
+                                            : (user?.setor || roleLabel[user?.role])}
+                                </p>
                             </div>
                             <button
                                 onClick={() => router.post(route('logout'))}

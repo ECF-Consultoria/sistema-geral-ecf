@@ -30,3 +30,9 @@ Schedule::command('grants:sync-sftp')
     ->dailyAt('03:00')
     ->name('sync-ml-grants-sftp')
     ->withoutOverlapping();
+
+// Detecta sugadores (campanhas/anúncios drenando investimento) — depois do adman:sync
+Schedule::command('sugadores:analyze')
+    ->dailyAt('06:30')
+    ->name('analyze-sugadores')
+    ->withoutOverlapping();

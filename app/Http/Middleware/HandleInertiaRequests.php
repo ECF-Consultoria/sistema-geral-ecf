@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Sugador;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -33,10 +34,13 @@ class HandleInertiaRequests extends Middleware
             ...parent::share($request),
             'auth' => [
                 'user' => $request->user() ? [
-                    'id'    => $request->user()->id,
-                    'name'  => $request->user()->name,
-                    'email' => $request->user()->email,
-                    'role'  => $request->user()->role,
+                    'id'               => $request->user()->id,
+                    'name'             => $request->user()->name,
+                    'email'            => $request->user()->email,
+                    'role'             => $request->user()->role,
+                    'setor'            => $request->user()->setor,
+                    'publication_role'        => $request->user()->publication_role,
+                    'publication_permissions' => $request->user()->publication_permissions,
                 ] : null,
             ],
             'flash' => [
@@ -47,6 +51,33 @@ class HandleInertiaRequests extends Middleware
             ],
             'asset_url'  => rtrim(asset(''), '/'),
             'csrf_token' => csrf_token(),
+            'sugadores_pendentes' => fn() => $this->countSugadoresPendentes($request),
         ];
+    }
+
+    /**
+     * Conta sugadores pendentes visíveis para o usuário atual.
+     * Lazy (só executa quando o componente lê a prop, evitando query em rotas que não usam).
+     */
+    private function countSugadoresPendentes(Request $request): int
+    {
+        $user = $request->user();
+        if (!$user) return 0;
+
+        // Quem não tem permissão de ver sugadores não recebe contador
+        $hasGlobalView = $user->isAdmin()
+            || (method_exists($user, 'isGestor') && $user->isGestor())
+            || (method_exists($user, 'isLiderPub') && $user->isLiderPub());
+        $hasCarteiraView = $user->isConsultor()
+            || $user->isMentor()
+            || (method_exists($user, 'hasPubPermission') && $user->hasPubPermission('sugadores'));
+
+        if (!$hasGlobalView && !$hasCarteiraView) return 0;
+
+        $query = Sugador::pendentes();
+        if (!$hasGlobalView) {
+            $query->daCarteira($user);
+        }
+        return $query->count();
     }
 }

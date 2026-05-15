@@ -1,5 +1,19 @@
 *.log
 .DS_Store
+
+# Deploy scripts com credenciais
+deploy*.sh
+plink.exe
+pscp.exe
+
+# Arquivos nao relacionados ao codigo
+*.zip
+*.xlsx
+*.rtf
+SISTEMA.md
+Markdown_/
+ecf_admin/
+documentacao_excel_interno_sistema_completa.md
 .env
 .env.backup
 .env.production

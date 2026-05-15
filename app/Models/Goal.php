@@ -3,9 +3,27 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Goal extends Model
 {
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['company_id', 'metric', 'target_value', 'active'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs()
+            ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
+                'created' => 'Meta criada',
+                'updated' => 'Meta atualizada',
+                'deleted' => 'Meta excluída',
+                default   => $eventName,
+            });
+    }
+
     protected $fillable = [
         'company_id', 'metric', 'target_value', 'value_type', 'period_type', 'active', 'description',
     ];

@@ -3,9 +3,27 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class NpsSurvey extends Model
 {
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['company_id', 'generated_by', 'status'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs()
+            ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
+                'created' => 'NPS gerado',
+                'updated' => 'NPS atualizado',
+                'deleted' => 'NPS excluído',
+                default   => $eventName,
+            });
+    }
+
     protected $fillable = [
         'token', 'company_id', 'generated_by', 'expires_at', 'completed_at', 'status',
     ];

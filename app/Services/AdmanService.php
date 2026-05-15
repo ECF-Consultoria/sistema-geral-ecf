@@ -160,7 +160,8 @@ class AdmanService
     public function fetchPerformance(string $custId, string $dateFrom, string $dateTo): array
     {
         $response = Http::withHeaders($this->headers())
-            ->timeout(30)
+            ->connectTimeout(15)
+            ->timeout(120)
             ->get("{$this->baseUrl}/{$this->marketplace}/performance/{$custId}", [
                 'dateFrom' => $dateFrom,
                 'dateTo'   => $dateTo,
@@ -249,5 +250,179 @@ class AdmanService
 
         if ($response->failed()) throw new \RuntimeException("Adman accounts erro {$response->status()}");
         return $response->json() ?? [];
+    }
+
+    // ─── Métodos para o módulo Sugadores ────────────────────────────────────
+
+    /**
+     * Lista TODAS as campanhas de um custId, paginando até esgotar.
+     * Cada item contém: campaignId, name, status, budget.
+     */
+    public function fetchAllCampaigns(string $custId): array
+    {
+        $all  = [];
+        $page = 1;
+
+        do {
+            $response = Http::withHeaders($this->headers())
+                ->timeout(30)
+                ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/campaigns", [
+                    'page' => $page,
+                ]);
+
+            if ($response->failed()) {
+                throw new \RuntimeException("Adman campanhas erro {$response->status()} custId={$custId} page={$page}");
+            }
+
+            $data       = $response->json() ?? [];
+            $campaigns  = $data['campaigns'] ?? (isset($data[0]) ? $data : []);
+            $totalPages = (int) ($data['totalPages'] ?? 1);
+
+            $all = array_merge($all, $campaigns);
+            $page++;
+            if ($page <= $totalPages) usleep(300_000);
+        } while ($page <= $totalPages);
+
+        return $all;
+    }
+
+    /**
+     * Retorna campanhas de um custId já enriquecidas com métricas no range
+     * (1 chamada de listagem + 1 chamada de métricas por campanha).
+     *
+     * Cada item retornado:
+     * [
+     *   'campaign_id'     => string,
+     *   'campaign_name'   => string|null,
+     *   'campaign_status' => string|null,  // active/paused etc
+     *   'investment'      => float|null,
+     *   'revenue'         => float|null,
+     *   'sold_quantity'   => int|null,
+     *   'clicks'          => int|null,
+     *   'impressions'     => int|null,
+     *   'cpc'             => float|null,
+     *   'acos'            => float|null,   // já em %
+     *   'roas'            => float|null,
+     *   'raw'             => array,        // payload bruto da Adman pra debug
+     * ]
+     */
+    public function fetchCampaignsRange(string $custId, string $dateFrom, string $dateTo): array
+    {
+        $campaigns = $this->fetchAllCampaigns($custId);
+        $enriched  = [];
+
+        foreach ($campaigns as $campaign) {
+            $campaignId = (string) ($campaign['campaignId'] ?? $campaign['id'] ?? '');
+            if ($campaignId === '') continue;
+
+            try {
+                $cm  = $this->fetchCampaignMetrics($custId, $campaignId, $dateFrom, $dateTo);
+                $val = fn($key) => is_array($cm[$key] ?? null)
+                    ? ($cm[$key]['value'] ?? null)
+                    : ($cm[$key] ?? null);
+
+                $enriched[] = [
+                    'campaign_id'     => $campaignId,
+                    'campaign_name'   => $campaign['name']   ?? $cm['name']   ?? null,
+                    'campaign_status' => $campaign['status'] ?? $cm['status'] ?? null,
+                    'investment'      => $val('investment')   !== null ? (float) $val('investment')   : null,
+                    'revenue'         => $val('revenue')      !== null ? (float) $val('revenue')      : null,
+                    'sold_quantity'   => $val('soldQuantity') !== null ? (int)   $val('soldQuantity') : null,
+                    'clicks'          => $val('clicks')       !== null ? (int)   $val('clicks')       : null,
+                    'impressions'     => $val('impressions')  !== null ? (int)   $val('impressions')  : null,
+                    'cpc'             => $val('cpc')          !== null ? (float) $val('cpc')          : null,
+                    'acos'            => $val('acos')         !== null ? (float) $val('acos')         : null,
+                    'roas'            => $val('roas')         !== null ? (float) $val('roas')         : null,
+                    'raw'             => $cm,
+                ];
+
+                usleep(100_000);
+            } catch (\Throwable $e) {
+                Log::warning("[Adman/Sugadores] Métricas campanha {$campaignId}: " . $e->getMessage());
+            }
+        }
+
+        return $enriched;
+    }
+
+    /**
+     * Métricas em range de TODOS os adgroups de um custId, com paginação.
+     * Adgroup é a unidade prática de "anúncio" no MLB Ads — cada adgroup
+     * contém 1+ MLBs e tem métricas próprias (clicks, cpc, etc).
+     *
+     * Cada item retornado:
+     * [
+     *   'adgroup_id'      => string,
+     *   'adgroup_name'    => string|null,
+     *   'campaign_id'     => string,
+     *   'status'          => string|null,
+     *   'investment'      => float|null,
+     *   'revenue'         => float|null,    // derivado de directAmount/totalAmount
+     *   'sold_quantity'   => int|null,
+     *   'clicks'          => int|null,
+     *   'impressions'     => int|null,
+     *   'cpc'             => float|null,
+     *   'ctr'             => float|null,
+     *   'acos'            => float|null,
+     *   'roas'            => float|null,
+     *   'raw'             => array,
+     * ]
+     */
+    public function fetchAdsMetrics(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 100): array
+    {
+        $all  = [];
+        $page = 1;
+
+        do {
+            $response = Http::withHeaders($this->headers())
+                ->timeout(60)
+                ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/adgroups/metrics", [
+                    'dateFrom'     => $dateFrom,
+                    'dateTo'       => $dateTo,
+                    'page'         => $page,
+                    'itemsPerPage' => $itemsPerPage,
+                ]);
+
+            if ($response->failed()) {
+                throw new \RuntimeException("Adman adgroups metrics erro {$response->status()} custId={$custId} page={$page}");
+            }
+
+            $data       = $response->json() ?? [];
+            $adgroups   = $data['adgroups'] ?? [];
+            $totalPages = (int) ($data['totalPages'] ?? 1);
+
+            foreach ($adgroups as $ag) {
+                $m   = $ag['metrics'] ?? [];
+                $val = fn($key) => is_array($m[$key] ?? null)
+                    ? ($m[$key]['value'] ?? null)
+                    : ($m[$key] ?? null);
+
+                // Receita do adgroup: preferimos totalAmount (direto + indireto) se disponível,
+                // senão directAmount, senão null.
+                $revenue = $val('totalAmount') ?? $val('directAmount');
+
+                $all[] = [
+                    'adgroup_id'    => (string) ($ag['adgroupId'] ?? ''),
+                    'adgroup_name'  => $ag['name']        ?? null,
+                    'campaign_id'   => (string) ($ag['campaignId'] ?? ''),
+                    'status'        => $ag['status']      ?? null,
+                    'investment'    => $val('investment')   !== null ? (float) $val('investment')   : null,
+                    'revenue'       => $revenue             !== null ? (float) $revenue             : null,
+                    'sold_quantity' => $val('unitsQuantity') !== null ? (int)  $val('unitsQuantity') : null,
+                    'clicks'        => $val('clicks')       !== null ? (int)   $val('clicks')       : null,
+                    'impressions'   => $val('impressions')  !== null ? (int)   $val('impressions')  : null,
+                    'cpc'           => $val('cpc')          !== null ? (float) $val('cpc')          : null,
+                    'ctr'           => $val('ctr')          !== null ? (float) $val('ctr')          : null,
+                    'acos'          => $val('acos')         !== null ? (float) $val('acos')         : null,
+                    'roas'          => $val('roas')         !== null ? (float) $val('roas')         : null,
+                    'raw'           => $ag,
+                ];
+            }
+
+            $page++;
+            if ($page <= $totalPages) usleep(100_000);
+        } while ($page <= $totalPages);
+
+        return $all;
     }
 }

@@ -1,0 +1,28 @@
+{
+  "name": "ECF Admin — Gemini",
+  "version": "1.3",
+  "manifest_version": 3,
+  "description": "Abre o Gemini colado ao lado do ECF Admin, com layout split-screen automático.",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "https://ecfadmin.ecfconsultoria.com.br/*",
+        "https://*.ecfconsultoria.com.br/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "windows",
+    "tabs"
+  ],
+  "action": {
+    "default_title": "Abrir/Fechar Gemini"
+  }
+}

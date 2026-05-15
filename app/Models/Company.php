@@ -4,10 +4,26 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 
 class Company extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['name', 'cnpj', 'segment', 'active', 'notes', 'adman_account_id', 'ml_store_id'])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs()
+            ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
+                'created' => 'Empresa criada',
+                'updated' => 'Empresa atualizada',
+                'deleted' => 'Empresa excluída',
+                default   => $eventName,
+            });
+    }
 
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
@@ -68,6 +84,16 @@ class Company extends Model
     public function grants()
     {
         return $this->hasMany(CompanyGrant::class)->orderBy('created_at', 'desc');
+    }
+
+    public function sugadorConfig()
+    {
+        return $this->hasOne(SugadorConfig::class);
+    }
+
+    public function sugadores()
+    {
+        return $this->hasMany(Sugador::class);
     }
 
     public function getActiveGrantAttribute(): ?CompanyGrant
