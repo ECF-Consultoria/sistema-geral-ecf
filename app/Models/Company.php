@@ -76,6 +76,18 @@ class Company extends Model
         return $this->hasOne(AdmanMetric::class)->latestOfMany('reference_date');
     }
 
+    // Todos os logs de sync Adman desta empresa
+    public function admanSyncLogs()
+    {
+        return $this->hasMany(AdmanSyncLog::class)->orderBy('created_at', 'desc');
+    }
+
+    // Último log de sync Adman desta empresa
+    public function latestAdmanSyncLog()
+    {
+        return $this->hasOne(AdmanSyncLog::class)->latestOfMany('created_at');
+    }
+
     public function ppas()
     {
         return $this->hasMany(Ppa::class);

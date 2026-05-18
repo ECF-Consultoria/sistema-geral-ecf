@@ -16,19 +16,25 @@ return new class extends Migration
 {
     public function up(): void
     {
-        DB::statement("
-            ALTER TABLE company_users
-            MODIFY COLUMN role ENUM('consultor', 'mentor', 'analista') NOT NULL
-        ");
+        // ALTER TABLE ... MODIFY COLUMN é sintaxe MySQL — ignorar em SQLite (testes)
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("
+                ALTER TABLE company_users
+                MODIFY COLUMN role ENUM('consultor', 'mentor', 'analista') NOT NULL
+            ");
+        }
     }
 
     public function down(): void
     {
         // Cuidado: se houver linhas com role='analista', o ALTER falhará.
         // O down assume que o operador removeu/migrou essas linhas antes.
-        DB::statement("
-            ALTER TABLE company_users
-            MODIFY COLUMN role ENUM('consultor', 'mentor') NOT NULL
-        ");
+        // ALTER TABLE ... MODIFY COLUMN é sintaxe MySQL — ignorar em SQLite (testes)
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("
+                ALTER TABLE company_users
+                MODIFY COLUMN role ENUM('consultor', 'mentor') NOT NULL
+            ");
+        }
     }
 };

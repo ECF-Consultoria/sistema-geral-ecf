@@ -76,7 +76,9 @@ class ProfileTest extends TestCase
             ->assertRedirect('/');
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        // SoftDeletes: fresh() retorna null apenas com forceDelete; verificar soft-delete via withTrashed()
+        $this->assertNotNull(\App\Models\User::withTrashed()->find($user->id));
+        $this->assertTrue(\App\Models\User::withTrashed()->find($user->id)->trashed());
     }
 
     public function test_correct_password_must_be_provided_to_delete_account(): void

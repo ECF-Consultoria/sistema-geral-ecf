@@ -15,11 +15,14 @@ return new class extends Migration
                 ->after('target_value');
         });
 
-        DB::statement("ALTER TABLE goals MODIFY COLUMN metric ENUM(
-            'tacos', 'nps', 'absenteeism', 'contribution_margin',
-            'revenue_growth', 'products_without_cost', 'ppa_completion',
-            'revenue', 'avg_ticket', 'margin', 'net_billing', 'acos'
-        ) NOT NULL");
+        // ALTER TABLE ... MODIFY COLUMN é sintaxe MySQL — ignorar em SQLite (testes)
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE goals MODIFY COLUMN metric ENUM(
+                'tacos', 'nps', 'absenteeism', 'contribution_margin',
+                'revenue_growth', 'products_without_cost', 'ppa_completion',
+                'revenue', 'avg_ticket', 'margin', 'net_billing', 'acos'
+            ) NOT NULL");
+        }
     }
 
     public function down(): void
@@ -28,9 +31,12 @@ return new class extends Migration
             $table->dropColumn('value_type');
         });
 
-        DB::statement("ALTER TABLE goals MODIFY COLUMN metric ENUM(
-            'tacos', 'nps', 'absenteeism', 'contribution_margin',
-            'revenue_growth', 'products_without_cost', 'ppa_completion'
-        ) NOT NULL");
+        // ALTER TABLE ... MODIFY COLUMN é sintaxe MySQL — ignorar em SQLite (testes)
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE goals MODIFY COLUMN metric ENUM(
+                'tacos', 'nps', 'absenteeism', 'contribution_margin',
+                'revenue_growth', 'products_without_cost', 'ppa_completion'
+            ) NOT NULL");
+        }
     }
 };
