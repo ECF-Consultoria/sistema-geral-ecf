@@ -51,20 +51,20 @@
 
 | Requisito | Fase | Status |
 |-----------|------|--------|
-| DEV-01 | — | Pending |
-| DEV-02 | — | Pending |
-| DEV-03 | — | Pending |
-| DEV-04 | — | Pending |
-| DEV-05 | — | Pending |
-| DEV-06 | — | Pending |
-| DEV-07 | — | Pending |
-| DEV-08 | — | Pending |
+| DEV-01 | Phase 1 | Pending |
+| DEV-02 | Phase 1 | Pending |
+| DEV-03 | Phase 1 | Pending |
+| DEV-04 | Phase 1 | Pending |
+| DEV-05 | Phase 2 | Pending |
+| DEV-06 | Phase 3 | Pending |
+| DEV-07 | Phase 3 | Pending |
+| DEV-08 | Phase 4 | Pending |
 
 **Cobertura:**
 - v1 requirements: 8 total
-- Mapeados para fases: 0
-- Não mapeados: 8 ⚠️
+- Mapeados para fases: 8
+- Não mapeados: 0 ✓
 
 ---
 *Requirements defined: 2026-05-18*
-*Last updated: 2026-05-18 after initial definition*
+*Last updated: 2026-05-18 — traceability completa após criação do roadmap*
