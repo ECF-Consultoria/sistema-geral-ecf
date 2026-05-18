@@ -69,5 +69,18 @@
 
 ## Task 3 — Human Checkpoint
 
-Pending. The developer should navigate to `/dev/desenvolvimento` in a browser logged in as `admin`
-and verify the Sync Adman card renders correctly with the companies list.
+**Status: APROVADO** — 2026-05-18
+
+O desenvolvedor verificou `/dev/desenvolvimento` no navegador como admin. O accordion expandiu corretamente mostrando:
+
+- **"Erro do último sync"**: mensagem "Adman API: rate limit (429) após 3 tentativas." — `error_message` exibido (DEV-02 ✓)
+- **DiffBadges**: 0 criados / 0 atualizados / 0 ignorados — contagens para sync com erro (DEV-03 ✓)
+- **"Payload bruto"**: JSON real da Adman API (`grossBilling`, `netBilling`, etc.) do sync anterior bem-sucedido (DEV-01 ✓)
+- Accordion expandiu/colapsou corretamente
+- Dark theme consistente
+
+Todos os 4 critérios de sucesso do ROADMAP.md Phase 1 validados:
+- ✓ DEV-01: lista de empresas com timestamp do último sync
+- ✓ DEV-02: payload bruto e mensagem de erro HTTP visíveis
+- ✓ DEV-03: diff criados/atualizados/ignorados
+- ✓ DEV-04: dispatch de sync via botão (backend testado + 5/5 verdes)

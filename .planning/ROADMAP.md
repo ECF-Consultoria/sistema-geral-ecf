@@ -12,7 +12,7 @@ Evolução da página `/dev/desenvolvimento` em quatro fatias verticais entregá
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Diagnóstico Adman** - Admin pode inspecionar e controlar o sync Adman por empresa sem acessar o servidor
+- [x] **Phase 1: Diagnóstico Adman** - Admin pode inspecionar e controlar o sync Adman por empresa sem acessar o servidor
 - [ ] **Phase 2: Monitoramento de Jobs** - Admin pode ver o estado da fila de jobs, incluindo falhas com detalhes completos
 - [ ] **Phase 3: Observabilidade** - Admin pode ver logs de erro do sistema e informações do ambiente de execução
 - [ ] **Phase 4: Configurações** - Admin pode visualizar e editar flags de configuração do sistema via painel
@@ -32,9 +32,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 3 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Fundação de dados e contrato de testes (migration + AdmanSyncLog + Company rels + 5 testes RED)
-- [ ] 01-02-PLAN.md — Backend end-to-end: DevController + AdmanService logging + rotas (testes GREEN)
-- [ ] 01-03-PLAN.md — UI inline SyncAdmanSection + npm run build + checkpoint humano
+- [x] 01-01-PLAN.md — Fundação de dados e contrato de testes (migration + AdmanSyncLog + Company rels + 5 testes RED)
+- [x] 01-02-PLAN.md — Backend end-to-end: DevController + AdmanService logging + rotas (testes GREEN)
+- [x] 01-03-PLAN.md — UI inline SyncAdmanSection + npm run build + checkpoint humano
 
 **UI hint**: yes
 
@@ -81,7 +81,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Diagnóstico Adman | 0/3 | Planned — Ready to execute | - |
+| 1. Diagnóstico Adman | 3/3 | Complete | 2026-05-18 |
 | 2. Monitoramento de Jobs | 0/? | Not started | - |
 | 3. Observabilidade | 0/? | Not started | - |
 | 4. Configurações | 0/? | Not started | - |
