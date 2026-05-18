@@ -41,16 +41,17 @@ Multiples-of-4 scale. Usa classes Tailwind nativas; sem tokens customizados alé
 |-------|-------|----------------|-----------------|
 | xs | 4px | `gap-1`, `p-1` | Gap interno de ícone/badge |
 | sm | 8px | `gap-2`, `p-2` | Gap entre elementos de linha compacta |
+| sm+ | 12px | `py-3` | Padding vertical do painel accordion (`px-4 py-3`) — valor herdado do padrão `LinkRow` existente |
 | md | 16px | `gap-4`, `p-4` | Espaçamento padrão entre colunas da linha de empresa |
-| lg | 24px | `gap-6`, `p-5`(20px ok) | Padding interno do DevCard (herdado: `p-5`) |
+| md+ | 20px | `p-5` | Padding interno do DevCard — valor herdado do componente `DevCard` existente |
+| lg | 24px | `gap-6` | Separação entre sub-seções internas |
 | xl | 32px | `gap-8` | Separação entre a nova seção e a seção anterior |
 | 2xl | 48px | `space-y-12` | Não necessário nesta fase |
 | 3xl | 64px | — | Não necessário nesta fase |
 
-Exceções:
-- `DevCard` usa `p-5` (20px) — mantido por consistência com o componente existente. Não alterar.
+Notas sobre valores herdados:
+- `sm+` (12px) e `md+` (20px) são múltiplos de 4 válidos, incorporados à escala desta fase porque já existem nos componentes reutilizados (`DevCard` e `LinkRow`). Não alterar esses valores para não quebrar consistência visual com o restante da página.
 - Touch targets do botão "Disparar sync": mínimo 36px de altura (`h-9` = 36px via Button size="sm"), aceitável para contexto desktop-only (área admin).
-- Acordeão: padding interno do painel expandido = `px-4 py-3` (16px/12px).
 
 ---
 
@@ -66,8 +67,9 @@ Herda as fontes globais definidas em `tailwind.config.js`. Quatro papéis usados
 | Code/mono | 12px | `text-[12px] font-mono` | 400 (regular) | 1.6 | Payload JSON bruto, timestamps absolutos |
 
 Regras:
-- Apenas 2 font-weights nesta fase: 400 (regular) e 600 (semibold). Nunca bold (700).
-- Nome de empresa na linha: `text-[13px] font-medium text-white` (weight 500 — exceção pontual para legibilidade do item principal da lista).
+- Font-weights declarados nesta fase: **400** (regular) e **600** (semibold). Nenhum outro peso é permitido.
+  - 400: todo texto corrido, labels, código mono.
+  - 600: headings de card (`DevCard` title) E nome da empresa na linha (`EmpresaRow`) — `font-semibold` para legibilidade do item principal da lista contra fundo escuro. Nunca bold (700).
 - Uppercase reservado para rótulos de coluna e labels de metadados (`uppercase tracking-wider text-[11px] text-white/40`).
 - Monospace reservado exclusivamente para: payload JSON, timestamps absolutos, valores numéricos de diff.
 
@@ -147,6 +149,10 @@ Regra: se o componente for usado apenas em `Desenvolvimento.jsx`, definí-lo no 
 - **Formato:** Data/hora absoluta no formato `dd/MM HH:mm` (ex: "15/05 14:37") — mais confiável para debug que formato relativo
 - **Tooltip:** Ao hover, exibir timestamp completo ISO com `title` nativo do HTML (ex: "2026-05-15T14:37:22")
 - **Sem sync ainda:** exibir "Nunca sincronizado" em `text-white/30 italic`
+
+### Nome da empresa na EmpresaRow
+
+- **Peso:** `font-semibold` (600) para legibilidade do item principal da lista contra fundo escuro
 
 ### Payload JSON
 
