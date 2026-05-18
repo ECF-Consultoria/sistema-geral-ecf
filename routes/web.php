@@ -5,6 +5,7 @@ use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DevController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
@@ -136,8 +137,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
 
         // Dev — area interna de projetos em desenvolvimento
-        Route::get('/dev/desenvolvimento', fn () => \Inertia\Inertia::render('Dev/Desenvolvimento'))
+        Route::get('/dev/desenvolvimento', [DevController::class, 'index'])
             ->name('dev.desenvolvimento');
+        Route::post('/dev/adman/{company}/sync', [DevController::class, 'dispatchSync'])
+            ->name('dev.adman.sync');
 
         Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
+use App\Models\AdmanSyncLog;
 use App\Models\Company;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -58,62 +59,89 @@ class AdmanService
         $date   = $date ?? now()->subDay()->toDateString();
         $custId = $company->adman_account_id;
 
-        $performance = $this->fetchPerformance($custId, $date, $date);
-        $summarized  = $performance['summarizedData'] ?? [];
-        $items       = $performance['items'] ?? [];
-
-        $grossBilling = $summarized['grossBilling']['value']  ?? null;
-        $netBilling   = $summarized['netBilling']['value']    ?? null;
-        $salesFee     = $summarized['salesFee']['value']      ?? null;
-        $taxes        = $summarized['taxes']['value']         ?? null;
-        $shippingCost = $summarized['shippingCost']['value']  ?? null;
-        $productCost  = $summarized['productCost']['value']   ?? null;
-        $returnCost   = $summarized['returnCost']['value']    ?? null;
-        $investment   = $summarized['investment']['value']    ?? null;
-        $profitMargin = $summarized['profitMargin']['value']  ?? null;
-        $profitShare  = $summarized['profitShare']['value']   ?? null;
-        $soldQty      = $summarized['soldQuantity']['value']  ?? null;
-        $prevBilling  = $summarized['grossBilling']['prev']   ?? null;
-
-        $tacos     = ($grossBilling > 0 && $investment !== null)
-            ? round(($investment / $grossBilling) * 100, 4) : null;
-        $marginPct = ($grossBilling > 0 && $profitMargin !== null)
-            ? round(($profitMargin / $grossBilling) * 100, 4) : null;
-
-        $productsTotal       = count($items);
-        $productsWithoutCost = collect($items)->filter(fn($i) => ($i['cost']['value'] ?? 0) == 0)->count();
-
-        $metric = AdmanMetric::updateOrCreate(
-            ['company_id' => $company->id, 'reference_date' => $date],
-            [
-                'tacos'                   => $tacos,
-                'revenue'                 => $grossBilling,
-                'net_billing'             => $netBilling,
-                'sales_fee'               => $salesFee,
-                'taxes'                   => $taxes,
-                'shipping_cost'           => $shippingCost,
-                'product_cost'            => $productCost,
-                'return_cost'             => $returnCost,
-                'profit_share'            => $profitShare,
-                'sold_quantity'           => $soldQty,
-                'ad_spend'                => $investment,
-                'contribution_margin'     => $profitMargin,
-                'contribution_margin_pct' => $marginPct,
-                'products_total'          => $productsTotal > 0 ? $productsTotal : null,
-                'products_without_cost'   => $productsTotal > 0 ? $productsWithoutCost : null,
-                'revenue_prev_period'     => $prevBilling,
-                'raw_data'                => $summarized,
-                'synced_at'               => now(),
-            ]
-        );
-
         try {
-            $this->syncCampaigns($company, $custId, $date);
-        } catch (\Throwable $e) {
-            Log::warning("[Adman] Campanhas empresa {$company->id}: " . $e->getMessage());
-        }
+            $performance = $this->fetchPerformance($custId, $date, $date);
+            $summarized  = $performance['summarizedData'] ?? [];
+            $items       = $performance['items'] ?? [];
 
-        return $metric;
+            $grossBilling = $summarized['grossBilling']['value']  ?? null;
+            $netBilling   = $summarized['netBilling']['value']    ?? null;
+            $salesFee     = $summarized['salesFee']['value']      ?? null;
+            $taxes        = $summarized['taxes']['value']         ?? null;
+            $shippingCost = $summarized['shippingCost']['value']  ?? null;
+            $productCost  = $summarized['productCost']['value']   ?? null;
+            $returnCost   = $summarized['returnCost']['value']    ?? null;
+            $investment   = $summarized['investment']['value']    ?? null;
+            $profitMargin = $summarized['profitMargin']['value']  ?? null;
+            $profitShare  = $summarized['profitShare']['value']   ?? null;
+            $soldQty      = $summarized['soldQuantity']['value']  ?? null;
+            $prevBilling  = $summarized['grossBilling']['prev']   ?? null;
+
+            $tacos     = ($grossBilling > 0 && $investment !== null)
+                ? round(($investment / $grossBilling) * 100, 4) : null;
+            $marginPct = ($grossBilling > 0 && $profitMargin !== null)
+                ? round(($profitMargin / $grossBilling) * 100, 4) : null;
+
+            $productsTotal       = count($items);
+            $productsWithoutCost = collect($items)->filter(fn($i) => ($i['cost']['value'] ?? 0) == 0)->count();
+
+            $metric = AdmanMetric::updateOrCreate(
+                ['company_id' => $company->id, 'reference_date' => $date],
+                [
+                    'tacos'                   => $tacos,
+                    'revenue'                 => $grossBilling,
+                    'net_billing'             => $netBilling,
+                    'sales_fee'               => $salesFee,
+                    'taxes'                   => $taxes,
+                    'shipping_cost'           => $shippingCost,
+                    'product_cost'            => $productCost,
+                    'return_cost'             => $returnCost,
+                    'profit_share'            => $profitShare,
+                    'sold_quantity'           => $soldQty,
+                    'ad_spend'                => $investment,
+                    'contribution_margin'     => $profitMargin,
+                    'contribution_margin_pct' => $marginPct,
+                    'products_total'          => $productsTotal > 0 ? $productsTotal : null,
+                    'products_without_cost'   => $productsTotal > 0 ? $productsWithoutCost : null,
+                    'revenue_prev_period'     => $prevBilling,
+                    'raw_data'                => $summarized,
+                    'synced_at'               => now(),
+                ]
+            );
+
+            // Registro de diff para o painel de diagnóstico (DEV-03)
+            $foiCriado     = $metric->wasRecentlyCreated;
+            $foiAtualizado = !$foiCriado && $metric->wasChanged();
+            $foiIgnorado   = !$foiCriado && !$metric->wasChanged();
+
+            AdmanSyncLog::create([
+                'company_id'    => $company->id,
+                'created_count' => $foiCriado     ? 1 : 0,
+                'updated_count' => $foiAtualizado ? 1 : 0,
+                'skipped_count' => $foiIgnorado   ? 1 : 0,
+                'error_message' => null,
+                'synced_at'     => now(),
+            ]);
+
+            try {
+                $this->syncCampaigns($company, $custId, $date);
+            } catch (\Throwable $e) {
+                Log::warning("[Adman] Campanhas empresa {$company->id}: " . $e->getMessage());
+            }
+
+            return $metric;
+        } catch (\Throwable $e) {
+            // Registro de erro mesmo em falha — admin precisa enxergar (DEV-02)
+            AdmanSyncLog::create([
+                'company_id'    => $company->id,
+                'created_count' => 0,
+                'updated_count' => 0,
+                'skipped_count' => 0,
+                'error_message' => $e->getMessage(),
+                'synced_at'     => now(),
+            ]);
+            throw $e; // preservar comportamento SyncAdmanCompanyJob retry/failed
+        }
     }
 
     public function syncCampaigns(Company $company, string $custId, string $date): void
@@ -157,21 +185,35 @@ class AdmanService
         }
     }
 
-    public function fetchPerformance(string $custId, string $dateFrom, string $dateTo): array
+    public function fetchPerformance(string $custId, string $dateFrom, string $dateTo, int $maxRetries = 3): array
     {
-        $response = Http::withHeaders($this->headers())
-            ->connectTimeout(15)
-            ->timeout(120)
-            ->get("{$this->baseUrl}/{$this->marketplace}/performance/{$custId}", [
-                'dateFrom' => $dateFrom,
-                'dateTo'   => $dateTo,
-            ]);
+        $attempt = 0;
+        while (true) {
+            $response = Http::withHeaders($this->headers())
+                ->connectTimeout(15)
+                ->timeout(120)
+                ->get("{$this->baseUrl}/{$this->marketplace}/performance/{$custId}", [
+                    'dateFrom' => $dateFrom,
+                    'dateTo'   => $dateTo,
+                ]);
 
-        if ($response->status() === 401) throw new \RuntimeException('Adman API: chave inválida (401).');
-        if ($response->status() === 429) throw new \RuntimeException('Adman API: rate limit (429).');
-        if ($response->failed()) throw new \RuntimeException("Adman API erro {$response->status()} custId={$custId}");
+            if ($response->status() === 401) throw new \RuntimeException('Adman API: chave inválida (401).');
 
-        return $response->json() ?? [];
+            if ($response->status() === 429) {
+                $attempt++;
+                if ($attempt >= $maxRetries) {
+                    throw new \RuntimeException('Adman API: rate limit (429) após ' . $maxRetries . ' tentativas.');
+                }
+                $delay = pow(2, $attempt); // 2s, 4s, 8s
+                Log::warning("[Adman] Rate limit custId={$custId}, aguardando {$delay}s (tentativa {$attempt}/{$maxRetries})");
+                sleep($delay);
+                continue;
+            }
+
+            if ($response->failed()) throw new \RuntimeException("Adman API erro {$response->status()} custId={$custId}");
+
+            return $response->json() ?? [];
+        }
     }
 
     public function fetchCampaigns(string $custId): array
