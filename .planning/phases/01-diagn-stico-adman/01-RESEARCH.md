@@ -191,13 +191,13 @@ class DevController extends Controller
         $empresas = Company::where('active', true)
             ->whereNotNull('adman_account_id')
             ->where('adman_account_id', '!=', '')
-            ->with(['latestAdmanMetric', 'latestAdmanSyncLog'])
+            ->with(['latestMetrics', 'latestAdmanSyncLog'])
             ->get()
             ->map(fn(Company $c) => [
                 'id'           => $c->id,
                 'name'         => $c->name,
-                'synced_at'    => $c->latestAdmanMetric?->synced_at?->toIso8601String(),
-                'raw_data'     => $c->latestAdmanMetric?->raw_data,
+                'synced_at'    => $c->latestMetrics?->synced_at?->toIso8601String(),
+                'raw_data'     => $c->latestMetrics?->raw_data,
                 'criados'      => $c->latestAdmanSyncLog?->created_count,
                 'atualizados'  => $c->latestAdmanSyncLog?->updated_count,
                 'ignorados'    => $c->latestAdmanSyncLog?->skipped_count,
@@ -581,17 +581,17 @@ function JsonViewer({ data }) {
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`AdmanService::syncCompany()` deve retornar o log de sync ou só `AdmanMetric`?**
    - O que sabemos: Atualmente retorna `AdmanMetric`. Lógica de log precisa ser adicionada dentro do método.
-   - O que não está claro: Se o log deve ser criado dentro do `AdmanService` (acoplamento) ou fora (no job ou no controller de disparo).
-   - Recomendação: Criar log dentro de `AdmanService::syncCompany()` — é o único lugar com acesso ao resultado do `updateOrCreate`. O job não precisa saber sobre o log.
+   - O que não estava claro: Se o log deve ser criado dentro do `AdmanService` (acoplamento) ou fora (no job ou no controller de disparo).
+   - RESOLVED: Criar log dentro de `AdmanService::syncCompany()` — é o único lugar com acesso ao resultado do `updateOrCreate`. O job não precisa saber sobre o log. Implementado em Plan 01-02 Task 1.
 
 2. **`DevController::dispatchSync()` deve rejeitar empresa sem `adman_account_id`?**
    - O que sabemos: A query no `index()` já filtra por `whereNotNull('adman_account_id')` — empresas sem Adman não aparecem na lista.
-   - O que não está claro: Se um request POST direto para `/dev/adman/{company}/sync` com empresa sem Adman deve ser bloqueado.
-   - Recomendação: Adicionar `abort_unless($company->adman_account_id, 422, 'Empresa sem conta Adman configurada.')` no controller para segurança.
+   - O que não estava claro: Se um request POST direto para `/dev/adman/{company}/sync` com empresa sem Adman deve ser bloqueado.
+   - RESOLVED: Adicionar `abort_unless($company->adman_account_id, 422, 'Empresa sem conta Adman configurada.')` no controller para segurança. Implementado em Plan 01-02 Task 2.
 
 ---
 

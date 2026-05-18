@@ -29,7 +29,13 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Admin clica em uma empresa e vê o payload bruto retornado pela API Adman (ou a mensagem de erro HTTP) daquele sync
   3. Admin vê o diff do sync: quantos registros foram criados, atualizados e ignorados
   4. Admin clica em "Disparar sync" de uma empresa específica e o sync é enfileirado e executado em background
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+- [ ] 01-01-PLAN.md — Fundação de dados e contrato de testes (migration + AdmanSyncLog + Company rels + 5 testes RED)
+- [ ] 01-02-PLAN.md — Backend end-to-end: DevController + AdmanService logging + rotas (testes GREEN)
+- [ ] 01-03-PLAN.md — UI inline SyncAdmanSection + npm run build + checkpoint humano
+
 **UI hint**: yes
 
 ### Phase 2: Monitoramento de Jobs
@@ -75,7 +81,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Diagnóstico Adman | 0/? | Not started | - |
+| 1. Diagnóstico Adman | 0/3 | Planned — Ready to execute | - |
 | 2. Monitoramento de Jobs | 0/? | Not started | - |
 | 3. Observabilidade | 0/? | Not started | - |
 | 4. Configurações | 0/? | Not started | - |
