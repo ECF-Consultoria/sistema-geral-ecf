@@ -1,8 +1,12 @@
-# Roadmap: ECF Admin — Setor Dev
+# Roadmap: ECF Admin — Setor Dev + Administrativo
 
 ## Overview
 
-Evolução da página `/dev/desenvolvimento` em quatro fatias verticais entregáveis de forma independente: diagnóstico do sync Adman (prioridade máxima), monitoramento da fila de jobs, observabilidade do ambiente, e controle de configurações do sistema. Cada fase entrega uma capacidade completa e verificável que o admin pode usar imediatamente.
+Evolução do painel de administração interno do ECF Admin em dois milestones principais:
+**v1.0 — Setor Dev** (diagnóstico Adman, fila de jobs, observabilidade, configurações) e
+**v2.0 — Administrativo Fechamento** (faturamento por empresa, faixas de investimento, total
+a cobrar). Cada fase entrega uma capacidade completa e verificável que o admin pode usar
+imediatamente.
 
 ## Phases
 
@@ -12,10 +16,18 @@ Evolução da página `/dev/desenvolvimento` em quatro fatias verticais entregá
 
 Decimal phases appear between their surrounding integers in numeric order.
 
+### Milestone v1.0 — Setor Dev
+
 - [x] **Phase 1: Diagnóstico Adman** - Admin pode inspecionar e controlar o sync Adman por empresa sem acessar o servidor
-- [ ] **Phase 2: Monitoramento de Jobs** - Admin pode ver o estado da fila de jobs, incluindo falhas com detalhes completos
-- [ ] **Phase 3: Observabilidade** - Admin pode ver logs de erro do sistema e informações do ambiente de execução
-- [ ] **Phase 4: Configurações** - Admin pode visualizar e editar flags de configuração do sistema via painel
+- [ ] **Phase 2: Monitoramento de Jobs** - Admin pode ver o estado da fila de jobs, incluindo falhas com detalhes completos *(pausado — retomar em v3.0)*
+- [ ] **Phase 3: Observabilidade** - Admin pode ver logs de erro do sistema e informações do ambiente de execução *(pausado — retomar em v3.0)*
+- [ ] **Phase 4: Configurações** - Admin pode visualizar e editar flags de configuração do sistema via painel *(pausado — retomar em v3.0)*
+
+### Milestone v2.0 — Administrativo Fechamento
+
+- [ ] **Phase 5: Fundação Fechamento** - Banco de dados e campos Company que suportam tipo de serviço, datas de contrato e renomeação de sidebar
+- [ ] **Phase 6: Backend Fechamento** - Aggregation query sobre adman_metrics, cálculo de faixa e props Inertia entregues ao frontend
+- [ ] **Phase 7: UI Fechamento** - Reescrita de Financeiro.jsx como Fechamento com lista de empresas, barras de progresso e total consolidado
 
 ## Phase Details
 
@@ -74,14 +86,59 @@ Plans:
 **Plans**: TBD
 **UI hint**: yes
 
+### Phase 5: Fundação Fechamento
+**Goal**: Banco de dados e model Company preparados para suportar tipo de serviço e datas de contrato; sidebar renomeado para "Fechamento"
+**Mode:** mvp
+**Depends on**: Phase 1 (infra admin existente)
+**Requirements**: FCH-01, FCH-02, FCH-03, CFG-01
+**Success Criteria** (what must be TRUE):
+  1. A rota `/administrativo/financeiro` continua acessível e o label no sidebar exibe "Fechamento" (não "Financeiro")
+  2. A migration `add_service_fields_to_companies` existe e foi executada; as colunas `service_type` (enum: polo/assessoria/incubadora), `contract_start`, `contract_end` e `additional_service` existem na tabela `companies`
+  3. Todas as empresas cadastradas aparecem na tela Fechamento, incluindo aquelas sem integração Adman — estas exibem badge "Sem integração"
+  4. Admin consegue salvar o tipo de serviço de uma empresa (POLO / Assessoria / Incubadora) via formulário inline; o valor persiste após recarregar a página
+  5. Admin consegue salvar as datas de início e encerramento de contrato de uma empresa; os valores persistem após recarregar a página
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 6: Backend Fechamento
+**Goal**: Query de aggregation sobre adman_metrics entrega faturamento mensal por empresa com período coberto; calcularFaixa() determina valor a cobrar; props chegam ao frontend via Inertia
+**Mode:** mvp
+**Depends on**: Phase 5
+**Requirements**: FCH-04, FCH-05
+**Success Criteria** (what must be TRUE):
+  1. A query `SUM(adman_metrics.revenue) GROUP BY company_id` retorna o faturamento acumulado no mês corrente sem nenhuma chamada HTTP à API Adman
+  2. O período coberto ("01/05 a 18/05") é calculado dinamicamente com base nos registros presentes em `adman_metrics` e sempre aparece associado ao faturamento da empresa
+  3. Empresas sem nenhum registro em `adman_metrics` no mês corrente recebem estado `sem_dados` e não entram no total consolidado
+  4. `calcularFaixa()` aplica a tabela de progressão corretamente: dado um faturamento de entrada, retorna a faixa correspondente e o valor mensal a cobrar
+  5. O controller Inertia entrega todos os campos necessários (faturamento, faixa, valor, período, estado) para cada empresa no array de props
+**Plans**: TBD
+
+### Phase 7: UI Fechamento
+**Goal**: Financeiro.jsx reescrita como tela Fechamento completa: lista de empresas com estado, barra de progresso por faixa, campo de serviço adicional e total consolidado visível
+**Mode:** mvp
+**Depends on**: Phase 6
+**Requirements**: FCH-06, FCH-07, FCH-08
+**Success Criteria** (what must be TRUE):
+  1. Empresas com faturamento válido exibem barra de progresso mostrando posição na faixa atual e o valor que falta para atingir a próxima faixa
+  2. Empresas na faixa máxima (faturamento > R$5M) exibem o texto "Faixa máxima" sem nenhuma barra de progresso
+  3. O total consolidado exibido no topo da página soma apenas as empresas com estado `ok` (excluindo `sem_integracao` e `sem_dados`)
+  4. O campo de serviço adicional aparece por empresa (valor visível ou placeholder "—"); não há lógica de cálculo associada nesta fase
+  5. O período coberto ("01/05 a 18/05") está sempre visível na UI, associado ao bloco de faturamento de cada empresa
+**Plans**: TBD
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4
+v1.0 phases execute in order: 1 → 2 → 3 → 4 (phases 2–4 paused for v3.0)
+v2.0 phases execute in order: 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Diagnóstico Adman | 3/3 | Complete | 2026-05-18 |
-| 2. Monitoramento de Jobs | 0/? | Not started | - |
-| 3. Observabilidade | 0/? | Not started | - |
-| 4. Configurações | 0/? | Not started | - |
+| 2. Monitoramento de Jobs | 0/? | Paused (v3.0) | - |
+| 3. Observabilidade | 0/? | Paused (v3.0) | - |
+| 4. Configurações | 0/? | Paused (v3.0) | - |
+| 5. Fundação Fechamento | 0/? | Not started | - |
+| 6. Backend Fechamento | 0/? | Not started | - |
+| 7. UI Fechamento | 0/? | Not started | - |
