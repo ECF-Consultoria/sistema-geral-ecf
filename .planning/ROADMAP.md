@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 5: Fundação Fechamento** - Banco de dados e campos Company que suportam tipo de serviço, datas de contrato e renomeação de sidebar
 - [x] **Phase 6: Backend Fechamento** - Aggregation query sobre adman_metrics, cálculo de faixa e props Inertia entregues ao frontend (completed 2026-05-19)
-- [ ] **Phase 7: UI Fechamento** - Reescrita de Financeiro.jsx como Fechamento com lista de empresas, barras de progresso e total consolidado
+- [x] **Phase 7: UI Fechamento** - Reescrita de Financeiro.jsx como Fechamento com lista de empresas, barras de progresso e total consolidado
 
 ## Phase Details
 
@@ -161,7 +161,7 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 1**
-- [ ] 07-01-PLAN.md — Financeiro.jsx expandido (TotalConsolidado + FaixaProgresso + FechamentoRow + FechamentoAccordion) + npm run build + checkpoint humano (FCH-06, FCH-07, FCH-08, CFG-01)
+- [x] 07-01-PLAN.md — Financeiro.jsx expandido (TotalConsolidado + FaixaProgresso + FechamentoRow + FechamentoAccordion) + npm run build + checkpoint humano (FCH-06, FCH-07, FCH-08, CFG-01)
 
 Cross-cutting constraints:
 - `autonomous: false` — requer checkpoint humano de verificação visual (D-15)
@@ -184,4 +184,4 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 4. Configurações | 0/? | Paused (v3.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
 | 6. Backend Fechamento | 2/2 | Complete   | 2026-05-19 |
-| 7. UI Fechamento | 0/1 | Not started | - |
+| 7. UI Fechamento | 1/1 | Complete | 2026-05-19 |
