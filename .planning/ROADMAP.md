@@ -133,7 +133,7 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 1**
-- [ ] 06-01-PLAN.md — calcularFaixa() + const FAIXAS + CalcularFaixaTest GREEN + 8 stubs de feature RED (FCH-04, FCH-05)
+- [x] 06-01-PLAN.md — calcularFaixa() + const FAIXAS + CalcularFaixaTest GREEN + 8 stubs de feature RED (FCH-04, FCH-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 06-02-PLAN.md — fechamento() expandido com aggregation query + todos os 16 testes GREEN (FCH-04, FCH-05)
@@ -172,5 +172,5 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 3. Observabilidade | 0/? | Paused (v3.0) | - |
 | 4. Configurações | 0/? | Paused (v3.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
-| 6. Backend Fechamento | 0/2 | Planned | - |
+| 6. Backend Fechamento | 1/2 | In Progress|  |
 | 7. UI Fechamento | 0/? | Not started | - |

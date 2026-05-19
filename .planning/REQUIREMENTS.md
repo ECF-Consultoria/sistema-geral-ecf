@@ -14,8 +14,8 @@
 - [ ] **FCH-01**: Admin pode ver todas as empresas cadastradas na tela Fechamento, incluindo empresas sem integração Adman (exibidas com badge "Sem integração")
 - [ ] **FCH-02**: Admin pode configurar o tipo de serviço de cada empresa (POLO / Assessoria / Incubadora)
 - [ ] **FCH-03**: Admin pode registrar e ver as datas de início e encerramento do contrato de cada empresa
-- [ ] **FCH-04**: Admin pode ver o faturamento mensal de cada empresa calculado dos dados diários sincronizados (adman_metrics.revenue), com indicação do período coberto
-- [ ] **FCH-05**: Admin pode ver a faixa de investimento e o valor mensal a cobrar de cada empresa, calculados automaticamente pela tabela de progressão
+- [x] **FCH-04**: Admin pode ver o faturamento mensal de cada empresa calculado dos dados diários sincronizados (adman_metrics.revenue), com indicação do período coberto
+- [x] **FCH-05**: Admin pode ver a faixa de investimento e o valor mensal a cobrar de cada empresa, calculados automaticamente pela tabela de progressão
 - [ ] **FCH-06**: Admin pode ver barra de progresso com posição na faixa atual e quanto falta para a próxima; faixa máxima (>R$5M) exibe "Faixa máxima" sem barra
 - [ ] **FCH-07**: Admin pode ver o total consolidado a cobrar no mês (soma apenas de empresas com dados válidos)
 - [ ] **FCH-08**: Admin pode ver campo de serviço adicional por empresa (visível, sem lógica de valor neste milestone)
@@ -43,8 +43,8 @@
 | FCH-01 | Phase 5 | Pending |
 | FCH-02 | Phase 5 | Pending |
 | FCH-03 | Phase 5 | Pending |
-| FCH-04 | Phase 6 | Pending |
-| FCH-05 | Phase 6 | Pending |
+| FCH-04 | Phase 6 | Complete |
+| FCH-05 | Phase 6 | Complete |
 | FCH-06 | Phase 7 | Pending |
 | FCH-07 | Phase 7 | Pending |
 | FCH-08 | Phase 7 | Pending |
