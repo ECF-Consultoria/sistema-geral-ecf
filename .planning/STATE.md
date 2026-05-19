@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Administrativo — Fechamento
-status: executing
-stopped_at: "05-02 COMPLETE — próximo: 05-03 UI Financeiro"
-last_updated: "2026-05-19T19:30:00.000Z"
-last_activity: "2026-05-19 — 05-02 executado: AdminController fechamento()+updateFechamento() + PATCH route (Wave 2)"
+status: Ready to execute
+stopped_at: Phase 5 completa (3/3 planos, checkpoint aprovado) — próxima: Phase 6
+last_updated: "2026-05-19T20:00:00.000Z"
+last_activity: "2026-05-19 — Phase 5 executada e aprovada em checkpoint humano"
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 14
+  completed_plans: 6
+  percent: 29
 ---
 
 # Project State
@@ -21,30 +21,31 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-19)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas e fechamento financeiro sem precisar de acesso ao servidor
-**Current focus:** Milestone v2.0 — Phase 5: Fundação Fechamento
+**Current focus:** Milestone v2.0 — Phase 6: Backend Fechamento (próxima, não planejada ainda)
 
 ## Current Position
 
-Phase: 5 — Fundação Fechamento
-Plan: 3 de 3 (05-01 e 05-02 concluídos, próximo: 05-03)
-Status: Executing
-Last activity: 2026-05-19 — 05-02 executado: AdminController fechamento()+updateFechamento() + PATCH route (Wave 2)
+Phase: 5 — Fundação Fechamento ✓ COMPLETA
+Next: Phase 6 — Backend Fechamento
+Status: Ready to execute (Phase 6 precisa de /gsd-plan-phase antes de executar)
+Last activity: 2026-05-19 — Phase 5 executada: 3 waves completas, checkpoint humano aprovado
 
-Progress: [█░░░░░░░░░] 33%
+Progress: [██░░░░░░░░] 29%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0.0 hours
+- Total plans completed: 6
+- Average duration: ~15 min/plan
+- Total execution time: ~1.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 5. Fundação Fechamento | 2/3 | ~25 min | ~12 min |
+| 1. Diagnóstico Adman | 3/3 | ~45 min | ~15 min |
+| 5. Fundação Fechamento | 3/3 | ~45 min | ~15 min |
 | 6. Backend Fechamento | TBD | - | - |
 | 7. UI Fechamento | TBD | - | - |
 
@@ -69,14 +70,24 @@ Progress: [█░░░░░░░░░] 33%
 - Período coberto sempre exibido na UI (ex: "01/05 a 18/05"), calculado de adman_metrics
 - Tabela de progressão de faixas implementada como constante no backend (não editável via UI neste milestone)
 
-### Decisões do 05-02
+### Decisões do 05-02 (registradas)
 
 - `Validator::make()` manual em `updateFechamento()` para retornar 422 JSON sem depender do header X-Inertia
 - Cast `date:Y-m-d` (explícito) no Company model para garantir formato ISO no SQLite em testes
 
+### Entregues na Phase 5
+
+- ✓ Migration `add_service_fields_to_companies` executada (service_type, contract_start, contract_end, additional_service)
+- ✓ Company.$fillable, $casts (date:Y-m-d), logOnly atualizados
+- ✓ AdminController: fechamento() + updateFechamento() com validação
+- ✓ routes/web.php: GET → fechamento(), PATCH /financeiro/{company} → admin.financeiro.update
+- ✓ Financeiro.jsx reescrito com FechamentoList/Row/Accordion/ServiceForm/ServiceBadge/IntegrationBadge
+- ✓ AppLayout.jsx: label "Financeiro" → "Fechamento"
+- ✓ npm run build: 0 erros, 9/9 testes Fechamento verdes
+
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
@@ -96,5 +107,5 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-05-19T19:30:00.000Z
-Stopped at: 05-02 COMPLETE — próximo: 05-03 UI Financeiro (Wave 3)
+Last session: 2026-05-19T20:00:00.000Z
+Stopped at: Phase 5 completa — checkpoint humano aprovado — Phase 6 aguarda planejamento

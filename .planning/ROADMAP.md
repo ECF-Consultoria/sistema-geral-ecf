@@ -25,7 +25,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v2.0 — Administrativo Fechamento
 
-- [ ] **Phase 5: Fundação Fechamento** - Banco de dados e campos Company que suportam tipo de serviço, datas de contrato e renomeação de sidebar
+- [x] **Phase 5: Fundação Fechamento** - Banco de dados e campos Company que suportam tipo de serviço, datas de contrato e renomeação de sidebar
 - [ ] **Phase 6: Backend Fechamento** - Aggregation query sobre adman_metrics, cálculo de faixa e props Inertia entregues ao frontend
 - [ ] **Phase 7: UI Fechamento** - Reescrita de Financeiro.jsx como Fechamento com lista de empresas, barras de progresso e total consolidado
 
@@ -102,13 +102,13 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 05-01-PLAN.md — Migration + Company model + stubs de teste Wave 0 (FCH-02, FCH-03)
+- [x] 05-01-PLAN.md — Migration + Company model + stubs de teste Wave 0 (FCH-02, FCH-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 05-02-PLAN.md — AdminController fechamento()/updateFechamento() + rota PATCH (FCH-01, FCH-02, FCH-03)
+- [x] 05-02-PLAN.md — AdminController fechamento()/updateFechamento() + rota PATCH (FCH-01, FCH-02, FCH-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 05-03-PLAN.md — Financeiro.jsx reescrito + AppLayout label + npm run build + checkpoint humano (FCH-01, CFG-01)
+- [x] 05-03-PLAN.md — Financeiro.jsx reescrito + AppLayout label + npm run build + checkpoint humano (FCH-01, CFG-01)
 
 Cross-cutting constraints:
 - `EnsureUserHasRole` middleware obrigatório em todas as rotas admin (Plans 02, 03)
@@ -156,6 +156,6 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 2. Monitoramento de Jobs | 0/? | Paused (v3.0) | - |
 | 3. Observabilidade | 0/? | Paused (v3.0) | - |
 | 4. Configurações | 0/? | Paused (v3.0) | - |
-| 5. Fundação Fechamento | 0/3 | Ready to execute | - |
+| 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
 | 6. Backend Fechamento | 0/? | Not started | - |
 | 7. UI Fechamento | 0/? | Not started | - |
