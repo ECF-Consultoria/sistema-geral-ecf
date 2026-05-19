@@ -14,7 +14,7 @@ class Company extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'cnpj', 'segment', 'active', 'notes', 'adman_account_id', 'ml_store_id'])
+            ->logOnly(['name', 'cnpj', 'segment', 'active', 'notes', 'adman_account_id', 'ml_store_id', 'service_type', 'contract_start', 'contract_end'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -28,9 +28,14 @@ class Company extends Model
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'segment', 'active', 'notes',
+        'service_type', 'contract_start', 'contract_end', 'additional_service',
     ];
 
-    protected $casts = ['active' => 'boolean'];
+    protected $casts = [
+        'active'         => 'boolean',
+        'contract_start' => 'date',
+        'contract_end'   => 'date',
+    ];
 
     public function users()
     {
