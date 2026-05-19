@@ -124,6 +124,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // restritas a admin (Policy::manage).
     Route::get('/sugadores',                        [SugadorController::class, 'index'])->name('sugadores.index');
     Route::get('/sugadores/{sugador}',              [SugadorController::class, 'show'])->name('sugadores.show');
+    Route::get('/sugadores/{sugador}/mlbs',         [SugadorController::class, 'mlbs'])->name('sugadores.mlbs');
     Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');
     Route::post('/sugadores/analyze',               [SugadorController::class, 'analyzeAll'])->name('sugadores.analyze-all');
     Route::post('/sugadores/companies/{company}/analyze', [SugadorController::class, 'analyzeCompany'])->name('sugadores.analyze-company');

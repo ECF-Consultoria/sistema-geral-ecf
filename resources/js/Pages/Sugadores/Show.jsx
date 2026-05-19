@@ -1,10 +1,11 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, useForm } from '@inertiajs/react';
+import { useState } from 'react';
 import {
     AlertTriangle, Building2, ExternalLink, ArrowLeft, Megaphone, Tag,
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
-    Clock, User as UserIcon, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
-    Image as ImageIcon, Layers,
+    Clock, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
+    Image as ImageIcon, Layers, Package, Loader2, RefreshCw, ListFilter,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -304,15 +305,18 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             )}
 
                             <p className="text-white/30 text-[10px] leading-relaxed">
-                                A API da Adman não expõe a lista de MLBs (anúncios) dentro de um adgroup —
-                                {adgroupInfo.adGroupType === 'CATALOG'  && ' este é um adgroup de catálogo (1 anúncio de catalogo).'}
-                                {adgroupInfo.adGroupType === 'ITEM'     && ' este tipo tem 1 anúncio único.'}
-                                {adgroupInfo.adGroupType === 'FAMILY'   && ' este tipo agrupa variações (N anúncios).'}
-                                {' '}Para ver e gerenciar os MLBs específicos, acesse o painel de Ads do Mercado Livre no botão acima.
+                                {adgroupInfo.adGroupType === 'CATALOG' && 'Adgroup de catálogo — 1 anúncio de catálogo agregado.'}
+                                {adgroupInfo.adGroupType === 'ITEM'    && 'Adgroup do tipo ITEM — 1 anúncio único.'}
+                                {adgroupInfo.adGroupType === 'FAMILY'  && 'Adgroup do tipo FAMILY — agrupa variações (N anúncios).'}
                             </p>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Drilldown MLBs — via API MCP do Adman (productAds da mesma campanha) */}
+            {sugador.tipo === 'adgroup' && (
+                <MlbsDoAdgroup sugadorId={sugador.id} adgroupName={sugador.adgroup_name} />
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -426,5 +430,198 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                 </div>
             </div>
         </AppLayout>
+    );
+}
+
+/**
+ * Drilldown que lista os MLBs da campanha do adgroup-sugador (via MCP da Adman).
+ * MCP retorna métricas MLB-level confiáveis (ads vs orgânico, direto vs indireto)
+ * que a REST legada não tem — daí ser carregado on-demand, e não no SSR.
+ * O backend marca `matches_adgroup` por heurística de título; mostramos esses
+ * em destaque pra ajudar o analista a focar.
+ */
+function MlbsDoAdgroup({ sugadorId, adgroupName }) {
+    const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
+    const [onlyAdgroup, setOnlyAdgroup] = useState(true);
+
+    const load = async () => {
+        setState(s => ({ ...s, loading: true, error: null }));
+        try {
+            const res = await fetch(route('sugadores.mlbs', sugadorId), {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) {
+                throw new Error(body?.reason || `HTTP ${res.status}`);
+            }
+            setState({ loading: false, error: null, data: body, loaded: true });
+        } catch (e) {
+            setState({ loading: false, error: e.message || 'Falha ao carregar', data: null, loaded: true });
+        }
+    };
+
+    const allMlbs    = state.data?.mlbs ?? [];
+    const matching   = allMlbs.filter(m => m.matches_adgroup);
+    const shown      = onlyAdgroup && matching.length > 0 ? matching : allMlbs;
+    const hasMatches = matching.length > 0;
+
+    return (
+        <div className="card-ecf rounded-xl p-5 mb-4">
+            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                    <Package size={14} className="text-white/40" />
+                    <h2 className="text-white font-display font-semibold text-base">MLBs neste adgroup</h2>
+                    {state.data?.total != null && (
+                        <span className="text-white/40 text-xs">
+                            · {hasMatches ? `${matching.length} provável${matching.length === 1 ? '' : 's'} / ` : ''}{state.data.total} na campanha
+                        </span>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                    {hasMatches && (
+                        <button
+                            type="button"
+                            onClick={() => setOnlyAdgroup(v => !v)}
+                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-xs"
+                            title={onlyAdgroup ? 'Mostrar todos os MLBs da campanha' : 'Mostrar só os prováveis deste adgroup'}
+                        >
+                            <ListFilter size={12} />
+                            {onlyAdgroup ? 'Só deste adgroup' : 'Toda a campanha'}
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        onClick={load}
+                        disabled={state.loading}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-xs disabled:opacity-50"
+                    >
+                        {state.loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                        {state.loaded ? 'Recarregar' : 'Carregar MLBs'}
+                    </button>
+                </div>
+            </div>
+
+            {!state.loaded && !state.loading && (
+                <p className="text-white/40 text-xs leading-relaxed">
+                    Clique em <b className="text-white/70">Carregar MLBs</b> pra buscar os anúncios desta campanha via API MCP da Adman.
+                    Em contas grandes a primeira carga pode demorar até ~1 min (rate limit 50 req/min); cargas seguintes são instantâneas (cache 30 min).
+                </p>
+            )}
+
+            {state.loading && (
+                <div className="flex items-center gap-2 text-white/50 text-sm py-4">
+                    <Loader2 size={14} className="animate-spin" />
+                    Buscando MLBs da Adman... (pode demorar em contas grandes)
+                </div>
+            )}
+
+            {state.error && (
+                <div className="flex items-start gap-2 p-3 rounded-lg border border-red-500/20 bg-red-500/[0.05]">
+                    <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
+                    <p className="text-red-300 text-xs leading-relaxed">{state.error}</p>
+                </div>
+            )}
+
+            {state.loaded && !state.error && allMlbs.length === 0 && (
+                <p className="text-white/40 text-sm">
+                    Nenhum MLB encontrado para esta campanha no período {fmtDate(state.data?.periodo_inicio)} → {fmtDate(state.data?.periodo_fim)}.
+                </p>
+            )}
+
+            {state.loaded && shown.length > 0 && (
+                <ul className="space-y-3">
+                    {shown.map(m => <MlbRow key={m.listing_id} mlb={m} adgroupName={adgroupName} />)}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+function MlbRow({ mlb, adgroupName }) {
+    const highlight = mlb.matches_adgroup;
+
+    return (
+        <li className={cn(
+            'flex gap-3 p-3 rounded-lg border transition-colors',
+            highlight
+                ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.04]'
+                : 'border-white/[0.06] bg-white/[0.02]'
+        )}>
+            {mlb.image_url ? (
+                <img
+                    src={mlb.image_url}
+                    alt={mlb.title || ''}
+                    className="w-14 h-14 rounded-md object-cover border border-white/[0.08] shrink-0"
+                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+            ) : (
+                <div className="w-14 h-14 rounded-md bg-white/[0.04] border border-white/[0.08] flex items-center justify-center shrink-0">
+                    <ImageIcon size={16} className="text-white/30" />
+                </div>
+            )}
+
+            <div className="flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="min-w-0 flex-1">
+                        <p className="text-white/90 text-sm font-medium truncate" title={mlb.title}>{mlb.title || mlb.listing_id}</p>
+                        <p className="text-white/40 text-[11px] font-mono">
+                            {mlb.listing_id}
+                            {mlb.sku && <span className="text-white/30"> · SKU {mlb.sku}</span>}
+                            {mlb.curve && <span className="text-white/30"> · Curva {mlb.curve}</span>}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {highlight && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-ecf-yellow/15 text-ecf-yellow border border-ecf-yellow/30" title={`Título parece bater com "${adgroupName}"`}>
+                                Deste adgroup
+                            </span>
+                        )}
+                        {mlb.permalink && (
+                            <a
+                                href={mlb.permalink}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-white/40 hover:text-white"
+                                title="Abrir no Mercado Livre"
+                            >
+                                <ExternalLink size={13} />
+                            </a>
+                        )}
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1 text-[11px] mt-1">
+                    <MlbStat label="Invest." value={fmtBRL(mlb.investment)} color="red" />
+                    <MlbStat label="Vendas ads" value={fmtInt(mlb.ads_sold_quantity)} color={mlb.ads_sold_quantity > 0 ? 'green' : 'white'} />
+                    <MlbStat label="Receita ads" value={fmtBRL(mlb.ads_revenue)} color="green" />
+                    <MlbStat label="Direta/Indir." value={`${fmtInt(mlb.ads_sold_direct)} / ${fmtInt(mlb.ads_sold_indirect)}`} />
+                    <MlbStat label="ACOS" value={fmtPct(mlb.acos)} color="yellow" />
+                    <MlbStat label="Cliques" value={fmtInt(mlb.clicks)} />
+                </div>
+
+                {(mlb.organic_sold_quantity > 0 || mlb.organic_revenue > 0) && (
+                    <p className="text-white/40 text-[10px] mt-1.5">
+                        Orgânico no período: {fmtInt(mlb.organic_sold_quantity)} venda{mlb.organic_sold_quantity === 1 ? '' : 's'} · {fmtBRL(mlb.organic_revenue)}
+                    </p>
+                )}
+            </div>
+        </li>
+    );
+}
+
+function MlbStat({ label, value, color = 'white' }) {
+    const colors = {
+        white:  'text-white/80',
+        yellow: 'text-ecf-yellow',
+        red:    'text-red-300',
+        green:  'text-emerald-300',
+    };
+    return (
+        <div className="flex flex-col">
+            <span className="text-white/30 uppercase tracking-wider text-[9px]">{label}</span>
+            <span className={cn('tabular-nums font-medium', colors[color])}>{value}</span>
+        </div>
     );
 }

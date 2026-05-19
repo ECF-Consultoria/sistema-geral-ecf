@@ -40,6 +40,11 @@ return [
         'api_key'  => env('ADMAN_API_KEY', ''),
     ],
 
+    'adman_mcp' => [
+        'url'     => env('ADMAN_MCP_URL', 'https://mcp.ad-man.io/v1/mcp'),
+        'api_key' => env('ADMAN_MCP_API_KEY', env('ADMAN_API_KEY', '')),
+    ],
+
     'google' => [
         'client_id'     => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

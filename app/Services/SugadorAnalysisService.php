@@ -23,6 +23,15 @@ class SugadorAnalysisService
     public function __construct(private AdmanService $adman) {}
 
     /**
+     * Campanhas de "quarentena" — onde analistas movem adgroups já tratados.
+     * Match por word boundary: pega "SGI", "Sugador", "Sugadores" no nome.
+     */
+    private const QUARANTINE_NAME_REGEX = '/\b(sgi|sugadores?)\b/iu';
+
+    /** Status da campanha que indicam que o time já encerrou aquela frente. */
+    private const QUARANTINE_STATUSES = ['paused', 'closed', 'ended'];
+
+    /**
      * Analisa todas as empresas ativas com config ativa.
      * Retorna estatísticas globais.
      */
@@ -97,6 +106,11 @@ class SugadorAnalysisService
         $dateTo        = $periodoFim->toDateString();
         $refDateStr    = $referenceDate->toDateString();
 
+        // Lookup campaignId → {name, status} pra descartar adgroups que o analista
+        // já moveu pra campanha de quarentena (SGI/Sugador/Sugadores) ou cuja
+        // campanha está pausada/encerrada — esses já foram tratados.
+        $campaignsInfo = $this->loadCampaignsInfo($custId);
+
         // Pré-fetch dos sugadores já existentes para esta empresa+data → evita SELECT por item
         $existingMap = $dryRun ? collect() : Sugador::where('company_id', $company->id)
             ->where('reference_date', $refDateStr)
@@ -119,6 +133,9 @@ class SugadorAnalysisService
                 foreach ($ads as $ad) {
                     $cId = $ad['campaign_id'];
                     if ($cId === '') continue;
+
+                    // Skipa adgroups em campanha de quarentena ou pausada/encerrada
+                    if ($this->shouldSkipCampaign($campaignsInfo[$cId] ?? null)) continue;
 
                     // Conta total na campanha (somente itens com algum investimento)
                     if (($ad['investment'] ?? 0) > 0) {
@@ -188,6 +205,14 @@ class SugadorAnalysisService
 
                 foreach ($campaigns as $camp) {
                     $cId    = $camp['campaign_id'];
+
+                    // Mesma regra aplicada aos adgroups: campanhas SGI/Sugadores ou
+                    // já pausadas/encerradas representam estado tratado pelo analista
+                    if ($this->shouldSkipCampaign([
+                        'name'   => $camp['campaign_name']   ?? null,
+                        'status' => $camp['campaign_status'] ?? null,
+                    ])) continue;
+
                     $motivos = $this->evaluateMetrics($camp, $config);
 
                     // Aplica regra do § 2.2: se ≥ X% dos anúncios da campanha são sugadores,
@@ -367,6 +392,55 @@ class SugadorAnalysisService
         }
 
         return $motivos;
+    }
+
+    /**
+     * Lookup `campaignId => ['name', 'status']` da Adman. Usado pra filtrar
+     * campanhas de quarentena (SGI/Sugadores) e pausadas/encerradas. Fail-open:
+     * se a chamada falha, retorna array vazio e a análise segue sem o filtro.
+     */
+    private function loadCampaignsInfo(string $custId): array
+    {
+        try {
+            $campaigns = $this->adman->fetchAllCampaigns($custId);
+        } catch (\Throwable $e) {
+            Log::warning("[Sugadores] Não conseguiu listar campanhas {$custId} pro filtro de quarentena: " . $e->getMessage());
+            return [];
+        }
+
+        $lookup = [];
+        foreach ($campaigns as $c) {
+            $id = (string) ($c['campaignId'] ?? $c['id'] ?? '');
+            if ($id === '') continue;
+            $lookup[$id] = [
+                'name'   => $c['name']   ?? null,
+                'status' => $c['status'] ?? null,
+            ];
+        }
+        return $lookup;
+    }
+
+    /**
+     * True se a campanha está em quarentena (nome SGI/Sugador/Sugadores) ou
+     * pausada/encerrada — o analista já lidou com ela.
+     *
+     * @param  array{name: ?string, status: ?string}|null  $info
+     */
+    private function shouldSkipCampaign(?array $info): bool
+    {
+        if (!$info) return false; // fail-open: sem info, deixa entrar
+
+        $status = $info['status'] ?? null;
+        if ($status && \in_array(strtolower((string) $status), self::QUARANTINE_STATUSES, true)) {
+            return true;
+        }
+
+        $name = $info['name'] ?? null;
+        if ($name && preg_match(self::QUARANTINE_NAME_REGEX, $name)) {
+            return true;
+        }
+
+        return false;
     }
 
 }

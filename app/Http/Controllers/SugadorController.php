@@ -6,14 +6,19 @@ use App\Jobs\AnalyzeCompanySugadoresJob;
 use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
+use App\Services\AdmanMcpService;
 use App\Services\SugadorAnalysisService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class SugadorController extends Controller
 {
-    public function __construct(private SugadorAnalysisService $service) {}
+    public function __construct(
+        private SugadorAnalysisService $service,
+        private AdmanMcpService $mcp,
+    ) {}
 
     /**
      * Listagem paginada com filtros.
@@ -217,5 +222,99 @@ class SugadorController extends Controller
             'success',
             "Análise enfileirada para {$companies->count()} empresa(s). Os resultados aparecem na listagem conforme cada empresa termina."
         );
+    }
+
+    /**
+     * Drilldown: lista os MLBs (productAds) da campanha de um adgroup-sugador no
+     * período analisado. Resolve a limitação histórica de que a Adman REST não
+     * expõe os MLBs dentro de um adgroup — a MCP retorna métricas MLB-level
+     * confiáveis (ads vs orgânico, direto vs indireto).
+     *
+     * Como o productAd não traz adgroupId, filtramos pelos da mesma campanha do
+     * sugador e, quando dá, marcamos os "provavelmente neste adgroup" via
+     * matching de título (nome do adgroup costuma ser o título do produto-base).
+     */
+    public function mlbs(Sugador $sugador)
+    {
+        Gate::authorize('view', $sugador);
+
+        if ($sugador->tipo !== Sugador::TIPO_ADGROUP) {
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'O drilldown de MLBs só está disponível para sugadores do tipo adgroup.',
+            ], 422);
+        }
+
+        if (!$this->mcp->isConfigured()) {
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'API MCP da Adman não está configurada no servidor.',
+            ], 503);
+        }
+
+        $sugador->loadMissing('company:id,adman_account_id,name');
+        $custId = $sugador->company?->adman_account_id;
+
+        if (!$custId) {
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'Empresa sem adman_account_id.',
+            ], 422);
+        }
+
+        // O sugador guarda o range analisado em periodo_inicio/periodo_fim — usar
+        // o mesmo range mantém os números comparáveis com o card do sugador.
+        $dateFrom = optional($sugador->periodo_inicio)->toDateString() ?? now()->subDays(7)->toDateString();
+        $dateTo   = optional($sugador->periodo_fim)->toDateString()    ?? now()->subDay()->toDateString();
+
+        try {
+            $mlbs = $this->mcp->fetchMlbsByCampaign($custId, (string) $sugador->campaign_id, $dateFrom, $dateTo);
+        } catch (\Throwable $e) {
+            Log::error("[Sugadores/MLBs] Erro MCP sugador {$sugador->id} (company {$sugador->company_id}): " . $e->getMessage());
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'Falha ao consultar a API MCP da Adman: ' . $e->getMessage(),
+            ], 502);
+        }
+
+        // Heurística "provavelmente neste adgroup": adgroup name no ML quase sempre
+        // é o título do produto base. Pra ITEM bate exato; pra FAMILY bate por
+        // prefixo entre as variações. Marca como dica, não como filtro hard.
+        $adgroupName = (string) ($sugador->adgroup_name ?? '');
+        $needle      = $this->normalizeForMatch($adgroupName);
+
+        foreach ($mlbs as &$m) {
+            $title = $this->normalizeForMatch((string) ($m['title'] ?? ''));
+            $m['matches_adgroup'] = $needle !== '' && $title !== '' && $this->similarPrefix($needle, $title);
+        }
+        unset($m);
+
+        return response()->json([
+            'mlbs'            => $mlbs,
+            'periodo_inicio'  => $dateFrom,
+            'periodo_fim'     => $dateTo,
+            'adgroup_name'    => $sugador->adgroup_name,
+            'campaign_id'     => $sugador->campaign_id,
+            'total'           => count($mlbs),
+        ]);
+    }
+
+    private function normalizeForMatch(string $s): string
+    {
+        $s = mb_strtolower($s);
+        $s = preg_replace('/[^\p{L}\p{N}\s]/u', ' ', $s);
+        $s = preg_replace('/\s+/', ' ', $s);
+        return trim($s);
+    }
+
+    /** True se os primeiros ~3 tokens em comum batem — adgroup costuma compartilhar o início do título. */
+    private function similarPrefix(string $a, string $b): bool
+    {
+        $ta = array_slice(explode(' ', $a), 0, 4);
+        $tb = array_slice(explode(' ', $b), 0, 4);
+        if (count($ta) === 0 || count($tb) === 0) return false;
+
+        $common = array_intersect($ta, $tb);
+        return count($common) >= min(3, count($ta));
     }
 }
