@@ -56,6 +56,9 @@ Route::post('/nps/generate', [NpsController::class, 'generate'])
 Route::get('/nps/{token}', [NpsController::class, 'respond'])->name('nps.respond');
 Route::post('/nps/{token}', [NpsController::class, 'submitResponse'])->name('nps.submit');
 
+// Política de Privacidade pública (HTML estático — usado p/ aprovação Chrome Web Store)
+Route::view('/privacidade/painel-ecf', 'privacidade.painel-ecf')->name('privacidade.painel-ecf');
+
 Route::middleware(['auth', 'verified'])->group(function () {
 
     // Dashboard
@@ -131,6 +134,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::middleware('role:admin')->group(function () {
         // Log de atividades
         Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
+
+        // Dev — area interna de projetos em desenvolvimento
+        Route::get('/dev/desenvolvimento', fn () => \Inertia\Inertia::render('Dev/Desenvolvimento'))
+            ->name('dev.desenvolvimento');
 
         Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');

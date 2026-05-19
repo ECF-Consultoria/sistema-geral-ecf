@@ -5,7 +5,8 @@ import {
     Star, Target, FileText, ChevronLeft, ChevronRight,
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
-    AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText
+    AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
+    Code2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -28,8 +29,10 @@ const NAV_ITEMS = [
     { label: 'PPA',        routeName: 'ppa.index',         page: 'Ppa',         icon: FileText,        roles: ['admin', 'mentor'] },
     { label: 'Desempenho', routeName: 'performance.index',  page: 'Performance',     icon: Trophy,      roles: ['admin'] },
     { label: 'Grants',     routeName: 'grants.index',       page: 'Grants',          icon: ShieldCheck, roles: ['admin'] },
-    { label: 'Log Dev',    routeName: 'activity-log.index', page: 'ActivityLog',     icon: ScrollText,  roles: ['admin'] },
     { label: 'Sugadores',  routeName: 'sugadores.index',   page: 'Sugadores',   icon: AlertTriangle,   roles: ['admin', 'consultor', 'mentor'], pubPerm: 'sugadores', showBadge: 'sugadores_pendentes' },
+    // ── Dev (interno) ───────────────────────────────────────────────────────
+    { label: 'Log',             routeName: 'activity-log.index',  page: 'ActivityLog',         icon: ScrollText, roles: ['admin'], devSeparatorBefore: true },
+    { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,      roles: ['admin'] },
     // ── Publicações MLB ──────────────────────────────────────────────────────
     { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      roles: ['admin'], pubPerm: 'dashboard',   mlbSeparatorBefore: true },
     { label: 'Projetos',        routeName: 'mlb.projetos',     page: 'Mlb/Projetos',     icon: FolderKanban,   roles: ['admin'], pubPerm: 'projetos' },
@@ -145,6 +148,13 @@ export default function AppLayout({ children, title }) {
                                 <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
                                     <div className="h-px flex-1 bg-white/[0.06]" />
                                     <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Administrativo</span>
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                </div>
+                            )}
+                            {item.devSeparatorBefore && (!collapsed || mobile) && (
+                                <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Dev</span>
                                     <div className="h-px flex-1 bg-white/[0.06]" />
                                 </div>
                             )}
