@@ -3,13 +3,13 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Administrativo — Fechamento
 status: Ready to execute
-stopped_at: Phase 5 completa (3/3 planos, checkpoint aprovado) — próxima: Phase 6
-last_updated: "2026-05-19T20:00:00.000Z"
-last_activity: "2026-05-19 — Phase 5 executada e aprovada em checkpoint humano"
+stopped_at: Phase 6 planejada (2 planos, 2 waves) — pronta para /gsd-execute-phase 6
+last_updated: "2026-05-19T20:30:00.000Z"
+last_activity: "2026-05-19 — Phase 6 planejada: 2 planos (calcularFaixa + aggregation query)"
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 6
+  total_plans: 8
   completed_plans: 6
   percent: 29
 ---
