@@ -26,7 +26,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v2.0 — Administrativo Fechamento
 
 - [x] **Phase 5: Fundação Fechamento** - Banco de dados e campos Company que suportam tipo de serviço, datas de contrato e renomeação de sidebar
-- [ ] **Phase 6: Backend Fechamento** - Aggregation query sobre adman_metrics, cálculo de faixa e props Inertia entregues ao frontend
+- [x] **Phase 6: Backend Fechamento** - Aggregation query sobre adman_metrics, cálculo de faixa e props Inertia entregues ao frontend (completed 2026-05-19)
 - [ ] **Phase 7: UI Fechamento** - Reescrita de Financeiro.jsx como Fechamento com lista de empresas, barras de progresso e total consolidado
 
 ## Phase Details
@@ -136,7 +136,7 @@ Plans:
 - [x] 06-01-PLAN.md — calcularFaixa() + const FAIXAS + CalcularFaixaTest GREEN + 8 stubs de feature RED (FCH-04, FCH-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 06-02-PLAN.md — fechamento() expandido com aggregation query + todos os 16 testes GREEN (FCH-04, FCH-05)
+- [x] 06-02-PLAN.md — fechamento() expandido com aggregation query + todos os 16 testes GREEN (FCH-04, FCH-05)
 
 Cross-cutting constraints:
 - `whereNotNull('revenue')` obrigatório na aggregation para evitar distorção por revenue null (Plans 02)
@@ -172,5 +172,5 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 3. Observabilidade | 0/? | Paused (v3.0) | - |
 | 4. Configurações | 0/? | Paused (v3.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
-| 6. Backend Fechamento | 1/2 | In Progress|  |
+| 6. Backend Fechamento | 2/2 | Complete   | 2026-05-19 |
 | 7. UI Fechamento | 0/? | Not started | - |
