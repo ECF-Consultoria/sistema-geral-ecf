@@ -1,36 +1,36 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: phase-complete
-stopped_at: Phase 1 completa — 3/3 plans executados, checkpoint humano aprovado
-last_updated: "2026-05-18T00:00:00.000Z"
-last_activity: 2026-05-18 — Phase 1 Diagnóstico Adman concluída (DEV-01/02/03/04 entregues)
+milestone: v2.0
+milestone_name: Administrativo — Fechamento
+status: planning
+stopped_at: Milestone v2.0 iniciado — definindo requirements e roadmap
+last_updated: "2026-05-19T00:00:00.000Z"
+last_activity: 2026-05-19 — Milestone v2.0 Administrativo Fechamento iniciado
 progress:
-  total_phases: 4
-  completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 25
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-18)
+See: .planning/PROJECT.md (updated 2026-05-19)
 
-**Core value:** Tornar o sync Adman completamente observável e controlável sem precisar de acesso direto ao servidor
-**Current focus:** Phase 1 — Diagnóstico Adman
+**Core value:** Dar ao admin visibilidade total sobre operações internas e fechamento financeiro sem precisar de acesso ao servidor
+**Current focus:** Milestone v2.0 — Administrativo Fechamento (definindo requirements)
 
 ## Current Position
 
-Phase: 1 of 4 (Diagnóstico Adman) — **COMPLETA**
-Plan: 3 of 3 in current phase
-Status: Phase complete — pronto para Phase 2
-Last activity: 2026-05-18 — Phase 1 completa; checkpoint humano aprovado
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-19 — Milestone v2.0 Administrativo Fechamento iniciado
 
-Progress: [██░░░░░░░░] 25%
+Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
@@ -46,23 +46,15 @@ Progress: [██░░░░░░░░] 25%
 |-------|-------|-------|----------|
 | - | - | - | - |
 
-**Recent Trend:**
-
-- Last 5 plans: -
-- Trend: -
-
 *Updated after each plan completion*
 
 ## Accumulated Context
 
-### Decisions
+### Decisões herdadas do v1.0
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- Pending: Evoluir `/dev/desenvolvimento` existente (evita duplicidade de rota/layout)
-- Pending: Log de sync armazenado no banco (nova tabela) para histórico persistente
-- Pending: Jobs disparados via API Inertia (sem WebSockets) — suficiente para o volume atual
+- ✓ Evoluir página `/dev/desenvolvimento` existente — rota e layout já funcionam
+- ✓ Log de sync armazenado no banco (tabela `adman_sync_logs`) — concluído na Phase 1
+- ✓ Jobs disparados via API Inertia (sem WebSockets) — padrão estabelecido
 
 ### Pending Todos
 
@@ -70,20 +62,22 @@ None yet.
 
 ### Blockers/Concerns
 
-- Phase 1 exige criar tabela de log de sync no banco — migration necessária antes de qualquer UI
-- DEV-04 (dispatch manual) usa fila database; queue worker deve estar rodando no ambiente
+- ADM-02 (faturamento via Adman API): verificar qual endpoint retorna o faturamento MLB por empresa
+- A tabela de progressão está em `faturamento_adm.md` — deve ser implementada como constante no backend
 
 ## Deferred Items
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Alertas | ALERT-01: notificação de job falhado | v2 | 2026-05-18 |
-| Alertas | ALERT-02: alerta sync inativo >X horas | v2 | 2026-05-18 |
-| Histórico | HIST-01: histórico paginado por empresa | v2 | 2026-05-18 |
-| Histórico | HIST-02: exportar logs de sync para CSV | v2 | 2026-05-18 |
+| Setor Dev | DEV-05: Monitoramento de Jobs | v3.0 | 2026-05-19 |
+| Setor Dev | DEV-06: Logs do sistema | v3.0 | 2026-05-19 |
+| Setor Dev | DEV-07: Informações do ambiente | v3.0 | 2026-05-19 |
+| Setor Dev | DEV-08: Configurações/flags | v3.0 | 2026-05-19 |
+| Fechamento | ADM-06: Lógica de serviço adicional | v2.1+ | 2026-05-19 |
+| Histórico | HIST-01: histórico paginado por empresa | v2.1+ | 2026-05-18 |
+| Histórico | HIST-02: exportar logs de sync para CSV | v2.1+ | 2026-05-18 |
 
 ## Session Continuity
 
-Last session: 2026-05-18T16:18:53.610Z
-Stopped at: Phase 1 UI-SPEC approved
-Resume file: .planning/phases/01-diagn-stico-adman/01-UI-SPEC.md
+Last session: 2026-05-19T00:00:00.000Z
+Stopped at: Milestone v2.0 start — aguardando pesquisa e roadmap

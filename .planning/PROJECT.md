@@ -2,16 +2,27 @@
 
 ## What This Is
 
-Painel de diagnóstico interno para desenvolvedores administradores do ECF Admin.
-Concentra visibilidade de sync Adman, fila de jobs, logs e configurações do sistema
-numa área acessível exclusivamente via role `admin`, evoluindo a página
-`/dev/desenvolvimento` já existente.
+Sistema de administração interna do ECF Admin com dois módulos principais: **Setor Dev**
+(diagnóstico de sync Adman, fila de jobs, logs e configurações) e **Módulo Administrativo**
+(fechamento mensal — faturamento por empresa, faixa de investimento e total a cobrar).
+Acessível exclusivamente via role `admin`.
 
 ## Core Value
 
-Tornar o sync Adman completamente observável e controlável sem precisar de acesso
-direto ao servidor — ver o que aconteceu, quando, com quais dados, e disparar
-manualmente quando necessário.
+Dar ao admin visibilidade total sobre operações internas: o sync Adman e o fechamento
+financeiro de cada empresa — sem precisar de acesso direto ao servidor.
+
+## Current Milestone: v2.0 Administrativo — Fechamento
+
+**Goal:** Admin pode acompanhar o faturamento de cada empresa no ML, ver em qual faixa de investimento ela está, e ter o total a cobrar no mês.
+
+**Funcionalidades:**
+- Listar empresas com tipo de serviço (POLO / Assessoria / Incubadora) e datas de contrato
+- Exibir faturamento mensal por empresa via Adman API
+- Calcular faixa de investimento com base na tabela de progressão (faturamento_adm.md)
+- Barra de progresso: posição na faixa atual e distância para a próxima faixa
+- Campo de serviço adicional reservado (sem lógica neste milestone)
+- Total consolidado a cobrar no mês corrente
 
 ## Requirements
 
@@ -27,14 +38,19 @@ manualmente quando necessário.
 - ✓ Middleware `role:admin` para controle de acesso — existente
 - ✓ Comandos de diagnóstico Artisan (`DiagnosticSyncVendas`, `InspecionarAdman`) — existente
 
-### Active
+### Active (v2.0 — Administrativo Fechamento)
 
-<!-- Escopo do milestone atual -->
+<!-- Escopo do milestone atual — Fechamento Administrativo -->
 
-- [ ] **DEV-01**: Admin pode ver data/hora do último sync Adman por empresa
-- [ ] **DEV-02**: Admin pode ver o payload bruto retornado pela API Adman (ou erro HTTP) de cada sync
-- [ ] **DEV-03**: Admin pode ver o diff do sync: quantos registros foram criados, atualizados e ignorados
-- [ ] **DEV-04**: Admin pode disparar o sync Adman de uma empresa específica manualmente via botão
+- [ ] **ADM-01**: Admin pode ver lista de empresas com tipo de serviço e datas de contrato
+- [ ] **ADM-02**: Admin pode ver o faturamento mensal de cada empresa via Adman API
+- [ ] **ADM-03**: Admin pode ver a faixa de investimento de cada empresa baseada na tabela de progressão
+- [ ] **ADM-04**: Admin pode ver barra de progressão com posição na faixa atual e distância para a próxima
+- [ ] **ADM-05**: Admin pode ver o total consolidado a cobrar de todas as empresas no mês corrente
+- [ ] **ADM-06**: Cada empresa tem campo de serviço adicional reservado (visível, sem lógica de valor)
+
+### Pausado (v1.0 — Setor Dev, retomar em v3.0)
+
 - [ ] **DEV-05**: Admin pode ver status da fila de jobs (pendentes, em execução, falhados, com detalhes do erro)
 - [ ] **DEV-06**: Admin pode ver logs recentes do sistema (errors e warnings) sem acessar o servidor
 - [ ] **DEV-07**: Admin pode ver informações do ambiente (versão PHP, driver de fila, driver de cache, uptime)
@@ -101,4 +117,4 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-05-18 after initialization*
+*Last updated: 2026-05-19 after milestone v2.0 start — Administrativo Fechamento*
