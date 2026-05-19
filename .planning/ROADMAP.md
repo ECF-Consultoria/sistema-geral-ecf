@@ -156,7 +156,18 @@ Cross-cutting constraints:
   3. O total consolidado exibido no topo da página soma apenas as empresas com estado `ok` (excluindo `sem_integracao` e `sem_dados`)
   4. O campo de serviço adicional aparece por empresa (valor visível ou placeholder "—"); não há lógica de cálculo associada nesta fase
   5. O período coberto ("01/05 a 18/05") está sempre visível na UI, associado ao bloco de faturamento de cada empresa
-**Plans**: TBD
+**Plans**: 1 plan
+
+Plans:
+
+**Wave 1**
+- [ ] 07-01-PLAN.md — Financeiro.jsx expandido (TotalConsolidado + FaixaProgresso + FechamentoRow + FechamentoAccordion) + npm run build + checkpoint humano (FCH-06, FCH-07, FCH-08, CFG-01)
+
+Cross-cutting constraints:
+- `autonomous: false` — requer checkpoint humano de verificação visual (D-15)
+- `npm run build` obrigatório após edições JSX
+- Nenhuma mudança de backend, rota ou teste PHP — apenas Financeiro.jsx
+
 **UI hint**: yes
 
 ## Progress
@@ -173,4 +184,4 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 4. Configurações | 0/? | Paused (v3.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
 | 6. Backend Fechamento | 2/2 | Complete   | 2026-05-19 |
-| 7. UI Fechamento | 0/? | Not started | - |
+| 7. UI Fechamento | 0/1 | Not started | - |
