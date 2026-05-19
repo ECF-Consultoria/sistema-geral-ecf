@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -124,5 +126,142 @@ class AdminFechamentoControllerTest extends TestCase
         $response = $this->actingAs($consultor)->get('/administrativo/financeiro');
 
         $response->assertStatus(403);
+    }
+
+    public function test_empresa_ok_recebe_faturamento_somado(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::create(['name' => 'Empresa OK', 'cnpj' => '10000000000001', 'active' => true, 'adman_account_id' => 'ACC001']);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->startOfMonth()->toDateString(), 'revenue' => 500000.00, 'synced_at' => now(), 'raw_data' => []]);
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(),                  'revenue' => 500000.00, 'synced_at' => now(), 'raw_data' => []]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.faturamento', 1000000.0)
+            ->where('companies.0.estado', 'ok')
+        );
+    }
+
+    public function test_empresa_ok_recebe_periodo_coberto(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::create(['name' => 'Empresa Periodo', 'cnpj' => '10000000000002', 'active' => true, 'adman_account_id' => 'ACC002']);
+
+        $inicio = Carbon::now()->startOfMonth();
+        $fim    = Carbon::now();
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => $inicio->toDateString(), 'revenue' => 100000.00, 'synced_at' => now(), 'raw_data' => []]);
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => $fim->toDateString(),    'revenue' => 100000.00, 'synced_at' => now(), 'raw_data' => []]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.periodo_inicio', $inicio->format('d/m'))
+            ->where('companies.0.periodo_fim',    $fim->format('d/m'))
+        );
+    }
+
+    public function test_empresa_sem_dados_recebe_estado_sem_dados(): void
+    {
+        $admin   = $this->criarAdmin();
+        Company::create(['name' => 'Empresa Sem Dados', 'cnpj' => '10000000000003', 'active' => true, 'adman_account_id' => 'ACC003']);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.estado', 'sem_dados')
+            ->where('companies.0.faturamento', null)
+            ->where('companies.0.faixa', null)
+        );
+    }
+
+    public function test_empresa_sem_adman_recebe_estado_sem_integracao(): void
+    {
+        $admin   = $this->criarAdmin();
+        Company::create(['name' => 'Empresa Sem Adman', 'cnpj' => '10000000000004', 'active' => true]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.estado', 'sem_integracao')
+            ->where('companies.0.faturamento', null)
+        );
+    }
+
+    public function test_fatura_ate_499k_retorna_faixa_correta(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::create(['name' => 'Empresa 300k', 'cnpj' => '10000000000005', 'active' => true, 'adman_account_id' => 'ACC005']);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(), 'revenue' => 300000.00, 'synced_at' => now(), 'raw_data' => []]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.faixa', 'ate_499k')
+            ->where('companies.0.valor_mensal', 3000.0)
+        );
+    }
+
+    public function test_fatura_500k_999k_retorna_faixa_correta(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::create(['name' => 'Empresa 700k', 'cnpj' => '10000000000006', 'active' => true, 'adman_account_id' => 'ACC006']);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(), 'revenue' => 700000.00, 'synced_at' => now(), 'raw_data' => []]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.faixa', '500k_999k')
+            ->where('companies.0.valor_mensal', 4500.0)
+        );
+    }
+
+    public function test_fatura_acima_5m_retorna_maxima(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::create(['name' => 'Empresa 5.5M', 'cnpj' => '10000000000007', 'active' => true, 'adman_account_id' => 'ACC007']);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->toDateString(), 'revenue' => 5500000.00, 'synced_at' => now(), 'raw_data' => []]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.faixa', 'maxima')
+            ->where('companies.0.valor_mensal', 12000.0)
+        );
+    }
+
+    public function test_metrica_fora_do_mes_nao_conta(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::create(['name' => 'Empresa Mes Anterior', 'cnpj' => '10000000000008', 'active' => true, 'adman_account_id' => 'ACC008']);
+
+        AdmanMetric::create(['company_id' => $company->id, 'reference_date' => Carbon::now()->subMonth()->toDateString(), 'revenue' => 1000000.00, 'synced_at' => now(), 'raw_data' => []]);
+
+        $response = $this->actingAs($admin)->get('/administrativo/financeiro');
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page
+            ->component('Admin/Financeiro')
+            ->where('companies.0.estado', 'sem_dados')
+        );
     }
 }

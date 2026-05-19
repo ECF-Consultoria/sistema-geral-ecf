@@ -9,6 +9,15 @@ use Inertia\Inertia;
 
 class AdminController extends Controller
 {
+    private const FAIXAS = [
+        ['limite' => 499_999.99,   'label' => 'ate_499k',   'valor' => 3_000.00],
+        ['limite' => 999_999.99,   'label' => '500k_999k',  'valor' => 4_500.00],
+        ['limite' => 1_999_999.99, 'label' => '1m_1999k',   'valor' => 6_000.00],
+        ['limite' => 2_999_999.99, 'label' => '2m_2999k',   'valor' => 7_500.00],
+        ['limite' => 3_999_999.99, 'label' => '3m_3999k',   'valor' => 9_000.00],
+        ['limite' => 4_999_999.99, 'label' => '4m_4999k',   'valor' => 10_500.00],
+    ];
+
     public function empresas()
     {
         return Inertia::render('Admin/Empresas');
@@ -57,5 +66,22 @@ class AdminController extends Controller
     public function inventario()
     {
         return Inertia::render('Admin/Inventario');
+    }
+
+    /**
+     * Retorna a faixa de investimento para um faturamento mensal.
+     * Tabela de progressão definida em faturamento_adm.md.
+     *
+     * @return array{faixa: string, valor: float}
+     */
+    private function calcularFaixa(float $faturamento): array
+    {
+        foreach (self::FAIXAS as $faixa) {
+            if ($faturamento <= $faixa['limite']) {
+                return ['faixa' => $faixa['label'], 'valor' => (float) $faixa['valor']];
+            }
+        }
+        // Faixa máxima — D-09
+        return ['faixa' => 'maxima', 'valor' => 12_000.00];
     }
 }
