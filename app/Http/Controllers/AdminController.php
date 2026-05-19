@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmanMetric;
 use App\Models\Company;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
@@ -30,18 +32,52 @@ class AdminController extends Controller
 
     public function fechamento()
     {
+        $inicio = Carbon::now()->startOfMonth();
+        $fim    = Carbon::now();
+
+        // Agrega faturamento e período coberto por empresa no mês corrente — D-01, D-02, D-03
+        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
         $companies = Company::where('active', true)
             ->orderBy('name')
             ->get()
-            ->map(fn (Company $c) => [
-                'id'                 => $c->id,
-                'name'               => $c->name,
-                'service_type'       => $c->service_type,
-                'contract_start'     => $c->contract_start?->toDateString(),
-                'contract_end'       => $c->contract_end?->toDateString(),
-                'additional_service' => $c->additional_service,
-                'has_adman'          => (bool) $c->adman_account_id,
-            ]);
+            ->map(function (Company $c) use ($metricas) {
+                $hasAdman = (bool) $c->adman_account_id;
+                $metrica  = $metricas->get($c->id);
+
+                // Determina estado da empresa — D-05
+                $estado = match (true) {
+                    !$hasAdman => 'sem_integracao',
+                    !$metrica  => 'sem_dados',
+                    default    => 'ok',
+                };
+
+                // Calcula faixa apenas para empresas com dados — D-06, D-10
+                $faixaData = ($estado === 'ok')
+                    ? $this->calcularFaixa((float) $metrica->faturamento)
+                    : null;
+
+                return [
+                    'id'                 => $c->id,
+                    'name'               => $c->name,
+                    'service_type'       => $c->service_type,
+                    'contract_start'     => $c->contract_start?->toDateString(),
+                    'contract_end'       => $c->contract_end?->toDateString(),
+                    'additional_service' => $c->additional_service,
+                    'has_adman'          => $hasAdman,
+                    'estado'             => $estado,
+                    'faturamento'        => $metrica ? (float) $metrica->faturamento : null,
+                    'periodo_inicio'     => $metrica ? Carbon::parse($metrica->periodo_inicio)->format('d/m') : null,
+                    'periodo_fim'        => $metrica ? Carbon::parse($metrica->periodo_fim)->format('d/m') : null,
+                    'faixa'              => $faixaData['faixa']  ?? null,
+                    'valor_mensal'       => $faixaData['valor']  ?? null,
+                ];
+            });
 
         return Inertia::render('Admin/Financeiro', compact('companies'));
     }
