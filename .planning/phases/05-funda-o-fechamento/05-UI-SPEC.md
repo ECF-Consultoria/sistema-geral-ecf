@@ -43,7 +43,7 @@ Todos os valores são múltiplos de 4, alinhados com os padrões de espaçamento
 | 3xl | 64px | Não utilizado nesta fase |
 
 Exceções:
-- Touch target mínimo em botões de ação (Salvar/Cancelar): altura 36px (h-9) — múltiplo de 4
+- Touch target mínimo em botões de ação (Salvar dados/Descartar alterações): altura 36px (h-9) — múltiplo de 4
 - Linha de empresa: `py-3` (12px vertical) — conforme padrão Phase 1 `EmpresaRow`
 
 ---
@@ -57,11 +57,11 @@ Fonte: todos os tamanhos em `px` como classes Tailwind `text-[Npx]`, consistente
 | Body | 13px | 400 (regular) | 1.5 | `text-[13px]` |
 | Label / caption | 11px | 600 (semibold) | 1.4 | `text-[11px] font-semibold` |
 | Nome de empresa | 13px | 600 (semibold) | 1.3 | `text-[13px] font-semibold` |
-| Page heading | 20px | 700 (bold) | 1.2 | `text-xl font-bold font-display` |
+| Page heading | 20px | 600 (semibold) | 1.2 | `text-xl font-semibold font-display` |
 
-Pesos declarados: regular (400) e semibold/bold (600–700). Máximo 2 pesos distintos em uso simultâneo por contexto.
+Pesos declarados: regular (400) e semibold (600). Contraste hierárquico entre page heading e body provido pelo tamanho (20px vs. 13px), não pelo peso.
 
-Fonte: padrão observado em `Desenvolvimento.jsx` — `text-[13px]`, `text-[12px]`, `text-[11px]`, `text-xl font-bold font-display`.
+Fonte: padrão observado em `Desenvolvimento.jsx` — `text-[13px]`, `text-[11px]`, `text-xl font-semibold font-display`.
 
 ---
 
@@ -81,7 +81,7 @@ Accent `ecf-yellow` reservado para:
 2. Ícone `ChevronDown` quando o accordion de uma empresa está expandido (`text-ecf-yellow`)
 3. Ponto indicador de item de nav ativo no sidebar (`ml-auto w-1.5 h-1.5 rounded-full bg-ecf-yellow`)
 4. Borda e fundo do label do sidebar quando a rota `/administrativo/financeiro` está ativa (`bg-ecf-yellow/[0.12] border-ecf-yellow/20 text-ecf-yellow`)
-5. Botão "Salvar" no formulário inline — `bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow`
+5. Botão "Salvar dados" no formulário inline — `bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow`
 
 Cor adicional — badge "Sem integração":
 - `bg-amber-500/10 text-amber-300 border border-amber-500/20` — distinguível do yellow puro; indica estado ausente, não ação
@@ -102,8 +102,9 @@ Cores semânticas de tipo de serviço (ServiceBadge):
 | Page heading | `Fechamento` |
 | Page subtitle | `Tipo de serviço e datas de contrato por empresa ativa.` |
 | Sidebar label | `Fechamento` (substituindo `Financeiro` em AppLayout.jsx linha 51) |
-| Primary CTA — accordion | `Salvar` (botão de submit do formulário inline) |
-| Ação secundária — accordion | `Cancelar` (fecha o accordion sem salvar) |
+| Primary CTA — accordion | `Salvar dados` (botão de submit do formulário inline) |
+| Ação secundária — accordion | `Descartar alterações` (fecha o accordion sem salvar) |
+| Estado processing — CTA | `Salvando dados...` (botão disabled durante submissão) |
 | Empty state heading | `Nenhuma empresa ativa encontrada.` |
 | Empty state body | `Cadastre uma empresa com status ativo para que ela apareça aqui.` |
 | Badge "Sem integração" | `Sem integração` |
@@ -148,7 +149,7 @@ Componentes locais a definir em `Admin/Financeiro.jsx` (sub-componentes de arqui
   2. Nome da empresa — `flex-1 text-white font-semibold text-[13px] truncate`
   3. `ServiceBadge` — alinhado à direita do nome, `shrink-0`
   4. `IntegrationBadge` — visível somente se `!empresa.has_adman`, `shrink-0`
-  5. Datas: `"dd/mm/aaaa – dd/mm/aaaa"` ou `"—"` se não preenchidas — `text-white/40 text-[12px] font-mono shrink-0`
+  5. Datas: `"dd/mm/aaaa – dd/mm/aaaa"` ou `"—"` se não preenchidas — `text-white/40 text-[13px] font-mono shrink-0`
 
 ### `FechamentoAccordion({ empresa, onClose })`
 - Container: `px-4 py-4 bg-black/30 border-t border-white/[0.04]`
@@ -162,9 +163,9 @@ Componentes locais a definir em `Admin/Financeiro.jsx` (sub-componentes de arqui
 - Labels acima dos campos: `text-[11px] uppercase tracking-wider text-white/40 mb-1`
 - Mensagem de erro de validação: `text-[11px] text-red-400 mt-1` (abaixo do campo com erro)
 - Rodapé de ações: `flex items-center gap-2 mt-4`
-  - Botão "Salvar": `bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[12px] h-9 px-4 rounded-lg transition-colors font-semibold`
-    Estado `processing`: disabled + texto "Salvando..." sem spinner (consistência com Phase 1)
-  - Botão "Cancelar": `text-white/40 hover:text-white/70 text-[12px] h-9 px-3 rounded-lg transition-colors`
+  - Botão "Salvar dados": `bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[13px] h-9 px-4 rounded-lg transition-colors font-semibold`
+    Estado `processing`: disabled + texto "Salvando dados..." sem spinner (consistência com Phase 1)
+  - Botão "Descartar alterações": `text-white/40 hover:text-white/70 text-[13px] h-9 px-3 rounded-lg transition-colors`
 
 ### `FechamentoList({ empresas })`
 - Container: `divide-y divide-white/[0.04]`
@@ -183,7 +184,7 @@ AppLayout title="Fechamento"
               ├── [Header block]
               │     ├── flex items-center gap-2 mb-2
               │     │     ├── Banknote size=20 text-ecf-yellow
-              │     │     └── h1 "Fechamento" — text-xl font-bold font-display text-white
+              │     │     └── h1 "Fechamento" — text-xl font-semibold font-display text-white
               │     └── p subtitle — text-[13px] text-white/40
               │
               └── [Card container]
@@ -249,7 +250,7 @@ Padrão de container externo: `rounded-xl border border-white/[0.08] bg-white/[0
 | Empresa sem datas | Coluna de datas exibe `—` |
 | Accordion fechado | `FechamentoRow` com `ChevronDown` normal (vertical) |
 | Accordion aberto | `FechamentoRow` com `bg-white/[0.05]` + `ChevronDown` rotacionado + `FechamentoAccordion` visível |
-| Form submitting | Botão "Salvar" disabled com texto "Salvando..." |
+| Form submitting | Botão "Salvar dados" disabled com texto "Salvando dados..." |
 | Erro de validação | Texto vermelho `text-[11px] text-red-400` abaixo do campo com erro |
 | Flash success | Toast verde no canto inferior direito — gerenciado por `AppLayout` |
 | Flash error | Toast vermelho no canto inferior direito — gerenciado por `AppLayout` |
