@@ -33,8 +33,8 @@ class Company extends Model
 
     protected $casts = [
         'active'         => 'boolean',
-        'contract_start' => 'date',
-        'contract_end'   => 'date',
+        'contract_start' => 'date:Y-m-d',
+        'contract_end'   => 'date:Y-m-d',
     ];
 
     public function users()
