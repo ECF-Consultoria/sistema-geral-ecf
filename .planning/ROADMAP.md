@@ -128,7 +128,22 @@ Cross-cutting constraints:
   3. Empresas sem nenhum registro em `adman_metrics` no mês corrente recebem estado `sem_dados` e não entram no total consolidado
   4. `calcularFaixa()` aplica a tabela de progressão corretamente: dado um faturamento de entrada, retorna a faixa correspondente e o valor mensal a cobrar
   5. O controller Inertia entrega todos os campos necessários (faturamento, faixa, valor, período, estado) para cada empresa no array de props
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+
+**Wave 1**
+- [ ] 06-01-PLAN.md — calcularFaixa() + const FAIXAS + CalcularFaixaTest GREEN + 8 stubs de feature RED (FCH-04, FCH-05)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 06-02-PLAN.md — fechamento() expandido com aggregation query + todos os 16 testes GREEN (FCH-04, FCH-05)
+
+Cross-cutting constraints:
+- `whereNotNull('revenue')` obrigatório na aggregation para evitar distorção por revenue null (Plans 02)
+- `Carbon::parse()` obrigatório antes de `->format('d/m')` em campos retornados por selectRaw (Plan 02)
+- `(float)` cast obrigatório antes de passar faturamento para calcularFaixa() (Plan 02)
+- Nenhuma mudança de rota — GET /administrativo/financeiro já existe (Plans 01, 02)
+- `updateFechamento()` não deve ser alterado em nenhum plano desta fase (Plans 01, 02)
 
 ### Phase 7: UI Fechamento
 **Goal**: Financeiro.jsx reescrita como tela Fechamento completa: lista de empresas com estado, barra de progresso por faixa, campo de serviço adicional e total consolidado visível
@@ -157,5 +172,5 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 3. Observabilidade | 0/? | Paused (v3.0) | - |
 | 4. Configurações | 0/? | Paused (v3.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
-| 6. Backend Fechamento | 0/? | Not started | - |
+| 6. Backend Fechamento | 0/2 | Planned | - |
 | 7. UI Fechamento | 0/? | Not started | - |
