@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { useForm } from '@inertiajs/react';
-import { useState } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp } from 'lucide-react';
+import { router, useForm } from '@inertiajs/react';
+import { useState, useMemo } from 'react';
+import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 
 const SERVICE_LABELS = {
@@ -17,12 +17,12 @@ const SERVICE_COLORS = {
 };
 
 const FAIXAS_LIMITES = {
-    ate_499k:    { min: 0,           proximo: 500_000   },
-    '500k_999k': { min: 500_000,     proximo: 1_000_000 },
-    '1m_1999k':  { min: 1_000_000,   proximo: 2_000_000 },
-    '2m_2999k':  { min: 2_000_000,   proximo: 3_000_000 },
-    '3m_3999k':  { min: 3_000_000,   proximo: 4_000_000 },
-    '4m_4999k':  { min: 4_000_000,   proximo: 5_000_000 },
+    faixa_1: { min: 0,           proximo: 500_000,   nome: 'Faixa 1' },
+    faixa_2: { min: 500_000,     proximo: 1_000_000, nome: 'Faixa 2' },
+    faixa_3: { min: 1_000_000,   proximo: 2_000_000, nome: 'Faixa 3' },
+    faixa_4: { min: 2_000_000,   proximo: 3_000_000, nome: 'Faixa 4' },
+    faixa_5: { min: 3_000_000,   proximo: 4_000_000, nome: 'Faixa 5' },
+    faixa_6: { min: 4_000_000,   proximo: 5_000_000, nome: 'Faixa 6' },
 };
 
 const fmtBRL = (n) => n == null ? '—'
@@ -53,11 +53,58 @@ function IntegrationBadge() {
     );
 }
 
+function EvolucaoBadge({ evolucao }) {
+    if (!evolucao) return null;
+    const config = {
+        subiu:   { Icon: TrendingUp,   cls: 'text-emerald-400', title: 'Subiu de faixa'   },
+        desceu:  { Icon: TrendingDown,  cls: 'text-red-400',     title: 'Desceu de faixa'  },
+        manteve: { Icon: Minus,         cls: 'text-white/25',    title: 'Manteve a faixa'  },
+    }[evolucao];
+    if (!config) return null;
+    const { Icon, cls, title } = config;
+    return <Icon size={14} className={cn('shrink-0', cls)} title={title} />;
+}
+
+function RecebidoToggle({ empresa, mesSelecionado }) {
+    const [loading, setLoading] = useState(false);
+
+    if (empresa.estado !== 'ok') return null;
+
+    function toggle(e) {
+        e.stopPropagation();
+        setLoading(true);
+        router.post(
+            route('admin.financeiro.recebido', empresa.id),
+            { mes: mesSelecionado },
+            { preserveScroll: true, onFinish: () => setLoading(false) }
+        );
+    }
+
+    return (
+        <button
+            onClick={toggle}
+            disabled={loading}
+            title={empresa.recebido ? 'Desmarcar recebido' : 'Marcar como recebido'}
+            className={cn(
+                'shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all',
+                empresa.recebido
+                    ? 'border-emerald-400 bg-emerald-400/20 text-emerald-400'
+                    : 'border-white/20 text-transparent hover:border-white/40 hover:text-white/20'
+            )}
+        >
+            <Check size={11} />
+        </button>
+    );
+}
+
 function TotalConsolidado({ empresas }) {
-    const ok         = empresas.filter(e => e.estado === 'ok');
-    const totalFat   = ok.reduce((s, e) => s + Number(e.faturamento ?? 0), 0);
-    const totalMens  = ok.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
-    const temDados   = ok.length > 0;
+    const ok             = empresas.filter(e => e.estado === 'ok');
+    const recebidas      = ok.filter(e => e.recebido);
+    const inadimplentes  = ok.filter(e => !e.recebido);
+    const totalAReceber  = ok.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
+    const totalRecebido  = recebidas.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
+    const totalPendente  = inadimplentes.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
+    const temDados       = ok.length > 0;
 
     return (
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
@@ -67,17 +114,32 @@ function TotalConsolidado({ empresas }) {
                     Total consolidado · {ok.length} empresa{ok.length !== 1 ? 's' : ''} com dados
                 </span>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-                    <p className="text-white/40 text-[11px] mb-1">Faturado (mês)</p>
-                    <p className="font-display font-bold text-xl text-ecf-yellow">
-                        {temDados ? fmtBRL(totalFat) : '—'}
+                    <p className="text-white/40 text-[11px] mb-1">Recebido (mês)</p>
+                    <p className="font-display font-bold text-xl text-emerald-400">
+                        {temDados ? fmtBRL(totalRecebido) : '—'}
+                    </p>
+                    <p className="text-white/30 text-[11px] mt-0.5">
+                        {recebidas.length} empresa{recebidas.length !== 1 ? 's' : ''}
+                    </p>
+                </div>
+                <div className="rounded-xl bg-white/[0.03] border border-red-500/[0.15] p-3">
+                    <p className="text-white/40 text-[11px] mb-1">Inadimplente</p>
+                    <p className="font-display font-bold text-xl text-red-400">
+                        {temDados ? fmtBRL(totalPendente) : '—'}
+                    </p>
+                    <p className="text-white/30 text-[11px] mt-0.5">
+                        {inadimplentes.length} empresa{inadimplentes.length !== 1 ? 's' : ''}
                     </p>
                 </div>
                 <div className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-                    <p className="text-white/40 text-[11px] mb-1">A cobrar (mês)</p>
-                    <p className="font-display font-bold text-xl text-emerald-400">
-                        {temDados ? fmtBRL(totalMens) : '—'}
+                    <p className="text-white/40 text-[11px] mb-1">A receber</p>
+                    <p className="font-display font-bold text-xl text-ecf-yellow">
+                        {temDados ? fmtBRL(totalAReceber) : '—'}
+                    </p>
+                    <p className="text-white/30 text-[11px] mt-0.5">
+                        {ok.length} empresa{ok.length !== 1 ? 's' : ''}
                     </p>
                 </div>
             </div>
@@ -109,7 +171,7 @@ function FaixaProgresso({ faturamento, faixa }) {
     return (
         <div className="py-3">
             <div className="flex items-center justify-between mb-1.5">
-                <span className="text-white/50 text-[11px] uppercase tracking-wider">Posição na faixa</span>
+                <span className="text-white/60 text-[12px] font-semibold">{faixaData.nome}</span>
                 <span className="text-white/50 text-[11px]">{Math.round(pct)}%</span>
             </div>
             <div className="h-1.5 bg-ecf-yellow/30 rounded-full overflow-hidden">
@@ -125,7 +187,7 @@ function FaixaProgresso({ faturamento, faixa }) {
     );
 }
 
-function FechamentoRow({ empresa, expandida, onToggle }) {
+function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
     const datas = (() => {
         if (empresa.contract_start && empresa.contract_end) {
             return `${formatDate(empresa.contract_start)} – ${formatDate(empresa.contract_end)}`;
@@ -156,8 +218,16 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
                     </span>
                 )}
             </div>
+            <EvolucaoBadge evolucao={empresa.evolucao} />
             <ServiceBadge tipo={empresa.service_type} />
             {!empresa.has_adman && <IntegrationBadge />}
+            {empresa.estado === 'ok' && empresa.valor_mensal != null && (
+                <span className="text-emerald-400 text-[13px] font-semibold font-mono shrink-0">
+                    {fmtBRL(empresa.valor_mensal)}
+                    <span className="text-white/30 font-normal text-[11px]">/mês</span>
+                </span>
+            )}
+            <RecebidoToggle empresa={empresa} mesSelecionado={mesSelecionado} />
             <span className="text-white/40 text-[13px] font-mono shrink-0">{datas}</span>
         </div>
     );
@@ -165,9 +235,10 @@ function FechamentoRow({ empresa, expandida, onToggle }) {
 
 function ServiceForm({ empresa, onClose }) {
     const { data, setData, patch, processing, errors } = useForm({
-        service_type:   empresa.service_type   ?? '',
-        contract_start: empresa.contract_start ?? '',
-        contract_end:   empresa.contract_end   ?? '',
+        service_type:       empresa.service_type       ?? '',
+        contract_start:     empresa.contract_start     ?? '',
+        contract_end:       empresa.contract_end       ?? '',
+        additional_service: empresa.additional_service ?? '',
     });
 
     function submit(e) {
@@ -228,6 +299,21 @@ function ServiceForm({ empresa, onClose }) {
                     )}
                 </div>
             </div>
+            <div className="mt-4">
+                <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
+                    Serviço adicional
+                </label>
+                <input
+                    type="text"
+                    value={data.additional_service}
+                    onChange={e => setData('additional_service', e.target.value)}
+                    placeholder="Descreva o serviço adicional..."
+                    className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                />
+                {errors.additional_service && (
+                    <span className="text-[11px] text-red-400 mt-1 block">{errors.additional_service}</span>
+                )}
+            </div>
             <div className="flex items-center gap-2 mt-4">
                 <button
                     type="submit"
@@ -252,12 +338,18 @@ function FechamentoAccordion({ empresa, onClose }) {
     return (
         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
             {empresa.estado === 'ok' && (
-                <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                <>
+                    <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                    {empresa.valor_mensal != null && (
+                        <div className="flex items-center justify-between py-2 mb-2 border-b border-white/[0.04]">
+                            <span className="text-[11px] uppercase tracking-wider text-white/40">Mensalidade a cobrar</span>
+                            <span className="text-emerald-400 text-[15px] font-bold font-mono">
+                                {fmtBRL(empresa.valor_mensal)}
+                            </span>
+                        </div>
+                    )}
+                </>
             )}
-            <div className="mb-4">
-                <p className="text-[11px] uppercase tracking-wider text-white/40 mb-1">Serviço adicional</p>
-                <p className="text-white/80 text-[13px]">{empresa.additional_service || '—'}</p>
-            </div>
             <div className="border-t border-white/[0.04] pt-4">
                 <ServiceForm empresa={empresa} onClose={onClose} />
             </div>
@@ -265,7 +357,7 @@ function FechamentoAccordion({ empresa, onClose }) {
     );
 }
 
-function FechamentoList({ empresas }) {
+function FechamentoList({ empresas, mesSelecionado }) {
     const [aberta, setAberta] = useState(null);
 
     function toggleEmpresa(id) {
@@ -290,6 +382,7 @@ function FechamentoList({ empresas }) {
                         empresa={empresa}
                         expandida={aberta === empresa.id}
                         onToggle={() => toggleEmpresa(empresa.id)}
+                        mesSelecionado={mesSelecionado}
                     />
                     {aberta === empresa.id && (
                         <FechamentoAccordion
@@ -303,21 +396,54 @@ function FechamentoList({ empresas }) {
     );
 }
 
-export default function Financeiro({ companies }) {
+function MesSeletor({ mesSelecionado }) {
+    const meses = useMemo(() => {
+        const lista = [];
+        const agora = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d     = new Date(agora.getFullYear(), agora.getMonth() - i, 1);
+            const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+            lista.push({ value, label });
+        }
+        return lista;
+    }, []);
+
+    function handleChange(e) {
+        router.get(route('admin.financeiro'), { mes: e.target.value }, { preserveScroll: true });
+    }
+
+    return (
+        <select
+            value={mesSelecionado}
+            onChange={handleChange}
+            className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-ecf-card text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 shrink-0"
+        >
+            {meses.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
+        </select>
+    );
+}
+
+export default function Financeiro({ companies, mes_selecionado }) {
     return (
         <AppLayout title="Fechamento">
             <main className="p-6">
                 <div className="max-w-4xl mx-auto space-y-6">
-                    <div>
-                        <div className="flex items-center gap-2 mb-2">
-                            <Banknote size={20} className="text-ecf-yellow" />
-                            <h1 className="text-xl font-semibold font-display text-white">Fechamento</h1>
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <Banknote size={20} className="text-ecf-yellow" />
+                                <h1 className="text-xl font-semibold font-display text-white">Fechamento</h1>
+                            </div>
+                            <p className="text-[13px] text-white/40">Faturamento mensal, faixa de investimento e dados de contrato por empresa ativa.</p>
                         </div>
-                        <p className="text-[13px] text-white/40">Faturamento mensal, faixa de investimento e dados de contrato por empresa ativa.</p>
+                        <MesSeletor mesSelecionado={mes_selecionado} />
                     </div>
                     <TotalConsolidado empresas={companies} />
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                        <FechamentoList empresas={companies} />
+                        <FechamentoList empresas={companies} mesSelecionado={mes_selecionado} />
                     </div>
                 </div>
             </main>

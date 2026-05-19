@@ -210,7 +210,7 @@ class AdminFechamentoControllerTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
-            ->where('companies.0.faixa', 'ate_499k')
+            ->where('companies.0.faixa', 'faixa_1')
             ->where('companies.0.valor_mensal', 3000)
         );
     }
@@ -227,7 +227,7 @@ class AdminFechamentoControllerTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('Admin/Financeiro')
-            ->where('companies.0.faixa', '500k_999k')
+            ->where('companies.0.faixa', 'faixa_2')
             ->where('companies.0.valor_mensal', 4500)
         );
     }

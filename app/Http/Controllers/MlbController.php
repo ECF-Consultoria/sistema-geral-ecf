@@ -733,7 +733,7 @@ class MlbController extends Controller
         }
 
         $adman  = new AdmanService();
-        $totais = ['itens' => 0, 'com_venda' => 0, 'atualizadas' => 0, 'erros' => 0];
+        $totais = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
 
         foreach ($empresas as $empresa) {
             try {
@@ -744,21 +744,27 @@ class MlbController extends Controller
                 $totais['itens']     += count($items);
                 $totais['com_venda'] += count($mlbsComVenda);
 
-                foreach ($mlbsComVenda as $mlbCode => $data) {
-                    $intQty = (int) $data['qty'];
-                    $affected = Publicacao::where('mlb_code', $mlbCode)
+                if (!empty($mlbsComVenda)) {
+                    $mlbCodes = array_keys($mlbsComVenda);
+                    $totais['encontradas'] += Publicacao::whereIn('mlb_code', $mlbCodes)
                         ->where('user_id', $user->id)
-                        ->update([
-                            'vendido'         => true,
-                            'vendas_qty'      => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
-                            'preco_unitario'  => $data['preco'],
-                            'net_billing'     => $data['net_billing'] > 0 ? $data['net_billing'] : null,
-                        ]);
-                    $totais['atualizadas'] += $affected;
+                        ->count();
+
+                    foreach ($mlbsComVenda as $mlbCode => $data) {
+                        $intQty = (int) $data['qty'];
+                        Publicacao::where('mlb_code', $mlbCode)
+                            ->where('user_id', $user->id)
+                            ->update([
+                                'vendido'         => true,
+                                'vendas_qty'      => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
+                                'preco_unitario'  => $data['preco'],
+                                'net_billing'     => $data['net_billing'] > 0 ? $data['net_billing'] : null,
+                            ]);
+                    }
                 }
 
                 Log::info("[MLB SyncPub] {$empresa->nome} | itens={$totais['itens']} | com_venda=" . count($mlbsComVenda));
-                usleep(400_000);
+                usleep(600_000);
 
             } catch (\Throwable $e) {
                 Log::error("[MLB SyncPub] {$empresa->nome}: " . $e->getMessage());
@@ -766,7 +772,7 @@ class MlbController extends Controller
             }
         }
 
-        $msg = "Sync concluído: {$totais['com_venda']} anúncio(s) com venda em {$totais['itens']} item(ns). {$totais['atualizadas']} publicação(ões) atualizada(s).";
+        $msg = "Sync concluído: {$totais['com_venda']} anúncio(s) com venda em {$totais['itens']} item(ns). {$totais['encontradas']} publicação(ões) sincronizadas.";
         if ($totais['erros'] > 0) $msg .= " ({$totais['erros']} erro(s) — veja o log.)";
 
         return back()->with('success', $msg);
@@ -1723,7 +1729,7 @@ class MlbController extends Controller
         $empresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->get();
 
         $adman  = new AdmanService();
-        $totais = ['itens' => 0, 'com_venda' => 0, 'atualizadas' => 0, 'erros' => 0];
+        $totais = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
 
         foreach ($empresas as $empresa) {
             try {
@@ -1734,19 +1740,22 @@ class MlbController extends Controller
                 $totais['itens']     += count($items);
                 $totais['com_venda'] += count($mlbsComVenda);
 
-                foreach ($mlbsComVenda as $mlbCode => $data) {
-                    $intQty   = (int) $data['qty'];
-                    $affected = Publicacao::where('mlb_code', $mlbCode)
-                        ->update([
+                if (!empty($mlbsComVenda)) {
+                    $mlbCodes = array_keys($mlbsComVenda);
+                    $totais['encontradas'] += Publicacao::whereIn('mlb_code', $mlbCodes)->count();
+
+                    foreach ($mlbsComVenda as $mlbCode => $data) {
+                        $intQty = (int) $data['qty'];
+                        Publicacao::where('mlb_code', $mlbCode)->update([
                             'vendido'        => true,
                             'vendas_qty'     => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
                             'preco_unitario' => $data['preco'],
                             'net_billing'    => $data['net_billing'] > 0 ? $data['net_billing'] : null,
                         ]);
-                    $totais['atualizadas'] += $affected;
+                    }
                 }
 
-                usleep(300_000); // 300ms entre chamadas
+                usleep(600_000); // 600ms entre chamadas
             } catch (\Throwable $e) {
                 Log::error("[MLB SyncTodasVendas] {$empresa->nome}: " . $e->getMessage());
                 $totais['erros']++;
@@ -1754,8 +1763,11 @@ class MlbController extends Controller
         }
 
         $msg = sprintf(
-            'Sync concluído: %d item(ns) recebidos, %d com venda, %d publicação(ões) atualizada(s), %d erro(s).',
-            $totais['itens'], $totais['com_venda'], $totais['atualizadas'], $totais['erros']
+            'Sync concluído: %d item(ns) recebidos, %d com venda na API, %d publicação(ões) sincronizadas%s.',
+            $totais['itens'],
+            $totais['com_venda'],
+            $totais['encontradas'],
+            $totais['erros'] > 0 ? ", {$totais['erros']} erro(s)" : ''
         );
 
         return back()->with('success', $msg);

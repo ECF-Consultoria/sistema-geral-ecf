@@ -233,8 +233,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')->name('admin.')->group(function () {
     Route::get('/empresas',   [AdminController::class, 'empresas'])->name('empresas');
     Route::get('/relatorio',  [AdminController::class, 'relatorio'])->name('relatorio');
-    Route::get('/financeiro',              [AdminController::class, 'fechamento'])->name('financeiro');
-    Route::patch('/financeiro/{company}',  [AdminController::class, 'updateFechamento'])->name('financeiro.update');
+    Route::get('/financeiro',                      [AdminController::class, 'fechamento'])->name('financeiro');
+    Route::patch('/financeiro/{company}',          [AdminController::class, 'updateFechamento'])->name('financeiro.update');
+    Route::post('/financeiro/{company}/recebido',  [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
 });
 
