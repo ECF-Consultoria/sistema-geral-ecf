@@ -48,7 +48,7 @@ const NAV_ITEMS = [
     // ── Administrativo ──────────────────────────────────────────────────────
     { label: 'Empresas',   routeName: 'admin.empresas',   page: 'Admin/Empresas',   icon: Building2,    roles: ['admin'], adminSeparatorBefore: true },
     { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, roles: ['admin'] },
-    { label: 'Financeiro', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     roles: ['admin'] },
+    { label: 'Fechamento', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     roles: ['admin'] },
     { label: 'Inventário', routeName: 'admin.inventario', page: 'Admin/Inventario', icon: Package2,     roles: ['admin'] },
 ];
 
