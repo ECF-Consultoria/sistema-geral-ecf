@@ -497,7 +497,7 @@ import { formatDate } from '@/lib/utils';
 
 ---
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **CFG-01 no REQUIREMENTS.md mapeia Phase 7**
    - What we know: CONTEXT.md e ROADMAP.md Phase 5 incluem CFG-01; REQUIREMENTS.md diz Phase 7.

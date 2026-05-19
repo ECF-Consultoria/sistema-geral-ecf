@@ -97,7 +97,24 @@ Plans:
   3. Todas as empresas cadastradas aparecem na tela Fechamento, incluindo aquelas sem integração Adman — estas exibem badge "Sem integração"
   4. Admin consegue salvar o tipo de serviço de uma empresa (POLO / Assessoria / Incubadora) via formulário inline; o valor persiste após recarregar a página
   5. Admin consegue salvar as datas de início e encerramento de contrato de uma empresa; os valores persistem após recarregar a página
-**Plans**: TBD
+**Plans**: 3 plans
+
+Plans:
+
+**Wave 1**
+- [ ] 05-01-PLAN.md — Migration + Company model + stubs de teste Wave 0 (FCH-02, FCH-03)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 05-02-PLAN.md — AdminController fechamento()/updateFechamento() + rota PATCH (FCH-01, FCH-02, FCH-03)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 05-03-PLAN.md — Financeiro.jsx reescrito + AppLayout label + npm run build + checkpoint humano (FCH-01, CFG-01)
+
+Cross-cutting constraints:
+- `EnsureUserHasRole` middleware obrigatório em todas as rotas admin (Plans 02, 03)
+- Carbon `?->toDateString()` para serialização de datas em props Inertia (Plans 02, 03)
+- `npm run build` obrigatório após qualquer edição JSX (Plan 03)
+
 **UI hint**: yes
 
 ### Phase 6: Backend Fechamento
@@ -139,6 +156,6 @@ v2.0 phases execute in order: 5 → 6 → 7
 | 2. Monitoramento de Jobs | 0/? | Paused (v3.0) | - |
 | 3. Observabilidade | 0/? | Paused (v3.0) | - |
 | 4. Configurações | 0/? | Paused (v3.0) | - |
-| 5. Fundação Fechamento | 0/? | Not started | - |
+| 5. Fundação Fechamento | 0/3 | Ready to execute | - |
 | 6. Backend Fechamento | 0/? | Not started | - |
 | 7. UI Fechamento | 0/? | Not started | - |
