@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Administrativo — Fechamento
-status: executing
-stopped_at: Phase 5 completa — checkpoint humano aprovado — Phase 6 aguarda planejamento
-last_updated: "2026-05-19T18:45:12.605Z"
-last_activity: "2026-05-19 — Phase 5 executada: 3 waves completas, checkpoint humano aprovado"
+status: Ready to execute
+stopped_at: Phase 6 completa (2/2 planos) — próxima: Phase 7 UI Fechamento
+last_updated: "2026-05-19T21:00:00.000Z"
+last_activity: "2026-05-19 — Phase 6 executada: 16/16 testes GREEN, FCH-04 e FCH-05 entregues"
 progress:
   total_phases: 7
   completed_phases: 3
