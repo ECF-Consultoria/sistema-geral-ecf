@@ -5,7 +5,7 @@ import {
     AlertTriangle, Building2, ExternalLink, ArrowLeft, Megaphone, Tag,
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
     Clock, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
-    Image as ImageIcon, Layers, Package, Loader2, RefreshCw, ListFilter,
+    Image as ImageIcon, Layers, Package, Loader2, RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -442,7 +442,6 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
  */
 function MlbsDoAdgroup({ sugadorId, adgroupName }) {
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
-    const [onlyAdgroup, setOnlyAdgroup] = useState(true);
 
     const load = async () => {
         setState(s => ({ ...s, loading: true, error: null }));
@@ -461,10 +460,11 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
         }
     };
 
-    const allMlbs    = state.data?.mlbs ?? [];
-    const matching   = allMlbs.filter(m => m.matches_adgroup);
-    const shown      = onlyAdgroup && matching.length > 0 ? matching : allMlbs;
-    const hasMatches = matching.length > 0;
+    // Sempre mostra só os MLBs prováveis do adgroup (heurística matches_adgroup
+    // via título). User decisão: drilldown "toda a campanha" foi removido pra
+    // não confundir o analista — ele quer só os do adgroup específico.
+    const allMlbs = state.data?.mlbs ?? [];
+    const shown   = allMlbs.filter(m => m.matches_adgroup);
 
     return (
         <div className="card-ecf rounded-xl p-5 mb-4">
@@ -472,25 +472,12 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
                 <div className="flex items-center gap-2">
                     <Package size={14} className="text-white/40" />
                     <h2 className="text-white font-display font-semibold text-base">MLBs neste adgroup</h2>
-                    {state.data?.total != null && (
-                        <span className="text-white/40 text-xs">
-                            · {hasMatches ? `${matching.length} provável${matching.length === 1 ? '' : 's'} / ` : ''}{state.data.total} na campanha
-                        </span>
+                    {state.loaded && (
+                        <span className="text-white/40 text-xs">· {shown.length}</span>
                     )}
                 </div>
 
                 <div className="flex items-center gap-2">
-                    {hasMatches && (
-                        <button
-                            type="button"
-                            onClick={() => setOnlyAdgroup(v => !v)}
-                            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-xs"
-                            title={onlyAdgroup ? 'Mostrar todos os MLBs da campanha' : 'Mostrar só os prováveis deste adgroup'}
-                        >
-                            <ListFilter size={12} />
-                            {onlyAdgroup ? 'Só deste adgroup' : 'Toda a campanha'}
-                        </button>
-                    )}
                     <button
                         type="button"
                         onClick={load}
@@ -533,31 +520,27 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
                 </div>
             )}
 
-            {state.loaded && !state.error && allMlbs.length === 0 && (
+            {state.loaded && !state.error && shown.length === 0 && (
                 <p className="text-white/40 text-sm">
-                    Nenhum MLB encontrado para esta campanha no período {fmtDate(state.data?.periodo_inicio)} → {fmtDate(state.data?.periodo_fim)}.
+                    {allMlbs.length === 0
+                        ? <>Nenhum MLB encontrado para esta campanha no período {fmtDate(state.data?.periodo_inicio)} → {fmtDate(state.data?.periodo_fim)}.</>
+                        : <>Nenhum MLB com título similar a <b className="text-white/60">"{adgroupName}"</b> encontrado entre os {allMlbs.length} MLBs da campanha. O matching é heurístico (palavras iniciais do título) — confira no painel de Ads.</>
+                    }
                 </p>
             )}
 
             {state.loaded && shown.length > 0 && (
                 <ul className="space-y-3">
-                    {shown.map(m => <MlbRow key={m.listing_id} mlb={m} adgroupName={adgroupName} />)}
+                    {shown.map(m => <MlbRow key={m.listing_id} mlb={m} />)}
                 </ul>
             )}
         </div>
     );
 }
 
-function MlbRow({ mlb, adgroupName }) {
-    const highlight = mlb.matches_adgroup;
-
+function MlbRow({ mlb }) {
     return (
-        <li className={cn(
-            'flex gap-3 p-3 rounded-lg border transition-colors',
-            highlight
-                ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.04]'
-                : 'border-white/[0.06] bg-white/[0.02]'
-        )}>
+        <li className="flex gap-3 p-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.04] transition-colors">
             {mlb.image_url ? (
                 <img
                     src={mlb.image_url}
@@ -582,11 +565,6 @@ function MlbRow({ mlb, adgroupName }) {
                         </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                        {highlight && (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-ecf-yellow/15 text-ecf-yellow border border-ecf-yellow/30" title={`Título parece bater com "${adgroupName}"`}>
-                                Deste adgroup
-                            </span>
-                        )}
                         {mlb.permalink && (
                             <a
                                 href={mlb.permalink}

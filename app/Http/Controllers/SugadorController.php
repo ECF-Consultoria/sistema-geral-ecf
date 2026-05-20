@@ -46,6 +46,10 @@ class SugadorController extends Controller
         }
         if ($request->filled('status')) {
             $query->whereIn('status', (array) $request->status);
+        } elseif (!$request->boolean('include_resolved')) {
+            // Resolvidos acumulam (centenas) e raramente são revisitados — escondê-los
+            // por padrão limpa a fila. Toggle "Incluir resolvidos" no filtro mostra.
+            $query->where('status', '!=', Sugador::STATUS_RESOLVIDO);
         }
         if ($request->filled('tipo')) {
             $query->where('tipo', $request->tipo);
@@ -95,7 +99,7 @@ class SugadorController extends Controller
             'sugadores'       => $sugadores,
             'companies'       => $companies,
             'users'           => $users,
-            'filters'         => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id']),
+            'filters'         => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id', 'include_resolved']),
             'total_pendentes' => $totalPendentes,
             'can_manage'      => $user->isAdmin(),
             'can_analyze'     => Gate::allows('analyze', Sugador::class),

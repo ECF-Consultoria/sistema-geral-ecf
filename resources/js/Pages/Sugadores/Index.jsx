@@ -181,12 +181,13 @@ function StatusUpdateModal({ sugador, onClose }) {
 
 export default function SugadoresIndex({ sugadores, companies, users = [], filters, total_pendentes, can_manage, can_analyze }) {
     const [f, setF] = useState({
-        company_id: filters?.company_id || '',
-        user_id:    filters?.user_id || '',
-        status:     filters?.status || '',
-        tipo:       filters?.tipo || '',
-        date_from:  filters?.date_from || '',
-        date_to:    filters?.date_to || '',
+        company_id:       filters?.company_id || '',
+        user_id:          filters?.user_id || '',
+        status:           filters?.status || '',
+        tipo:             filters?.tipo || '',
+        date_from:        filters?.date_from || '',
+        date_to:          filters?.date_to || '',
+        include_resolved: filters?.include_resolved ? '1' : '',
     });
     const [showFilters, setShowFilters] = useState(false);
     const [actionTarget, setActionTarget] = useState(null);
@@ -200,7 +201,7 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
     }
 
     function clearFilters() {
-        setF({ company_id: '', user_id: '', status: '', tipo: '', date_from: '', date_to: '' });
+        setF({ company_id: '', user_id: '', status: '', tipo: '', date_from: '', date_to: '', include_resolved: '' });
         router.get(route('sugadores.index'), {}, { preserveState: true });
     }
 
@@ -304,12 +305,30 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                             placeholder="Até"
                         />
                     </div>
-                    {hasAnyFilter && (
-                        <button onClick={clearFilters} className="mt-3 text-white/50 hover:text-white text-xs underline">
-                            Limpar filtros
-                        </button>
-                    )}
+                    <div className="mt-3 flex items-center justify-between gap-3 flex-wrap">
+                        <label className="inline-flex items-center gap-2 text-white/70 text-xs cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={!!f.include_resolved}
+                                onChange={e => applyFilters({ include_resolved: e.target.checked ? '1' : '' })}
+                                className="w-3.5 h-3.5 accent-ecf-yellow cursor-pointer"
+                            />
+                            Incluir resolvidos na listagem
+                        </label>
+                        {hasAnyFilter && (
+                            <button onClick={clearFilters} className="text-white/50 hover:text-white text-xs underline">
+                                Limpar filtros
+                            </button>
+                        )}
+                    </div>
                 </div>
+            )}
+
+            {/* Aviso de resolvidos ocultos (só quando nenhum status específico está filtrado) */}
+            {!f.status && !f.include_resolved && (
+                <p className="text-white/40 text-[11px] mb-3 -mt-1 px-1">
+                    Sugadores <b className="text-emerald-300/80">resolvidos</b> estão ocultos. Use o filtro <b className="text-white/60">Incluir resolvidos</b> pra ver.
+                </p>
             )}
 
             {/* Tabela */}

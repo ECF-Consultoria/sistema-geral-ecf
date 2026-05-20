@@ -36,3 +36,11 @@ Schedule::command('sugadores:analyze')
     ->dailyAt('06:30')
     ->name('analyze-sugadores')
     ->withoutOverlapping();
+
+// Fecha sugadores cuja campanha foi movida pra quarentena (SGI/Sugadores)
+// ou pausada — analista já tratou. Roda depois do analyze pra pegar
+// adgroups que entraram em quarentena entre a detecção e o cron.
+Schedule::command('sugadores:cleanup-quarentena')
+    ->dailyAt('06:45')
+    ->name('cleanup-sugadores-quarentena')
+    ->withoutOverlapping();
