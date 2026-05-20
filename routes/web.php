@@ -232,7 +232,8 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
 
 // ─── Módulo Administrativo ───────────────────────────────────────────────────
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')->name('admin.')->group(function () {
-    Route::get('/empresas',   [AdminController::class, 'empresas'])->name('empresas');
+    Route::get('/empresas',              [AdminController::class, 'empresas'])->name('empresas');
+    Route::patch('/empresas/{company}',  [AdminController::class, 'updateEmpresa'])->name('empresas.update');
     Route::get('/relatorio',  [AdminController::class, 'relatorio'])->name('relatorio');
     Route::get('/financeiro',                      [AdminController::class, 'fechamento'])->name('financeiro');
     Route::patch('/financeiro/{company}',          [AdminController::class, 'updateFechamento'])->name('financeiro.update');

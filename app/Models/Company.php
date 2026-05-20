@@ -28,7 +28,9 @@ class Company extends Model
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'segment', 'active', 'notes',
-        'service_type', 'contract_start', 'contract_end', 'additional_service',
+        'service_type', 'contract_type', 'contract_start', 'contract_end',
+        'additional_service', 'additional_service_price',
+        'parent_company_id',
     ];
 
     protected $casts = [
@@ -36,6 +38,16 @@ class Company extends Model
         'contract_start' => 'date:Y-m-d',
         'contract_end'   => 'date:Y-m-d',
     ];
+
+    public function filhas()
+    {
+        return $this->hasMany(Company::class, 'parent_company_id');
+    }
+
+    public function pai()
+    {
+        return $this->belongsTo(Company::class, 'parent_company_id');
+    }
 
     public function users()
     {

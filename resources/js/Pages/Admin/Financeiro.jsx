@@ -2,6 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { router, useForm } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check } from 'lucide-react';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { cn, formatDate } from '@/lib/utils';
 
 const SERVICE_LABELS = {
@@ -53,6 +54,107 @@ function IntegrationBadge() {
     );
 }
 
+const TOOLTIP_STYLE = {
+    background: '#0f1116',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    fontSize: 12,
+    color: '#fff',
+};
+
+function ChartCard({ titulo, children }) {
+    return (
+        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
+            <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-3">{titulo}</p>
+            {children}
+        </div>
+    );
+}
+
+function MiniPie({ data }) {
+    if (data.length === 0) {
+        return <p className="text-white/25 text-[12px] text-center py-5">Sem dados</p>;
+    }
+    return (
+        <div>
+            <ResponsiveContainer width="100%" height={90}>
+                <PieChart>
+                    <Pie data={data} cx="50%" cy="50%" innerRadius={24} outerRadius={40}
+                        dataKey="value" strokeWidth={0}>
+                        {data.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                    </Pie>
+                    <Tooltip contentStyle={TOOLTIP_STYLE}
+                        formatter={(val, name) => [`${val} empresa${val !== 1 ? 's' : ''}`, name]} />
+                </PieChart>
+            </ResponsiveContainer>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                {data.map((d, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                        <div className="w-2 h-2 rounded-full shrink-0" style={{ background: d.color }} />
+                        <span className="text-white/45 text-[11px]">
+                            {d.name} <span className="text-white/70 font-semibold">{d.value}</span>
+                        </span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function GraficoServico({ empresas }) {
+    const cnt = {};
+    empresas.forEach(e => { const k = e.service_type || 'sem_tipo'; cnt[k] = (cnt[k] || 0) + 1; });
+    const data = [
+        { name: 'POLO',       key: 'polo',       color: '#3b82f6' },
+        { name: 'Assessoria', key: 'assessoria',  color: '#a855f7' },
+        { name: 'Incubadora', key: 'incubadora',  color: '#10b981' },
+        { name: 'Sem tipo',   key: 'sem_tipo',    color: '#374151' },
+    ].map(d => ({ ...d, value: cnt[d.key] || 0 })).filter(d => d.value > 0);
+    return <ChartCard titulo="Tipo de serviço"><MiniPie data={data} /></ChartCard>;
+}
+
+function GraficoContrato({ empresas }) {
+    const cnt = {};
+    empresas.forEach(e => { const k = e.contract_type || 'sem_tipo'; cnt[k] = (cnt[k] || 0) + 1; });
+    const data = [
+        { name: 'Fixo',        key: 'fixo',       color: '#6366f1' },
+        { name: 'Progressão',  key: 'progressao', color: '#ffe600' },
+        { name: 'Indefinido',  key: 'sem_tipo',   color: '#374151' },
+    ].map(d => ({ ...d, value: cnt[d.key] || 0 })).filter(d => d.value > 0);
+    return <ChartCard titulo="Tipo de contrato"><MiniPie data={data} /></ChartCard>;
+}
+
+function GraficoFaixas({ empresas }) {
+    const cnt = {};
+    empresas.filter(e => e.estado === 'ok' && e.faixa)
+            .forEach(e => { cnt[e.faixa] = (cnt[e.faixa] || 0) + 1; });
+
+    const data = ['faixa_1','faixa_2','faixa_3','faixa_4','faixa_5','faixa_6','maxima']
+        .map((k, i) => ({ name: k === 'maxima' ? 'Máx' : `F${i + 1}`, full: k === 'maxima' ? 'Máx' : `Faixa ${i + 1}`, value: cnt[k] || 0 }))
+        .filter(d => d.value > 0);
+
+    return (
+        <ChartCard titulo="Distribuição de faixas">
+            {data.length === 0
+                ? <p className="text-white/25 text-[12px] text-center py-5">Sem dados</p>
+                : (
+                    <ResponsiveContainer width="100%" height={110}>
+                        <BarChart data={data} barSize={18} margin={{ top: 4, right: 4, left: -28, bottom: 0 }}>
+                            <XAxis dataKey="name" tick={{ fill: 'rgba(255,255,255,0.45)', fontSize: 11 }}
+                                axisLine={false} tickLine={false} />
+                            <YAxis allowDecimals={false} tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 10 }}
+                                axisLine={false} tickLine={false} />
+                            <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(255,255,255,0.03)' }}
+                                formatter={(val, _, props) => [`${val} empresa${val !== 1 ? 's' : ''}`, props.payload.full]} />
+                            <Bar dataKey="value" fill="#ffe600" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                )
+            }
+        </ChartCard>
+    );
+}
+
 function EvolucaoBadge({ evolucao }) {
     if (!evolucao) return null;
     const config = {
@@ -68,7 +170,8 @@ function EvolucaoBadge({ evolucao }) {
 function RecebidoToggle({ empresa, mesSelecionado }) {
     const [loading, setLoading] = useState(false);
 
-    if (empresa.estado !== 'ok') return null;
+    // Filhas não têm toggle individual — pagamento é feito pelo pai
+    if (empresa.estado !== 'ok' || empresa.is_filha) return null;
 
     function toggle(e) {
         e.stopPropagation();
@@ -98,20 +201,21 @@ function RecebidoToggle({ empresa, mesSelecionado }) {
 }
 
 function TotalConsolidado({ empresas }) {
-    const ok             = empresas.filter(e => e.estado === 'ok');
-    const recebidas      = ok.filter(e => e.recebido);
-    const inadimplentes  = ok.filter(e => !e.recebido);
-    const totalAReceber  = ok.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
-    const totalRecebido  = recebidas.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
-    const totalPendente  = inadimplentes.reduce((s, e) => s + Number(e.valor_mensal ?? 0), 0);
-    const temDados       = ok.length > 0;
+    // Filhas não entram no total — valor já está no pai via valor_mensal_grupo
+    const contam        = empresas.filter(e => e.conta_no_total !== false && e.estado === 'ok');
+    const recebidas     = contam.filter(e => e.recebido);
+    const inadimplentes = contam.filter(e => !e.recebido);
+    const totalAReceber = contam.reduce((s, e) => s + Number(e.valor_mensal_grupo ?? e.valor_mensal ?? 0), 0);
+    const totalRecebido = recebidas.reduce((s, e) => s + Number(e.valor_mensal_grupo ?? e.valor_mensal ?? 0), 0);
+    const totalPendente = inadimplentes.reduce((s, e) => s + Number(e.valor_mensal_grupo ?? e.valor_mensal ?? 0), 0);
+    const temDados      = contam.length > 0;
 
     return (
         <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
             <div className="flex items-center gap-2 mb-3">
                 <Banknote size={15} className="text-ecf-yellow/60 shrink-0" />
                 <span className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">
-                    Total consolidado · {ok.length} empresa{ok.length !== 1 ? 's' : ''} com dados
+                    Total consolidado · {contam.length} pagador{contam.length !== 1 ? 'es' : ''} com dados
                 </span>
             </div>
             <div className="grid grid-cols-3 gap-3">
@@ -139,7 +243,7 @@ function TotalConsolidado({ empresas }) {
                         {temDados ? fmtBRL(totalAReceber) : '—'}
                     </p>
                     <p className="text-white/30 text-[11px] mt-0.5">
-                        {ok.length} empresa{ok.length !== 1 ? 's' : ''}
+                        {contam.length} empresa{contam.length !== 1 ? 's' : ''}
                     </p>
                 </div>
             </div>
@@ -211,7 +315,19 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
                 className={cn('transition-transform duration-200 shrink-0', expandida ? 'rotate-180 text-ecf-yellow' : 'text-white/40')}
             />
             <div className="flex-1 min-w-0">
-                <span className="text-white font-semibold text-[13px] truncate block">{empresa.name}</span>
+                <div className="flex items-center gap-2">
+                    <span className="text-white font-semibold text-[13px] truncate">{empresa.name}</span>
+                    {empresa.filhas?.length > 0 && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20 shrink-0">
+                            Grupo · {empresa.filhas.length + 1}
+                        </span>
+                    )}
+                    {empresa.is_filha && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08] shrink-0">
+                            ↳ {empresa.nome_pai}
+                        </span>
+                    )}
+                </div>
                 {empresa.estado === 'ok' && (
                     <span className="text-white/40 text-[12px] mt-0.5 block">
                         {fmtBRL(empresa.faturamento)} · {empresa.periodo_inicio} a {empresa.periodo_fim}
@@ -221,9 +337,10 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
             <EvolucaoBadge evolucao={empresa.evolucao} />
             <ServiceBadge tipo={empresa.service_type} />
             {!empresa.has_adman && <IntegrationBadge />}
-            {empresa.estado === 'ok' && empresa.valor_mensal != null && (
-                <span className="text-emerald-400 text-[13px] font-semibold font-mono shrink-0">
-                    {fmtBRL(empresa.valor_mensal)}
+            {empresa.estado === 'ok' && (empresa.valor_mensal_grupo ?? empresa.valor_mensal) != null && (
+                <span className={cn('text-[13px] font-semibold font-mono shrink-0',
+                    empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
+                    {fmtBRL(empresa.valor_mensal_grupo ?? empresa.valor_mensal)}
                     <span className="text-white/30 font-normal text-[11px]">/mês</span>
                 </span>
             )}
@@ -236,6 +353,7 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
 function ServiceForm({ empresa, onClose }) {
     const { data, setData, patch, processing, errors } = useForm({
         service_type:       empresa.service_type       ?? '',
+        contract_type:      empresa.contract_type      ?? '',
         contract_start:     empresa.contract_start     ?? '',
         contract_end:       empresa.contract_end       ?? '',
         additional_service: empresa.additional_service ?? '',
@@ -251,7 +369,7 @@ function ServiceForm({ empresa, onClose }) {
 
     return (
         <form onSubmit={submit}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                 <div>
                     <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
                         Tipo de serviço
@@ -270,6 +388,25 @@ function ServiceForm({ empresa, onClose }) {
                         <span className="text-[11px] text-red-400 mt-1 block">{errors.service_type}</span>
                     )}
                 </div>
+                <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
+                        Tipo de contrato
+                    </label>
+                    <select
+                        value={data.contract_type}
+                        onChange={e => setData('contract_type', e.target.value)}
+                        className="w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
+                    >
+                        <option value="">Selecionar tipo...</option>
+                        <option value="fixo">Fixo</option>
+                        <option value="progressao">Escala de Progressão</option>
+                    </select>
+                    {errors.contract_type && (
+                        <span className="text-[11px] text-red-400 mt-1 block">{errors.contract_type}</span>
+                    )}
+                </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
                         Início do contrato
@@ -335,12 +472,39 @@ function ServiceForm({ empresa, onClose }) {
 }
 
 function FechamentoAccordion({ empresa, onClose }) {
+    const temGrupo = empresa.filhas?.length > 0;
+
     return (
         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
             {empresa.estado === 'ok' && (
                 <>
                     <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
-                    {empresa.valor_mensal != null && (
+
+                    {/* Breakdown de grupo (pai + filhas) */}
+                    {temGrupo && (
+                        <div className="mb-3 rounded-lg border border-white/[0.06] overflow-hidden">
+                            <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
+                                <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
+                            </div>
+                            {[empresa, ...empresa.filhas].map((e, i) => (
+                                <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
+                                    <span className="text-white/60 text-[12px]">
+                                        {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
+                                    </span>
+                                    <span className="text-white/50 text-[12px] font-mono">
+                                        {e.valor_mensal != null ? fmtBRL(e.valor_mensal) : '—'}
+                                    </span>
+                                </div>
+                            ))}
+                            <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
+                                <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
+                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtBRL(empresa.valor_mensal_grupo)}</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Mensalidade individual ou grupo */}
+                    {!temGrupo && empresa.valor_mensal != null && (
                         <div className="flex items-center justify-between py-2 mb-2 border-b border-white/[0.04]">
                             <span className="text-[11px] uppercase tracking-wider text-white/40">Mensalidade a cobrar</span>
                             <span className="text-emerald-400 text-[15px] font-bold font-mono">
@@ -426,11 +590,77 @@ function MesSeletor({ mesSelecionado }) {
     );
 }
 
+const FILTROS_INICIAL = { busca: '', service_type: '', contract_type: '', estado: '', recebido: '' };
+
+function FiltroBarra({ filtros, onChange, total, filtrado }) {
+    const sel = 'h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/70 focus:outline-none focus:border-ecf-yellow/40';
+    const ativo = Object.values(filtros).some(v => v !== '');
+
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            <input
+                type="text"
+                value={filtros.busca}
+                onChange={e => onChange({ ...filtros, busca: e.target.value })}
+                placeholder="Buscar empresa..."
+                className="h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/70 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 w-44"
+            />
+            <select value={filtros.service_type} onChange={e => onChange({ ...filtros, service_type: e.target.value })} className={sel}>
+                <option value="">Serviço</option>
+                <option value="polo">POLO</option>
+                <option value="assessoria">Assessoria</option>
+                <option value="incubadora">Incubadora</option>
+            </select>
+            <select value={filtros.contract_type} onChange={e => onChange({ ...filtros, contract_type: e.target.value })} className={sel}>
+                <option value="">Contrato</option>
+                <option value="fixo">Fixo</option>
+                <option value="progressao">Progressão</option>
+            </select>
+            <select value={filtros.estado} onChange={e => onChange({ ...filtros, estado: e.target.value })} className={sel}>
+                <option value="">Estado</option>
+                <option value="ok">Com dados</option>
+                <option value="sem_dados">Sem dados</option>
+                <option value="sem_integracao">Sem integração</option>
+            </select>
+            <select value={filtros.recebido} onChange={e => onChange({ ...filtros, recebido: e.target.value })} className={sel}>
+                <option value="">Pagamento</option>
+                <option value="sim">Recebido</option>
+                <option value="nao">Pendente</option>
+            </select>
+            {ativo && (
+                <button
+                    onClick={() => onChange(FILTROS_INICIAL)}
+                    className="h-8 px-2.5 rounded-lg text-[12px] text-white/40 hover:text-white/70 border border-white/[0.06] hover:border-white/20 transition-colors"
+                >
+                    Limpar
+                </button>
+            )}
+            {ativo && (
+                <span className="text-white/30 text-[12px] ml-auto">
+                    {filtrado} de {total}
+                </span>
+            )}
+        </div>
+    );
+}
+
 export default function Financeiro({ companies, mes_selecionado }) {
+    const [filtros, setFiltros] = useState(FILTROS_INICIAL);
+
+    const filtradas = useMemo(() => companies.filter(e => {
+        if (filtros.busca && !e.name.toLowerCase().includes(filtros.busca.toLowerCase())) return false;
+        if (filtros.service_type && e.service_type !== filtros.service_type) return false;
+        if (filtros.contract_type && e.contract_type !== filtros.contract_type) return false;
+        if (filtros.estado && e.estado !== filtros.estado) return false;
+        if (filtros.recebido === 'sim' && !e.recebido) return false;
+        if (filtros.recebido === 'nao' && e.recebido) return false;
+        return true;
+    }), [companies, filtros]);
+
     return (
         <AppLayout title="Fechamento">
             <main className="p-6">
-                <div className="max-w-4xl mx-auto space-y-6">
+                <div className="space-y-6">
                     <div className="flex items-start justify-between gap-4">
                         <div>
                             <div className="flex items-center gap-2 mb-2">
@@ -441,9 +671,22 @@ export default function Financeiro({ companies, mes_selecionado }) {
                         </div>
                         <MesSeletor mesSelecionado={mes_selecionado} />
                     </div>
+                    <div className="grid grid-cols-3 gap-4">
+                        <GraficoServico empresas={companies} />
+                        <GraficoContrato empresas={companies} />
+                        <GraficoFaixas empresas={companies} />
+                    </div>
                     <TotalConsolidado empresas={companies} />
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                        <FechamentoList empresas={companies} mesSelecionado={mes_selecionado} />
+                        <div className="px-4 py-3 border-b border-white/[0.04]">
+                            <FiltroBarra
+                                filtros={filtros}
+                                onChange={setFiltros}
+                                total={companies.length}
+                                filtrado={filtradas.length}
+                            />
+                        </div>
+                        <FechamentoList empresas={filtradas} mesSelecionado={mes_selecionado} />
                     </div>
                 </div>
             </main>
