@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, useForm } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check } from 'lucide-react';
+import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -471,7 +471,7 @@ function ServiceForm({ empresa, onClose }) {
     );
 }
 
-function FechamentoAccordion({ empresa, onClose }) {
+function FechamentoAccordion({ empresa, mesSelecionado, onClose }) {
     const temGrupo = empresa.filhas?.length > 0;
 
     return (
@@ -514,6 +514,19 @@ function FechamentoAccordion({ empresa, onClose }) {
                     )}
                 </>
             )}
+            {!empresa.is_filha && (
+                <div className="flex justify-end mb-3">
+                    <a
+                        href={route('admin.financeiro.relatorio', { company: empresa.id, mes: mesSelecionado })}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                    >
+                        <FileText size={13} />
+                        Gerar relatório PDF
+                    </a>
+                </div>
+            )}
             <div className="border-t border-white/[0.04] pt-4">
                 <ServiceForm empresa={empresa} onClose={onClose} />
             </div>
@@ -551,6 +564,7 @@ function FechamentoList({ empresas, mesSelecionado }) {
                     {aberta === empresa.id && (
                         <FechamentoAccordion
                             empresa={empresa}
+                            mesSelecionado={mesSelecionado}
                             onClose={() => setAberta(null)}
                         />
                     )}
