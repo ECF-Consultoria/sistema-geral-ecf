@@ -398,8 +398,10 @@ class SugadorAnalysisService
      * Lookup `campaignId => ['name', 'status']` da Adman. Usado pra filtrar
      * campanhas de quarentena (SGI/Sugadores) e pausadas/encerradas. Fail-open:
      * se a chamada falha, retorna array vazio e a análise segue sem o filtro.
+     *
+     * Público pra reuso pelo CleanupSugadoresQuarentena.
      */
-    private function loadCampaignsInfo(string $custId): array
+    public function loadCampaignsInfo(string $custId): array
     {
         try {
             $campaigns = $this->adman->fetchAllCampaigns($custId);
@@ -424,9 +426,11 @@ class SugadorAnalysisService
      * True se a campanha está em quarentena (nome SGI/Sugador/Sugadores) ou
      * pausada/encerrada — o analista já lidou com ela.
      *
+     * Público pra reuso pelo CleanupSugadoresQuarentena.
+     *
      * @param  array{name: ?string, status: ?string}|null  $info
      */
-    private function shouldSkipCampaign(?array $info): bool
+    public function shouldSkipCampaign(?array $info): bool
     {
         if (!$info) return false; // fail-open: sem info, deixa entrar
 
