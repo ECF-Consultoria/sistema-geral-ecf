@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cargo;
+use App\Models\Setor;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -9,38 +11,47 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
+/**
+ * CRUD de usuários. Substituiu a estrutura legacy de publication_role + setor
+ * string por vínculos com Setor/Cargo via tabela pivot user_setores.
+ *
+ * Mantém role (admin/consultor/mentor) porque ainda é usada por Goal/PortfolioGoal/
+ * PpaController/company_users.role.
+ */
 class UserController extends Controller
 {
-    private const PUB_ROLES = ['gestor', 'lider', 'publicador', 'analista'];
-
-    /**
-     * Setor → role interna do sistema.
-     * - "Mentor" (legado) → mentor
-     * - qualquer outro   → consultor
-     */
-    private const SETOR_ROLE_MAP = [
-        'Mentor' => 'mentor',
-    ];
-
     public function index()
     {
-        $mapUser = fn($u) => [
-            'id'                      => $u->id,
-            'name'                    => $u->name,
-            'email'                   => $u->email,
-            'role'                    => $u->role,
-            'is_admin'                => $u->role === 'admin',
-            'setor'                   => $u->setor,
-            'active'                  => $u->active,
-            'phone'                   => $u->phone,
-            'publication_role'        => $u->publication_role,
-            'publication_meta'        => $u->publication_meta ?? 220,
-            'publication_permissions' => $u->publication_permissions,
-            'companies_count'         => $u->companies_count,
-            'created_by_name'         => $u->createdBy?->name,
-            'created_at'              => $u->created_at->format('d/m/Y'),
-            'deleted_at'              => $u->deleted_at?->format('d/m/Y H:i'),
-        ];
+        $mapUser = function (User $u) {
+            $setores = $u->setores()->get(['setores.id', 'nome', 'slug'])->map(function ($s) {
+                $cargoId = $s->pivot->cargo_id;
+                $cargoNome = $cargoId ? Cargo::find($cargoId)?->nome : null;
+                return [
+                    'id'           => $s->id,
+                    'nome'         => $s->nome,
+                    'slug'         => $s->slug,
+                    'cargo_id'     => $cargoId,
+                    'cargo_nome'   => $cargoNome,
+                    'is_principal' => (bool) $s->pivot->is_principal,
+                ];
+            });
+
+            return [
+                'id'              => $u->id,
+                'name'            => $u->name,
+                'email'           => $u->email,
+                'role'            => $u->role,
+                'is_admin'        => $u->role === 'admin',
+                'active'          => $u->active,
+                'phone'           => $u->phone,
+                'setores'         => $setores,
+                'lideres_setores' => $u->setoresLiderados()->pluck('setores.id'),
+                'companies_count' => $u->companies_count,
+                'created_by_name' => $u->createdBy?->name,
+                'created_at'      => $u->created_at->format('d/m/Y'),
+                'deleted_at'      => $u->deleted_at?->format('d/m/Y H:i'),
+            ];
+        };
 
         $users = User::with('createdBy')
             ->withCount('companies')
@@ -55,93 +66,50 @@ class UserController extends Controller
             ->get()
             ->map($mapUser);
 
-        $setoresDb = User::whereNotNull('setor')
-            ->where('setor', '!=', '')
-            ->where('role', '!=', 'admin')
-            ->distinct()
-            ->pluck('setor')
-            ->sort()
-            ->values();
+        // Catálogo de setores + cargos pra dropdowns do form
+        $setoresDisponiveis = Setor::where('active', true)
+            ->with(['cargos' => fn($q) => $q->where('active', true)->orderBy('ordem')->orderBy('nome')])
+            ->orderBy('nome')
+            ->get()
+            ->map(fn($s) => [
+                'id'         => $s->id,
+                'nome'       => $s->nome,
+                'slug'       => $s->slug,
+                'is_system'  => (bool) $s->is_system,
+                'cargos'     => $s->cargos->map(fn($c) => ['id' => $c->id, 'nome' => $c->nome])->all(),
+            ]);
 
         return Inertia::render('Users/Index', [
-            'users'        => $users,
-            'deletedUsers' => $deletedUsers,
-            'setoresDb'    => $setoresDb,
+            'users'              => $users,
+            'deletedUsers'       => $deletedUsers,
+            'setoresDisponiveis' => $setoresDisponiveis,
         ]);
     }
 
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'name'                    => 'required|string|max:255',
-            'email'                   => 'required|email|unique:users',
-            'password'                => 'required|string|min:8|confirmed',
-            'is_admin'                => 'boolean',
-            'setor'                   => 'nullable|string|max:100',
-            'phone'                   => 'nullable|string|max:20',
-            'publication_role'        => ['nullable', Rule::in(self::PUB_ROLES)],
-            'publication_meta'        => 'nullable|integer|min:0|max:9999',
-            'publication_permissions' => 'nullable|array',
-            'publication_permissions.*' => ['string', Rule::in(\App\Models\User::ALL_PUB_PERMISSIONS)],
-        ]);
+        $data = $this->validateUser($request, isUpdate: false);
 
         $isAdmin = (bool) ($data['is_admin'] ?? false);
 
-        if ($isAdmin) {
-            $payload = [
-                'name'                    => $data['name'],
-                'email'                   => $data['email'],
-                'password'                => Hash::make($data['password']),
-                'role'                    => 'admin',
-                'setor'                   => null,
-                'phone'                   => $data['phone'] ?? null,
-                'publication_role'        => null,
-                'publication_meta'        => null,
-                'publication_permissions' => null,
-                'created_by'              => $request->user()->id,
-                'active'                  => true,
-            ];
-        } else {
-            $role = self::SETOR_ROLE_MAP[$data['setor'] ?? ''] ?? 'consultor';
-            $payload = [
-                'name'                    => $data['name'],
-                'email'                   => $data['email'],
-                'password'                => Hash::make($data['password']),
-                'role'                    => $role,
-                'setor'                   => $data['setor'] ?? null,
-                'phone'                   => $data['phone'] ?? null,
-                'publication_role'        => $data['publication_role'] ?? null,
-                'publication_meta'        => $data['publication_meta'] ?? 220,
-                'publication_permissions' => $data['publication_permissions'] ?? null,
-                'created_by'              => $request->user()->id,
-                'active'                  => true,
-            ];
-        }
+        $user = User::create([
+            'name'       => $data['name'],
+            'email'      => $data['email'],
+            'password'   => Hash::make($data['password']),
+            'role'       => $this->resolveSystemRole($isAdmin, $data['vinculos'] ?? []),
+            'phone'      => $data['phone'] ?? null,
+            'created_by' => $request->user()->id,
+            'active'     => true,
+        ]);
 
-        $user = User::create($payload);
+        $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
 
-        if (!$isAdmin && !empty($data['publication_role']) && isset($data['publication_meta'])) {
-            $this->salvarMetaHistorico($user->id, $data['publication_meta'] ?? 220);
-        }
-
-        return back()->with('success', "Usuário {$user->name} criado com sucesso.");
+        return back()->with('success', "Usuário {$user->name} criado.");
     }
 
     public function update(Request $request, User $user)
     {
-        $data = $request->validate([
-            'name'                    => 'required|string|max:255',
-            'email'                   => ['required', 'email', Rule::unique('users')->ignore($user->id)],
-            'is_admin'                => 'boolean',
-            'setor'                   => 'nullable|string|max:100',
-            'phone'                   => 'nullable|string|max:20',
-            'active'                  => 'boolean',
-            'password'                => 'nullable|string|min:8|confirmed',
-            'publication_role'        => ['nullable', Rule::in(self::PUB_ROLES)],
-            'publication_meta'        => 'nullable|integer|min:0|max:9999',
-            'publication_permissions' => 'nullable|array',
-            'publication_permissions.*' => ['string', Rule::in(\App\Models\User::ALL_PUB_PERMISSIONS)],
-        ]);
+        $data = $this->validateUser($request, isUpdate: true, userId: $user->id);
 
         $isAdmin = (bool) ($data['is_admin'] ?? false);
 
@@ -150,48 +118,123 @@ class UserController extends Controller
             'email'  => $data['email'],
             'phone'  => $data['phone'] ?? null,
             'active' => $data['active'] ?? $user->active,
+            'role'   => $this->resolveSystemRole($isAdmin, $data['vinculos'] ?? []),
         ];
-
         if (!empty($data['password'])) {
             $update['password'] = Hash::make($data['password']);
         }
 
-        if ($isAdmin) {
-            $update['role']                    = 'admin';
-            $update['setor']                   = null;
-            $update['publication_role']        = null;
-            $update['publication_meta']        = null;
-            $update['publication_permissions'] = null;
-        } else {
-            $update['role']                    = self::SETOR_ROLE_MAP[$data['setor'] ?? ''] ?? 'consultor';
-            $update['setor']                   = $data['setor'] ?? null;
-            $update['publication_role']        = $data['publication_role'] ?? null;
-            $update['publication_meta']        = $data['publication_meta'] ?? 220;
-            $update['publication_permissions'] = $data['publication_permissions'] ?? null;
-        }
-
         $user->update($update);
 
-        if (!$isAdmin && !empty($data['publication_role']) && isset($data['publication_meta'])) {
-            $this->salvarMetaHistorico($user->id, $data['publication_meta'] ?? 220);
-        }
+        $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
 
-        return back()->with('success', 'Usuário atualizado com sucesso.');
+        return back()->with('success', 'Usuário atualizado.');
     }
 
-    private function salvarMetaHistorico(int $userId, int $meta): void
+    private function validateUser(Request $request, bool $isUpdate, ?int $userId = null): array
     {
-        DB::table('mlb_meta_historico')->upsert(
-            [
-                'user_id'    => $userId,
-                'mes_inicio' => now()->format('Y-m'),
-                'meta'       => $meta,
-                'created_at' => now(),
-                'updated_at' => now(),
+        $rules = [
+            'name'                    => ['required', 'string', 'max:255'],
+            'email'                   => [
+                'required', 'email',
+                $isUpdate ? Rule::unique('users')->ignore($userId) : Rule::unique('users'),
             ],
-            ['user_id', 'mes_inicio'],
-            ['meta', 'updated_at']
-        );
+            'phone'                   => ['nullable', 'string', 'max:20'],
+            'is_admin'                => ['boolean'],
+            'active'                  => ['boolean'],
+            'vinculos'                => ['array'],
+            'vinculos.*.setor_id'     => ['required', 'integer', 'exists:setores,id'],
+            'vinculos.*.cargo_id'     => ['nullable', 'integer', 'exists:cargos,id'],
+            'vinculos.*.is_principal' => ['boolean'],
+        ];
+
+        if ($isUpdate) {
+            $rules['password'] = ['nullable', 'string', 'min:8', 'confirmed'];
+        } else {
+            $rules['password'] = ['required', 'string', 'min:8', 'confirmed'];
+        }
+
+        return $request->validate($rules);
+    }
+
+    /**
+     * Decide role do sistema (admin/consultor/mentor) baseado em:
+     * - is_admin flag → role=admin
+     * - se algum vínculo tem cargo "Mentor" → role=mentor
+     * - senão → role=consultor (default)
+     */
+    private function resolveSystemRole(bool $isAdmin, array $vinculos): string
+    {
+        if ($isAdmin) return 'admin';
+
+        foreach ($vinculos as $v) {
+            if (empty($v['cargo_id'])) continue;
+            $cargo = Cargo::find($v['cargo_id']);
+            if ($cargo && $cargo->slug === 'mentor') return 'mentor';
+        }
+        return 'consultor';
+    }
+
+    /**
+     * Sincroniza user_setores: remove vínculos que não vieram, atualiza os existentes,
+     * cria os novos. Garante no máximo 1 is_principal.
+     */
+    private function syncVinculos(User $user, bool $isAdmin, array $vinculos): void
+    {
+        // Admin tem 1 vínculo fixo: setor Administração + cargo Admin
+        if ($isAdmin) {
+            $admin = Setor::where('slug', 'administracao')->first();
+            if ($admin) {
+                $cargoAdmin = Cargo::where('setor_id', $admin->id)->where('slug', 'admin')->first();
+                $vinculos = [[
+                    'setor_id'     => $admin->id,
+                    'cargo_id'     => $cargoAdmin?->id,
+                    'is_principal' => true,
+                ]];
+            }
+        }
+
+        // Garante no máx 1 is_principal — se o front mandou múltiplos, pega o primeiro
+        $principalEncontrado = false;
+        foreach ($vinculos as &$v) {
+            if (!empty($v['is_principal'])) {
+                if ($principalEncontrado) $v['is_principal'] = false;
+                else $principalEncontrado = true;
+            }
+        }
+        unset($v);
+        // Se nenhum vínculo foi marcado como principal, marca o primeiro
+        if (!$principalEncontrado && count($vinculos) > 0) {
+            $vinculos[0]['is_principal'] = true;
+        }
+
+        DB::transaction(function () use ($user, $vinculos) {
+            $setorIdsAtuais = DB::table('user_setores')->where('user_id', $user->id)->pluck('setor_id')->all();
+            $setorIdsNovos  = array_column($vinculos, 'setor_id');
+
+            // Remove os que sumiram
+            $aRemover = array_diff($setorIdsAtuais, $setorIdsNovos);
+            if (!empty($aRemover)) {
+                DB::table('user_setores')
+                    ->where('user_id', $user->id)
+                    ->whereIn('setor_id', $aRemover)
+                    ->delete();
+            }
+
+            // Upsert dos vínculos atuais
+            foreach ($vinculos as $v) {
+                DB::table('user_setores')->updateOrInsert(
+                    ['user_id' => $user->id, 'setor_id' => $v['setor_id']],
+                    [
+                        'cargo_id'     => $v['cargo_id'] ?? null,
+                        'is_principal' => !empty($v['is_principal']),
+                        'assigned_at'  => now(),
+                        'updated_at'   => now(),
+                        'created_at'   => now(),
+                    ]
+                );
+            }
+        });
     }
 
     public function destroy(Request $request, User $user)
@@ -201,16 +244,15 @@ class UserController extends Controller
         }
 
         $nome = $user->name;
-        // Soft delete — mantém registros vinculados intactos e permite restauração
         $user->delete();
-        return back()->with('success', "Usuário \"{$nome}\" excluído. Os registros dele foram preservados.");
+        return back()->with('success', "Usuário \"{$nome}\" excluído.");
     }
 
     public function restore(int $id)
     {
         $user = User::withTrashed()->findOrFail($id);
         $user->restore();
-        return back()->with('success', "Usuário \"{$user->name}\" restaurado com sucesso.");
+        return back()->with('success', "Usuário \"{$user->name}\" restaurado.");
     }
 
     public function forceDestroy(Request $request, int $id)
@@ -223,26 +265,6 @@ class UserController extends Controller
 
         $nome = $user->name;
         $user->forceDelete();
-        return back()->with('success', "Usuário \"{$nome}\" removido permanentemente do sistema.");
-    }
-
-    /**
-     * Remove uma opção customizada de setor: zera o setor de todos os usuários
-     * que usavam esse valor.
-     */
-    public function destroyOpcaoSetor(Request $request)
-    {
-        $data = $request->validate([
-            'valor' => 'required|string|max:100',
-        ]);
-
-        $affected = User::where('setor', $data['valor'])
-            ->where('role', '!=', 'admin')
-            ->update(['setor' => null]);
-
-        return back()->with(
-            'success',
-            "Setor \"{$data['valor']}\" removido ({$affected} usuário" . ($affected !== 1 ? 's' : '') . ' atualizado' . ($affected !== 1 ? 's' : '') . ')'
-        );
+        return back()->with('success', "Usuário \"{$nome}\" removido permanentemente.");
     }
 }

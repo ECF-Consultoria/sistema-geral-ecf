@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Database\Factories\UserFactory;
+use App\Support\Permissions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -17,7 +18,7 @@ class User extends Authenticatable
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'email', 'role', 'setor', 'cargo', 'active', 'publication_role'])
+            ->logOnly(['name', 'email', 'role', 'active'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -29,8 +30,10 @@ class User extends Authenticatable
     }
 
     protected $fillable = [
-        'name', 'email', 'password', 'role', 'setor', 'cargo', 'created_by', 'active', 'phone',
-        'publication_role', 'publication_meta', 'publication_permissions',
+        'name', 'email', 'password', 'role', 'created_by', 'active', 'phone',
+        // Colunas legacy mantidas pra retrocompat até cleanup pós-validação
+        'setor_legacy', 'cargo_legacy',
+        'publication_role_legacy', 'publication_meta_legacy', 'publication_permissions_legacy',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -38,47 +41,105 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at'      => 'datetime',
-            'password'               => 'hashed',
-            'active'                 => 'boolean',
-            'publication_permissions' => 'array',
+            'email_verified_at'              => 'datetime',
+            'password'                       => 'hashed',
+            'active'                         => 'boolean',
+            'publication_permissions_legacy' => 'array',
         ];
     }
 
-    // Permissões padrão por papel (quando publication_permissions é null)
-    private const DEFAULT_PUB_PERMISSIONS = [
-        'gestor'     => ['dashboard', 'meu_painel', 'empresas', 'historico', 'treinamento', 'projetos', 'sugadores'],
-        'lider'      => ['dashboard', 'meu_painel', 'publicacoes', 'vendas', 'historico', 'revisao', 'empresas', 'treinamento', 'projetos', 'sugadores'],
-        'publicador' => ['meu_painel', 'publicacoes', 'vendas', 'historico', 'projetos'],
-        'analista'   => ['empresas', 'historico', 'projetos', 'sugadores'],
-    ];
+    /**
+     * Permissões agregadas durante uma única request, evitando reconsultar o banco
+     * em cada chamada de hasPermission(). Reset implicitamente entre requests.
+     *
+     * @var array<int,string>|null
+     */
+    protected ?array $effectivePermissionsCache = null;
 
-    public const ALL_PUB_PERMISSIONS = [
-        'treinamento', 'meu_painel', 'publicacoes', 'vendas',
-        'historico', 'revisao', 'empresas', 'dashboard', 'projetos', 'sugadores',
-    ];
-
-    public function isAdmin(): bool { return $this->role === 'admin'; }
+    // ─── Role do sistema (admin/consultor/mentor) — MANTIDO ──────────────────
+    public function isAdmin(): bool    { return $this->role === 'admin'; }
     public function isConsultor(): bool { return $this->role === 'consultor'; }
-    public function isMentor(): bool { return $this->role === 'mentor'; }
+    public function isMentor(): bool   { return $this->role === 'mentor'; }
 
-    public function isGestor(): bool { return $this->publication_role === 'gestor'; }
-    public function isLiderPub(): bool { return $this->publication_role === 'lider'; }
-    public function isPublicador(): bool { return $this->publication_role === 'publicador'; }
-    public function hasPublicationRole(): bool { return !is_null($this->publication_role); }
+    // ─── Relacionamentos: setores e cargos ───────────────────────────────────
 
-    public function hasPubPermission(string $perm): bool
+    /** Setores em que o user é MEMBRO (com cargo no pivot). */
+    public function setores(): BelongsToMany
     {
-        if ($this->isAdmin()) return true;
-        if (!$this->publication_role) return false;
+        return $this->belongsToMany(Setor::class, 'user_setores')
+            ->withPivot('cargo_id', 'is_principal', 'assigned_at')
+            ->withTimestamps();
+    }
 
-        $perms = $this->publication_permissions;
-        if ($perms !== null) {
-            return in_array($perm, $perms);
+    /** Setores em que o user é LÍDER (não precisa ser membro). */
+    public function setoresLiderados(): BelongsToMany
+    {
+        return $this->belongsToMany(Setor::class, 'setor_lideres')
+            ->withPivot('assigned_by', 'assigned_at')
+            ->withTimestamps();
+    }
+
+    /** Setor marcado como is_principal (1º que aparecer; deveria ser único). */
+    public function setorPrincipal(): ?Setor
+    {
+        return $this->setores()->wherePivot('is_principal', true)->first();
+    }
+
+    public function isLider(): bool
+    {
+        return $this->setoresLiderados()->exists();
+    }
+
+    public function isLiderDe(int $setorId): bool
+    {
+        return $this->setoresLiderados()->where('setores.id', $setorId)->exists();
+    }
+
+    // ─── Sistema de permissões ───────────────────────────────────────────────
+
+    /**
+     * Permission check único do sistema. Resolve via união das permissões dos
+     * setores em que o user é membro + pacote automático de líder (se aplicável).
+     */
+    public function hasPermission(string $key): bool
+    {
+        if ($this->isAdmin()) return true; // short-circuit superuser
+
+        return \in_array($key, $this->effectivePermissions(), true);
+    }
+
+    /**
+     * Lista completa de permissões deste user. Cacheada por request — invalidar
+     * via `$user->refresh()` se mudar setores/permissões na mesma request.
+     *
+     * @return array<int,string>
+     */
+    public function effectivePermissions(): array
+    {
+        if ($this->effectivePermissionsCache !== null) {
+            return $this->effectivePermissionsCache;
         }
 
-        return in_array($perm, self::DEFAULT_PUB_PERMISSIONS[$this->publication_role] ?? []);
+        if ($this->isAdmin()) {
+            return $this->effectivePermissionsCache = Permissions::all();
+        }
+
+        // União: permissões de todos os setores membros + lideranca.* se for líder
+        $keys = \App\Models\SetorPermissao::query()
+            ->whereIn('setor_id', $this->setores()->pluck('setores.id'))
+            ->pluck('permission_key')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($this->isLider()) {
+            $keys = array_values(array_unique(array_merge($keys, Permissions::AUTO_LIDERANCA)));
+        }
+
+        return $this->effectivePermissionsCache = $keys;
     }
+
+    // ─── Carteira (company_users) — sem mudança ──────────────────────────────
 
     public function companies()
     {
@@ -119,5 +180,44 @@ class User extends Authenticatable
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    // ─── Helpers legacy (mantidos pra retrocompat — derivam dos novos dados) ─
+
+    /**
+     * Retorna true se o user pertence ao setor "Publicação" (qualquer cargo).
+     * Usado por código antigo que checava `hasPublicationRole()`.
+     */
+    public function hasPublicationRole(): bool
+    {
+        return $this->setores()->where('slug', 'publicacao')->exists();
+    }
+
+    /** Substituto de hasPubPermission() — mapeia old keys (sem prefixo) pras novas. */
+    public function hasPubPermission(string $perm): bool
+    {
+        return $this->hasPermission("mlb.{$perm}");
+    }
+
+    public function isGestor(): bool
+    {
+        return $this->setores()
+            ->wherePivot('cargo_id', '!=', null)
+            ->whereHas('cargos', fn($q) => $q->where('slug', 'gestor-de-publicacao'))
+            ->exists();
+    }
+
+    public function isLiderPub(): bool
+    {
+        return $this->setores()
+            ->whereHas('cargos', fn($q) => $q->where('slug', 'lider-de-publicacao'))
+            ->exists();
+    }
+
+    public function isPublicador(): bool
+    {
+        return $this->setores()
+            ->whereHas('cargos', fn($q) => $q->where('slug', 'publicador'))
+            ->exists();
     }
 }

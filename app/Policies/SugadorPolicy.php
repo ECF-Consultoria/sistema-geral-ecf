@@ -4,6 +4,7 @@ namespace App\Policies;
 
 use App\Models\Sugador;
 use App\Models\User;
+use App\Support\Permissions;
 
 /**
  * Regras de acesso ao módulo Sugadores (§9 do MODULO_SUGADORES.md).
@@ -25,10 +26,8 @@ class SugadorPolicy
      */
     public function viewAny(User $user): bool
     {
-        return $user->isAdmin()
-            || $user->isConsultor()
-            || $user->isMentor()
-            || $user->hasPubPermission('sugadores');
+        return $user->hasPermission(Permissions::CORE_SUGADORES)
+            || $user->hasPermission(Permissions::CORE_SUGADORES_GLOBAL);
     }
 
     /**
@@ -65,20 +64,22 @@ class SugadorPolicy
 
     /**
      * Disparar análise on-demand (botão "Rodar análise" no Index).
-     * Permitido a admin e a quem tem permissão de Sugadores
-     * (gestor / lider / analista). Útil para o analista forçar
-     * uma reanálise sem esperar o cron das 06:30.
+     * Permitido a admin e a quem tem qualquer permissão de Sugadores.
      */
     public function analyze(User $user): bool
     {
-        return $user->isAdmin() || $user->hasPubPermission('sugadores');
+        return $user->isAdmin() || $user->hasPermission(Permissions::CORE_SUGADORES);
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
+    /**
+     * "Visão global" = vê sugadores de todas empresas, não só da carteira.
+     * Concedido a setores com a permissão CORE_SUGADORES_GLOBAL.
+     */
     private function hasGlobalView(User $user): bool
     {
-        return $user->isAdmin() || $user->isGestor() || $user->isLiderPub();
+        return $user->isAdmin() || $user->hasPermission(Permissions::CORE_SUGADORES_GLOBAL);
     }
 
     private function isInCarteira(User $user, int $companyId): bool

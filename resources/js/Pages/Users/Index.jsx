@@ -4,49 +4,30 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import ComboInput from '@/Components/ComboInput';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, Briefcase, BarChart2, Settings2, Shield, AlertTriangle, RotateCcw } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X } from 'lucide-react';
 
-const ALL_PUB_PERMISSIONS = [
-    { key: 'treinamento', label: 'Treinamentos' },
-    { key: 'meu_painel',  label: 'Meu Painel' },
-    { key: 'publicacoes', label: 'Publicações' },
-    { key: 'vendas',      label: 'Vendas' },
-    { key: 'historico',   label: 'Histórico' },
-    { key: 'revisao',     label: 'Revisão' },
-    { key: 'empresas',    label: 'Empresas' },
-    { key: 'dashboard',   label: 'Dashboard Equipe' },
-    { key: 'projetos',    label: 'Projetos' },
-];
-
-// Setores padrão (não removíveis)
-const DEFAULT_SETORES = ['Publicação', 'Marketing', 'Administrativo'];
-
-const NO_PUB_ROLE = '__none__';
-
+/**
+ * Vínculos (form local): array de objetos com {setor_id, cargo_id, is_principal}.
+ * Backend recebe esse array e faz sync em user_setores.
+ */
 const initialForm = () => ({
     name: '', email: '', password: '', password_confirmation: '',
     is_admin: false,
-    setor: '', phone: '', active: true,
-    publication_role: NO_PUB_ROLE, publication_meta: 220,
-    pub_perms_custom: false,
-    publication_permissions: [],
+    phone: '', active: true,
+    vinculos: [],   // [{ setor_id, cargo_id, is_principal }]
 });
 
-export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] }) {
+export default function UsersIndex({ users, deletedUsers = [], setoresDisponiveis = [] }) {
     const [search, setSearch] = useState('');
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
     const [deleteTarget, setDeleteTarget] = useState(null);
     const [forceDeleteTarget, setForceDeleteTarget] = useState(null);
     const [showDeleted, setShowDeleted] = useState(false);
-
-    const setorOptions = [...new Set([...DEFAULT_SETORES, ...(setoresDb ?? [])])];
 
     const filtered = users.filter(u =>
         u.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,97 +45,74 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
 
     const openEdit = (u) => {
         setEditing(u);
-        const hasCustomPerms = u.publication_permissions !== null && u.publication_permissions !== undefined;
         setData({
-            name:                    u.name,
-            email:                   u.email,
-            password:                '',
-            password_confirmation:   '',
-            is_admin:                !!u.is_admin,
-            setor:                   u.setor || '',
-            phone:                   u.phone || '',
-            active:                  u.active,
-            publication_role:        u.publication_role || NO_PUB_ROLE,
-            publication_meta:        u.publication_meta ?? 220,
-            pub_perms_custom:        hasCustomPerms,
-            publication_permissions: u.publication_permissions ?? [],
+            name:     u.name,
+            email:    u.email,
+            password: '',
+            password_confirmation: '',
+            is_admin: !!u.is_admin,
+            phone:    u.phone || '',
+            active:   u.active,
+            vinculos: (u.setores || []).map(s => ({
+                setor_id:     s.id,
+                cargo_id:     s.cargo_id ?? null,
+                is_principal: !!s.is_principal,
+            })),
         });
         setOpen(true);
     };
 
-    const togglePerm = (key) => {
-        const current = data.publication_permissions ?? [];
-        setData('publication_permissions',
-            current.includes(key) ? current.filter(k => k !== key) : [...current, key]
-        );
+    const addVinculo = () => {
+        const usados = new Set(data.vinculos.map(v => v.setor_id));
+        const livre = setoresDisponiveis.find(s => !usados.has(s.id));
+        if (!livre) return;
+        setData('vinculos', [...data.vinculos, {
+            setor_id: livre.id,
+            cargo_id: null,
+            is_principal: data.vinculos.length === 0,
+        }]);
+    };
+
+    const removeVinculo = (idx) => {
+        const novos = data.vinculos.filter((_, i) => i !== idx);
+        // Se removeu o principal, marca o primeiro restante como principal
+        if (data.vinculos[idx]?.is_principal && novos.length > 0) {
+            novos[0].is_principal = true;
+        }
+        setData('vinculos', novos);
+    };
+
+    const updateVinculo = (idx, patch) => {
+        setData('vinculos', data.vinculos.map((v, i) => i === idx ? { ...v, ...patch } : v));
+    };
+
+    const setPrincipal = (idx) => {
+        setData('vinculos', data.vinculos.map((v, i) => ({ ...v, is_principal: i === idx })));
     };
 
     const submit = (e) => {
         e.preventDefault();
-        const payload = data.is_admin
-            ? {
-                name:     data.name,
-                email:    data.email,
-                password: data.password,
-                password_confirmation: data.password_confirmation,
-                is_admin: true,
-                phone:    data.phone,
-                active:   data.active,
-            }
-            : {
-                name:             data.name,
-                email:            data.email,
-                password:         data.password,
-                password_confirmation: data.password_confirmation,
-                is_admin:         false,
-                setor:            data.setor,
-                phone:            data.phone,
-                active:           data.active,
-                publication_role: data.publication_role === NO_PUB_ROLE ? null : data.publication_role,
-                publication_meta: data.publication_meta,
-                publication_permissions: data.pub_perms_custom ? data.publication_permissions : null,
-            };
-
-        if (editing) {
-            router.put(route('users.update', editing.id), payload, { onSuccess: () => setOpen(false) });
-        } else {
-            router.post(route('users.store'), payload, { onSuccess: () => setOpen(false) });
-        }
+        const payload = {
+            name:     data.name,
+            email:    data.email,
+            password: data.password,
+            password_confirmation: data.password_confirmation,
+            is_admin: data.is_admin,
+            phone:    data.phone,
+            active:   data.active,
+            vinculos: data.is_admin ? [] : data.vinculos,
+        };
+        const opts = { onSuccess: () => setOpen(false) };
+        if (editing) router.put(route('users.update', editing.id), payload, opts);
+        else router.post(route('users.store'), payload, opts);
     };
 
-    const isAdmin    = data.is_admin;
-    const hasPubRole = data.publication_role !== NO_PUB_ROLE;
-    const setor      = data.setor;
-    const isSetorPub = setor === 'Publicação';
-    const isSetorMkt = setor === 'Marketing';
-    const isSetorAdm = setor === 'Administrativo';
-    // Mostra módulo pub se setor for Publicação, OU se já tem papel (backward compat)
-    const showModPub = !isAdmin && (isSetorPub || hasPubRole);
-
+    const restore = (u) => router.post(route('users.restore', u.id));
     const confirmDelete = () => {
-        if (!deleteTarget) return;
-        router.delete(route('users.destroy', deleteTarget.id), {
-            onSuccess: () => setDeleteTarget(null),
-        });
+        if (deleteTarget) router.delete(route('users.destroy', deleteTarget.id), { onSuccess: () => setDeleteTarget(null) });
     };
-
     const confirmForceDelete = () => {
-        if (!forceDeleteTarget) return;
-        router.delete(route('users.force-destroy', forceDeleteTarget.id), {
-            onSuccess: () => setForceDeleteTarget(null),
-        });
-    };
-
-    const restore = (u) => {
-        router.post(route('users.restore', u.id));
-    };
-
-    const handleDeleteSetor = (valor) => {
-        router.delete(route('users.opcao-setor.destroy'), {
-            data: { valor },
-            preserveScroll: true,
-            preserveState: false,
-        });
+        if (forceDeleteTarget) router.delete(route('users.force-destroy', forceDeleteTarget.id), { onSuccess: () => setForceDeleteTarget(null) });
     };
 
     return (
@@ -187,7 +145,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                                 <TableRow>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>E-mail</TableHead>
-                                    <TableHead>Setor / Tipo</TableHead>
+                                    <TableHead>Setor(es) / Cargo</TableHead>
                                     <TableHead>Empresas</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead>Criado em</TableHead>
@@ -204,10 +162,20 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
                                                     <Shield size={11} /> Admin
                                                 </span>
+                                            ) : u.setores?.length > 0 ? (
+                                                <div className="flex flex-wrap gap-1">
+                                                    {u.setores.map(s => (
+                                                        <span key={s.id} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] border ${
+                                                            s.is_principal
+                                                                ? 'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/30'
+                                                                : 'bg-white/[0.04] text-white/60 border-white/[0.08]'
+                                                        }`}>
+                                                            {s.nome}{s.cargo_nome ? ` · ${s.cargo_nome}` : ''}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             ) : (
-                                                <span className="text-sm text-white/80">
-                                                    {u.setor || <span className="text-white/30 italic">—</span>}
-                                                </span>
+                                                <span className="text-white/30 italic text-sm">—</span>
                                             )}
                                         </TableCell>
                                         <TableCell className="text-sm">{u.companies_count}</TableCell>
@@ -227,7 +195,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                                                 <Button size="icon" variant="ghost" onClick={() => openEdit(u)}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
-                                                <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(u)} title="Excluir permanentemente">
+                                                <Button size="icon" variant="ghost" onClick={() => setDeleteTarget(u)} title="Excluir">
                                                     <Trash2 className="h-4 w-4 text-destructive" />
                                                 </Button>
                                             </div>
@@ -248,17 +216,16 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                 </Card>
             </div>
 
+            {/* Modal criar/editar */}
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-lg">
+                <DialogContent className="max-w-2xl">
                     <DialogHeader>
                         <DialogTitle>{editing ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={submit} className="space-y-4">
-
-                        {/* Tipo de acesso: Usuário / Admin */}
+                        {/* Toggle Admin */}
                         <div className="grid grid-cols-2 gap-2">
-                            <button type="button"
-                                onClick={() => setData('is_admin', false)}
+                            <button type="button" onClick={() => setData('is_admin', false)}
                                 className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
                                     !data.is_admin
                                         ? 'bg-ecf-yellow/15 border-ecf-yellow/40 text-ecf-yellow'
@@ -266,8 +233,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                                 }`}>
                                 <Users size={13} className="inline mr-1.5" /> Usuário
                             </button>
-                            <button type="button"
-                                onClick={() => setData('is_admin', true)}
+                            <button type="button" onClick={() => setData('is_admin', true)}
                                 className={`px-3 py-2 rounded-lg border text-sm font-semibold transition-colors ${
                                     data.is_admin
                                         ? 'bg-red-500/15 border-red-500/40 text-red-400'
@@ -278,188 +244,115 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                         </div>
 
                         <div className="grid grid-cols-2 gap-4">
-                            {/* Nome */}
                             <div className="col-span-2 space-y-1.5">
                                 <Label>Nome *</Label>
-                                <Input
-                                    value={data.name}
-                                    onChange={e => setData('name', e.target.value)}
-                                    required
-                                />
+                                <Input value={data.name} onChange={e => setData('name', e.target.value)} required />
                                 {errors.name && <p className="text-destructive text-xs">{errors.name}</p>}
                             </div>
-
-                            {/* Email */}
                             <div className="space-y-1.5">
                                 <Label>E-mail *</Label>
-                                <Input
-                                    type="email"
-                                    value={data.email}
-                                    onChange={e => setData('email', e.target.value)}
-                                    required
-                                />
+                                <Input type="email" value={data.email} onChange={e => setData('email', e.target.value)} required />
                                 {errors.email && <p className="text-destructive text-xs">{errors.email}</p>}
                             </div>
-
-                            {/* Telefone */}
                             <div className="space-y-1.5">
                                 <Label>Telefone</Label>
-                                <Input
-                                    value={data.phone}
-                                    onChange={e => setData('phone', e.target.value)}
-                                    placeholder="(11) 99999-9999"
-                                />
+                                <Input value={data.phone} onChange={e => setData('phone', e.target.value)} placeholder="(11) 99999-9999" />
                             </div>
-
-                            {/* Senha */}
                             <div className="space-y-1.5">
                                 <Label>Senha {editing ? '(deixe vazio para manter)' : '*'}</Label>
-                                <Input
-                                    type="password"
-                                    value={data.password}
-                                    onChange={e => setData('password', e.target.value)}
-                                    required={!editing}
-                                />
+                                <Input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editing} />
                                 {errors.password && <p className="text-destructive text-xs">{errors.password}</p>}
                             </div>
-
                             {data.password && (
                                 <div className="space-y-1.5">
                                     <Label>Confirmar Senha</Label>
-                                    <Input
-                                        type="password"
-                                        value={data.password_confirmation}
-                                        onChange={e => setData('password_confirmation', e.target.value)}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Setor (ComboInput) — só pra Usuário */}
-                            {!data.is_admin && (
-                                <div className="col-span-2 space-y-1.5">
-                                    <Label>Setor</Label>
-                                    <ComboInput
-                                        value={data.setor}
-                                        onChange={v => setData('setor', v)}
-                                        options={setorOptions}
-                                        defaults={DEFAULT_SETORES}
-                                        placeholder="Selecione ou crie um setor"
-                                        onDelete={handleDeleteSetor}
-                                    />
-                                    {errors.setor && <p className="text-destructive text-xs">{errors.setor}</p>}
-                                </div>
-                            )}
-
-                            {/* ── Módulo Publicação — setor Publicação ou backward compat ── */}
-                            {showModPub && (
-                                <div className="col-span-2 pt-2 border-t border-white/[0.06]">
-                                    <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-3 flex items-center gap-1.5">
-                                        <BarChart2 size={12} /> Módulo Publicação
-                                    </p>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="space-y-1.5">
-                                            <Label>Papel na Publicação</Label>
-                                            <Select
-                                                value={data.publication_role}
-                                                onValueChange={v => setData('publication_role', v)}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder="Sem acesso" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value={NO_PUB_ROLE}>Sem acesso</SelectItem>
-                                                    <SelectItem value="gestor">Gestor (visão da equipe)</SelectItem>
-                                                    <SelectItem value="analista">Analista (cadastra empresas/SKUs)</SelectItem>
-                                                    <SelectItem value="lider">Líder (revisa + publica + atribui)</SelectItem>
-                                                    <SelectItem value="publicador">Publicador</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <Label>Meta Mensal</Label>
-                                            <Input
-                                                type="number"
-                                                min={0}
-                                                max={9999}
-                                                value={data.publication_meta}
-                                                onChange={e => {
-                                                    const v = parseInt(e.target.value);
-                                                    setData('publication_meta', isNaN(v) ? 0 : v);
-                                                }}
-                                                disabled={!hasPubRole}
-                                                placeholder="220"
-                                            />
-                                            <p className="text-white/30 text-[11px]">Anúncios/mês (0 = sem meta)</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* ── Permissões Publicação ── */}
-                            {showModPub && hasPubRole && (
-                                <div className="col-span-2 pt-2 border-t border-white/[0.06]">
-                                    <div className="flex items-center justify-between mb-3">
-                                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1.5">
-                                            <Settings2 size={12} /> Permissões Publicação
-                                        </p>
-                                        <label className="flex items-center gap-2 cursor-pointer select-none">
-                                            <span className="text-white/40 text-[11px]">Personalizar</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setData('pub_perms_custom', !data.pub_perms_custom)}
-                                                className={`relative w-9 h-5 rounded-full transition-colors ${data.pub_perms_custom ? 'bg-ecf-yellow' : 'bg-white/10'}`}
-                                            >
-                                                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${data.pub_perms_custom ? 'translate-x-4' : ''}`} />
-                                            </button>
-                                        </label>
-                                    </div>
-
-                                    {data.pub_perms_custom ? (
-                                        <div className="grid grid-cols-2 gap-2">
-                                            {ALL_PUB_PERMISSIONS.map(p => (
-                                                <label key={p.key} className="flex items-center gap-2 cursor-pointer py-1">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={(data.publication_permissions ?? []).includes(p.key)}
-                                                        onChange={() => togglePerm(p.key)}
-                                                        className="w-4 h-4 rounded accent-ecf-yellow"
-                                                    />
-                                                    <span className="text-white/70 text-[13px]">{p.label}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <p className="text-white/30 text-[12px]">
-                                            Usando permissões padrão do papel. Ative "Personalizar" para controlar o acesso individualmente.
-                                        </p>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* ── Módulo Marketing ── */}
-                            {!isAdmin && isSetorMkt && (
-                                <div className="col-span-2 pt-2 border-t border-white/[0.06]">
-                                    <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-3">Módulo Marketing</p>
-                                    <p className="text-white/30 text-[12px]">Módulo em desenvolvimento.</p>
-                                </div>
-                            )}
-
-                            {/* ── Módulo Administrativo ── */}
-                            {!isAdmin && isSetorAdm && (
-                                <div className="col-span-2 pt-2 border-t border-white/[0.06]">
-                                    <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-3">Módulo Administrativo</p>
-                                    <p className="text-white/30 text-[12px]">Módulo em desenvolvimento.</p>
-                                </div>
-                            )}
-
-                            {/* ── Módulo setor personalizado ── */}
-                            {!isAdmin && setor && !isSetorPub && !isSetorMkt && !isSetorAdm && (
-                                <div className="col-span-2 pt-2 border-t border-white/[0.06]">
-                                    <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-3">Módulo {setor}</p>
-                                    <p className="text-white/30 text-[12px]">Módulo em desenvolvimento.</p>
+                                    <Input type="password" value={data.password_confirmation} onChange={e => setData('password_confirmation', e.target.value)} />
                                 </div>
                             )}
                         </div>
+
+                        {/* Vínculos com setores (só pra não-admin) */}
+                        {!data.is_admin && (
+                            <div className="pt-2 border-t border-white/[0.06]">
+                                <div className="flex items-center justify-between mb-2">
+                                    <Label className="m-0">Setores e cargos</Label>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={addVinculo}
+                                        disabled={data.vinculos.length >= setoresDisponiveis.length}
+                                    >
+                                        <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar setor
+                                    </Button>
+                                </div>
+
+                                {data.vinculos.length === 0 ? (
+                                    <p className="text-white/30 text-xs italic py-2">
+                                        Sem setor vinculado. Adicione pelo menos 1 para o usuário ter acesso a alguma tela.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {data.vinculos.map((v, idx) => {
+                                            const setor = setoresDisponiveis.find(s => s.id === v.setor_id);
+                                            return (
+                                                <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg border border-white/[0.06] bg-white/[0.02]">
+                                                    <select
+                                                        value={v.setor_id}
+                                                        onChange={e => updateVinculo(idx, { setor_id: parseInt(e.target.value), cargo_id: null })}
+                                                        className="col-span-5 h-8 px-2 rounded border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80"
+                                                    >
+                                                        {setoresDisponiveis.map(s => (
+                                                            <option key={s.id} value={s.id}
+                                                                disabled={s.id !== v.setor_id && data.vinculos.some(x => x.setor_id === s.id)}>
+                                                                {s.nome}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                    <select
+                                                        value={v.cargo_id ?? ''}
+                                                        onChange={e => updateVinculo(idx, { cargo_id: e.target.value ? parseInt(e.target.value) : null })}
+                                                        className="col-span-4 h-8 px-2 rounded border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80"
+                                                    >
+                                                        <option value="">— sem cargo —</option>
+                                                        {(setor?.cargos ?? []).map(c => (
+                                                            <option key={c.id} value={c.id}>{c.nome}</option>
+                                                        ))}
+                                                    </select>
+                                                    <label className="col-span-2 inline-flex items-center gap-1.5 text-xs text-white/60 cursor-pointer" title="Setor principal">
+                                                        <input
+                                                            type="radio"
+                                                            name="vinc_principal"
+                                                            checked={!!v.is_principal}
+                                                            onChange={() => setPrincipal(idx)}
+                                                            className="accent-ecf-yellow"
+                                                        />
+                                                        Principal
+                                                    </label>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => removeVinculo(idx)}
+                                                        className="col-span-1 justify-self-end text-red-400/60 hover:text-red-400 p-1"
+                                                    >
+                                                        <X size={14} />
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                                <p className="text-white/30 text-[11px] mt-2 leading-relaxed">
+                                    Permissões do usuário são a união de todas as permissões dos setores em que ele é membro.
+                                    Configure cada setor em <b>Administração → Setores</b>.
+                                </p>
+                            </div>
+                        )}
+
+                        {data.is_admin && (
+                            <div className="rounded-md bg-red-500/10 border border-red-500/20 p-3 text-xs text-red-300">
+                                <b>Admin</b> tem acesso a tudo no sistema. Setor "Administração" será atribuído automaticamente.
+                            </div>
+                        )}
 
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
@@ -472,20 +365,20 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                     </form>
                 </DialogContent>
             </Dialog>
-            {/* Seção de lixeira */}
+
+            {/* Lixeira */}
             {showDeleted && deletedUsers.length > 0 && (
-                <Card className="border-destructive/30">
+                <Card className="border-destructive/30 mt-4">
                     <CardContent className="p-0">
                         <div className="px-4 py-3 border-b border-destructive/20 flex items-center gap-2">
                             <Trash2 className="h-4 w-4 text-destructive" />
-                            <span className="text-sm font-medium text-destructive">Usuários excluídos — podem ser restaurados</span>
+                            <span className="text-sm font-medium text-destructive">Usuários excluídos</span>
                         </div>
                         <Table>
                             <TableHeader>
                                 <TableRow>
                                     <TableHead>Nome</TableHead>
                                     <TableHead>E-mail</TableHead>
-                                    <TableHead>Setor</TableHead>
                                     <TableHead>Empresas</TableHead>
                                     <TableHead>Excluído em</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
@@ -496,12 +389,11 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                                     <TableRow key={u.id} className="opacity-70">
                                         <TableCell className="font-medium">{u.name}</TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
-                                        <TableCell className="text-sm">{u.setor || '—'}</TableCell>
                                         <TableCell className="text-sm">{u.companies_count}</TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{u.deleted_at}</TableCell>
                                         <TableCell className="text-right">
                                             <div className="flex justify-end gap-1">
-                                                <Button size="sm" variant="outline" onClick={() => restore(u)} title="Restaurar usuário">
+                                                <Button size="sm" variant="outline" onClick={() => restore(u)} title="Restaurar">
                                                     <RotateCcw className="h-3.5 w-3.5 mr-1" /> Restaurar
                                                 </Button>
                                                 <Button size="icon" variant="ghost" onClick={() => setForceDeleteTarget(u)} title="Excluir permanentemente">
@@ -517,7 +409,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                 </Card>
             )}
 
-            {/* Modal confirmação de exclusão (soft delete — reversível) */}
+            {/* Confirm soft delete */}
             <Dialog open={!!deleteTarget} onOpenChange={v => !v && setDeleteTarget(null)}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
@@ -527,17 +419,11 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                     </DialogHeader>
                     <div className="space-y-3 text-sm">
                         <p className="text-muted-foreground">
-                            Excluir o usuário{' '}
-                            <span className="font-semibold text-foreground">{deleteTarget?.name}</span>?
+                            Excluir <span className="font-semibold text-foreground">{deleteTarget?.name}</span>?
                         </p>
                         <div className="rounded-md bg-yellow-500/10 border border-yellow-500/20 px-3 py-2 text-yellow-300 text-xs">
-                            O usuário vai para a lixeira e pode ser restaurado depois. Todos os registros dele (publicações, reuniões, etc.) são preservados.
+                            Vai para a lixeira (pode restaurar depois). Registros vinculados são preservados.
                         </div>
-                        {deleteTarget?.companies_count > 0 && (
-                            <p className="text-muted-foreground text-xs">
-                                Este usuário tem <span className="font-semibold text-foreground">{deleteTarget.companies_count}</span> empresa(s) vinculada(s).
-                            </p>
-                        )}
                     </div>
                     <DialogFooter className="gap-2">
                         <Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancelar</Button>
@@ -546,7 +432,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                 </DialogContent>
             </Dialog>
 
-            {/* Modal exclusão permanente (irreversível) */}
+            {/* Confirm force delete */}
             <Dialog open={!!forceDeleteTarget} onOpenChange={v => !v && setForceDeleteTarget(null)}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
@@ -556,11 +442,10 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDb = [] })
                     </DialogHeader>
                     <div className="space-y-3 text-sm">
                         <p className="text-muted-foreground">
-                            Remover permanentemente o usuário{' '}
-                            <span className="font-semibold text-foreground">{forceDeleteTarget?.name}</span>?
+                            Remover <span className="font-semibold text-foreground">{forceDeleteTarget?.name}</span> permanentemente?
                         </p>
                         <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-red-400 text-xs">
-                            Esta ação é irreversível. O usuário será apagado do banco de dados para sempre.
+                            Esta ação é irreversível.
                         </div>
                     </div>
                     <DialogFooter className="gap-2">

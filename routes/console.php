@@ -44,3 +44,9 @@ Schedule::command('sugadores:cleanup-quarentena')
     ->dailyAt('06:45')
     ->name('cleanup-sugadores-quarentena')
     ->withoutOverlapping();
+
+// Calcula resultados das metas de setor (publicacoes_mes, etc) — diariamente
+Schedule::job(new \App\Jobs\CalculateSetorGoalResults)
+    ->dailyAt('07:00')
+    ->name('calculate-setor-goal-results')
+    ->withoutOverlapping();
