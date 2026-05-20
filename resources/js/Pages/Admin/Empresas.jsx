@@ -63,7 +63,7 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
                 )}
                 {empresa.filhas?.length > 0 && (
                     <span className="text-ecf-yellow/50 text-[11px] mt-0.5 block">
-                        Grupo · {empresa.filhas.length} filha{empresa.filhas.length !== 1 ? 's' : ''}
+                        Grupo · {empresa.filhas.length} vinculada{empresa.filhas.length !== 1 ? 's' : ''}
                     </span>
                 )}
                 {(empresa.additional_service || empresa.additional_service_price) && (
@@ -179,7 +179,7 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
             {/* Vinculação: esta empresa é pai → selecionar filhas */}
             {!data.parent_company_id && (
                 <div>
-                    <label className={label}>Empresas filhas (grupo)</label>
+                    <label className={label}>Empresas vinculadas</label>
                     {candidatasFilha.length === 0 ? (
                         <p className="text-white/25 text-[12px] py-2">Nenhuma empresa disponível para vincular.</p>
                     ) : (
@@ -203,7 +203,7 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
                     )}
                     {data.filha_ids.length > 0 && (
                         <p className="text-[11px] text-white/30 mt-1">
-                            {data.filha_ids.length} empresa{data.filha_ids.length !== 1 ? 's' : ''} serão agrupadas sob esta no Fechamento.
+                            {data.filha_ids.length} empresa{data.filha_ids.length !== 1 ? 's' : ''} vinculada{data.filha_ids.length !== 1 ? 's' : ''} a este grupo no Fechamento.
                         </p>
                     )}
                     {errors.filha_ids && <span className={err}>{errors.filha_ids}</span>}
@@ -212,7 +212,7 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
 
             {/* Vinculação: esta empresa é filha → selecionar o pai */}
             <div>
-                <label className={label}>Esta empresa é filha de</label>
+                <label className={label}>Esta empresa faz parte do grupo de</label>
                 <select value={data.parent_company_id} onChange={e => setData('parent_company_id', e.target.value)} className={select}>
                     <option value="">Nenhuma (empresa independente)</option>
                     {opcoesPai.map(c => (

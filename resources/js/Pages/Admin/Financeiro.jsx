@@ -324,7 +324,7 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
                     )}
                     {empresa.is_filha && (
                         <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08] shrink-0">
-                            ↳ {empresa.nome_pai}
+                            Vinculada · {empresa.nome_pai}
                         </span>
                     )}
                 </div>
