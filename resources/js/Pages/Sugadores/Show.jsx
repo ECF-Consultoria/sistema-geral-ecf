@@ -506,14 +506,23 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
             {!state.loaded && !state.loading && (
                 <p className="text-white/40 text-xs leading-relaxed">
                     Clique em <b className="text-white/70">Carregar MLBs</b> pra buscar os anúncios desta campanha via API MCP da Adman.
-                    Em contas grandes a primeira carga pode demorar até ~1 min (rate limit 50 req/min); cargas seguintes são instantâneas (cache 30 min).
+                    A primeira carga pode demorar até ~4 min (TLS handshake do MCP é lento); cargas seguintes da mesma empresa/período são instantâneas (cache 30 min).
                 </p>
             )}
 
             {state.loading && (
                 <div className="flex items-center gap-2 text-white/50 text-sm py-4">
                     <Loader2 size={14} className="animate-spin" />
-                    Buscando MLBs da Adman... (pode demorar em contas grandes)
+                    Buscando MLBs da Adman... (pode demorar vários minutos em contas grandes)
+                </div>
+            )}
+
+            {state.data?.truncated && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.05] mb-3">
+                    <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-amber-300 text-[11px] leading-relaxed">
+                        Apenas as primeiras {state.data.pages_read} de {state.data.total_pages} páginas foram lidas (limite de tempo). Conta tem muitos anúncios — alguns MLBs do adgroup podem não aparecer.
+                    </p>
                 </div>
             )}
 

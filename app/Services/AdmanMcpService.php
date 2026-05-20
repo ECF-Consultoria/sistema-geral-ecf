@@ -55,19 +55,32 @@ class AdmanMcpService
             ],
         ];
 
-        // Retry exponencial em 429/5xx — a MCP tem rate limit de 50 req/min e
-        // ocasionalmente devolve 500 transitórios.
-        $maxAttempts = 4;
+        // Retry em 429/5xx — a MCP tem rate limit de 50 req/min (devolvido em
+        // 429 HTTP ou empacotado no payload como isError). Pra 429 dormimos a
+        // janela inteira (60s) — backoff curto não ajuda já que outras chamadas
+        // nesta mesma janela continuam batendo no mesmo limite.
+        $maxAttempts = 6;
         $lastBody    = null;
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            // O servidor MCP da Adman tem TLS handshake lentíssimo (medido 4–26s
+            // do nosso VPS, vs <0.1s pra api.ad-man.io/google). Desligar ALPN
+            // corta o tempo pela metade (38s→15s nos testes). Keep-alive
+            // tenta evitar handshake em chamadas subsequentes da mesma
+            // execução de paginação.
             $response = Http::withHeaders([
                 'integrator-api-key' => $this->apiKey,
                 'Content-Type'       => 'application/json',
                 'Accept'             => 'application/json, text/event-stream',
             ])
-                ->connectTimeout(15)
-                ->timeout(90)
+                ->withOptions([
+                    'curl' => [
+                        CURLOPT_SSL_ENABLE_ALPN => false,
+                        CURLOPT_TCP_KEEPALIVE   => 1,
+                    ],
+                ])
+                ->connectTimeout(60)
+                ->timeout(120)
                 ->post($this->url, $payload);
 
             $status      = $response->status();
@@ -85,9 +98,13 @@ class AdmanMcpService
                 if (!empty($result['isError'])) {
                     $msg = $result['content'][0]['text'] ?? 'erro desconhecido';
                     $lastBody = $msg;
-                    // 500 reportado dentro do payload do MCP também é transitório
-                    if ($attempt < $maxAttempts && str_contains($msg, 'status code 5')) {
-                        $this->sleepBackoff($attempt);
+                    // 5xx e 429 (rate limit) reportados dentro do payload do MCP
+                    // são transitórios — vale tentar de novo.
+                    $isRateLimit = str_contains($msg, 'status code 429');
+                    $isServer    = str_contains($msg, 'status code 5');
+                    if ($attempt < $maxAttempts && ($isServer || $isRateLimit)) {
+                        Log::info("[AdmanMcp] {$toolName} {$msg} — retry {$attempt}/{$maxAttempts}");
+                        $this->sleepBackoff($attempt, $isRateLimit ? 65 : 0);
                         continue;
                     }
                     throw new \RuntimeException("Adman MCP tool {$toolName} erro: {$msg}");
@@ -112,26 +129,30 @@ class AdmanMcpService
 
     private function sleepBackoff(int $attempt, int $retryAfterSeconds = 0): void
     {
-        $secs = $retryAfterSeconds > 0 ? min($retryAfterSeconds, 30) : (2 ** ($attempt - 1));
+        // Pra rate limit (retryAfterSeconds=65) dormimos a janela inteira do
+        // Adman (60s) — clampar a 30s aqui só fazia o retry imediato cair no
+        // mesmo limite. Pra retry transitório sem hint, backoff exponencial.
+        $secs = $retryAfterSeconds > 0 ? min($retryAfterSeconds, 65) : (2 ** ($attempt - 1));
         sleep($secs);
     }
 
     /**
-     * Busca todos os productAds de uma conta no range, paginando até esgotar.
-     * Retorna o array bruto da MCP (cada item é um productAd).
+     * Busca productAds de uma conta no range, paginando até `maxPages` ou esgotar.
+     * Retorna array com chaves `items` (productAds brutos) e `truncated` (bool).
      *
-     * Resultado é cacheado por 30 min — contas grandes consomem >1min em requests
-     * (rate limit 50/min, ~52 páginas), e o user normalmente abre vários adgroups
-     * da mesma empresa em sequência.
+     * Cache de 30 min — TLS handshake do MCP é ~15s/chamada do nosso VPS, então
+     * paginação completa demora vários minutos. Limite default de 16 páginas
+     * (800 MLBs) cabe em ~4 min, dentro do fastcgi_read_timeout=300s do nginx.
      */
-    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50): array
+    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 16): array
     {
-        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s', $custId, $dateFrom, $dateTo);
+        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, $dateFrom, $dateTo, $maxPages);
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage) {
+        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages) {
             $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
-            $all  = [];
-            $page = 1;
+            $all       = [];
+            $page      = 1;
+            $totalPages = 1;
 
             do {
                 $result = $this->call('getMarketplaceadsCustIdproductAdsmetrics', [
@@ -152,10 +173,18 @@ class AdmanMcpService
                 }
 
                 $page++;
-                if ($page <= $totalPages) usleep(150_000);
-            } while ($page <= $totalPages);
+                // Throttle: 1.5s entre páginas mantém ~40 req/min, abaixo do
+                // limite de 50/min da Adman. Sem isso, 16 páginas burst em <3s
+                // estouram o rate limit do upstream que a MCP repassa.
+                if ($page <= $totalPages && $page <= $maxPages) usleep(1_500_000);
+            } while ($page <= $totalPages && $page <= $maxPages);
 
-            return $all;
+            return [
+                'items'      => $all,
+                'truncated'  => $totalPages > $maxPages,
+                'pages_read' => $page - 1,
+                'total_pages'=> $totalPages,
+            ];
         });
     }
 
@@ -192,7 +221,7 @@ class AdmanMcpService
                 }
 
                 $page++;
-                if ($page <= $totalPages) usleep(150_000);
+                if ($page <= $totalPages) usleep(1_500_000);
             } while ($page <= $totalPages);
 
             return $all;
@@ -216,14 +245,19 @@ class AdmanMcpService
 
         if (!$campaignName) {
             Log::warning("[AdmanMcp] Campanha {$campaignId} não encontrada na conta {$custId} — drilldown vazio.");
-            return [];
+            return ['mlbs' => [], 'truncated' => false, 'pages_read' => 0, 'total_pages' => 0];
         }
 
-        $allAds = $this->fetchAllProductAds($custId, $dateFrom, $dateTo);
+        $result = $this->fetchAllProductAds($custId, $dateFrom, $dateTo);
 
-        $filtered = array_values(array_filter($allAds, fn($ad) => ($ad['campaignName'] ?? null) === $campaignName));
+        $filtered = array_values(array_filter($result['items'], fn($ad) => ($ad['campaignName'] ?? null) === $campaignName));
 
-        return array_map(fn($ad) => $this->normalizeProductAd($ad), $filtered);
+        return [
+            'mlbs'        => array_map(fn($ad) => $this->normalizeProductAd($ad), $filtered),
+            'truncated'   => $result['truncated'],
+            'pages_read'  => $result['pages_read'],
+            'total_pages' => $result['total_pages'],
+        ];
     }
 
     /**

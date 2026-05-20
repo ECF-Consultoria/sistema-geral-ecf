@@ -252,6 +252,11 @@ class SugadorController extends Controller
             ], 503);
         }
 
+        // MCP da Adman tem TLS handshake lento (~15s/chamada) e contas grandes
+        // chegam a 50+ páginas — sem isso atinge max_execution_time (default 30s)
+        // antes do cache persistir. Resultado fica cacheado 30min depois.
+        @set_time_limit(0);
+
         $sugador->loadMissing('company:id,adman_account_id,name');
         $custId = $sugador->company?->adman_account_id;
 
@@ -268,7 +273,7 @@ class SugadorController extends Controller
         $dateTo   = optional($sugador->periodo_fim)->toDateString()    ?? now()->subDay()->toDateString();
 
         try {
-            $mlbs = $this->mcp->fetchMlbsByCampaign($custId, (string) $sugador->campaign_id, $dateFrom, $dateTo);
+            $result = $this->mcp->fetchMlbsByCampaign($custId, (string) $sugador->campaign_id, $dateFrom, $dateTo);
         } catch (\Throwable $e) {
             Log::error("[Sugadores/MLBs] Erro MCP sugador {$sugador->id} (company {$sugador->company_id}): " . $e->getMessage());
             return response()->json([
@@ -276,6 +281,8 @@ class SugadorController extends Controller
                 'reason' => 'Falha ao consultar a API MCP da Adman: ' . $e->getMessage(),
             ], 502);
         }
+
+        $mlbs = $result['mlbs'];
 
         // Heurística "provavelmente neste adgroup": adgroup name no ML quase sempre
         // é o título do produto base. Pra ITEM bate exato; pra FAMILY bate por
@@ -296,6 +303,9 @@ class SugadorController extends Controller
             'adgroup_name'    => $sugador->adgroup_name,
             'campaign_id'     => $sugador->campaign_id,
             'total'           => count($mlbs),
+            'truncated'       => $result['truncated'],
+            'pages_read'      => $result['pages_read'],
+            'total_pages'     => $result['total_pages'],
         ]);
     }
 
