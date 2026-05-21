@@ -83,6 +83,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/notificacoes/{id}/marcar-lida',     [NotificacaoController::class, 'marcarLida'])->name('notificacoes.marcar-lida');
     Route::post('/notificacoes/marcar-todas-lidas',    [NotificacaoController::class, 'marcarTodasLidas'])->name('notificacoes.marcar-todas-lidas');
 
+    // Envio manual de notificação — gated por permission `notificacoes.criar` (Phase 12).
+    // Admin sempre tem; líderes ganham via AUTO_LIDERANCA; outros users só com a key explícita em setor_permissoes.
+    Route::middleware('permission:notificacoes.criar')->group(function () {
+        Route::get('/notificacoes/nova',  [NotificacaoController::class, 'nova'])->name('notificacoes.nova');
+        Route::post('/notificacoes/nova', [NotificacaoController::class, 'criar'])->name('notificacoes.criar');
+    });
+
     // Reuniões (todos)
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
     Route::post('/meetings', [MeetingController::class, 'store'])->name('meetings.store');
