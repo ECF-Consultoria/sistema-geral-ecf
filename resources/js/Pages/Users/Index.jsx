@@ -96,13 +96,18 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
         const payload = {
             name:     data.name,
             email:    data.email,
-            password: data.password,
-            password_confirmation: data.password_confirmation,
             is_admin: data.is_admin,
             phone:    data.phone,
             active:   data.active,
             vinculos: data.is_admin ? [] : data.vinculos,
         };
+        // Só envia password se foi efetivamente digitada. Em edit, vazio = manter.
+        // Evita armadilha de autofill do Chrome preencher password sem confirmação.
+        const senha = (data.password ?? '').trim();
+        if (senha !== '') {
+            payload.password = data.password;
+            payload.password_confirmation = data.password_confirmation;
+        }
         const opts = { onSuccess: () => setOpen(false) };
         if (editing) router.put(route('users.update', editing.id), payload, opts);
         else router.post(route('users.store'), payload, opts);
@@ -261,13 +266,30 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                             </div>
                             <div className="space-y-1.5">
                                 <Label>Senha {editing ? '(deixe vazio para manter)' : '*'}</Label>
-                                <Input type="password" value={data.password} onChange={e => setData('password', e.target.value)} required={!editing} />
-                                {errors.password && <p className="text-destructive text-xs">{errors.password}</p>}
+                                <Input
+                                    type="password"
+                                    value={data.password}
+                                    onChange={e => setData('password', e.target.value)}
+                                    required={!editing}
+                                    autoComplete="new-password"
+                                />
+                                {errors.password && (
+                                    <p className="text-destructive text-xs">
+                                        {errors.password === 'validation.confirmed'
+                                            ? 'A senha e a confirmação não coincidem.'
+                                            : errors.password}
+                                    </p>
+                                )}
                             </div>
                             {data.password && (
                                 <div className="space-y-1.5">
                                     <Label>Confirmar Senha</Label>
-                                    <Input type="password" value={data.password_confirmation} onChange={e => setData('password_confirmation', e.target.value)} />
+                                    <Input
+                                        type="password"
+                                        value={data.password_confirmation}
+                                        onChange={e => setData('password_confirmation', e.target.value)}
+                                        autoComplete="new-password"
+                                    />
                                 </div>
                             )}
                         </div>
