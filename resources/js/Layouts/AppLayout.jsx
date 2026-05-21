@@ -9,6 +9,7 @@ import {
     Code2, Crown, Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import NotificationBell from '@/Components/NotificationBell';
 
 /**
  * Cada item de menu é resolvido por UMA permission key (ver app/Support/Permissions.php).
@@ -261,6 +262,8 @@ export default function AppLayout({ children, title }) {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* Sino de notificações — Phase 10 (SINO-01) */}
+                        <NotificationBell />
                         <Link
                             href={route('profile.edit')}
                             className="text-white/30 hover:text-white/60 p-1.5 rounded-lg hover:bg-white/[0.05] transition-colors"
