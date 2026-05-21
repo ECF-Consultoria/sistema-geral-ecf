@@ -6,12 +6,15 @@ use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\Goal;
 use App\Models\GoalResult;
+use App\Models\User;
+use App\Notifications\MetaAtingidaNotification;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 class CalculateGoalResults implements ShouldQueue
 {
@@ -42,7 +45,7 @@ class CalculateGoalResults implements ShouldQueue
                 $target   = (float) $goal->target_value;
                 $achieved = GoalResult::computeAchieved($goal->metric, $value, $target);
 
-                GoalResult::updateOrCreate(
+                $result = GoalResult::updateOrCreate(
                     ['goal_id' => $goal->id, 'period' => $this->period],
                     [
                         'realized_value' => $value,
@@ -51,10 +54,70 @@ class CalculateGoalResults implements ShouldQueue
                         'calculated_at'  => now(),
                     ]
                 );
+
+                // AUTO-05 — dispatch idempotente da MetaAtingida.
+                $this->dispatchAtingidaIfNeeded($goal, $result);
             } catch (\Throwable $e) {
                 Log::warning("CalculateGoalResults: goal {$goal->id} period {$this->period} — {$e->getMessage()}");
             }
         }
+    }
+
+    /**
+     * AUTO-05 — Dispara `MetaAtingidaNotification` se o result alcançou a meta
+     * E ainda não foi notificado.
+     *
+     * Idempotência via `goal_results.notificado_em`: o método ignora results já
+     * notificados (`notificado_em !== null`), de modo que reexecuções do job
+     * no mesmo período não disparam duplicatas.
+     *
+     * Público: consultor + mentor da empresa (mesmo público do AUTO-02) ∪ admins,
+     * deduplicados por id. Diferente do AUTO-02, AQUI admins entram — eles
+     * precisam ser avisados de cada meta atingida para acompanhar resultados.
+     *
+     * Extraído para método `protected` propositalmente — a suíte
+     * `Phase11AutoTest` (Test 5) invoca esse helper diretamente em vez de
+     * tentar mockar `extractMetricValue` / `AdmanCampaignMetric`, que tornaria
+     * o teste frágil.
+     */
+    protected function dispatchAtingidaIfNeeded(Goal $goal, GoalResult $result): void
+    {
+        if ($result->achieved !== true || $result->notificado_em !== null) {
+            return;
+        }
+
+        $company = $goal->company()->with(['consultor', 'mentor'])->first();
+        if (!$company) {
+            return;
+        }
+
+        $admins = User::where('role', 'admin')->get();
+
+        $destinatarios = $company->consultor
+            ->merge($company->mentor)
+            ->merge($admins)
+            ->unique('id');
+
+        if ($destinatarios->isEmpty()) {
+            return;
+        }
+
+        Notification::send(
+            $destinatarios,
+            new MetaAtingidaNotification(
+                titulo:   "Meta atingida: {$company->name} alcançou {$goal->metric}",
+                mensagem: "A meta '{$goal->description}' da empresa {$company->name} foi atingida no período {$result->period} (realizado: {$result->realized_value}, alvo: {$result->target_value}).",
+                meta:     [
+                    'source'     => 'goal',
+                    'goal_id'    => $goal->id,
+                    'result_id'  => $result->id,
+                    'company_id' => $company->id,
+                    'period'     => $result->period,
+                ],
+            )
+        );
+
+        $result->update(['notificado_em' => now()]);
     }
 
     private function extractMetricValue(string $metric, int $companyId, int $year, int $month): ?float
