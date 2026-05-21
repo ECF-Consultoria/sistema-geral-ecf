@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Sistema de Notificações
-status: executing
-stopped_at: Phase 11 disparos automáticos de metas completa — suíte 23/23 GREEN (Phases 8+9+10+11)
-last_updated: "2026-05-21T20:40:00.000Z"
-last_activity: 2026-05-21 -- Phase 11 executada e mergeada
+status: milestone_complete
+stopped_at: Milestone v3.0 Sistema de Notificações COMPLETA — Phases 8-12 entregues, suíte 33/33 GREEN
+last_updated: "2026-05-21T21:00:00.000Z"
+last_activity: 2026-05-21 -- Milestone v3.0 encerrada (5/5 phases, 8/8 plans)
 progress:
   total_phases: 12
-  completed_phases: 4
-  total_plans: 7
-  completed_plans: 7
-  percent: 33
+  completed_phases: 5
+  total_plans: 8
+  completed_plans: 8
+  percent: 42
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro e comunicação interna (notificações)
-**Current focus:** Phase 12 — Criação Manual, Permissão na UI de Setores e Cleanup (Phases 8-11 completas)
+**Current focus:** Milestone v3.0 Sistema de Notificações COMPLETA — pronta para `/gsd-complete-milestone` ou próxima milestone
 
 ## Current Position
 
