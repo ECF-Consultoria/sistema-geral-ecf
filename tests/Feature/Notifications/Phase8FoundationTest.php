@@ -60,33 +60,54 @@ class Phase8FoundationTest extends TestCase
     /**
      * Test 2 — Constante `NOTIFICACOES_CRIAR` exposta e presente em `Permissions::all()`.
      *
-     * Será implementado pela Slice 3 (Permissions) — Plan 03.
+     * Cobre PERM-01 (registro no catálogo) no nível de catálogo plano. Prova
+     * que a key foi inserida em `catalog()` E que `all()` (que varre catalog
+     * dinamicamente) está enxergando-a, sem precisar editar `all()` — esta é
+     * a propriedade que evita "chaves fantasma" no catálogo (T-08-08).
      */
     public function test_permissions_all_inclui_notificacoes_criar(): void
     {
-        $this->markTestIncomplete('Implementado em Slice 3 (Permissions) — Plan 03.');
+        $this->assertContains('notificacoes.criar', Permissions::all());
+        $this->assertSame('notificacoes.criar', Permissions::NOTIFICACOES_CRIAR);
+        $this->assertTrue(Permissions::isValid('notificacoes.criar'));
     }
 
     /**
      * Test 3 — Catálogo `Permissions::catalog()` inclui grupo "Notificações"
      * com a entrada `notificacoes.criar` (label + description em pt-BR).
      *
-     * Será implementado pela Slice 3 (Permissions) — Plan 03.
+     * Cobre PERM-01 (label + description em pt-BR exposta para Phase 12 UI
+     * de setores). A descrição menciona "manuais" para travar D-08 — o texto
+     * tem que dizer que a permissão é sobre *envio manual*, não sobre
+     * recepção de notificação.
      */
     public function test_catalog_inclui_grupo_notificacoes(): void
     {
-        $this->markTestIncomplete('Implementado em Slice 3 (Permissions) — Plan 03.');
+        $catalog = Permissions::catalog();
+
+        $this->assertArrayHasKey('Notificações', $catalog);
+
+        // `firstWhere` localiza a entry pela key — independe da ordem dentro do grupo.
+        $entry = collect($catalog['Notificações'])->firstWhere('key', 'notificacoes.criar');
+
+        $this->assertNotNull($entry);
+        $this->assertSame('Criar notificações', $entry['label']);
+        // Descrição em pt-BR menciona "manuais" (envio manual, não automático).
+        $this->assertStringContainsString('manuais', $entry['description']);
     }
 
     /**
      * Test 4 — Constante `AUTO_LIDERANCA` contém `notificacoes.criar`,
      * garantindo que todo líder de setor herda a permissão.
      *
-     * Será implementado pela Slice 3 (Permissions) — Plan 03.
+     * Cobre PERM-03 no nível de catálogo (D-09 implementado). A verificação
+     * end-to-end via `User::hasPermission()` em líder real fica para Plan 04
+     * (Test 6) — aqui basta provar que a key está no array que o
+     * `User::effectivePermissions()` merge-eia automaticamente.
      */
     public function test_auto_lideranca_inclui_notificacoes_criar(): void
     {
-        $this->markTestIncomplete('Implementado em Slice 3 (Permissions) — Plan 03.');
+        $this->assertContains('notificacoes.criar', Permissions::AUTO_LIDERANCA);
     }
 
     /**
