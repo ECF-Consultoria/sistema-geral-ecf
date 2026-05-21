@@ -2,11 +2,12 @@
 gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Sistema de Notificações
-status: planning
-last_updated: "2026-05-21T15:10:38.009Z"
-last_activity: 2026-05-21
+status: Roadmap aprovado; aguardando planejamento da Phase 8
+stopped_at: Phase 8 context gathered (classe base BaseNotification + enum Categoria + tabela notifications + permission notificacoes.criar)
+last_updated: "2026-05-21T17:32:11.941Z"
+last_activity: 2026-05-21 — ROADMAP.md v3.0 criado com 5 phases (8 a 12) cobrindo 31/31 requirements
 progress:
-  total_phases: 5
+  total_phases: 12
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -122,5 +123,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-21T15:10:38.009Z
-Stopped at: ROADMAP.md v3.0 criado — 5 phases (8 a 12), 31/31 requirements mapeados; próximo passo é `/gsd:plan-phase 8`
+Last session: 2026-05-21T17:32:11.926Z
+Stopped at: Phase 8 context gathered (classe base BaseNotification + enum Categoria + tabela notifications + permission notificacoes.criar)
