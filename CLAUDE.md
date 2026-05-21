@@ -336,6 +336,22 @@ Use these entry points:
 - `/gsd-execute-phase` for planned phase work
 
 Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+
+## GSD Output Language — pt-BR (REQUIRED)
+
+**All GSD-generated planning artifacts MUST be written in Portuguese (pt-BR).** This applies to every subagent spawned by any GSD command (roadmapper, planner, researcher, synthesizer, executor, verifier, reviewer, auditor, debugger, etc.).
+
+Applies to (non-exhaustive):
+- `.planning/PROJECT.md`, `REQUIREMENTS.md`, `ROADMAP.md`, `STATE.md`, `MILESTONES.md`
+- `.planning/phases/**/PLAN.md`, `RESEARCH.md`, `PATTERNS.md`, `VERIFICATION.md`, `REVIEW.md`, `SECURITY.md`, `UI-SPEC.md`, `AI-SPEC.md`, `EVAL-REVIEW.md`, `UI-REVIEW.md`
+- `.planning/research/**/*.md` (STACK, FEATURES, ARCHITECTURE, PITFALLS, SUMMARY)
+- `.planning/seeds/`, `.planning/todos/`, `.planning/learnings/`
+- Git commit messages produced by GSD (`docs:`, `feat:`, `fix:` etc.) — escrever em pt-BR
+- Conversational output, headings, summaries, checklists, and AskUserQuestion prompts when spawned from a GSD workflow
+
+Mantenha termos técnicos consagrados em inglês (ex: "queue worker", "middleware", "endpoint", "phase", "milestone", "REQ-ID") quando a tradução prejudicar clareza. Não traduzir nomes de arquivos, classes, métodos, rotas, chaves de config, nem identificadores de código.
+
+Config-flag de referência: `features.language: "pt-BR"` em `.planning/config.json`.
 <!-- GSD:workflow-end -->
 
 
