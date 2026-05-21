@@ -1,36 +1,33 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Administrativo — Fechamento
-status: Complete
-stopped_at: Milestone v2.0 completo — Phases 5/6/7 executadas e aprovadas
-last_updated: "2026-05-19T22:00:00.000Z"
-last_activity: "2026-05-19 — Phase 7 executada: Financeiro.jsx expandido, checkpoint humano aprovado"
+milestone: v3.0
+milestone_name: Sistema de Notificações
+status: planning
+last_updated: "2026-05-21T15:10:38.009Z"
+last_activity: 2026-05-21
 progress:
-  total_phases: 7
-  completed_phases: 4
-  total_plans: 9
-  completed_plans: 9
-  percent: 57
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-19)
+See: .planning/PROJECT.md (updated 2026-05-21)
 
-**Core value:** Dar ao admin visibilidade total sobre operações internas e fechamento financeiro sem precisar de acesso ao servidor
-**Current focus:** Milestone v2.0 — Phase 6: Backend Fechamento (próxima, não planejada ainda)
+**Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro e comunicação interna (notificações)
+**Current focus:** Milestone v3.0 — Sistema de Notificações (definindo requirements)
 
 ## Current Position
 
-Phase: 5 — Fundação Fechamento ✓ COMPLETA
-Next: Phase 6 — Backend Fechamento
-Status: Ready to execute (Phase 6 precisa de /gsd-plan-phase antes de executar)
-Last activity: 2026-05-19 — Phase 5 executada: 3 waves completas, checkpoint humano aprovado
-
-Progress: [██████████] 100%
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-21 — Milestone v3.0 started
 
 ## Performance Metrics
 
@@ -92,21 +89,21 @@ None.
 
 ### Blockers/Concerns
 
-- A tabela de progressão está em `faturamento_adm.md` — confirmar valores antes de implementar `calcularFaixa()` na Phase 6
+(nenhum — v2.0 concluído; v3.0 ainda em fase de requirements)
 
 ## Deferred Items
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| Setor Dev | DEV-05: Monitoramento de Jobs | v3.0 | 2026-05-19 |
-| Setor Dev | DEV-06: Logs do sistema | v3.0 | 2026-05-19 |
-| Setor Dev | DEV-07: Informações do ambiente | v3.0 | 2026-05-19 |
-| Setor Dev | DEV-08: Configurações/flags | v3.0 | 2026-05-19 |
+| Setor Dev | DEV-05: Monitoramento de Jobs | v4.0 | 2026-05-21 |
+| Setor Dev | DEV-06: Logs do sistema | v4.0 | 2026-05-21 |
+| Setor Dev | DEV-07: Informações do ambiente | v4.0 | 2026-05-21 |
+| Setor Dev | DEV-08: Configurações/flags | v4.0 | 2026-05-21 |
 | Fechamento | FCH-08 lógica adicional | v2.1+ | 2026-05-19 |
 | Histórico | HIST-01: histórico paginado por empresa | v2.1+ | 2026-05-18 |
 | Histórico | HIST-02: exportar logs de sync para CSV | v2.1+ | 2026-05-18 |
 
 ## Session Continuity
 
-Last session: 2026-05-19T18:45:12.591Z
-Stopped at: Phase 5 completa — checkpoint humano aprovado — Phase 6 aguarda planejamento
+Last session: 2026-05-21T15:10:38.009Z
+Stopped at: Milestone v3.0 iniciado — aguardando definição de REQUIREMENTS.md e ROADMAP.md

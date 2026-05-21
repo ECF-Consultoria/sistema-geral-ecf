@@ -2,27 +2,36 @@
 
 ## What This Is
 
-Sistema de administração interna do ECF Admin com dois módulos principais: **Setor Dev**
-(diagnóstico de sync Adman, fila de jobs, logs e configurações) e **Módulo Administrativo**
-(fechamento mensal — faturamento por empresa, faixa de investimento e total a cobrar).
-Acessível exclusivamente via role `admin`.
+Sistema de administração interna do ECF Admin com módulos principais: **Setor Dev**
+(diagnóstico de sync Adman, fila de jobs, logs e configurações), **Módulo Administrativo**
+(fechamento mensal — faturamento por empresa, faixa de investimento e total a cobrar) e
+**Sistema de Notificações** (sino no header, criação manual com targeting e disparos
+automáticos a partir de eventos de metas). Acesso administrativo é exclusivo via role
+`admin`; o sino de notificações é exposto a todo usuário autenticado.
 
 ## Core Value
 
-Dar ao admin visibilidade total sobre operações internas: o sync Adman e o fechamento
-financeiro de cada empresa — sem precisar de acesso direto ao servidor.
+Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fechamento
+financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
+manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v2.0 Administrativo — Fechamento
+## Current Milestone: v3.0 Sistema de Notificações
 
-**Goal:** Admin pode acompanhar o faturamento de cada empresa no ML, ver em qual faixa de investimento ela está, e ter o total a cobrar no mês.
+**Goal:** Usuários veem notificações relevantes (metas atribuídas, metas atingidas, mensagens manuais) em tempo quase real via sino no header, com targeting por usuário/setor/líderes/todos e disparo automático a partir de eventos de metas.
 
 **Funcionalidades:**
-- Listar empresas com tipo de serviço (POLO / Assessoria / Incubadora) e datas de contrato
-- Exibir faturamento mensal por empresa via Adman API
-- Calcular faixa de investimento com base na tabela de progressão (faturamento_adm.md)
-- Barra de progresso: posição na faixa atual e distância para a próxima faixa
-- Campo de serviço adicional reservado (sem lógica neste milestone)
-- Total consolidado a cobrar no mês corrente
+- Sino de notificações no header (badge com contador de não-lidas) e dropdown com últimas N
+- Marcar como lida (individual + todas) com decremento automático do contador
+- Página `/notificacoes` com abas "Não lidas" e "Todas" (lidas dos últimos 30 dias)
+- Criação manual de notificação com targeting: individual, por setor, para líderes, para todos
+- Permissão `notificacoes.criar` (admin sempre tem; líderes ganham automaticamente; atribuível via UI de setores para Administrativo)
+- Disparo automático em eventos de metas:
+  - `SetorGoal` atribuída → notifica todos os membros do setor
+  - `Goal` (empresa) atribuída → notifica consultor/mentor da empresa
+  - `PortfolioGoal` atribuída → notifica dono da carteira
+  - Qualquer meta atingida → notifica admin + líder do setor (quando aplicável)
+- Atualização real-time: polling ~60s + revalidação a cada navegação Inertia (props compartilhada)
+- Cleanup automático via scheduled command: notificações lidas com mais de 30 dias são removidas
 
 ## Requirements
 
@@ -38,18 +47,28 @@ financeiro de cada empresa — sem precisar de acesso direto ao servidor.
 - ✓ Middleware `role:admin` para controle de acesso — existente
 - ✓ Comandos de diagnóstico Artisan (`DiagnosticSyncVendas`, `InspecionarAdman`) — existente
 
-### Active (v2.0 — Administrativo Fechamento)
+### Active (v3.0 — Sistema de Notificações)
 
-<!-- Escopo do milestone atual — Fechamento Administrativo -->
+<!-- Escopo do milestone atual — Notificações. REQ-IDs serão definidos no REQUIREMENTS.md. -->
 
-- [ ] **ADM-01**: Admin pode ver lista de empresas com tipo de serviço e datas de contrato
-- [ ] **ADM-02**: Admin pode ver o faturamento mensal de cada empresa via Adman API
-- [ ] **ADM-03**: Admin pode ver a faixa de investimento de cada empresa baseada na tabela de progressão
-- [ ] **ADM-04**: Admin pode ver barra de progressão com posição na faixa atual e distância para a próxima
-- [ ] **ADM-05**: Admin pode ver o total consolidado a cobrar de todas as empresas no mês corrente
-- [ ] **ADM-06**: Cada empresa tem campo de serviço adicional reservado (visível, sem lógica de valor)
+Categorias-alvo: SINO (UI header), HIST (página de histórico), ENVIO (criação manual com targeting),
+AUTO-METAS (disparos automáticos), PERM (permissão `notificacoes.criar`), POLL (atualização real-time + cleanup).
+Lista detalhada em `.planning/REQUIREMENTS.md`.
 
-### Pausado (v1.0 — Setor Dev, retomar em v3.0)
+### Entregue (v2.0 — Administrativo Fechamento)
+
+<!-- Funcional em produção desde 2026-05-19; encerramento formal via /gsd:complete-milestone pendente. -->
+
+- ✓ **ADM-01**: Admin pode ver lista de empresas com tipo de serviço e datas de contrato
+- ✓ **ADM-02**: Admin pode ver o faturamento mensal de cada empresa via Adman API
+- ✓ **ADM-03**: Admin pode ver a faixa de investimento de cada empresa baseada na tabela de progressão
+- ✓ **ADM-04**: Admin pode ver barra de progressão com posição na faixa atual e distância para a próxima
+- ✓ **ADM-05**: Admin pode ver o total consolidado a cobrar de todas as empresas no mês corrente
+- ✓ **ADM-06**: Cada empresa tem campo de serviço adicional reservado (visível, sem lógica de valor)
+
+### Pausado (v1.0 — Setor Dev, retomar em v4.0)
+
+<!-- Empurrado de v3.0 → v4.0 quando v3.0 foi reorientado para Notificações. -->
 
 - [ ] **DEV-05**: Admin pode ver status da fila de jobs (pendentes, em execução, falhados, com detalhes do erro)
 - [ ] **DEV-06**: Admin pode ver logs recentes do sistema (errors e warnings) sem acessar o servidor
@@ -94,10 +113,15 @@ O `spatie/laravel-activitylog` já registra eventos de todos os modelos principa
 
 | Decisão | Racional | Resultado |
 |---------|----------|-----------|
-| Evoluir `/dev/desenvolvimento` existente | Rota e layout já funcionam, evita duplicidade | — Pending |
-| Log de sync armazenado no banco (nova tabela) | Permite histórico persistente sem depender de arquivos de log | — Pending |
-| Jobs disparados via API Inertia (não WebSockets) | Suficiente para o volume atual, sem complexidade adicional | — Pending |
-| Acesso apenas role admin | Dados sensíveis (payloads API, configurações) não devem vazar para consultores | — Pending |
+| Evoluir `/dev/desenvolvimento` existente | Rota e layout já funcionam, evita duplicidade | ✓ v1.0 |
+| Log de sync armazenado no banco (nova tabela) | Permite histórico persistente sem depender de arquivos de log | ✓ v1.0 |
+| Jobs disparados via API Inertia (não WebSockets) | Suficiente para o volume atual, sem complexidade adicional | ✓ v1.0 |
+| Acesso apenas role admin para Setor Dev e Administrativo | Dados sensíveis (payloads API, configurações) não devem vazar para consultores | ✓ v1.0/v2.0 |
+| Notificações usam tabela nativa `notifications` do Laravel | Convenção do framework, polimórfica via `notifiable_id/type`, payload JSON flexível | — v3.0 |
+| Atualização do contador via polling ~60s + revalidação Inertia | Atende UX sem exigir WebSockets/Reverb; sem nova infra de broadcast | — v3.0 |
+| Nova permission_key `notificacoes.criar` (admin always, líder via AUTO_LIDERANCA) | Granular e atribuível via UI de setores existente; abrange Admin + Líderes + Administrativo com 1 chave | — v3.0 |
+| Cleanup de notificações lidas > 30d via scheduled command | Mantém tabela enxuta sem perder janela útil de auditoria | — v3.0 |
+| Targeting (individual/setor/líderes/todos) resolvido no dispatch | Expande para `user_ids` no momento do envio; evita lógica de "audiência" no read path | — v3.0 |
 
 ## Evolution
 
@@ -117,4 +141,4 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-05-19 after milestone v2.0 start — Administrativo Fechamento*
+*Last updated: 2026-05-21 — milestone v3.0 iniciado (Sistema de Notificações)*
