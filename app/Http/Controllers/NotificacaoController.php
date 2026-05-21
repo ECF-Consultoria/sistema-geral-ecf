@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Setor;
 use App\Models\User;
+use App\Notifications\ManualNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\Notification;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -171,5 +174,101 @@ class NotificacaoController extends Controller
         $request->user()->unreadNotifications()->update(['read_at' => now()]);
 
         return back()->with('success', 'Todas as notificações foram marcadas como lidas.');
+    }
+
+    /**
+     * Renderiza a página de envio manual de notificação (ENVIO-01 da Phase 12).
+     *
+     * Gating é via middleware `permission:notificacoes.criar` aplicado na rota
+     * — admin sempre passa (short-circuit no `User::hasPermission`), líderes
+     * passam via `AUTO_LIDERANCA`, e outros users só passam se o setor deles
+     * tiver `notificacoes.criar` em `setor_permissoes`.
+     *
+     * Passa a lista de setores (ordenada por nome) como prop para popular o
+     * select de público=setor na UI.
+     */
+    public function nova(Request $request): Response
+    {
+        return Inertia::render('Notificacoes/Nova', [
+            'setores' => Setor::orderBy('nome')->get(['id', 'nome']),
+        ]);
+    }
+
+    /**
+     * Processa o envio manual de notificação com targeting por público
+     * (ENVIO-02/03/04/05 + POLL-05).
+     *
+     * Validation:
+     *   - titulo: required, max 100 chars (ENVIO-03)
+     *   - mensagem: required, max 1000 chars (ENVIO-03)
+     *   - publico: required, in:usuario|setor|lideres|todos (ENVIO-02)
+     *   - usuario_id: required quando publico=usuario, exists:users
+     *   - setor_id: required quando publico=setor, exists:setores
+     *
+     * Resolução de destinatários (ENVIO-02):
+     *   - usuario  → 1 User pelo id
+     *   - setor    → todos os membros do setor (Setor::membros via pivot)
+     *   - lideres  → todos os users que são líderes em pelo menos 1 setor
+     *   - todos    → todos users com `active = true` (inclui o autor, sem
+     *                exclusão self — decisão do plano D-04)
+     *
+     * Após `Notification::send`, registra entry em `activity_log` via helper
+     * global `activity()` do `spatie/laravel-activitylog` (POLL-05). Apenas
+     * disparos manuais logam — automáticos da Phase 11 não.
+     *
+     * Flash success contém a contagem exata de destinatários (ENVIO-04).
+     */
+    public function criar(Request $request): RedirectResponse
+    {
+        $data = $request->validate([
+            'titulo'     => 'required|string|max:100',
+            'mensagem'   => 'required|string|max:1000',
+            'publico'    => 'required|in:usuario,setor,lideres,todos',
+            'usuario_id' => 'required_if:publico,usuario|exists:users,id',
+            'setor_id'   => 'required_if:publico,setor|exists:setores,id',
+        ]);
+
+        // Resolve destinatários conforme o público escolhido (ENVIO-02).
+        $destinatarios = match ($data['publico']) {
+            'usuario' => User::where('id', $data['usuario_id'])->get(),
+            'setor'   => Setor::find($data['setor_id'])->membros,
+            'lideres' => User::whereHas('setoresLiderados')->get(),
+            'todos'   => User::where('active', true)->get(),
+        };
+
+        $count = $destinatarios->count();
+
+        if ($count > 0) {
+            // Meta carrega o público + IDs específicos (quando aplicável) — útil
+            // para auditoria via activity_log e para futuros filtros na UI.
+            $meta = ['publico' => $data['publico']]
+                + (isset($data['usuario_id']) ? ['usuario_id' => $data['usuario_id']] : [])
+                + (isset($data['setor_id'])   ? ['setor_id'   => $data['setor_id']]   : []);
+
+            Notification::send(
+                $destinatarios,
+                new ManualNotification(
+                    titulo:      $data['titulo'],
+                    mensagem:    $data['mensagem'],
+                    autorUserId: $request->user()->id,
+                    meta:        $meta,
+                )
+            );
+
+            // Registra apenas envios MANUAIS no activity_log (POLL-05).
+            // Disparos automáticos da Phase 11 NÃO logam — evita inundação.
+            activity()
+                ->causedBy($request->user())
+                ->withProperties([
+                    'publico'             => $data['publico'],
+                    'usuario_id'          => $data['usuario_id'] ?? null,
+                    'setor_id'            => $data['setor_id'] ?? null,
+                    'destinatarios_count' => $count,
+                    'titulo'              => $data['titulo'],
+                ])
+                ->log('Notificação manual enviada');
+        }
+
+        return back()->with('success', "Notificação enviada para {$count} destinatário(s).");
     }
 }
