@@ -25,22 +25,27 @@ return new class extends Migration
         // Remove check constraints autocriadas no MySQL 8 que referenciam as
         // colunas que serão renomeadas. Nome e existência variam — fazemos
         // discovery dinâmico via information_schema.
-        $checks = DB::select("
-            SELECT CONSTRAINT_NAME
-            FROM information_schema.CHECK_CONSTRAINTS
-            WHERE CONSTRAINT_SCHEMA = DATABASE()
-              AND (CHECK_CLAUSE LIKE '%publication_permissions%'
-                OR CHECK_CLAUSE LIKE '%publication_role%'
-                OR CHECK_CLAUSE LIKE '%publication_meta%'
-                OR CHECK_CLAUSE LIKE '%`setor`%'
-                OR CHECK_CLAUSE LIKE '%`cargo`%')
-        ");
+        // Guard de driver: information_schema.CHECK_CONSTRAINTS só existe em
+        // MySQL 8+. Em SQLite (suíte de testes via RefreshDatabase) e outros
+        // drivers o discovery é inerte — não há check constraints para remover.
+        if (DB::connection()->getDriverName() === 'mysql') {
+            $checks = DB::select("
+                SELECT CONSTRAINT_NAME
+                FROM information_schema.CHECK_CONSTRAINTS
+                WHERE CONSTRAINT_SCHEMA = DATABASE()
+                  AND (CHECK_CLAUSE LIKE '%publication_permissions%'
+                    OR CHECK_CLAUSE LIKE '%publication_role%'
+                    OR CHECK_CLAUSE LIKE '%publication_meta%'
+                    OR CHECK_CLAUSE LIKE '%`setor`%'
+                    OR CHECK_CLAUSE LIKE '%`cargo`%')
+            ");
 
-        foreach ($checks as $c) {
-            try {
-                DB::statement("ALTER TABLE users DROP CHECK `{$c->CONSTRAINT_NAME}`");
-            } catch (\Throwable $e) {
-                // Ignora se não existe — idempotência
+            foreach ($checks as $c) {
+                try {
+                    DB::statement("ALTER TABLE users DROP CHECK `{$c->CONSTRAINT_NAME}`");
+                } catch (\Throwable $e) {
+                    // Ignora se não existe — idempotência
+                }
             }
         }
 
