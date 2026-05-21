@@ -50,6 +50,8 @@ class HandleInertiaRequests extends Middleware
             'asset_url'  => rtrim(asset(''), '/'),
             'csrf_token' => csrf_token(),
             'sugadores_pendentes' => fn() => $this->countSugadoresPendentes($request),
+            // Contador de notifications não lidas — closure garante recálculo em toda navegação Inertia (POLL-01 + POLL-03).
+            'notificacoes_nao_lidas' => fn() => $request->user()?->unreadNotifications()->count() ?? 0,
         ];
     }
 
