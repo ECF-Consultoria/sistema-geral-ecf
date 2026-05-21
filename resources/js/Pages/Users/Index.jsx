@@ -8,7 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 /**
  * Vínculos (form local): array de objetos com {setor_id, cargo_id, is_principal}.
@@ -273,9 +274,17 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
 
                         {/* Vínculos com setores (só pra não-admin) */}
                         {!data.is_admin && (
-                            <div className="pt-2 border-t border-white/[0.06]">
-                                <div className="flex items-center justify-between mb-2">
-                                    <Label className="m-0">Setores e cargos</Label>
+                            <div className="pt-3 border-t border-white/[0.06]">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div>
+                                        <h3 className="text-white font-display font-semibold text-[14px] flex items-center gap-2">
+                                            <Briefcase size={14} className="text-ecf-yellow" />
+                                            Setores e cargos
+                                        </h3>
+                                        <p className="text-white/40 text-[11px] mt-0.5">
+                                            Defina em quais setores o usuário atua e qual cargo ocupa em cada.
+                                        </p>
+                                    </div>
                                     <Button
                                         type="button"
                                         size="sm"
@@ -288,60 +297,110 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                 </div>
 
                                 {data.vinculos.length === 0 ? (
-                                    <p className="text-white/30 text-xs italic py-2">
-                                        Sem setor vinculado. Adicione pelo menos 1 para o usuário ter acesso a alguma tela.
-                                    </p>
+                                    <div className="text-center py-6 rounded-lg border border-dashed border-white/[0.08] bg-white/[0.02]">
+                                        <Briefcase size={20} className="text-white/20 mx-auto mb-2" />
+                                        <p className="text-white/40 text-xs">Sem setor vinculado.</p>
+                                        <p className="text-white/30 text-[11px]">Adicione pelo menos 1 para o usuário ter acesso ao sistema.</p>
+                                    </div>
                                 ) : (
                                     <div className="space-y-2">
                                         {data.vinculos.map((v, idx) => {
                                             const setor = setoresDisponiveis.find(s => s.id === v.setor_id);
+                                            const cargosDoSetor = setor?.cargos ?? [];
+                                            const cargoErr  = errors[`vinculos.${idx}.cargo_id`];
+                                            const setorErr  = errors[`vinculos.${idx}.setor_id`];
                                             return (
-                                                <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 rounded-lg border border-white/[0.06] bg-white/[0.02]">
-                                                    <select
-                                                        value={v.setor_id}
-                                                        onChange={e => updateVinculo(idx, { setor_id: parseInt(e.target.value), cargo_id: null })}
-                                                        className="col-span-5 h-8 px-2 rounded border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80"
-                                                    >
-                                                        {setoresDisponiveis.map(s => (
-                                                            <option key={s.id} value={s.id}
-                                                                disabled={s.id !== v.setor_id && data.vinculos.some(x => x.setor_id === s.id)}>
-                                                                {s.nome}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                    <select
-                                                        value={v.cargo_id ?? ''}
-                                                        onChange={e => updateVinculo(idx, { cargo_id: e.target.value ? parseInt(e.target.value) : null })}
-                                                        className="col-span-4 h-8 px-2 rounded border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80"
-                                                    >
-                                                        <option value="">— sem cargo —</option>
-                                                        {(setor?.cargos ?? []).map(c => (
-                                                            <option key={c.id} value={c.id}>{c.nome}</option>
-                                                        ))}
-                                                    </select>
-                                                    <label className="col-span-2 inline-flex items-center gap-1.5 text-xs text-white/60 cursor-pointer" title="Setor principal">
-                                                        <input
-                                                            type="radio"
-                                                            name="vinc_principal"
-                                                            checked={!!v.is_principal}
-                                                            onChange={() => setPrincipal(idx)}
-                                                            className="accent-ecf-yellow"
-                                                        />
-                                                        Principal
-                                                    </label>
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => removeVinculo(idx)}
-                                                        className="col-span-1 justify-self-end text-red-400/60 hover:text-red-400 p-1"
-                                                    >
-                                                        <X size={14} />
-                                                    </button>
+                                                <div key={idx} className={cn(
+                                                    'rounded-xl border p-3 transition-colors',
+                                                    v.is_principal
+                                                        ? 'border-ecf-yellow/30 bg-ecf-yellow/[0.03]'
+                                                        : 'border-white/[0.06] bg-white/[0.02]'
+                                                )}>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                            <div>
+                                                                <label className="block text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-1">Setor</label>
+                                                                <select
+                                                                    value={v.setor_id}
+                                                                    onChange={e => updateVinculo(idx, { setor_id: parseInt(e.target.value), cargo_id: null })}
+                                                                    className={cn(
+                                                                        "w-full h-9 px-2.5 rounded-lg border bg-white/[0.03] text-[13px] text-white/90 focus:outline-none focus:border-ecf-yellow/40",
+                                                                        setorErr ? 'border-red-500/40' : 'border-white/[0.08]'
+                                                                    )}
+                                                                >
+                                                                    {setoresDisponiveis.map(s => (
+                                                                        <option key={s.id} value={s.id}
+                                                                            disabled={s.id !== v.setor_id && data.vinculos.some(x => x.setor_id === s.id)}>
+                                                                            {s.nome}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                                {setorErr && <p className="text-red-400 text-[10px] mt-1">{setorErr}</p>}
+                                                            </div>
+                                                            <div>
+                                                                <label className="block text-white/40 text-[10px] font-semibold uppercase tracking-wider mb-1">Cargo</label>
+                                                                <select
+                                                                    value={v.cargo_id ?? ''}
+                                                                    onChange={e => updateVinculo(idx, { cargo_id: e.target.value ? parseInt(e.target.value) : null })}
+                                                                    className={cn(
+                                                                        "w-full h-9 px-2.5 rounded-lg border bg-white/[0.03] text-[13px] text-white/90 focus:outline-none focus:border-ecf-yellow/40",
+                                                                        cargoErr ? 'border-red-500/40' : 'border-white/[0.08]'
+                                                                    )}
+                                                                    disabled={cargosDoSetor.length === 0}
+                                                                >
+                                                                    <option value="">— sem cargo —</option>
+                                                                    {cargosDoSetor.map(c => (
+                                                                        <option key={c.id} value={c.id}>{c.nome}</option>
+                                                                    ))}
+                                                                </select>
+                                                                {cargoErr && <p className="text-red-400 text-[10px] mt-1">{cargoErr}</p>}
+                                                                {!cargoErr && cargosDoSetor.length === 0 && (
+                                                                    <p className="text-white/30 text-[10px] mt-1">Setor sem cargos cadastrados.</p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeVinculo(idx)}
+                                                            title="Remover este setor"
+                                                            className="text-white/30 hover:text-red-400 p-1 mt-5 transition-colors"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    </div>
+
+                                                    {/* Toggle principal */}
+                                                    <div className="mt-3 pt-2 border-t border-white/[0.04] flex items-center justify-between">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setPrincipal(idx)}
+                                                            disabled={v.is_principal}
+                                                            className={cn(
+                                                                'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold border transition-colors',
+                                                                v.is_principal
+                                                                    ? 'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30 cursor-default'
+                                                                    : 'text-white/50 hover:text-white border-white/[0.08] hover:bg-white/[0.04]'
+                                                            )}
+                                                        >
+                                                            {v.is_principal ? <Star size={10} fill="currentColor" /> : <Star size={10} />}
+                                                            {v.is_principal ? 'Setor principal' : 'Marcar como principal'}
+                                                        </button>
+                                                        {setor && (
+                                                            <span className="text-white/30 text-[10px] font-mono">{setor.slug}</span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             );
                                         })}
                                     </div>
                                 )}
-                                <p className="text-white/30 text-[11px] mt-2 leading-relaxed">
+
+                                {/* Erros globais de vinculos (caso o backend mande mensagens não-indexadas) */}
+                                {errors.vinculos && typeof errors.vinculos === 'string' && (
+                                    <p className="text-red-400 text-xs mt-2">{errors.vinculos}</p>
+                                )}
+
+                                <p className="text-white/30 text-[11px] mt-3 leading-relaxed">
                                     Permissões do usuário são a união de todas as permissões dos setores em que ele é membro.
                                     Configure cada setor em <b>Administração → Setores</b>.
                                 </p>

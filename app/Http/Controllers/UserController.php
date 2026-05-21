@@ -133,6 +133,11 @@ class UserController extends Controller
 
     private function validateUser(Request $request, bool $isUpdate, ?int $userId = null): array
     {
+        // Normaliza password vazia → null pra `nullable` valer (string '' não passa pelo nullable do Laravel)
+        if ($isUpdate && trim((string) $request->input('password', '')) === '') {
+            $request->merge(['password' => null, 'password_confirmation' => null]);
+        }
+
         $rules = [
             'name'                    => ['required', 'string', 'max:255'],
             'email'                   => [
@@ -154,7 +159,24 @@ class UserController extends Controller
             $rules['password'] = ['required', 'string', 'min:8', 'confirmed'];
         }
 
-        return $request->validate($rules);
+        $data = $request->validate($rules);
+
+        // Validação cruzada: cargo precisa pertencer ao setor do mesmo vínculo
+        // (a regra `exists:cargos,id` sozinha não garante isso)
+        $errors = [];
+        foreach ($data['vinculos'] ?? [] as $i => $v) {
+            if (!empty($v['cargo_id'])) {
+                $cargo = Cargo::find($v['cargo_id']);
+                if ($cargo && (int) $cargo->setor_id !== (int) $v['setor_id']) {
+                    $errors["vinculos.{$i}.cargo_id"] = 'Cargo selecionado não pertence ao setor escolhido.';
+                }
+            }
+        }
+        if ($errors) {
+            throw \Illuminate\Validation\ValidationException::withMessages($errors);
+        }
+
+        return $data;
     }
 
     /**

@@ -21,6 +21,7 @@ const NAV_ITEMS = [
     { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio',   icon: Briefcase,       permission: 'core.carteira' },
     { label: 'Empresas',   routeName: 'companies.index',   page: 'Companies',   icon: Building2,       permission: 'core.empresas' },
     { label: 'Usuários',   routeName: 'users.index',       page: 'Users',       icon: Users,           permission: 'core.usuarios' },
+    { label: 'Setores',    routeName: 'admin.setores.index', page: 'Admin/Setores', icon: Shield,        permission: 'sistema.setores' },
     { label: 'Reuniões',   routeName: 'meetings.index',    page: 'Meetings',    icon: CalendarCheck,   permission: 'core.reunioes' },
     { label: 'NPS',        routeName: 'nps.index',         page: 'Nps',         icon: Star,            permission: 'core.nps' },
     { label: 'Metas',      routeName: 'goals.index',       page: 'Goals',       icon: Target,          permission: 'core.metas' },
@@ -28,12 +29,11 @@ const NAV_ITEMS = [
     { label: 'Desempenho', routeName: 'performance.index', page: 'Performance', icon: Trophy,          permission: 'core.performance' },
     { label: 'Grants',     routeName: 'grants.index',      page: 'Grants',      icon: ShieldCheck,     permission: 'core.grants' },
     { label: 'Sugadores',  routeName: 'sugadores.index',   page: 'Sugadores',   icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
-    // ── Meu Setor (líder) ───────────────────────────────────────────────────
-    { label: 'Meu Setor',  routeName: 'lideranca.index',   page: 'Lideranca',   icon: Crown,           permission: 'lideranca.dashboard_setor', leadSeparatorBefore: true },
+    // ── Meu Setor (líder, oculto pra admin que já tem visão global) ─────────
+    { label: 'Meu Setor',  routeName: 'lideranca.index',   page: 'Lideranca',   icon: Crown,           permission: 'lideranca.dashboard_setor', leadSeparatorBefore: true, excludeRoles: ['admin'] },
     // ── Dev (interno) ───────────────────────────────────────────────────────
     { label: 'Log',             routeName: 'activity-log.index',  page: 'ActivityLog',         icon: ScrollText, permission: 'sistema.activity_log',    devSeparatorBefore: true },
     { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,      permission: 'sistema.desenvolvimento' },
-    { label: 'Setores',         routeName: 'admin.setores.index', page: 'Admin/Setores',       icon: Shield,     permission: 'sistema.setores' },
     // ── Publicações MLB ─────────────────────────────────────────────────────
     { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard',     mlbSeparatorBefore: true },
     { label: 'Projetos',        routeName: 'mlb.projetos',     page: 'Mlb/Projetos',     icon: FolderKanban,   permission: 'mlb.projetos' },
