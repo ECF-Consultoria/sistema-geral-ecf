@@ -6,7 +6,7 @@ status: planning
 last_updated: "2026-05-21T15:10:38.009Z"
 last_activity: 2026-05-21
 progress:
-  total_phases: 0
+  total_phases: 5
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,14 +20,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro e comunicação interna (notificações)
-**Current focus:** Milestone v3.0 — Sistema de Notificações (definindo requirements)
+**Current focus:** Milestone v3.0 — Sistema de Notificações (roadmap definido; Phase 8 pronta para `/gsd:plan-phase`)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Phase 8 — Fundação de Notificações (pronta para planejamento)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-05-21 — Milestone v3.0 started
+Status: Roadmap aprovado; aguardando planejamento da Phase 8
+Last activity: 2026-05-21 — ROADMAP.md v3.0 criado com 5 phases (8 a 12) cobrindo 31/31 requirements
 
 ## Performance Metrics
 
@@ -43,8 +43,13 @@ Last activity: 2026-05-21 — Milestone v3.0 started
 |-------|-------|-------|----------|
 | 1. Diagnóstico Adman | 3/3 | ~45 min | ~15 min |
 | 5. Fundação Fechamento | 3/3 | ~45 min | ~15 min |
-| 6. Backend Fechamento | TBD | - | - |
-| 7. UI Fechamento | TBD | - | - |
+| 6. Backend Fechamento | 2/2 | - | - |
+| 7. UI Fechamento | 1/1 | - | - |
+| 8. Fundação de Notificações | 0/? | - | - |
+| 9. Backend de Leitura, Contador e Polling | 0/? | - | - |
+| 10. UI do Sino e Página de Histórico | 0/? | - | - |
+| 11. Disparos Automáticos de Metas | 0/? | - | - |
+| 12. Criação Manual, Permissão na UI de Setores e Cleanup | 0/? | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
@@ -83,13 +88,25 @@ Last activity: 2026-05-21 — Milestone v3.0 started
 - ✓ AppLayout.jsx: label "Financeiro" → "Fechamento"
 - ✓ npm run build: 0 erros, 9/9 testes Fechamento verdes
 
+### Decisões do v3.0 (roadmap 2026-05-21)
+
+- 5 phases (8 a 12) cobrindo 31/31 requirements; numeração continua a sequência v1.0/v2.0
+- Ordem de execução: 8 → 9 → 10 → 11 → 12, sem paralelismo entre phases
+- Phase 8 entrega fundação (tabela `notifications` + permission_key `notificacoes.criar` + AUTO_LIDERANCA) — sem isso, nada do v3.0 funciona
+- Phase 9 entrega backend testável via HTTP antes de qualquer UI (shared prop + polling endpoint + listagem + mark read individual/todos)
+- Phase 10 monta UI completa (sino + dropdown + página `/notificacoes` com abas) consumindo o backend da Phase 9
+- Phase 11 implementa Observers nos 6 cenários de meta (3 atribuição + 3 atingimento) reutilizando o dispatch da Phase 9 + 10
+- Phase 12 fecha o ciclo: criação manual com targeting (4 públicos), exposição da permissão na UI de setores, cleanup diário e activity log apenas de envios manuais
+- Targeting (individual/setor/líderes/todos) resolvido no dispatch — expandido para `user_ids` no envio, sem lógica de audiência no read path
+- Atualização real-time = polling ~60s + revalidação Inertia em toda navegação; sem WebSockets/broadcast no MVP
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-(nenhum — v2.0 concluído; v3.0 ainda em fase de requirements)
+(nenhum — v3.0 com ROADMAP.md definido; aguardando `/gsd:plan-phase 8` para iniciar a primeira fase)
 
 ## Deferred Items
 
@@ -106,4 +123,4 @@ None.
 ## Session Continuity
 
 Last session: 2026-05-21T15:10:38.009Z
-Stopped at: Milestone v3.0 iniciado — aguardando definição de REQUIREMENTS.md e ROADMAP.md
+Stopped at: ROADMAP.md v3.0 criado — 5 phases (8 a 12), 31/31 requirements mapeados; próximo passo é `/gsd:plan-phase 8`

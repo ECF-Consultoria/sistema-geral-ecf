@@ -1,12 +1,13 @@
-# Roadmap: ECF Admin — Setor Dev + Administrativo
+# Roadmap: ECF Admin
 
 ## Overview
 
-Evolução do painel de administração interno do ECF Admin em dois milestones principais:
-**v1.0 — Setor Dev** (diagnóstico Adman, fila de jobs, observabilidade, configurações) e
-**v2.0 — Administrativo Fechamento** (faturamento por empresa, faixas de investimento, total
-a cobrar). Cada fase entrega uma capacidade completa e verificável que o admin pode usar
-imediatamente.
+Evolução do painel de administração interno do ECF Admin em milestones incrementais.
+**v1.0 — Setor Dev** (diagnóstico Adman) e **v2.0 — Administrativo Fechamento** já entregues.
+**v3.0 — Sistema de Notificações** (milestone ativo) adiciona sino no header, histórico paginado,
+criação manual com targeting (usuário / setor / líderes / todos), disparos automáticos a partir de
+eventos das três famílias de metas (`Goal`, `PortfolioGoal`, `SetorGoal`) e atualização real-time
+via polling + revalidação Inertia. Cada fase entrega uma capacidade observável de ponta a ponta.
 
 ## Phases
 
@@ -19,15 +20,23 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v1.0 — Setor Dev
 
 - [x] **Phase 1: Diagnóstico Adman** - Admin pode inspecionar e controlar o sync Adman por empresa sem acessar o servidor
-- [ ] **Phase 2: Monitoramento de Jobs** - Admin pode ver o estado da fila de jobs, incluindo falhas com detalhes completos *(pausado — retomar em v3.0)*
-- [ ] **Phase 3: Observabilidade** - Admin pode ver logs de erro do sistema e informações do ambiente de execução *(pausado — retomar em v3.0)*
-- [ ] **Phase 4: Configurações** - Admin pode visualizar e editar flags de configuração do sistema via painel *(pausado — retomar em v3.0)*
+- [ ] **Phase 2: Monitoramento de Jobs** - Admin pode ver o estado da fila de jobs, incluindo falhas com detalhes completos *(pausado — retomar em v4.0)*
+- [ ] **Phase 3: Observabilidade** - Admin pode ver logs de erro do sistema e informações do ambiente de execução *(pausado — retomar em v4.0)*
+- [ ] **Phase 4: Configurações** - Admin pode visualizar e editar flags de configuração do sistema via painel *(pausado — retomar em v4.0)*
 
 ### Milestone v2.0 — Administrativo Fechamento
 
 - [x] **Phase 5: Fundação Fechamento** - Banco de dados e campos Company que suportam tipo de serviço, datas de contrato e renomeação de sidebar
 - [x] **Phase 6: Backend Fechamento** - Aggregation query sobre adman_metrics, cálculo de faixa e props Inertia entregues ao frontend (completed 2026-05-19)
 - [x] **Phase 7: UI Fechamento** - Reescrita de Financeiro.jsx como Fechamento com lista de empresas, barras de progresso e total consolidado
+
+### Milestone v3.0 — Sistema de Notificações
+
+- [ ] **Phase 8: Fundação de Notificações** - Tabela `notifications`, classe base e permission `notificacoes.criar` disponíveis para o resto do sistema usar
+- [ ] **Phase 9: Backend de Leitura, Contador e Polling** - Endpoints de listagem/marcação, shared prop do contador e polling funcionando ponta a ponta sem UI
+- [ ] **Phase 10: UI do Sino e Página de Histórico** - Usuário vê e interage com suas notificações via sino no header e página `/notificacoes`
+- [ ] **Phase 11: Disparos Automáticos de Metas** - Atribuição e atingimento de qualquer tipo de meta gera notificações automáticas para o público correto
+- [ ] **Phase 12: Criação Manual, Permissão na UI de Setores e Cleanup** - Usuário autorizado envia notificações com targeting; permissão aparece em `/sistema/setores`; cleanup diário descarta lidas antigas
 
 ## Phase Details
 
@@ -170,18 +179,93 @@ Cross-cutting constraints:
 
 **UI hint**: yes
 
+### Phase 8: Fundação de Notificações
+**Goal**: A infraestrutura mínima de notificações (tabela `notifications` do Laravel, classe `Notification` base e a permission `notificacoes.criar` no catálogo) existe e está disponível para que qualquer outra fase possa criar e ler notificações
+**Mode:** mvp
+**Depends on**: Phase 7 (último estado estável do sistema antes do v3.0)
+**Requirements**: PERM-01, PERM-02, PERM-03
+**Success Criteria** (what must be TRUE):
+  1. A tabela `notifications` (schema nativo do Laravel: `id` uuid, `type`, `notifiable_id`, `notifiable_type`, `data` json, `read_at`, `created_at`, `updated_at`) existe e foi migrada
+  2. A permission_key `notificacoes.criar` aparece no catálogo retornado por `App\Support\Permissions::all()` com label e descrição em pt-BR, sob o grupo "Notificações"
+  3. Qualquer usuário admin retorna `true` em `$user->hasPermission('notificacoes.criar')` sem precisar de atribuição manual (short-circuit já existente)
+  4. Qualquer usuário cadastrado em `setor_lideres` (líder de qualquer setor) retorna `true` em `$user->hasPermission('notificacoes.criar')` automaticamente, sem precisar de atribuição manual ao setor
+  5. A permission_key `notificacoes.criar` consta no array `Permissions::AUTO_LIDERANCA`
+
+### Phase 9: Backend de Leitura, Contador e Polling
+**Goal**: O backend expõe o contador de não lidas como shared prop Inertia, oferece endpoint JSON de polling, lista as notificações do usuário autenticado e permite marcar uma ou todas como lidas — tudo testável via HTTP/Tinker antes da UI existir
+**Mode:** mvp
+**Depends on**: Phase 8
+**Requirements**: POLL-01, POLL-02, POLL-03, HIST-01, HIST-03, HIST-04
+**Success Criteria** (what must be TRUE):
+  1. Em toda página Inertia, a prop compartilhada `notificacoes_nao_lidas` está presente e reflete a contagem real de notificações `read_at IS NULL` do usuário autenticado (zero quando não houver)
+  2. Após qualquer navegação Inertia (visita a outra rota), a shared prop é recalculada automaticamente sem precisar de requisição manual adicional
+  3. O endpoint `GET /api/notificacoes/contador` (autenticado) responde JSON `{ "count": N }` com a contagem atual de não lidas do usuário e pode ser chamado repetidamente para alimentar o polling do frontend
+  4. A rota nomeada `notificacoes.index` (`GET /notificacoes`) responde Inertia com a lista paginada das notificações do usuário autenticado (ordenadas por `created_at DESC`)
+  5. Existe endpoint para marcar uma notificação individual como lida (preenche `read_at = now()`) e ele rejeita marcar notificação que não pertença ao usuário autenticado (403)
+  6. Existe endpoint para marcar todas as notificações não lidas do usuário como lidas em uma única requisição
+
+### Phase 10: UI do Sino e Página de Histórico
+**Goal**: Usuário autenticado interage com suas notificações pela primeira vez: vê o sino no header com badge de não lidas, abre o dropdown com as 10 mais recentes, clica para marcar como lida e acessa a página `/notificacoes` com abas e marcação em massa
+**Mode:** mvp
+**Depends on**: Phase 9
+**Requirements**: SINO-01, SINO-02, SINO-03, SINO-04, SINO-05, SINO-06, HIST-02, HIST-05
+**Success Criteria** (what must be TRUE):
+  1. Em qualquer página autenticada, o ícone de sino aparece no canto superior direito do `AppLayout` com badge numérico quando há notificações não lidas, e o badge some quando a contagem é zero
+  2. Ao clicar no sino, o dropdown abre exibindo as 10 notificações mais recentes (não lidas + recentes) com título, prévia, autor (quando manual), tempo relativo ("há 5min") e indicador visual de não lida
+  3. Ao clicar em uma notificação não lida dentro do dropdown, ela é marcada como lida no backend e o badge do sino decrementa imediatamente, sem reload da página
+  4. O dropdown contém o link "Ver todas" que navega via Inertia para `/notificacoes`
+  5. A página `/notificacoes` exibe abas "Não lidas" (default) e "Todas" — a aba "Todas" inclui lidas com até 30 dias; alternar abas troca a lista exibida
+  6. Cada item da lista mostra título, mensagem completa, origem (nome do autor para manual, ou rótulo "Sistema"), ícone/cor por categoria do evento e data/hora absoluta
+  7. O botão "Marcar todas como lidas" zera o badge e move todas as não lidas da aba para o estado lido em uma única ação
+**UI hint**: yes
+
+### Phase 11: Disparos Automáticos de Metas
+**Goal**: Sempre que uma meta de qualquer tipo (`SetorGoal`, `Goal` de empresa, `PortfolioGoal`) é atribuída ou atinge seu `target_value`, o público correto recebe a notificação automaticamente sem ação manual do admin
+**Mode:** mvp
+**Depends on**: Phase 9 (dispatch + leitura já funcionam) e Phase 10 (UI para o usuário ver o efeito)
+**Requirements**: AUTO-01, AUTO-02, AUTO-03, AUTO-04, AUTO-05, AUTO-06
+**Success Criteria** (what must be TRUE):
+  1. Quando uma `SetorGoal` é criada, cada membro daquele setor (relação `user_setores`) recebe a notificação "Nova meta do setor: [descrição]" visível no sino e na página de histórico
+  2. Quando uma `Goal` (meta de empresa) é criada, o consultor e o mentor vinculados àquela empresa (relação `company_users`) recebem a notificação "Nova meta para [empresa]: [descrição]"
+  3. Quando uma `PortfolioGoal` é criada, o dono da carteira (`user_id`) recebe a notificação "Nova meta de carteira: [descrição]"
+  4. Quando o resultado de uma `SetorGoal` atinge ou ultrapassa o `target_value`, todos os usuários com role admin e o(s) líder(es) do setor recebem a notificação "Meta atingida: [setor] alcançou [métrica]" — sem disparar duplicata no mesmo período de avaliação
+  5. Quando o resultado de uma `Goal` atinge o `target_value`, o consultor + mentor da empresa + todos os admins recebem a notificação "Meta atingida: [empresa] alcançou [métrica]"
+  6. Quando o resultado de uma `PortfolioGoal` atinge o `target_value`, o dono da carteira + todos os admins recebem a notificação "Meta atingida: sua carteira alcançou [métrica]"
+
+### Phase 12: Criação Manual, Permissão na UI de Setores e Cleanup
+**Goal**: Usuário com permissão `notificacoes.criar` envia notificações manuais com targeting (usuário / setor / líderes / todos); a permissão aparece e pode ser atribuída em `/sistema/setores`; o sistema mantém a tabela enxuta via cleanup diário e registra envios manuais no activity log
+**Mode:** mvp
+**Depends on**: Phase 9 (endpoints prontos), Phase 10 (UI base para destinatários verem), Phase 11 (dispatch maduro)
+**Requirements**: ENVIO-01, ENVIO-02, ENVIO-03, ENVIO-04, ENVIO-05, PERM-04, POLL-04, POLL-05
+**Success Criteria** (what must be TRUE):
+  1. Usuário com a permissão `notificacoes.criar` vê o item "Enviar notificação" no sidebar do `AppLayout` e consegue abrir a página `/notificacoes/nova`
+  2. Na tela de envio, o usuário consegue escolher o público entre: (a) usuário individual via busca, (b) um setor inteiro, (c) todos os líderes (qualquer usuário em `setor_lideres`), ou (d) todos os usuários ativos
+  3. O envio só é aceito quando título (máx 100 caracteres) e mensagem (máx 1000 caracteres) estão preenchidos — formulário bloqueia submissão e exibe mensagem de erro caso contrário
+  4. Após o envio bem-sucedido, o autor vê uma confirmação informando a quantidade efetiva de destinatários, e essas notificações ficam imediatamente visíveis para os destinatários no próximo ciclo de polling (sem ação adicional do destinatário)
+  5. Usuário sem `notificacoes.criar` não vê o item no sidebar e, ao tentar acessar `/notificacoes/nova` diretamente, recebe HTTP 403
+  6. Na página `/sistema/setores`, a permissão `notificacoes.criar` aparece na lista de chaves atribuíveis e pode ser concedida ao setor "Administrativo" ou a qualquer outro setor — usuários do setor passam a tê-la imediatamente após salvar
+  7. O scheduled command `notifications:cleanup` está declarado em `routes/console.php` rodando diariamente e, ao executar, remove notificações com `read_at` mais antigo do que 30 dias (não toca em não lidas)
+  8. Cada envio manual gera entrada no `activity_log` registrando o autor, o público-alvo escolhido e a contagem de destinatários efetivos; disparos automáticos das fases anteriores não são logados
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-v1.0 phases execute in order: 1 → 2 → 3 → 4 (phases 2–4 paused for v3.0)
+v1.0 phases execute in order: 1 → 2 → 3 → 4 (phases 2–4 pausadas para v4.0)
 v2.0 phases execute in order: 5 → 6 → 7
+v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Diagnóstico Adman | 3/3 | Complete | 2026-05-18 |
-| 2. Monitoramento de Jobs | 0/? | Paused (v3.0) | - |
-| 3. Observabilidade | 0/? | Paused (v3.0) | - |
-| 4. Configurações | 0/? | Paused (v3.0) | - |
+| 2. Monitoramento de Jobs | 0/? | Paused (v4.0) | - |
+| 3. Observabilidade | 0/? | Paused (v4.0) | - |
+| 4. Configurações | 0/? | Paused (v4.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
-| 6. Backend Fechamento | 2/2 | Complete   | 2026-05-19 |
+| 6. Backend Fechamento | 2/2 | Complete | 2026-05-19 |
 | 7. UI Fechamento | 1/1 | Complete | 2026-05-19 |
+| 8. Fundação de Notificações | 0/? | Not started | - |
+| 9. Backend de Leitura, Contador e Polling | 0/? | Not started | - |
+| 10. UI do Sino e Página de Histórico | 0/? | Not started | - |
+| 11. Disparos Automáticos de Metas | 0/? | Not started | - |
+| 12. Criação Manual, Permissão na UI de Setores e Cleanup | 0/? | Not started | - |

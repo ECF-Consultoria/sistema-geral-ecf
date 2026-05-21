@@ -77,42 +77,43 @@
 
 | Requisito | Fase | Status |
 |-----------|------|--------|
-| SINO-01 | TBD | Pending |
-| SINO-02 | TBD | Pending |
-| SINO-03 | TBD | Pending |
-| SINO-04 | TBD | Pending |
-| SINO-05 | TBD | Pending |
-| SINO-06 | TBD | Pending |
-| HIST-01 | TBD | Pending |
-| HIST-02 | TBD | Pending |
-| HIST-03 | TBD | Pending |
-| HIST-04 | TBD | Pending |
-| HIST-05 | TBD | Pending |
-| ENVIO-01 | TBD | Pending |
-| ENVIO-02 | TBD | Pending |
-| ENVIO-03 | TBD | Pending |
-| ENVIO-04 | TBD | Pending |
-| ENVIO-05 | TBD | Pending |
-| AUTO-01 | TBD | Pending |
-| AUTO-02 | TBD | Pending |
-| AUTO-03 | TBD | Pending |
-| AUTO-04 | TBD | Pending |
-| AUTO-05 | TBD | Pending |
-| AUTO-06 | TBD | Pending |
-| PERM-01 | TBD | Pending |
-| PERM-02 | TBD | Pending |
-| PERM-03 | TBD | Pending |
-| PERM-04 | TBD | Pending |
-| POLL-01 | TBD | Pending |
-| POLL-02 | TBD | Pending |
-| POLL-03 | TBD | Pending |
-| POLL-04 | TBD | Pending |
-| POLL-05 | TBD | Pending |
+| SINO-01 | Phase 10 | Pending |
+| SINO-02 | Phase 10 | Pending |
+| SINO-03 | Phase 10 | Pending |
+| SINO-04 | Phase 10 | Pending |
+| SINO-05 | Phase 10 | Pending |
+| SINO-06 | Phase 10 | Pending |
+| HIST-01 | Phase 9 | Pending |
+| HIST-02 | Phase 10 | Pending |
+| HIST-03 | Phase 9 | Pending |
+| HIST-04 | Phase 9 | Pending |
+| HIST-05 | Phase 10 | Pending |
+| ENVIO-01 | Phase 12 | Pending |
+| ENVIO-02 | Phase 12 | Pending |
+| ENVIO-03 | Phase 12 | Pending |
+| ENVIO-04 | Phase 12 | Pending |
+| ENVIO-05 | Phase 12 | Pending |
+| AUTO-01 | Phase 11 | Pending |
+| AUTO-02 | Phase 11 | Pending |
+| AUTO-03 | Phase 11 | Pending |
+| AUTO-04 | Phase 11 | Pending |
+| AUTO-05 | Phase 11 | Pending |
+| AUTO-06 | Phase 11 | Pending |
+| PERM-01 | Phase 8 | Pending |
+| PERM-02 | Phase 8 | Pending |
+| PERM-03 | Phase 8 | Pending |
+| PERM-04 | Phase 12 | Pending |
+| POLL-01 | Phase 9 | Pending |
+| POLL-02 | Phase 9 | Pending |
+| POLL-03 | Phase 9 | Pending |
+| POLL-04 | Phase 12 | Pending |
+| POLL-05 | Phase 12 | Pending |
 
 **Cobertura v3.0:**
 - Requirements: 31 total (6 SINO + 5 HIST + 5 ENVIO + 6 AUTO + 4 PERM + 5 POLL)
-- Mapeados para fases: 0 (pendente — `gsd-roadmapper` preenche)
-- Não mapeados: 31 — será 0 após criação do ROADMAP.md
+- Mapeados para fases: 31 (100%)
+- Não mapeados: 0
+- Distribuição: Phase 8 (3 reqs) · Phase 9 (6 reqs) · Phase 10 (8 reqs) · Phase 11 (6 reqs) · Phase 12 (8 reqs)
 
 ---
 
@@ -184,4 +185,4 @@
 
 ---
 
-*Requirements v3.0 definidos: 2026-05-21*
+*Requirements v3.0 definidos: 2026-05-21 · Mapeamento de fases concluído: 2026-05-21*
