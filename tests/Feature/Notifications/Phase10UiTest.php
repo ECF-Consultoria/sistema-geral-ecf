@@ -58,8 +58,11 @@ class Phase10UiTest extends TestCase
      * Test 1 — Endpoint `notificacoes.recentes` retorna até 10 notifications
      * mais recentes do user em ordem decrescente por `created_at` (SINO-03).
      *
-     * Cria 15 dispatches (mais do que o limite); espera 200, 10 itens no
-     * payload, e que o primeiro item seja o mais recente (último dispatched).
+     * Cria 15 dispatches e força `created_at` distinto em cada um (com `Notif 15`
+     * sendo a mais recente). Espera 200, 10 itens no payload, e que `Notif 15`
+     * seja o primeiro item. Forçar timestamp é necessário porque dispatches no
+     * mesmo segundo viram um empate em `latest()`, e a ordem de tie-break varia
+     * entre engines (SQLite degenera para ordem de insert).
      */
     public function test_recentes_retorna_no_maximo_10_em_ordem_decrescente(): void
     {
@@ -67,12 +70,24 @@ class Phase10UiTest extends TestCase
 
         $this->enviarNotificacoes($user, 15);
 
+        // Força `created_at` distinto: Notif 1 -> 14 min atrás, ..., Notif 15 -> agora.
+        // O título embute o índice (`Notif {i}`), então casamos por LIKE e damos
+        // um offset crescente em segundos. `update` ignora $timestamps.
+        $todas = $user->notifications()->get();
+        foreach ($todas as $notif) {
+            // Extrai o índice "i" do título "Notif i" pra calcular o offset.
+            $titulo = $notif->data['titulo'] ?? '';
+            $idx    = (int) preg_replace('/[^0-9]/', '', $titulo);
+            DatabaseNotification::where('id', $notif->id)
+                ->update(['created_at' => now()->subSeconds(15 - $idx)]);
+        }
+
         $response = $this->actingAs($user)->getJson(route('notificacoes.recentes'));
 
         $response->assertStatus(200);
         $response->assertJsonCount(10, 'notificacoes');
 
-        // O primeiro item deve ser o dispatched por último (mais recente) — "Notif 15".
+        // O primeiro item deve ser o mais recente — "Notif 15" (offset = 0s).
         $primeiro = $response->json('notificacoes.0');
         $this->assertSame('Notif 15', $primeiro['data']['titulo']);
     }
