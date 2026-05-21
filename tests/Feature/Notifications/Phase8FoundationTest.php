@@ -114,12 +114,60 @@ class Phase8FoundationTest extends TestCase
     /**
      * Test 7 — Smoke ponta-a-ponta: `Notification::send` persiste 1 linha em
      * `notifications` com payload canônico de 6 chaves
-     * (`titulo`, `mensagem`, `categoria`, `cta_label`, `cta_url`, `meta`).
+     * (`titulo`, `mensagem`, `categoria`, `autor_user_id`, `url`, `meta`).
      *
-     * Será implementado pela Slice 4 (BaseNotification + smoke) — Plan 04.
+     * Cobre Success Criterion #1 end-to-end — a tabela não só existe, ela
+     * aceita escrita via `DatabaseChannel` e o payload é deserializado pelo
+     * cast `array` do `DatabaseNotification`. Também prova implicitamente
+     * `BaseNotification::toArray()` (enum→string em `categoria`) e que a
+     * coluna `type` é populada pelo dispatcher (sem hardcodar nome de classe
+     * anônima — Pitfall 2 do 08-RESEARCH.md).
      */
     public function test_base_notification_persiste_payload_canonico(): void
     {
-        $this->markTestIncomplete('Implementado em Slice 4 (BaseNotification + smoke) — Plan 04.');
+        // Setup: notifiable real (User com trait Notifiable já presente no model).
+        $user = User::factory()->create(['role' => 'consultor']);
+
+        // Classe anônima estendendo BaseNotification com os 6 args canônicos via
+        // named arguments. D-04 do 08-CONTEXT.md trava: Phase 8 NÃO cria subclasses
+        // concretas — o smoke usa anônima inline (`ManualNotification` etc. saem
+        // nas Phases 11/12).
+        $notif = new class(
+            titulo: 'Título teste',
+            mensagem: 'Mensagem teste',
+            categoria: Categoria::MANUAL,
+            autorUserId: null,
+            url: '/notificacoes',
+            meta: ['ref' => 'phase-8-smoke'],
+        ) extends BaseNotification {};
+
+        // Disparo REAL via facade. NÃO usar Notification::fake() — queremos
+        // que o DatabaseChannel persista de fato na tabela `notifications`
+        // (Pitfall 1 do 08-RESEARCH.md: fake() intercepta o envio e impede
+        // a gravação que o teste precisa observar).
+        Notification::send($user, $notif);
+
+        // Identidade da linha persistida.
+        $this->assertDatabaseCount('notifications', 1);
+        $row = DatabaseNotification::query()->first();
+        $this->assertSame($user->id, (int) $row->notifiable_id);
+        $this->assertSame(User::class, $row->notifiable_type);
+        $this->assertNull($row->read_at);
+
+        // Coluna `type` foi populada pelo dispatcher do Laravel (W4). NÃO
+        // hardcodar o nome da classe anônima (`class@anonymous...`) — esses
+        // nomes incluem hash de offset interno e são instáveis entre runs
+        // (Pitfall 2 do 08-RESEARCH.md). Basta provar que a coluna não veio vazia.
+        $this->assertNotEmpty($row->type);
+
+        // Payload canônico de 6 chaves (cast `array` do DatabaseNotification
+        // faz o round-trip JSON automático — Pitfall 3 do 08-RESEARCH.md
+        // trava acesso à coluna `data` como string crua).
+        $this->assertSame('Título teste', $row->data['titulo']);
+        $this->assertSame('Mensagem teste', $row->data['mensagem']);
+        $this->assertSame('manual', $row->data['categoria']);   // enum→value persistido
+        $this->assertNull($row->data['autor_user_id']);
+        $this->assertSame('/notificacoes', $row->data['url']);
+        $this->assertSame(['ref' => 'phase-8-smoke'], $row->data['meta']);
     }
 }
