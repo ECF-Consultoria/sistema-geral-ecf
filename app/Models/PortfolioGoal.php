@@ -4,7 +4,9 @@ namespace App\Models;
 
 use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
+use App\Notifications\MetaAtribuidaNotification;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Notification;
 
 class PortfolioGoal extends Model
 {
@@ -18,6 +20,38 @@ class PortfolioGoal extends Model
         'target_value' => 'decimal:4',
         'active'       => 'boolean',
     ];
+
+    /**
+     * Hook de boot — AUTO-03.
+     *
+     * Após a criação de uma `PortfolioGoal`, dispara `MetaAtribuidaNotification`
+     * apenas para o `user` dono da carteira. Sem fan-out — meta de carteira é
+     * pessoal e só o titular precisa saber.
+     *
+     * Early-return silencioso se o `user` for excluído antes do hook rodar
+     * (improvável, mas defensivo).
+     */
+    protected static function booted(): void
+    {
+        static::created(function (self $meta): void {
+            $dono = $meta->user;
+            if (!$dono) {
+                return;
+            }
+
+            Notification::send(
+                $dono,
+                new MetaAtribuidaNotification(
+                    titulo:   "Nova meta de carteira: {$meta->description}",
+                    mensagem: "Sua carteira recebeu uma nova meta. Métrica: {$meta->metric} (valor alvo: {$meta->target_value}).",
+                    meta:     [
+                        'source'            => 'portfolio_goal',
+                        'portfolio_goal_id' => $meta->id,
+                    ],
+                )
+            );
+        });
+    }
 
     public static array $metricLabels = [
         'tacos'                  => 'TACOS',

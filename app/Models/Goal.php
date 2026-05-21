@@ -2,13 +2,53 @@
 
 namespace App\Models;
 
+use App\Notifications\MetaAtribuidaNotification;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Notification;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
 class Goal extends Model
 {
     use LogsActivity;
+
+    /**
+     * Hook de boot — AUTO-02.
+     *
+     * Após a criação de uma `Goal`, dispara `MetaAtribuidaNotification` para
+     * o(s) consultor(es) + mentor(es) da empresa associada, deduplicados por
+     * id (D-06 do 11-01-PLAN.md — admins NÃO entram em AUTO-02; eles só
+     * recebem em AUTO-05/atingimento).
+     *
+     * Early-return silencioso se a empresa não tem consultor nem mentor.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (self $meta): void {
+            $company = $meta->company()->with(['consultor', 'mentor'])->first();
+            if (!$company) {
+                return;
+            }
+
+            $destinatarios = $company->consultor->merge($company->mentor)->unique('id');
+            if ($destinatarios->isEmpty()) {
+                return;
+            }
+
+            Notification::send(
+                $destinatarios,
+                new MetaAtribuidaNotification(
+                    titulo:   "Nova meta para {$company->name}: {$meta->description}",
+                    mensagem: "A empresa {$company->name} recebeu uma nova meta. Métrica: {$meta->metric} (valor alvo: {$meta->target_value}).",
+                    meta:     [
+                        'source'     => 'goal',
+                        'goal_id'    => $meta->id,
+                        'company_id' => $company->id,
+                    ],
+                )
+            );
+        });
+    }
 
     public function getActivitylogOptions(): LogOptions
     {
