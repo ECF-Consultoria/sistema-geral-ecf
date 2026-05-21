@@ -17,6 +17,7 @@ use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PortfolioController;
@@ -74,6 +75,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Notificações — leitura/contador/marcação (Phase 9, UI completa na Phase 10)
+    Route::get('/api/notificacoes/contador',           [NotificacaoController::class, 'contador'])->name('notificacoes.contador');
+    Route::get('/notificacoes',                        [NotificacaoController::class, 'index'])->name('notificacoes.index');
+    Route::patch('/notificacoes/{id}/marcar-lida',     [NotificacaoController::class, 'marcarLida'])->name('notificacoes.marcar-lida');
+    Route::post('/notificacoes/marcar-todas-lidas',    [NotificacaoController::class, 'marcarTodasLidas'])->name('notificacoes.marcar-todas-lidas');
 
     // Reuniões (todos)
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
