@@ -32,7 +32,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v3.0 — Sistema de Notificações
 
-- [ ] **Phase 8: Fundação de Notificações** - Tabela `notifications`, classe base e permission `notificacoes.criar` disponíveis para o resto do sistema usar
+- [x] **Phase 8: Fundação de Notificações** - Tabela `notifications`, classe base e permission `notificacoes.criar` disponíveis para o resto do sistema usar (completed 2026-05-21)
 - [ ] **Phase 9: Backend de Leitura, Contador e Polling** - Endpoints de listagem/marcação, shared prop do contador e polling funcionando ponta a ponta sem UI
 - [ ] **Phase 10: UI do Sino e Página de Histórico** - Usuário vê e interage com suas notificações via sino no header e página `/notificacoes`
 - [ ] **Phase 11: Disparos Automáticos de Metas** - Atribuição e atingimento de qualquer tipo de meta gera notificações automáticas para o público correto
@@ -195,14 +195,14 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 1**
-- [ ] 08-01-PLAN.md — Slice 1 Storage: migration `notifications` (schema canônico Laravel 12) + esqueleto da suíte Phase8FoundationTest com Test 1 GREEN
+- [x] 08-01-PLAN.md — Slice 1 Storage: migration `notifications` (schema canônico Laravel 12) + esqueleto da suíte Phase8FoundationTest com Test 1 GREEN
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 08-02-PLAN.md — Slice 2 Domain types: enum `Categoria` (backed string, 3 cases) + classe abstrata `BaseNotification` (construtor 6 params, via=database, toArray 6 chaves) + Test 7 smoke E2E GREEN
-- [ ] 08-03-PLAN.md — Slice 3 Permission catalog: 3 edições cirúrgicas em `Permissions.php` (constante + grupo `Notificações` + AUTO_LIDERANCA) + Tests 2/3/4 GREEN (PERM-01, PERM-03 registro)
+- [x] 08-02-PLAN.md — Slice 2 Domain types: enum `Categoria` (backed string, 3 cases) + classe abstrata `BaseNotification` (construtor 6 params, via=database, toArray 6 chaves) + Test 7 smoke E2E GREEN
+- [x] 08-03-PLAN.md — Slice 3 Permission catalog: 3 edições cirúrgicas em `Permissions.php` (constante + grupo `Notificações` + AUTO_LIDERANCA) + Tests 2/3/4 GREEN (PERM-01, PERM-03 registro)
 
 **Wave 3** *(blocked on Wave 2 completion)*
-- [ ] 08-04-PLAN.md — Slice 4 Authorization resolution E2E: Tests 5/6 GREEN via `User::hasPermission` (admin short-circuit, líder via AUTO_LIDERANCA merge) — suíte 7/7 verde (PERM-02, PERM-03 E2E)
+- [x] 08-04-PLAN.md — Slice 4 Authorization resolution E2E: Tests 5/6 GREEN via `User::hasPermission` (admin short-circuit, líder via AUTO_LIDERANCA merge) — suíte 7/7 verde (PERM-02, PERM-03 E2E)
 
 Cross-cutting constraints:
 - Não modificar `app/Models/User.php` (D-10: short-circuit + AUTO_LIDERANCA merge existentes cobrem PERM-02/03)
@@ -284,7 +284,7 @@ v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
 | 6. Backend Fechamento | 2/2 | Complete | 2026-05-19 |
 | 7. UI Fechamento | 1/1 | Complete | 2026-05-19 |
-| 8. Fundação de Notificações | 0/4 | Not started (plans created) | - |
+| 8. Fundação de Notificações | 4/4 | Complete   | 2026-05-21 |
 | 9. Backend de Leitura, Contador e Polling | 0/? | Not started | - |
 | 10. UI do Sino e Página de Histórico | 0/? | Not started | - |
 | 11. Disparos Automáticos de Metas | 0/? | Not started | - |
