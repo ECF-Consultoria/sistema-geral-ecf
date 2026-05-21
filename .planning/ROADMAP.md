@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v3.0 — Sistema de Notificações
 
 - [x] **Phase 8: Fundação de Notificações** - Tabela `notifications`, classe base e permission `notificacoes.criar` disponíveis para o resto do sistema usar (completed 2026-05-21)
-- [ ] **Phase 9: Backend de Leitura, Contador e Polling** - Endpoints de listagem/marcação, shared prop do contador e polling funcionando ponta a ponta sem UI
+- [x] **Phase 9: Backend de Leitura, Contador e Polling** - Endpoints de listagem/marcação, shared prop do contador e polling funcionando ponta a ponta sem UI (completed 2026-05-21)
 - [ ] **Phase 10: UI do Sino e Página de Histórico** - Usuário vê e interage com suas notificações via sino no header e página `/notificacoes`
 - [ ] **Phase 11: Disparos Automáticos de Metas** - Atribuição e atingimento de qualquer tipo de meta gera notificações automáticas para o público correto
 - [ ] **Phase 12: Criação Manual, Permissão na UI de Setores e Cleanup** - Usuário autorizado envia notificações com targeting; permissão aparece em `/sistema/setores`; cleanup diário descarta lidas antigas
@@ -285,7 +285,7 @@ v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
 | 6. Backend Fechamento | 2/2 | Complete | 2026-05-19 |
 | 7. UI Fechamento | 1/1 | Complete | 2026-05-19 |
 | 8. Fundação de Notificações | 4/4 | Complete   | 2026-05-21 |
-| 9. Backend de Leitura, Contador e Polling | 0/? | Not started | - |
+| 9. Backend de Leitura, Contador e Polling | 1/1 | Complete   | 2026-05-21 |
 | 10. UI do Sino e Página de Histórico | 0/? | Not started | - |
 | 11. Disparos Automáticos de Metas | 0/? | Not started | - |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 0/? | Not started | - |

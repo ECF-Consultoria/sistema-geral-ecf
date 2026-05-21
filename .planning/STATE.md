@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v3.0
 milestone_name: Sistema de Notificações
 status: executing
-stopped_at: Phase 8 context gathered (classe base BaseNotification + enum Categoria + tabela notifications + permission notificacoes.criar)
-last_updated: "2026-05-21T18:37:08.567Z"
-last_activity: 2026-05-21 -- Phase 08 execution started
+stopped_at: Phase 9 backend de leitura, contador e polling completo — suíte 6/6 GREEN
+last_updated: "2026-05-21T19:50:00.000Z"
+last_activity: 2026-05-21 -- Phase 09 executada e mergeada
 progress:
   total_phases: 12
-  completed_phases: 0
-  total_plans: 4
-  completed_plans: 0
-  percent: 0
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
+  percent: 17
 ---
 
 # Project State
@@ -21,7 +21,7 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro e comunicação interna (notificações)
-**Current focus:** Phase 08 — funda-o-de-notifica-es
+**Current focus:** Phase 10 — UI do Sino e Página de Histórico (Phases 8 e 9 completas)
 
 ## Current Position
 
