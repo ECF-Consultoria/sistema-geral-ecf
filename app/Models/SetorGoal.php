@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Notifications\MetaAtribuidaNotification;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Notification;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -37,6 +39,46 @@ class SetorGoal extends Model
         'absenteismo'      => 'Absenteísmo dos membros',
         'tacos_medio'      => 'TACOS médio da carteira dos membros',
     ];
+
+    /**
+     * Hook de boot — AUTO-01.
+     *
+     * Após a criação de uma `SetorGoal`, dispara `MetaAtribuidaNotification`
+     * para todos os membros do setor (não os líderes — o público de "atribuição"
+     * é quem trabalha pra meta acontecer, não quem gerencia). Se o setor não
+     * tem membros, ninguém é notificado (early-return silencioso — não loga).
+     *
+     * Trade-off: seeders / tests que criem `SetorGoal` precisam popular
+     * `setor.membros` antes da criação se quiserem observar a notificação;
+     * caso contrário o hook age como no-op.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (self $meta): void {
+            $setor = $meta->setor()->with('membros')->first();
+            if (!$setor) {
+                return;
+            }
+
+            $membros = $setor->membros;
+            if ($membros->isEmpty()) {
+                return;
+            }
+
+            Notification::send(
+                $membros,
+                new MetaAtribuidaNotification(
+                    titulo:   "Nova meta do setor: {$meta->description}",
+                    mensagem: "O setor {$setor->nome} recebeu uma nova meta. Meta: {$meta->metric} (valor alvo: {$meta->target_value}).",
+                    meta:     [
+                        'source'        => 'setor_goal',
+                        'setor_goal_id' => $meta->id,
+                        'setor_id'      => $setor->id,
+                    ],
+                )
+            );
+        });
+    }
 
     public function getActivitylogOptions(): LogOptions
     {
