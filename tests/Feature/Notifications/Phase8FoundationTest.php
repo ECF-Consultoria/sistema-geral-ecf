@@ -144,11 +144,60 @@ class Phase8FoundationTest extends TestCase
      * Test 6 — Líder de setor retorna `true` em `hasPermission('notificacoes.criar')`
      * automaticamente via `AUTO_LIDERANCA`, sem grant explícito.
      *
-     * Será implementado pela Slice 3 (Permissions) — Plan 03.
+     * Cobre PERM-03 + Success Criterion #4 do ROADMAP §Phase 8 — verificação
+     * end-to-end via `hasPermission()`. D-09 entregue em Plan 03 (`notificacoes.criar`
+     * dentro de `Permissions::AUTO_LIDERANCA`) + D-10 prova que o merge em
+     * `User::effectivePermissions()` linhas 135–137 já cobre — ZERO mudança
+     * em User.php.
+     *
+     * Setup intencionalmente mínimo:
+     *   - cria Setor ativo (slug gerado automaticamente pelo `booted()`)
+     *   - cria user não-admin (`role='consultor'`) para forçar caminho NÃO short-circuit
+     *   - attach via `setoresLiderados()->attach` (pivot `setor_lideres`)
+     *   - NÃO atribui membro (`setores()->attach`) nem permission manual
+     *     (`SetorPermissao::create`) — prova que apenas estar em `setor_lideres`
+     *     basta para herdar AUTO_LIDERANCA
+     *   - `$user->refresh()` IMEDIATAMENTE após attach: zera
+     *     `$effectivePermissionsCache` (User.php linha 57) que ficou nulo no
+     *     boot mas seria preenchido por chamadas subsequentes — defesa contra
+     *     T-08-12 (Tampering via cache stale)
      */
     public function test_lider_tem_permissao_via_auto_lideranca(): void
     {
-        $this->markTestIncomplete('Implementado em Slice 3 (Permissions) — Plan 03.');
+        // Setor ativo — `booted()` em Setor.php gera slug='setor-teste' automaticamente.
+        $setor = Setor::create(['nome' => 'Setor Teste', 'active' => true]);
+
+        // User explicitamente NÃO admin — força o caminho `effectivePermissions()`
+        // (sem o short-circuit do Test 5).
+        $user = User::factory()->create(['role' => 'consultor']);
+
+        // Attach na pivot `setor_lideres`. Migration 2026_05_20_200005 declara
+        // `assigned_at` timestamp NOT NULL e `assigned_by` nullable — passamos
+        // explicitamente as 2 chaves do pivot.
+        $user->setoresLiderados()->attach($setor->id, [
+            'assigned_by' => null,
+            'assigned_at' => now(),
+        ]);
+
+        // Invalida `$effectivePermissionsCache` na instância — sem refresh(),
+        // qualquer leitura anterior teria cacheado o resultado pré-attach
+        // (mitiga T-08-12).
+        $user->refresh();
+
+        // Assert defensivo — confirma que NÃO estamos no caminho short-circuit
+        // (este é o ramo "não-admin com setor liderado" que precisa do merge
+        // de AUTO_LIDERANCA para passar).
+        $this->assertFalse($user->isAdmin());
+
+        // `isLider()` consulta `setoresLiderados()->exists()` (User.php linha 90).
+        // True confirma que o attach foi persistido.
+        $this->assertTrue($user->isLider());
+
+        // Assert principal — PERM-03 verificado end-to-end.
+        // `User::effectivePermissions()` linhas 135–137 faz array_merge com
+        // `Permissions::AUTO_LIDERANCA` quando `isLider()` é true; D-09 garante
+        // que `notificacoes.criar` está nesse array.
+        $this->assertTrue($user->hasPermission('notificacoes.criar'));
     }
 
     /**
