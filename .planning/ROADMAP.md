@@ -190,6 +190,26 @@ Cross-cutting constraints:
   3. Qualquer usuário admin retorna `true` em `$user->hasPermission('notificacoes.criar')` sem precisar de atribuição manual (short-circuit já existente)
   4. Qualquer usuário cadastrado em `setor_lideres` (líder de qualquer setor) retorna `true` em `$user->hasPermission('notificacoes.criar')` automaticamente, sem precisar de atribuição manual ao setor
   5. A permission_key `notificacoes.criar` consta no array `Permissions::AUTO_LIDERANCA`
+**Plans**: 4 plans
+
+Plans:
+
+**Wave 1**
+- [ ] 08-01-PLAN.md — Slice 1 Storage: migration `notifications` (schema canônico Laravel 12) + esqueleto da suíte Phase8FoundationTest com Test 1 GREEN
+
+**Wave 2** *(blocked on Wave 1 completion)*
+- [ ] 08-02-PLAN.md — Slice 2 Domain types: enum `Categoria` (backed string, 3 cases) + classe abstrata `BaseNotification` (construtor 6 params, via=database, toArray 6 chaves) + Test 7 smoke E2E GREEN
+- [ ] 08-03-PLAN.md — Slice 3 Permission catalog: 3 edições cirúrgicas em `Permissions.php` (constante + grupo `Notificações` + AUTO_LIDERANCA) + Tests 2/3/4 GREEN (PERM-01, PERM-03 registro)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+- [ ] 08-04-PLAN.md — Slice 4 Authorization resolution E2E: Tests 5/6 GREEN via `User::hasPermission` (admin short-circuit, líder via AUTO_LIDERANCA merge) — suíte 7/7 verde (PERM-02, PERM-03 E2E)
+
+Cross-cutting constraints:
+- Não modificar `app/Models/User.php` (D-10: short-circuit + AUTO_LIDERANCA merge existentes cobrem PERM-02/03)
+- Não criar subclasses concretas de `BaseNotification` (D-04: ficam para Phases 11/12)
+- Migration timestamp estritamente posterior a `2026_05_20_200008` (Pitfall 6 do RESEARCH)
+- Smoke test usa `Notification::send` REAL (Pitfall 1 — NÃO `Notification::fake()`)
+- `php artisan migrate` e `php artisan test` rodam no host XAMPP (CLI PHP não disponível no agente)
 
 ### Phase 9: Backend de Leitura, Contador e Polling
 **Goal**: O backend expõe o contador de não lidas como shared prop Inertia, oferece endpoint JSON de polling, lista as notificações do usuário autenticado e permite marcar uma ou todas como lidas — tudo testável via HTTP/Tinker antes da UI existir
@@ -264,7 +284,7 @@ v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
 | 6. Backend Fechamento | 2/2 | Complete | 2026-05-19 |
 | 7. UI Fechamento | 1/1 | Complete | 2026-05-19 |
-| 8. Fundação de Notificações | 0/? | Not started | - |
+| 8. Fundação de Notificações | 0/4 | Not started (plans created) | - |
 | 9. Backend de Leitura, Contador e Polling | 0/? | Not started | - |
 | 10. UI do Sino e Página de Histórico | 0/? | Not started | - |
 | 11. Disparos Automáticos de Metas | 0/? | Not started | - |
