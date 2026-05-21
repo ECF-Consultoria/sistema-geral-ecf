@@ -114,11 +114,30 @@ class Phase8FoundationTest extends TestCase
      * Test 5 — Admin retorna `true` em `hasPermission('notificacoes.criar')`
      * via short-circuit em `User::isAdmin()`, sem precisar de atribuição.
      *
-     * Será implementado pela Slice 3 (Permissions) — Plan 03.
+     * Cobre PERM-02 + Success Criterion #3 do ROADMAP §Phase 8. Prova D-10:
+     * o caminho admin já existia em `User::hasPermission` (linha 106:
+     * `if ($this->isAdmin()) return true;`) e cobre a permission nova
+     * `notificacoes.criar` automaticamente — ZERO mudança em User.php.
+     *
+     * O teste NÃO atribui setor (`setores()->attach`) nem permission manual
+     * (`SetorPermissao::create`) nem `setoresLiderados()->attach` — qualquer
+     * atribuição comprometeria a prova de que o short-circuit basta sozinho.
      */
     public function test_admin_tem_permissao_via_short_circuit(): void
     {
-        $this->markTestIncomplete('Implementado em Slice 3 (Permissions) — Plan 03.');
+        // Setup mínimo: apenas um admin, sem nenhuma vinculação a setor.
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        // Assert defensivo — deixa claro no failure message que estamos
+        // verificando o caminho short-circuit (isAdmin() === true → bypass total).
+        $this->assertTrue($admin->isAdmin());
+
+        // Assert principal — PERM-02 verificado end-to-end via hasPermission().
+        // `User::hasPermission` linha 106 retorna `true` antes de consultar
+        // `effectivePermissions()`, então a permission `notificacoes.criar` é
+        // resolvida automaticamente para qualquer admin, sem precisar estar
+        // em `setor_permissoes` nem em `setor_lideres`.
+        $this->assertTrue($admin->hasPermission('notificacoes.criar'));
     }
 
     /**
