@@ -14,7 +14,7 @@
 //   - Botão "Marcar como lida" inline em cada card unread.
 //   - Footer simples de paginação (Página X de Y) — quando há mais de 1.
 import { Head, Link, router } from '@inertiajs/react';
-import { Mail, Target, CheckCircle2 } from 'lucide-react';
+import { Mail, Target, CheckCircle2, PlusCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import AppLayout from '@/Layouts/AppLayout';
@@ -32,7 +32,7 @@ const CATEGORIA_META = {
     meta_atingida:  { Icon: CheckCircle2, color: 'text-green-400',  label: 'Meta atingida' },
 };
 
-function Index({ notificacoes, aba }) {
+function Index({ notificacoes, aba, can_criar }) {
     const unreadAtiva = notificacoes.data.some(n => !n.read_at);
 
     const handleAbaChange = (novaAba) => {
@@ -58,15 +58,26 @@ function Index({ notificacoes, aba }) {
             <div className="max-w-3xl mx-auto">
                 <div className="flex items-center justify-between mb-4">
                     <h1 className="text-2xl font-bold text-white">Minhas notificações</h1>
-                    {aba === 'nao-lidas' && unreadAtiva && (
-                        <button
-                            type="button"
-                            onClick={handleMarcarTodas}
-                            className="text-xs text-ecf-yellow hover:underline"
-                        >
-                            Marcar todas como lidas
-                        </button>
-                    )}
+                    <div className="flex items-center gap-3">
+                        {aba === 'nao-lidas' && unreadAtiva && (
+                            <button
+                                type="button"
+                                onClick={handleMarcarTodas}
+                                className="text-xs text-ecf-yellow hover:underline"
+                            >
+                                Marcar todas como lidas
+                            </button>
+                        )}
+                        {can_criar && (
+                            <Link
+                                href={route('notificacoes.nova')}
+                                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-ecf-yellow text-ecf-bg text-[12px] font-bold hover:bg-ecf-yellow-2 transition-colors"
+                            >
+                                <PlusCircle size={13} />
+                                Nova notificação
+                            </Link>
+                        )}
+                    </div>
                 </div>
 
                 <Tabs value={aba} onValueChange={handleAbaChange}>
