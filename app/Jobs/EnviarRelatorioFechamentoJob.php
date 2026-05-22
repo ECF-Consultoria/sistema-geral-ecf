@@ -112,17 +112,30 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             $faturamentoPai = $metricaPai ? (float) $metricaPai->faturamento : null;
             $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
-            // Vinculadas com seus próprios dados de faixa
+            // Vinculadas com todos os campos (espelho de AdminController::gerarRelatorioGeral)
             $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
                 $m   = $metricas->get($f->id);
                 $fat = $m ? (float) $m->faturamento : null;
                 $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
                 return [
-                    'id'           => $f->id,
-                    'name'         => $f->name,
-                    'faturamento'  => $fat,
-                    'faixa_label'  => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                    'valor_mensal' => $fx ? $fx['valor'] : null,
+                    'id'                       => $f->id,
+                    'name'                     => $f->name,
+                    'cnpj'                     => $f->cnpj,
+                    'adman_account_id'         => $f->adman_account_id,
+                    'adman_store_id'           => $f->adman_store_id,
+                    'ml_store_id'              => $f->ml_store_id,
+                    'segment'                  => $f->segment,
+                    'service_type'             => $f->service_type,
+                    'contract_type'            => $f->contract_type,
+                    'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
+                    'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
+                    'additional_service'       => $f->additional_service,
+                    'additional_service_price' => $f->additional_service_price ? (float) $f->additional_service_price : null,
+                    'faturamento'              => $fat,
+                    'periodo_inicio'           => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
+                    'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,
+                    'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
+                    'valor_mensal'             => $fx ? $fx['valor'] : null,
                 ];
             })->values()->toArray();
 
@@ -132,6 +145,8 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                 'company'          => $company,
                 'recebido'         => $recebido,
                 'faturamento'      => $faturamentoPai,
+                'periodo_inicio'   => $metricaPai ? Carbon::parse($metricaPai->periodo_inicio)->format('d/m/Y') : null,
+                'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y')  : null,
                 'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
                 'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
                 'vinculadas'       => $vinculadas,

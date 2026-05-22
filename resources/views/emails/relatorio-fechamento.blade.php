@@ -168,12 +168,11 @@
                 </thead>
                 <tbody>
                     @forelse ($dados['relatorios'] as $r)
+                        {{-- Linha da empresa principal --}}
                         <tr>
-                            {{-- Nome da empresa --}}
                             <td class="empresa-nome">
                                 {{ is_object($r['company']) ? $r['company']->name : ($r['company']['name'] ?? '—') }}
                             </td>
-                            {{-- Faturamento do mês --}}
                             <td>
                                 @if ($r['faturamento'] !== null)
                                     R$ {{ number_format($r['faturamento'], 2, ',', '.') }}
@@ -181,17 +180,14 @@
                                     <span style="color: rgba(255,255,255,0.3);">—</span>
                                 @endif
                             </td>
-                            {{-- Faixa de progressão --}}
                             <td>{{ $r['faixa_label'] ?? '—' }}</td>
-                            {{-- Valor da mensalidade da faixa --}}
                             <td>
                                 @if ($r['valor_mensal'] !== null)
-                                    R$ {{ number_format($r['valor_mensal'] ?? 0, 2, ',', '.') }}
+                                    R$ {{ number_format($r['valor_mensal'], 2, ',', '.') }}
                                 @else
                                     <span style="color: rgba(255,255,255,0.3);">—</span>
                                 @endif
                             </td>
-                            {{-- Status de recebimento --}}
                             <td>
                                 @if ($r['recebido'])
                                     <span class="status-recebido">Recebido</span>
@@ -200,6 +196,40 @@
                                 @endif
                             </td>
                         </tr>
+                        {{-- Linhas das empresas filhas (se houver) --}}
+                        @foreach ($r['vinculadas'] ?? [] as $v)
+                        <tr style="background: rgba(255,255,255,0.015);">
+                            <td style="padding-left: 24px; color: rgba(255,255,255,0.50); font-size: 11px;">
+                                ↳ {{ $v['name'] }}
+                            </td>
+                            <td style="font-size: 11px; color: rgba(255,255,255,0.55);">
+                                @if ($v['faturamento'] !== null)
+                                    R$ {{ number_format($v['faturamento'], 2, ',', '.') }}
+                                @else
+                                    <span style="color: rgba(255,255,255,0.2);">—</span>
+                                @endif
+                            </td>
+                            <td style="font-size: 11px; color: rgba(255,255,255,0.45);">{{ $v['faixa_label'] ?? '—' }}</td>
+                            <td style="font-size: 11px; color: rgba(255,255,255,0.55);">
+                                @if ($v['valor_mensal'] !== null)
+                                    R$ {{ number_format($v['valor_mensal'], 2, ',', '.') }}
+                                @else
+                                    <span style="color: rgba(255,255,255,0.2);">—</span>
+                                @endif
+                            </td>
+                            <td></td>
+                        </tr>
+                        @endforeach
+                        {{-- Linha de total do grupo (quando há filhas) --}}
+                        @if (!empty($r['vinculadas']))
+                        <tr style="border-top: 1px solid rgba(255,255,255,0.08);">
+                            <td colspan="3" style="font-size: 11px; color: rgba(255,255,255,0.35); padding-left: 14px;">Total do grupo</td>
+                            <td style="font-size: 12px; font-weight: 700; color: rgba(255,255,255,0.80);">
+                                R$ {{ number_format($r['total_mensalidade'] ?? 0, 2, ',', '.') }}
+                            </td>
+                            <td></td>
+                        </tr>
+                        @endif
                     @empty
                         <tr>
                             <td colspan="5" style="text-align:center; color: rgba(255,255,255,0.3); padding: 24px;">

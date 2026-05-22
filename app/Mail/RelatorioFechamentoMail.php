@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Mail\Mailables\Content;
@@ -10,17 +11,12 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * Mailable do Relatório Geral de Fechamento.
- * Recebe os dados já montados (mesLabel, relatorios, totais) e renderiza
- * a view emails.relatorio-fechamento para envio por email.
- * Os destinatários são configurados via ->to() no Job, não aqui.
+ * Envia o relatório em HTML no corpo + PDF em anexo gerado via DomPDF.
  */
 class RelatorioFechamentoMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    /**
-     * @param array $dados Array com chaves: mesLabel, relatorios[], totais[]
-     */
     public function __construct(public array $dados)
     {
     }
@@ -38,5 +34,21 @@ class RelatorioFechamentoMail extends Mailable
             view: 'emails.relatorio-fechamento',
             with: ['dados' => $this->dados],
         );
+    }
+
+    public function attachments(): array
+    {
+        $mesLabel = $this->dados['mesLabel'] ?? 'fechamento';
+        $nomeArquivo = 'relatorio-' . str($mesLabel)->slug() . '.pdf';
+
+        $pdf = Pdf::loadView('emails.relatorio-fechamento-pdf', ['dados' => $this->dados])
+            ->setPaper('a4', 'portrait');
+
+        return [
+            \Illuminate\Mail\Mailables\Attachment::fromData(
+                fn () => $pdf->output(),
+                $nomeArquivo,
+            )->withMime('application/pdf'),
+        ];
     }
 }
