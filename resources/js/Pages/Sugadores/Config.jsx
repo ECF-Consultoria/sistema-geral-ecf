@@ -95,11 +95,11 @@ export default function SugadoresConfig({ company, config }) {
     return (
         <AppLayout title="Configuração de Sugadores">
             <Link
-                href={route('companies.show', company.id)}
+                href={route('sugadores.index')}
                 className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-4"
             >
                 <ArrowLeft size={14} />
-                Voltar para empresa
+                Voltar para Sugadores
             </Link>
 
             <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">

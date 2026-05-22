@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
     PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
+    Settings, Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MoveToSgiModal from '@/Components/MoveToSgiModal';
@@ -94,6 +95,69 @@ function NativeSelect({ value, onChange, placeholder, options, className }) {
                 <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
             ))}
         </select>
+    );
+}
+
+/**
+ * Picker simples de empresa que abre Config de Sugadores ao escolher.
+ * Pulado o seletor quando há uma só empresa (vai direto pra config).
+ */
+function ConfigPickerModal({ companies, onClose }) {
+    const [q, setQ] = useState('');
+    const filtered = q
+        ? companies.filter(c => c.name.toLowerCase().includes(q.toLowerCase()))
+        : companies;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative card-ecf rounded-2xl w-full max-w-md p-5">
+                <div className="flex items-start justify-between mb-3">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Settings size={15} className="text-ecf-yellow" />
+                            <h3 className="text-white font-display font-bold text-base">Configurar Sugadores</h3>
+                        </div>
+                        <p className="text-white/50 text-xs mt-0.5">Selecione a empresa para editar os critérios de detecção.</p>
+                    </div>
+                    <button onClick={onClose} className="text-white/40 hover:text-white">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="relative mb-3">
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40" />
+                    <input
+                        type="text"
+                        value={q}
+                        onChange={e => setQ(e.target.value)}
+                        autoFocus
+                        placeholder="Buscar empresa..."
+                        className="w-full h-9 pl-8 pr-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
+                    />
+                </div>
+
+                <div className="max-h-[320px] overflow-y-auto -mx-1 px-1">
+                    {filtered.length === 0 ? (
+                        <p className="text-white/40 text-sm py-6 text-center">Nenhuma empresa encontrada.</p>
+                    ) : (
+                        <ul className="space-y-1">
+                            {filtered.map(c => (
+                                <li key={c.id}>
+                                    <Link
+                                        href={route('sugadores.config.show', c.id)}
+                                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-transparent hover:border-white/[0.08] hover:bg-white/[0.04] text-[13px] text-white/80 hover:text-white"
+                                    >
+                                        <Building2 size={12} className="text-white/30" />
+                                        <span className="truncate">{c.name}</span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -212,6 +276,7 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
     // os checkboxes incompatíveis pra evitar ambiguidade.
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+    const [configPickerOpen, setConfigPickerOpen] = useState(false);
 
     function applyFilters(updates = {}) {
         const merged = { ...f, ...updates };
@@ -308,6 +373,16 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                         Filtros
                         {hasAnyFilter && <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow" />}
                     </button>
+                    {can_manage && (
+                        <button
+                            onClick={() => setConfigPickerOpen(true)}
+                            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[13px] font-medium"
+                            title="Configurar critérios de detecção por empresa"
+                        >
+                            <Settings size={14} />
+                            Configurar
+                        </button>
+                    )}
                     {can_analyze && (
                         <button
                             onClick={runAnalysis}
@@ -656,6 +731,10 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                     onClose={() => setBulkMoveOpen(false)}
                     onSuccess={clearSelection}
                 />
+            )}
+
+            {configPickerOpen && (
+                <ConfigPickerModal companies={companies} onClose={() => setConfigPickerOpen(false)} />
             )}
         </AppLayout>
     );

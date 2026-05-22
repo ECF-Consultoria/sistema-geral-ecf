@@ -112,7 +112,7 @@ class SugadorController extends Controller
             'users'           => $users,
             'filters'         => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id', 'include_resolved']),
             'total_pendentes' => $totalPendentes,
-            'can_manage'      => $user->isAdmin(),
+            'can_manage'      => Gate::allows('manage', Sugador::class),
             'can_analyze'     => Gate::allows('analyze', Sugador::class),
         ]);
     }

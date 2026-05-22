@@ -55,11 +55,19 @@ class SugadorPolicy
 
     /**
      * Ações administrativas (configurar thresholds por empresa).
-     * Apenas admin.
+     *
+     * 2026-05-22: relaxado de admin-only para admin + gestor + lider (publication)
+     * — o time operacional precisava acessar a config dos Sugadores sem depender
+     * de admin abrir, e a aba "Empresas" não é visível a quem não é admin.
+     * Analistas comuns continuam fora (config é macro, e eles só veem a carteira).
      */
     public function manage(User $user): bool
     {
-        return $user->isAdmin();
+        if ($user->isAdmin()) return true;
+
+        // hasGlobalView replica isGestor / isLiderPub (publication roles com
+        // visão global). Reaproveita o helper privado pra manter coerência.
+        return $this->hasGlobalView($user);
     }
 
     /**
