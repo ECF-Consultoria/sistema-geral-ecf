@@ -121,7 +121,7 @@ class SugadorController extends Controller
     {
         Gate::authorize('view', $sugador);
 
-        $sugador->load(['company:id,name,adman_account_id', 'resolvidoPor:id,name', 'acoes.user:id,name']);
+        $sugador->load(['company:id,name,adman_account_id', 'resolvidoPor:id,name', 'movidoPor:id,name', 'acoes.user:id,name']);
 
         return Inertia::render('Sugadores/Show', [
             'sugador'      => $sugador,
