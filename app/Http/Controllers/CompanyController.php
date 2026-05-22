@@ -37,15 +37,15 @@ class CompanyController extends Controller
 
         // Users com o cargo "Estrategista" (slug=estrategista) atribuído no
         // pivot user_setores. O nome de "mentor" mudou pra "Estrategista" na
-        // empresa — o select do popup de cadastro/edição usa essa lista em
-        // vez do legacy User.role='mentor' (que só pega 2 users antigos sem
-        // migração de cargo).
-        // Query filtra pelo cargo_id NO PIVOT (não pelos cargos do setor) —
-        // padrão correto: User->setores()->wherePivot('cargo_id', X).
+        // empresa — o select do popup usa essa lista em vez do legacy
+        // User.role='mentor'.
+        // Implementação via whereIn + subquery direta no pivot — wherePivot()
+        // dentro de whereHas('setores', ...) NÃO funciona (Eloquent gera SQL
+        // inválido tipo `pivot = cargo_id`); precisa do DB::table().
         $cargoEstrategistaId = \App\Models\Cargo::where('slug', 'estrategista')->value('id');
         $estrategistas = $cargoEstrategistaId
             ? User::where('active', true)
-                ->whereHas('setores', fn($q) => $q->wherePivot('cargo_id', $cargoEstrategistaId))
+                ->whereIn('id', \DB::table('user_setores')->where('cargo_id', $cargoEstrategistaId)->pluck('user_id'))
                 ->get(['id', 'name'])
                 ->values()
             : collect();
