@@ -5,7 +5,7 @@ milestone_name: Administrativo — Fechamento
 status: Complete
 stopped_at: Milestone v2.0 completo — Phases 5/6/7 executadas e aprovadas
 last_updated: "2026-05-19T22:00:00.000Z"
-last_activity: "2026-05-22 — Quick task 260522-d6f: fix 504 syncTodasVendasAdman → Job assíncrono"
+last_activity: "2026-05-22 — Quick task 260522-dx3: log observável do SyncTodasVendasAdmanJob em /dev/desenvolvimento"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -99,6 +99,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260522-d6f | Mover loop de syncTodasVendasAdman para Job assíncrono (fix 504) | 2026-05-22 | e20a94e | [260522-d6f-sync-todas-vendas-async-job](.planning/quick/260522-d6f-sync-todas-vendas-async-job/) |
+| 260522-dx3 | Log observável do SyncTodasVendasAdmanJob em /dev/desenvolvimento | 2026-05-22 | 45334ae | [260522-dx3-log-sync-vendas-mlb-dev](.planning/quick/260522-dx3-log-sync-vendas-mlb-dev/) |
 
 ## Deferred Items
 
