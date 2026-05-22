@@ -58,7 +58,19 @@ Schedule::command('notifications:cleanup')
     ->name('notifications-cleanup')
     ->withoutOverlapping();
 
-// Envio automático mensal do relatório de fechamento — dia 5 às 09:00
-Schedule::job(new \App\Jobs\EnviarRelatorioFechamentoJob(now()->format('Y-m'), null))
-    ->monthlyOn(5, '09:00')
-    ->name('envio-relatorio-fechamento-auto');
+// Envio automático mensal do relatório de fechamento.
+// Roda a cada minuto para respeitar o dia e hora configurados dinamicamente pelo admin.
+// Só dispara quando ativo=1, hoje == dia configurado, hora:minuto == hora configurada.
+Schedule::call(function () {
+    $ativo = \App\Models\Configuracao::get('email_envio_auto_ativo', '0');
+    if ($ativo !== '1') {
+        return;
+    }
+
+    $dia  = (int) \App\Models\Configuracao::get('email_envio_auto_dia', '5');
+    $hora = \App\Models\Configuracao::get('email_envio_auto_hora', '09:00');
+
+    if (now()->day === $dia && now()->format('H:i') === $hora) {
+        \App\Jobs\EnviarRelatorioFechamentoJob::dispatch(now()->format('Y-m'), null);
+    }
+})->everyMinute()->name('checa-envio-relatorio-fechamento');
