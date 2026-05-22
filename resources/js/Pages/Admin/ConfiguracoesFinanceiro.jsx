@@ -169,18 +169,22 @@ export default function ConfiguracoesFinanceiro({
                                 type="button"
                                 onClick={() => setData('envio_auto_ativo', !data.envio_auto_ativo)}
                                 className={cn(
-                                    'relative shrink-0 w-10 h-5.5 rounded-full transition-colors focus:outline-none',
-                                    data.envio_auto_ativo ? 'bg-ecf-yellow' : 'bg-white/[0.10]',
+                                    'inline-flex items-center gap-2 h-8 px-3 rounded-lg border text-[12px] font-semibold shrink-0 transition-colors',
+                                    data.envio_auto_ativo
+                                        ? 'bg-ecf-yellow/10 border-ecf-yellow/30 text-ecf-yellow'
+                                        : 'bg-white/[0.04] border-white/[0.08] text-white/40 hover:text-white/60',
                                 )}
-                                role="switch"
-                                aria-checked={data.envio_auto_ativo}
                             >
-                                <span
-                                    className={cn(
-                                        'absolute top-0.5 w-4.5 h-4.5 rounded-full bg-white shadow transition-transform',
-                                        data.envio_auto_ativo ? 'translate-x-5' : 'translate-x-0.5',
-                                    )}
-                                />
+                                <span className={cn(
+                                    'w-7 h-4 rounded-full relative transition-colors shrink-0',
+                                    data.envio_auto_ativo ? 'bg-ecf-yellow' : 'bg-white/20',
+                                )}>
+                                    <span className={cn(
+                                        'absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200',
+                                        data.envio_auto_ativo ? 'translate-x-3.5' : 'translate-x-0.5',
+                                    )} />
+                                </span>
+                                {data.envio_auto_ativo ? 'Ativado' : 'Ativar'}
                             </button>
                         </div>
 
