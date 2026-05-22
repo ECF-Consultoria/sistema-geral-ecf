@@ -224,8 +224,11 @@ class NotificacaoController extends Controller
             'titulo'     => 'required|string|max:100',
             'mensagem'   => 'required|string|max:1000',
             'publico'    => 'required|in:usuario,setor,lideres,todos',
-            'usuario_id' => 'required_if:publico,usuario|exists:users,id',
-            'setor_id'   => 'required_if:publico,setor|exists:setores,id',
+            // `nullable` permite que o Inertia useForm envie a chave como string
+            // vazia quando o público não exige usuario_id/setor_id. Sem isso, o
+            // `exists:` falha na string vazia mesmo quando required_if não dispara.
+            'usuario_id' => 'nullable|required_if:publico,usuario|exists:users,id',
+            'setor_id'   => 'nullable|required_if:publico,setor|exists:setores,id',
         ]);
 
         // Resolve destinatários conforme o público escolhido (ENVIO-02).

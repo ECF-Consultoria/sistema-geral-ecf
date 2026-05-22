@@ -441,4 +441,35 @@ class Phase12ManualTest extends TestCase
         $this->assertDatabaseHas('notifications',    ['id' => $b->id]);
         $this->assertDatabaseHas('notifications',    ['id' => $c->id]);
     }
+
+    /**
+     * Test 11 — REGRESSION: Inertia `useForm` sempre envia TODAS as chaves do form
+     * (inclusive `usuario_id` e `setor_id` como string vazia) quando `publico=todos`
+     * ou `publico=lideres`. Bug descoberto em produção: regra `exists:users,id`
+     * falhava na string vazia, retornando 302 silenciosamente.
+     *
+     * Reproduz exatamente o payload que o frontend manda no caso "todos".
+     */
+    public function test_envio_regression_inertia_envia_chaves_vazias_de_usuario_e_setor(): void
+    {
+        $autor = $this->autorComPermissao();
+        User::factory()->count(2)->create(['role' => 'consultor', 'active' => true]);
+
+        // Payload idêntico ao do Inertia useForm: usuario_id e setor_id presentes mas vazios.
+        $this->actingAs($autor)
+            ->post(route('notificacoes.criar'), [
+                'titulo'     => 'Teste regressão',
+                'mensagem'   => 'Inertia sempre envia todas as chaves do form.',
+                'publico'    => 'todos',
+                'usuario_id' => '',
+                'setor_id'   => '',
+            ])
+            ->assertStatus(302)
+            ->assertSessionHas('success')          // success flash setado
+            ->assertSessionMissing('errors');      // sem ValidationException
+
+        // 3 ativos = autor + 2 outros — confirma que a request passou pela lógica
+        // de dispatch e não foi barrada na validação.
+        $this->assertDatabaseCount('notifications', 3);
+    }
 }
