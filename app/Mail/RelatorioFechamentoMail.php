@@ -101,6 +101,7 @@ class RelatorioFechamentoMail extends Mailable
                     'disable-gpu',
                     'disable-setuid-sandbox',
                     'disable-extensions',
+                    'disable-crash-reporter',
                     'no-first-run',
                     'no-default-browser-check',
                     'user-data-dir=/tmp/browsershot-chrome',
