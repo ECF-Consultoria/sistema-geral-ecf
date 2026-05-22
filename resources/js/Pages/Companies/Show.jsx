@@ -31,7 +31,7 @@ function InfoRow({ label, value }) {
 
 export default function CompanyShow({ company }) {
     const consultor = company.consultor?.[0];
-    const mentor = company.mentor?.[0];
+    const estrategista = company.estrategista?.[0];
     const latestMetric = company.adman_metrics?.[0];
 
     const completedMeetings = (company.meetings || []).filter(m => m.status === 'completed');
@@ -103,7 +103,7 @@ export default function CompanyShow({ company }) {
                     {/* Dados cadastrais */}
                     <Section icon={Building2} title="Dados da Empresa">
                         <InfoRow label="Analista" value={consultor?.name} />
-                        <InfoRow label="Mentor" value={mentor?.name} />
+                        <InfoRow label="Estrategista" value={estrategista?.name} />
                         <InfoRow label="ID Conta Adman" value={company.adman_account_id} />
                         <InfoRow label="ID Loja ML" value={company.ml_store_id} />
                         <InfoRow label="ID Adman Store" value={company.adman_store_id} />

@@ -62,10 +62,15 @@ class Company extends Model
             ->wherePivot('role', 'consultor');
     }
 
-    public function mentor()
+    /**
+     * Estrategista da empresa — antes chamado de "mentor" (renomeado em
+     * 2026-05-22 quando o time da ECF mudou a nomenclatura). A pivot
+     * company_users guarda role='estrategista' a partir dessa data.
+     */
+    public function estrategista()
     {
         return $this->belongsToMany(User::class, 'company_users')
-            ->wherePivot('role', 'mentor');
+            ->wherePivot('role', 'estrategista');
     }
 
     public function meetings()

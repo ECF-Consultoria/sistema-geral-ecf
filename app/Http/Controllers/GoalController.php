@@ -15,7 +15,7 @@ class GoalController extends Controller
     {
         $user = $request->user();
 
-        $query = Company::with(['goals', 'consultor', 'mentor'])
+        $query = Company::with(['goals', 'consultor', 'estrategista'])
             ->where('active', true)
             ->orderBy('name');
 
@@ -28,7 +28,7 @@ class GoalController extends Controller
             'id'        => $c->id,
             'name'      => $c->name,
             'consultor' => $c->consultor->first()?->name,
-            'mentor'    => $c->mentor->first()?->name,
+            'estrategista' => $c->estrategista->first()?->name,
             'goals'     => $c->goals->where('active', true)->map(fn($g) => [
                 'id'           => $g->id,
                 'metric'       => $g->metric,

@@ -91,7 +91,7 @@ export default function NpsRespond({ survey }) {
                             {errors.score_consultant && <p className="text-destructive text-xs">{errors.score_consultant}</p>}
 
                             <ScorePicker
-                                label={`O que acho do atendimento do ${survey.mentor_name || 'Mentor'}`}
+                                label={`O que acho do atendimento do ${survey.estrategista_name || survey.mentor_name || 'Estrategista'}`}
                                 value={data.score_mentor}
                                 onChange={v => setData('score_mentor', v)}
                             />

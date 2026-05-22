@@ -131,7 +131,7 @@ class Phase11AutoTest extends TestCase
             'active' => true,
         ]);
         $company->users()->attach($consultor->id, ['role' => 'consultor', 'assigned_at' => now()]);
-        $company->users()->attach($mentor->id,    ['role' => 'mentor',    'assigned_at' => now()]);
+        $company->users()->attach($mentor->id,    ['role' => 'estrategista', 'assigned_at' => now()]);
 
         Goal::create([
             'company_id'   => $company->id,
@@ -304,7 +304,7 @@ class Phase11AutoTest extends TestCase
             'active' => true,
         ]);
         $company->users()->attach($consultor->id, ['role' => 'consultor', 'assigned_at' => now()]);
-        $company->users()->attach($mentor->id,    ['role' => 'mentor',    'assigned_at' => now()]);
+        $company->users()->attach($mentor->id,    ['role' => 'estrategista', 'assigned_at' => now()]);
 
         // Hook AUTO-02 → 2 notifications (consultor + mentor).
         $goal = Goal::create([

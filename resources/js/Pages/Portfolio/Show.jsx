@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency, formatPercent } from '@/lib/utils';
 
-const roleLabel = { consultor: 'Analista', mentor: 'Mentor' };
+const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
 const periodLabel = { monthly: 'Mensal', quarterly: 'Trimestral', yearly: 'Anual' };
 const aggregationLabel = { avg: 'Média', sum: 'Soma' };
 
@@ -403,7 +403,7 @@ export default function PortfolioShow({
                                     <SelectTrigger><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="consultor">Analista</SelectItem>
-                                        <SelectItem value="mentor">Mentor</SelectItem>
+                                        <SelectItem value="mentor">Estrategista</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>

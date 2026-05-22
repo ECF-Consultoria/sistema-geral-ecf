@@ -94,15 +94,19 @@ class NpsController extends Controller
             return Inertia::render('Nps/Expired');
         }
 
-        $mentor     = $survey->company->users()->wherePivot('role', 'mentor')->first();
-        $consultant = $survey->company->users()->wherePivot('role', 'consultor')->first();
+        $estrategista = $survey->company->users()->wherePivot('role', 'estrategista')->first();
+        $consultant   = $survey->company->users()->wherePivot('role', 'consultor')->first();
 
         return Inertia::render('Nps/Respond', [
             'survey' => [
-                'token'           => $survey->token,
-                'company_name'    => $survey->company->name,
-                'mentor_name'     => $mentor?->name,
-                'consultant_name' => $consultant?->name,
+                'token'              => $survey->token,
+                'company_name'       => $survey->company->name,
+                // Mantemos a chave `mentor_name` no payload do NPS público porque
+                // a coluna `score_mentor` e a tela `/nps/{token}` ainda usam essa
+                // nomenclatura. Rename completo do score fica para outra fase.
+                'mentor_name'        => $estrategista?->name,
+                'estrategista_name'  => $estrategista?->name,
+                'consultant_name'    => $consultant?->name,
             ],
         ]);
     }

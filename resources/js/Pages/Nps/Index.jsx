@@ -65,7 +65,7 @@ export default function NpsIndex({ surveys, companies }) {
                                     <TableHead>Data</TableHead>
                                     <TableHead>Respondente</TableHead>
                                     <TableHead>Analista</TableHead>
-                                    <TableHead>Mentor</TableHead>
+                                    <TableHead>Estrategista</TableHead>
                                     <TableHead>Geral</TableHead>
                                     <TableHead>Observação</TableHead>
                                     <TableHead>Status</TableHead>

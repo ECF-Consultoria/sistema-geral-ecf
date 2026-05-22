@@ -11,7 +11,7 @@ class CompanyController extends Controller
 {
     public function index()
     {
-        $companies = Company::with(['consultor', 'mentor', 'latestMetrics'])
+        $companies = Company::with(['consultor', 'estrategista', 'latestMetrics'])
             ->orderBy('name')
             ->get()
             ->map(fn($c) => [
@@ -25,7 +25,7 @@ class CompanyController extends Controller
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
                 'consultor'        => $c->consultor->first()?->only(['id', 'name']),
-                'mentor'           => $c->mentor->first()?->only(['id', 'name']),
+                'estrategista'           => $c->estrategista->first()?->only(['id', 'name']),
                 'tacos'            => $c->latestMetrics?->tacos,
                 'revenue'          => $c->latestMetrics?->revenue,
                 'margin_pct'       => $c->latestMetrics?->contribution_margin_pct,
@@ -35,16 +35,32 @@ class CompanyController extends Controller
             ->where('role', '!=', 'admin')
             ->get(['id', 'name', 'role']);
 
+        // Users com o cargo "Estrategista" (slug=estrategista) atribuído no
+        // pivot user_setores. O nome de "mentor" mudou pra "Estrategista" na
+        // empresa — o select do popup de cadastro/edição usa essa lista em
+        // vez do legacy User.role='mentor' (que só pega 2 users antigos sem
+        // migração de cargo).
+        // Query filtra pelo cargo_id NO PIVOT (não pelos cargos do setor) —
+        // padrão correto: User->setores()->wherePivot('cargo_id', X).
+        $cargoEstrategistaId = \App\Models\Cargo::where('slug', 'estrategista')->value('id');
+        $estrategistas = $cargoEstrategistaId
+            ? User::where('active', true)
+                ->whereHas('setores', fn($q) => $q->wherePivot('cargo_id', $cargoEstrategistaId))
+                ->get(['id', 'name'])
+                ->values()
+            : collect();
+
         return Inertia::render('Companies/Index', [
-            'companies' => $companies,
-            'users'     => $users,
+            'companies'     => $companies,
+            'users'         => $users,
+            'estrategistas' => $estrategistas,
         ]);
     }
 
     public function show(Company $company)
     {
         $company->load([
-            'consultor', 'mentor',
+            'consultor', 'estrategista',
             'goals' => fn($q) => $q->where('active', true),
             'ppas.mentor',
             'meetings' => fn($q) => $q->orderBy('scheduled_at', 'desc')->limit(10),
@@ -64,7 +80,7 @@ class CompanyController extends Controller
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
                 'consultor'        => $company->consultor->map->only(['id', 'name'])->values(),
-                'mentor'           => $company->mentor->map->only(['id', 'name'])->values(),
+                'estrategista'           => $company->estrategista->map->only(['id', 'name'])->values(),
                 'goals'            => $company->goals->map(fn($g) => [
                     'id' => $g->id, 'metric' => $g->metric, 'metric_label' => $g->metric_label,
                     'target_value' => $g->target_value, 'active' => $g->active,
@@ -89,6 +105,9 @@ class CompanyController extends Controller
                     'id' => $p->id, 'title' => $p->title,
                     'completion_pct' => $p->completion_pct,
                     'actions_count'  => count($p->actions ?? []),
+                    // Mentor do PPA é um conceito separado (Ppa.mentor_id) — não
+                    // renomeado pra estrategista. Aqui é o user responsável pelo plano,
+                    // não necessariamente o Estrategista da empresa.
                     'mentor' => $p->mentor ? ['name' => $p->mentor->name] : null,
                 ])->values(),
                 'adman_metrics'    => $company->admanMetrics->map(fn($m) => [
@@ -111,7 +130,7 @@ class CompanyController extends Controller
             'segment'          => 'nullable|string|max:100',
             'notes'            => 'nullable|string',
             'consultor_id'     => 'nullable|exists:users,id',
-            'mentor_id'        => 'nullable|exists:users,id',
+            'estrategista_id'        => 'nullable|exists:users,id',
         ]);
 
         $company = Company::create($data);
@@ -119,8 +138,8 @@ class CompanyController extends Controller
         if (!empty($data['consultor_id'])) {
             $company->users()->attach($data['consultor_id'], ['role' => 'consultor', 'assigned_at' => now()->toDateString()]);
         }
-        if (!empty($data['mentor_id'])) {
-            $company->users()->attach($data['mentor_id'], ['role' => 'mentor', 'assigned_at' => now()->toDateString()]);
+        if (!empty($data['estrategista_id'])) {
+            $company->users()->attach($data['estrategista_id'], ['role' => 'estrategista', 'assigned_at' => now()->toDateString()]);
         }
 
         return back()->with('success', "Empresa {$company->name} criada com sucesso.");
@@ -138,7 +157,7 @@ class CompanyController extends Controller
             'notes'            => 'nullable|string',
             'active'           => 'boolean',
             'consultor_id'     => 'nullable|exists:users,id',
-            'mentor_id'        => 'nullable|exists:users,id',
+            'estrategista_id'        => 'nullable|exists:users,id',
         ]);
 
         $company->update($data);
@@ -147,8 +166,8 @@ class CompanyController extends Controller
         if (!empty($data['consultor_id'])) {
             $sync[$data['consultor_id']] = ['role' => 'consultor', 'assigned_at' => now()->toDateString()];
         }
-        if (!empty($data['mentor_id']) && $data['mentor_id'] !== $data['consultor_id']) {
-            $sync[$data['mentor_id']] = ['role' => 'mentor', 'assigned_at' => now()->toDateString()];
+        if (!empty($data['estrategista_id']) && $data['estrategista_id'] !== $data['consultor_id']) {
+            $sync[$data['estrategista_id']] = ['role' => 'estrategista', 'assigned_at' => now()->toDateString()];
         }
 
         if (!empty($sync)) {

@@ -86,7 +86,7 @@ class CalculateGoalResults implements ShouldQueue
             return;
         }
 
-        $company = $goal->company()->with(['consultor', 'mentor'])->first();
+        $company = $goal->company()->with(['consultor', 'estrategista'])->first();
         if (!$company) {
             return;
         }
@@ -94,7 +94,7 @@ class CalculateGoalResults implements ShouldQueue
         $admins = User::where('role', 'admin')->get();
 
         $destinatarios = $company->consultor
-            ->merge($company->mentor)
+            ->merge($company->estrategista)
             ->merge($admins)
             ->unique('id');
 

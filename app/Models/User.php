@@ -155,10 +155,14 @@ class User extends Authenticatable
             ->withPivot('role', 'assigned_at');
     }
 
-    public function mentorCompanies()
+    /**
+     * Empresas em que este user é o Estrategista — antes chamado de "mentor"
+     * (renomeado em 2026-05-22). Filtra pivot role='estrategista'.
+     */
+    public function estrategistaCompanies()
     {
         return $this->belongsToMany(Company::class, 'company_users')
-            ->wherePivot('role', 'mentor')
+            ->wherePivot('role', 'estrategista')
             ->withPivot('role', 'assigned_at');
     }
 

@@ -13,7 +13,7 @@ const PERIOD_OPTIONS = [
     { value: '180', label: 'Últimos 6 meses' },
 ];
 
-const roleLabel = { consultor: 'Analista', mentor: 'Mentor' };
+const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
 
 const ppaStatusLabel = { completed: 'Concluído', active: 'Em andamento', draft: 'Rascunho' };
 const ppaStatusColor = { completed: 'text-emerald-400', active: 'text-ecf-yellow', draft: 'text-white/40' };

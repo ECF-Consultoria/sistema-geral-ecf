@@ -70,7 +70,7 @@ const chartStyle = {
 };
 
 /* ─── main ─────────────────────────────────────────────── */
-const roleLabel = { consultor: 'Analista', mentor: 'Mentor' };
+const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
 
 export default function AdminDashboard({
     stats = {},
@@ -275,9 +275,9 @@ export default function AdminDashboard({
                         options={consultores.map(u => ({ value: String(u.id), label: u.name }))}
                     />
                     <ECFSelect
-                        value={filters.mentorFilter || ''}
-                        onChange={v => applyFilter('mentor_id', v)}
-                        placeholder="Todos mentores"
+                        value={filters.estrategistaFilter || ''}
+                        onChange={v => applyFilter('estrategista_id', v)}
+                        placeholder="Todos estrategistas"
                         options={mentores.map(u => ({ value: String(u.id), label: u.name }))}
                     />
 
@@ -429,7 +429,7 @@ export default function AdminDashboard({
                                     <div key={c.id} className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
                                         <div>
                                             <p className="text-white/80 text-[13px] font-semibold">{c.name}</p>
-                                            <p className="text-white/30 text-xs mt-0.5">{c.consultor ?? '—'} / {c.mentor ?? '—'}</p>
+                                            <p className="text-white/30 text-xs mt-0.5">{c.consultor ?? '—'} / {c.estrategista ?? '—'}</p>
                                         </div>
                                         <div className="text-right space-y-0.5">
                                             <p className="text-[11px] text-white/30">
