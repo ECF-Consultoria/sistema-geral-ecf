@@ -92,11 +92,13 @@ class RelatorioFechamentoMail extends Mailable
             ->noSandbox()
             // flags essenciais para rodar Chrome headless em VPS/servidor
             ->addChromiumArguments([
-                '--disable-dev-shm-usage',   // evita crash por /dev/shm limitado em VPS
+                '--disable-dev-shm-usage',        // evita crash por /dev/shm limitado em VPS
                 '--disable-gpu',
                 '--disable-setuid-sandbox',
                 '--disable-extensions',
-                '--single-process',
+                '--no-first-run',
+                '--no-default-browser-check',
+                '--user-data-dir=/tmp/browsershot-chrome', // necessário quando HOME não está definido (www-data)
             ])
             ->emulateMedia('print')
             ->format('A4')
