@@ -5,7 +5,7 @@ milestone_name: Administrativo — Fechamento
 status: Complete
 stopped_at: Milestone v2.0 completo — Phases 5/6/7 executadas e aprovadas
 last_updated: "2026-05-19T22:00:00.000Z"
-last_activity: "2026-05-19 — Phase 7 executada: Financeiro.jsx expandido, checkpoint humano aprovado"
+last_activity: "2026-05-22 — Quick task 260522-d6f: fix 504 syncTodasVendasAdman → Job assíncrono"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -93,6 +93,12 @@ None.
 ### Blockers/Concerns
 
 - A tabela de progressão está em `faturamento_adm.md` — confirmar valores antes de implementar `calcularFaixa()` na Phase 6
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260522-d6f | Mover loop de syncTodasVendasAdman para Job assíncrono (fix 504) | 2026-05-22 | e20a94e | [260522-d6f-sync-todas-vendas-async-job](.planning/quick/260522-d6f-sync-todas-vendas-async-job/) |
 
 ## Deferred Items
 
