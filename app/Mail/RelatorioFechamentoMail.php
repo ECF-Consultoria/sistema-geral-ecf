@@ -92,24 +92,33 @@ class RelatorioFechamentoMail extends Mailable
         $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
         $html = preg_replace('/<button[^>]*class="print-btn"[^>]*>.*?<\/button>/is', '', $html);
 
-        return Browsershot::html($html)
-            ->setChromePath($this->chromePath())
-            ->noSandbox()
-            // flags essenciais para rodar Chrome headless em VPS/servidor
-            ->addChromiumArguments([
-                // addChromiumArguments já adiciona '--' — passar só o nome da flag
-                'disable-dev-shm-usage',       // evita crash por /dev/shm limitado em VPS
-                'disable-gpu',
-                'disable-setuid-sandbox',
-                'disable-extensions',
-                'no-first-run',
-                'no-default-browser-check',
-                'user-data-dir=/tmp/browsershot-chrome', // necessário quando HOME não está definido (www-data)
-            ])
-            ->emulateMedia('print')
-            ->format('A4')
-            ->margins(10, 12, 10, 12)
-            ->timeout(60)
-            ->pdf();
+        try {
+            return Browsershot::html($html)
+                ->setChromePath($this->chromePath())
+                ->noSandbox()
+                ->addChromiumArguments([
+                    'disable-dev-shm-usage',
+                    'disable-gpu',
+                    'disable-setuid-sandbox',
+                    'disable-extensions',
+                    'no-first-run',
+                    'no-default-browser-check',
+                    'user-data-dir=/tmp/browsershot-chrome',
+                ])
+                ->emulateMedia('print')
+                ->format('A4')
+                ->margins(10, 12, 10, 12)
+                ->timeout(60)
+                ->pdf();
+        } catch (\Throwable $e) {
+            // Loga o erro completo incluindo stdout/stderr do Chrome para diagnóstico
+            \Illuminate\Support\Facades\Log::error('[Fechamento] Erro ao gerar PDF: ' . $e->getMessage(), [
+                'chrome_path' => $this->chromePath(),
+                'home' => getenv('HOME'),
+                'process_output' => method_exists($e, 'getProcess') ? $e->getProcess()->getOutput() : null,
+                'process_error'  => method_exists($e, 'getProcess') ? $e->getProcess()->getErrorOutput() : null,
+            ]);
+            throw $e;
+        }
     }
 }
