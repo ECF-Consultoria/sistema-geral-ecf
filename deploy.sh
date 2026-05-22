@@ -18,8 +18,8 @@ SSH_ARGS=(-ssh -P "$VPS_PORT" -pw "$VPS_PASS" -hostkey "$VPS_HOSTKEY" -batch)
 
 set -e
 
-# Garante que há commits para enviar
-if [ -n "$(git status --porcelain)" ]; then
+# Garante que não há mudanças rastreadas pendentes (ignora arquivos não rastreados)
+if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
   echo "❌ Há mudanças não commitadas. Faça commit e push antes de deployar."
   exit 1
 fi
