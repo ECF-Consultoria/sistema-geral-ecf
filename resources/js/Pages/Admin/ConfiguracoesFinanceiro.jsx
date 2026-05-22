@@ -164,27 +164,18 @@ export default function ConfiguracoesFinanceiro({
                                     Dispara o relatório automaticamente todo mês na data configurada.
                                 </p>
                             </div>
-                            {/* Toggle ativar/desativar */}
+                            {/* Botão ativar/desativar */}
                             <button
                                 type="button"
                                 onClick={() => setData('envio_auto_ativo', !data.envio_auto_ativo)}
                                 className={cn(
-                                    'inline-flex items-center gap-2 h-8 px-3 rounded-lg border text-[12px] font-semibold shrink-0 transition-colors',
+                                    'shrink-0 h-8 px-4 rounded-lg text-[12px] font-semibold border transition-colors',
                                     data.envio_auto_ativo
-                                        ? 'bg-ecf-yellow/10 border-ecf-yellow/30 text-ecf-yellow'
-                                        : 'bg-white/[0.04] border-white/[0.08] text-white/40 hover:text-white/60',
+                                        ? 'bg-ecf-yellow text-black border-ecf-yellow hover:bg-ecf-yellow/90'
+                                        : 'bg-white/[0.06] text-white/60 border-white/[0.10] hover:bg-white/[0.10] hover:text-white/90',
                                 )}
                             >
-                                <span className={cn(
-                                    'w-7 h-4 rounded-full relative transition-colors shrink-0',
-                                    data.envio_auto_ativo ? 'bg-ecf-yellow' : 'bg-white/20',
-                                )}>
-                                    <span className={cn(
-                                        'absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200',
-                                        data.envio_auto_ativo ? 'translate-x-3.5' : 'translate-x-0.5',
-                                    )} />
-                                </span>
-                                {data.envio_auto_ativo ? 'Ativado' : 'Ativar'}
+                                {data.envio_auto_ativo ? 'Desativar' : 'Ativar'}
                             </button>
                         </div>
 
