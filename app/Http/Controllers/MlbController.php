@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncTodasVendasAdmanJob;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbTreinamento;
@@ -1711,66 +1712,28 @@ class MlbController extends Controller
 
     /**
      * Sincroniza vendas de TODAS as empresas com cust_id. Apenas gestor.
+     * O loop pesado foi movido para SyncTodasVendasAdmanJob — controller retorna em ms.
      */
     public function syncTodasVendasAdman(Request $request)
     {
         $this->checkPubAccess('vendas');
         $this->checkPubRole(['gestor']);
 
-        // Remove timeout para operações longas com muitas empresas
-        set_time_limit(0);
-        ini_set('memory_limit', '256M');
-
         $request->validate([
             'date_from' => 'required|date|before_or_equal:today',
             'date_to'   => 'required|date|before_or_equal:today|after_or_equal:date_from',
         ]);
 
-        $empresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->get();
+        // Contagem leve para enriquecer a flash message sem rodar o loop
+        $totalEmpresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->count();
 
-        $adman  = new AdmanService();
-        $totais = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
+        // pt-BR: Despacha o loop síncrono para queue worker — evita 504 do nginx em ~17 empresas * 120s.
+        SyncTodasVendasAdmanJob::dispatch($request->date_from, $request->date_to, $request->user()?->id);
 
-        foreach ($empresas as $empresa) {
-            try {
-                $performance  = $adman->fetchPerformance($empresa->cust_id, $request->date_from, $request->date_to);
-                $items        = $performance['items'] ?? [];
-                $mlbsComVenda = $this->extrairMlbsVendidos($items);
-
-                $totais['itens']     += count($items);
-                $totais['com_venda'] += count($mlbsComVenda);
-
-                if (!empty($mlbsComVenda)) {
-                    $mlbCodes = array_keys($mlbsComVenda);
-                    $totais['encontradas'] += Publicacao::whereIn('mlb_code', $mlbCodes)->count();
-
-                    foreach ($mlbsComVenda as $mlbCode => $data) {
-                        $intQty = (int) $data['qty'];
-                        Publicacao::where('mlb_code', $mlbCode)->update([
-                            'vendido'        => true,
-                            'vendas_qty'     => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
-                            'preco_unitario' => $data['preco'],
-                            'net_billing'    => $data['net_billing'] > 0 ? $data['net_billing'] : null,
-                        ]);
-                    }
-                }
-
-                usleep(600_000); // 600ms entre chamadas
-            } catch (\Throwable $e) {
-                Log::error("[MLB SyncTodasVendas] {$empresa->nome}: " . $e->getMessage());
-                $totais['erros']++;
-            }
-        }
-
-        $msg = sprintf(
-            'Sync concluído: %d item(ns) recebidos, %d com venda na API, %d publicação(ões) sincronizadas%s.',
-            $totais['itens'],
-            $totais['com_venda'],
-            $totais['encontradas'],
-            $totais['erros'] > 0 ? ", {$totais['erros']} erro(s)" : ''
-        );
-
-        return back()->with('success', $msg);
+        return back()->with('success', sprintf(
+            'Sync de vendas iniciado em background para %d empresa(s). Acompanhe pelos logs.',
+            $totalEmpresas
+        ));
     }
 
     /**
