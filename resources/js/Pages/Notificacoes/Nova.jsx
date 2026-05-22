@@ -16,6 +16,7 @@
 import { Head, useForm } from '@inertiajs/react';
 import { Send } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
+import FormErrorBanner from '@/Components/FormErrorBanner';
 
 export default function Nova({ setores }) {
     const { data, setData, post, processing, errors } = useForm({
@@ -37,6 +38,9 @@ export default function Nova({ setores }) {
 
             <form onSubmit={submit} className="max-w-xl mx-auto space-y-4 p-4">
                 <h1 className="text-xl font-bold text-white">Enviar notificação</h1>
+
+                {/* Banner global de erros — visível mesmo quando o campo problemático está oculto. */}
+                <FormErrorBanner errors={errors} />
 
                 {/* Título — max 100 chars (ENVIO-03) */}
                 <div>

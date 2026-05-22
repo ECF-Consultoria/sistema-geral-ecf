@@ -31,7 +31,13 @@ class SugadorController extends Controller
 
         $user = $request->user();
 
+        // Prioriza sugadores identificados HOJE no topo da lista — analistas estavam
+        // perdendo de vista os novos porque os antigos não-resolvidos acumulam.
+        // CASE retorna 0 pra hoje e 1 pro resto; ordenação asc joga hoje pro topo.
+        // Param bind ao invés de CURDATE() pra funcionar em SQLite (testes) também.
+        $hoje = now()->toDateString();
         $query = Sugador::with(['company:id,name', 'resolvidoPor:id,name'])
+            ->orderByRaw('CASE WHEN reference_date = ? THEN 0 ELSE 1 END', [$hoje])
             ->orderBy('reference_date', 'desc')
             ->orderBy('id', 'desc');
 

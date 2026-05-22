@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Company;
 use App\Services\SugadorAnalysisService;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -17,12 +18,22 @@ use Illuminate\Support\Facades\Log;
  * — assíncrono porque a Adman pode demorar vários minutos para contas grandes
  * (CAMILLO tem 2389 adgroups ≈ 48 páginas + retry em 429), o que estoura
  * o timeout do nginx/php-fpm.
+ *
+ * `ShouldBeUnique` evita o duplicate UUID em failed_jobs quando os 2 workers
+ * (ecf-worker_00/01) competem pelo mesmo job da mesma empresa — agora a chave
+ * é o company_id e o segundo worker simplesmente não pega o job duplicado.
  */
-class AnalyzeCompanySugadoresJob implements ShouldQueue
+class AnalyzeCompanySugadoresJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 2;
+    /**
+     * 4 tentativas: o Adman rate-limit é janela de ~1h. backoff sobe pra dar
+     * a chance da janela resetar antes do final. Sem isso (com tries=2 +
+     * backoff [120,600]), contas grandes batiam 429 nas 2 tentativas e iam
+     * direto pra failed_jobs (visto em logs prod 2026-05-21).
+     */
+    public int $tries = 4;
 
     /** 15 min — Adman paginada pode chegar perto disso pra contas com 5k+ adgroups */
     public int $timeout = 900;
@@ -31,10 +42,24 @@ class AnalyzeCompanySugadoresJob implements ShouldQueue
         public readonly Company $company,
     ) {}
 
-    /** Backoff: 2min e 10min. Erro definitivo após 2 tentativas. */
+    /**
+     * Backoff escalonado: 3min, 15min, 30min, 60min.
+     * O retry final (~1h depois da 1ª tentativa) cai numa janela nova de
+     * rate-limit da Adman.
+     */
     public function backoff(): array
     {
-        return [120, 600];
+        return [180, 900, 1800, 3600];
+    }
+
+    /**
+     * Chave de unicidade: company_id. Garante que se a fila já tem 1 job
+     * pendente pra empresa X, um segundo dispatch (cron + click manual,
+     * por exemplo) não enfileira duplicata.
+     */
+    public function uniqueId(): string
+    {
+        return (string) $this->company->id;
     }
 
     public function handle(SugadorAnalysisService $service): void

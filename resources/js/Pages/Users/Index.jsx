@@ -10,6 +10,7 @@ import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import FormErrorBanner from '@/Components/FormErrorBanner';
 
 /**
  * Vínculos (form local): array de objetos com {setor_id, cargo_id, is_principal}.
@@ -229,6 +230,9 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                         <DialogTitle>{editing ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
                     </DialogHeader>
                     <form onSubmit={submit} className="space-y-4">
+                        {/* Banner global de erros — surface erros que ficariam invisíveis com campos condicionais. */}
+                        <FormErrorBanner errors={errors} />
+
                         {/* Toggle Admin */}
                         <div className="grid grid-cols-2 gap-2">
                             <button type="button" onClick={() => setData('is_admin', false)}

@@ -49,6 +49,15 @@ const fmtPct = (n) => n == null ? '—' : Number(n).toLocaleString('pt-BR', { ma
 // Fixa em meia-noite local para não cair no dia anterior por causa de timezone.
 const fmtDate = (d) => d ? new Date(String(d).slice(0, 10) + 'T00:00:00').toLocaleDateString('pt-BR') : '—';
 
+// Sugador identificado HOJE — usado pra destacar row e exibir badge "HOJE".
+// Compara só os primeiros 10 chars (YYYY-MM-DD) pra evitar ruído de timezone.
+const isHoje = (d) => {
+    if (!d) return false;
+    const refDay = String(d).slice(0, 10);
+    const today  = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+    return refDay === today;
+};
+
 // ─── Componentes locais ────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
@@ -367,13 +376,16 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                                 {list.map(s => {
                                     const TipoIcon = TIPO_ICONS[s.tipo] || Tag;
                                     const isPendente = s.status === 'pendente';
+                                    const hoje = isHoje(s.reference_date);
                                     return (
                                         <tr
                                             key={s.id}
                                             onClick={() => router.visit(route('sugadores.show', s.id))}
                                             className={cn(
                                                 'border-b border-white/[0.04] hover:bg-white/[0.04] transition-colors cursor-pointer',
-                                                isPendente && 'bg-red-500/[0.02]'
+                                                isPendente && 'bg-red-500/[0.02]',
+                                                // Destaque adicional pra sugadores identificados HOJE — borda amarela à esquerda + bg sutil.
+                                                hoje && 'bg-ecf-yellow/[0.04] border-l-2 border-l-ecf-yellow'
                                             )}
                                         >
                                             <td className="px-4 py-3 text-[13px] text-white/80">
@@ -443,7 +455,14 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                                                 <StatusBadge status={s.status} />
                                             </td>
                                             <td className="px-4 py-3 text-[12px] text-white/50">
-                                                {fmtDate(s.reference_date)}
+                                                <div className="flex items-center gap-1.5">
+                                                    {fmtDate(s.reference_date)}
+                                                    {hoje && (
+                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-ecf-yellow text-ecf-bg">
+                                                            HOJE
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-1">
