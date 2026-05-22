@@ -604,9 +604,18 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
                             <p className="text-emerald-300 text-[11px] mt-1">
                                 ✓ Varredura completa pronta — clique <b>Recarregar</b> pra ver o resultado completo.
                             </p>
+                        ) : state.data?.scan_status?.status === 'running' ? (
+                            <p className="text-amber-300 text-[11px] mt-1">
+                                ⟳ Varredura em andamento: <b>{state.data.scan_status.pages_read ?? 0}{state.data.scan_status.total_pages ? `/${state.data.scan_status.total_pages}` : ''} páginas</b> lidas
+                                {typeof state.data.scan_status.items_count === 'number' && ` · ${state.data.scan_status.items_count} MLBs até agora`}.
+                            </p>
+                        ) : state.data?.scan_status?.status === 'retrying' ? (
+                            <p className="text-amber-300 text-[11px] mt-1">
+                                ⚠ Tentativa {state.data.scan_status.attempt}/{state.data.scan_status.tries_total} falhou. Próxima retry em ~{Math.round((state.data.scan_status.next_retry_in ?? 0) / 60)}min.
+                            </p>
                         ) : state.data?.scan_status?.status === 'failed' ? (
                             <p className="text-red-300 text-[11px] mt-1">
-                                Varredura completa falhou: {state.data.scan_status.error}. Tente recarregar em alguns minutos.
+                                {state.data.scan_status.error || 'Varredura completa falhou. Tente recarregar em alguns minutos.'}
                             </p>
                         ) : (
                             <p className="text-amber-300/80 text-[11px] mt-1 italic">
