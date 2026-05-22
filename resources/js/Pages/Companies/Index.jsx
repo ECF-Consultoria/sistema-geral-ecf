@@ -13,13 +13,15 @@ import { useState } from 'react';
 import { Plus, Pencil, Eye, Trash2, Building2 } from 'lucide-react';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 
-export default function Companies({ companies, users }) {
+export default function Companies({ companies, users, estrategistas = [] }) {
     const [search, setSearch] = useState('');
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
 
     const consultores = users.filter(u => u.role === 'consultor');
-    const mentores = users.filter(u => u.role === 'mentor');
+    // "Mentor" foi renomeado pra "Estrategista" (DB + UI). Lista vem do backend
+    // filtrada pelo cargo `estrategista` no pivot user_setores.
+    const estrategistasOptions = estrategistas.length > 0 ? estrategistas : users.filter(u => u.role === 'mentor');
 
     const filtered = companies.filter(c =>
         c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -28,7 +30,7 @@ export default function Companies({ companies, users }) {
 
     const { data, setData, post, put, processing, reset, errors } = useForm({
         name: '', cnpj: '', adman_account_id: '', adman_store_id: '',
-        ml_store_id: '', segment: '', notes: '', consultor_id: '', mentor_id: '',
+        ml_store_id: '', segment: '', notes: '', consultor_id: '', estrategista_id: '',
     });
 
     const openCreate = () => {
@@ -48,7 +50,7 @@ export default function Companies({ companies, users }) {
             segment: c.segment || '',
             notes: c.notes || '',
             consultor_id: String(c.consultor?.id || ''),
-            mentor_id: String(c.mentor?.id || ''),
+            estrategista_id: String(c.estrategista?.id || ''),
         });
         setOpen(true);
     };
@@ -91,7 +93,7 @@ export default function Companies({ companies, users }) {
                                     <TableHead>Empresa</TableHead>
                                     <TableHead>Segmento</TableHead>
                                     <TableHead>Analista</TableHead>
-                                    <TableHead>Mentor</TableHead>
+                                    <TableHead>Estrategista</TableHead>
                                     <TableHead>TACOS</TableHead>
                                     <TableHead>Faturamento</TableHead>
                                     <TableHead>Status</TableHead>
@@ -104,7 +106,7 @@ export default function Companies({ companies, users }) {
                                         <TableCell className="font-medium">{c.name}</TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{c.segment || '-'}</TableCell>
                                         <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
-                                        <TableCell className="text-sm">{c.mentor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
+                                        <TableCell className="text-sm">{c.estrategista?.name || <span className="text-muted-foreground">-</span>}</TableCell>
                                         <TableCell>
                                             {c.tacos ? <span className="text-yellow-400 font-medium">{formatPercent(c.tacos)}</span> : <span className="text-muted-foreground">-</span>}
                                         </TableCell>
@@ -188,11 +190,11 @@ export default function Companies({ companies, users }) {
                                 </Select>
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Mentor</Label>
-                                <Select value={data.mentor_id} onValueChange={v => setData('mentor_id', v)}>
+                                <Label>Estrategista</Label>
+                                <Select value={data.estrategista_id} onValueChange={v => setData('estrategista_id', v)}>
                                     <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                                     <SelectContent>
-                                        {mentores.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                                        {estrategistasOptions.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>

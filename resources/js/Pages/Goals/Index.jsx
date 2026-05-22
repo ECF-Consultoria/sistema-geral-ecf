@@ -138,7 +138,7 @@ function EmpresasSection({ companies, metrics, percentage_only_metrics, can_mana
                                 <p className="text-white/30 text-xs mt-0.5">
                                     Analista: <span className="text-white/50">{company.consultor || '—'}</span>
                                     {' · '}
-                                    Mentor: <span className="text-white/50">{company.mentor || '—'}</span>
+                                    Estrategista: <span className="text-white/50">{company.estrategista || '—'}</span>
                                 </p>
                             </div>
                             {can_manage && (

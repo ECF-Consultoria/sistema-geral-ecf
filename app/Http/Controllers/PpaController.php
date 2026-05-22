@@ -39,7 +39,7 @@ class PpaController extends Controller
 
         $companies = $user->isAdmin()
             ? Company::where('active', true)->get(['id', 'name'])
-            : $user->mentorCompanies()->get(['companies.id', 'companies.name']);
+            : $user->estrategistaCompanies()->get(['companies.id', 'companies.name']);
 
         return Inertia::render('Ppa/Index', [
             'ppas'      => $ppas,

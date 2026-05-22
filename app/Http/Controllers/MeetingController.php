@@ -18,7 +18,7 @@ class MeetingController extends Controller
     {
         $user = $request->user();
 
-        $query = Meeting::with(['company.consultor', 'company.mentor'])
+        $query = Meeting::with(['company.consultor', 'company.estrategista'])
             ->orderBy('scheduled_at', 'desc');
 
         if (!$user->isAdmin()) {
@@ -37,7 +37,7 @@ class MeetingController extends Controller
             'client_present'     => $m->client_present,
             'notes'              => $m->notes,
             'consultor'          => $m->company->consultor->first()?->name,
-            'mentor'             => $m->company->mentor->first()?->name,
+            'estrategista'       => $m->company->estrategista->first()?->name,
         ]);
 
         $companies = $user->isAdmin()

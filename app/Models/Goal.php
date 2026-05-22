@@ -25,12 +25,12 @@ class Goal extends Model
     protected static function booted(): void
     {
         static::created(function (self $meta): void {
-            $company = $meta->company()->with(['consultor', 'mentor'])->first();
+            $company = $meta->company()->with(['consultor', 'estrategista'])->first();
             if (!$company) {
                 return;
             }
 
-            $destinatarios = $company->consultor->merge($company->mentor)->unique('id');
+            $destinatarios = $company->consultor->merge($company->estrategista)->unique('id');
             if ($destinatarios->isEmpty()) {
                 return;
             }

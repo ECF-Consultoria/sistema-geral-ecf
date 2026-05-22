@@ -10,7 +10,7 @@ const PERIOD_OPTIONS = [
     { value: '180', label: 'Últimos 6 meses' },
 ];
 
-const roleLabel    = { consultor: 'Analista', mentor: 'Mentor' };
+const roleLabel    = { consultor: 'Analista', mentor: 'Estrategista' };
 const pubRoleLabel = { publicador: 'Publicador', lider: 'Líder POLOS' };
 
 const STATUS_COLOR = {

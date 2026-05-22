@@ -296,7 +296,7 @@ export default function Meetings({ meetings, companies, googleConnected, calenda
                                         <TableHead>Empresa</TableHead>
                                         <TableHead>Data/Hora</TableHead>
                                         <TableHead>Analista</TableHead>
-                                        <TableHead>Mentor</TableHead>
+                                        <TableHead>Estrategista</TableHead>
                                         <TableHead>Cliente</TableHead>
                                         <TableHead>Status</TableHead>
                                         <TableHead className="text-right">Ações</TableHead>
@@ -378,7 +378,7 @@ export default function Meetings({ meetings, companies, googleConnected, calenda
                             <div className="grid grid-cols-3 gap-2 pt-1">
                                 {[
                                     { label: 'Analista', val: selectedMeeting.consultant_present },
-                                    { label: 'Mentor', val: selectedMeeting.mentor_present },
+                                    { label: 'Estrategista', val: selectedMeeting.mentor_present },
                                     { label: 'Cliente', val: selectedMeeting.client_present },
                                 ].map(({ label, val }) => (
                                     <div key={label} className="text-center rounded-lg border border-white/[0.07] p-2">
@@ -484,7 +484,7 @@ export default function Meetings({ meetings, companies, googleConnected, calenda
                             <div className="grid grid-cols-3 gap-3">
                                 {[
                                     { key: 'consultant_present', label: 'Analista' },
-                                    { key: 'mentor_present', label: 'Mentor' },
+                                    { key: 'mentor_present', label: 'Estrategista' },
                                     { key: 'client_present', label: 'Cliente' },
                                 ].map(({ key, label }) => (
                                     <label key={key} className="flex flex-col items-center gap-1 cursor-pointer">

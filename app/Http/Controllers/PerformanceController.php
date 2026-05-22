@@ -41,7 +41,7 @@ class PerformanceController extends Controller
         $ranking = $users->map(function ($u) use ($since) {
             // Usa empresas específicas pelo papel do usuário para cálculos de NPS
             $companyIds = $u->isMentor()
-                ? $u->mentorCompanies()->pluck('companies.id')
+                ? $u->estrategistaCompanies()->pluck('companies.id')
                 : $u->consultorCompanies()->pluck('companies.id');
 
             // Fallback: se não tem empresas no papel específico, usa todas
@@ -254,7 +254,7 @@ class PerformanceController extends Controller
         };
 
         $companyIds = $user->isMentor()
-            ? $user->mentorCompanies()->pluck('companies.id')
+            ? $user->estrategistaCompanies()->pluck('companies.id')
             : $user->consultorCompanies()->pluck('companies.id');
 
         if ($companyIds->isEmpty()) {

@@ -62,13 +62,13 @@ class DashboardController extends Controller
     {
         $companyFilter = $request->get('company_id');
         $consultorFilter = $request->get('consultor_id');
-        $mentorFilter = $request->get('mentor_id');
+        $estrategistaFilter = $request->get('estrategista_id') ?? $request->get('mentor_id'); // back-compat com chamadas antigas
 
-        $companiesQuery = Company::with(['latestMetrics', 'consultor', 'mentor'])->where('active', true);
+        $companiesQuery = Company::with(['latestMetrics', 'consultor', 'estrategista'])->where('active', true);
 
         if ($companyFilter) $companiesQuery->where('id', $companyFilter);
         if ($consultorFilter) $companiesQuery->whereHas('consultor', fn($q) => $q->where('users.id', $consultorFilter));
-        if ($mentorFilter) $companiesQuery->whereHas('mentor', fn($q) => $q->where('users.id', $mentorFilter));
+        if ($estrategistaFilter) $companiesQuery->whereHas('estrategista', fn($q) => $q->where('users.id', $estrategistaFilter));
 
         $companies = $companiesQuery->get();
 
@@ -129,7 +129,7 @@ class DashboardController extends Controller
         $userPortfolios = $users->map(function ($u) use ($metrics, $companies) {
             $uCompanies = $companies->filter(function ($c) use ($u) {
                 return $u->isMentor()
-                    ? $c->mentor->contains('id', $u->id)
+                    ? $c->estrategista->contains('id', $u->id)
                     : $c->consultor->contains('id', $u->id);
             });
             if ($uCompanies->isEmpty()) return null;
@@ -198,7 +198,7 @@ class DashboardController extends Controller
             'tacos_chart'    => $tacosChart,
             'nps_distribution' => $npsDistribution,
             'period'         => $period,
-            'filters'        => compact('companyFilter', 'consultorFilter', 'mentorFilter'),
+            'filters'        => compact('companyFilter', 'consultorFilter', 'estrategistaFilter'),
             'users'          => $users->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'role' => $u->role]),
             'companies_list' => $allCompanies,
             'ranking'         => $ranking->take(5)->values(),
@@ -210,7 +210,7 @@ class DashboardController extends Controller
                 'revenue'  => $c->latestMetrics?->revenue,
                 'margin'   => $c->latestMetrics?->contribution_margin_pct,
                 'consultor' => $c->consultor->first()?->name,
-                'mentor'   => $c->mentor->first()?->name,
+                'estrategista' => $c->estrategista->first()?->name,
             ]),
             'sugadores_stats' => [
                 'total_pendentes' => $sugadoresPendentes,
@@ -223,7 +223,7 @@ class DashboardController extends Controller
     {
         return $users->map(function ($u) use ($since) {
             $companyIds = $u->isMentor()
-                ? $u->mentorCompanies()->pluck('companies.id')
+                ? $u->estrategistaCompanies()->pluck('companies.id')
                 : $u->consultorCompanies()->pluck('companies.id');
 
             if ($companyIds->isEmpty()) {
