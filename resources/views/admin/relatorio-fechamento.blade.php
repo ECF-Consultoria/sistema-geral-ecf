@@ -9,230 +9,236 @@
 
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
-            font-size: 13px;
+            font-size: 12px;
             color: #1a1a2e;
             background: #fff;
-            padding: 40px;
             max-width: 800px;
             margin: 0 auto;
         }
 
-        /* ── Header ECF ─────────────────────────────── */
-        .header {
+        /* ── Header com logo ─────────────────────────────── */
+        .header-dark {
+            background: #fff;
+            padding: 14px 28px;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            border-bottom: 3px solid #ffe600;
-            padding-bottom: 16px;
-            margin-bottom: 28px;
+            align-items: center;
         }
-        .header-brand h1 {
-            font-size: 22px;
-            font-weight: 800;
-            color: #1a1a2e;
-            letter-spacing: -0.5px;
+        .logo-pill {
+            background: #050507;
+            padding: 7px 14px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
-        .header-brand h1 span { color: #ffe600; }
-        .header-brand p {
-            font-size: 11px;
-            color: #666;
-            margin-top: 2px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
+        .logo-pill img { height: 28px; width: auto; display: block; }
         .header-meta {
             text-align: right;
-            font-size: 11px;
+            font-size: 10px;
             color: #888;
-            line-height: 1.6;
+            line-height: 1.5;
         }
-        .header-meta strong {
-            display: block;
-            font-size: 15px;
-            color: #1a1a2e;
-            font-weight: 700;
+        .header-meta strong { display: block; font-size: 14px; color: #1a1a2e; font-weight: 700; }
+
+        /* ── Faixa gradiente ECF ─────────────────────────── */
+        .ecf-gradient-bar {
+            height: 4px;
+            background: linear-gradient(90deg, #171392 0%, #FE4D46 55%, #EDBA06 100%);
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
-        /* ── Status badge ────────────────────────────── */
+        .content { padding: 18px 28px 28px; }
+
+        /* ── Status badge ────────────────────────────────── */
         .status-badge {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
-            padding: 4px 10px;
+            gap: 5px;
+            padding: 3px 9px;
             border-radius: 20px;
-            font-size: 11px;
+            font-size: 10px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 20px;
+            margin-bottom: 14px;
         }
         .status-recebido { background: #d1fae5; color: #065f46; border: 1px solid #6ee7b7; }
-        .status-pendente { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
+        .status-pendente  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; }
 
-        /* ── Seções ──────────────────────────────────── */
-        .section {
-            margin-bottom: 24px;
-        }
+        /* ── Seções ──────────────────────────────────────── */
+        .section { margin-bottom: 16px; }
         .section-title {
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1.5px;
             color: #888;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             padding-bottom: 4px;
             border-bottom: 1px solid #eee;
         }
 
-        /* ── Grid de campos ─────────────────────────── */
-        .fields-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-        }
-        .field { }
+        /* ── Grid de campos ─────────────────────────────── */
+        .fields-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
         .field label {
             display: block;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.8px;
             color: #aaa;
-            margin-bottom: 2px;
+            margin-bottom: 1px;
         }
-        .field span {
-            font-size: 13px;
-            color: #1a1a2e;
-            font-weight: 500;
-        }
-        .field span.mono { font-family: monospace; font-size: 12px; }
+        .field span { font-size: 12px; color: #1a1a2e; font-weight: 500; }
+        .field span.mono { font-family: monospace; font-size: 11px; }
         .field span.empty { color: #ccc; font-style: italic; }
 
-        /* ── Tabela de faturamento ───────────────────── */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 4px;
-        }
+        /* ── Tabela principal ────────────────────────────── */
+        table { width: 100%; border-collapse: collapse; margin-top: 4px; }
         th {
             background: #f5f5f5;
-            font-size: 10px;
+            font-size: 9px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.8px;
-            color: #888;
-            padding: 8px 10px;
+            color: #666;
+            padding: 6px 8px;
             text-align: left;
             border-bottom: 2px solid #e5e5e5;
         }
         th.right, td.right { text-align: right; }
         td {
-            padding: 9px 10px;
+            padding: 7px 8px;
             border-bottom: 1px solid #f0f0f0;
             color: #1a1a2e;
             vertical-align: middle;
+            font-size: 12px;
+        }
+        td .cnpj-sub {
+            display: block;
+            font-size: 9px;
+            color: #aaa;
+            font-family: monospace;
+            margin-top: 1px;
         }
         tr.vinculada td { color: #555; }
-        tr.vinculada td:first-child { padding-left: 22px; }
+        tr.vinculada td:first-child { padding-left: 18px; }
         tr.vinculada td:first-child::before { content: '↳ '; color: #bbb; }
         tr.total td {
-            background: #fffbe6;
+            background: #f9f9f9;
             font-weight: 700;
-            border-top: 2px solid #ffe600;
+            border-top: 2px solid #d0d0d0;
             border-bottom: none;
+            font-size: 12px;
         }
-        .valor-destaque {
-            font-size: 15px;
-            font-weight: 800;
-            color: #1a1a2e;
-        }
+        .valor-destaque { font-size: 14px; font-weight: 800; color: #1a1a2e; }
         .faixa-badge {
             display: inline-block;
             background: #f0f0f0;
             color: #555;
-            font-size: 10px;
-            padding: 2px 7px;
-            border-radius: 10px;
-        }
-        .sem-dados { color: #ccc; font-style: italic; font-size: 12px; }
-
-        /* ── Total destacado (empresa sem grupo) ────── */
-        .total-box {
-            background: #fffbe6;
-            border: 2px solid #ffe600;
+            font-size: 9px;
+            padding: 2px 6px;
             border-radius: 8px;
-            padding: 16px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 8px;
         }
-        .total-box .label { font-size: 12px; color: #888; }
-        .total-box .value { font-size: 22px; font-weight: 800; color: #1a1a2e; }
+        .sem-dados { color: #ccc; font-style: italic; font-size: 11px; }
 
-        /* ── Serviço adicional ───────────────────────── */
-        .adicional-box {
+        /* ── Tabela de detalhes das vinculadas ───────────── */
+        .details-table th {
+            font-size: 9px;
+            padding: 5px 8px;
+            border-bottom: 1px solid #e5e5e5;
+            background: #fafafa;
+        }
+        .details-table td {
+            font-size: 11px;
+            padding: 5px 8px;
+            border-bottom: 1px solid #f5f5f5;
+            vertical-align: top;
+        }
+        .details-table tr:last-child td { border-bottom: none; }
+        .details-table td.empresa-nome { font-weight: 600; }
+        .details-table td.label-mono { font-family: monospace; font-size: 10px; color: #555; }
+        .details-table td.muted { color: #aaa; font-style: italic; }
+
+        /* ── Total box ───────────────────────────────────── */
+        .total-box {
             background: #f9f9f9;
-            border: 1px solid #e5e5e5;
+            border: 1px solid #e0e0e0;
+            border-left: 3px solid #1a1a2e;
             border-radius: 6px;
             padding: 12px 16px;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-top: 10px;
         }
-        .adicional-box .name { color: #555; }
-        .adicional-box .price { font-weight: 700; color: #1a1a2e; }
+        .total-box .label { font-size: 11px; color: #888; }
+        .total-box .value { font-size: 20px; font-weight: 800; color: #1a1a2e; }
 
-        /* ── Footer ──────────────────────────────────── */
+        /* ── Serviço adicional ───────────────────────────── */
+        .adicional-box {
+            background: #f9f9f9;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .adicional-box .name  { color: #555; font-size: 12px; }
+        .adicional-box .price { font-weight: 700; color: #1a1a2e; font-size: 12px; }
+
+        /* ── Footer ──────────────────────────────────────── */
         .footer {
-            margin-top: 40px;
-            padding-top: 12px;
+            margin-top: 24px;
+            padding-top: 10px;
             border-top: 1px solid #eee;
             display: flex;
             justify-content: space-between;
-            font-size: 10px;
+            font-size: 9px;
             color: #bbb;
         }
 
-        /* ── Botão imprimir (some no PDF) ────────────── */
+        /* ── Botão imprimir ──────────────────────────────── */
         .print-btn {
             position: fixed;
             bottom: 24px;
             right: 24px;
-            background: #ffe600;
-            color: #1a1a2e;
+            background: #050507;
+            color: #fff;
             font-weight: 700;
             font-size: 13px;
             border: none;
             padding: 12px 24px;
             border-radius: 8px;
             cursor: pointer;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         }
-        .print-btn:hover { background: #f0d800; }
+        .print-btn:hover { background: #1a1a2e; }
 
         @media print {
-            body { padding: 0; max-width: 100%; }
+            body { max-width: 100%; }
             .print-btn { display: none; }
-            @page { margin: 15mm 12mm; }
+            @page { margin: 10mm 12mm; }
         }
     </style>
 </head>
 <body>
 
-{{-- ── HEADER ─────────────────────────────────────────── --}}
-<div class="header">
-    <div class="header-brand">
-        <h1>ECF <span>●</span> Consultoria</h1>
-        <p>Relatório de Fechamento</p>
-    </div>
+<div class="header-dark">
+    <div class="logo-pill"><img src="{{ asset('images/logo.png') }}" alt="ECF Consultoria"></div>
     <div class="header-meta">
         <strong>{{ $mes_label }}</strong>
         Gerado em {{ $gerado_em }}
     </div>
 </div>
+<div class="ecf-gradient-bar"></div>
 
-{{-- ── STATUS DE PAGAMENTO ──────────────────────────────── --}}
+<div class="content">
+
 @if ($recebido)
     <div class="status-badge status-recebido">✓ Pagamento recebido</div>
 @else
@@ -245,80 +251,45 @@
     <div class="fields-grid">
         <div class="field" style="grid-column: span 3">
             <label>Nome</label>
-            <span style="font-size:18px; font-weight:800">{{ $company->name }}</span>
+            <span style="font-size:16px; font-weight:800">{{ $company->name }}</span>
         </div>
         <div class="field">
             <label>CNPJ</label>
-            <span class="mono">
-                {{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj ?? '')) ?: '—' }}
-            </span>
+            <span class="mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj ?? '')) ?: '—' }}</span>
         </div>
         <div class="field">
             <label>Cust ID (Adman)</label>
             <span class="mono">{{ $company->adman_account_id ?? '—' }}</span>
         </div>
         @if ($company->adman_store_id)
-        <div class="field">
-            <label>Store ID</label>
-            <span class="mono">{{ $company->adman_store_id }}</span>
-        </div>
+        <div class="field"><label>Store ID</label><span class="mono">{{ $company->adman_store_id }}</span></div>
         @endif
         @if ($company->ml_store_id)
-        <div class="field">
-            <label>Loja ML</label>
-            <span class="mono">{{ $company->ml_store_id }}</span>
-        </div>
+        <div class="field"><label>Loja ML</label><span class="mono">{{ $company->ml_store_id }}</span></div>
         @endif
         @if ($company->segment)
-        <div class="field">
-            <label>Segmento</label>
-            <span>{{ $company->segment }}</span>
-        </div>
+        <div class="field"><label>Segmento</label><span>{{ $company->segment }}</span></div>
         @endif
         <div class="field">
             <label>Tipo de serviço</label>
-            <span>
-                @switch($company->service_type)
-                    @case('polo') POLO @break
-                    @case('assessoria') Assessoria @break
-                    @case('incubadora') Incubadora @break
-                    @default <span class="empty">Não definido</span>
-                @endswitch
-            </span>
+            <span>{{ match($company->service_type ?? '') { 'polo' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', default => '—' } }}</span>
         </div>
         <div class="field">
             <label>Tipo de contrato</label>
-            <span>
-                @switch($company->contract_type)
-                    @case('fixo') Fixo @break
-                    @case('progressao') Escala de Progressão @break
-                    @default <span class="empty">Não definido</span>
-                @endswitch
-            </span>
+            <span>{{ match($company->contract_type ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Escala de Progressão', default => '—' } }}</span>
         </div>
         <div class="field">
-            <label>Vigência do contrato</label>
-            <span>
-                @if ($company->contract_start)
-                    {{ $company->contract_start->format('d/m/Y') }}
-                    @if ($company->contract_end) – {{ $company->contract_end->format('d/m/Y') }} @endif
-                @else
-                    <span class="empty">Não definida</span>
-                @endif
-            </span>
+            <label>Vigência</label>
+            <span>{{ $company->contract_start ? $company->contract_start->format('d/m/Y') . ($company->contract_end ? ' – ' . $company->contract_end->format('d/m/Y') : '') : '—' }}</span>
         </div>
     </div>
 </div>
 
-{{-- ── FATURAMENTO E MENSALIDADE ────────────────────────── --}}
+{{-- ── FATURAMENTO ──────────────────────────────────────── --}}
 <div class="section">
-    <div class="section-title">
-        Faturamento e mensalidade
-        @if ($periodo_inicio) — {{ $periodo_inicio }} a {{ $periodo_fim }} @endif
-    </div>
+    <div class="section-title">Faturamento e mensalidade{{ $periodo_inicio ? ' — ' . $periodo_inicio . ' a ' . $periodo_fim : '' }}</div>
 
     @if (count($vinculadas) > 0)
-        {{-- Grupo com empresas vinculadas --}}
         <table>
             <thead>
                 <tr>
@@ -329,62 +300,34 @@
                 </tr>
             </thead>
             <tbody>
-                {{-- Empresa principal --}}
                 <tr>
-                    <td><strong>{{ $company->name }}</strong></td>
                     <td>
-                        @if ($faturamento !== null)
-                            {{ 'R$ ' . number_format($faturamento, 0, ',', '.') }}
-                        @else
-                            <span class="sem-dados">Sem dados</span>
-                        @endif
+                        <strong>{{ $company->name }}</strong>
+                        @if ($company->cnpj)<span class="cnpj-sub">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj)) }}</span>@endif
                     </td>
-                    <td>
-                        @if ($faixa_label)
-                            <span class="faixa-badge">{{ $faixa_label }}</span>
-                        @else — @endif
-                    </td>
-                    <td class="right">
-                        @if ($valor_mensal)
-                            {{ 'R$ ' . number_format($valor_mensal, 0, ',', '.') }}
-                        @else — @endif
-                    </td>
+                    <td>@if ($faturamento !== null) {{ 'R$ '.number_format($faturamento,0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
+                    <td>@if ($faixa_label) <span class="faixa-badge">{{ $faixa_label }}</span> @else — @endif</td>
+                    <td class="right">{{ $valor_mensal ? 'R$ '.number_format($valor_mensal,0,',','.') : '—' }}</td>
                 </tr>
-                {{-- Vinculadas --}}
                 @foreach ($vinculadas as $v)
                 <tr class="vinculada">
-                    <td>{{ $v['name'] }}</td>
                     <td>
-                        @if ($v['faturamento'] !== null)
-                            {{ 'R$ ' . number_format($v['faturamento'], 0, ',', '.') }}
-                        @else
-                            <span class="sem-dados">Sem dados</span>
-                        @endif
+                        {{ $v['name'] }}
+                        @if (!empty($v['cnpj']))<span class="cnpj-sub">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $v['cnpj'])) }}</span>@endif
                     </td>
-                    <td>
-                        @if ($v['faixa_label'])
-                            <span class="faixa-badge">{{ $v['faixa_label'] }}</span>
-                        @else — @endif
-                    </td>
-                    <td class="right">
-                        @if ($v['valor_mensal'])
-                            {{ 'R$ ' . number_format($v['valor_mensal'], 0, ',', '.') }}
-                        @else — @endif
-                    </td>
+                    <td>@if ($v['faturamento'] !== null) {{ 'R$ '.number_format($v['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
+                    <td>@if ($v['faixa_label']) <span class="faixa-badge">{{ $v['faixa_label'] }}</span> @else — @endif</td>
+                    <td class="right">{{ $v['valor_mensal'] ? 'R$ '.number_format($v['valor_mensal'],0,',','.') : '—' }}</td>
                 </tr>
                 @endforeach
-                {{-- Total do grupo --}}
                 <tr class="total">
                     <td colspan="3"><strong>Total do grupo</strong></td>
-                    <td class="right">
-                        <span class="valor-destaque">{{ 'R$ ' . number_format($total_mensalidade, 0, ',', '.') }}</span>
-                    </td>
+                    <td class="right"><span class="valor-destaque">{{ 'R$ '.number_format($total_mensalidade,0,',','.') }}</span></td>
                 </tr>
             </tbody>
         </table>
 
     @elseif ($faturamento !== null)
-        {{-- Empresa individual com dados --}}
         <table>
             <thead>
                 <tr>
@@ -395,25 +338,69 @@
             </thead>
             <tbody>
                 <tr>
-                    <td>{{ 'R$ ' . number_format($faturamento, 0, ',', '.') }}</td>
-                    <td>
-                        @if ($faixa_label)
-                            <span class="faixa-badge">{{ $faixa_label }}</span>
-                        @else — @endif
-                    </td>
-                    <td class="right">
-                        <span class="valor-destaque">
-                            {{ $valor_mensal ? 'R$ ' . number_format($valor_mensal, 0, ',', '.') : '—' }}
-                        </span>
-                    </td>
+                    <td>{{ 'R$ '.number_format($faturamento,0,',','.') }}</td>
+                    <td>@if ($faixa_label) <span class="faixa-badge">{{ $faixa_label }}</span> @else — @endif</td>
+                    <td class="right"><span class="valor-destaque">{{ $valor_mensal ? 'R$ '.number_format($valor_mensal,0,',','.') : '—' }}</span></td>
                 </tr>
             </tbody>
         </table>
-
+        @if ($valor_mensal)
+        <div class="total-box">
+            <span class="label">Mensalidade a cobrar</span>
+            <span class="value">{{ 'R$ '.number_format($valor_mensal,0,',','.') }}</span>
+        </div>
+        @endif
     @else
-        <p class="sem-dados" style="padding: 12px 0">Sem dados de faturamento para este mês.</p>
+        <p class="sem-dados" style="padding:10px 0">Sem dados de faturamento para este mês.</p>
     @endif
 </div>
+
+{{-- ── DETALHES DAS VINCULADAS (tabela compacta) ───────── --}}
+@if (count($vinculadas) > 0)
+<div class="section">
+    <div class="section-title">Detalhes das empresas vinculadas</div>
+    <table class="details-table">
+        <thead>
+            <tr>
+                <th>Empresa</th>
+                <th>CNPJ</th>
+                <th>Adman ID</th>
+                <th>Serviço</th>
+                <th>Contrato</th>
+                <th>Vigência</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach ($vinculadas as $v)
+            <tr>
+                <td class="empresa-nome">{{ $v['name'] }}</td>
+                <td class="label-mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $v['cnpj'] ?? '')) ?: '—' }}</td>
+                <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>
+                <td>{{ match($v['service_type'] ?? '') { 'polo' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', default => '—' } }}</td>
+                <td>{{ match($v['contract_type'] ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Progressão', default => '—' } }}</td>
+                <td class="label-mono">{{ !empty($v['contract_start']) ? $v['contract_start'] . (!empty($v['contract_end']) ? ' – ' . $v['contract_end'] : '') : '—' }}</td>
+            </tr>
+            {{-- linha extra se tiver store/ml/adicional --}}
+            @if (!empty($v['adman_store_id']) || !empty($v['ml_store_id']) || !empty($v['additional_service']))
+            <tr style="background:#fafafa">
+                <td colspan="6" style="padding:3px 8px 6px 8px; font-size:10px; color:#888; border-bottom:1px solid #f0f0f0;">
+                    @if (!empty($v['adman_store_id']))
+                        Store ID: <strong>{{ $v['adman_store_id'] }}</strong>&nbsp;&nbsp;
+                    @endif
+                    @if (!empty($v['ml_store_id']))
+                        Loja ML: <strong>{{ $v['ml_store_id'] }}</strong>&nbsp;&nbsp;
+                    @endif
+                    @if (!empty($v['additional_service']))
+                        Serviço adicional: <strong>{{ $v['additional_service'] . (!empty($v['additional_service_price']) ? ' — R$ ' . number_format($v['additional_service_price'],0,',','.') . '/mês' : '') }}</strong>
+                    @endif
+                </td>
+            </tr>
+            @endif
+            @endforeach
+        </tbody>
+    </table>
+</div>
+@endif
 
 {{-- ── SERVIÇO ADICIONAL ────────────────────────────────── --}}
 @if ($company->additional_service)
@@ -422,22 +409,22 @@
     <div class="adicional-box">
         <span class="name">{{ $company->additional_service }}</span>
         @if ($company->additional_service_price)
-            <span class="price">R$ {{ number_format($company->additional_service_price, 0, ',', '.') }}/mês</span>
+            <span class="price">R$ {{ number_format($company->additional_service_price,0,',','.') }}/mês</span>
         @endif
     </div>
 </div>
 @endif
 
-{{-- ── FOOTER ───────────────────────────────────────────── --}}
 <div class="footer">
     <span>ECF Consultoria — Documento gerado automaticamente pelo sistema de fechamento</span>
     <span>{{ $gerado_em }}</span>
 </div>
 
+</div>{{-- .content --}}
+
 <button class="print-btn" onclick="window.print()">⬇ Salvar como PDF</button>
 
 <script>
-    // Abre diálogo de impressão automaticamente
     window.addEventListener('load', () => setTimeout(() => window.print(), 400));
 </script>
 </body>

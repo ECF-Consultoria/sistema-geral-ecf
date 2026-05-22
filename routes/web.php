@@ -257,6 +257,7 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::get('/financeiro',                      [AdminController::class, 'fechamento'])->name('financeiro');
     Route::patch('/financeiro/{company}',          [AdminController::class, 'updateFechamento'])->name('financeiro.update');
     Route::post('/financeiro/{company}/recebido',  [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
+    Route::get('/financeiro/relatorio-geral',        [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
     Route::get('/financeiro/{company}/relatorio',  [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
 

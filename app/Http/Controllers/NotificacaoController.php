@@ -70,6 +70,7 @@ class NotificacaoController extends Controller
         return Inertia::render('Notificacoes/Index', [
             'notificacoes' => $notificacoes,
             'aba'          => $aba,
+            'can_criar'    => $user->hasPermission('notificacoes.criar'),
         ]);
     }
 

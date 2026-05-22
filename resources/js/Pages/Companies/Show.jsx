@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link } from '@inertiajs/react';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/Components/ui/badge';
 import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';

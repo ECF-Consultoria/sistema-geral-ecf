@@ -356,6 +356,119 @@ class AdminController extends Controller
         ]);
     }
 
+    public function gerarRelatorioGeral(Request $request)
+    {
+        // Determina mês de referência
+        try {
+            $ref = $request->filled('mes')
+                ? Carbon::createFromFormat('Y-m', $request->input('mes'))->startOfMonth()
+                : Carbon::now();
+        } catch (\Exception) {
+            $ref = Carbon::now();
+        }
+        if ($ref->isAfter(Carbon::now())) {
+            $ref = Carbon::now();
+        }
+
+        $mesSelecionado = $ref->format('Y-m');
+        $mesLabel       = ucfirst($ref->translatedFormat('F Y'));
+        $inicio         = $ref->copy()->startOfMonth();
+        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
+
+        // Carrega todas as empresas principais ativas (não filhas)
+        $query = Company::where('active', true)
+            ->whereNull('parent_company_id')
+            ->with(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')])
+            ->orderBy('name');
+
+        if ($request->filled('service_type')) {
+            $query->where('service_type', $request->input('service_type'));
+        }
+
+        $rawCompanies = $query->get();
+
+        // IDs de todas as empresas (pais + filhas) para a query de métricas
+        $todosIds = $rawCompanies->flatMap(
+            fn($c) => collect([$c->id])->merge($c->filhas->pluck('id'))
+        )->unique();
+
+        // Agrega métricas do mês
+        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+            ->whereNotNull('revenue')
+            ->whereIn('company_id', $todosIds)
+            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        // Recebidos do mês (indexado por company_id)
+        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
+            ->pluck('company_id')
+            ->flip();
+
+        $filtroRecebido = $request->input('recebido'); // 'sim', 'nao', ou null
+
+        $relatorios = [];
+        foreach ($rawCompanies as $company) {
+            $recebido = isset($recebidos[$company->id]);
+
+            if ($filtroRecebido === 'sim' && !$recebido) continue;
+            if ($filtroRecebido === 'nao' && $recebido)  continue;
+
+            $metricaPai     = $metricas->get($company->id);
+            $faturamentoPai = $metricaPai ? (float) $metricaPai->faturamento : null;
+            $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
+
+            $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
+                $m   = $metricas->get($f->id);
+                $fat = $m ? (float) $m->faturamento : null;
+                $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
+                return [
+                    'id'                       => $f->id,
+                    'name'                     => $f->name,
+                    'cnpj'                     => $f->cnpj,
+                    'adman_account_id'         => $f->adman_account_id,
+                    'adman_store_id'           => $f->adman_store_id,
+                    'ml_store_id'              => $f->ml_store_id,
+                    'segment'                  => $f->segment,
+                    'service_type'             => $f->service_type,
+                    'contract_type'            => $f->contract_type,
+                    'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
+                    'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
+                    'additional_service'       => $f->additional_service,
+                    'additional_service_price' => $f->additional_service_price ? (float) $f->additional_service_price : null,
+                    'faturamento'              => $fat,
+                    'periodo_inicio'           => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
+                    'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,
+                    'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
+                    'valor_mensal'             => $fx ? $fx['valor'] : null,
+                ];
+            })->values()->toArray();
+
+            $totalMensalidade = ($faixaPai ? $faixaPai['valor'] : 0) + collect($vinculadas)->sum('valor_mensal');
+
+            $relatorios[] = [
+                'company'          => $company,
+                'recebido'         => $recebido,
+                'faturamento'      => $faturamentoPai,
+                'periodo_inicio'   => $metricaPai ? Carbon::parse($metricaPai->periodo_inicio)->format('d/m/Y') : null,
+                'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y')  : null,
+                'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
+                'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
+                'vinculadas'       => $vinculadas,
+                'total_mensalidade'=> $totalMensalidade,
+            ];
+        }
+
+        return view('admin.relatorio-geral', [
+            'relatorios'      => $relatorios,
+            'mes_label'       => $mesLabel,
+            'mes_selecionado' => $mesSelecionado,
+            'gerado_em'       => Carbon::now()->format('d/m/Y \à\s H:i'),
+            'filtro_recebido' => $filtroRecebido,
+        ]);
+    }
+
     public function inventario()
     {
         return Inertia::render('Admin/Inventario');
