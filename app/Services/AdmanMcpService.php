@@ -261,6 +261,43 @@ class AdmanMcpService
     }
 
     /**
+     * Retorna o resultado do full-scan (maxPages=1000) se já estiver cacheado.
+     * Sem fallback: se não tiver cache, retorna null (chamador decide o que fazer).
+     * Usado pelo SugadorController pra checar se já tem varredura completa pronta
+     * antes de cair no fetch síncrono de 16 páginas.
+     */
+    public function cachedFullScanIfReady(string $custId, string $dateFrom, string $dateTo, int $maxPages = 1000): ?array
+    {
+        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, $dateFrom, $dateTo, $maxPages);
+        return Cache::get($cacheKey);
+    }
+
+    /**
+     * Filtra um conjunto pré-carregado de productAds pela campanha + normaliza.
+     * Usado quando já temos o cache do full-scan (via cachedFullScanIfReady) e
+     * só precisamos reaplicar o filtro de campanha — sem rede.
+     */
+    public function filterMlbsByCampaignFromItems(array $items, string $campaignId, string $custId): array
+    {
+        $campaigns    = $this->listCampaigns($custId);
+        $campaign     = collect($campaigns)->firstWhere('campaign_id', $campaignId);
+        $campaignName = $campaign['campaign_name'] ?? null;
+
+        if (!$campaignName) {
+            return ['mlbs' => [], 'truncated' => false, 'pages_read' => null, 'total_pages' => null];
+        }
+
+        $filtered = array_values(array_filter($items, fn($ad) => ($ad['campaignName'] ?? null) === $campaignName));
+
+        return [
+            'mlbs'        => array_map(fn($ad) => $this->normalizeProductAd($ad), $filtered),
+            'truncated'   => false,
+            'pages_read'  => null,
+            'total_pages' => null,
+        ];
+    }
+
+    /**
      * Achata o formato `{value, diff, prev}` da MCP e expõe só os campos que
      * a UI do Sugador consome.
      */

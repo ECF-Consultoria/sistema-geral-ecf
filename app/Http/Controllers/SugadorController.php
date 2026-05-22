@@ -3,12 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\AnalyzeCompanySugadoresJob;
+use App\Jobs\FetchAdmanMlbsByCampaignJob;
 use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
 use App\Services\AdmanMcpService;
 use App\Services\SugadorAnalysisService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -282,8 +284,31 @@ class SugadorController extends Controller
         $dateFrom = optional($sugador->periodo_inicio)->toDateString() ?? now()->subDays(7)->toDateString();
         $dateTo   = optional($sugador->periodo_fim)->toDateString()    ?? now()->subDay()->toDateString();
 
+        // Tenta 1º o cache do FULL-SCAN (1000 páginas). Se ele estiver pronto,
+        // retorna resultado completo. Se não, cai pra varredura síncrona de
+        // 16 páginas e dispara Job em background pra preencher o full-scan.
+        $fullScanResult = $this->mcp->cachedFullScanIfReady($custId, $dateFrom, $dateTo);
+
         try {
-            $result = $this->mcp->fetchMlbsByCampaign($custId, (string) $sugador->campaign_id, $dateFrom, $dateTo);
+            if ($fullScanResult !== null) {
+                $result = $this->mcp->filterMlbsByCampaignFromItems(
+                    $fullScanResult['items'],
+                    (string) $sugador->campaign_id,
+                    $custId,
+                );
+                $result['scan_full_ready'] = true;
+            } else {
+                $result = $this->mcp->fetchMlbsByCampaign($custId, (string) $sugador->campaign_id, $dateFrom, $dateTo);
+                $result['scan_full_ready'] = false;
+
+                // Resultado síncrono é truncado pra contas grandes — dispara
+                // varredura completa em background. O Job é ShouldBeUnique e
+                // não enfileira duplicata. Próximo clique em "Recarregar" após
+                // ~5min pega o cache full.
+                if (!empty($result['truncated'])) {
+                    FetchAdmanMlbsByCampaignJob::dispatch($custId, $dateFrom, $dateTo);
+                }
+            }
         } catch (\Throwable $e) {
             Log::error("[Sugadores/MLBs] Erro MCP sugador {$sugador->id} (company {$sugador->company_id}): " . $e->getMessage());
             return response()->json([
@@ -306,6 +331,12 @@ class SugadorController extends Controller
         }
         unset($m);
 
+        // Status do scan em background (se houver) — frontend usa pra mostrar
+        // banner "varredura completa em andamento".
+        $scanStatus = Cache::get(
+            FetchAdmanMlbsByCampaignJob::statusCacheKeyFor($custId, $dateFrom, $dateTo)
+        );
+
         return response()->json([
             'mlbs'            => $mlbs,
             'periodo_inicio'  => $dateFrom,
@@ -313,9 +344,11 @@ class SugadorController extends Controller
             'adgroup_name'    => $sugador->adgroup_name,
             'campaign_id'     => $sugador->campaign_id,
             'total'           => count($mlbs),
-            'truncated'       => $result['truncated'],
-            'pages_read'      => $result['pages_read'],
-            'total_pages'     => $result['total_pages'],
+            'truncated'       => $result['truncated']        ?? false,
+            'pages_read'      => $result['pages_read']       ?? null,
+            'total_pages'     => $result['total_pages']      ?? null,
+            'scan_full_ready' => $result['scan_full_ready']  ?? false,
+            'scan_status'     => $scanStatus,
         ]);
     }
 
