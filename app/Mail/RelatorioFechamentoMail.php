@@ -19,8 +19,13 @@ class RelatorioFechamentoMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    // Caminho do executável do Chrome no servidor
-    private const CHROME_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe';
+    // Caminho do Chrome/Chromium — configurável via CHROME_BINARY_PATH no .env
+    // Windows (local): C:\Program Files\Google\Chrome\Application\chrome.exe
+    // Linux (VPS):     /usr/bin/chromium-browser
+    private function chromePath(): string
+    {
+        return config('browsershot.chrome_binary', env('CHROME_BINARY_PATH', 'chromium-browser'));
+    }
 
     public function __construct(public array $dados)
     {
@@ -84,7 +89,7 @@ class RelatorioFechamentoMail extends Mailable
         $html = preg_replace('/<button[^>]*class="print-btn"[^>]*>.*?<\/button>/is', '', $html);
 
         return Browsershot::html($html)
-            ->setChromePath(self::CHROME_PATH)
+            ->setChromePath($this->chromePath())
             ->noSandbox()
             ->emulateMedia('print')
             ->format('A4')
