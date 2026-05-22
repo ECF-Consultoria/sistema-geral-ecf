@@ -25,8 +25,11 @@
             padding: 7px 14px;
             border-radius: 6px;
             display: inline-block;
+            color: #ffe600;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 1px;
         }
-        .logo-pill img { height: 28px; width: auto; display: block; }
         .header-meta {
             text-align: right;
             font-size: 10px;
@@ -173,7 +176,7 @@
 @if (count($relatorios) === 0)
     <div class="header-dark">
         <table class="header-table"><tr>
-            <td><div class="logo-pill"><img src="{{ $logo_path }}" alt="ECF Consultoria"></div></td>
+            <td><div class="logo-pill">ECF</div></td>
             <td><div class="header-meta"><strong>{{ $mes_label }}</strong></div></td>
         </tr></table>
     </div>
@@ -187,7 +190,7 @@
 {{-- ══ CAPA ══════════════════════════════════════════════════ --}}
 <div class="header-dark">
     <table class="header-table"><tr>
-        <td><div class="logo-pill"><img src="{{ $logo_path }}" alt="ECF Consultoria"></div></td>
+        <td><div class="logo-pill">ECF</div></td>
         <td><div class="header-meta"><strong>{{ $mes_label }}</strong>Gerado em {{ $gerado_em }}</div></td>
     </tr></table>
 </div>
@@ -262,7 +265,7 @@
 <div class="company-block">
     <div class="header-dark">
         <table class="header-table"><tr>
-            <td><div class="logo-pill"><img src="{{ $logo_path }}" alt="ECF Consultoria"></div></td>
+            <td><div class="logo-pill">ECF</div></td>
             <td><div class="header-meta"><strong>{{ $mes_label }}</strong>Gerado em {{ $gerado_em }}</div></td>
         </tr></table>
     </div>

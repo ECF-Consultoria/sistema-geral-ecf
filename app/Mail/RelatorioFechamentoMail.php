@@ -46,8 +46,6 @@ class RelatorioFechamentoMail extends Mailable
             'mes_label'       => $mesLabel,
             'gerado_em'       => now()->setTimezone('America/Sao_Paulo')->format('d/m/Y \à\s H:i'),
             'filtro_recebido' => '',
-            // path local para o DomPDF carregar a imagem sem depender do servidor HTTP
-            'logo_path'       => 'file://' . str_replace('\\', '/', public_path('images/logo.png')),
         ])->setPaper('a4', 'portrait');
 
         return [
