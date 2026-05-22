@@ -8,6 +8,7 @@ class GoalResult extends Model
 {
     protected $fillable = [
         'goal_id', 'period', 'realized_value', 'target_value', 'achieved', 'calculated_at',
+        'notificado_em',
     ];
 
     protected $casts = [
@@ -15,6 +16,7 @@ class GoalResult extends Model
         'target_value'   => 'decimal:4',
         'achieved'       => 'boolean',
         'calculated_at'  => 'datetime',
+        'notificado_em'  => 'datetime',
     ];
 
     // Métricas onde menor = melhor

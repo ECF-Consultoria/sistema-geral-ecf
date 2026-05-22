@@ -504,12 +504,38 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
                 </div>
             )}
 
-            {state.data?.truncated && (
+            {/* Resultado já é da varredura completa (cache full-scan) — bom estado, sem warning. */}
+            {state.data?.scan_full_ready && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] mb-3">
+                    <span className="text-emerald-400 text-[11px] mt-0.5">✓</span>
+                    <p className="text-emerald-300 text-[11px] leading-relaxed">
+                        Resultado da varredura completa da conta (cache válido por 30min).
+                    </p>
+                </div>
+            )}
+
+            {/* Partial result + varredura em background em andamento ou falhou. */}
+            {state.data?.truncated && !state.data?.scan_full_ready && (
                 <div className="flex items-start gap-2 p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.05] mb-3">
                     <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
-                    <p className="text-amber-300 text-[11px] leading-relaxed">
-                        Apenas as primeiras {state.data.pages_read} de {state.data.total_pages} páginas foram lidas (limite de tempo). Conta tem muitos anúncios — alguns MLBs do adgroup podem não aparecer.
-                    </p>
+                    <div className="flex-1 min-w-0">
+                        <p className="text-amber-300 text-[11px] leading-relaxed">
+                            Apenas as primeiras {state.data.pages_read} de {state.data.total_pages} páginas foram lidas. Conta com muitos anúncios — alguns MLBs do adgroup podem não aparecer.
+                        </p>
+                        {state.data?.scan_status?.status === 'ready' ? (
+                            <p className="text-emerald-300 text-[11px] mt-1">
+                                ✓ Varredura completa pronta — clique <b>Recarregar</b> pra ver o resultado completo.
+                            </p>
+                        ) : state.data?.scan_status?.status === 'failed' ? (
+                            <p className="text-red-300 text-[11px] mt-1">
+                                Varredura completa falhou: {state.data.scan_status.error}. Tente recarregar em alguns minutos.
+                            </p>
+                        ) : (
+                            <p className="text-amber-300/80 text-[11px] mt-1 italic">
+                                Varredura completa em andamento em background (~5-25 min). Recarregue novamente depois.
+                            </p>
+                        )}
+                    </div>
                 </div>
             )}
 

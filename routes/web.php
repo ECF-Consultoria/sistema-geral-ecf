@@ -1,17 +1,23 @@
 <?php
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\Admin\CargoController;
+use App\Http\Controllers\Admin\SetorController;
+use App\Http\Controllers\Admin\SetorGoalController;
+use App\Http\Controllers\Admin\SetorMembroController;
 use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\GoalController;
+use App\Http\Controllers\LiderancaController;
 use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PortfolioController;
@@ -69,6 +75,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Notificações — leitura/contador/marcação (Phase 9 + recentes/abas da Phase 10)
+    Route::get('/api/notificacoes/contador',           [NotificacaoController::class, 'contador'])->name('notificacoes.contador');
+    Route::get('/api/notificacoes/recentes',           [NotificacaoController::class, 'recentes'])->name('notificacoes.recentes');
+    Route::get('/notificacoes',                        [NotificacaoController::class, 'index'])->name('notificacoes.index');
+    Route::patch('/notificacoes/{id}/marcar-lida',     [NotificacaoController::class, 'marcarLida'])->name('notificacoes.marcar-lida');
+    Route::post('/notificacoes/marcar-todas-lidas',    [NotificacaoController::class, 'marcarTodasLidas'])->name('notificacoes.marcar-todas-lidas');
+
+    // Envio manual de notificação — gated por permission `notificacoes.criar` (Phase 12).
+    // Admin sempre tem; líderes ganham via AUTO_LIDERANCA; outros users só com a key explícita em setor_permissoes.
+    Route::middleware('permission:notificacoes.criar')->group(function () {
+        Route::get('/notificacoes/nova',  [NotificacaoController::class, 'nova'])->name('notificacoes.nova');
+        Route::post('/notificacoes/nova', [NotificacaoController::class, 'criar'])->name('notificacoes.criar');
+    });
 
     // Reuniões (todos)
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
@@ -167,7 +187,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
         Route::delete('/users/{id}/force', [UserController::class, 'forceDestroy'])->name('users.force-destroy');
-        Route::delete('/users-opcao-setor', [UserController::class, 'destroyOpcaoSetor'])->name('users.opcao-setor.destroy');
 
         Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
         Route::post('/companies', [CompanyController::class, 'store'])->name('companies.store');
@@ -240,6 +259,33 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::post('/financeiro/{company}/recebido',  [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
     Route::get('/financeiro/{company}/relatorio',  [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
+
+    // ── Setores / Cargos / Permissões / Líderes / Membros / Metas ────────────
+    Route::get   ('/setores',                                  [SetorController::class, 'index'])  ->name('setores.index');
+    Route::post  ('/setores',                                  [SetorController::class, 'store'])  ->name('setores.store');
+    Route::get   ('/setores/{setor}',                          [SetorController::class, 'show'])   ->name('setores.show');
+    Route::put   ('/setores/{setor}',                          [SetorController::class, 'update']) ->name('setores.update');
+    Route::delete('/setores/{setor}',                          [SetorController::class, 'destroy'])->name('setores.destroy');
+    Route::put   ('/setores/{setor}/permissoes',               [SetorController::class, 'syncPermissoes'])->name('setores.permissoes.sync');
+
+    Route::post  ('/setores/{setor}/cargos',                   [CargoController::class, 'store'])  ->name('setores.cargos.store');
+    Route::put   ('/cargos/{cargo}',                           [CargoController::class, 'update']) ->name('cargos.update');
+    Route::delete('/cargos/{cargo}',                           [CargoController::class, 'destroy'])->name('cargos.destroy');
+
+    Route::post  ('/setores/{setor}/membros',                  [SetorMembroController::class, 'storeMembro'])  ->name('setores.membros.store');
+    Route::delete('/setores/{setor}/membros/{user}',           [SetorMembroController::class, 'destroyMembro'])->name('setores.membros.destroy');
+    Route::post  ('/setores/{setor}/lideres',                  [SetorMembroController::class, 'storeLider'])  ->name('setores.lideres.store');
+    Route::delete('/setores/{setor}/lideres/{user}',           [SetorMembroController::class, 'destroyLider'])->name('setores.lideres.destroy');
+
+    Route::post  ('/setores/{setor}/metas',                    [SetorGoalController::class, 'store'])  ->name('setores.metas.store');
+    Route::put   ('/setores-metas/{meta}',                     [SetorGoalController::class, 'update']) ->name('setores.metas.update');
+    Route::delete('/setores-metas/{meta}',                     [SetorGoalController::class, 'destroy'])->name('setores.metas.destroy');
+});
+
+// ─── Liderança (acesso: admin ou líder de pelo menos 1 setor) ────────────────
+Route::middleware(['auth', 'verified', 'permission:lideranca.dashboard_setor'])->prefix('lideranca')->name('lideranca.')->group(function () {
+    Route::get('/setor', [LiderancaController::class, 'indexOrFirst'])->name('index');
+    Route::get('/setor/{setor:slug}', [LiderancaController::class, 'show'])->name('setor');
 });
 
 require __DIR__.'/auth.php';

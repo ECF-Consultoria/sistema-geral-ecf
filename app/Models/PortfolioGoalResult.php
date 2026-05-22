@@ -9,6 +9,7 @@ class PortfolioGoalResult extends Model
     protected $fillable = [
         'portfolio_goal_id', 'period', 'companies_count',
         'realized_value', 'target_value', 'achieved', 'calculated_at',
+        'notificado_em',
     ];
 
     protected $casts = [
@@ -17,6 +18,7 @@ class PortfolioGoalResult extends Model
         'achieved'        => 'boolean',
         'calculated_at'   => 'datetime',
         'companies_count' => 'integer',
+        'notificado_em'   => 'datetime',
     ];
 
     public function portfolioGoal()

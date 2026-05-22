@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Code2, ExternalLink, Copy, Check, FileText, Puzzle, RefreshCw, ChevronDown, AlertTriangle, Activity, ShoppingCart } from 'lucide-react';
+import { Code2, ExternalLink, Copy, Check, FileText, Puzzle, RefreshCw, ChevronDown, AlertTriangle, Activity } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Button } from '@/Components/ui/button';
@@ -9,24 +9,6 @@ import { Badge } from '@/Components/ui/badge';
 
 // Formata timestamp ISO para exibição compacta no painel de sync
 const fmtTs = (iso) => iso ? format(new Date(iso), 'dd/MM HH:mm') : null;
-
-// Calcula duração entre dois timestamps ISO em formato compacto (ex.: 2m 14s)
-const fmtDuracao = (iniciado, terminado) => {
-    if (!iniciado) return null;
-    const fim = terminado ? new Date(terminado) : new Date();
-    const ms = fim - new Date(iniciado);
-    if (ms < 0) return null;
-    const s = Math.floor(ms / 1000);
-    const m = Math.floor(s / 60);
-    return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
-};
-
-// Converte data YYYY-MM-DD para dd/MM para exibição compacta
-const fmtData = (iso) => {
-    if (!iso) return '—';
-    const [, mes, dia] = iso.split('-');
-    return `${dia}/${mes}`;
-};
 
 function CopyBtn({ text }) {
     const [copied, setCopied] = useState(false);
@@ -95,7 +77,6 @@ function DiffBadge({ label, count, variant }) {
         criados:     'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
         atualizados: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
         ignorados:   'bg-white/[0.05] text-white/40 border-white/[0.08]',
-        erros:       'bg-red-500/10 text-red-400 border-red-500/20',
     };
     return (
         <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-[12px] font-mono border', estilos[variant])}>
@@ -229,125 +210,7 @@ function SyncAdmanSection({ empresas }) {
     );
 }
 
-// Badge de status para execuções de sync de vendas MLB
-function SyncVendasStatusBadge({ status }) {
-    const estilos = {
-        running:   'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/20 animate-pulse',
-        completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-        failed:    'bg-red-500/10 text-red-400 border-red-500/20',
-    };
-    const labels = {
-        running:   'Em andamento',
-        completed: 'Concluído',
-        failed:    'Falhou',
-    };
-    return (
-        <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold border', estilos[status] ?? estilos.failed)}>
-            {labels[status] ?? status}
-        </span>
-    );
-}
-
-// Painel expandido de um sync de vendas — lista as empresas que falharam
-function SyncVendasLogAccordion({ log }) {
-    return (
-        <div className="px-4 py-3 bg-black/30 border border-white/[0.04]">
-            {log.empresas_com_erro?.length > 0 ? (
-                <>
-                    <p className="text-[11px] uppercase tracking-wider text-white/40 mb-2">Empresas com erro</p>
-                    <ul className="space-y-2">
-                        {log.empresas_com_erro.map((item, i) => (
-                            <li key={i}>
-                                <span className="text-red-400 font-semibold text-[12px]">{item.nome}</span>
-                                <p className="text-white/60 text-[12px] font-mono whitespace-pre-wrap mt-0.5">{item.motivo}</p>
-                            </li>
-                        ))}
-                    </ul>
-                </>
-            ) : (
-                <p className="text-white/30 text-[12px] italic">Nenhuma empresa com erro registrado.</p>
-            )}
-        </div>
-    );
-}
-
-// Linha do histórico de sync de vendas MLB com badge de status e duração
-function SyncVendasLogRow({ log, expandida, onToggle }) {
-    const periodo   = `${fmtData(log.date_from)} → ${fmtData(log.date_to)}`;
-    const inicio    = fmtTs(log.started_at);
-    const duracao   = fmtDuracao(log.started_at, log.finished_at);
-
-    return (
-        <div
-            onClick={onToggle}
-            className={cn(
-                'flex items-center gap-4 px-2 py-3 cursor-pointer transition-colors',
-                expandida ? 'bg-white/[0.05]' : 'hover:bg-white/[0.03]'
-            )}
-        >
-            <ChevronDown
-                size={14}
-                className={cn('text-white/40 transition-transform duration-200 shrink-0', expandida && 'rotate-180 text-ecf-yellow')}
-            />
-
-            {/* Período do sync */}
-            <span className="w-28 text-white text-[13px] font-semibold shrink-0">{periodo}</span>
-
-            {/* Horário de início */}
-            <code className="w-24 text-white/60 text-[12px] font-mono shrink-0">{inicio ?? '—'}</code>
-
-            {/* Duração */}
-            <code className="w-16 text-white/60 text-[12px] font-mono shrink-0">{duracao ?? '—'}</code>
-
-            {/* Badges de totais */}
-            <div className="flex flex-wrap gap-1.5 flex-1">
-                <DiffBadge label="itens"       count={log.total_itens}  variant="ignorados" />
-                <DiffBadge label="com venda"   count={log.com_venda}    variant="atualizados" />
-                <DiffBadge label="publicações" count={log.encontradas}  variant="criados" />
-                <DiffBadge label="erros"       count={log.erros}        variant="erros" />
-            </div>
-
-            {/* Status */}
-            <SyncVendasStatusBadge status={log.status} />
-        </div>
-    );
-}
-
-// Seção do histórico de syncs de vendas MLB
-function SyncVendasLogSection({ logs }) {
-    const [aberto, setAberto] = useState(null);
-
-    function toggleLog(id) {
-        setAberto(prev => prev === id ? null : id);
-    }
-
-    if (!logs || logs.length === 0) {
-        return (
-            <div className="flex flex-col items-center gap-2 py-8 text-center">
-                <AlertTriangle size={24} className="text-white/20" />
-                <p className="text-white/40 text-[13px]">Nenhum sync de vendas executado ainda.</p>
-                <p className="text-white/30 text-[11px]">Dispare via Mercado Livre → Sync de vendas.</p>
-            </div>
-        );
-    }
-
-    return (
-        <div className="divide-y divide-white/[0.04]">
-            {logs.map(log => (
-                <div key={log.id}>
-                    <SyncVendasLogRow
-                        log={log}
-                        expandida={aberto === log.id}
-                        onToggle={() => toggleLog(log.id)}
-                    />
-                    {aberto === log.id && <SyncVendasLogAccordion log={log} />}
-                </div>
-            ))}
-        </div>
-    );
-}
-
-export default function Desenvolvimento({ empresas = [], syncVendasLogs = [] }) {
+export default function Desenvolvimento({ empresas = [] }) {
     return (
         <AppLayout title="Desenvolvimento">
             <div className="max-w-4xl mx-auto space-y-6">
@@ -381,9 +244,6 @@ export default function Desenvolvimento({ empresas = [], syncVendasLogs = [] }) 
                     <SyncAdmanSection empresas={empresas} />
                 </DevCard>
 
-                <DevCard icon={ShoppingCart} title="Sync de Vendas MLB" subtitle="Histórico dos últimos syncs em background">
-                    <SyncVendasLogSection logs={syncVendasLogs} />
-                </DevCard>
 
                 <div className="rounded-xl border border-dashed border-white/[0.08] p-5 text-center">
                     <FileText className="mx-auto text-white/20 mb-2" size={28} />

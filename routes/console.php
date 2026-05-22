@@ -44,3 +44,16 @@ Schedule::command('sugadores:cleanup-quarentena')
     ->dailyAt('06:45')
     ->name('cleanup-sugadores-quarentena')
     ->withoutOverlapping();
+
+// Calcula resultados das metas de setor (publicacoes_mes, etc) — diariamente
+Schedule::job(new \App\Jobs\CalculateSetorGoalResults)
+    ->dailyAt('07:00')
+    ->name('calculate-setor-goal-results')
+    ->withoutOverlapping();
+
+// Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
+// Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
+Schedule::command('notifications:cleanup')
+    ->dailyAt('04:00')
+    ->name('notifications-cleanup')
+    ->withoutOverlapping();

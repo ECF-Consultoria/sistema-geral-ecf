@@ -5,11 +5,11 @@ import {
     Plus, Trash2, Pencil, Check, X, Copy, CheckCircle,
     ArrowRight, ArrowLeft, ExternalLink, Link as LinkIcon
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/Components/ui/button';
+import { Input } from '@/Components/ui/input';
+import { Textarea } from '@/Components/ui/textarea';
+import { Badge } from '@/Components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
 
 const COLUMNS = [

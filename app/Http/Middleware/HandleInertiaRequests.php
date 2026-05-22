@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Sugador;
+use App\Support\Permissions;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -30,18 +31,15 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'auth' => [
-                'user' => $request->user() ? [
-                    'id'               => $request->user()->id,
-                    'name'             => $request->user()->name,
-                    'email'            => $request->user()->email,
-                    'role'             => $request->user()->role,
-                    'setor'            => $request->user()->setor,
-                    'publication_role'        => $request->user()->publication_role,
-                    'publication_permissions' => $request->user()->publication_permissions,
-                ] : null,
+                'user'        => $user ? $this->buildUserPayload($user) : null,
+                'permissions' => $user ? $user->effectivePermissions() : [],
+                'setores'     => $user ? $this->buildSetoresPayload($user) : [],
+                'lideranca'   => $user ? $user->setoresLiderados()->get(['setores.id', 'nome', 'slug'])->all() : [],
             ],
             'flash' => [
                 'success'       => $request->session()->get('success'),
@@ -52,7 +50,61 @@ class HandleInertiaRequests extends Middleware
             'asset_url'  => rtrim(asset(''), '/'),
             'csrf_token' => csrf_token(),
             'sugadores_pendentes' => fn() => $this->countSugadoresPendentes($request),
+            // Contador de notifications não lidas — closure garante recálculo em toda navegação Inertia (POLL-01 + POLL-03).
+            'notificacoes_nao_lidas' => fn() => $request->user()?->unreadNotifications()->count() ?? 0,
         ];
+    }
+
+    /**
+     * Payload básico do user — quem usa esses campos no frontend continua
+     * funcionando (Dashboard, header, etc).
+     */
+    private function buildUserPayload(\App\Models\User $user): array
+    {
+        $principal = $user->setorPrincipal();
+
+        return [
+            'id'    => $user->id,
+            'name'  => $user->name,
+            'email' => $user->email,
+            'role'  => $user->role,
+            'is_admin'  => $user->isAdmin(),
+            'is_lider'  => $user->isLider(),
+            // Snapshot do setor principal pra display no perfil/header
+            'setor_principal' => $principal ? [
+                'id'    => $principal->id,
+                'nome'  => $principal->nome,
+                'slug'  => $principal->slug,
+                'cargo' => $principal->pivot->cargo_id
+                    ? \App\Models\Cargo::find($principal->pivot->cargo_id)?->nome
+                    : null,
+            ] : null,
+        ];
+    }
+
+    /**
+     * Todos os setores em que o user é membro (com nome do cargo já resolvido).
+     *
+     * @return array<int, array{id:int,nome:string,slug:string,cargo:?string,is_principal:bool}>
+     */
+    private function buildSetoresPayload(\App\Models\User $user): array
+    {
+        return $user->setores()
+            ->with('cargos:id,setor_id,nome,slug')
+            ->get(['setores.id', 'nome', 'slug'])
+            ->map(function ($setor) {
+                $cargoId = $setor->pivot->cargo_id;
+                $cargo = $cargoId ? $setor->cargos->firstWhere('id', $cargoId) : null;
+                return [
+                    'id'           => $setor->id,
+                    'nome'         => $setor->nome,
+                    'slug'         => $setor->slug,
+                    'cargo'        => $cargo?->nome,
+                    'cargo_slug'   => $cargo?->slug,
+                    'is_principal' => (bool) $setor->pivot->is_principal,
+                ];
+            })
+            ->all();
     }
 
     /**
@@ -64,15 +116,12 @@ class HandleInertiaRequests extends Middleware
         $user = $request->user();
         if (!$user) return 0;
 
-        // Quem não tem permissão de ver sugadores não recebe contador
-        $hasGlobalView = $user->isAdmin()
-            || (method_exists($user, 'isGestor') && $user->isGestor())
-            || (method_exists($user, 'isLiderPub') && $user->isLiderPub());
-        $hasCarteiraView = $user->isConsultor()
-            || $user->isMentor()
-            || (method_exists($user, 'hasPubPermission') && $user->hasPubPermission('sugadores'));
+        if (!$user->hasPermission(Permissions::CORE_SUGADORES)
+            && !$user->hasPermission(Permissions::CORE_SUGADORES_GLOBAL)) {
+            return 0;
+        }
 
-        if (!$hasGlobalView && !$hasCarteiraView) return 0;
+        $hasGlobalView = $user->isAdmin() || $user->hasPermission(Permissions::CORE_SUGADORES_GLOBAL);
 
         $query = Sugador::pendentes();
         if (!$hasGlobalView) {

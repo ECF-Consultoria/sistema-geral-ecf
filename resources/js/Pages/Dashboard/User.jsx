@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
+import { Badge } from '@/Components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import { router } from '@inertiajs/react';
 import { BarChart2, Star, AlertTriangle, DollarSign, Users } from 'lucide-react';
