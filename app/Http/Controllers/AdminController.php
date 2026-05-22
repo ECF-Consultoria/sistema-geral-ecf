@@ -528,7 +528,8 @@ class AdminController extends Controller
             return response()->json(['message' => 'Nenhum destinatário configurado.'], 422);
         }
 
-        EnviarRelatorioFechamentoJob::dispatch($request->input('mes'), auth()->id());
+        // dispatchSync: executa imediatamente (sem depender de queue worker)
+        EnviarRelatorioFechamentoJob::dispatchSync($request->input('mes'), auth()->id());
 
         return response()->json(['message' => 'Relatório enviado para ' . count($destinatarios) . ' email(s).']);
     }
