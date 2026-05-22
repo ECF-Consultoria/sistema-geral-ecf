@@ -12,7 +12,9 @@ VPS_PORT="22"
 VPS_PASS="ECF-100376vps"
 VPS_HOSTKEY="SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8"
 REMOTE="/var/www/ecf_admin"
-PLINK="/c/xampp/htdocs/ecf_admin/plink.exe"
+# Plink ao lado do script (portátil entre máquinas — funciona pra qualquer
+# checkout, seja /c/xampp/htdocs/ecf_admin/ ou outro path).
+PLINK="$(dirname "$0")/plink.exe"
 
 SSH_ARGS=(-ssh -P "$VPS_PORT" -pw "$VPS_PASS" -hostkey "$VPS_HOSTKEY" -batch)
 
