@@ -57,3 +57,8 @@ Schedule::command('notifications:cleanup')
     ->dailyAt('04:00')
     ->name('notifications-cleanup')
     ->withoutOverlapping();
+
+// Envio automático mensal do relatório de fechamento — dia 5 às 09:00
+Schedule::job(new \App\Jobs\EnviarRelatorioFechamentoJob(now()->format('Y-m'), null))
+    ->monthlyOn(5, '09:00')
+    ->name('envio-relatorio-fechamento-auto');

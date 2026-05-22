@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -467,6 +469,59 @@ class AdminController extends Controller
             'gerado_em'       => Carbon::now()->format('d/m/Y \à\s H:i'),
             'filtro_recebido' => $filtroRecebido,
         ]);
+    }
+
+    // ── Configurações do módulo financeiro ────────────────────────────────────
+
+    /**
+     * Exibe a página de configuração de destinatários do relatório mensal.
+     */
+    public function configuracoesFinanceiro()
+    {
+        $json         = Configuracao::get('email_destinatarios_fechamento');
+        $destinatarios = $json ? json_decode($json, true) : [];
+        $ultimoEnvio  = Configuracao::get('email_ultimo_envio_fechamento');
+
+        return Inertia::render('Admin/ConfiguracoesFinanceiro', [
+            'destinatarios' => $destinatarios,
+            'ultimo_envio'  => $ultimoEnvio,
+        ]);
+    }
+
+    /**
+     * Persiste a lista de destinatários do relatório mensal.
+     */
+    public function salvarConfiguracoesFinanceiro(Request $request)
+    {
+        $validated = $request->validate([
+            'destinatarios'   => 'array',
+            'destinatarios.*' => 'email',
+        ]);
+
+        Configuracao::set('email_destinatarios_fechamento', json_encode($validated['destinatarios'] ?? []));
+
+        return back()->with('success', 'Destinatários atualizados com sucesso.');
+    }
+
+    /**
+     * Despacha o job de envio do relatório geral de fechamento por email.
+     * Retorna JSON para consumo via axios no frontend.
+     */
+    public function enviarRelatorioGeral(Request $request)
+    {
+        $request->validate(['mes' => 'required|string|regex:/^\d{4}-\d{2}$/']);
+
+        // Verifica se existem destinatários configurados antes de despachar
+        $json         = Configuracao::get('email_destinatarios_fechamento');
+        $destinatarios = $json ? json_decode($json, true) : [];
+
+        if (empty($destinatarios)) {
+            return response()->json(['message' => 'Nenhum destinatário configurado.'], 422);
+        }
+
+        EnviarRelatorioFechamentoJob::dispatch($request->input('mes'), auth()->id());
+
+        return response()->json(['message' => 'Relatório enviado para ' . count($destinatarios) . ' email(s).']);
     }
 
     public function inventario()
