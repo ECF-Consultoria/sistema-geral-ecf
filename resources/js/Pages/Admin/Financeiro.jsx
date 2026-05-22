@@ -1,9 +1,10 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { router, useForm } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer } from 'lucide-react';
+import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { cn, formatDate } from '@/lib/utils';
+import axios from 'axios';
 
 const SERVICE_LABELS = {
     polo:       'POLO',
@@ -606,6 +607,9 @@ function MesSeletor({ mesSelecionado }) {
 
 function GerarRelatoriosBtn({ mesSelecionado, companies }) {
     const [aberto, setAberto] = useState(false);
+    // Estado para o envio por email: loading e feedback (sucesso/erro)
+    const [enviando, setEnviando]   = useState(false);
+    const [feedback, setFeedback]   = useState(null); // { tipo: 'success'|'error', msg: string } | null
 
     const totalPrincipais = companies.filter(e => !e.is_filha).length;
     const totalRecebidos  = companies.filter(e => !e.is_filha && e.recebido).length;
@@ -615,6 +619,17 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
         const params = { mes: mesSelecionado };
         if (filtroRecebido) params.recebido = filtroRecebido;
         return route('admin.financeiro.relatorio.geral', params);
+    }
+
+    // Dispara o job de envio por email via axios POST
+    function enviarPorEmail() {
+        setEnviando(true);
+        setFeedback(null);
+        axios.post(route('admin.financeiro.relatorio.enviar'), { mes: mesSelecionado })
+            .then(r => setFeedback({ tipo: 'success', msg: r.data.message }))
+            .catch(e => setFeedback({ tipo: 'error', msg: e.response?.data?.message || 'Erro ao enviar relatório.' }))
+            .finally(() => setEnviando(false));
+        // Não fecha o dropdown ao clicar em enviar — usuário precisa ver o feedback
     }
 
     return (
@@ -631,7 +646,8 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
             {aberto && (
                 <>
                     <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
-                    <div className="absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-white/[0.08] bg-ecf-card shadow-xl z-20 overflow-hidden">
+                    <div className="absolute right-0 top-full mt-1.5 w-60 rounded-xl border border-white/[0.08] bg-ecf-card shadow-xl z-20 overflow-hidden">
+                        {/* Seção: Gerar PDF */}
                         <div className="px-3 py-2 border-b border-white/[0.04]">
                             <p className="text-[10px] uppercase tracking-widest text-white/30 font-semibold">Gerar PDF para financeiro</p>
                         </div>
@@ -665,6 +681,41 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
                             <span className="text-[13px] text-amber-400">Pendentes (inadimplentes)</span>
                             <span className="text-[11px] text-white/30 font-mono">{totalPendentes}</span>
                         </a>
+
+                        {/* Divisor — seção de envio por email */}
+                        <div className="px-3 py-2 border-t border-white/[0.04]">
+                            <p className="text-[10px] uppercase tracking-widest text-white/30 font-semibold">Enviar por email</p>
+                        </div>
+
+                        {/* Botão de envio — não fecha o dropdown para mostrar feedback */}
+                        <button
+                            type="button"
+                            onClick={enviarPorEmail}
+                            disabled={enviando}
+                            className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.04] transition-colors text-left disabled:opacity-60 disabled:cursor-wait"
+                        >
+                            <Send size={13} className="text-white/50 shrink-0" />
+                            <span className="text-[13px] text-white/70">
+                                {enviando ? 'Enviando...' : 'Enviar relatório geral'}
+                            </span>
+                        </button>
+
+                        {/* Mensagem de feedback do envio */}
+                        {feedback && (
+                            <div className={cn('px-3 py-1.5 text-[12px]', feedback.tipo === 'success' ? 'text-emerald-400' : 'text-red-400')}>
+                                {feedback.msg}
+                            </div>
+                        )}
+
+                        {/* Link para configurar destinatários — fecha o dropdown ao clicar */}
+                        <Link
+                            href={route('admin.configuracoes.financeiro')}
+                            onClick={() => setAberto(false)}
+                            className="flex items-center gap-2 px-3 py-2.5 hover:bg-white/[0.04] transition-colors text-[13px] text-white/60 border-t border-white/[0.04]"
+                        >
+                            <Settings size={13} className="text-white/40 shrink-0" />
+                            Configurar destinatários
+                        </Link>
                     </div>
                 </>
             )}
