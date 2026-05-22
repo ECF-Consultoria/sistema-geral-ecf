@@ -35,6 +35,23 @@ if [ "$LOCAL" != "$REMOTE_SHA" ]; then
   exit 1
 fi
 
+echo "▶ Verificando commits locais no VPS não enviados ao GitHub..."
+"$PLINK" "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "
+  cd $REMOTE
+  git fetch origin main --quiet
+  AHEAD=\$(git log origin/main..HEAD --oneline 2>/dev/null | wc -l | tr -d ' ')
+  if [ \"\$AHEAD\" -gt \"0\" ]; then
+    echo \"\"
+    echo \"❌ ABORTAR: VPS tem \$AHEAD commit(s) locais não enviados ao GitHub:\"
+    git log origin/main..HEAD --oneline
+    echo \"\"
+    echo \"  Solução: SSH na VPS → git format-patch -\$AHEAD HEAD~\$AHEAD --stdout > /tmp/fix.patch\"
+    echo \"           Localmente: git am /tmp/fix.patch → git push → rodar deploy novamente\"
+    exit 1
+  fi
+  echo 'VPS está limpo (sem commits locais). Prosseguindo...'
+" || exit 1
+
 echo "▶ Deploy via git pull na VPS..."
 "$PLINK" "${SSH_ARGS[@]}" "$VPS_USER@$VPS_HOST" "
   set -e

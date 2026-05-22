@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -467,6 +469,69 @@ class AdminController extends Controller
             'gerado_em'       => Carbon::now()->format('d/m/Y \à\s H:i'),
             'filtro_recebido' => $filtroRecebido,
         ]);
+    }
+
+    // ── Configurações do módulo financeiro ────────────────────────────────────
+
+    /**
+     * Exibe a página de configuração de destinatários e agendamento do relatório mensal.
+     */
+    public function configuracoesFinanceiro()
+    {
+        $json          = Configuracao::get('email_destinatarios_fechamento');
+        $destinatarios = $json ? json_decode($json, true) : [];
+        $ultimoEnvio   = Configuracao::get('email_ultimo_envio_fechamento');
+
+        return Inertia::render('Admin/ConfiguracoesFinanceiro', [
+            'destinatarios'        => $destinatarios,
+            'ultimo_envio'         => $ultimoEnvio,
+            'envio_auto_ativo'     => Configuracao::get('email_envio_auto_ativo', '0') === '1',
+            'envio_auto_dia'       => (int) Configuracao::get('email_envio_auto_dia', '5'),
+            'envio_auto_hora'      => Configuracao::get('email_envio_auto_hora', '09:00'),
+        ]);
+    }
+
+    /**
+     * Persiste destinatários e configurações de agendamento do relatório mensal.
+     */
+    public function salvarConfiguracoesFinanceiro(Request $request)
+    {
+        $validated = $request->validate([
+            'destinatarios'   => 'array',
+            'destinatarios.*' => 'email',
+            'envio_auto_ativo' => 'required|boolean',
+            'envio_auto_dia'   => 'required|integer|min:1|max:28',
+            'envio_auto_hora'  => ['required', 'string', 'regex:/^\d{2}:\d{2}$/'],
+        ]);
+
+        Configuracao::set('email_destinatarios_fechamento', json_encode($validated['destinatarios'] ?? []));
+        Configuracao::set('email_envio_auto_ativo', $validated['envio_auto_ativo'] ? '1' : '0');
+        Configuracao::set('email_envio_auto_dia',   (string) $validated['envio_auto_dia']);
+        Configuracao::set('email_envio_auto_hora',  $validated['envio_auto_hora']);
+
+        return back()->with('success', 'Configurações salvas com sucesso.');
+    }
+
+    /**
+     * Despacha o job de envio do relatório geral de fechamento por email.
+     * Retorna JSON para consumo via axios no frontend.
+     */
+    public function enviarRelatorioGeral(Request $request)
+    {
+        $request->validate(['mes' => 'required|string|regex:/^\d{4}-\d{2}$/']);
+
+        // Verifica se existem destinatários configurados antes de despachar
+        $json         = Configuracao::get('email_destinatarios_fechamento');
+        $destinatarios = $json ? json_decode($json, true) : [];
+
+        if (empty($destinatarios)) {
+            return response()->json(['message' => 'Nenhum destinatário configurado.'], 422);
+        }
+
+        // dispatchSync: executa imediatamente (sem depender de queue worker)
+        EnviarRelatorioFechamentoJob::dispatchSync($request->input('mes'), auth()->id());
+
+        return response()->json(['message' => 'Relatório enviado para ' . count($destinatarios) . ' email(s).']);
     }
 
     public function inventario()

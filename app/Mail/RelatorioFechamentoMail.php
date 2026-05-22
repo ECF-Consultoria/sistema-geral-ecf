@@ -1,0 +1,95 @@
+<?php
+
+namespace App\Mail;
+
+use Carbon\Carbon;
+use Illuminate\Bus\Queueable;
+use Illuminate\Mail\Mailable;
+use Illuminate\Mail\Mailables\Content;
+use Illuminate\Mail\Mailables\Envelope;
+use Illuminate\Queue\SerializesModels;
+use Spatie\Browsershot\Browsershot;
+
+/**
+ * Mailable do Relatório Geral de Fechamento.
+ * Corpo: HTML resumido com tabela de empresas.
+ * Anexo: PDF gerado via Browsershot (Chrome headless) — mesmo layout do "Gerar Relatório".
+ */
+class RelatorioFechamentoMail extends Mailable
+{
+    use Queueable, SerializesModels;
+
+    // Caminho do executável do Chrome no servidor
+    private const CHROME_PATH = 'C:\Program Files\Google\Chrome\Application\chrome.exe';
+
+    public function __construct(public array $dados)
+    {
+    }
+
+    public function envelope(): Envelope
+    {
+        return new Envelope(
+            subject: 'Relatório de Fechamento — ' . ($this->dados['mesLabel'] ?? ''),
+        );
+    }
+
+    public function content(): Content
+    {
+        return new Content(
+            view: 'emails.relatorio-fechamento',
+            with: ['dados' => $this->dados],
+        );
+    }
+
+    public function attachments(): array
+    {
+        $mesLabel    = $this->dados['mesLabel'] ?? 'fechamento';
+        $nomeArquivo = 'relatorio-' . str($mesLabel)->slug() . '.pdf';
+
+        $pdfContent = $this->gerarPdf($mesLabel);
+
+        return [
+            \Illuminate\Mail\Mailables\Attachment::fromData(
+                fn () => $pdfContent,
+                $nomeArquivo,
+            )->withMime('application/pdf'),
+        ];
+    }
+
+    /**
+     * Renderiza o mesmo HTML do "Gerar Relatório" e converte para PDF via Chrome headless.
+     * O logo é embutido como base64 para evitar dependência de rede durante a geração.
+     */
+    private function gerarPdf(string $mesLabel): string
+    {
+        $geradoEm = Carbon::now()->setTimezone('America/Sao_Paulo')->format('d/m/Y \à\s H:i');
+
+        $html = view('admin.relatorio-geral', [
+            'relatorios'      => $this->dados['relatorios'],
+            'mes_label'       => $mesLabel,
+            'mes_selecionado' => '',
+            'gerado_em'       => $geradoEm,
+            'filtro_recebido' => '',
+        ])->render();
+
+        // Substitui a URL do logo pela versão base64 para funcionar sem rede
+        $logoPath = public_path('images/logo.png');
+        if (file_exists($logoPath)) {
+            $logoBase64 = 'data:image/png;base64,' . base64_encode(file_get_contents($logoPath));
+            $html = str_replace(asset('images/logo.png'), $logoBase64, $html);
+        }
+
+        // Remove o script de auto-print (window.print) e o botão fixo
+        $html = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $html);
+        $html = preg_replace('/<button[^>]*class="print-btn"[^>]*>.*?<\/button>/is', '', $html);
+
+        return Browsershot::html($html)
+            ->setChromePath(self::CHROME_PATH)
+            ->noSandbox()
+            ->emulateMedia('print')
+            ->format('A4')
+            ->margins(10, 12, 10, 12)
+            ->timeout(30)
+            ->pdf();
+    }
+}

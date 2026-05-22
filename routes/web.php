@@ -254,10 +254,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::get('/empresas',              [AdminController::class, 'empresas'])->name('empresas');
     Route::patch('/empresas/{company}',  [AdminController::class, 'updateEmpresa'])->name('empresas.update');
     Route::get('/relatorio',  [AdminController::class, 'relatorio'])->name('relatorio');
+    // ATENÇÃO: rotas específicas de /configuracoes/financeiro e /financeiro/relatorio-geral/enviar
+    // devem vir ANTES de /financeiro/{company} para evitar colisão com o parâmetro dinâmico.
+    Route::get('/configuracoes/financeiro',  [AdminController::class, 'configuracoesFinanceiro'])->name('configuracoes.financeiro');
+    Route::post('/configuracoes/financeiro', [AdminController::class, 'salvarConfiguracoesFinanceiro'])->name('configuracoes.financeiro.salvar');
     Route::get('/financeiro',                      [AdminController::class, 'fechamento'])->name('financeiro');
+    Route::get('/financeiro/relatorio-geral',        [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
+    Route::post('/financeiro/relatorio-geral/enviar', [AdminController::class, 'enviarRelatorioGeral'])->name('financeiro.relatorio.enviar');
     Route::patch('/financeiro/{company}',          [AdminController::class, 'updateFechamento'])->name('financeiro.update');
     Route::post('/financeiro/{company}/recebido',  [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
-    Route::get('/financeiro/relatorio-geral',        [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
     Route::get('/financeiro/{company}/relatorio',  [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
 
