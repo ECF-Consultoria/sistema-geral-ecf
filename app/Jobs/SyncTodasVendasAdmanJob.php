@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\MlbEmpresa;
+use App\Models\MlbSyncVendasLog;
 use App\Models\Publicacao;
 use App\Services\AdmanService;
 use Illuminate\Bus\Queueable;
@@ -20,6 +21,9 @@ use Illuminate\Support\Facades\Log;
  * ao iterar ~17 empresas com até 120s de espera por chamada API + delays de 600ms.
  * Este Job delega o processamento ao queue worker, permitindo que o controller retorne
  * imediatamente com flash de sucesso.
+ *
+ * Instrumentação: cada execução cria um registro em mlb_sync_vendas_logs, atualizado
+ * ao longo do processamento para permitir observabilidade em /dev/desenvolvimento.
  */
 class SyncTodasVendasAdmanJob implements ShouldQueue
 {
@@ -32,6 +36,9 @@ class SyncTodasVendasAdmanJob implements ShouldQueue
     // Operação longa (~17 empresas * até 120s + delays de 600ms); sem timeout no nível do job.
     public int $timeout = 0;
 
+    // ID do registro de log criado no início do handle() — usado em failed() para marcar como falhou
+    private ?int $logId = null;
+
     public function __construct(
         public readonly string $dateFrom,
         public readonly string $dateTo,
@@ -40,9 +47,23 @@ class SyncTodasVendasAdmanJob implements ShouldQueue
 
     public function handle(AdmanService $adman): void
     {
+        // pt-BR: Cria o registro de log antes de qualquer processamento para garantir visibilidade imediata
+        $log = MlbSyncVendasLog::create([
+            'user_id'    => $this->userId,
+            'date_from'  => $this->dateFrom,
+            'date_to'    => $this->dateTo,
+            'status'     => MlbSyncVendasLog::STATUS_RUNNING,
+            'started_at' => now(),
+        ]);
+        $this->logId = $log->id;
+
         $empresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->get();
 
-        $totais = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
+        // pt-BR: Atualiza total de empresas assim que soubermos quantas serão processadas
+        $log->update(['total_empresas' => $empresas->count()]);
+
+        $totais          = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
+        $empresasComErro = [];
 
         Log::info(sprintf(
             '[MLB SyncTodasVendas] Iniciando sync para %d empresa(s) | de=%s ate=%s | user_id=%s',
@@ -80,6 +101,9 @@ class SyncTodasVendasAdmanJob implements ShouldQueue
             } catch (\Throwable $e) {
                 Log::error("[MLB SyncTodasVendas] {$empresa->nome}: " . $e->getMessage());
                 $totais['erros']++;
+
+                // pt-BR: Acumula empresa com erro para exibição no painel /dev/desenvolvimento
+                $empresasComErro[] = ['nome' => $empresa->nome, 'motivo' => $e->getMessage()];
             }
         }
 
@@ -90,10 +114,29 @@ class SyncTodasVendasAdmanJob implements ShouldQueue
             $totais['encontradas'],
             $totais['erros']
         ));
+
+        // pt-BR: Finaliza o registro de log com os totais e status de conclusão
+        $log->update([
+            'status'            => MlbSyncVendasLog::STATUS_COMPLETED,
+            'finished_at'       => now(),
+            'total_itens'       => $totais['itens'],
+            'com_venda'         => $totais['com_venda'],
+            'encontradas'       => $totais['encontradas'],
+            'erros'             => $totais['erros'],
+            'empresas_com_erro' => $empresasComErro,
+        ]);
     }
 
     public function failed(\Throwable $e): void
     {
+        // pt-BR: Marca o log como falhou se o job foi encerrado de forma inesperada
+        if ($this->logId) {
+            MlbSyncVendasLog::where('id', $this->logId)->update([
+                'status'      => MlbSyncVendasLog::STATUS_FAILED,
+                'finished_at' => now(),
+            ]);
+        }
+
         Log::error("[MLB SyncTodasVendas] Falha definitiva do job: {$e->getMessage()}");
     }
 
