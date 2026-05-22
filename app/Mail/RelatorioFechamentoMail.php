@@ -66,6 +66,11 @@ class RelatorioFechamentoMail extends Mailable
      */
     private function gerarPdf(string $mesLabel): string
     {
+        // Apache/www-data muitas vezes não tem HOME definido; Chrome precisa para criar perfil temporário
+        if (!getenv('HOME')) {
+            putenv('HOME=/tmp');
+        }
+
         $geradoEm = Carbon::now()->setTimezone('America/Sao_Paulo')->format('d/m/Y \à\s H:i');
 
         $html = view('admin.relatorio-geral', [
