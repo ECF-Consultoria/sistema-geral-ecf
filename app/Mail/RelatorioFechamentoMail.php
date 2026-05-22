@@ -90,10 +90,18 @@ class RelatorioFechamentoMail extends Mailable
         return Browsershot::html($html)
             ->setChromePath($this->chromePath())
             ->noSandbox()
+            // flags essenciais para rodar Chrome headless em VPS/servidor
+            ->addChromiumArguments([
+                '--disable-dev-shm-usage',   // evita crash por /dev/shm limitado em VPS
+                '--disable-gpu',
+                '--disable-setuid-sandbox',
+                '--disable-extensions',
+                '--single-process',
+            ])
             ->emulateMedia('print')
             ->format('A4')
             ->margins(10, 12, 10, 12)
-            ->timeout(30)
+            ->timeout(60)
             ->pdf();
     }
 }
