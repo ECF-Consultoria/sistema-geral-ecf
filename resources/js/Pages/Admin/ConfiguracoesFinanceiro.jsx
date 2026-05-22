@@ -4,10 +4,6 @@ import { useState } from 'react';
 import { ArrowLeft, Calendar, Mail, Plus, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const HORAS = Array.from({ length: 24 }, (_, h) => {
-    const hh = String(h).padStart(2, '0');
-    return { value: `${hh}:00`, label: `${hh}:00` };
-});
 
 export default function ConfiguracoesFinanceiro({
     destinatarios,
@@ -198,15 +194,13 @@ export default function ConfiguracoesFinanceiro({
                             </div>
                             <div className="space-y-1.5">
                                 <label className="text-[12px] text-white/40 font-medium">Horário</label>
-                                <select
+                                <input
+                                    type="time"
                                     value={data.envio_auto_hora}
                                     onChange={e => setData('envio_auto_hora', e.target.value)}
-                                    className={cn(inputCls, 'w-full pr-7 appearance-none')}
-                                >
-                                    {HORAS.map(h => (
-                                        <option key={h.value} value={h.value}>{h.label}</option>
-                                    ))}
-                                </select>
+                                    className={cn(inputCls, 'w-full')}
+                                />
+                                <p className="text-[11px] text-white/25">Hora e minuto exatos</p>
                             </div>
                         </div>
 
