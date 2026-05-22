@@ -23,24 +23,69 @@ class MlbController extends Controller
     // HELPERS
     // =========================================================================
 
+    /**
+     * Verifica acesso ao módulo MLB. Se $permission for passada, checa também
+     * a key específica (ex: 'vendas' → 'mlb.vendas') no novo sistema de setor.
+     */
     private function checkPubAccess(?string $permission = null): void
     {
         $user = auth()->user();
-        if (!$user->publication_role && !$user->isAdmin()) {
+        if ($user->isAdmin()) return;
+
+        // "Estar no módulo MLB" = ser membro do setor Publicação OU ter qualquer mlb.* permissão
+        $temAcessoMlb = $user->setores()->where('slug', 'publicacao')->exists()
+            || collect(\App\Support\Permissions::all())
+                ->filter(fn($k) => str_starts_with($k, 'mlb.'))
+                ->some(fn($k) => $user->hasPermission($k));
+
+        if (!$temAcessoMlb) {
             abort(403, 'Acesso restrito ao módulo de publicações MLB.');
         }
-        if ($permission && !$user->hasPubPermission($permission)) {
+
+        if ($permission && !$user->hasPermission("mlb.{$permission}")) {
             abort(403, 'Permissão insuficiente para esta área.');
         }
     }
 
+    /**
+     * Verifica que o user tem cargo específico no setor Publicação.
+     * Aceita slugs antigos ('gestor', 'lider', 'publicador', 'analista') que mapeiam pros novos cargos.
+     */
     private function checkPubRole(array $roles): void
     {
         $user = auth()->user();
         if ($user->isAdmin()) return;
-        if (!in_array($user->publication_role, $roles)) {
+
+        $cargoSlugs = collect($roles)->map(fn($r) => match ($r) {
+            'gestor'     => 'gestor-de-publicacao',
+            'lider'      => 'lider-de-publicacao',
+            'publicador' => 'publicador',
+            'analista'   => 'analista',
+            default      => $r,
+        })->filter()->values()->all();
+
+        $temCargo = $user->setores()
+            ->where('slug', 'publicacao')
+            ->whereHas('cargos', fn($q) => $q->whereIn('slug', $cargoSlugs))
+            ->exists();
+
+        if (!$temCargo) {
             abort(403, 'Permissão insuficiente.');
         }
+    }
+
+    /**
+     * Helper: retorna true se o user tem o cargo `$cargoSlug` no setor Publicação.
+     * Substitui o antigo `$user->publication_role === 'X'` que aparece inline em
+     * vários métodos do controller.
+     */
+    private function userHasPubCargo($user, string $cargoSlug): bool
+    {
+        if ($user->isAdmin()) return false; // admin não tem cargo específico — usa flag dedicada
+        return $user->setores()
+            ->where('slug', 'publicacao')
+            ->whereHas('cargos', fn($q) => $q->where('slug', $cargoSlug))
+            ->exists();
     }
 
     /**
@@ -150,7 +195,10 @@ class MlbController extends Controller
         ];
     }
 
-    /** Meta de um usuário vigente no mês indicado (formato YYYY-MM). */
+    /**
+     * Meta de um usuário vigente no mês indicado (YYYY-MM).
+     * Fallback: cargo do user no setor Publicação (cargos.meta_publicacoes), senão 220.
+     */
     private function metaParaMes(int $userId, string $mes): int
     {
         $registro = DB::table('mlb_meta_historico')
@@ -161,15 +209,33 @@ class MlbController extends Controller
 
         if ($registro !== null) return (int) $registro;
 
-        return (int) (User::find($userId)?->publication_meta ?? 220);
+        $user = User::find($userId);
+        if (!$user) return 220;
+
+        // Pega meta_publicacoes do cargo do user no setor Publicação
+        $meta = DB::table('user_setores')
+            ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+            ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+            ->where('user_setores.user_id', $userId)
+            ->where('setores.slug', 'publicacao')
+            ->value('cargos.meta_publicacoes');
+
+        return (int) ($meta ?? 220);
     }
 
-    /** Retorna a coleção de usuários que publicam (lider + publicador). */
+    /**
+     * Retorna a coleção de usuários que publicam (cargo "publicador" ou
+     * "lider-de-publicacao" no setor Publicação).
+     */
     private function publicadores(): Collection
     {
-        return User::whereIn('publication_role', ['publicador', 'lider'])
+        return User::query()
+            ->whereHas('setores', function ($q) {
+                $q->where('setores.slug', 'publicacao')
+                  ->whereHas('cargos', fn($qc) => $qc->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']));
+            })
             ->orderBy('name')
-            ->get(['id', 'name', 'publication_role', 'publication_meta']);
+            ->get(['id', 'name']);
     }
 
     /** Lista de meses disponíveis (com dados), garantindo o mês atual. */
@@ -410,8 +476,8 @@ class MlbController extends Controller
         $this->checkPubAccess('meu_painel');
 
         $user   = $request->user();
-        $meta   = $user->publication_meta ?? 220;
         $mesRef = $request->get('mes', now()->format('Y-m'));
+        $meta   = $this->metaParaMes($user->id, $mesRef);
         $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
         $meses  = $this->mesesDisponiveis($user->id);
         $kpis   = $this->calcularKpis($user->id, $ref, $meta);
@@ -527,7 +593,7 @@ class MlbController extends Controller
 
         $user     = $request->user();
         $isAdmin  = $user->isAdmin();
-        $isGestor = $user->publication_role === 'gestor';
+        $isGestor = $this->userHasPubCargo($user, 'gestor-de-publicacao');
         $verTodos = $isAdmin || $isGestor;
 
         $mesRef = $request->get('mes', now()->format('Y-m'));
@@ -785,7 +851,7 @@ class MlbController extends Controller
 
         $user    = $request->user();
         $isAdmin = $user->isAdmin();
-        $meta    = $user->publication_meta ?? 220;
+        $meta    = $this->metaParaMes($user->id, now()->format('Y-m'));
         $ref     = Carbon::now()->startOfMonth();
         $kpis    = $this->calcularKpis($user->id, $ref, $meta);
         $hoje    = Publicacao::where('user_id', $user->id)->where('data', now()->toDateString())->where('tipo', '!=', 'variacao')->count();
@@ -877,7 +943,7 @@ class MlbController extends Controller
         $this->checkPubAccess('historico');
 
         $user  = $request->user();
-        $isPub = $user->publication_role === 'publicador';
+        $isPub = $this->userHasPubCargo($user, 'publicador');
 
         $mes      = $request->get('mes', '');
         $func     = $request->get('func', '');
@@ -964,7 +1030,10 @@ class MlbController extends Controller
             ->toArray();
 
         $query = Publicacao::with('user:id,name', 'comentarioAutor:id,name')
-            ->whereHas('user', fn($q) => $q->whereIn('publication_role', ['publicador', 'lider']))
+            ->whereHas('user.setores', function ($q) {
+                $q->where('setores.slug', 'publicacao')
+                  ->whereHas('cargos', fn($qc) => $qc->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']));
+            })
             ->whereRaw("DATE_FORMAT(data, '%Y-%m') = ?", [$mesRef]);
 
         if ($funcId) $query->where('user_id', $funcId);
@@ -1113,7 +1182,7 @@ class MlbController extends Controller
         $this->checkPubAccess();
         $user = $request->user();
 
-        if ($user->publication_role === 'publicador' && $pub->user_id !== $user->id && !$user->isAdmin()) {
+        if ($this->userHasPubCargo($user, 'publicador') && $pub->user_id !== $user->id && !$user->isAdmin()) {
             abort(403);
         }
 
@@ -1176,8 +1245,10 @@ class MlbController extends Controller
         $this->checkPubAccess();
         $user = $request->user();
 
-        // Só o dono da publicação pode marcar como resolvido
-        if ($pub->user_id !== $user->id && !in_array($user->publication_role, ['gestor', 'lider'])) {
+        // Só o dono da publicação, gestor ou líder do setor pode marcar como resolvido
+        $podeOutroDono = $this->userHasPubCargo($user, 'gestor-de-publicacao')
+            || $this->userHasPubCargo($user, 'lider-de-publicacao');
+        if ($pub->user_id !== $user->id && !$podeOutroDono) {
             abort(403);
         }
 
@@ -1199,7 +1270,7 @@ class MlbController extends Controller
         $user = $request->user();
 
         // Publicador só pode marcar suas próprias publicações
-        if ($user->publication_role === 'publicador' && $pub->user_id !== $user->id) {
+        if ($this->userHasPubCargo($user, 'publicador') && $pub->user_id !== $user->id) {
             abort(403);
         }
 
@@ -1821,7 +1892,9 @@ class MlbController extends Controller
         $this->checkPubAccess('treinamento');
 
         $user      = $request->user();
-        $canManage = $user->isAdmin() || in_array($user->publication_role, ['gestor', 'lider']);
+        $canManage = $user->isAdmin()
+            || $this->userHasPubCargo($user, 'gestor-de-publicacao')
+            || $this->userHasPubCargo($user, 'lider-de-publicacao');
 
         $treinamentos = MlbTreinamento::orderBy('ordem')->orderBy('id')->get()
             ->map(fn($t) => [

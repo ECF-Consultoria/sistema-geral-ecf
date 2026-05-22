@@ -6,7 +6,7 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send
+    Code2, Crown, Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -23,7 +23,6 @@ const NAV_ITEMS = [
     { label: 'Empresas',   routeName: 'companies.index',   page: 'Companies',   icon: Building2,       permission: 'core.empresas' },
     { label: 'Usuários',   routeName: 'users.index',       page: 'Users',       icon: Users,           permission: 'core.usuarios' },
     { label: 'Setores',    routeName: 'admin.setores.index', page: 'Admin/Setores', icon: Shield,        permission: 'sistema.setores' },
-    { label: 'Enviar notificação', routeName: 'notificacoes.nova', page: 'Notificacoes/Nova', icon: Send, permission: 'notificacoes.criar' },
     { label: 'Reuniões',   routeName: 'meetings.index',    page: 'Meetings',    icon: CalendarCheck,   permission: 'core.reunioes' },
     { label: 'NPS',        routeName: 'nps.index',         page: 'Nps',         icon: Star,            permission: 'core.nps' },
     { label: 'Metas',      routeName: 'goals.index',       page: 'Goals',       icon: Target,          permission: 'core.metas' },

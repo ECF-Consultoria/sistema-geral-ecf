@@ -10,7 +10,6 @@ class SetorGoalResult extends Model
     protected $fillable = [
         'setor_goal_id', 'period_start', 'period_end',
         'value_realized', 'pct_achieved', 'calculated_at',
-        'notificado_em',
     ];
 
     protected $casts = [
@@ -19,7 +18,6 @@ class SetorGoalResult extends Model
         'value_realized' => 'decimal:4',
         'pct_achieved'   => 'decimal:4',
         'calculated_at'  => 'datetime',
-        'notificado_em'  => 'datetime',
     ];
 
     public function setorGoal(): BelongsTo

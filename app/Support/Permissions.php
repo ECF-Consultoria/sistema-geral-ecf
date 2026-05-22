@@ -64,9 +64,6 @@ class Permissions
     public const SISTEMA_DESENVOLVIMENTO   = 'sistema.desenvolvimento';
     public const SISTEMA_SETORES           = 'sistema.setores';
 
-    /** Criar notificações manuais (admin sempre tem; líderes ganham via AUTO_LIDERANCA). */
-    public const NOTIFICACOES_CRIAR        = 'notificacoes.criar';
-
     /** Acesso ao dashboard de líder do(s) setor(es) liderado(s). */
     public const LIDERANCA_DASHBOARD_SETOR = 'lideranca.dashboard_setor';
     /** Permissão de criar/editar/remover metas no(s) setor(es) liderado(s). */
@@ -82,7 +79,6 @@ class Permissions
         self::LIDERANCA_DASHBOARD_SETOR,
         self::LIDERANCA_DEFINIR_METAS,
         self::LIDERANCA_VER_MEMBROS,
-        self::NOTIFICACOES_CRIAR, // notificações: líderes ganham automaticamente (PERM-03)
     ];
 
     /**
@@ -131,9 +127,6 @@ class Permissions
                 ['key' => self::SISTEMA_ACTIVITY_LOG,    'label' => 'Activity Log',      'description' => 'Log de ações dos usuários'],
                 ['key' => self::SISTEMA_DESENVOLVIMENTO, 'label' => 'Desenvolvimento',   'description' => 'Área interna de devs'],
                 ['key' => self::SISTEMA_SETORES,         'label' => 'Setores',           'description' => 'Configuração de setores, cargos e permissões'],
-            ],
-            'Notificações' => [
-                ['key' => self::NOTIFICACOES_CRIAR, 'label' => 'Criar notificações', 'description' => 'Envia notificações manuais para usuários, setores, líderes ou todos'],
             ],
             'Liderança (automático para líderes)' => [
                 ['key' => self::LIDERANCA_DASHBOARD_SETOR, 'label' => 'Dashboard do setor', 'description' => 'Visualiza o(s) setor(es) que lidera'],
