@@ -35,7 +35,7 @@ class PerformanceController extends Controller
 
         $users = User::where('active', true)
             ->whereIn('role', ['consultor', 'mentor'])
-            ->whereNull('publication_role')
+            ->whereNull('publication_role_legacy')
             ->get();
 
         $ranking = $users->map(function ($u) use ($since) {
@@ -129,9 +129,9 @@ class PerformanceController extends Controller
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
 
         $users = User::where('active', true)
-            ->whereIn('publication_role', ['publicador', 'lider'])
+            ->whereIn('publication_role_legacy', ['publicador', 'lider'])
             ->orderBy('name')
-            ->get(['id', 'name', 'publication_role', 'publication_meta']);
+            ->get(['id', 'name', 'publication_role_legacy', 'publication_meta']);
 
         $hoje      = Carbon::today();
         $primeiroC = $ref->copy()->startOfMonth();
@@ -163,7 +163,7 @@ class PerformanceController extends Controller
             return [
                 'id'              => $u->id,
                 'name'            => $u->name,
-                'pub_role'        => $u->publication_role,
+                'pub_role'        => $u->publication_role_legacy,
                 'meta'            => $meta,
                 'feito'           => $feito,
                 'vendas'          => $vendas,
