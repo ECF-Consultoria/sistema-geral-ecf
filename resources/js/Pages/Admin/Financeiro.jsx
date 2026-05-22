@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, useForm } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText } from 'lucide-react';
+import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -604,6 +604,74 @@ function MesSeletor({ mesSelecionado }) {
     );
 }
 
+function GerarRelatoriosBtn({ mesSelecionado, companies }) {
+    const [aberto, setAberto] = useState(false);
+
+    const totalPrincipais = companies.filter(e => !e.is_filha).length;
+    const totalRecebidos  = companies.filter(e => !e.is_filha && e.recebido).length;
+    const totalPendentes  = companies.filter(e => !e.is_filha && !e.recebido).length;
+
+    function urlGeral(filtroRecebido = '') {
+        const params = { mes: mesSelecionado };
+        if (filtroRecebido) params.recebido = filtroRecebido;
+        return route('admin.financeiro.relatorio.geral', params);
+    }
+
+    return (
+        <div className="relative">
+            <button
+                onClick={() => setAberto(v => !v)}
+                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[13px] text-white/60 hover:text-white/90 transition-colors"
+            >
+                <Printer size={14} />
+                Gerar relatórios
+                <ChevronDown size={13} className={cn('transition-transform', aberto && 'rotate-180')} />
+            </button>
+
+            {aberto && (
+                <>
+                    <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 w-56 rounded-xl border border-white/[0.08] bg-ecf-card shadow-xl z-20 overflow-hidden">
+                        <div className="px-3 py-2 border-b border-white/[0.04]">
+                            <p className="text-[10px] uppercase tracking-widest text-white/30 font-semibold">Gerar PDF para financeiro</p>
+                        </div>
+                        <a
+                            href={urlGeral('')}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => setAberto(false)}
+                            className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.04] transition-colors"
+                        >
+                            <span className="text-[13px] text-white/70">Todas as empresas</span>
+                            <span className="text-[11px] text-white/30 font-mono">{totalPrincipais}</span>
+                        </a>
+                        <a
+                            href={urlGeral('sim')}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => setAberto(false)}
+                            className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.04] transition-colors"
+                        >
+                            <span className="text-[13px] text-emerald-400">Recebidas</span>
+                            <span className="text-[11px] text-white/30 font-mono">{totalRecebidos}</span>
+                        </a>
+                        <a
+                            href={urlGeral('nao')}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => setAberto(false)}
+                            className="flex items-center justify-between px-3 py-2.5 hover:bg-white/[0.04] transition-colors"
+                        >
+                            <span className="text-[13px] text-amber-400">Pendentes (inadimplentes)</span>
+                            <span className="text-[11px] text-white/30 font-mono">{totalPendentes}</span>
+                        </a>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
 const FILTROS_INICIAL = { busca: '', service_type: '', contract_type: '', estado: '', recebido: '' };
 
 function FiltroBarra({ filtros, onChange, total, filtrado }) {
@@ -683,7 +751,10 @@ export default function Financeiro({ companies, mes_selecionado }) {
                             </div>
                             <p className="text-[13px] text-white/40">Faturamento mensal, faixa de investimento e dados de contrato por empresa ativa.</p>
                         </div>
-                        <MesSeletor mesSelecionado={mes_selecionado} />
+                        <div className="flex items-center gap-2 shrink-0">
+                            <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={companies} />
+                            <MesSeletor mesSelecionado={mes_selecionado} />
+                        </div>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
                         <GraficoServico empresas={companies} />
