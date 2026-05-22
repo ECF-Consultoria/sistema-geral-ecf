@@ -70,7 +70,10 @@ Schedule::call(function () {
     $dia  = (int) \App\Models\Configuracao::get('email_envio_auto_dia', '5');
     $hora = \App\Models\Configuracao::get('email_envio_auto_hora', '09:00');
 
-    if (now()->day === $dia && now()->format('H:i') === $hora) {
-        \App\Jobs\EnviarRelatorioFechamentoJob::dispatch(now()->format('Y-m'), null);
+    // Compara usando o horário de Brasília — o servidor roda em UTC
+    $agora = now()->setTimezone('America/Sao_Paulo');
+
+    if ($agora->day === $dia && $agora->format('H:i') === $hora) {
+        \App\Jobs\EnviarRelatorioFechamentoJob::dispatch($agora->format('Y-m'), null);
     }
 })->everyMinute()->name('checa-envio-relatorio-fechamento');
