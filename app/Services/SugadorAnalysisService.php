@@ -345,52 +345,103 @@ class SugadorAnalysisService
 
     /**
      * Lógica pura de avaliação. Recebe métricas e config, retorna lista de motivos.
-     * Critérios são OR — qualquer um basta para flagar.
+     *
+     * Cada critério pode ser 'required' (AND) ou 'optional' (OR). Regra final:
+     *   item é sugador  ⇔  TODOS os 'required' passam  E
+     *                       (não há 'optional' OU pelo menos 1 'optional' passa)
+     *
+     * Casos:
+     *   - Todos optional + 1+ passa  → flag (= comportamento histórico OR)
+     *   - Todos required + todos passam → flag
+     *   - Misto: required define o "piso obrigatório", optional define o "qualifier"
+     *   - Critério com threshold null (desligado) é ignorado totalmente
+     *
+     * Quando flag, retorna os motivos de TODOS os critérios que passaram
+     * (required + optional), pra UI mostrar contexto completo.
      *
      * @param  array  $metrics  Espera-se chaves: investment, sold_quantity, cpc, clicks, acos
      * @return array<string>
      */
     public function evaluateMetrics(array $metrics, SugadorConfig $config): array
     {
-        $motivos     = [];
         $investment  = (float) ($metrics['investment']    ?? 0);
         $vendas      = (int)   ($metrics['sold_quantity'] ?? 0);
         $cpc         = $metrics['cpc']  ?? null;
         $clicks      = (int)   ($metrics['clicks']        ?? 0);
         $acos        = $metrics['acos'] ?? null;
 
+        // Cada item: ['key' => motivo, 'hit' => bool, 'logic' => required|optional]
+        $criteria = [];
+
         // Critério 1: gastou X sem vender nada
         if ($config->gasto_minimo_sem_venda !== null) {
             $threshold = (float) $config->gasto_minimo_sem_venda;
-            if ($vendas === 0 && $investment >= $threshold) {
-                $motivos[] = 'gasto_sem_venda';
-            }
+            $criteria[] = [
+                'key'   => 'gasto_sem_venda',
+                'hit'   => $vendas === 0 && $investment >= $threshold,
+                'logic' => $config->gasto_minimo_logic ?? SugadorConfig::LOGIC_OPTIONAL,
+            ];
         }
 
         // Critério 2: CPC alto sem vender
         if ($config->cpc_maximo !== null && $cpc !== null) {
             $threshold = (float) $config->cpc_maximo;
-            if ($vendas === 0 && (float) $cpc > $threshold) {
-                $motivos[] = 'cpc_alto';
-            }
+            $criteria[] = [
+                'key'   => 'cpc_alto',
+                'hit'   => $vendas === 0 && (float) $cpc > $threshold,
+                'logic' => $config->cpc_maximo_logic ?? SugadorConfig::LOGIC_OPTIONAL,
+            ];
         }
 
         // Critério 3: ACOS alto (com pelo menos 1 venda — ACOS sem venda é infinito/null)
         if ($config->acos_maximo_pct !== null && $acos !== null) {
             $threshold = (float) $config->acos_maximo_pct;
-            if ($vendas > 0 && (float) $acos > $threshold) {
-                $motivos[] = 'acos_alto';
-            }
+            $criteria[] = [
+                'key'   => 'acos_alto',
+                'hit'   => $vendas > 0 && (float) $acos > $threshold,
+                'logic' => $config->acos_maximo_logic ?? SugadorConfig::LOGIC_OPTIONAL,
+            ];
         }
 
         // Critério 4: muitos cliques sem conversão
         if ($config->cliques_minimos_sem_venda !== null) {
             $threshold = (int) $config->cliques_minimos_sem_venda;
-            if ($vendas === 0 && $clicks >= $threshold) {
-                $motivos[] = 'cliques_sem_conversao';
-            }
+            $criteria[] = [
+                'key'   => 'cliques_sem_conversao',
+                'hit'   => $vendas === 0 && $clicks >= $threshold,
+                'logic' => $config->cliques_minimos_logic ?? SugadorConfig::LOGIC_OPTIONAL,
+            ];
         }
 
+        if (empty($criteria)) return [];
+
+        $required = array_filter($criteria, fn($c) => $c['logic'] === SugadorConfig::LOGIC_REQUIRED);
+        $optional = array_filter($criteria, fn($c) => $c['logic'] === SugadorConfig::LOGIC_OPTIONAL);
+
+        // Todos required precisam passar — se algum falha, item não é sugador
+        foreach ($required as $c) {
+            if (!$c['hit']) return [];
+        }
+
+        // Se há optional, pelo menos um precisa passar. Se não há optional,
+        // só os required já bastam (caso AND puro).
+        if (!empty($optional)) {
+            $anyOptionalHit = false;
+            foreach ($optional as $c) {
+                if ($c['hit']) { $anyOptionalHit = true; break; }
+            }
+            if (!$anyOptionalHit) return [];
+        } elseif (empty($required)) {
+            // Defensivo: critérios todos preenchidos mas com logic inválido — não flag.
+            return [];
+        }
+
+        // Item é sugador → retorna chaves de todos critérios que passaram
+        // (required + optional). UI mostra os motivos.
+        $motivos = [];
+        foreach ($criteria as $c) {
+            if ($c['hit']) $motivos[] = $c['key'];
+        }
         return $motivos;
     }
 

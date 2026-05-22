@@ -13,9 +13,13 @@ class SugadorConfig extends Model
         'company_id',
         'dias_analise',
         'gasto_minimo_sem_venda',
+        'gasto_minimo_logic',
         'cpc_maximo',
+        'cpc_maximo_logic',
         'acos_maximo_pct',
+        'acos_maximo_logic',
         'cliques_minimos_sem_venda',
+        'cliques_minimos_logic',
         'pct_anuncios_para_flag_campanha',
         'incluir_campanhas',
         'incluir_anuncios',
@@ -35,13 +39,21 @@ class SugadorConfig extends Model
         'ativo'                           => 'boolean',
     ];
 
+    /** Modos do operador por critério. Ver SugadorAnalysisService::evaluateMetrics. */
+    public const LOGIC_REQUIRED = 'required'; // AND — TEM que atender pra item ser flagado
+    public const LOGIC_OPTIONAL = 'optional'; // OR  — atender já contribui, mas não obriga
+
     /** Defaults usados quando uma empresa ainda não tem config criada. */
     public const DEFAULTS = [
         'dias_analise'                    => 30,
         'gasto_minimo_sem_venda'          => 20.00,
+        'gasto_minimo_logic'              => self::LOGIC_OPTIONAL,
         'cpc_maximo'                      => null,
+        'cpc_maximo_logic'                => self::LOGIC_OPTIONAL,
         'acos_maximo_pct'                 => null,
+        'acos_maximo_logic'               => self::LOGIC_OPTIONAL,
         'cliques_minimos_sem_venda'       => null,
+        'cliques_minimos_logic'           => self::LOGIC_OPTIONAL,
         'pct_anuncios_para_flag_campanha' => 50,
         'incluir_campanhas'               => false,
         'incluir_anuncios'                => true,

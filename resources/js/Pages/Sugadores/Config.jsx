@@ -23,6 +23,27 @@ function Field({ icon: Icon, label, hint, children }) {
     );
 }
 
+/**
+ * Field específico de critério de detecção — header tem o toggle E/OU à direita.
+ * Disabled quando o threshold está vazio (não faz sentido escolher modo de um
+ * critério desligado).
+ */
+function CriterioField({ icon: Icon, label, hint, logic, onLogicChange, disabledLogic, children }) {
+    return (
+        <div>
+            <div className="flex items-center justify-between gap-2 mb-1.5">
+                <label className="flex items-center gap-2 text-white/80 text-[13px] font-semibold">
+                    {Icon && <Icon size={13} className="text-white/40" />}
+                    {label}
+                </label>
+                <LogicToggle value={logic} onChange={onLogicChange} disabled={disabledLogic} />
+            </div>
+            {children}
+            {hint && <p className="text-white/40 text-[11px] mt-1.5">{hint}</p>}
+        </div>
+    );
+}
+
 function NumberInput({ value, onChange, placeholder, suffix, step = '0.01', error }) {
     return (
         <div className="relative">
@@ -41,6 +62,50 @@ function NumberInput({ value, onChange, placeholder, suffix, step = '0.01', erro
             {suffix && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 text-xs pointer-events-none">{suffix}</span>
             )}
+        </div>
+    );
+}
+
+/**
+ * Toggle de 2 estados (E / OU) para cada critério de detecção. Usado pra
+ * decidir se o critério é obrigatório (AND) ou alternativo (OR) na avaliação.
+ * Visualmente é um par de pílulas: E (required) ou OU (optional).
+ * Desabilitado quando o critério está desligado (threshold null).
+ */
+function LogicToggle({ value, onChange, disabled }) {
+    return (
+        <div className={cn(
+            'inline-flex items-center rounded-md border border-white/[0.08] bg-white/[0.02] p-0.5 text-[10px] font-bold uppercase tracking-wider',
+            disabled && 'opacity-40'
+        )}>
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onChange('required')}
+                title="E (AND) — TEM que atender pra item ser flagado"
+                className={cn(
+                    'px-2 py-0.5 rounded-sm transition-colors',
+                    value === 'required'
+                        ? 'bg-ecf-yellow text-[#252525]'
+                        : 'text-white/50 hover:text-white/80'
+                )}
+            >
+                E
+            </button>
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={() => onChange('optional')}
+                title="OU (OR) — atender já basta, mas não é obrigatório"
+                className={cn(
+                    'px-2 py-0.5 rounded-sm transition-colors',
+                    value === 'optional'
+                        ? 'bg-white/[0.15] text-white'
+                        : 'text-white/50 hover:text-white/80'
+                )}
+            >
+                OU
+            </button>
         </div>
     );
 }
@@ -67,9 +132,13 @@ export default function SugadoresConfig({ company, config }) {
     const { data, setData, put, processing, errors } = useForm({
         dias_analise:                    config?.dias_analise ?? 30,
         gasto_minimo_sem_venda:          config?.gasto_minimo_sem_venda ?? 20.00,
+        gasto_minimo_logic:              config?.gasto_minimo_logic ?? 'optional',
         cpc_maximo:                      config?.cpc_maximo ?? null,
+        cpc_maximo_logic:                config?.cpc_maximo_logic ?? 'optional',
         acos_maximo_pct:                 config?.acos_maximo_pct ?? null,
+        acos_maximo_logic:               config?.acos_maximo_logic ?? 'optional',
         cliques_minimos_sem_venda:       config?.cliques_minimos_sem_venda ?? null,
+        cliques_minimos_logic:           config?.cliques_minimos_logic ?? 'optional',
         pct_anuncios_para_flag_campanha: config?.pct_anuncios_para_flag_campanha ?? 50,
         incluir_campanhas:               config?.incluir_campanhas ?? false,
         incluir_anuncios:                config?.incluir_anuncios ?? true,
@@ -164,16 +233,25 @@ export default function SugadoresConfig({ company, config }) {
                 {/* Card: critérios de detecção */}
                 <div className="card-ecf rounded-xl p-5">
                     <h2 className="text-white font-semibold text-base mb-1">Critérios de detecção</h2>
-                    <p className="text-white/50 text-xs mb-4">
-                        Os critérios são <strong className="text-white/70">OR</strong> — qualquer um basta para flagar.
-                        Deixe um campo em branco para desligar aquele critério.
+                    <p className="text-white/50 text-xs mb-1">
+                        Cada critério ativo tem um modo: <b className="text-ecf-yellow">E</b> (obrigatório — TEM que atender) ou{' '}
+                        <b className="text-white/80">OU</b> (alternativo — basta um deles atender).
+                        Deixe um campo em branco para desligar o critério.
+                    </p>
+                    <p className="text-white/40 text-[11px] mb-4 leading-relaxed">
+                        Regra final: item é sugador se <b className="text-white/60">todos</b> os <b className="text-ecf-yellow">E</b> passarem
+                        {' '}<b className="text-white/60">e</b> (não há nenhum <b className="text-white/80">OU</b> ou pelo menos um <b className="text-white/80">OU</b> passa).
+                        Ex: cliques + gasto marcados como <b className="text-ecf-yellow">E</b> = "só flagar se gastou ≥ R$30 e teve ≥ 10 cliques sem vender".
                     </p>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Field
+                        <CriterioField
                             icon={DollarSign}
                             label="Gasto mínimo sem venda"
-                            hint={`Adgroups (e campanhas, se habilitadas) que gastarem ≥ ${data.gasto_minimo_sem_venda ? fmtBRL(data.gasto_minimo_sem_venda) : 'X'} sem registrar nenhuma venda no período serão flagados.`}
+                            hint={`Adgroups (e campanhas, se habilitadas) que gastarem ≥ ${data.gasto_minimo_sem_venda ? fmtBRL(data.gasto_minimo_sem_venda) : 'X'} sem registrar nenhuma venda no período.`}
+                            logic={data.gasto_minimo_logic}
+                            onLogicChange={v => setData('gasto_minimo_logic', v)}
+                            disabledLogic={data.gasto_minimo_sem_venda == null || data.gasto_minimo_sem_venda === ''}
                         >
                             <NumberInput
                                 value={data.gasto_minimo_sem_venda}
@@ -182,12 +260,15 @@ export default function SugadoresConfig({ company, config }) {
                                 suffix="R$"
                                 error={errors.gasto_minimo_sem_venda}
                             />
-                        </Field>
+                        </CriterioField>
 
-                        <Field
+                        <CriterioField
                             icon={DollarSign}
                             label="CPC máximo (sem venda)"
-                            hint="Se o CPC médio passar deste valor E não houver venda, flag."
+                            hint="Se o CPC médio passar deste valor E não houver venda."
+                            logic={data.cpc_maximo_logic}
+                            onLogicChange={v => setData('cpc_maximo_logic', v)}
+                            disabledLogic={data.cpc_maximo == null || data.cpc_maximo === ''}
                         >
                             <NumberInput
                                 value={data.cpc_maximo}
@@ -196,12 +277,15 @@ export default function SugadoresConfig({ company, config }) {
                                 suffix="R$"
                                 error={errors.cpc_maximo}
                             />
-                        </Field>
+                        </CriterioField>
 
-                        <Field
+                        <CriterioField
                             icon={Percent}
                             label="ACOS máximo"
-                            hint="Quando há venda mas o ACOS está acima deste %, flag."
+                            hint="Quando há venda mas o ACOS está acima deste %."
+                            logic={data.acos_maximo_logic}
+                            onLogicChange={v => setData('acos_maximo_logic', v)}
+                            disabledLogic={data.acos_maximo_pct == null || data.acos_maximo_pct === ''}
                         >
                             <NumberInput
                                 value={data.acos_maximo_pct}
@@ -210,12 +294,15 @@ export default function SugadoresConfig({ company, config }) {
                                 suffix="%"
                                 error={errors.acos_maximo_pct}
                             />
-                        </Field>
+                        </CriterioField>
 
-                        <Field
+                        <CriterioField
                             icon={MousePointer}
                             label="Cliques mínimos sem venda"
-                            hint="Se acumulou X cliques sem nenhuma venda no período, flag."
+                            hint="Se acumulou X cliques sem nenhuma venda no período."
+                            logic={data.cliques_minimos_logic}
+                            onLogicChange={v => setData('cliques_minimos_logic', v)}
+                            disabledLogic={data.cliques_minimos_sem_venda == null || data.cliques_minimos_sem_venda === ''}
                         >
                             <NumberInput
                                 value={data.cliques_minimos_sem_venda}
@@ -224,7 +311,7 @@ export default function SugadoresConfig({ company, config }) {
                                 step="1"
                                 error={errors.cliques_minimos_sem_venda}
                             />
-                        </Field>
+                        </CriterioField>
                     </div>
                 </div>
 
