@@ -6,6 +6,7 @@ import {
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
     Clock, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
     Image as ImageIcon, Layers, Package, Loader2, RefreshCw,
+    Copy, Check, ChevronDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -171,10 +172,28 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             )}
                         </div>
 
-                        <div className="flex items-center gap-3 mt-3 text-[11px] text-white/40 font-mono">
-                            <span>campaign: <span className="text-white/60">{sugador.campaign_id}</span></span>
-                            {sugador.adgroup_id && <span>adgroup: <span className="text-white/60">{sugador.adgroup_id}</span></span>}
-                            {sugador.mlb_id && <span>MLB: <span className="text-white/60">{sugador.mlb_id}</span></span>}
+                        {/* MLB em destaque — o time operacional não conseguia distinguir o MLB
+                            dos IDs técnicos quando ficavam todos na mesma linha. Agora MLB
+                            ganha badge + copiar + link direto; campaign/adgroup escondidos
+                            num <details>. */}
+                        <div className="mt-3 space-y-2">
+                            {sugador.mlb_id ? (
+                                <MlbHighlight mlbId={sugador.mlb_id} url={url_anuncio} />
+                            ) : (
+                                <p className="text-[11px] text-white/40">
+                                    Sugador de adgroup — abra o drilldown abaixo para ver os MLBs.
+                                </p>
+                            )}
+                            <details className="group">
+                                <summary className="inline-flex items-center gap-1 cursor-pointer text-[10px] text-white/30 hover:text-white/50 font-mono uppercase tracking-wider list-none">
+                                    <ChevronDown size={10} className="transition-transform group-open:rotate-180" />
+                                    IDs técnicos
+                                </summary>
+                                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-white/40 font-mono pl-3">
+                                    <span>campaign: <span className="text-white/60">{sugador.campaign_id}</span></span>
+                                    {sugador.adgroup_id && <span>adgroup: <span className="text-white/60">{sugador.adgroup_id}</span></span>}
+                                </div>
+                            </details>
                         </div>
                     </div>
 
@@ -621,6 +640,53 @@ function MlbRow({ mlb }) {
                 )}
             </div>
         </li>
+    );
+}
+
+/**
+ * Bloco do MLB em destaque — badge amarelo + botão copiar + link direto pro ML.
+ * Resolve o problema reportado pelo time operacional: antes os IDs (campaign,
+ * adgroup, MLB) ficavam todos em texto cinza tamanho 11 na mesma linha, e os
+ * analistas não conseguiam distinguir qual era qual para procurar no ML.
+ */
+function MlbHighlight({ mlbId, url }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(mlbId);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            // navigator.clipboard pode falhar em http (sem TLS) — fallback silencioso
+        }
+    };
+
+    return (
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-ecf-yellow/[0.08] border border-ecf-yellow/30">
+            <span className="text-ecf-yellow/70 text-[10px] font-bold uppercase tracking-wider">MLB</span>
+            <span className="text-ecf-yellow font-mono font-bold text-[13px] select-all">{mlbId}</span>
+            <button
+                type="button"
+                onClick={handleCopy}
+                className="text-ecf-yellow/60 hover:text-ecf-yellow"
+                title="Copiar MLB"
+            >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+            {url && (
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-ecf-yellow/60 hover:text-ecf-yellow text-[11px] border-l border-ecf-yellow/20 pl-2 ml-1"
+                    title="Abrir anúncio no Mercado Livre"
+                >
+                    <ExternalLink size={11} />
+                    Abrir no ML
+                </a>
+            )}
+        </div>
     );
 }
 
