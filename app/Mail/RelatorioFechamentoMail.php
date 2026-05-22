@@ -38,11 +38,17 @@ class RelatorioFechamentoMail extends Mailable
 
     public function attachments(): array
     {
-        $mesLabel = $this->dados['mesLabel'] ?? 'fechamento';
+        $mesLabel    = $this->dados['mesLabel'] ?? 'fechamento';
         $nomeArquivo = 'relatorio-' . str($mesLabel)->slug() . '.pdf';
 
-        $pdf = Pdf::loadView('emails.relatorio-fechamento-pdf', ['dados' => $this->dados])
-            ->setPaper('a4', 'portrait');
+        $pdf = Pdf::loadView('admin.relatorio-geral-pdf', [
+            'relatorios'      => $this->dados['relatorios'],
+            'mes_label'       => $mesLabel,
+            'gerado_em'       => now()->setTimezone('America/Sao_Paulo')->format('d/m/Y \à\s H:i'),
+            'filtro_recebido' => '',
+            // path local para o DomPDF carregar a imagem sem depender do servidor HTTP
+            'logo_path'       => 'file://' . str_replace('\\', '/', public_path('images/logo.png')),
+        ])->setPaper('a4', 'portrait');
 
         return [
             \Illuminate\Mail\Mailables\Attachment::fromData(
