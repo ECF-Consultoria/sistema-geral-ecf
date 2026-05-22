@@ -18,7 +18,7 @@ class Sugador extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['company_id', 'status', 'acao_tomada', 'observacao', 'resolvido_por'])
+            ->logOnly(['company_id', 'status', 'acao_tomada', 'observacao', 'resolvido_por', 'campanha_destino_id', 'movido_por_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -37,6 +37,8 @@ class Sugador extends Model
         'campaign_id',
         'campaign_name',
         'campaign_status',
+        'campanha_destino_id',
+        'campanha_destino_nome',
         'adgroup_id',
         'adgroup_name',
         'thumbnail',
@@ -63,6 +65,8 @@ class Sugador extends Model
         'observacao',
         'resolvido_em',
         'resolvido_por',
+        'movido_em',
+        'movido_por_id',
         'raw_data',
     ];
 
@@ -85,6 +89,7 @@ class Sugador extends Model
         'motivos'              => 'array',
         'raw_data'             => 'array',
         'resolvido_em'         => 'datetime',
+        'movido_em'            => 'datetime',
     ];
 
     public const TIPO_CAMPANHA = 'campanha';
@@ -94,12 +99,14 @@ class Sugador extends Model
     public const STATUS_EM_ACAO    = 'em_acao';
     public const STATUS_RESOLVIDO  = 'resolvido';
     public const STATUS_IGNORADO   = 'ignorado';
+    public const STATUS_MOVIDO     = 'movido';
 
     /** Status que NÃO devem ser sobrescritos por uma re-análise (idempotência). */
     public const STATUS_TRAVADOS = [
         self::STATUS_EM_ACAO,
         self::STATUS_RESOLVIDO,
         self::STATUS_IGNORADO,
+        self::STATUS_MOVIDO,
     ];
 
     public const ACAO_PAUSADO         = 'pausado';
@@ -116,6 +123,11 @@ class Sugador extends Model
     public function resolvidoPor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'resolvido_por');
+    }
+
+    public function movidoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'movido_por_id');
     }
 
     public function acoes(): HasMany

@@ -329,6 +329,49 @@ class AdmanService
     }
 
     /**
+     * Lista campanhas candidatas a destino da ação "Mover sugador" — convenção
+     * do time: campanha de quarentena tem nome contendo SGI/Sugador/Sugadores
+     * e fica pausada. Filtro client-side em cima do fetchAllCampaigns; sem
+     * métricas (só id/name/status).
+     *
+     * Cada item: ['id' => string, 'name' => string, 'status' => string|null]
+     */
+    public function fetchSugadorCampaigns(string $custId): array
+    {
+        $campaigns = $this->fetchAllCampaigns($custId);
+        $out = [];
+
+        foreach ($campaigns as $c) {
+            $id     = (string) ($c['campaignId'] ?? $c['id'] ?? '');
+            $name   = (string) ($c['name'] ?? '');
+            $status = $c['status'] ?? null;
+
+            if ($id === '' || $name === '') continue;
+
+            // Match igual ao usado em SugadorAnalysisService::QUARANTINE_NAME_REGEX
+            // pra que "candidata a destino" e "campanha já em quarentena" tenham
+            // exatamente a mesma definição em todo o módulo.
+            if (!preg_match('/\b(sgi|sugadores?)\b/iu', $name)) continue;
+
+            // Filtra pausadas — a convenção é mover pra campanha SGI parada
+            // (não-ativa) pra não gerar veiculação. Aceita também closed/ended.
+            $statusLower = $status ? strtolower((string) $status) : '';
+            if (!in_array($statusLower, ['paused', 'closed', 'ended'], true)) continue;
+
+            $out[] = [
+                'id'     => $id,
+                'name'   => $name,
+                'status' => $status,
+            ];
+        }
+
+        // Ordena por nome para UX previsível no select
+        usort($out, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+
+        return $out;
+    }
+
+    /**
      * Retorna campanhas de um custId já enriquecidas com métricas no range
      * (1 chamada de listagem + 1 chamada de métricas por campanha).
      *

@@ -8,9 +8,11 @@ use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
 use App\Services\AdmanMcpService;
+use App\Services\AdmanService;
 use App\Services\SugadorAnalysisService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -20,6 +22,7 @@ class SugadorController extends Controller
     public function __construct(
         private SugadorAnalysisService $service,
         private AdmanMcpService $mcp,
+        private AdmanService $adman,
     ) {}
 
     /**
@@ -234,6 +237,171 @@ class SugadorController extends Controller
             'success',
             "Análise enfileirada para {$companies->count()} empresa(s). Os resultados aparecem na listagem conforme cada empresa termina."
         );
+    }
+
+    /**
+     * Lista as campanhas-destino candidatas para a ação "Mover sugador" de uma
+     * empresa específica — filtra por nome SGI/Sugador/Sugadores e status pausada
+     * (convenção do time). Carregado on-demand via fetch() do modal.
+     *
+     * Cache de 10min por (custId) — listagem de campanhas muda raramente; libera
+     * latência do TLS handshake da Adman entre clicks consecutivos.
+     */
+    public function sgiCampaigns(Request $request, Company $company)
+    {
+        // Mesma regra de view: admin/gestor/lider veem qualquer empresa; demais
+        // só as da carteira. Sem isso um analista poderia listar campanhas de
+        // empresa que não tem acesso.
+        $user = $request->user();
+        $isGlobal = $user->isAdmin()
+            || (method_exists($user, 'isGestor') && $user->isGestor())
+            || (method_exists($user, 'isLiderPub') && $user->isLiderPub());
+
+        if (!$isGlobal) {
+            $inCarteira = $user->companies()->where('companies.id', $company->id)->exists();
+            if (!$inCarteira) {
+                abort(403, 'Sem acesso a esta empresa.');
+            }
+        }
+
+        if (!$company->adman_account_id) {
+            return response()->json([
+                'campaigns' => [],
+                'reason'    => 'Empresa sem adman_account_id — não dá pra listar campanhas.',
+            ], 422);
+        }
+
+        $cacheKey = "sugadores:sgi_campaigns:{$company->adman_account_id}";
+
+        try {
+            $campaigns = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($company) {
+                return $this->adman->fetchSugadorCampaigns($company->adman_account_id);
+            });
+        } catch (\Throwable $e) {
+            Log::warning("[Sugadores/SGI] Falha listando campanhas company={$company->id}: " . $e->getMessage());
+            return response()->json([
+                'campaigns' => [],
+                'reason'    => 'Falha ao consultar API da Adman: ' . $e->getMessage(),
+            ], 502);
+        }
+
+        return response()->json([
+            'campaigns' => $campaigns,
+            'company'   => ['id' => $company->id, 'name' => $company->name],
+        ]);
+    }
+
+    /**
+     * Marca um sugador como "movido para campanha SGI X". Não chama API do ML —
+     * apenas registra a decisão do analista (o move físico é feito por ele no
+     * painel do ML). Status vira 'movido' (entra em STATUS_TRAVADOS).
+     */
+    public function move(Request $request, Sugador $sugador)
+    {
+        Gate::authorize('update', $sugador);
+
+        $data = $request->validate([
+            'campanha_destino_id'   => 'required|string|max:64',
+            'campanha_destino_nome' => 'required|string|max:255',
+            'observacao'            => 'nullable|string|max:5000',
+        ]);
+
+        $statusAnterior = $sugador->status;
+
+        $sugador->update([
+            'status'                => Sugador::STATUS_MOVIDO,
+            'campanha_destino_id'   => $data['campanha_destino_id'],
+            'campanha_destino_nome' => $data['campanha_destino_nome'],
+            'movido_em'             => now(),
+            'movido_por_id'         => $request->user()->id,
+            'observacao'            => $data['observacao'] ?? $sugador->observacao,
+        ]);
+
+        SugadorAcao::create([
+            'sugador_id'      => $sugador->id,
+            'user_id'         => $request->user()->id,
+            'acao'            => SugadorAcao::ACAO_MOVEU,
+            'status_anterior' => $statusAnterior,
+            'status_novo'     => Sugador::STATUS_MOVIDO,
+            'observacao'      => "Movido para campanha: {$data['campanha_destino_nome']}"
+                                 . (!empty($data['observacao']) ? " — {$data['observacao']}" : ''),
+            'created_at'      => now(),
+        ]);
+
+        return back()->with('success', "Marcado como movido para {$data['campanha_destino_nome']}.");
+    }
+
+    /**
+     * Versão bulk do move — aceita N sugadores e move todos para a mesma campanha
+     * destino. Constraint: todos os sugadores devem ser da MESMA empresa (UI já
+     * impõe, mas validamos aqui também). Loop autoriza cada um via Policy.
+     */
+    public function bulkMove(Request $request)
+    {
+        $data = $request->validate([
+            'sugador_ids'             => 'required|array|min:1|max:500',
+            'sugador_ids.*'           => 'integer',
+            'campanha_destino_id'     => 'required|string|max:64',
+            'campanha_destino_nome'   => 'required|string|max:255',
+        ]);
+
+        $sugadores = Sugador::whereIn('id', $data['sugador_ids'])->get();
+
+        if ($sugadores->isEmpty()) {
+            return back()->with('warning', 'Nenhum sugador encontrado para mover.');
+        }
+
+        // Constraint: todos devem ser da mesma empresa (UI impõe via filtro, mas
+        // validamos aqui pra evitar inconsistência via API direta).
+        $companyIds = $sugadores->pluck('company_id')->unique();
+        if ($companyIds->count() > 1) {
+            return back()->withErrors([
+                'sugador_ids' => 'Todos os sugadores selecionados devem ser da mesma empresa.',
+            ]);
+        }
+
+        // Authorize cada sugador — Policy::update já checa carteira.
+        foreach ($sugadores as $s) {
+            Gate::authorize('update', $s);
+        }
+
+        $now    = now();
+        $userId = $request->user()->id;
+        $moved  = 0;
+
+        DB::transaction(function () use ($sugadores, $data, $now, $userId, &$moved) {
+            $auditRows = [];
+
+            foreach ($sugadores as $s) {
+                $statusAnterior = $s->status;
+
+                $s->update([
+                    'status'                => Sugador::STATUS_MOVIDO,
+                    'campanha_destino_id'   => $data['campanha_destino_id'],
+                    'campanha_destino_nome' => $data['campanha_destino_nome'],
+                    'movido_em'             => $now,
+                    'movido_por_id'         => $userId,
+                ]);
+
+                $auditRows[] = [
+                    'sugador_id'      => $s->id,
+                    'user_id'         => $userId,
+                    'acao'            => SugadorAcao::ACAO_MOVEU,
+                    'status_anterior' => $statusAnterior,
+                    'status_novo'     => Sugador::STATUS_MOVIDO,
+                    'observacao'      => "Movido em lote para campanha: {$data['campanha_destino_nome']}",
+                    'created_at'      => $now,
+                ];
+                $moved++;
+            }
+
+            // Insert único do audit — N rows em 1 query
+            if (!empty($auditRows)) {
+                SugadorAcao::insert($auditRows);
+            }
+        });
+
+        return back()->with('success', "{$moved} sugador(es) marcados como movidos para {$data['campanha_destino_nome']}.");
     }
 
     /**

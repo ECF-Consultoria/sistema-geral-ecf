@@ -146,8 +146,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/sugadores/{sugador}',              [SugadorController::class, 'show'])->name('sugadores.show');
     Route::get('/sugadores/{sugador}/mlbs',         [SugadorController::class, 'mlbs'])->name('sugadores.mlbs');
     Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');
+    Route::post('/sugadores/{sugador}/move',        [SugadorController::class, 'move'])->name('sugadores.move');
+    Route::post('/sugadores/bulk-move',             [SugadorController::class, 'bulkMove'])->name('sugadores.bulk-move');
     Route::post('/sugadores/analyze',               [SugadorController::class, 'analyzeAll'])->name('sugadores.analyze-all');
     Route::post('/sugadores/companies/{company}/analyze', [SugadorController::class, 'analyzeCompany'])->name('sugadores.analyze-company');
+    Route::get('/sugadores/companies/{company}/sgi-campaigns', [SugadorController::class, 'sgiCampaigns'])->name('sugadores.sgi-campaigns');
 
     // Config de detecção por empresa (admin only via Policy::manage)
     Route::get('/companies/{company}/sugador-config', [SugadorConfigController::class, 'show'])->name('sugadores.config.show');
