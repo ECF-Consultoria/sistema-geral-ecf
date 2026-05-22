@@ -19,12 +19,11 @@ class RelatorioFechamentoMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    // Caminho do Chrome/Chromium — configurável via CHROME_BINARY_PATH no .env
-    // Windows (local): C:\Program Files\Google\Chrome\Application\chrome.exe
-    // Linux (VPS):     /usr/bin/chromium-browser
+    // Caminho do Chrome — lido de config/pdf.php (que lê CHROME_BINARY_PATH do .env)
+    // Usar config() e não env() diretamente para funcionar com config:cache
     private function chromePath(): string
     {
-        return config('browsershot.chrome_binary', env('CHROME_BINARY_PATH', 'chromium-browser'));
+        return config('pdf.chrome_binary', '/usr/bin/google-chrome');
     }
 
     public function __construct(public array $dados)
