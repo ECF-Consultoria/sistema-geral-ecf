@@ -12,19 +12,19 @@
 ### Acesso e Interface (COM)
 
 - [x] **COM-01**: Usuário do setor Comercial vê item "Comercial" no sidebar com sub-item "Cadastro de Empresas" e consegue acessar o formulário de cadastro; usuário sem permissão `comercial.cadastrar_empresa` recebe 403 ao tentar acessar
-- [ ] **COM-02**: Formulário de cadastro exibe campos Nome (obrigatório), CNPJ (opcional, único), service_type (obrigatório) e subtipo dinâmico POLOS/Assessoria quando service_type='publicacao'
-- [ ] **COM-03**: Guard de duplicatas bloqueia cadastro com nome igual (case-insensitive) a qualquer `companies.name` ou `mlb_empresas.nome` existente, exibindo mensagem de erro clara
+- [x] **COM-02**: Formulário de cadastro exibe campos Nome (obrigatório), CNPJ (opcional, único), service_type (obrigatório) e subtipo dinâmico POLOS/Assessoria quando service_type='publicacao'
+- [x] **COM-03**: Guard de duplicatas bloqueia cadastro com nome igual (case-insensitive) a qualquer `companies.name` ou `mlb_empresas.nome` existente, exibindo mensagem de erro clara
 
 ### Criação Automática por Tipo (COM)
 
-- [ ] **COM-04**: Ao cadastrar empresa tipo POLOS, o sistema cria atomicamente em DB::transaction: `companies` (status='pendente') + `mlb_empresas` (tipo=POLO, projeto=POLOS) + `mlb_implementacao` com token Str::random(48) e dados de `dadosPadrao()` + `implementacaoPadroes()`
-- [ ] **COM-05**: Ao cadastrar empresa tipo Assessoria, o sistema cria atomicamente: `companies` (status='pendente') + `mlb_empresas` (tipo=ASSESSORIA)
-- [ ] **COM-06**: Ao cadastrar empresa tipo Publicidade ou Gestão, o sistema cria apenas `companies` (status='pendente', sem mlb_empresas)
-- [ ] **COM-07**: Empresa recém-cadastrada (qualquer tipo) aparece em `/administrativo/financeiro` sem ação adicional do admin
+- [x] **COM-04**: Ao cadastrar empresa tipo POLOS, o sistema cria atomicamente em DB::transaction: `companies` (status='pendente') + `mlb_empresas` (tipo=POLO, projeto=POLOS) + `mlb_implementacao` com token Str::random(48) e dados de `dadosPadrao()` + `implementacaoPadroes()`
+- [x] **COM-05**: Ao cadastrar empresa tipo Assessoria, o sistema cria atomicamente: `companies` (status='pendente') + `mlb_empresas` (tipo=ASSESSORIA)
+- [x] **COM-06**: Ao cadastrar empresa tipo Publicidade ou Gestão, o sistema cria apenas `companies` (status='pendente', sem mlb_empresas)
+- [x] **COM-07**: Empresa recém-cadastrada (qualquer tipo) aparece em `/administrativo/financeiro` sem ação adicional do admin
 
 ### Visibilidade de Pendentes (COM)
 
-- [ ] **COM-08**: Ao cadastrar nova empresa, líderes do setor de destino recebem notificação automática via sistema de notificações (Phases 8-12) com informações da empresa cadastrada
+- [x] **COM-08**: Ao cadastrar nova empresa, líderes do setor de destino recebem notificação automática via sistema de notificações (Phases 8-12) com informações da empresa cadastrada
 - [ ] **COM-09**: Setor de destino vê seção "Pendentes" na sua página existente (`/mlb/empresas` para Publicação, `/companies` para Publicidade/Gestão) com badge visual das empresas status='pendente'
 
 ### Migração Retroativa (COM)
@@ -37,13 +37,13 @@
 | Requisito | Fase | Status |
 |-----------|------|--------|
 | COM-01 | Phase 13 | Complete |
-| COM-02 | Phase 13 | Pending |
-| COM-03 | Phase 13 | Pending |
-| COM-04 | Phase 13 | Pending |
-| COM-05 | Phase 13 | Pending |
-| COM-06 | Phase 13 | Pending |
-| COM-07 | Phase 13 | Pending |
-| COM-08 | Phase 13 | Pending |
+| COM-02 | Phase 13 | Complete |
+| COM-03 | Phase 13 | Complete |
+| COM-04 | Phase 13 | Complete |
+| COM-05 | Phase 13 | Complete |
+| COM-06 | Phase 13 | Complete |
+| COM-07 | Phase 13 | Complete |
+| COM-08 | Phase 13 | Complete |
 | COM-09 | Phase 13 | Pending |
 | COM-10 | Phase 13 | Complete |
 | COM-11 | Phase 13 | Complete |
