@@ -81,12 +81,19 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
         foreach ($companies as $c) {
             $custId = $c->adman_account_id;
 
-            $needGross   = !$adman->hasCachedEntry($custId, $dateFrom, $dateTo);
-            $needAccount = !$adman->hasCachedAccountMetricsEntry($custId, $dateFrom, $dateTo);
+            // Re-tenta sempre que NÃO tem VALOR REAL cacheado:
+            //  - Cache miss (sem entrada) → fetch
+            //  - ERROR_SENTINEL (Adman falhou na última) → fetch de novo
+            //  - Valor float/array real → skip (cache ainda quente)
+            //
+            // Antes usávamos hasCachedEntry (true mesmo pra erro), o que fazia o
+            // job pular empresas que falharam recentemente — RELOJOARIA WENUS e
+            // MPozenato ficaram sem dados por várias execuções consecutivas
+            // porque ERROR_SENTINEL (TTL 10min) sempre estava válido quando o
+            // job de 30min rodava.
+            $needGross   = $adman->getCachedGrossBilling($custId, $dateFrom, $dateTo) === null;
+            $needAccount = $adman->getCachedAccountMetrics($custId, $dateFrom, $dateTo) === null;
 
-            // Skip empresa inteira se ambos caches já têm entrada (valor OU ERROR_SENTINEL).
-            // Cache TTL 60min de sucesso ou 10min de erro — quando expira, próxima
-            // execução do job (30min) pega de novo.
             if (!$needGross && !$needAccount) {
                 $skipped++;
                 continue;
