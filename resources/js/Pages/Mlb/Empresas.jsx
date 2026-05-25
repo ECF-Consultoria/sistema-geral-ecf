@@ -486,7 +486,7 @@ function ProblemaEmpresaModal({ empresa, onClose }) {
     );
 }
 
-export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, polosDb, projetosDb, excluidos = {} }) {
+export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, polosDb, projetosDb, excluidos = {}, empresas_pendentes = [] }) {
     const { props } = usePage();
     const flash           = props.flash ?? {};
     const pubRole         = props.auth?.user?.publication_role;
@@ -835,6 +835,30 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                     <button onClick={() => setFlashMsg(null)} className="ml-4 opacity-60 hover:opacity-100 transition-opacity">
                         <X size={14} />
                     </button>
+                </div>
+            )}
+
+            {/* Seção Pendentes — companies cadastradas pelo Comercial aguardando o time de Publicação */}
+            {empresas_pendentes.length > 0 && (
+                <div className="rounded-2xl border border-ecf-yellow/20 bg-ecf-yellow/[0.03] p-5 mb-6">
+                    <div className="flex items-center gap-2 mb-3">
+                        <h2 className="text-white font-semibold text-[14px]">Empresas Pendentes</h2>
+                        <span className="inline-flex items-center justify-center min-w-[22px] h-5 px-1.5 rounded-full bg-ecf-yellow/10 border border-ecf-yellow/20 text-ecf-yellow text-[10px] font-bold">
+                            {empresas_pendentes.length}
+                        </span>
+                        <span className="text-white/30 text-[12px] ml-1">cadastradas pelo Comercial, aguardando dados da Publicação</span>
+                    </div>
+                    <div className="space-y-2">
+                        {empresas_pendentes.map(p => (
+                            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-2.5">
+                                <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
+                                <span className="text-ecf-yellow/60 text-[11px] font-medium capitalize">{p.service_type}</span>
+                                <span className="text-white/25 text-[11px]">
+                                    {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             )}
 
