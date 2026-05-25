@@ -624,9 +624,9 @@ class AdmanService
             $end   = $ref->copy()->endOfMonth()->toDateString();
         }
 
-        $performance  = $this->fetchPerformance($custId, $start, $end);
-        $summarized   = $performance['summarizedData'] ?? [];
-        $grossBilling = $summarized['grossBilling']['value'] ?? null;
+        // fetchGrossBilling já faz unset + gc após extrair o valor,
+        // evitando estouro de memória com a resposta completa da API
+        $grossBilling = $this->fetchGrossBilling($custId, $start, $end, cacheMinutes: 0);
 
         return CompanyMonthlyRevenue::updateOrCreate(
             ['company_id' => $company->id, 'year_month' => $yearMonth],
