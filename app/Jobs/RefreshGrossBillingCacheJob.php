@@ -69,19 +69,31 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
         $dateFrom = now()->subDays(30)->toDateString();
         $dateTo   = now()->toDateString();
 
-        $ok    = 0;
-        $fail  = 0;
-        $total = $companies->count();
+        $ok      = 0;
+        $fail    = 0;
+        $skipped = 0;
+        $total   = $companies->count();
+        $callsMade = 0;
 
-        foreach ($companies as $i => $c) {
-            // Throttle 1.5s entre chamadas — abaixo dos 50/min do upstream Adman.
-            if ($i > 0) usleep(1_500_000);
+        foreach ($companies as $c) {
+            // Skip empresas com cache válido (valor real OU ERROR_SENTINEL):
+            //  - Valor real cacheado dentro do TTL (60min) → não precisa re-chamar
+            //  - ERROR_SENTINEL cacheado (10min) → Adman está com problema
+            //    persistente nessa empresa; esperar sentinel expirar pra
+            //    re-tentar. Sem skip, gastamos slot do throttle inutilmente
+            //    em empresas que vão falhar de novo na mesma janela.
+            if ($adman->hasCachedEntry($c->adman_account_id, $dateFrom, $dateTo)) {
+                $skipped++;
+                continue;
+            }
+
+            // Throttle 1.5s entre chamadas REAIS — abaixo dos 50/min Adman.
+            // Skips não contam (não houve chamada de rede).
+            if ($callsMade > 0) usleep(1_500_000);
 
             try {
-                // fetchGrossBilling com cache 60min — bate na Adman se cache
-                // miss, lê do cache se hit. unset+gc embutidos liberam memória
-                // entre chamadas pra não acumular dentro do loop.
                 $value = $adman->fetchGrossBilling($c->adman_account_id, $dateFrom, $dateTo, 60);
+                $callsMade++;
                 if ($value === null) {
                     $fail++;
                 } else {
@@ -89,14 +101,15 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 }
             } catch (\Throwable $e) {
                 $fail++;
+                $callsMade++;
                 Log::warning("[RefreshGrossBilling] company={$c->id} ({$c->name}): " . $e->getMessage());
             }
         }
 
         $elapsed = round(microtime(true) - $started, 1);
         Log::info(sprintf(
-            '[RefreshGrossBilling] %d/%d ok, %d falhas — %ss',
-            $ok, $total, $fail, $elapsed
+            '[RefreshGrossBilling] %d/%d ok, %d falhas, %d skipped (cache v\xC3\xA1lido) — %ss',
+            $ok, $total, $fail, $skipped, $elapsed
         ));
     }
 

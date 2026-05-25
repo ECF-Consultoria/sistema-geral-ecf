@@ -153,12 +153,18 @@ class AdminController extends Controller
         $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
             ->pluck('recebido_em', 'company_id');
 
-        // Cache do faturamento da Adman pre-aquecido pelo Job. Quando hit,
-        // valor exato; quando miss (cache cold), fallback é o SUM do DB.
-        // Só pra mês ATUAL — meses passados sempre vêm do DB (histórico).
+        // Cache do faturamento da Adman pre-aquecido pelo Job. Mês atual usa
+        // cache; mês passado sempre vem do DB (histórico). Batch read pra
+        // todas custIds em 1 round-trip Redis.
         $dateFromStr  = $inicio->toDateString();
         $dateToStr    = $fim->toDateString();
         $missingCache = false;
+
+        $cacheBatch = [];
+        if ($isMesAtual) {
+            $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromStr, $dateToStr);
+        }
 
         // Passo 2 — monta array indexado por company_id
         $dadosPorId = [];
@@ -173,12 +179,10 @@ class AdminController extends Controller
 
             // Substitui pelo cache da Adman se disponível (só mês atual).
             if ($isMesAtual && $hasAdman) {
-                $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFromStr, $dateToStr);
-                if ($cached !== null) {
-                    $fatAtual = $cached;
-                } elseif (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFromStr, $dateToStr)) {
-                    // Só conta como miss real se não tem nada no cache
-                    // (cache com ERROR_SENTINEL = já tentou, não martelar).
+                $entry = $cacheBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+                if ($entry['value'] !== null) {
+                    $fatAtual = $entry['value'];
+                } elseif (!$entry['hasEntry']) {
                     $missingCache = true;
                 }
             }
@@ -488,14 +492,18 @@ class AdminController extends Controller
         $dateToStr    = $fim->toDateString();
         $missingCache = false;
 
-        $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $dateFromStr, $dateToStr, &$missingCache): ?float {
-            // Mês atual: tenta cache da Adman primeiro
+        // Batch read do cache pra todas as empresas do relatório de uma vez.
+        $cacheBatch = [];
+        if ($isMesAtual) {
+            $custIdsAll = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->unique()->all();
+            $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIdsAll, $dateFromStr, $dateToStr);
+        }
+
+        $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $cacheBatch, &$missingCache): ?float {
             if ($isMesAtual && $emp->adman_account_id) {
-                $cached = $this->adman->getCachedGrossBilling($emp->adman_account_id, $dateFromStr, $dateToStr);
-                if ($cached !== null) return $cached;
-                if (!$this->adman->hasCachedEntry($emp->adman_account_id, $dateFromStr, $dateToStr)) {
-                    $missingCache = true;
-                }
+                $entry = $cacheBatch[$emp->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+                if ($entry['value'] !== null) return $entry['value'];
+                if (!$entry['hasEntry']) $missingCache = true;
             }
             // Fallback: SUM do DB
             $m = $metricas->get($emp->id);

@@ -36,6 +36,11 @@ class CompanyController extends Controller
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
 
+        // Batch read: 1 Cache::many round-trip pra todas custIds em vez
+        // de N×2 (escala linearmente até 1000+ empresas sem overhead).
+        $custIds = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+
         $revenue30d   = [];
         $missingCache = false;
         foreach ($companies as $c) {
@@ -43,15 +48,14 @@ class CompanyController extends Controller
                 $revenue30d[$c->id] = 0.0;
                 continue;
             }
-            $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFrom, $dateTo);
-            if ($cached !== null) {
-                $revenue30d[$c->id] = $cached;
+            $entry = $cacheBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($entry['value'] !== null) {
+                $revenue30d[$c->id] = $entry['value'];
             } else {
-                // null = miss real OU erro cacheado (Adman recusou). Fallback DB
-                // em ambos os casos; mas só dispara job se for miss real, pra
-                // não martelar empresas que estão dando 429/500 cronicamente.
+                // Sem valor — fallback DB. Dispatch job só se cache miss real
+                // (sem qualquer entrada); erro cacheado = já tentou recente.
                 $revenue30d[$c->id] = (float) ($sumDb[$c->id] ?? 0);
-                if (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFrom, $dateTo)) {
+                if (!$entry['hasEntry']) {
                     $missingCache = true;
                 }
             }

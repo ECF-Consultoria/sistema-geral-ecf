@@ -309,6 +309,55 @@ class AdmanService
     }
 
     /**
+     * Batch read otimizado pra controllers com N empresas. Usa Cache::many
+     * (1 round-trip Redis) em vez de N Cache::get sequenciais — escala
+     * linearmente até 1000+ chaves sem overhead perceptível.
+     *
+     * @param  array<string>  $custIds
+     * @return array<string, array{value: ?float, hasEntry: bool}>
+     *         Map [custId => ['value' => ?, 'hasEntry' => bool]]
+     */
+    public function getCachedGrossBillingsMany(array $custIds, string $dateFrom, string $dateTo): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        if (empty($custIds)) return [];
+
+        // Mapeia custId → cacheKey e vice-versa pra recompor depois.
+        $keysByCustId = [];
+        $custIdsByKey = [];
+        foreach ($custIds as $custId) {
+            $key = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+            $keysByCustId[$custId] = $key;
+            $custIdsByKey[$key]    = $custId;
+        }
+
+        // 1 round-trip Redis pra todos os custIds.
+        $raw = Cache::many(array_values($keysByCustId));
+
+        $out = [];
+        foreach ($custIds as $custId) {
+            $key = $keysByCustId[$custId];
+            $val = $raw[$key] ?? null;
+
+            // hasEntry distingue:
+            //  - null = chave nunca existiu (Cache::many retorna null pra miss)
+            //  - ERROR_SENTINEL = empresa com erro persistente
+            //  - float = valor real
+            // Mas Cache::many não nos diz a diferença entre "miss" e "valor null".
+            // Aqui assumimos que null no Redis = miss (consistente com fetchGrossBilling
+            // que SEMPRE cacheia ERROR_SENTINEL em vez de null).
+            $hasEntry = $val !== null;
+
+            $out[$custId] = [
+                'value'    => ($val !== null && $val !== self::ERROR_SENTINEL) ? (float) $val : null,
+                'hasEntry' => $hasEntry,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
      * Versão batch para N empresas — SEQUENCIAL THROTTLED por causa do rate
      * limit da Adman (~50 req/min). Versão anterior usava Http::pool paralelo
      * mas isso amplificava o rate limit e quebrava o sync diário em background.

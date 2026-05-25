@@ -93,6 +93,10 @@ class DashboardController extends Controller
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
 
+        // Batch read: 1 Cache::many round-trip pra todas custIds.
+        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $cacheBatch30d = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
+
         $revenue30dByCompany = [];
         $missingCache        = false;
         foreach ($companies as $c) {
@@ -100,12 +104,12 @@ class DashboardController extends Controller
                 $revenue30dByCompany[$c->id] = 0.0;
                 continue;
             }
-            $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFrom30d, $dateTo30d);
-            if ($cached !== null) {
-                $revenue30dByCompany[$c->id] = $cached;
+            $entry = $cacheBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($entry['value'] !== null) {
+                $revenue30dByCompany[$c->id] = $entry['value'];
             } else {
                 $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
-                if (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFrom30d, $dateTo30d)) {
+                if (!$entry['hasEntry']) {
                     $missingCache = true;
                 }
             }
@@ -321,6 +325,10 @@ class DashboardController extends Controller
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
 
+        // Batch read: 1 Cache::many round-trip pra todas custIds.
+        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $cacheBatch30d = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
+
         $revenue30dByCompany = [];
         $missingCache        = false;
         foreach ($companies as $c) {
@@ -328,14 +336,12 @@ class DashboardController extends Controller
                 $revenue30dByCompany[$c->id] = 0.0;
                 continue;
             }
-            $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFrom30d, $dateTo30d);
-            if ($cached !== null) {
-                $revenue30dByCompany[$c->id] = $cached;
+            $entry = $cacheBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($entry['value'] !== null) {
+                $revenue30dByCompany[$c->id] = $entry['value'];
             } else {
                 $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
-                // Só dispara job se for miss real (sem entrada no cache).
-                // Erro cacheado = já tentou recente, não vale martelar.
-                if (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFrom30d, $dateTo30d)) {
+                if (!$entry['hasEntry']) {
                     $missingCache = true;
                 }
             }
