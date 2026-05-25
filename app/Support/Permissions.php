@@ -67,6 +67,9 @@ class Permissions
     /** Criar notificações manuais (admin sempre tem; líderes ganham via AUTO_LIDERANCA). */
     public const NOTIFICACOES_CRIAR        = 'notificacoes.criar';
 
+    /** Cadastrar novas empresas pelo setor Comercial (acesso por setor, não automático para líderes). */
+    public const COMERCIAL_CADASTRAR_EMPRESA = 'comercial.cadastrar_empresa';
+
     /** Acesso ao dashboard de líder do(s) setor(es) liderado(s). */
     public const LIDERANCA_DASHBOARD_SETOR = 'lideranca.dashboard_setor';
     /** Permissão de criar/editar/remover metas no(s) setor(es) liderado(s). */
@@ -134,6 +137,9 @@ class Permissions
             ],
             'Notificações' => [
                 ['key' => self::NOTIFICACOES_CRIAR, 'label' => 'Criar notificações', 'description' => 'Envia notificações manuais para usuários, setores, líderes ou todos'],
+            ],
+            'Comercial' => [
+                ['key' => self::COMERCIAL_CADASTRAR_EMPRESA, 'label' => 'Cadastro de Empresas', 'description' => 'Cadastrar novas empresas pelo setor Comercial'],
             ],
             'Liderança (automático para líderes)' => [
                 ['key' => self::LIDERANCA_DASHBOARD_SETOR, 'label' => 'Dashboard do setor', 'description' => 'Visualiza o(s) setor(es) que lidera'],
