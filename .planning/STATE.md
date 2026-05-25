@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
-status: planned
-stopped_at: Phase 13 planejada — 4 planos em 4 waves, verificação passou em todas as 10 dimensões
-last_updated: "2026-05-25T00:00:00.000Z"
-last_activity: 2026-05-25 - Phase 13 planejada (4 planos, COM-01..COM-11 cobertos)
+status: executing
+stopped_at: Completed 13-01-PLAN.md
+last_updated: "2026-05-25T13:50:23.103Z"
+last_activity: 2026-05-25
 progress:
   total_phases: 13
   completed_phases: 5
   total_plans: 12
-  completed_plans: 8
+  completed_plans: 9
   percent: 38
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 08 (funda-o-de-notifica-es) — EXECUTING
-Plan: 1 of 4
-Status: Executing Phase 08
-Last activity: 2026-05-21 -- Phase 08 execution started
+Plan: 2 of 4
+Status: Ready to execute
+Last activity: 2026-05-25
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Last activity: 2026-05-21 -- Phase 08 execution started
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
+| Phase 13-reestruturacao-cadastro-empresas P01 | 25min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -129,5 +130,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-21T17:32:11.926Z
-Stopped at: Phase 8 context gathered (classe base BaseNotification + enum Categoria + tabela notifications + permission notificacoes.criar)
+Last session: 2026-05-25T13:50:23.085Z
+Stopped at: Completed 13-01-PLAN.md

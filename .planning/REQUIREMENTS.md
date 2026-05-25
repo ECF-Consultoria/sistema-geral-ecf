@@ -29,8 +29,8 @@
 
 ### Migração Retroativa (COM)
 
-- [ ] **COM-10**: Migration de dados idempotente cria registro em `companies` para cada `mlb_empresa` sem `company_id`, derivando service_type automaticamente (POLO/POLOS→'polos', ASSESSORIA→'assessoria', Incubadora→'incubadora') e gravando status='ativo'; todos os companies existentes também recebem status='ativo'
-- [ ] **COM-11**: Coluna `mlb_empresas.company_id` (FK nullable, nullOnDelete → companies) é preenchida para todos os registros existentes e novos após migração
+- [x] **COM-10**: Migration de dados idempotente cria registro em `companies` para cada `mlb_empresa` sem `company_id`, derivando service_type automaticamente (POLO/POLOS→'polos', ASSESSORIA→'assessoria', Incubadora→'incubadora') e gravando status='ativo'; todos os companies existentes também recebem status='ativo'
+- [x] **COM-11**: Coluna `mlb_empresas.company_id` (FK nullable, nullOnDelete → companies) é preenchida para todos os registros existentes e novos após migração
 
 ## Traceability v4.0
 
@@ -45,8 +45,8 @@
 | COM-07 | Phase 13 | Pending |
 | COM-08 | Phase 13 | Pending |
 | COM-09 | Phase 13 | Pending |
-| COM-10 | Phase 13 | Pending |
-| COM-11 | Phase 13 | Pending |
+| COM-10 | Phase 13 | Complete |
+| COM-11 | Phase 13 | Complete |
 
 **Cobertura v4.0:**
 - Requirements: 11 total (3 acesso/interface + 4 criação automática + 2 visibilidade + 2 migração)
