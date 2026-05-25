@@ -10,8 +10,8 @@
 //   - Status badges (pendente / ativo)
 //   - Filtro por texto e por service_type
 import { useState } from 'react';
-import { Head, useForm, usePage } from '@inertiajs/react';
-import { Building2, PlusCircle, Search, X, Pencil } from 'lucide-react';
+import { Head, useForm, usePage, router } from '@inertiajs/react';
+import { Building2, PlusCircle, Search, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
@@ -172,10 +172,14 @@ function FormularioCriar({ onClose }) {
 // ─── Formulário de Edição ─────────────────────────────────────────────────────
 
 function FormularioEditar({ company, onClose }) {
+    const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
+    const [excluindo, setExcluindo] = useState(false);
+
     const { data, setData, put, processing, errors } = useForm({
-        name:  company.name,
-        cnpj:  company.cnpj ?? '',
-        notes: company.notes ?? '',
+        name:         company.name,
+        cnpj:         company.cnpj ?? '',
+        notes:        company.notes ?? '',
+        service_type: company.service_type,
     });
 
     function handleSubmit(e) {
@@ -186,6 +190,18 @@ function FormularioEditar({ company, onClose }) {
         });
     }
 
+    function handleExcluir() {
+        setExcluindo(true);
+        router.delete(route('comercial.empresas.destroy', company.id), {
+            preserveScroll: true,
+            onSuccess: () => onClose(),
+            onFinish: () => setExcluindo(false),
+        });
+    }
+
+    const mudouTipo = data.service_type !== company.service_type;
+    const novoTipoTemMlb = ['polos', 'assessoria'].includes(data.service_type);
+
     return (
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
             <div className="flex items-center justify-between">
@@ -193,10 +209,7 @@ function FormularioEditar({ company, onClose }) {
                     <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/[0.06] border border-white/[0.08] shrink-0">
                         <Pencil size={14} className="text-white/60" />
                     </div>
-                    <div>
-                        <h2 className="text-white font-bold text-base leading-tight">Editar Empresa</h2>
-                        <p className="text-white/30 text-[11px]">{SERVICE_TYPE_LABELS[company.service_type] ?? company.service_type}</p>
-                    </div>
+                    <h2 className="text-white font-bold text-base leading-tight">Editar Empresa</h2>
                 </div>
                 <button type="button" onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors">
                     <X size={18} />
@@ -242,6 +255,32 @@ function FormularioEditar({ company, onClose }) {
 
             <div className="space-y-1.5">
                 <label className="block text-xs text-white/60 font-medium">
+                    Tipo de Serviço <span className="text-ecf-yellow">*</span>
+                </label>
+                <select
+                    value={data.service_type}
+                    onChange={e => setData('service_type', e.target.value)}
+                    className={cn(
+                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                        'focus:outline-none focus:border-ecf-yellow/40 transition-colors',
+                        errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
+                    )}
+                >
+                    <option value="polos">Publicação — POLOS</option>
+                    <option value="assessoria">Publicação — Assessoria</option>
+                    <option value="publicidade">Publicidade</option>
+                    <option value="gestao">Gestão</option>
+                </select>
+                {errors.service_type && <p className="text-red-400 text-xs">{errors.service_type}</p>}
+                {mudouTipo && novoTipoTemMlb && (
+                    <p className="text-yellow-400/70 text-[11px] leading-snug">
+                        Se não houver registro MLB vinculado, ele será criado automaticamente.
+                    </p>
+                )}
+            </div>
+
+            <div className="space-y-1.5">
+                <label className="block text-xs text-white/60 font-medium">
                     Observações <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
                 </label>
                 <textarea
@@ -258,16 +297,38 @@ function FormularioEditar({ company, onClose }) {
                 {errors.notes && <p className="text-red-400 text-xs">{errors.notes}</p>}
             </div>
 
-            {/* Tipo de serviço — somente leitura */}
-            <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 flex items-center justify-between">
-                <span className="text-xs text-white/40">Tipo de serviço</span>
-                <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', SERVICE_TYPE_COLORS[company.service_type])}>
-                    {SERVICE_TYPE_LABELS[company.service_type] ?? company.service_type}
-                </span>
-            </div>
-            <p className="text-white/20 text-[11px] -mt-3">O tipo de serviço não pode ser alterado após o cadastro.</p>
+            {/* Confirmação de exclusão */}
+            {confirmandoExclusao ? (
+                <div className="rounded-xl border border-red-500/20 bg-red-950/40 p-4 space-y-3">
+                    <div className="flex items-center gap-2 text-red-300">
+                        <AlertTriangle size={14} />
+                        <span className="text-sm font-medium">Confirmar remoção</span>
+                    </div>
+                    <p className="text-white/50 text-xs leading-relaxed">
+                        A empresa <strong className="text-white/80">{company.name}</strong> será removida da listagem.
+                        Os registros relacionados (MLB, sugadores) são preservados.
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <button type="button" onClick={handleExcluir} disabled={excluindo}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
+                            <Trash2 size={12} />
+                            {excluindo ? 'Removendo...' : 'Confirmar remoção'}
+                        </button>
+                        <button type="button" onClick={() => setConfirmandoExclusao(false)}
+                            className="px-3 py-1.5 rounded-lg text-xs text-white/40 hover:text-white/70 transition-colors">
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <button type="button" onClick={() => setConfirmandoExclusao(true)}
+                    className="inline-flex items-center gap-1.5 text-xs text-red-400/60 hover:text-red-400 transition-colors">
+                    <Trash2 size={12} />
+                    Remover empresa
+                </button>
+            )}
 
-            <div className="flex items-center justify-end gap-3 pt-1">
+            <div className="flex items-center justify-end gap-3 pt-1 border-t border-white/[0.06]">
                 <button type="button" onClick={onClose}
                     className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white/80 transition-colors">
                     Cancelar

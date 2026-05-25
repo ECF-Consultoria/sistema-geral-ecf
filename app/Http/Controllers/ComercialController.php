@@ -177,9 +177,11 @@ class ComercialController extends Controller
     }
 
     /**
-     * Atualiza campos básicos de uma empresa existente.
-     * Campos editáveis: name, cnpj, notes.
-     * service_type não é editável após criação (mudaria os vínculos MLB).
+     * Atualiza campos de uma empresa existente, incluindo service_type.
+     *
+     * Ao mudar para polos/assessoria, cria automaticamente o registro mlb_empresa
+     * correspondente caso ainda não exista (evita inconsistência sem forçar o
+     * usuário a recriar a empresa).
      */
     public function update(Request $request, Company $company)
     {
@@ -189,19 +191,68 @@ class ComercialController extends Controller
         );
 
         $validated = $request->validate([
-            'name'  => 'required|string|max:255',
-            'cnpj'  => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
-            'notes' => 'nullable|string|max:2000',
+            'name'         => 'required|string|max:255',
+            'cnpj'         => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
+            'notes'        => 'nullable|string|max:2000',
+            'service_type' => 'required|in:polos,assessoria,publicidade,gestao',
         ]);
 
-        $company->update($validated);
+        $novoTipo = $validated['service_type'];
+
+        DB::transaction(function () use ($company, $validated, $request, $novoTipo) {
+            $company->update($validated);
+
+            // Se mudou para um tipo com vínculo MLB, garante que o registro existe
+            if (in_array($novoTipo, ['polos', 'assessoria'])) {
+                $temMlb = MlbEmpresa::where('company_id', $company->id)->exists();
+
+                if (! $temMlb) {
+                    $empresa = MlbEmpresa::create([
+                        'nome'       => $company->name,
+                        'tipo'       => $novoTipo === 'polos' ? 'POLO' : 'ASSESSORIA',
+                        'projeto'    => $novoTipo === 'polos' ? 'POLOS' : null,
+                        'fase'       => $novoTipo === 'polos' ? 'M0' : null,
+                        'estagio'    => $novoTipo === 'polos' ? 'Não Listado' : null,
+                        'company_id' => $company->id,
+                        'criado_por' => $request->user()->id,
+                    ]);
+
+                    if ($novoTipo === 'polos') {
+                        $this->criarImplementacaoPolo($empresa);
+                    }
+                }
+            }
+        });
 
         activity('comercial')
             ->causedBy($request->user())
-            ->withProperties(['empresa' => $company->name])
+            ->withProperties(['empresa' => $company->name, 'service_type' => $novoTipo])
             ->log('Empresa editada pelo Comercial: "' . $company->name . '"');
 
         return back()->with('success', 'Empresa "' . $company->name . '" atualizada com sucesso.');
+    }
+
+    /**
+     * Desativa uma empresa (active = false).
+     * Não exclui fisicamente para preservar os registros relacionados (mlb_empresas,
+     * sugadores, etc.) e permitir recuperação via admin se necessário.
+     */
+    public function destroy(Request $request, Company $company)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+
+        $nome = $company->name;
+        $company->update(['active' => false]);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $nome])
+            ->log('Empresa removida pelo Comercial: "' . $nome . '"');
+
+        return back()->with('success', 'Empresa "' . $nome . '" removida.');
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
