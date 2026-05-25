@@ -107,11 +107,22 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $inicio         = $ref->copy()->startOfMonth();
-        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
 
-        $inicioAnterior = $ref->copy()->subMonth()->startOfMonth();
-        $fimAnterior    = $ref->copy()->subMonth()->endOfMonth();
+        // Mês atual = janela 30d rolling (alinhada com Empresas e Dashboard
+        // que mostram "últimos 30 dias"). Mês passado preserva mês calendário —
+        // relatórios históricos não devem mudar retroativamente.
+        $isMesAtual = $ref->isSameMonth(Carbon::now());
+        if ($isMesAtual) {
+            $inicio         = Carbon::now()->subDays(30)->startOfDay();
+            $fim            = Carbon::now()->endOfDay();
+            $inicioAnterior = Carbon::now()->subDays(60)->startOfDay();
+            $fimAnterior    = Carbon::now()->subDays(30)->endOfDay();
+        } else {
+            $inicio         = $ref->copy()->startOfMonth();
+            $fim            = $ref->copy()->endOfMonth();
+            $inicioAnterior = $ref->copy()->subMonth()->startOfMonth();
+            $fimAnterior    = $ref->copy()->subMonth()->endOfMonth();
+        }
 
         $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
             ->whereNotNull('revenue')
@@ -289,9 +300,19 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $mesLabel       = ucfirst($ref->translatedFormat('F Y'));
-        $inicio         = $ref->copy()->startOfMonth();
-        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
+
+        // Mesma regra de fechamento(): mês atual usa 30d rolling, mês passado
+        // preserva mês calendário. Label muda pra refletir a janela real.
+        $isMesAtual = $ref->isSameMonth(Carbon::now());
+        if ($isMesAtual) {
+            $inicio   = Carbon::now()->subDays(30)->startOfDay();
+            $fim      = Carbon::now()->endOfDay();
+            $mesLabel = 'Últimos 30 dias (até ' . $fim->format('d/m/Y') . ')';
+        } else {
+            $inicio   = $ref->copy()->startOfMonth();
+            $fim      = $ref->copy()->endOfMonth();
+            $mesLabel = ucfirst($ref->translatedFormat('F Y'));
+        }
 
         // Carrega empresa principal com vinculadas ativas
         $company->load(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')]);
@@ -373,9 +394,19 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $mesLabel       = ucfirst($ref->translatedFormat('F Y'));
-        $inicio         = $ref->copy()->startOfMonth();
-        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
+
+        // Mesma regra de fechamento()/gerarRelatorio(): 30d rolling no mês atual,
+        // mês calendário em meses passados (relatórios históricos).
+        $isMesAtual = $ref->isSameMonth(Carbon::now());
+        if ($isMesAtual) {
+            $inicio   = Carbon::now()->subDays(30)->startOfDay();
+            $fim      = Carbon::now()->endOfDay();
+            $mesLabel = 'Últimos 30 dias (até ' . $fim->format('d/m/Y') . ')';
+        } else {
+            $inicio   = $ref->copy()->startOfMonth();
+            $fim      = $ref->copy()->endOfMonth();
+            $mesLabel = ucfirst($ref->translatedFormat('F Y'));
+        }
 
         // Carrega todas as empresas principais ativas (não filhas)
         $query = Company::where('active', true)
