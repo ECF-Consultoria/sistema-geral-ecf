@@ -506,6 +506,7 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
     const [syncEmpresa, setSyncEmpresa] = useState(null);
     const [flashMsg, setFlashMsg] = useState(null);
     const [problemaEmpresa, setProblemaEmpresa] = useState(null);
+    const [ativarPendente, setAtivarPendente] = useState(null); // company pendente a ser ativada
 
     useEffect(() => {
         if (flash.success) { setFlashMsg({ type: 'success', text: flash.success }); }
@@ -800,6 +801,79 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
         );
     }
 
+    // ─── Modal: Ativar empresa pendente como POLO ou Assessoria ──────────────────
+    function ModalAtivarPendente({ company, onClose }) {
+        const { data, setData, post, processing } = useForm({ tipo: '' });
+
+        function submit(e) {
+            e.preventDefault();
+            post(route('mlb.empresas.pendente.ativar', company.id), {
+                onSuccess: onClose,
+            });
+        }
+
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+                <div className="card-ecf rounded-2xl w-full max-w-sm p-6 space-y-5">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-white font-bold text-base">Ativar empresa</h2>
+                            <p className="text-white/40 text-[12px] mt-0.5">{company.name}</p>
+                        </div>
+                        <button type="button" onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    {company.notes && (
+                        <div className="rounded-lg border border-ecf-yellow/20 bg-ecf-yellow/[0.04] px-3 py-2.5">
+                            <p className="text-white/40 text-[10px] uppercase font-semibold tracking-wide mb-1">Descrição do Comercial</p>
+                            <p className="text-white/70 text-[12px] leading-snug">{company.notes}</p>
+                        </div>
+                    )}
+
+                    <form onSubmit={submit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { value: 'polos',      label: 'POLO',       sub: 'Cria Implementação automaticamente' },
+                                { value: 'assessoria', label: 'Assessoria', sub: 'Sem Implementação' },
+                            ].map(opt => (
+                                <label key={opt.value} className={cn(
+                                    'flex flex-col gap-1 px-3 py-3 rounded-lg border cursor-pointer transition-colors',
+                                    data.tipo === opt.value
+                                        ? 'border-ecf-yellow/40 bg-ecf-yellow/5'
+                                        : 'border-white/[0.08] bg-white/[0.02] hover:border-white/20'
+                                )}>
+                                    <div className="flex items-center gap-2">
+                                        <input type="radio" name="tipo" value={opt.value}
+                                            checked={data.tipo === opt.value}
+                                            onChange={() => setData('tipo', opt.value)}
+                                            className="accent-ecf-yellow" />
+                                        <span className={cn('text-[13px] font-semibold', data.tipo === opt.value ? 'text-ecf-yellow' : 'text-white/70')}>
+                                            {opt.label}
+                                        </span>
+                                    </div>
+                                    <p className="text-white/30 text-[11px] pl-5">{opt.sub}</p>
+                                </label>
+                            ))}
+                        </div>
+
+                        <div className="flex gap-3 justify-end">
+                            <button type="button" onClick={onClose}
+                                className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white/80 transition-colors">
+                                Cancelar
+                            </button>
+                            <button type="submit" disabled={processing || !data.tipo}
+                                className="px-5 py-2 rounded-lg text-sm font-bold bg-ecf-yellow text-black hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                                {processing ? 'Ativando...' : 'Ativar'}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <AppLayout title="Empresas MLB">
             <div className="flex items-center justify-between mb-6">
@@ -838,6 +912,14 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                 </div>
             )}
 
+            {/* Modal: ativar empresa pendente */}
+            {ativarPendente && (
+                <ModalAtivarPendente
+                    company={ativarPendente}
+                    onClose={() => setAtivarPendente(null)}
+                />
+            )}
+
             {/* Seção Pendentes — companies cadastradas pelo Comercial aguardando o time de Publicação */}
             {empresas_pendentes.length > 0 && (
                 <div className="rounded-2xl border border-ecf-yellow/20 bg-ecf-yellow/[0.03] p-5 mb-6">
@@ -850,26 +932,41 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                     </div>
                     <div className="space-y-2">
                         {empresas_pendentes.map(p => {
-                            const mlbEmpresa = empresas.find(e => e.company_id === p.id);
+                            const mlbEmpresa  = empresas.find(e => e.company_id === p.id);
+                            const ehPublicacao = (Array.isArray(p.service_type) ? p.service_type : []).includes('publicacao');
                             return (
-                                <div key={p.id} className="flex items-center gap-3 rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-2.5">
-                                    <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
-                                    <span className="text-ecf-yellow/60 text-[11px] font-medium">
-                                        {(Array.isArray(p.service_type) ? p.service_type : (p.service_type ? [p.service_type] : []))
-                                            .map(t => ({ polos: 'POLO', assessoria: 'Assessoria', gestao: 'Gestão', publicidade: 'Publicidade', incubadora: 'Incubadora' }[t] || t))
-                                            .join(' + ') || '—'}
-                                    </span>
-                                    <span className="text-white/25 text-[11px]">
-                                        {new Date(p.created_at).toLocaleDateString('pt-BR')}
-                                    </span>
-                                    {mlbEmpresa && (
-                                        <button
-                                            onClick={() => { setEditing(mlbEmpresa); setOpen(true); }}
-                                            className="inline-flex items-center gap-1 text-ecf-yellow text-[11px] font-medium hover:text-ecf-yellow/70 transition-colors whitespace-nowrap"
-                                        >
-                                            <Pencil size={11} />
-                                            Preencher dados
-                                        </button>
+                                <div key={p.id} className="rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-3 space-y-1.5">
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
+                                        <span className="text-ecf-yellow/60 text-[11px] font-medium">
+                                            {(Array.isArray(p.service_type) ? p.service_type : (p.service_type ? [p.service_type] : []))
+                                                .map(t => ({ publicacao: 'Publicação', polos: 'POLO', assessoria: 'Assessoria', gestao: 'Gestão', publicidade: 'Publicidade', incubadora: 'Incubadora' }[t] || t))
+                                                .join(' + ') || '—'}
+                                        </span>
+                                        <span className="text-white/25 text-[11px]">
+                                            {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                                        </span>
+                                        {ehPublicacao && !mlbEmpresa && (
+                                            <button
+                                                onClick={() => setAtivarPendente(p)}
+                                                className="inline-flex items-center gap-1 text-ecf-yellow text-[11px] font-medium hover:text-ecf-yellow/70 transition-colors whitespace-nowrap"
+                                            >
+                                                <PlusCircle size={11} />
+                                                Ativar empresa
+                                            </button>
+                                        )}
+                                        {mlbEmpresa && (
+                                            <button
+                                                onClick={() => { setEditing(mlbEmpresa); setOpen(true); }}
+                                                className="inline-flex items-center gap-1 text-ecf-yellow text-[11px] font-medium hover:text-ecf-yellow/70 transition-colors whitespace-nowrap"
+                                            >
+                                                <Pencil size={11} />
+                                                Preencher dados
+                                            </button>
+                                        )}
+                                    </div>
+                                    {p.notes && (
+                                        <p className="text-white/35 text-[11px] leading-snug pl-0.5 italic">{p.notes}</p>
                                     )}
                                 </div>
                             );

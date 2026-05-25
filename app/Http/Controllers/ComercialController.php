@@ -78,16 +78,10 @@ class ComercialController extends Controller
         $validated = $request->validate([
             'nome'           => 'required|string|max:255',
             'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj',
+            'notes'          => 'nullable|string|max:2000',
             'service_type'   => 'required|array|min:1',
-            'service_type.*' => 'in:polos,assessoria,publicidade,gestao',
+            'service_type.*' => 'in:publicacao,publicidade,gestao,incubadora',
         ]);
-
-        // POLOS e Assessoria são mutuamente exclusivos (ambos criam mlb_empresa)
-        if (in_array('polos', $validated['service_type']) && in_array('assessoria', $validated['service_type'])) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'service_type' => 'Não é possível selecionar POLOS e Assessoria ao mesmo tempo.',
-            ]);
-        }
 
         // (2) Guard de duplicata — verifica companies.name e mlb_empresas.nome
         $existeEmCompanies  = Company::whereRaw('LOWER(name) = LOWER(?)', [$validated['nome']])->exists();
@@ -111,31 +105,11 @@ class ComercialController extends Controller
             $company = Company::create([
                 'name'         => $nome,
                 'cnpj'         => $cnpj,
+                'notes'        => $validated['notes'] ?? null,
                 'service_type' => $types,
                 'status'       => 'pendente',
                 'active'       => true,
             ]);
-
-            // Cria registro MLB se o array incluir um tipo MLB
-            if (in_array('polos', $types)) {
-                $empresa = MlbEmpresa::create([
-                    'nome'       => $nome,
-                    'tipo'       => 'POLO',
-                    'projeto'    => 'POLOS',
-                    'fase'       => 'M0',
-                    'estagio'    => 'Não Listado',
-                    'company_id' => $company->id,
-                    'criado_por' => $userId,
-                ]);
-                $this->criarImplementacaoPolo($empresa);
-            } elseif (in_array('assessoria', $types)) {
-                MlbEmpresa::create([
-                    'nome'       => $nome,
-                    'tipo'       => 'ASSESSORIA',
-                    'company_id' => $company->id,
-                    'criado_por' => $userId,
-                ]);
-            }
         });
 
         // (4) Activity log — fora da transaction para não afetar rollback
@@ -184,44 +158,12 @@ class ComercialController extends Controller
             'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
             'notes'          => 'nullable|string|max:2000',
             'service_type'   => 'required|array|min:1',
-            'service_type.*' => 'in:polos,assessoria,publicidade,gestao',
+            'service_type.*' => 'in:publicacao,polos,assessoria,publicidade,gestao,incubadora',
         ]);
-
-        if (in_array('polos', $validated['service_type']) && in_array('assessoria', $validated['service_type'])) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'service_type' => 'Não é possível selecionar POLOS e Assessoria ao mesmo tempo.',
-            ]);
-        }
 
         $novosTipos = $validated['service_type'];
 
-        DB::transaction(function () use ($company, $validated, $request, $novosTipos) {
-            $company->update($validated);
-
-            // Se incluiu um tipo MLB e ainda não tem mlb_empresa vinculada: cria
-            $temMlb = MlbEmpresa::where('company_id', $company->id)->exists();
-            if (! $temMlb) {
-                if (in_array('polos', $novosTipos)) {
-                    $empresa = MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'POLO',
-                        'projeto'    => 'POLOS',
-                        'fase'       => 'M0',
-                        'estagio'    => 'Não Listado',
-                        'company_id' => $company->id,
-                        'criado_por' => $request->user()->id,
-                    ]);
-                    $this->criarImplementacaoPolo($empresa);
-                } elseif (in_array('assessoria', $novosTipos)) {
-                    MlbEmpresa::create([
-                        'nome'       => $company->name,
-                        'tipo'       => 'ASSESSORIA',
-                        'company_id' => $company->id,
-                        'criado_por' => $request->user()->id,
-                    ]);
-                }
-            }
-        });
+        $company->update($validated);
 
         activity('comercial')
             ->causedBy($request->user())
@@ -270,10 +212,10 @@ class ComercialController extends Controller
     private function resolverSlugsSetores(array $types): array
     {
         $slugs = [];
-        if (array_intersect($types, ['polos', 'assessoria'])) {
+        if (array_intersect($types, ['polos', 'assessoria', 'publicacao'])) {
             $slugs[] = 'publicacao';
         }
-        foreach (array_diff($types, ['polos', 'assessoria']) as $type) {
+        foreach (array_diff($types, ['polos', 'assessoria', 'publicacao']) as $type) {
             $slugs[] = Str::slug($type);
         }
         return array_unique($slugs);

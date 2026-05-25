@@ -10,17 +10,18 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
 const TIPOS = [
-    { value: 'polos',       label: 'Publicação — POLOS' },
-    { value: 'assessoria',  label: 'Publicação — Assessoria' },
+    { value: 'publicacao',  label: 'Publicação' },
     { value: 'publicidade', label: 'Publicidade' },
     { value: 'gestao',      label: 'Gestão' },
 ];
 
 const SERVICE_TYPE_LABELS = {
-    polos: 'POLO', assessoria: 'Assessoria', publicidade: 'Publicidade', gestao: 'Gestão',
+    publicacao: 'Publicação', polos: 'POLO', assessoria: 'Assessoria',
+    publicidade: 'Publicidade', gestao: 'Gestão',
 };
 
 const SERVICE_TYPE_COLORS = {
+    publicacao:  'text-violet-300 bg-violet-950/60 border-violet-500/20',
     polos:       'text-blue-300 bg-blue-950/60 border-blue-500/20',
     assessoria:  'text-purple-300 bg-purple-950/60 border-purple-500/20',
     publicidade: 'text-orange-300 bg-orange-950/60 border-orange-500/20',
@@ -49,10 +50,6 @@ function TypeBadges({ types }) {
 // ─── Checkboxes de tipo de serviço (reutilizado nos dois forms) ───────────────
 
 function TiposCheckbox({ value, onChange, error }) {
-    const temPolos      = value.includes('polos');
-    const temAssessoria = value.includes('assessoria');
-    const conflito      = temPolos && temAssessoria;
-
     function toggle(tipo) {
         onChange(value.includes(tipo) ? value.filter(t => t !== tipo) : [...value, tipo]);
     }
@@ -76,15 +73,9 @@ function TiposCheckbox({ value, onChange, error }) {
                     </label>
                 ))}
             </div>
-            {conflito && (
-                <p className="text-red-400 text-xs">POLOS e Assessoria são mutuamente exclusivos.</p>
-            )}
             {error && <p className="text-red-400 text-xs">{Array.isArray(error) ? error[0] : error}</p>}
-            {value.includes('polos') && !conflito && (
-                <p className="text-white/30 text-[11px] leading-snug">Cria empresa + registro MLB (POLOS) + implementação automaticamente.</p>
-            )}
-            {value.includes('assessoria') && !conflito && (
-                <p className="text-white/30 text-[11px] leading-snug">Cria empresa + registro MLB (Assessoria). Implementação não é criada.</p>
+            {value.includes('publicacao') && (
+                <p className="text-white/30 text-[11px] leading-snug">O time de Publicação escolherá se é POLO ou Assessoria ao receber a empresa.</p>
             )}
         </div>
     );
@@ -110,6 +101,7 @@ function FormularioCriar({ onClose }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         nome:         '',
         cnpj:         '',
+        notes:        '',
         service_type: [],
     });
 
@@ -161,6 +153,18 @@ function FormularioCriar({ onClose }) {
 
             <TiposCheckbox value={data.service_type} onChange={v => setData('service_type', v)} error={errors.service_type} />
 
+            <div className="space-y-1.5">
+                <label className="block text-xs text-white/60 font-medium">
+                    Descrição <span className="text-white/30 text-[11px] font-normal">(opcional — ajuda o time receptor a entender o contexto)</span>
+                </label>
+                <textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={2}
+                    placeholder="Ex: empresa de autopeças do Sul, já teve contato com o João…"
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none',
+                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
+                        errors.notes ? 'border-red-500/50' : 'border-white/[0.08]')} />
+                {errors.notes && <p className="text-red-400 text-xs">{errors.notes}</p>}
+            </div>
+
             <div className="flex items-center justify-end gap-3 pt-1">
                 <button type="button" onClick={onClose}
                     className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white/80 transition-colors">
@@ -207,9 +211,6 @@ function FormularioEditar({ company, onClose }) {
         });
     }
 
-    const novoTipoTemMlb = data.service_type.some(t => ['polos', 'assessoria'].includes(t));
-    const originalTemMlb = (Array.isArray(company.service_type) ? company.service_type : [company.service_type])
-        .some(t => ['polos', 'assessoria'].includes(t));
 
     return (
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
@@ -251,15 +252,9 @@ function FormularioEditar({ company, onClose }) {
 
             <TiposCheckbox value={data.service_type} onChange={v => setData('service_type', v)} error={errors.service_type} />
 
-            {novoTipoTemMlb && !originalTemMlb && (
-                <p className="text-yellow-400/70 text-[11px] leading-snug -mt-2">
-                    Registro MLB será criado automaticamente se não existir.
-                </p>
-            )}
-
             <div className="space-y-1.5">
                 <label className="block text-xs text-white/60 font-medium">
-                    Observações <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                    Descrição / Observações <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
                 </label>
                 <textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={3}
                     placeholder="Notas internas sobre a empresa..."

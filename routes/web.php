@@ -245,6 +245,7 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     // Empresas MLB (Analista / Líder / Gestor)
     Route::get('/empresas',                       [MlbController::class, 'empresas'])->name('empresas');
     Route::post('/empresas',                      [MlbController::class, 'storeEmpresa'])->name('empresas.store');
+    Route::post('/empresas/pendente/{company}/ativar', [MlbController::class, 'ativarEmpresaPendente'])->name('empresas.pendente.ativar');
     Route::put('/empresas/{empresa}',             [MlbController::class, 'updateEmpresa'])->name('empresas.update');
     Route::delete('/empresas/{empresa}',          [MlbController::class, 'destroyEmpresa'])->name('empresas.destroy');
     Route::patch('/empresas/{empresa}/sku',       [MlbController::class, 'marcarSku'])->name('empresas.sku');

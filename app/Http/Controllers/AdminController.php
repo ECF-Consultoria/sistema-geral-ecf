@@ -55,7 +55,7 @@ class AdminController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'service_type'             => 'nullable|array',
-            'service_type.*'           => 'in:polos,assessoria,incubadora,publicidade,gestao',
+            'service_type.*'           => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'            => 'nullable|in:fixo,progressao',
             'contract_start'           => 'nullable|date',
             'contract_end'             => 'nullable|date|after_or_equal:contract_start',
@@ -371,7 +371,7 @@ class AdminController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'service_type'       => 'nullable|array',
-            'service_type.*'     => 'in:polos,assessoria,incubadora,publicidade,gestao',
+            'service_type.*'     => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'      => 'nullable|in:fixo,progressao',
             'contract_start'     => 'nullable|date',
             'contract_end'       => 'nullable|date|after_or_equal:contract_start',

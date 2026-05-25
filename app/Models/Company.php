@@ -50,6 +50,7 @@ class Company extends Model
     public static function labelFromTypes(mixed $types): string
     {
         $map = [
+            'publicacao'  => 'Publicação',
             'polos'       => 'POLO',
             'polo'        => 'POLO',
             'assessoria'  => 'Assessoria',

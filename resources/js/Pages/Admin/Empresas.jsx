@@ -5,10 +5,11 @@ import { Building2, ChevronDown } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 
 const SERVICE_LABELS = {
-    polo: 'POLO', polos: 'POLO', assessoria: 'Assessoria',
+    publicacao: 'Publicação', polo: 'POLO', polos: 'POLO', assessoria: 'Assessoria',
     incubadora: 'Incubadora', publicidade: 'Publicidade', gestao: 'Gestão',
 };
 const SERVICE_COLORS = {
+    publicacao:  'bg-violet-500/10 text-violet-300 border-violet-500/20',
     polo:        'bg-blue-500/10 text-blue-300 border-blue-500/20',
     polos:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
     assessoria:  'bg-purple-500/10 text-purple-300 border-purple-500/20',

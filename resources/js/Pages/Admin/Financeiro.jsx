@@ -7,6 +7,7 @@ import { cn, formatDate } from '@/lib/utils';
 import axios from 'axios';
 
 const SERVICE_LABELS = {
+    publicacao:  'Publicação',
     polos:       'POLO',
     assessoria:  'Assessoria',
     incubadora:  'Incubadora',
@@ -15,6 +16,7 @@ const SERVICE_LABELS = {
 };
 
 const SERVICE_COLORS = {
+    publicacao:  'bg-violet-500/10 text-violet-300 border-violet-500/20',
     polos:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
     assessoria:  'bg-purple-500/10 text-purple-300 border-purple-500/20',
     incubadora:  'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',

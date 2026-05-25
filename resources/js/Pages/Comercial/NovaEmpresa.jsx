@@ -20,10 +20,8 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
 const TIPOS = [
-    { value: 'polos',       label: 'Publicação — POLOS',
-      hint: 'Cria empresa + registro MLB (POLOS) + implementação automaticamente.' },
-    { value: 'assessoria',  label: 'Publicação — Assessoria',
-      hint: 'Cria empresa + registro MLB (Assessoria). Implementação não é criada automaticamente.' },
+    { value: 'publicacao',  label: 'Publicação',
+      hint: 'O time de Publicação escolherá se é POLO ou Assessoria ao receber a empresa.' },
     { value: 'publicidade', label: 'Publicidade',
       hint: 'Cria empresa no módulo de Publicidade. Dados de conta Adman são preenchidos depois.' },
     { value: 'gestao',      label: 'Gestão',
@@ -41,9 +39,6 @@ export default function NovaEmpresa() {
 
     function toggleTipo(val) {
         const cur = data.service_type;
-        // polos e assessoria são mutuamente exclusivos (ambos criam mlb_empresa)
-        if (val === 'polos'      && cur.includes('assessoria')) return;
-        if (val === 'assessoria' && cur.includes('polos'))      return;
         setData('service_type', cur.includes(val) ? cur.filter(t => t !== val) : [...cur, val]);
     }
 
@@ -135,22 +130,18 @@ export default function NovaEmpresa() {
                                 errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
                             )}>
                                 {TIPOS.map(tipo => {
-                                    const checked    = data.service_type.includes(tipo.value);
-                                    const bloqueado  = (tipo.value === 'polos'      && data.service_type.includes('assessoria')) ||
-                                                       (tipo.value === 'assessoria' && data.service_type.includes('polos'));
+                                    const checked = data.service_type.includes(tipo.value);
                                     return (
                                         <label
                                             key={tipo.value}
                                             className={cn(
                                                 'flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors',
-                                                checked    ? 'bg-ecf-yellow/10 border border-ecf-yellow/30' : 'bg-white/[0.03] border border-white/[0.06]',
-                                                bloqueado  && 'opacity-40 cursor-not-allowed'
+                                                checked ? 'bg-ecf-yellow/10 border border-ecf-yellow/30' : 'bg-white/[0.03] border border-white/[0.06]',
                                             )}
                                         >
                                             <input
                                                 type="checkbox"
                                                 checked={checked}
-                                                disabled={bloqueado}
                                                 onChange={() => toggleTipo(tipo.value)}
                                                 className="accent-ecf-yellow w-3.5 h-3.5"
                                             />
@@ -164,15 +155,11 @@ export default function NovaEmpresa() {
                             {errors.service_type && (
                                 <p className="text-red-400 text-xs mt-1">{errors.service_type}</p>
                             )}
-                            {/* Dica contextual para cada tipo selecionado */}
                             {TIPOS.filter(t => data.service_type.includes(t.value)).map(t => (
                                 <p key={t.value} className="text-white/30 text-[11px] leading-snug">
                                     <span className="text-white/50 font-medium">{t.label}:</span> {t.hint}
                                 </p>
                             ))}
-                            {data.service_type.includes('polos') && data.service_type.includes('assessoria') && (
-                                <p className="text-red-400 text-[11px]">POLOS e Assessoria não podem ser combinados.</p>
-                            )}
                         </div>
 
                         {/* Botão de submit */}

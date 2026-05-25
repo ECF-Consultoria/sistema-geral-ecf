@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
+use App\Models\MlbImplementacao;
 use App\Models\MlbTreinamento;
 use App\Models\Publicacao;
 use App\Models\User;
@@ -12,6 +13,7 @@ use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -1522,12 +1524,13 @@ class MlbController extends Controller
 
         // Companies cadastradas pelo Comercial que aguardam complemento de dados pelo time de Publicação
         $empresasPendentes = Company::where(function ($q) {
-                $q->whereJsonContains('service_type', 'polos')
+                $q->whereJsonContains('service_type', 'publicacao')
+                  ->orWhereJsonContains('service_type', 'polos')
                   ->orWhereJsonContains('service_type', 'assessoria');
             })
             ->where('status', 'pendente')
             ->orderBy('created_at', 'desc')
-            ->get(['id', 'name', 'service_type', 'created_at']);
+            ->get(['id', 'name', 'service_type', 'notes', 'created_at']);
 
         return Inertia::render('Mlb/Empresas', [
             'empresas'          => $empresas,
@@ -1540,6 +1543,71 @@ class MlbController extends Controller
             'filters'           => compact('filtEstagio', 'filtFase', 'filtProjeto', 'filtMeu'),
             'empresas_pendentes' => $empresasPendentes,
         ]);
+    }
+
+    /**
+     * Ativa uma company pendente com tipo 'publicacao' como POLO ou Assessoria.
+     * Chamado pelo time de Publicação ao receber uma empresa cadastrada pelo Comercial.
+     *
+     * Cria o registro MlbEmpresa correspondente e, se for POLO, cria a MlbImplementacao.
+     * Não altera o status da Company — isso acontece normalmente ao editar a mlb_empresa
+     * pela primeira vez (updateEmpresa já lida com o status pendente → ativo).
+     */
+    public function ativarEmpresaPendente(Request $request, Company $company)
+    {
+        $this->checkPubAccess('empresas');
+
+        abort_if(
+            MlbEmpresa::where('company_id', $company->id)->exists(),
+            422,
+            'Esta empresa já possui um registro MLB.'
+        );
+
+        $validated = $request->validate([
+            'tipo' => 'required|in:polos,assessoria',
+        ]);
+
+        DB::transaction(function () use ($company, $validated, $request) {
+            if ($validated['tipo'] === 'polos') {
+                $empresa = MlbEmpresa::create([
+                    'nome'       => $company->name,
+                    'tipo'       => 'POLO',
+                    'projeto'    => 'POLOS',
+                    'fase'       => 'M0',
+                    'estagio'    => 'Não Listado',
+                    'company_id' => $company->id,
+                    'criado_por' => $request->user()->id,
+                ]);
+
+                $dados = MlbImplementacao::dadosPadrao();
+                $p     = MlbConfiguracao::implementacaoPadroes();
+                if ($p['tutorial_intro']) {
+                    $dados['tutorial_intro'] = $p['tutorial_intro'];
+                }
+                if (!empty($p['tutoriais'])) {
+                    $dados['tutoriais'] = array_merge($dados['tutoriais'], $p['tutoriais']);
+                }
+                if (!empty($p['links_admin_extra'])) {
+                    $dados['links_admin']['programa_decola'] = $p['links_admin_extra']['programa_decola'] ?? '';
+                }
+                MlbImplementacao::create([
+                    'empresa_id' => $empresa->id,
+                    'token'      => Str::random(48),
+                    'dados'      => $dados,
+                ]);
+            } else {
+                MlbEmpresa::create([
+                    'nome'       => $company->name,
+                    'tipo'       => 'ASSESSORIA',
+                    'company_id' => $company->id,
+                    'criado_por' => $request->user()->id,
+                ]);
+            }
+        });
+
+        $label = $validated['tipo'] === 'polos' ? 'POLO (com Implementação)' : 'Assessoria';
+
+        return back()->with('success', '"' . $company->name . '" ativada como ' . $label . '.');
     }
 
     public function storeEmpresa(Request $request)
