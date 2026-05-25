@@ -88,7 +88,7 @@ export default function CompanyShow({ company }) {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                         { label: 'TACOS', value: latestMetric?.tacos ? formatPercent(latestMetric.tacos) : '—', color: 'text-ecf-yellow' },
-                        { label: 'Faturamento', value: latestMetric?.revenue ? formatCurrency(latestMetric.revenue) : '—', color: 'text-blue-400' },
+                        { label: 'Faturamento (30d)', value: company.revenue_30d ? formatCurrency(company.revenue_30d) : '—', color: 'text-blue-400' },
                         { label: 'NPS Médio', value: avgNps ? avgNps : '—', color: avgNps >= 9 ? 'text-emerald-400' : avgNps >= 7 ? 'text-ecf-yellow' : 'text-red-400' },
                         { label: 'Absenteísmo', value: completedMeetings.length > 0 ? `${absenteeism}%` : '—', color: 'text-orange-400' },
                     ].map(k => (

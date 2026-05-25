@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -13,8 +14,21 @@ class CompanyController extends Controller
     {
         $companies = Company::with(['consultor', 'estrategista', 'latestMetrics'])
             ->orderBy('name')
-            ->get()
-            ->map(fn($c) => [
+            ->get();
+
+        // Faturamento bruto (grossBilling) dos últimos 30 dias por empresa —
+        // antes a UI mostrava latestMetrics.revenue (= apenas 1 DIA, geralmente
+        // ontem), o que divergia drasticamente da dashboard Adman que mostra
+        // o acumulado. Agregação 1-query em vez de N+1.
+        $revenue30d = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
+
+        $companies = $companies->map(fn($c) => [
                 'id'               => $c->id,
                 'name'             => $c->name,
                 'cnpj'             => $c->cnpj,
@@ -27,7 +41,10 @@ class CompanyController extends Controller
                 'consultor'        => $c->consultor->first()?->only(['id', 'name']),
                 'estrategista'           => $c->estrategista->first()?->only(['id', 'name']),
                 'tacos'            => $c->latestMetrics?->tacos,
-                'revenue'          => $c->latestMetrics?->revenue,
+                // 30d substituiu o latest pra bater com a Adman. tacos/margem
+                // permanecem no latest porque são razões (não somam) e o "agora"
+                // tem mais sentido nessas métricas.
+                'revenue_30d'      => (float) ($revenue30d[$c->id] ?? 0),
                 'margin_pct'       => $c->latestMetrics?->contribution_margin_pct,
             ]);
 
@@ -68,6 +85,14 @@ class CompanyController extends Controller
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(30),
         ]);
 
+        // Faturamento bruto dos últimos 30 dias — KPI principal alinhado com a
+        // dashboard Adman. Antes a UI mostrava apenas o último registro (1 dia).
+        $revenue30d = (float) AdmanMetric::query()
+            ->where('company_id', $company->id)
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->sum('revenue');
+
         return Inertia::render('Companies/Show', [
             'company' => [
                 'id'               => $company->id,
@@ -79,6 +104,7 @@ class CompanyController extends Controller
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
+                'revenue_30d'      => $revenue30d,
                 'consultor'        => $company->consultor->map->only(['id', 'name'])->values(),
                 'estrategista'           => $company->estrategista->map->only(['id', 'name'])->values(),
                 'goals'            => $company->goals->map(fn($g) => [
