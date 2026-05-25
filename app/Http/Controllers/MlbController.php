@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\SyncTodasVendasAdmanJob;
+use App\Models\Company;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbTreinamento;
@@ -1519,15 +1520,22 @@ class MlbController extends Controller
             'projeto' => $excluiFor('projeto'),
         ];
 
+        // Companies cadastradas pelo Comercial que aguardam complemento de dados pelo time de Publicação
+        $empresasPendentes = Company::whereIn('service_type', ['polos', 'assessoria'])
+            ->where('status', 'pendente')
+            ->orderBy('created_at', 'desc')
+            ->get(['id', 'name', 'service_type', 'created_at']);
+
         return Inertia::render('Mlb/Empresas', [
-            'empresas'    => $empresas,
-            'publicadores' => $publicadores,
-            'estagiosDb'  => $estagiosDb,
-            'fasesDb'     => $fasesDb,
-            'polosDb'     => $polosDb,
-            'projetosDb'  => $projetosDb,
-            'excluidos'   => $excluidos,
-            'filters'     => compact('filtEstagio', 'filtFase', 'filtProjeto', 'filtMeu'),
+            'empresas'          => $empresas,
+            'publicadores'      => $publicadores,
+            'estagiosDb'        => $estagiosDb,
+            'fasesDb'           => $fasesDb,
+            'polosDb'           => $polosDb,
+            'projetosDb'        => $projetosDb,
+            'excluidos'         => $excluidos,
+            'filters'           => compact('filtEstagio', 'filtFase', 'filtProjeto', 'filtMeu'),
+            'empresas_pendentes' => $empresasPendentes,
         ]);
     }
 

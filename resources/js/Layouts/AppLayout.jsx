@@ -36,6 +36,8 @@ const NAV_ITEMS = [
     // ── Dev (interno) ───────────────────────────────────────────────────────
     { label: 'Log',             routeName: 'activity-log.index',  page: 'ActivityLog',         icon: ScrollText, permission: 'sistema.activity_log',    devSeparatorBefore: true },
     { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,      permission: 'sistema.desenvolvimento' },
+    // ── Comercial ───────────────────────────────────────────────────────────
+    { label: 'Cadastro de Empresas', routeName: 'comercial.empresas.novo', page: 'Comercial/NovaEmpresa', icon: PlusCircle, permission: 'comercial.cadastrar_empresa', comercialSeparatorBefore: true },
     // ── Publicações MLB ─────────────────────────────────────────────────────
     { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard',     mlbSeparatorBefore: true },
     { label: 'Projetos',        routeName: 'mlb.projetos',     page: 'Mlb/Projetos',     icon: FolderKanban,   permission: 'mlb.projetos' },
@@ -131,6 +133,13 @@ export default function AppLayout({ children, title }) {
                     const active = isActive(item.page);
                     return (
                         <div key={item.routeName}>
+                            {item.comercialSeparatorBefore && (!collapsed || mobile) && (
+                                <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Comercial</span>
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                </div>
+                            )}
                             {item.leadSeparatorBefore && (!collapsed || mobile) && (
                                 <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
                                     <div className="h-px flex-1 bg-white/[0.06]" />

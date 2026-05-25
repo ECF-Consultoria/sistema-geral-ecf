@@ -20,6 +20,7 @@ class CompanyController extends Controller
                 'cnpj'             => $c->cnpj,
                 'segment'          => $c->segment,
                 'active'           => $c->active,
+                'status'           => $c->status,
                 'notes'            => $c->notes,
                 'adman_account_id' => $c->adman_account_id,
                 'adman_store_id'   => $c->adman_store_id,
@@ -50,10 +51,17 @@ class CompanyController extends Controller
                 ->values()
             : collect();
 
+        // Companies cadastradas pelo Comercial que aguardam complemento de dados por Publicidade/Gestão
+        $empresasPendentes = Company::whereIn('service_type', ['publicidade', 'gestao'])
+            ->where('status', 'pendente')
+            ->orderBy('created_at', 'desc')
+            ->get(['id', 'name', 'service_type', 'created_at']);
+
         return Inertia::render('Companies/Index', [
-            'companies'     => $companies,
-            'users'         => $users,
-            'estrategistas' => $estrategistas,
+            'companies'          => $companies,
+            'users'              => $users,
+            'estrategistas'      => $estrategistas,
+            'empresas_pendentes' => $empresasPendentes,
         ]);
     }
 
