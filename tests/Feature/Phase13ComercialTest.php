@@ -13,6 +13,7 @@ use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
+use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
 /**
@@ -96,6 +97,7 @@ class Phase13ComercialTest extends TestCase
     /**
      * COM-02: Admin acessa GET /comercial/empresas/novo via short-circuit isAdmin()
      * sem precisar de permissão explícita no setor.
+     * Usa assertInertia() para validar o componente sem depender do manifest Vite.
      */
     public function test_admin_acessa_sem_permissao_explicita(): void
     {
@@ -103,7 +105,7 @@ class Phase13ComercialTest extends TestCase
 
         $response = $this->actingAs($user)->get('/comercial/empresas/novo');
 
-        $response->assertStatus(200);
+        $response->assertInertia(fn (AssertableInertia $page) => $page->component('Comercial/NovaEmpresa'));
     }
 
     // ─── Testes de Validação ──────────────────────────────────────────────────

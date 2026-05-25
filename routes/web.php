@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\Admin\CargoController;
 use App\Http\Controllers\Admin\SetorController;
 use App\Http\Controllers\Admin\SetorGoalController;
@@ -89,6 +90,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/notificacoes/nova',  [NotificacaoController::class, 'nova'])->name('notificacoes.nova');
         Route::post('/notificacoes/nova', [NotificacaoController::class, 'criar'])->name('notificacoes.criar');
     });
+
+    // Módulo Comercial — cadastro centralizado de empresas (Phase 13)
+    // Admin sempre tem acesso via short-circuit isAdmin(); membros do setor Comercial
+    // ganham via setor_permissoes com permission_key='comercial.cadastrar_empresa'.
+    Route::middleware('permission:comercial.cadastrar_empresa')
+         ->prefix('comercial')
+         ->name('comercial.')
+         ->group(function () {
+             Route::get('/empresas/novo',  [ComercialController::class, 'index'])->name('empresas.novo');
+             Route::post('/empresas',      [ComercialController::class, 'store'])->name('empresas.store');
+         });
 
     // Reuniões (todos)
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');

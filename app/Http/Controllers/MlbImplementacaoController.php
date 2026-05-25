@@ -189,22 +189,14 @@ class MlbImplementacaoController extends Controller
                 $msg = 'Implementação criada com sucesso.';
             }
 
-            $dados = MlbImplementacao::dadosPadrao();
-            $p = MlbConfiguracao::implementacaoPadroes();
-            if ($p['tutorial_intro'])     $dados['tutorial_intro'] = $p['tutorial_intro'];
-            if (!empty($p['tutoriais']))  $dados['tutoriais']  = array_merge($dados['tutoriais'],  $p['tutoriais']);
-            if (!empty($p['links_admin_extra'])) {
-                $dados['links_admin']['programa_decola'] = $p['links_admin_extra']['programa_decola'] ?? '';
-            }
-            if ($existing && !empty($empresa->gmail)) {
-                $dados['links_admin']['gmail_colaborador'] = $empresa->gmail;
-            }
+            $impl = $this->criarImplementacaoPolo($empresa);
 
-            MlbImplementacao::create([
-                'empresa_id' => $empresa->id,
-                'token'      => Str::random(48),
-                'dados'      => $dados,
-            ]);
+            // Preenche gmail do colaborador se vinculando empresa existente com gmail configurado
+            if ($existing && !empty($empresa->gmail)) {
+                $dados                                   = $impl->dados;
+                $dados['links_admin']['gmail_colaborador'] = $empresa->gmail;
+                $impl->update(['dados' => $dados]);
+            }
 
             activity('implementacao')
                 ->causedBy($request->user())
@@ -397,5 +389,40 @@ class MlbImplementacaoController extends Controller
         }
 
         return response()->json(['ok' => true, 'progresso' => $impl->progresso()]);
+    }
+
+    // ─── Métodos privados ────────────────────────────────────────────────────
+
+    /**
+     * Cria uma MlbImplementacao para uma empresa POLO com os dados padrão
+     * configurados em MlbConfiguracao::implementacaoPadroes().
+     *
+     * Extraído de criar() para reutilização em ComercialController (D-20 do CONTEXT.md).
+     * O caller fica responsável por atualizar campos extras (ex: gmail_colaborador)
+     * se necessário após a criação.
+     *
+     * @param MlbEmpresa $empresa Empresa POLO já persistida.
+     * @return MlbImplementacao
+     */
+    private function criarImplementacaoPolo(MlbEmpresa $empresa): MlbImplementacao
+    {
+        $dados = MlbImplementacao::dadosPadrao();
+        $p     = MlbConfiguracao::implementacaoPadroes();
+
+        if ($p['tutorial_intro']) {
+            $dados['tutorial_intro'] = $p['tutorial_intro'];
+        }
+        if (!empty($p['tutoriais'])) {
+            $dados['tutoriais'] = array_merge($dados['tutoriais'], $p['tutoriais']);
+        }
+        if (!empty($p['links_admin_extra'])) {
+            $dados['links_admin']['programa_decola'] = $p['links_admin_extra']['programa_decola'] ?? '';
+        }
+
+        return MlbImplementacao::create([
+            'empresa_id' => $empresa->id,
+            'token'      => Str::random(48),
+            'dados'      => $dados,
+        ]);
     }
 }
