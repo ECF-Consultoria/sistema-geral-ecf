@@ -35,25 +35,26 @@ class AdmanService
 
     public function syncAll(): array
     {
-        $companies = Company::where('active', true)
+        $results = ['success' => 0, 'failed' => 0, 'skipped' => 0];
+
+        // chunk() evita OOM ao processar centenas de empresas — cada lote é coletado pela GC antes do próximo
+        Company::where('active', true)
             ->where(function ($q) {
                 $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
                   ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
             })
-            ->get();
-
-        $results = ['success' => 0, 'failed' => 0, 'skipped' => 0];
-
-        foreach ($companies as $company) {
-            try {
-                $this->syncCompany($company);
-                $results['success']++;
-                usleep(700_000);
-            } catch (\Throwable $e) {
-                Log::error("[Adman] Erro empresa {$company->id} ({$company->name}): " . $e->getMessage());
-                $results['failed']++;
-            }
-        }
+            ->chunk(20, function ($companies) use (&$results) {
+                foreach ($companies as $company) {
+                    try {
+                        $this->syncCompany($company);
+                        $results['success']++;
+                        usleep(700_000);
+                    } catch (\Throwable $e) {
+                        Log::error("[Adman] Erro empresa {$company->id} ({$company->name}): " . $e->getMessage());
+                        $results['failed']++;
+                    }
+                }
+            });
 
         return $results;
     }

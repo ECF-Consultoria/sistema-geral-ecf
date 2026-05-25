@@ -23,6 +23,9 @@ class AdmanController extends Controller
                 return response()->json(['message' => $e->getMessage()], 422);
             }
         } else {
+            // Sync completo: eleva limites para processar centenas de empresas sem OOM/timeout
+            ini_set('memory_limit', '512M');
+            set_time_limit(0);
             $results = $adman->syncAll();
         }
 
