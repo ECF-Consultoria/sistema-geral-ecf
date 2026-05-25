@@ -47,8 +47,13 @@ class CompanyController extends Controller
             if ($cached !== null) {
                 $revenue30d[$c->id] = $cached;
             } else {
+                // null = miss real OU erro cacheado (Adman recusou). Fallback DB
+                // em ambos os casos; mas só dispara job se for miss real, pra
+                // não martelar empresas que estão dando 429/500 cronicamente.
                 $revenue30d[$c->id] = (float) ($sumDb[$c->id] ?? 0);
-                $missingCache = true;
+                if (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFrom, $dateTo)) {
+                    $missingCache = true;
+                }
             }
         }
 

@@ -62,10 +62,20 @@ export default function CompanyShow({ company }) {
                         </div>
                         <div>
                             <h1 className="text-white font-display font-extrabold text-2xl tracking-tight">{company.name}</h1>
-                            <div className="flex items-center gap-2 mt-1">
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
                                 {company.segment && <span className="text-white/40 text-sm">{company.segment}</span>}
                                 {company.segment && company.cnpj && <span className="text-white/20">·</span>}
                                 {company.cnpj && <span className="text-white/40 text-sm">{company.cnpj}</span>}
+                                {company.adman_account_id && (
+                                    <>
+                                        <span className="text-white/20">·</span>
+                                        {/* cust_id da Adman em destaque — analistas precisam dele
+                                            pra cruzar dados manualmente com a dashboard Adman. */}
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-mono px-2 py-0.5 rounded bg-ecf-yellow/10 border border-ecf-yellow/20 text-ecf-yellow/80">
+                                            cust {company.adman_account_id}
+                                        </span>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

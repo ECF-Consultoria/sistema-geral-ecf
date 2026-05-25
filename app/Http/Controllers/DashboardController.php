@@ -105,7 +105,9 @@ class DashboardController extends Controller
                 $revenue30dByCompany[$c->id] = $cached;
             } else {
                 $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
-                $missingCache = true;
+                if (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFrom30d, $dateTo30d)) {
+                    $missingCache = true;
+                }
             }
         }
         if ($missingCache) {
@@ -331,7 +333,11 @@ class DashboardController extends Controller
                 $revenue30dByCompany[$c->id] = $cached;
             } else {
                 $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
-                $missingCache = true;
+                // Só dispara job se for miss real (sem entrada no cache).
+                // Erro cacheado = já tentou recente, não vale martelar.
+                if (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFrom30d, $dateTo30d)) {
+                    $missingCache = true;
+                }
             }
         }
         if ($missingCache) {

@@ -232,25 +232,47 @@ class AdmanService
      * latência da Adman (~200-500ms/chamada). Fail-open: erro → null (UI
      * mostra '—' em vez de quebrar).
      */
-    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 30): ?float
+    /**
+     * Sentinel usado quando a Adman retorna erro persistente (429/500/etc).
+     * Cachear o erro evita: (a) martelar a API estourada, (b) re-tentativa
+     * em toda request da UI. TTL curto (10min) permite recuperação rápida
+     * quando a empresa volta a responder.
+     */
+    private const ERROR_SENTINEL = '__error__';
+    private const ERROR_CACHE_MINUTES = 10;
+
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60): ?float
     {
         $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
 
-        return Cache::remember($cacheKey, now()->addMinutes($cacheMinutes), function () use ($custId, $dateFrom, $dateTo) {
-            try {
-                // fetchPerformance retorna o JSON completo (com items[] que
-                // pode ser grande). Pra liberar memória, extrai o valor e
-                // unset+gc imediatamente.
-                $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo);
-                $value = $data['summarizedData']['grossBilling']['value'] ?? null;
-                unset($data);
-                gc_collect_cycles();
-                return $value !== null ? (float) $value : null;
-            } catch (\Throwable $e) {
-                Log::warning("[Adman/GrossBilling] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached === self::ERROR_SENTINEL ? null : (float) $cached;
+        }
+
+        try {
+            // fetchPerformance retorna o JSON completo (com items[] grande).
+            // unset+gc imediato libera a memória — necessário pra job batch
+            // não acumular 50 responses na memória do worker.
+            $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo);
+            $value = $data['summarizedData']['grossBilling']['value'] ?? null;
+            unset($data);
+            gc_collect_cycles();
+
+            if ($value === null) {
+                // Resposta OK mas sem grossBilling — cacheia como erro pra
+                // não voltar a chamar essa empresa por 10min.
+                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
                 return null;
             }
-        });
+
+            Cache::put($cacheKey, (float) $value, now()->addMinutes($cacheMinutes));
+            return (float) $value;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/GrossBilling] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
     }
 
     /**
@@ -259,14 +281,31 @@ class AdmanService
      * (response Adman traz items[] grande × N empresas) e travaria o request.
      *
      * O cache é pre-aquecido pelo RefreshGrossBillingCacheJob (cron 30min).
-     * Cache miss = aguardando 1ª execução do job → caller decide fallback
-     * (geralmente SUM(adman_metrics.revenue) do DB, aproximação aceitável).
+     * Retorna null em 3 cenários:
+     *  - Cache miss (job nunca rodou para essa empresa)
+     *  - Cache hit com ERROR_SENTINEL (Adman retornou erro persistente)
+     *  - Cache hit com null (não deveria acontecer, mas seguro)
+     * Use hasCachedEntry() pra distinguir "miss" de "erro" no controller.
      */
     public function getCachedGrossBilling(string $custId, string $dateFrom, string $dateTo): ?float
     {
         $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
         $value    = Cache::get($cacheKey);
-        return $value !== null ? (float) $value : null;
+        if ($value === null || $value === self::ERROR_SENTINEL) return null;
+        return (float) $value;
+    }
+
+    /**
+     * True se existe QUALQUER entrada no cache (valor real ou ERROR_SENTINEL).
+     * Permite controllers diferenciarem:
+     *  - hasCachedEntry=false → job nunca rodou pra empresa → dispatch job
+     *  - hasCachedEntry=true mas getCachedGrossBilling=null → erro cacheado
+     *    → NÃO dispatch (já tentou recentemente, evita martelar)
+     */
+    public function hasCachedEntry(string $custId, string $dateFrom, string $dateTo): bool
+    {
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        return Cache::has($cacheKey);
     }
 
     /**

@@ -176,7 +176,9 @@ class AdminController extends Controller
                 $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFromStr, $dateToStr);
                 if ($cached !== null) {
                     $fatAtual = $cached;
-                } else {
+                } elseif (!$this->adman->hasCachedEntry($c->adman_account_id, $dateFromStr, $dateToStr)) {
+                    // Só conta como miss real se não tem nada no cache
+                    // (cache com ERROR_SENTINEL = já tentou, não martelar).
                     $missingCache = true;
                 }
             }
@@ -491,7 +493,9 @@ class AdminController extends Controller
             if ($isMesAtual && $emp->adman_account_id) {
                 $cached = $this->adman->getCachedGrossBilling($emp->adman_account_id, $dateFromStr, $dateToStr);
                 if ($cached !== null) return $cached;
-                $missingCache = true;
+                if (!$this->adman->hasCachedEntry($emp->adman_account_id, $dateFromStr, $dateToStr)) {
+                    $missingCache = true;
+                }
             }
             // Fallback: SUM do DB
             $m = $metricas->get($emp->id);
