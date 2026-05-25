@@ -37,7 +37,7 @@ const NAV_ITEMS = [
     { label: 'Log',             routeName: 'activity-log.index',  page: 'ActivityLog',         icon: ScrollText, permission: 'sistema.activity_log',    devSeparatorBefore: true },
     { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,      permission: 'sistema.desenvolvimento' },
     // ── Comercial ───────────────────────────────────────────────────────────
-    { label: 'Cadastro de Empresas', routeName: 'comercial.empresas.novo', page: 'Comercial/NovaEmpresa', icon: PlusCircle, permission: 'comercial.cadastrar_empresa', comercialSeparatorBefore: true },
+    { label: 'Empresas', routeName: 'comercial.empresas', page: 'Comercial/Empresas', icon: Building2, permission: 'comercial.cadastrar_empresa', comercialSeparatorBefore: true },
     // ── Publicações MLB ─────────────────────────────────────────────────────
     { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard',     mlbSeparatorBefore: true },
     { label: 'Projetos',        routeName: 'mlb.projetos',     page: 'Mlb/Projetos',     icon: FolderKanban,   permission: 'mlb.projetos' },

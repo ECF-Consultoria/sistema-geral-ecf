@@ -98,8 +98,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
          ->prefix('comercial')
          ->name('comercial.')
          ->group(function () {
-             Route::get('/empresas/novo',  [ComercialController::class, 'index'])->name('empresas.novo');
-             Route::post('/empresas',      [ComercialController::class, 'store'])->name('empresas.store');
+             Route::get('/empresas',            [ComercialController::class, 'empresas'])->name('empresas');
+             Route::get('/empresas/novo',       [ComercialController::class, 'index'])->name('empresas.novo');
+             Route::post('/empresas',           [ComercialController::class, 'store'])->name('empresas.store');
+             Route::put('/empresas/{company}',  [ComercialController::class, 'update'])->name('empresas.update');
          });
 
     // Reuniões (todos)

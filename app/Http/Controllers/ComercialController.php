@@ -29,17 +29,32 @@ use Inertia\Inertia;
 class ComercialController extends Controller
 {
     /**
-     * Exibe o formulário de cadastro de nova empresa.
+     * Lista todas as empresas + expõe o formulário de cadastro embutido.
      * Acesso: users com 'comercial.cadastrar_empresa' ou admin.
      */
-    public function index()
+    public function empresas()
     {
         abort_unless(
             auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
             403
         );
 
-        return Inertia::render('Comercial/NovaEmpresa', []);
+        $companies = Company::where('active', true)
+            ->orderByRaw("CASE WHEN status = 'pendente' THEN 0 ELSE 1 END")
+            ->orderBy('name')
+            ->get(['id', 'name', 'cnpj', 'service_type', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes']);
+
+        return Inertia::render('Comercial/Empresas', [
+            'companies' => $companies,
+        ]);
+    }
+
+    /**
+     * @deprecated Mantido apenas para compatibilidade de redirect; use empresas().
+     */
+    public function index()
+    {
+        return redirect()->route('comercial.empresas');
     }
 
     /**
@@ -159,6 +174,34 @@ class ComercialController extends Controller
         }
 
         return back()->with('success', 'Empresa "' . $company->name . '" cadastrada com sucesso.');
+    }
+
+    /**
+     * Atualiza campos básicos de uma empresa existente.
+     * Campos editáveis: name, cnpj, notes.
+     * service_type não é editável após criação (mudaria os vínculos MLB).
+     */
+    public function update(Request $request, Company $company)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+
+        $validated = $request->validate([
+            'name'  => 'required|string|max:255',
+            'cnpj'  => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
+            'notes' => 'nullable|string|max:2000',
+        ]);
+
+        $company->update($validated);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $company->name])
+            ->log('Empresa editada pelo Comercial: "' . $company->name . '"');
+
+        return back()->with('success', 'Empresa "' . $company->name . '" atualizada com sucesso.');
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
