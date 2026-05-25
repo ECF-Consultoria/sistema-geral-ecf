@@ -38,6 +38,7 @@ class MlbEmpresa extends Model
         'prazo_estagio1', 'prazo_estagio2', 'prazo_estagio3',
         'encerramento', 'criado_por',
         'problema', 'problema_nota', 'problema_em',
+        'company_id',
     ];
 
     protected $casts = [
