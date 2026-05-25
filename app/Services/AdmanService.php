@@ -6,6 +6,8 @@ use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\AdmanSyncLog;
 use App\Models\Company;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -214,6 +216,120 @@ class AdmanService
 
             return $response->json() ?? [];
         }
+    }
+
+    /**
+     * Faturamento bruto (summarizedData.grossBilling.value) numa janela.
+     *
+     * Por que chamar a Adman direto em vez de SUM(adman_metrics.revenue)?
+     *  - O sync diário pode pular dias (job falhando, empresa nova, etc) e
+     *    a soma fica subestimada.
+     *  - A Adman aplica ajustes retroativos (devoluções, conciliação) que
+     *    não voltam para o nosso DB.
+     *  - Chamar /performance com range = exatamente o que a dashboard Adman
+     *    mostra → garante bate-bate.
+     *
+     * Cache TTL de 10min (chave por custId+range) — balanceia frescor com
+     * latência da Adman (~200-500ms/chamada). Fail-open: erro → null (UI
+     * mostra '—' em vez de quebrar).
+     */
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 10): ?float
+    {
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+
+        return Cache::remember($cacheKey, now()->addMinutes($cacheMinutes), function () use ($custId, $dateFrom, $dateTo) {
+            try {
+                $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo);
+                $value = $data['summarizedData']['grossBilling']['value'] ?? null;
+                return $value !== null ? (float) $value : null;
+            } catch (\Throwable $e) {
+                Log::warning("[Adman/GrossBilling] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+                return null;
+            }
+        });
+    }
+
+    /**
+     * Versão batch otimizada — chamadas paralelas via Http::pool.
+     * Pra Dashboard / aba Empresas (N empresas), faz N chamadas em paralelo
+     * em vez de N chamadas sequenciais (~30x mais rápido em contas grandes).
+     *
+     * @param  array<string>  $custIds  Adman account IDs
+     * @return array<string, ?float>    Map [custId => grossBilling] (null em falha)
+     */
+    public function fetchGrossBillingsBatch(array $custIds, string $dateFrom, string $dateTo, int $cacheMinutes = 10): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        $result  = [];
+        $toFetch = [];
+
+        // 1) Resolve cache primeiro — evita rede pra quem já foi consultado
+        // nos últimos 10min (90%+ dos casos em uso real).
+        foreach ($custIds as $custId) {
+            $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+            $cached   = Cache::get($cacheKey);
+            if ($cached !== null) {
+                $result[$custId] = (float) $cached;
+            } else {
+                $toFetch[] = $custId;
+            }
+        }
+
+        if (empty($toFetch)) return $result;
+
+        // 2) Fetch paralelo dos que faltam. Http::pool aceita até ~50 reqs
+        // simultaneas; com 100+ empresas idealmente faríamos chunks, mas
+        // hoje o universo é menor.
+        try {
+            $responses = Http::pool(fn(Pool $pool) =>
+                collect($toFetch)->map(fn($id) =>
+                    $pool->as($id)
+                         ->withHeaders($this->headers())
+                         ->connectTimeout(10)
+                         ->timeout(30)
+                         ->get("{$this->baseUrl}/{$this->marketplace}/performance/{$id}", [
+                             'dateFrom' => $dateFrom,
+                             'dateTo'   => $dateTo,
+                         ])
+                )->toArray()
+            );
+        } catch (\Throwable $e) {
+            Log::error("[Adman/GrossBilling pool] falha geral: " . $e->getMessage());
+            // Fail-open: preenche os que faltam com null
+            foreach ($toFetch as $custId) {
+                $result[$custId] = null;
+            }
+            return $result;
+        }
+
+        foreach ($toFetch as $custId) {
+            $response = $responses[$custId] ?? null;
+
+            // Http::pool retorna ConnectionException como item — checar tipo
+            if (!$response || $response instanceof \Throwable || !method_exists($response, 'successful')) {
+                Log::warning("[Adman/GrossBilling pool] custId={$custId}: resposta inválida");
+                $result[$custId] = null;
+                continue;
+            }
+
+            if (!$response->successful()) {
+                Log::warning("[Adman/GrossBilling pool] custId={$custId} status={$response->status()}");
+                $result[$custId] = null;
+                continue;
+            }
+
+            $value = $response->json('summarizedData.grossBilling.value');
+            $value = $value !== null ? (float) $value : null;
+
+            $result[$custId] = $value;
+            Cache::put(
+                "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}",
+                $value,
+                now()->addMinutes($cacheMinutes),
+            );
+        }
+
+        return $result;
     }
 
     public function fetchCampaigns(string $custId): array

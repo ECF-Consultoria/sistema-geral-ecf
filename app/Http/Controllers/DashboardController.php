@@ -10,12 +10,15 @@ use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\Sugador;
 use App\Models\User;
+use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    public function __construct(private AdmanService $adman) {}
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -77,17 +80,19 @@ class DashboardController extends Controller
             ->orderBy('reference_date')
             ->get();
 
-        // Faturamento 30d rolling por empresa — independente do filtro de
-        // período da Dashboard, a tabela "Performance por empresa" sempre
-        // mostra 30 dias pra bater com a aba Empresas e a dashboard Adman.
-        // Antes a tabela usava latestMetrics.revenue (= 1 DIA) e divergia.
-        $revenue30dByCompany = AdmanMetric::query()
-            ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
+        // Faturamento 30d por empresa — chamada DIRETA à Adman batch paralelo
+        // (cache 10min). Indexado por adman_account_id (custId) — não por
+        // company_id. SUM(adman_metrics.revenue) foi removido porque divergia
+        // da dashboard Adman (sync diário podia pular dias e Adman aplica
+        // ajustes retroativos não-propagados pro DB).
+        $custIds = $companies->pluck('adman_account_id')
+            ->filter(fn($id) => !empty($id))
+            ->all();
+        $revenue30dByCustId = $this->adman->fetchGrossBillingsBatch(
+            $custIds,
+            now()->subDays(30)->toDateString(),
+            now()->toDateString(),
+        );
 
         $revenueChart = $metrics->groupBy('reference_date')
             ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'revenue' => $g->sum('revenue')])
@@ -219,10 +224,8 @@ class DashboardController extends Controller
                 'id'       => $c->id,
                 'name'     => $c->name,
                 'tacos'    => $c->latestMetrics?->tacos,
-                // revenue agora é soma dos últimos 30 dias (bate com a aba
-                // Empresas e dashboard Adman). Antes era latestMetrics.revenue
-                // (= 1 dia) e divergia.
-                'revenue'  => (float) ($revenue30dByCompany[$c->id] ?? 0),
+                // revenue 30d via chamada direta à Adman (indexado por custId)
+                'revenue'  => (float) ($revenue30dByCustId[$c->adman_account_id] ?? 0),
                 'margin'   => $c->latestMetrics?->contribution_margin_pct,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
@@ -286,14 +289,15 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
-        // 30d fixo pra "Faturamento por empresa" — mesma motivação do adminDashboard.
-        $revenue30dByCompany = AdmanMetric::query()
-            ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
+        // 30d via chamada direta à Adman — mesma motivação do adminDashboard.
+        $custIds = $companies->pluck('adman_account_id')
+            ->filter(fn($id) => !empty($id))
+            ->all();
+        $revenue30dByCustId = $this->adman->fetchGrossBillingsBatch(
+            $custIds,
+            now()->subDays(30)->toDateString(),
+            now()->toDateString(),
+        );
 
         $npsResponses = NpsSurvey::with('response')
             ->whereIn('company_id', $companies->pluck('id'))
@@ -335,8 +339,8 @@ class DashboardController extends Controller
                 'id' => $c->id,
                 'name' => $c->name,
                 'tacos' => $c->latestMetrics?->tacos,
-                // revenue = soma últimos 30d (vs latestMetrics.revenue antigo = 1 dia)
-                'revenue' => (float) ($revenue30dByCompany[$c->id] ?? 0),
+                // revenue 30d via chamada direta à Adman
+                'revenue' => (float) ($revenue30dByCustId[$c->adman_account_id] ?? 0),
                 'goals' => $c->goals->where('active', true)->values(),
             ]),
             'my_surveys' => $myNpsSurveys,

@@ -2,31 +2,34 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\User;
+use App\Services\AdmanService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class CompanyController extends Controller
 {
+    public function __construct(private AdmanService $adman) {}
+
     public function index()
     {
         $companies = Company::with(['consultor', 'estrategista', 'latestMetrics'])
             ->orderBy('name')
             ->get();
 
-        // Faturamento bruto (grossBilling) dos últimos 30 dias por empresa —
-        // antes a UI mostrava latestMetrics.revenue (= apenas 1 DIA, geralmente
-        // ontem), o que divergia drasticamente da dashboard Adman que mostra
-        // o acumulado. Agregação 1-query em vez de N+1.
-        $revenue30d = AdmanMetric::query()
-            ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
+        // Faturamento bruto dos últimos 30 dias — chamada DIRETA à Adman
+        // (summarizedData.grossBilling.value), batch paralelo + cache 10min.
+        // Substituiu SUM(adman_metrics.revenue) que divergia da dashboard
+        // Adman porque (a) sync diário pode pular dias e (b) Adman aplica
+        // ajustes retroativos que não voltam pro DB.
+        $custIds = $companies->pluck('adman_account_id')
+            ->filter(fn($id) => !empty($id))
+            ->all();
+
+        $dateFrom = now()->subDays(30)->toDateString();
+        $dateTo   = now()->toDateString();
+        $revenue30d = $this->adman->fetchGrossBillingsBatch($custIds, $dateFrom, $dateTo);
 
         $companies = $companies->map(fn($c) => [
                 'id'               => $c->id,
@@ -44,7 +47,7 @@ class CompanyController extends Controller
                 // 30d substituiu o latest pra bater com a Adman. tacos/margem
                 // permanecem no latest porque são razões (não somam) e o "agora"
                 // tem mais sentido nessas métricas.
-                'revenue_30d'      => (float) ($revenue30d[$c->id] ?? 0),
+                'revenue_30d'      => (float) ($revenue30d[$c->adman_account_id] ?? 0),
                 'margin_pct'       => $c->latestMetrics?->contribution_margin_pct,
             ]);
 
@@ -85,13 +88,16 @@ class CompanyController extends Controller
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(30),
         ]);
 
-        // Faturamento bruto dos últimos 30 dias — KPI principal alinhado com a
-        // dashboard Adman. Antes a UI mostrava apenas o último registro (1 dia).
-        $revenue30d = (float) AdmanMetric::query()
-            ->where('company_id', $company->id)
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
-            ->whereNotNull('revenue')
-            ->sum('revenue');
+        // Faturamento bruto dos últimos 30 dias — chamada direta à Adman
+        // (summarizedData.grossBilling.value), cache 10min. Não soma do DB
+        // porque sync diário pode pular dias e Adman aplica ajustes retroativos.
+        $revenue30d = $company->adman_account_id
+            ? (float) ($this->adman->fetchGrossBilling(
+                $company->adman_account_id,
+                now()->subDays(30)->toDateString(),
+                now()->toDateString(),
+            ) ?? 0)
+            : 0.0;
 
         return Inertia::render('Companies/Show', [
             'company' => [
