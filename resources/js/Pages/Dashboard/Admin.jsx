@@ -89,15 +89,20 @@ export default function AdminDashboard({
 }) {
     const [tvMode, setTvMode] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    const [lastSync, setLastSync] = useState(null);
+    const [syncInfo, setSyncInfo] = useState(null); // { msg, time, queued }
 
     const handleSync = async () => {
         setSyncing(true);
+        setSyncInfo(null);
         try {
             const res = await window.axios.post(route('adman.sync'));
-            setLastSync(res.data.synced_at);
-            // Recarrega os dados da página após sincronizar
-            router.reload({ preserveScroll: true });
+            const queued = res.data.results?.queued ?? null;
+            setSyncInfo({ msg: res.data.message, time: res.data.synced_at, queued });
+            // Sync em fila: worker processa em background, reload imediato não traz dados novos
+            // Sync por empresa (síncrono): recarrega para mostrar métricas atualizadas
+            if (queued == null) {
+                router.reload({ preserveScroll: true });
+            }
         } catch (e) {
             alert('Erro ao sincronizar: ' + (e.response?.data?.message ?? e.message));
         } finally {
@@ -283,9 +288,11 @@ export default function AdminDashboard({
                     />
 
                     <div className="ml-auto flex items-center gap-2">
-                        {lastSync && (
-                            <span className="text-white/25 text-[11px] hidden sm:inline">
-                                Sync: {lastSync}
+                        {syncInfo && (
+                            <span className="text-white/40 text-[11px] hidden sm:inline max-w-[240px] truncate" title={syncInfo.msg}>
+                                {syncInfo.queued != null
+                                    ? `${syncInfo.queued} em fila · ${syncInfo.time}`
+                                    : `Sync: ${syncInfo.time}`}
                             </span>
                         )}
                         <button
@@ -294,7 +301,7 @@ export default function AdminDashboard({
                             className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-white text-[13px] transition-all hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-wait"
                         >
                             <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-                            {syncing ? 'Sincronizando...' : 'Sincronizar'}
+                            {syncing ? 'Enfileirando...' : 'Sincronizar'}
                         </button>
                         <button
                             onClick={() => setTvMode(true)}
