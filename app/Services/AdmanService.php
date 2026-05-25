@@ -8,6 +8,7 @@ use App\Models\AdmanSyncLog;
 use App\Models\Company;
 use App\Models\CompanyMonthlyRevenue;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -220,6 +221,308 @@ class AdmanService
         }
     }
 
+    /**
+     * Faturamento bruto (summarizedData.grossBilling.value) numa janela.
+     *
+     * Por que chamar a Adman direto em vez de SUM(adman_metrics.revenue)?
+     *  - O sync diário pode pular dias (job falhando, empresa nova, etc) e
+     *    a soma fica subestimada.
+     *  - A Adman aplica ajustes retroativos (devoluções, conciliação) que
+     *    não voltam para o nosso DB.
+     *  - Chamar /performance com range = exatamente o que a dashboard Adman
+     *    mostra → garante bate-bate.
+     *
+     * Cache TTL de 10min (chave por custId+range) — balanceia frescor com
+     * latência da Adman (~200-500ms/chamada). Fail-open: erro → null (UI
+     * mostra '—' em vez de quebrar).
+     */
+    /**
+     * Sentinel usado quando a Adman retorna erro persistente (429/500/etc).
+     * Cachear o erro evita: (a) martelar a API estourada, (b) re-tentativa
+     * em toda request da UI. TTL curto (10min) permite recuperação rápida
+     * quando a empresa volta a responder.
+     */
+    private const ERROR_SENTINEL = '__error__';
+    private const ERROR_CACHE_MINUTES = 10;
+
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60): ?float
+    {
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached === self::ERROR_SENTINEL ? null : (float) $cached;
+        }
+
+        try {
+            // fetchPerformance retorna o JSON completo (com items[] grande).
+            // unset+gc imediato libera a memória — necessário pra job batch
+            // não acumular 50 responses na memória do worker.
+            $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo);
+            $value = $data['summarizedData']['grossBilling']['value'] ?? null;
+            unset($data);
+            gc_collect_cycles();
+
+            if ($value === null) {
+                // Resposta OK mas sem grossBilling — cacheia como erro pra
+                // não voltar a chamar essa empresa por 10min.
+                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+                return null;
+            }
+
+            Cache::put($cacheKey, (float) $value, now()->addMinutes($cacheMinutes));
+            return (float) $value;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/GrossBilling] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
+    }
+
+    /**
+     * Lê APENAS do cache (não chama Adman se miss). Usado pelos controllers
+     * que listam N empresas — fazer chamada síncrona aqui estouraria memória
+     * (response Adman traz items[] grande × N empresas) e travaria o request.
+     *
+     * O cache é pre-aquecido pelo RefreshGrossBillingCacheJob (cron 30min).
+     * Retorna null em 3 cenários:
+     *  - Cache miss (job nunca rodou para essa empresa)
+     *  - Cache hit com ERROR_SENTINEL (Adman retornou erro persistente)
+     *  - Cache hit com null (não deveria acontecer, mas seguro)
+     * Use hasCachedEntry() pra distinguir "miss" de "erro" no controller.
+     */
+    public function getCachedGrossBilling(string $custId, string $dateFrom, string $dateTo): ?float
+    {
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        $value    = Cache::get($cacheKey);
+        if ($value === null || $value === self::ERROR_SENTINEL) return null;
+        return (float) $value;
+    }
+
+    /**
+     * True se existe QUALQUER entrada no cache (valor real ou ERROR_SENTINEL).
+     * Permite controllers diferenciarem:
+     *  - hasCachedEntry=false → job nunca rodou pra empresa → dispatch job
+     *  - hasCachedEntry=true mas getCachedGrossBilling=null → erro cacheado
+     *    → NÃO dispatch (já tentou recentemente, evita martelar)
+     */
+    public function hasCachedEntry(string $custId, string $dateFrom, string $dateTo): bool
+    {
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        return Cache::has($cacheKey);
+    }
+
+    /**
+     * Batch read otimizado pra controllers com N empresas. Usa Cache::many
+     * (1 round-trip Redis) em vez de N Cache::get sequenciais — escala
+     * linearmente até 1000+ chaves sem overhead perceptível.
+     *
+     * @param  array<string>  $custIds
+     * @return array<string, array{value: ?float, hasEntry: bool}>
+     *         Map [custId => ['value' => ?, 'hasEntry' => bool]]
+     */
+    public function getCachedGrossBillingsMany(array $custIds, string $dateFrom, string $dateTo): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        if (empty($custIds)) return [];
+
+        // Mapeia custId → cacheKey e vice-versa pra recompor depois.
+        $keysByCustId = [];
+        $custIdsByKey = [];
+        foreach ($custIds as $custId) {
+            $key = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+            $keysByCustId[$custId] = $key;
+            $custIdsByKey[$key]    = $custId;
+        }
+
+        // 1 round-trip Redis pra todos os custIds.
+        $raw = Cache::many(array_values($keysByCustId));
+
+        $out = [];
+        foreach ($custIds as $custId) {
+            $key = $keysByCustId[$custId];
+            $val = $raw[$key] ?? null;
+
+            // hasEntry distingue:
+            //  - null = chave nunca existiu (Cache::many retorna null pra miss)
+            //  - ERROR_SENTINEL = empresa com erro persistente
+            //  - float = valor real
+            // Mas Cache::many não nos diz a diferença entre "miss" e "valor null".
+            // Aqui assumimos que null no Redis = miss (consistente com fetchGrossBilling
+            // que SEMPRE cacheia ERROR_SENTINEL em vez de null).
+            $hasEntry = $val !== null;
+
+            $out[$custId] = [
+                'value'    => ($val !== null && $val !== self::ERROR_SENTINEL) ? (float) $val : null,
+                'hasEntry' => $hasEntry,
+            ];
+        }
+
+        return $out;
+    }
+
+    // ─── Account Metrics (ACOS, TACOS, margem, etc) ───────────────────────────
+    //
+    // Endpoint /v1/{marketplace}/accounts/{custId}/metrics retorna métricas
+    // agregadas que NÃO estão no /performance: acos, tacos, liquidMargin,
+    // percentageMargin, billing, investment. Cacheamos em estrutura única
+    // pra UI consumir em 1 read.
+
+    /**
+     * Forma do array retornado/cachado por empresa. Null pra campo ausente.
+     *
+     * @return array{acos: ?float, tacos: ?float, investment: ?float,
+     *               liquid_margin: ?float, percentage_margin: ?float,
+     *               billing: ?float}
+     */
+    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60): ?array
+    {
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached === self::ERROR_SENTINEL ? null : $cached;
+        }
+
+        try {
+            $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo);
+
+            // A Adman embrulha cada métrica em {value, diff, prev} — extrai só o value.
+            $val = fn(string $key): ?float => isset($data['metrics'][$key]['value'])
+                ? (float) $data['metrics'][$key]['value']
+                : null;
+
+            $metrics = [
+                'acos'              => $val('acos'),
+                'tacos'             => $val('tacos'),
+                'investment'        => $val('investment'),
+                'liquid_margin'     => $val('liquidMargin'),
+                'percentage_margin' => $val('percentageMargin'),
+                'billing'           => $val('billing'),
+            ];
+
+            unset($data);
+            gc_collect_cycles();
+
+            // Se todos os campos vieram null, trata como erro (resposta inválida).
+            if (array_filter($metrics, fn($v) => $v !== null) === []) {
+                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+                return null;
+            }
+
+            Cache::put($cacheKey, $metrics, now()->addMinutes($cacheMinutes));
+            return $metrics;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/AccountMetrics] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
+    }
+
+    /**
+     * Lê APENAS do cache. Mesma motivação de getCachedGrossBilling: chamadas
+     * síncronas em controllers com N empresas estouram memória/rate limit.
+     */
+    public function getCachedAccountMetrics(string $custId, string $dateFrom, string $dateTo): ?array
+    {
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        $value    = Cache::get($cacheKey);
+        if ($value === null || $value === self::ERROR_SENTINEL) return null;
+        return is_array($value) ? $value : null;
+    }
+
+    /**
+     * True se existe QUALQUER entrada (valor real OU ERROR_SENTINEL).
+     */
+    public function hasCachedAccountMetricsEntry(string $custId, string $dateFrom, string $dateTo): bool
+    {
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        return Cache::has($cacheKey);
+    }
+
+    /**
+     * Batch read otimizado pra controllers com N empresas — 1 round-trip Redis.
+     *
+     * @param  array<string>  $custIds
+     * @return array<string, array{value: ?array, hasEntry: bool}>
+     */
+    public function getCachedAccountMetricsMany(array $custIds, string $dateFrom, string $dateTo): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        if (empty($custIds)) return [];
+
+        $keysByCustId = [];
+        foreach ($custIds as $custId) {
+            $keysByCustId[$custId] = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        }
+
+        $raw = Cache::many(array_values($keysByCustId));
+
+        $out = [];
+        foreach ($custIds as $custId) {
+            $key = $keysByCustId[$custId];
+            $val = $raw[$key] ?? null;
+            $hasEntry = $val !== null;
+
+            $out[$custId] = [
+                'value'    => ($val !== null && $val !== self::ERROR_SENTINEL && is_array($val)) ? $val : null,
+                'hasEntry' => $hasEntry,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Versão batch para N empresas — SEQUENCIAL THROTTLED por causa do rate
+     * limit da Adman (~50 req/min). Versão anterior usava Http::pool paralelo
+     * mas isso amplificava o rate limit e quebrava o sync diário em background.
+     *
+     * Estratégia:
+     *  - Cache de 30min por (custId, range) — cobre cargas repetidas da Dashboard
+     *  - Cache lock (mutex) por chave — evita stampede quando 2+ admins abrem
+     *    a mesma tela ao mesmo tempo com cache cold (sem lock cada um faria a
+     *    mesma chamada → multiplicaria N)
+     *  - Sleep 1.5s entre chamadas → ~40 req/min, abaixo do limite Adman
+     *  - Fail-open: erro → null
+     *
+     * Custo: cache cold com 50 empresas = 50 × 1.5s = 75s primeira carga.
+     * Depois é instantâneo durante 30min. Aceitável dado que isso só ocorre
+     * 1x a cada 30min quando o admin abre Dashboard/Empresas.
+     *
+     * @param  array<string>  $custIds  Adman account IDs
+     * @return array<string, ?float>    Map [custId => grossBilling] (null em falha)
+     */
+    public function fetchGrossBillingsBatch(array $custIds, string $dateFrom, string $dateTo, int $cacheMinutes = 30): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        $result  = [];
+        $toFetch = [];
+
+        foreach ($custIds as $custId) {
+            $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+            $cached   = Cache::get($cacheKey);
+            if ($cached !== null) {
+                $result[$custId] = (float) $cached;
+            } else {
+                $toFetch[] = $custId;
+            }
+        }
+
+        if (empty($toFetch)) return $result;
+
+        foreach ($toFetch as $i => $custId) {
+            // Throttle 1.5s entre chamadas — abaixo dos 50/min do upstream
+            // Adman. Sem isso, 50 empresas em <2s = rate limit instantâneo.
+            if ($i > 0) usleep(1_500_000);
+
+            $value = $this->fetchGrossBilling($custId, $dateFrom, $dateTo, $cacheMinutes);
+            $result[$custId] = $value;
+        }
+
+        return $result;
+    }
+
     public function fetchCampaigns(string $custId): array
     {
         $response = Http::withHeaders($this->headers())
@@ -363,6 +666,49 @@ class AdmanService
         } while ($page <= $totalPages);
 
         return $all;
+    }
+
+    /**
+     * Lista campanhas candidatas a destino da ação "Mover sugador" — convenção
+     * do time: campanha de quarentena tem nome contendo SGI/Sugador/Sugadores
+     * e fica pausada. Filtro client-side em cima do fetchAllCampaigns; sem
+     * métricas (só id/name/status).
+     *
+     * Cada item: ['id' => string, 'name' => string, 'status' => string|null]
+     */
+    public function fetchSugadorCampaigns(string $custId): array
+    {
+        $campaigns = $this->fetchAllCampaigns($custId);
+        $out = [];
+
+        foreach ($campaigns as $c) {
+            $id     = (string) ($c['campaignId'] ?? $c['id'] ?? '');
+            $name   = (string) ($c['name'] ?? '');
+            $status = $c['status'] ?? null;
+
+            if ($id === '' || $name === '') continue;
+
+            // Match igual ao usado em SugadorAnalysisService::QUARANTINE_NAME_REGEX
+            // pra que "candidata a destino" e "campanha já em quarentena" tenham
+            // exatamente a mesma definição em todo o módulo.
+            if (!preg_match('/\b(sgi|sugadores?)\b/iu', $name)) continue;
+
+            // Filtra pausadas — a convenção é mover pra campanha SGI parada
+            // (não-ativa) pra não gerar veiculação. Aceita também closed/ended.
+            $statusLower = $status ? strtolower((string) $status) : '';
+            if (!in_array($statusLower, ['paused', 'closed', 'ended'], true)) continue;
+
+            $out[] = [
+                'id'     => $id,
+                'name'   => $name,
+                'status' => $status,
+            ];
+        }
+
+        // Ordena por nome para UX previsível no select
+        usort($out, fn($a, $b) => strcasecmp($a['name'], $b['name']));
+
+        return $out;
     }
 
     /**

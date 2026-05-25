@@ -51,6 +51,15 @@ Schedule::job(new \App\Jobs\CalculateSetorGoalResults)
     ->name('calculate-setor-goal-results')
     ->withoutOverlapping();
 
+// Pre-aquece cache de faturamento bruto (Adman /performance) das 30d.
+// A cada 30min: cobre 50+ empresas com throttle de 1.5s = ~75s de execução.
+// Resultados ficam em cache 60min, e os controllers (Empresas, Dashboard,
+// Fechamento) leem do cache instantâneo sem chamar Adman síncrono.
+Schedule::job(new \App\Jobs\RefreshGrossBillingCacheJob)
+    ->everyThirtyMinutes()
+    ->name('refresh-gross-billing-cache')
+    ->withoutOverlapping();
+
 // Sincroniza faturamento bruto mensal via Adman — após calculate-setor-goal-results
 Schedule::command('adman:sync-faturamento')
     ->dailyAt('07:30')

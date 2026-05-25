@@ -144,15 +144,16 @@ class AdmanMcpService
      * paginação completa demora vários minutos. Limite default de 16 páginas
      * (800 MLBs) cabe em ~4 min, dentro do fastcgi_read_timeout=300s do nginx.
      */
-    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 16): array
+    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 16, ?string $progressCacheKey = null): array
     {
         $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, $dateFrom, $dateTo, $maxPages);
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages) {
+        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
             $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
-            $all       = [];
-            $page      = 1;
+            $all        = [];
+            $page       = 1;
             $totalPages = 1;
+            $startedAt  = microtime(true);
 
             do {
                 $result = $this->call('getMarketplaceadsCustIdproductAdsmetrics', [
@@ -170,6 +171,20 @@ class AdmanMcpService
 
                 foreach ($productAds as $ad) {
                     $all[] = $ad;
+                }
+
+                // Progresso opcional: o caller (FetchAdmanMlbsByCampaignJob) passa
+                // a chave de status pra UI poder mostrar "X/Y páginas lidas". Sem
+                // isso, durante scans de 30min a UI ficava silenciosa.
+                if ($progressCacheKey !== null) {
+                    Cache::put($progressCacheKey, [
+                        'status'      => 'running',
+                        'pages_read'  => $page,
+                        'total_pages' => $totalPages,
+                        'items_count' => count($all),
+                        'started_at'  => date('c', (int) $startedAt),
+                        'updated_at'  => now()->toIso8601String(),
+                    ], now()->addMinutes(35));
                 }
 
                 $page++;

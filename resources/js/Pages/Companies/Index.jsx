@@ -125,7 +125,7 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                     <TableHead>Analista</TableHead>
                                     <TableHead>Estrategista</TableHead>
                                     <TableHead>TACOS</TableHead>
-                                    <TableHead>Faturamento</TableHead>
+                                    <TableHead title="Soma do faturamento bruto (grossBilling) dos últimos 30 dias">Faturamento (30d)</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
@@ -141,7 +141,7 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                             {c.tacos ? <span className="text-yellow-400 font-medium">{formatPercent(c.tacos)}</span> : <span className="text-muted-foreground">-</span>}
                                         </TableCell>
                                         <TableCell>
-                                            {c.revenue ? <span className="text-blue-400 font-medium">{formatCurrency(c.revenue)}</span> : <span className="text-muted-foreground">-</span>}
+                                            {c.revenue_30d ? <span className="text-blue-400 font-medium">{formatCurrency(c.revenue_30d)}</span> : <span className="text-muted-foreground">-</span>}
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant={c.active ? 'success' : 'destructive'}>

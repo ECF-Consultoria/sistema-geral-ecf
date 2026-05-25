@@ -10,12 +10,15 @@ use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\Sugador;
 use App\Models\User;
+use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    public function __construct(private AdmanService $adman) {}
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -76,6 +79,55 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->orderBy('reference_date')
             ->get();
+
+        // Faturamento 30d por empresa — cache pre-aquecido pelo
+        // RefreshGrossBillingCacheJob (cron 30min) + fallback SUM DB
+        // se cache cold. Mesmo padrão de CompanyController::index.
+        $dateFrom30d = now()->subDays(30)->toDateString();
+        $dateTo30d   = now()->toDateString();
+        $sumDb30d = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', $dateFrom30d)
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
+
+        // Batch read: gross + account metrics em 2 round-trips Redis.
+        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
+        $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
+
+        $revenue30dByCompany = [];
+        $acos30dByCompany    = [];
+        $tacos30dByCompany   = [];
+        $margin30dByCompany  = [];
+        $missingCache        = false;
+        foreach ($companies as $c) {
+            if (!$c->adman_account_id) {
+                $revenue30dByCompany[$c->id] = 0.0;
+                continue;
+            }
+            $entry = $grossBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($entry['value'] !== null) {
+                $revenue30dByCompany[$c->id] = $entry['value'];
+            } else {
+                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+                if (!$entry['hasEntry']) $missingCache = true;
+            }
+
+            $accEntry = $accountBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($accEntry['value'] !== null) {
+                $acos30dByCompany[$c->id]   = $accEntry['value']['acos']              ?? null;
+                $tacos30dByCompany[$c->id]  = $accEntry['value']['tacos']             ?? null;
+                $margin30dByCompany[$c->id] = $accEntry['value']['percentage_margin'] ?? null;
+            } elseif (!$accEntry['hasEntry']) {
+                $missingCache = true;
+            }
+        }
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
 
         $revenueChart = $metrics->groupBy('reference_date')
             ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'revenue' => $g->sum('revenue')])
@@ -206,9 +258,12 @@ class DashboardController extends Controller
             'companies_performance' => $companies->map(fn($c) => [
                 'id'       => $c->id,
                 'name'     => $c->name,
-                'tacos'    => $c->latestMetrics?->tacos,
-                'revenue'  => $c->latestMetrics?->revenue,
-                'margin'   => $c->latestMetrics?->contribution_margin_pct,
+                // ACOS/TACOS/margem do cache /accounts/metrics (30d, exato da
+                // Adman); fallback latestMetrics (1 dia) só se cache cold.
+                'acos'     => $acos30dByCompany[$c->id]   ?? null,
+                'tacos'    => $tacos30dByCompany[$c->id]  ?? $c->latestMetrics?->tacos,
+                'revenue'  => (float) ($revenue30dByCompany[$c->id] ?? 0),
+                'margin'   => $margin30dByCompany[$c->id] ?? $c->latestMetrics?->contribution_margin_pct,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
             ]),
@@ -271,6 +326,49 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
+        // 30d cache+fallback (mesma estratégia do adminDashboard).
+        $dateFrom30d = now()->subDays(30)->toDateString();
+        $dateTo30d   = now()->toDateString();
+        $sumDb30d = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', $dateFrom30d)
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
+
+        // Batch read: gross + account metrics em 2 round-trips Redis.
+        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
+        $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
+
+        $revenue30dByCompany = [];
+        $tacos30dByCompany   = [];
+        $missingCache        = false;
+        foreach ($companies as $c) {
+            if (!$c->adman_account_id) {
+                $revenue30dByCompany[$c->id] = 0.0;
+                continue;
+            }
+            $entry = $grossBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($entry['value'] !== null) {
+                $revenue30dByCompany[$c->id] = $entry['value'];
+            } else {
+                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+                if (!$entry['hasEntry']) $missingCache = true;
+            }
+
+            $accEntry = $accountBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($accEntry['value'] !== null) {
+                $tacos30dByCompany[$c->id] = $accEntry['value']['tacos'] ?? null;
+            } elseif (!$accEntry['hasEntry']) {
+                $missingCache = true;
+            }
+        }
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
+
         $npsResponses = NpsSurvey::with('response')
             ->whereIn('company_id', $companies->pluck('id'))
             ->where('status', 'completed')
@@ -310,8 +408,8 @@ class DashboardController extends Controller
             'companies' => $companies->map(fn($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
-                'tacos' => $c->latestMetrics?->tacos,
-                'revenue' => $c->latestMetrics?->revenue,
+                'tacos' => $tacos30dByCompany[$c->id] ?? $c->latestMetrics?->tacos,
+                'revenue' => (float) ($revenue30dByCompany[$c->id] ?? 0),
                 'goals' => $c->goals->where('active', true)->values(),
             ]),
             'my_surveys' => $myNpsSurveys,

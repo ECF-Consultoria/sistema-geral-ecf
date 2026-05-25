@@ -3,9 +3,11 @@ import { Link, router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
-    PlayCircle, Filter, X, Megaphone, Tag, ListTree,
+    PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
+    Settings, Search,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import MoveToSgiModal from '@/Components/MoveToSgiModal';
 
 // ─── Constantes de UI ──────────────────────────────────────────────────────
 const STATUS_LABELS = {
@@ -13,6 +15,7 @@ const STATUS_LABELS = {
     em_acao:   'Em ação',
     resolvido: 'Resolvido',
     ignorado:  'Ignorado',
+    movido:    'Movido p/ SGI',
 };
 
 const STATUS_BADGE = {
@@ -20,6 +23,7 @@ const STATUS_BADGE = {
     em_acao:   'bg-amber-500/15 text-amber-300 border-amber-500/30',
     resolvido: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
     ignorado:  'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+    movido:    'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30',
 };
 
 const TIPO_LABELS = { adgroup: 'Adgroup', campanha: 'Campanha' };
@@ -91,6 +95,69 @@ function NativeSelect({ value, onChange, placeholder, options, className }) {
                 <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
             ))}
         </select>
+    );
+}
+
+/**
+ * Picker simples de empresa que abre Config de Sugadores ao escolher.
+ * Pulado o seletor quando há uma só empresa (vai direto pra config).
+ */
+function ConfigPickerModal({ companies, onClose }) {
+    const [q, setQ] = useState('');
+    const filtered = q
+        ? companies.filter(c => c.name.toLowerCase().includes(q.toLowerCase()))
+        : companies;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative card-ecf rounded-2xl w-full max-w-md p-5">
+                <div className="flex items-start justify-between mb-3">
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <Settings size={15} className="text-ecf-yellow" />
+                            <h3 className="text-white font-display font-bold text-base">Configurar Sugadores</h3>
+                        </div>
+                        <p className="text-white/50 text-xs mt-0.5">Selecione a empresa para editar os critérios de detecção.</p>
+                    </div>
+                    <button onClick={onClose} className="text-white/40 hover:text-white">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                <div className="relative mb-3">
+                    <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40" />
+                    <input
+                        type="text"
+                        value={q}
+                        onChange={e => setQ(e.target.value)}
+                        autoFocus
+                        placeholder="Buscar empresa..."
+                        className="w-full h-9 pl-8 pr-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
+                    />
+                </div>
+
+                <div className="max-h-[320px] overflow-y-auto -mx-1 px-1">
+                    {filtered.length === 0 ? (
+                        <p className="text-white/40 text-sm py-6 text-center">Nenhuma empresa encontrada.</p>
+                    ) : (
+                        <ul className="space-y-1">
+                            {filtered.map(c => (
+                                <li key={c.id}>
+                                    <Link
+                                        href={route('sugadores.config.show', c.id)}
+                                        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-transparent hover:border-white/[0.08] hover:bg-white/[0.04] text-[13px] text-white/80 hover:text-white"
+                                    >
+                                        <Building2 size={12} className="text-white/30" />
+                                        <span className="truncate">{c.name}</span>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                </div>
+            </div>
+        </div>
     );
 }
 
@@ -202,6 +269,15 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
     const [actionTarget, setActionTarget] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
 
+    // ─── Bulk selection: só adgroups (tipo=adgroup) podem ser movidos pra SGI.
+    // Estado é Set de IDs. Constraint dura: todos selecionados devem ser da MESMA
+    // empresa — quando o user clica num sugador de outra empresa enquanto há
+    // seleção, a primeira empresa "trava" o resto até limpar. UI desabilita
+    // os checkboxes incompatíveis pra evitar ambiguidade.
+    const [selectedIds, setSelectedIds] = useState(new Set());
+    const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+    const [configPickerOpen, setConfigPickerOpen] = useState(false);
+
     function applyFilters(updates = {}) {
         const merged = { ...f, ...updates };
         setF(merged);
@@ -226,6 +302,51 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
     const list = sugadores?.data ?? [];
     const meta = sugadores ?? { current_page: 1, last_page: 1, links: [] };
     const hasAnyFilter = Object.values(f).some(v => v && v !== '');
+
+    // Empresa-fonte da seleção: 1ª empresa do 1º selecionado. Usada pra (a) saber
+    // pra qual empresa pedir lista de SGI no modal e (b) bloquear checkboxes de
+    // outras empresas.
+    const selectedSugadores = list.filter(s => selectedIds.has(s.id));
+    const lockedCompany     = selectedSugadores[0]?.company || null;
+
+    const canSelect = (s) => {
+        // Só adgroups podem ser movidos (campanhas não fazem sentido).
+        if (s.tipo !== 'adgroup') return false;
+        // Já-movidos/resolvidos saem do fluxo.
+        if (s.status === 'movido' || s.status === 'resolvido') return false;
+        // Carteira/visão: o backend já filtra; aqui só trava cross-empresa.
+        if (lockedCompany && s.company?.id !== lockedCompany.id) return false;
+        return true;
+    };
+
+    const toggleOne = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
+    const toggleAllVisible = () => {
+        const eligible = list.filter(canSelect).map(s => s.id);
+        const allSelected = eligible.length > 0 && eligible.every(id => selectedIds.has(id));
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (allSelected) {
+                eligible.forEach(id => next.delete(id));
+            } else {
+                eligible.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    };
+
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const eligibleVisibleCount = list.filter(canSelect).length;
+    const allVisibleSelected   = eligibleVisibleCount > 0
+        && list.filter(canSelect).every(s => selectedIds.has(s.id));
 
     return (
         <AppLayout title="Sugadores">
@@ -252,6 +373,16 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                         Filtros
                         {hasAnyFilter && <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow" />}
                     </button>
+                    {can_manage && (
+                        <button
+                            onClick={() => setConfigPickerOpen(true)}
+                            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[13px] font-medium"
+                            title="Configurar critérios de detecção por empresa"
+                        >
+                            <Settings size={14} />
+                            Configurar
+                        </button>
+                    )}
                     {can_analyze && (
                         <button
                             onClick={runAnalysis}
@@ -340,6 +471,41 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                 </p>
             )}
 
+            {/* Barra de bulk actions — aparece quando há seleção. Sticky pra
+                não ficar invisível ao rolar tabela longa. */}
+            {selectedIds.size > 0 && (
+                <div className="sticky top-2 z-30 mb-3 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-ecf-yellow/30 bg-ecf-yellow/[0.08] backdrop-blur shadow-lg">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <span className="inline-flex items-center justify-center min-w-[28px] h-7 px-2 rounded-full bg-ecf-yellow text-[#252525] text-[12px] font-bold">
+                            {selectedIds.size}
+                        </span>
+                        <p className="text-white/90 text-[13px] truncate">
+                            selecionado{selectedIds.size !== 1 ? 's' : ''}
+                            {lockedCompany && (
+                                <span className="text-white/50"> · empresa: <b className="text-white/80">{lockedCompany.name}</b></span>
+                            )}
+                        </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setBulkMoveOpen(true)}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-ecf-yellow text-[#252525] hover:bg-ecf-yellow/90 text-[12px] font-bold"
+                        >
+                            <ArrowRightLeft size={12} />
+                            Mover para SGI
+                        </button>
+                        <button
+                            type="button"
+                            onClick={clearSelection}
+                            className="inline-flex items-center h-8 px-3 rounded-lg border border-white/[0.10] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px]"
+                        >
+                            Limpar
+                        </button>
+                    </div>
+                </div>
+            )}
+
             {/* Tabela */}
             <div className="card-ecf rounded-xl overflow-hidden">
                 {list.length === 0 ? (
@@ -359,6 +525,20 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                         <table className="w-full">
                             <thead className="bg-white/[0.02] border-b border-white/[0.06]">
                                 <tr>
+                                    <th className="w-10 px-3 py-3">
+                                        <input
+                                            type="checkbox"
+                                            checked={allVisibleSelected}
+                                            onChange={toggleAllVisible}
+                                            disabled={eligibleVisibleCount === 0}
+                                            className="w-3.5 h-3.5 accent-ecf-yellow cursor-pointer disabled:opacity-30"
+                                            title={
+                                                eligibleVisibleCount === 0
+                                                    ? 'Nenhum adgroup elegível nesta página'
+                                                    : allVisibleSelected ? 'Desmarcar visíveis' : 'Marcar elegíveis desta página'
+                                            }
+                                        />
+                                    </th>
                                     <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-white/50">Empresa</th>
                                     <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-white/50">Tipo</th>
                                     <th className="text-left px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-white/50">Nome / ID</th>
@@ -377,6 +557,10 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                                     const TipoIcon = TIPO_ICONS[s.tipo] || Tag;
                                     const isPendente = s.status === 'pendente';
                                     const hoje = isHoje(s.reference_date);
+                                    const selectable = canSelect(s);
+                                    const isSelected = selectedIds.has(s.id);
+                                    const isLockedByOther = !selectable && lockedCompany && s.company?.id !== lockedCompany.id
+                                        && s.tipo === 'adgroup' && s.status !== 'movido' && s.status !== 'resolvido';
                                     return (
                                         <tr
                                             key={s.id}
@@ -385,9 +569,26 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                                                 'border-b border-white/[0.04] hover:bg-white/[0.04] transition-colors cursor-pointer',
                                                 isPendente && 'bg-red-500/[0.02]',
                                                 // Destaque adicional pra sugadores identificados HOJE — borda amarela à esquerda + bg sutil.
-                                                hoje && 'bg-ecf-yellow/[0.04] border-l-2 border-l-ecf-yellow'
+                                                hoje && 'bg-ecf-yellow/[0.04] border-l-2 border-l-ecf-yellow',
+                                                isSelected && 'bg-ecf-yellow/[0.06] border-l-2 border-l-ecf-yellow'
                                             )}
                                         >
+                                            <td className="w-10 px-3 py-3" onClick={e => e.stopPropagation()}>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    disabled={!selectable && !isSelected}
+                                                    onChange={() => toggleOne(s.id)}
+                                                    className="w-3.5 h-3.5 accent-ecf-yellow cursor-pointer disabled:opacity-25 disabled:cursor-not-allowed"
+                                                    title={
+                                                        s.tipo !== 'adgroup' ? 'Só adgroups podem ser movidos'
+                                                            : s.status === 'movido' ? 'Já foi movido'
+                                                            : s.status === 'resolvido' ? 'Já foi resolvido'
+                                                            : isLockedByOther ? `Limpe a seleção atual (${lockedCompany.name}) para selecionar empresas diferentes`
+                                                            : ''
+                                                    }
+                                                />
+                                            </td>
                                             <td className="px-4 py-3 text-[13px] text-white/80">
                                                 <div className="flex items-center gap-2">
                                                     <Building2 size={12} className="text-white/30 shrink-0" />
@@ -520,6 +721,20 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
 
             {actionTarget && (
                 <StatusUpdateModal sugador={actionTarget} onClose={() => setActionTarget(null)} />
+            )}
+
+            {bulkMoveOpen && lockedCompany && (
+                <MoveToSgiModal
+                    company={lockedCompany}
+                    sugadorIds={Array.from(selectedIds)}
+                    countLabel={`${selectedIds.size} selecionado${selectedIds.size !== 1 ? 's' : ''}`}
+                    onClose={() => setBulkMoveOpen(false)}
+                    onSuccess={clearSelection}
+                />
+            )}
+
+            {configPickerOpen && (
+                <ConfigPickerModal companies={companies} onClose={() => setConfigPickerOpen(false)} />
             )}
         </AppLayout>
     );

@@ -6,7 +6,9 @@ import {
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
     Clock, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
     Image as ImageIcon, Layers, Package, Loader2, RefreshCw,
+    Copy, Check, ChevronDown, ArrowRightLeft,
 } from 'lucide-react';
+import MoveToSgiModal from '@/Components/MoveToSgiModal';
 import { cn } from '@/lib/utils';
 
 const STATUS_LABELS = {
@@ -14,12 +16,14 @@ const STATUS_LABELS = {
     em_acao:   'Em ação',
     resolvido: 'Resolvido',
     ignorado:  'Ignorado',
+    movido:    'Movido p/ SGI',
 };
 const STATUS_BADGE = {
     pendente:  'bg-red-500/15 text-red-300 border-red-500/30',
     em_acao:   'bg-amber-500/15 text-amber-300 border-amber-500/30',
     resolvido: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
     ignorado:  'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+    movido:    'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30',
 };
 const ACOES_AUDIT_LABEL = {
     marcou_em_acao:    'marcou como em ação',
@@ -27,6 +31,7 @@ const ACOES_AUDIT_LABEL = {
     marcou_ignorado:   'ignorou',
     voltou_pendente:   'voltou para pendente',
     editou_observacao: 'editou observação',
+    moveu:             'moveu para campanha SGI',
 };
 const ACOES_AUDIT_ICON = {
     marcou_em_acao:    PlayCircle,
@@ -34,6 +39,7 @@ const ACOES_AUDIT_ICON = {
     marcou_ignorado:   XCircle,
     voltou_pendente:   RotateCcw,
     editou_observacao: MessageSquare,
+    moveu:             ArrowRightLeft,
 };
 const ACAO_TOMADA_LABELS = {
     pausado:        'Pausado',
@@ -93,6 +99,8 @@ function Metric({ icon: Icon, label, value, color = 'white' }) {
 }
 
 export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_update }) {
+    const [showMoveModal, setShowMoveModal] = useState(false);
+
     const { data, setData, patch, processing, errors, reset } = useForm({
         status:      sugador.status === 'pendente' ? 'em_acao' : sugador.status,
         acao_tomada: sugador.acao_tomada || '',
@@ -171,14 +179,45 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             )}
                         </div>
 
-                        <div className="flex items-center gap-3 mt-3 text-[11px] text-white/40 font-mono">
-                            <span>campaign: <span className="text-white/60">{sugador.campaign_id}</span></span>
-                            {sugador.adgroup_id && <span>adgroup: <span className="text-white/60">{sugador.adgroup_id}</span></span>}
-                            {sugador.mlb_id && <span>MLB: <span className="text-white/60">{sugador.mlb_id}</span></span>}
+                        {/* MLB em destaque — o time operacional não conseguia distinguir o MLB
+                            dos IDs técnicos quando ficavam todos na mesma linha. Agora MLB
+                            ganha badge + copiar + link direto; campaign/adgroup escondidos
+                            num <details>. */}
+                        <div className="mt-3 space-y-2">
+                            {sugador.mlb_id ? (
+                                <MlbHighlight mlbId={sugador.mlb_id} url={url_anuncio} />
+                            ) : (
+                                <p className="text-[11px] text-white/40">
+                                    Sugador de adgroup — abra o drilldown abaixo para ver os MLBs.
+                                </p>
+                            )}
+                            <details className="group">
+                                <summary className="inline-flex items-center gap-1 cursor-pointer text-[10px] text-white/30 hover:text-white/50 font-mono uppercase tracking-wider list-none">
+                                    <ChevronDown size={10} className="transition-transform group-open:rotate-180" />
+                                    IDs técnicos
+                                </summary>
+                                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-white/40 font-mono pl-3">
+                                    <span>campaign: <span className="text-white/60">{sugador.campaign_id}</span></span>
+                                    {sugador.adgroup_id && <span>adgroup: <span className="text-white/60">{sugador.adgroup_id}</span></span>}
+                                </div>
+                            </details>
                         </div>
                     </div>
 
                     <div className="flex flex-col gap-2 shrink-0">
+                        {/* Ação primária pra adgroup-sugador: mover pra SGI.
+                            Escondida para tipo=campanha (não há adgroup pra mover) e
+                            pra status que já fecharam o ciclo. */}
+                        {can_update && sugador.tipo === 'adgroup' && sugador.status !== 'movido' && sugador.status !== 'resolvido' && (
+                            <button
+                                type="button"
+                                onClick={() => setShowMoveModal(true)}
+                                className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-ecf-yellow text-[#252525] hover:bg-ecf-yellow/90 text-[13px] font-bold"
+                            >
+                                <ArrowRightLeft size={13} />
+                                Mover para SGI
+                            </button>
+                        )}
                         {url_anuncio && (
                             <a
                                 href={url_anuncio}
@@ -314,6 +353,36 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                 </div>
             )}
 
+            {/* Painel "Movido para SGI X" — fica permanente embaixo do status
+                quando o analista já marcou move. Memória do audit fora do timeline. */}
+            {sugador.status === 'movido' && sugador.campanha_destino_nome && (
+                <div className="card-ecf rounded-xl p-4 mb-4 border-ecf-yellow/30 bg-ecf-yellow/[0.04]">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-ecf-yellow/15 border border-ecf-yellow/30 flex items-center justify-center shrink-0">
+                            <ArrowRightLeft size={14} className="text-ecf-yellow" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="text-white/90 text-sm">
+                                <span className="text-white/50">Marcado como movido para</span>
+                                {' '}
+                                <b className="text-ecf-yellow">{sugador.campanha_destino_nome}</b>
+                            </p>
+                            <p className="text-white/40 text-[11px] mt-0.5">
+                                {sugador.movido_em && (
+                                    <>em {fmtDateTime(sugador.movido_em)}</>
+                                )}
+                                {sugador.movido_por && (
+                                    <> · por <span className="text-white/60">{sugador.movido_por.name}</span></>
+                                )}
+                                {sugador.campanha_destino_id && (
+                                    <> · campaign_id <span className="font-mono">{sugador.campanha_destino_id}</span></>
+                                )}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Drilldown MLBs — via API MCP do Adman (productAds da mesma campanha) */}
             {sugador.tipo === 'adgroup' && (
                 <MlbsDoAdgroup sugadorId={sugador.id} adgroupName={sugador.adgroup_name} />
@@ -429,6 +498,15 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                     )}
                 </div>
             </div>
+
+            {showMoveModal && sugador.company && (
+                <MoveToSgiModal
+                    company={sugador.company}
+                    sugadorIds={[sugador.id]}
+                    onClose={() => setShowMoveModal(false)}
+                    onSuccess={() => { /* o reload do Inertia já refresca a página */ }}
+                />
+            )}
         </AppLayout>
     );
 }
@@ -526,9 +604,18 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
                             <p className="text-emerald-300 text-[11px] mt-1">
                                 ✓ Varredura completa pronta — clique <b>Recarregar</b> pra ver o resultado completo.
                             </p>
+                        ) : state.data?.scan_status?.status === 'running' ? (
+                            <p className="text-amber-300 text-[11px] mt-1">
+                                ⟳ Varredura em andamento: <b>{state.data.scan_status.pages_read ?? 0}{state.data.scan_status.total_pages ? `/${state.data.scan_status.total_pages}` : ''} páginas</b> lidas
+                                {typeof state.data.scan_status.items_count === 'number' && ` · ${state.data.scan_status.items_count} MLBs até agora`}.
+                            </p>
+                        ) : state.data?.scan_status?.status === 'retrying' ? (
+                            <p className="text-amber-300 text-[11px] mt-1">
+                                ⚠ Tentativa {state.data.scan_status.attempt}/{state.data.scan_status.tries_total} falhou. Próxima retry em ~{Math.round((state.data.scan_status.next_retry_in ?? 0) / 60)}min.
+                            </p>
                         ) : state.data?.scan_status?.status === 'failed' ? (
                             <p className="text-red-300 text-[11px] mt-1">
-                                Varredura completa falhou: {state.data.scan_status.error}. Tente recarregar em alguns minutos.
+                                {state.data.scan_status.error || 'Varredura completa falhou. Tente recarregar em alguns minutos.'}
                             </p>
                         ) : (
                             <p className="text-amber-300/80 text-[11px] mt-1 italic">
@@ -621,6 +708,53 @@ function MlbRow({ mlb }) {
                 )}
             </div>
         </li>
+    );
+}
+
+/**
+ * Bloco do MLB em destaque — badge amarelo + botão copiar + link direto pro ML.
+ * Resolve o problema reportado pelo time operacional: antes os IDs (campaign,
+ * adgroup, MLB) ficavam todos em texto cinza tamanho 11 na mesma linha, e os
+ * analistas não conseguiam distinguir qual era qual para procurar no ML.
+ */
+function MlbHighlight({ mlbId, url }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(mlbId);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+        } catch {
+            // navigator.clipboard pode falhar em http (sem TLS) — fallback silencioso
+        }
+    };
+
+    return (
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-ecf-yellow/[0.08] border border-ecf-yellow/30">
+            <span className="text-ecf-yellow/70 text-[10px] font-bold uppercase tracking-wider">MLB</span>
+            <span className="text-ecf-yellow font-mono font-bold text-[13px] select-all">{mlbId}</span>
+            <button
+                type="button"
+                onClick={handleCopy}
+                className="text-ecf-yellow/60 hover:text-ecf-yellow"
+                title="Copiar MLB"
+            >
+                {copied ? <Check size={12} /> : <Copy size={12} />}
+            </button>
+            {url && (
+                <a
+                    href={url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-ecf-yellow/60 hover:text-ecf-yellow text-[11px] border-l border-ecf-yellow/20 pl-2 ml-1"
+                    title="Abrir anúncio no Mercado Livre"
+                >
+                    <ExternalLink size={11} />
+                    Abrir no ML
+                </a>
+            )}
+        </div>
     );
 }
 

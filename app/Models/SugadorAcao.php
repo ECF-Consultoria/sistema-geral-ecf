@@ -28,6 +28,7 @@ class SugadorAcao extends Model
     public const ACAO_MARCOU_IGNORADO    = 'marcou_ignorado';
     public const ACAO_VOLTOU_PENDENTE    = 'voltou_pendente';
     public const ACAO_EDITOU_OBSERVACAO  = 'editou_observacao';
+    public const ACAO_MOVEU              = 'moveu';
 
     public function sugador(): BelongsTo
     {

@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\AdmanMetric;
-use App\Services\AdmanService;
 use App\Models\Company;
 use App\Models\CompanyMonthlyRevenue;
 use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
+use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -17,6 +17,8 @@ use Inertia\Inertia;
 
 class AdminController extends Controller
 {
+    public function __construct(private AdmanService $adman) {}
+
     private const FAIXAS = [
         ['limite' => 499_999.99,   'label' => 'faixa_1', 'valor' => 3_000.00],
         ['limite' => 999_999.99,   'label' => 'faixa_2', 'valor' => 4_500.00],
@@ -109,58 +111,29 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $mesAnterior    = $ref->copy()->subMonth()->format('Y-m');
 
-        // Janela de datas — alinhada com a VPS:
-        // Mês atual: rolling 30 dias (captura billing mais recente da API)
-        // Mês passado e anteriores: mês calendário completo
+        // Mês atual = janela 30d rolling (alinhada com Empresas e Dashboard
+        // que mostram "últimos 30 dias"). Mês passado preserva mês calendário —
+        // relatórios históricos não devem mudar retroativamente.
         $isMesAtual = $ref->isSameMonth(Carbon::now());
         if ($isMesAtual) {
-            $inicio = Carbon::now()->subDays(30)->startOfDay()->toDateString();
-            $fim    = Carbon::now()->toDateString();
+            $inicio         = Carbon::now()->subDays(30)->startOfDay();
+            $fim            = Carbon::now()->endOfDay();
+            $inicioAnterior = Carbon::now()->subDays(60)->startOfDay();
+            $fimAnterior    = Carbon::now()->subDays(30)->endOfDay();
         } else {
-            $inicio = $ref->copy()->startOfMonth()->toDateString();
-            $fim    = $ref->copy()->endOfMonth()->toDateString();
+            $inicio         = $ref->copy()->startOfMonth();
+            $fim            = $ref->copy()->endOfMonth();
+            $inicioAnterior = $ref->copy()->subMonth()->startOfMonth();
+            $fimAnterior    = $ref->copy()->subMonth()->endOfMonth();
         }
-        $inicioAnterior = $ref->copy()->subMonth()->startOfMonth()->toDateString();
-        $fimAnterior    = $ref->copy()->subMonth()->endOfMonth()->toDateString();
 
-        // Faturamento do período via adman_metrics (sincronizado diariamente pelo adman:sync)
-        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as gross_revenue, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        // Fallback: company_monthly_revenues para empresas sem adman_metrics no período
-        $fallback = CompanyMonthlyRevenue::where('year_month', $mesSelecionado)
-            ->whereNotNull('gross_revenue')
-            ->get()
-            ->keyBy('company_id');
-
-        // Mês anterior para comparação de faixa
-        $metricasAnterior = AdmanMetric::whereBetween('reference_date', [$inicioAnterior, $fimAnterior])
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as gross_revenue')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        $fallbackAnterior = CompanyMonthlyRevenue::where('year_month', $mesAnterior)
-            ->whereNotNull('gross_revenue')
-            ->get()
-            ->keyBy('company_id');
-
-        // Progressão mensal para o modal de histórico
+        // Progressão mensal para o modal de histórico (company_monthly_revenues)
         $mensalPorEmpresa = CompanyMonthlyRevenue::where('year_month', '<=', $mesSelecionado)
             ->whereNotNull('gross_revenue')
             ->orderBy('year_month')
             ->get(['company_id', 'year_month', 'gross_revenue'])
             ->groupBy('company_id');
-
-        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
-            ->pluck('recebido_em', 'company_id');
 
         // Passo 1 — carrega empresas ativas com relações de grupo
         $rawCompanies = Company::where('active', true)
@@ -171,27 +144,70 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
+        // Fallback SUM(adman_metrics.revenue) caso cache cold.
+        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+        $metricasAnterior = AdmanMetric::whereBetween('reference_date', [$inicioAnterior, $fimAnterior])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as faturamento')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
+            ->pluck('recebido_em', 'company_id');
+
+        // Cache do faturamento da Adman pre-aquecido pelo Job. Mês atual usa
+        // cache; mês passado sempre vem do DB (histórico). Batch read pra
+        // todas custIds em 1 round-trip Redis.
+        $dateFromStr  = $inicio->toDateString();
+        $dateToStr    = $fim->toDateString();
+        $missingCache = false;
+
+        $cacheBatch = [];
+        if ($isMesAtual) {
+            $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromStr, $dateToStr);
+        }
+
         // Passo 2 — monta array indexado por company_id
         $dadosPorId = [];
 
         foreach ($rawCompanies as $c) {
-            $hasAdman = (bool) ($c->ml_store_id ?: $c->adman_account_id);
-            // adman_metrics como fonte primária; company_monthly_revenues como fallback
-            $metrica  = $metricas->get($c->id) ?? $fallback->get($c->id);
+            $custId   = $c->ml_store_id ?: $c->adman_account_id;
+            $hasAdman = (bool) $custId;
+
+            $m           = $metricas->get($c->id);
+            $mAnt        = $metricasAnterior->get($c->id);
+            $fatAtual    = $m    ? (float) $m->faturamento    : null;
+            $fatAnterior = $mAnt ? (float) $mAnt->faturamento : null;
+
+            // Substitui pelo cache da Adman se disponível (só mês atual).
+            if ($isMesAtual && $hasAdman) {
+                $entry = $cacheBatch[$custId] ?? ['value' => null, 'hasEntry' => false];
+                if ($entry['value'] !== null) {
+                    $fatAtual = $entry['value'];
+                } elseif (!$entry['hasEntry']) {
+                    $missingCache = true;
+                }
+            }
 
             $estado = match (true) {
-                !$hasAdman => 'sem_integracao',
-                !$metrica  => 'sem_dados',
-                default    => 'ok',
+                !$hasAdman          => 'sem_integracao',
+                $fatAtual === null  => 'sem_dados',
+                default             => 'ok',
             };
 
             $faixaData = ($estado === 'ok')
-                ? $this->calcularFaixa((float) $metrica->gross_revenue)
+                ? $this->calcularFaixa((float) $fatAtual)
                 : null;
 
-            $metricaAnterior   = $metricasAnterior->get($c->id) ?? $fallbackAnterior->get($c->id);
-            $faixaAnteriorData = ($hasAdman && $metricaAnterior)
-                ? $this->calcularFaixa((float) $metricaAnterior->gross_revenue)
+            $faixaAnteriorData = ($hasAdman && $fatAnterior !== null)
+                ? $this->calcularFaixa((float) $fatAnterior)
                 : null;
 
             $evolucao = null;
@@ -254,13 +270,9 @@ class AdminController extends Controller
                 'additional_service_price' => $c->additional_service_price ? (float) $c->additional_service_price : null,
                 'has_adman'          => $hasAdman,
                 'estado'             => $estado,
-                'faturamento'        => $metrica ? (float) $metrica->gross_revenue : null,
-                'inicio_dados'       => null,
-                'synced_at'          => $metrica
-                    ? (isset($metrica->periodo_fim)
-                        ? Carbon::parse($metrica->periodo_fim)->format('d/m')
-                        : Carbon::createFromFormat('Y-m', $metrica->year_month)->format('m/Y'))
-                    : null,
+                'faturamento'        => $fatAtual,
+                'periodo_inicio'     => $estado === 'ok' ? $inicio->format('d/m') : null,
+                'periodo_fim'        => $estado === 'ok' ? $fim->format('d/m')    : null,
                 'progressao'         => $progressao,
                 'faixa'              => $faixaData['faixa'] ?? null,
                 'valor_mensal'       => $faixaData['valor'] ?? null,
@@ -305,6 +317,12 @@ class AdminController extends Controller
             $dados['conta_no_total'] = $dados['parent_company_id'] === null;
         }
         unset($dados);
+
+        // Cache cold pra alguma empresa? Dispara o job pra preencher na
+        // próxima request. ShouldBeUnique evita dispatches em paralelo.
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
 
         return Inertia::render('Admin/Financeiro', [
             'companies'       => array_values($dadosPorId),
@@ -404,22 +422,51 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $mesLabel       = ucfirst($ref->translatedFormat('F Y'));
-        $inicio         = $ref->copy()->startOfMonth();
-        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
+
+        // Mesma regra de fechamento(): mês atual usa 30d rolling, mês passado
+        // preserva mês calendário. Label muda pra refletir a janela real.
+        $isMesAtual = $ref->isSameMonth(Carbon::now());
+        if ($isMesAtual) {
+            $inicio   = Carbon::now()->subDays(30)->startOfDay();
+            $fim      = Carbon::now()->endOfDay();
+            $mesLabel = 'Últimos 30 dias (até ' . $fim->format('d/m/Y') . ')';
+        } else {
+            $inicio   = $ref->copy()->startOfMonth();
+            $fim      = $ref->copy()->endOfMonth();
+            $mesLabel = ucfirst($ref->translatedFormat('F Y'));
+        }
 
         // Carrega empresa principal com vinculadas ativas
         $company->load(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')]);
 
-        // IDs para a query de métricas (pai + todas as filhas)
-        $todosIds = collect([$company->id])->merge($company->filhas->pluck('id'));
+        // Mês atual = Adman direto; mês passado = DB agregado.
+        $todasEmpresas = collect([$company])->merge($company->filhas);
 
-        // Agrega faturamento bruto do mês via company_monthly_revenues
-        $metricas = CompanyMonthlyRevenue::where('year_month', $mesSelecionado)
-            ->whereIn('company_id', $todosIds)
-            ->whereNotNull('gross_revenue')
-            ->get()
-            ->keyBy('company_id');
+        if ($isMesAtual) {
+            $custIds = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $billing = $this->adman->fetchGrossBillingsBatch($custIds, $inicio->toDateString(), $fim->toDateString());
+
+            $faturamentoOf = fn(Company $emp): ?float => $emp->adman_account_id
+                ? ($billing[$emp->adman_account_id] ?? null)
+                : null;
+        } else {
+            $todosIds = $todasEmpresas->pluck('id');
+            $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+                ->whereNotNull('revenue')
+                ->whereIn('company_id', $todosIds)
+                ->selectRaw('company_id, SUM(revenue) as faturamento')
+                ->groupBy('company_id')
+                ->get()
+                ->keyBy('company_id');
+
+            $faturamentoOf = function (Company $emp) use ($metricas): ?float {
+                $m = $metricas->get($emp->id);
+                return $m ? (float) $m->faturamento : null;
+            };
+        }
+
+        $periodoInicioFmt = $inicio->format('d/m/Y');
+        $periodoFimFmt    = $fim->format('d/m/Y');
 
         // Verifica se foi marcado como recebido
         $recebido = FechamentoRecebido::where('company_id', $company->id)
@@ -427,17 +474,15 @@ class AdminController extends Controller
             ->exists();
 
         // Monta dados da empresa principal
-        $metricaPai = $metricas->get($company->id);
-        $faturamentoPai = $metricaPai ? (float) $metricaPai->gross_revenue : null;
+        $faturamentoPai = $faturamentoOf($company);
         $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
         // Monta dados das vinculadas
-        $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
-            $m            = $metricas->get($f->id);
-            $fat          = $m ? (float) $m->gross_revenue : null;
-            $fx           = $fat !== null ? $this->calcularFaixa($fat) : null;
-            $valorMensal  = $fx ? $fx['valor'] : null;
-            $adicional    = $f->additional_service_price ? (float) $f->additional_service_price : null;
+        $vinculadas = $company->filhas->map(function (Company $f) use ($faturamentoOf, $periodoInicioFmt, $periodoFimFmt) {
+            $fat         = $faturamentoOf($f);
+            $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
+            $valorMensal = $fx ? $fx['valor'] : null;
+            $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
             return [
                 'id'                       => $f->id,
                 'name'                     => $f->name,
@@ -450,8 +495,8 @@ class AdminController extends Controller
                 'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
                 'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
                 'faturamento'              => $fat,
-                'periodo_inicio'           => null,
-                'periodo_fim'              => null,
+                'periodo_inicio'           => $fat !== null ? $periodoInicioFmt : null,
+                'periodo_fim'              => $fat !== null ? $periodoFimFmt    : null,
                 'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
                 'valor_mensal'             => $valorMensal,
                 'additional_service'       => $f->additional_service,
@@ -472,10 +517,10 @@ class AdminController extends Controller
             'company'          => $company,
             'mes_label'        => $mesLabel,
             'mes_selecionado'  => $mesSelecionado,
-            'metrica'          => $metricaPai,
+            'metrica'          => null, // legacy — preservado vazio pra compat com a view
             'faturamento'      => $faturamentoPai,
-            'periodo_inicio'   => null,
-            'periodo_fim'      => null,
+            'periodo_inicio'   => $faturamentoPai !== null ? $periodoInicioFmt : null,
+            'periodo_fim'      => $faturamentoPai !== null ? $periodoFimFmt    : null,
             'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
             'valor_mensal'     => $valorMensalPai,
             'cobranca_mensal'  => $cobrancaMensal,
@@ -502,9 +547,19 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $mesLabel       = ucfirst($ref->translatedFormat('F Y'));
-        $inicio         = $ref->copy()->startOfMonth();
-        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
+
+        // Mesma regra de fechamento()/gerarRelatorio(): 30d rolling no mês atual,
+        // mês calendário em meses passados (relatórios históricos).
+        $isMesAtual = $ref->isSameMonth(Carbon::now());
+        if ($isMesAtual) {
+            $inicio   = Carbon::now()->subDays(30)->startOfDay();
+            $fim      = Carbon::now()->endOfDay();
+            $mesLabel = 'Últimos 30 dias (até ' . $fim->format('d/m/Y') . ')';
+        } else {
+            $inicio   = $ref->copy()->startOfMonth();
+            $fim      = $ref->copy()->endOfMonth();
+            $mesLabel = ucfirst($ref->translatedFormat('F Y'));
+        }
 
         // Carrega todas as empresas principais ativas (não filhas)
         $query = Company::where('active', true)
@@ -518,17 +573,44 @@ class AdminController extends Controller
 
         $rawCompanies = $query->get();
 
-        // IDs de todas as empresas (pais + filhas) para a query de métricas
-        $todosIds = $rawCompanies->flatMap(
-            fn($c) => collect([$c->id])->merge($c->filhas->pluck('id'))
-        )->unique();
-
-        // Faturamento bruto do mês via company_monthly_revenues
-        $metricas = CompanyMonthlyRevenue::where('year_month', $mesSelecionado)
+        // Mês atual: cache (Adman pre-aquecido) + fallback SUM DB
+        // Mês passado: sempre SUM DB (histórico congelado)
+        $todasEmpresas = $rawCompanies->flatMap(
+            fn($c) => collect([$c])->merge($c->filhas)
+        );
+        $todosIds = $todasEmpresas->pluck('id')->unique();
+        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+            ->whereNotNull('revenue')
             ->whereIn('company_id', $todosIds)
-            ->whereNotNull('gross_revenue')
+            ->selectRaw('company_id, SUM(revenue) as faturamento')
+            ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
+
+        $dateFromStr  = $inicio->toDateString();
+        $dateToStr    = $fim->toDateString();
+        $missingCache = false;
+
+        // Batch read do cache pra todas as empresas do relatório de uma vez.
+        $cacheBatch = [];
+        if ($isMesAtual) {
+            $custIdsAll = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->unique()->all();
+            $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIdsAll, $dateFromStr, $dateToStr);
+        }
+
+        $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $cacheBatch, &$missingCache): ?float {
+            if ($isMesAtual && $emp->adman_account_id) {
+                $entry = $cacheBatch[$emp->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+                if ($entry['value'] !== null) return $entry['value'];
+                if (!$entry['hasEntry']) $missingCache = true;
+            }
+            // Fallback: SUM do DB
+            $m = $metricas->get($emp->id);
+            return $m ? (float) $m->faturamento : null;
+        };
+
+        $periodoInicioFmt = $inicio->format('d/m/Y');
+        $periodoFimFmt    = $fim->format('d/m/Y');
 
         // Recebidos do mês (indexado por company_id)
         $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
@@ -544,13 +626,11 @@ class AdminController extends Controller
             if ($filtroRecebido === 'sim' && !$recebido) continue;
             if ($filtroRecebido === 'nao' && $recebido)  continue;
 
-            $metricaPai     = $metricas->get($company->id);
-            $faturamentoPai = $metricaPai ? (float) $metricaPai->gross_revenue : null;
+            $faturamentoPai = $faturamentoOf($company);
             $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
-            $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
-                $m           = $metricas->get($f->id);
-                $fat         = $m ? (float) $m->gross_revenue : null;
+            $vinculadas = $company->filhas->map(function (Company $f) use ($faturamentoOf, $periodoInicioFmt, $periodoFimFmt) {
+                $fat         = $faturamentoOf($f);
                 $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
                 $valorMensal = $fx ? $fx['valor'] : null;
                 $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
@@ -569,8 +649,8 @@ class AdminController extends Controller
                     'additional_service'       => $f->additional_service,
                     'additional_service_price' => $adicional,
                     'faturamento'              => $fat,
-                    'periodo_inicio'           => null,
-                    'periodo_fim'              => null,
+                    'periodo_inicio'           => $fat !== null ? $periodoInicioFmt : null,
+                    'periodo_fim'              => $fat !== null ? $periodoFimFmt    : null,
                     'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
                     'valor_mensal'             => $valorMensal,
                     'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
@@ -587,14 +667,18 @@ class AdminController extends Controller
                 'company'          => $company,
                 'recebido'         => $recebido,
                 'faturamento'      => $faturamentoPai,
-                'periodo_inicio'   => null,
-                'periodo_fim'      => null,
+                'periodo_inicio'   => $faturamentoPai !== null ? $periodoInicioFmt : null,
+                'periodo_fim'      => $faturamentoPai !== null ? $periodoFimFmt    : null,
                 'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
                 'valor_mensal'     => $valorMensalPai,
                 'cobranca_mensal'  => $cobrancaMensal,
                 'vinculadas'       => $vinculadas,
                 'total_mensalidade'=> $totalMensalidade,
             ];
+        }
+
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
         return view('admin.relatorio-geral', [
