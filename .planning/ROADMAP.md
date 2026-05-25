@@ -292,7 +292,7 @@ Cross-cutting constraints:
 
 Plans:
 - [x] 13-01-PLAN.md -- Migrations de schema (companies.status + mlb_empresas.company_id) + rename polo->polos + fix AdminController + Financeiro.jsx labels
-- [ ] 13-02-PLAN.md -- Permission comercial.cadastrar_empresa + setor Comercial + migration retroativa idempotente mlb_empresas
+- [x] 13-02-PLAN.md -- Permission comercial.cadastrar_empresa + setor Comercial + migration retroativa idempotente mlb_empresas
 - [ ] 13-03-PLAN.md -- ComercialController + EmpresaCadastradaNotification + rotas /comercial/* + suíte Phase13ComercialTest
 - [ ] 13-04-PLAN.md -- UI: sidebar item Comercial + NovaEmpresa.jsx + secoes Pendentes + checkpoint humano
 
@@ -320,4 +320,4 @@ v4.0 phases execute in order: 13
 | 10. UI do Sino e Página de Histórico | 1/1 | Complete   | 2026-05-21 |
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
-| 13. Reestruturação do Cadastro de Empresas | 1/4 | In Progress|  |
+| 13. Reestruturação do Cadastro de Empresas | 2/4 | In Progress|  |

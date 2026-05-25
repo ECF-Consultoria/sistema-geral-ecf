@@ -11,7 +11,7 @@
 
 ### Acesso e Interface (COM)
 
-- [ ] **COM-01**: Usuário do setor Comercial vê item "Comercial" no sidebar com sub-item "Cadastro de Empresas" e consegue acessar o formulário de cadastro; usuário sem permissão `comercial.cadastrar_empresa` recebe 403 ao tentar acessar
+- [x] **COM-01**: Usuário do setor Comercial vê item "Comercial" no sidebar com sub-item "Cadastro de Empresas" e consegue acessar o formulário de cadastro; usuário sem permissão `comercial.cadastrar_empresa` recebe 403 ao tentar acessar
 - [ ] **COM-02**: Formulário de cadastro exibe campos Nome (obrigatório), CNPJ (opcional, único), service_type (obrigatório) e subtipo dinâmico POLOS/Assessoria quando service_type='publicacao'
 - [ ] **COM-03**: Guard de duplicatas bloqueia cadastro com nome igual (case-insensitive) a qualquer `companies.name` ou `mlb_empresas.nome` existente, exibindo mensagem de erro clara
 
@@ -36,7 +36,7 @@
 
 | Requisito | Fase | Status |
 |-----------|------|--------|
-| COM-01 | Phase 13 | Pending |
+| COM-01 | Phase 13 | Complete |
 | COM-02 | Phase 13 | Pending |
 | COM-03 | Phase 13 | Pending |
 | COM-04 | Phase 13 | Pending |
