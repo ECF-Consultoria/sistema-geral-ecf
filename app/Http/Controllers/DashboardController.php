@@ -80,19 +80,17 @@ class DashboardController extends Controller
             ->orderBy('reference_date')
             ->get();
 
-        // Faturamento 30d por empresa — chamada DIRETA à Adman batch paralelo
-        // (cache 10min). Indexado por adman_account_id (custId) — não por
-        // company_id. SUM(adman_metrics.revenue) foi removido porque divergia
-        // da dashboard Adman (sync diário podia pular dias e Adman aplica
-        // ajustes retroativos não-propagados pro DB).
-        $custIds = $companies->pluck('adman_account_id')
-            ->filter(fn($id) => !empty($id))
-            ->all();
-        $revenue30dByCustId = $this->adman->fetchGrossBillingsBatch(
-            $custIds,
-            now()->subDays(30)->toDateString(),
-            now()->toDateString(),
-        );
+        // Faturamento 30d por empresa — SUM(adman_metrics.revenue) do DB.
+        // Era pra ser chamada direta à Adman mas N chamadas síncronas
+        // estouram memory_limit. Para valores exatos da Adman, abrir a
+        // tela de detalhe (show) de cada empresa.
+        $revenue30dByCompany = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
 
         $revenueChart = $metrics->groupBy('reference_date')
             ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'revenue' => $g->sum('revenue')])
@@ -224,8 +222,9 @@ class DashboardController extends Controller
                 'id'       => $c->id,
                 'name'     => $c->name,
                 'tacos'    => $c->latestMetrics?->tacos,
-                // revenue 30d via chamada direta à Adman (indexado por custId)
-                'revenue'  => (float) ($revenue30dByCustId[$c->adman_account_id] ?? 0),
+                // revenue 30d via SUM(adman_metrics) — pra valor exato da Adman,
+                // abrir a tela de detalhe da empresa (faz chamada direta).
+                'revenue'  => (float) ($revenue30dByCompany[$c->id] ?? 0),
                 'margin'   => $c->latestMetrics?->contribution_margin_pct,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
@@ -289,15 +288,14 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
-        // 30d via chamada direta à Adman — mesma motivação do adminDashboard.
-        $custIds = $companies->pluck('adman_account_id')
-            ->filter(fn($id) => !empty($id))
-            ->all();
-        $revenue30dByCustId = $this->adman->fetchGrossBillingsBatch(
-            $custIds,
-            now()->subDays(30)->toDateString(),
-            now()->toDateString(),
-        );
+        // 30d via SUM do DB — N chamadas síncronas estouravam memory_limit.
+        $revenue30dByCompany = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
 
         $npsResponses = NpsSurvey::with('response')
             ->whereIn('company_id', $companies->pluck('id'))
@@ -339,8 +337,8 @@ class DashboardController extends Controller
                 'id' => $c->id,
                 'name' => $c->name,
                 'tacos' => $c->latestMetrics?->tacos,
-                // revenue 30d via chamada direta à Adman
-                'revenue' => (float) ($revenue30dByCustId[$c->adman_account_id] ?? 0),
+                // revenue 30d via SUM(adman_metrics)
+                'revenue' => (float) ($revenue30dByCompany[$c->id] ?? 0),
                 'goals' => $c->goals->where('active', true)->values(),
             ]),
             'my_surveys' => $myNpsSurveys,

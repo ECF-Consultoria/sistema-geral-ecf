@@ -232,14 +232,19 @@ class AdmanService
      * latência da Adman (~200-500ms/chamada). Fail-open: erro → null (UI
      * mostra '—' em vez de quebrar).
      */
-    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 10): ?float
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 30): ?float
     {
         $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
 
         return Cache::remember($cacheKey, now()->addMinutes($cacheMinutes), function () use ($custId, $dateFrom, $dateTo) {
             try {
+                // fetchPerformance retorna o JSON completo (com items[] que
+                // pode ser grande). Pra liberar memória, extrai o valor e
+                // unset+gc imediatamente.
                 $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo);
                 $value = $data['summarizedData']['grossBilling']['value'] ?? null;
+                unset($data);
+                gc_collect_cycles();
                 return $value !== null ? (float) $value : null;
             } catch (\Throwable $e) {
                 Log::warning("[Adman/GrossBilling] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());

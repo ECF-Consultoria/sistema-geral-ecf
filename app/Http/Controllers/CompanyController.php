@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\User;
 use App\Services\AdmanService;
@@ -18,18 +19,18 @@ class CompanyController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Faturamento bruto dos últimos 30 dias — chamada DIRETA à Adman
-        // (summarizedData.grossBilling.value), batch paralelo + cache 10min.
-        // Substituiu SUM(adman_metrics.revenue) que divergia da dashboard
-        // Adman porque (a) sync diário pode pular dias e (b) Adman aplica
-        // ajustes retroativos que não voltam pro DB.
-        $custIds = $companies->pluck('adman_account_id')
-            ->filter(fn($id) => !empty($id))
-            ->all();
-
-        $dateFrom = now()->subDays(30)->toDateString();
-        $dateTo   = now()->toDateString();
-        $revenue30d = $this->adman->fetchGrossBillingsBatch($custIds, $dateFrom, $dateTo);
+        // Faturamento 30d — SUM(adman_metrics.revenue) do DB. Era pra ser
+        // chamada direta à Adman mas isso estourou memory_limit (50 empresas
+        // × payload grande). Listagem usa SUM (pode divergir um pouco da
+        // Adman por causa de ajustes retroativos); detalhe (show) usa
+        // chamada direta com valor exato.
+        $revenue30d = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
 
         $companies = $companies->map(fn($c) => [
                 'id'               => $c->id,
@@ -47,7 +48,7 @@ class CompanyController extends Controller
                 // 30d substituiu o latest pra bater com a Adman. tacos/margem
                 // permanecem no latest porque são razões (não somam) e o "agora"
                 // tem mais sentido nessas métricas.
-                'revenue_30d'      => (float) ($revenue30d[$c->adman_account_id] ?? 0),
+                'revenue_30d'      => (float) ($revenue30d[$c->id] ?? 0),
                 'margin_pct'       => $c->latestMetrics?->contribution_margin_pct,
             ]);
 

@@ -136,32 +136,21 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Mês atual = chamada direta à Adman (bate com dashboard Adman).
-        // Mês passado = soma do DB (histórico, não muda retroativamente).
-        // Cache 10min embutido no fetchGrossBillingsBatch.
-        $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
-
-        if ($isMesAtual) {
-            $billingByCustId          = $this->adman->fetchGrossBillingsBatch($custIds, $inicio->toDateString(), $fim->toDateString());
-            $billingAnteriorByCustId  = $this->adman->fetchGrossBillingsBatch($custIds, $inicioAnterior->toDateString(), $fimAnterior->toDateString());
-            $metricas         = collect();
-            $metricasAnterior = collect();
-        } else {
-            $billingByCustId         = [];
-            $billingAnteriorByCustId = [];
-            $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-                ->whereNotNull('revenue')
-                ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
-                ->groupBy('company_id')
-                ->get()
-                ->keyBy('company_id');
-            $metricasAnterior = AdmanMetric::whereBetween('reference_date', [$inicioAnterior, $fimAnterior])
-                ->whereNotNull('revenue')
-                ->selectRaw('company_id, SUM(revenue) as faturamento')
-                ->groupBy('company_id')
-                ->get()
-                ->keyBy('company_id');
-        }
+        // SUM(adman_metrics.revenue) sempre — chamadas síncronas à Adman para
+        // N empresas estouravam memory_limit. Para valor exato da Adman, abrir
+        // o PDF individual (gerarRelatorio) que chama Adman pra 1 empresa.
+        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+        $metricasAnterior = AdmanMetric::whereBetween('reference_date', [$inicioAnterior, $fimAnterior])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as faturamento')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
 
         $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
             ->pluck('recebido_em', 'company_id');
@@ -172,16 +161,10 @@ class AdminController extends Controller
         foreach ($rawCompanies as $c) {
             $hasAdman = (bool) $c->adman_account_id;
 
-            // Resolve faturamento: mês atual via Adman direto; passado via DB.
-            if ($isMesAtual) {
-                $fatAtual    = $hasAdman ? ($billingByCustId[$c->adman_account_id] ?? null) : null;
-                $fatAnterior = $hasAdman ? ($billingAnteriorByCustId[$c->adman_account_id] ?? null) : null;
-            } else {
-                $m           = $metricas->get($c->id);
-                $mAnt        = $metricasAnterior->get($c->id);
-                $fatAtual    = $m    ? (float) $m->faturamento    : null;
-                $fatAnterior = $mAnt ? (float) $mAnt->faturamento : null;
-            }
+            $m           = $metricas->get($c->id);
+            $mAnt        = $metricasAnterior->get($c->id);
+            $fatAtual    = $m    ? (float) $m->faturamento    : null;
+            $fatAnterior = $mAnt ? (float) $mAnt->faturamento : null;
 
             $estado = match (true) {
                 !$hasAdman          => 'sem_integracao',
@@ -464,34 +447,24 @@ class AdminController extends Controller
 
         $rawCompanies = $query->get();
 
-        // Mês atual = Adman direto (batch paralelo, cache 10min);
-        // mês passado = DB agregado (histórico congelado).
+        // SUM(adman_metrics.revenue) sempre — gerarRelatorioGeral percorre
+        // TODAS empresas pais+filhas. Adman direto estouraria memória.
         $todasEmpresas = $rawCompanies->flatMap(
             fn($c) => collect([$c])->merge($c->filhas)
         );
+        $todosIds = $todasEmpresas->pluck('id')->unique();
+        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
+            ->whereNotNull('revenue')
+            ->whereIn('company_id', $todosIds)
+            ->selectRaw('company_id, SUM(revenue) as faturamento')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
 
-        if ($isMesAtual) {
-            $custIds = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->unique()->all();
-            $billing = $this->adman->fetchGrossBillingsBatch($custIds, $inicio->toDateString(), $fim->toDateString());
-
-            $faturamentoOf = fn(Company $emp): ?float => $emp->adman_account_id
-                ? ($billing[$emp->adman_account_id] ?? null)
-                : null;
-        } else {
-            $todosIds = $todasEmpresas->pluck('id')->unique();
-            $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-                ->whereNotNull('revenue')
-                ->whereIn('company_id', $todosIds)
-                ->selectRaw('company_id, SUM(revenue) as faturamento')
-                ->groupBy('company_id')
-                ->get()
-                ->keyBy('company_id');
-
-            $faturamentoOf = function (Company $emp) use ($metricas): ?float {
-                $m = $metricas->get($emp->id);
-                return $m ? (float) $m->faturamento : null;
-            };
-        }
+        $faturamentoOf = function (Company $emp) use ($metricas): ?float {
+            $m = $metricas->get($emp->id);
+            return $m ? (float) $m->faturamento : null;
+        };
 
         $periodoInicioFmt = $inicio->format('d/m/Y');
         $periodoFimFmt    = $fim->format('d/m/Y');
