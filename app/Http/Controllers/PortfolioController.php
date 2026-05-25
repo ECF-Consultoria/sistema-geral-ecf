@@ -7,11 +7,15 @@ use App\Models\Goal;
 use App\Models\GoalResult;
 use App\Models\PortfolioGoal;
 use App\Models\User;
+use App\Services\AdmanService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class PortfolioController extends Controller
 {
+    public function __construct(private AdmanService $adman) {}
+
     // Admin vê a carteira de qualquer profissional
     public function show(Request $request, User $user)
     {
@@ -28,36 +32,90 @@ class PortfolioController extends Controller
     {
         $period = $request->get('period', now()->format('Y-m'));
         [$year, $month] = explode('-', $period);
+        $year = (int) $year;
+        $month = (int) $month;
+
+        $refDate    = Carbon::create($year, $month, 1);
+        $isMesAtual = $refDate->isSameMonth(now());
+
+        // Janelas pro faturamento. Mês atual = últimos 30 dias rolling (cache
+        // grossBilling Adman); mês passado = mês calendário (SUM DB histórico).
+        if ($isMesAtual) {
+            $dateFrom         = now()->subDays(30)->toDateString();
+            $dateTo           = now()->toDateString();
+            $dateFromAnterior = now()->subDays(60)->toDateString();
+            $dateToAnterior   = now()->subDays(30)->toDateString();
+        } else {
+            $dateFrom         = $refDate->copy()->startOfMonth()->toDateString();
+            $dateTo           = $refDate->copy()->endOfMonth()->toDateString();
+            $dateFromAnterior = $refDate->copy()->subMonth()->startOfMonth()->toDateString();
+            $dateToAnterior   = $refDate->copy()->subMonth()->endOfMonth()->toDateString();
+        }
 
         // Empresas da carteira (todas as roles)
-        $companies = $user->companies()
+        $rawCompanies = $user->companies()
             ->with(['latestMetrics', 'grants'])
             ->where('active', true)
             ->withPivot('role')
             ->orderBy('name')
+            ->get();
+
+        // Pre-calcula SUM DB por empresa (fallback / mês passado)
+        $companyIdsAll = $rawCompanies->pluck('id');
+        $sumDbAtual = AdmanMetric::query()
+            ->whereIn('company_id', $companyIdsAll)
+            ->whereBetween('reference_date', [$dateFrom, $dateTo])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total, SUM(ad_spend) as ads, AVG(tacos) as tacos, AVG(contribution_margin_pct) as margem')
+            ->groupBy('company_id')
             ->get()
-            ->map(function ($c) use ($year, $month) {
-                $metric = AdmanMetric::where('company_id', $c->id)
-                    ->whereYear('reference_date', $year)
-                    ->whereMonth('reference_date', $month)
-                    ->latest('reference_date')
-                    ->first();
+            ->keyBy('company_id');
+        $sumDbAnterior = AdmanMetric::query()
+            ->whereIn('company_id', $companyIdsAll)
+            ->whereBetween('reference_date', [$dateFromAnterior, $dateToAnterior])
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
 
-                $activeGrant = $c->grants->where('status', 'active')->first();
+        // Cache batch da Adman (somente no mês atual — mês passado é histórico).
+        $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $grossAtual    = $isMesAtual ? $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo) : [];
+        $grossAnterior = $isMesAtual ? $this->adman->getCachedGrossBillingsMany($custIds, $dateFromAnterior, $dateToAnterior) : [];
 
-                return [
-                    'id'                  => $c->id,
-                    'name'                => $c->name,
-                    'role'                => $c->pivot->role,
-                    'tacos'               => $metric?->tacos,
-                    'revenue'             => $metric?->revenue,
-                    'contribution_margin_pct' => $metric?->contribution_margin_pct,
-                    'ad_spend'            => $metric?->ad_spend,
-                    'grant_status'        => $activeGrant?->status,
-                    'grant_expires_at'    => $activeGrant?->expires_at?->toDateString(),
-                    'grant_days_remaining'=> $activeGrant?->days_remaining,
-                ];
-            });
+        // Mapeia cada empresa pro array final
+        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual) {
+            $activeGrant = $c->grants->where('status', 'active')->first();
+
+            // Faturamento da empresa no período: prioriza cache Adman (mês atual),
+            // fallback SUM DB. Resultado é o valor MENSAL completo, não 1 dia.
+            $revenue = null;
+            if ($isMesAtual && $c->adman_account_id) {
+                $entry = $grossAtual[$c->adman_account_id] ?? null;
+                if ($entry && $entry['value'] !== null) {
+                    $revenue = $entry['value'];
+                }
+            }
+            if ($revenue === null) {
+                $m = $sumDbAtual->get($c->id);
+                $revenue = $m ? (float) $m->total : null;
+            }
+
+            $sumRow = $sumDbAtual->get($c->id);
+
+            return [
+                'id'                  => $c->id,
+                'name'                => $c->name,
+                'role'                => $c->pivot->role,
+                'tacos'               => $sumRow ? round((float) $sumRow->tacos, 2)  : $c->latestMetrics?->tacos,
+                'revenue'             => $revenue,
+                'contribution_margin_pct' => $sumRow ? round((float) $sumRow->margem, 2) : $c->latestMetrics?->contribution_margin_pct,
+                'ad_spend'            => $sumRow ? (float) $sumRow->ads             : $c->latestMetrics?->ad_spend,
+                'grant_status'        => $activeGrant?->status,
+                'grant_expires_at'    => $activeGrant?->expires_at?->toDateString(),
+                'grant_days_remaining'=> $activeGrant?->days_remaining,
+            ];
+        });
 
         // Metas de carteira com último resultado
         $portfolioGoals = PortfolioGoal::where('user_id', $user->id)
@@ -106,13 +164,42 @@ class PortfolioController extends Controller
                 ] : null,
             ]);
 
-        // Resumo da carteira
+        // Faturamento total da carteira no período atual (usa o mesmo cache
+        // Adman 30d quando mês atual; SUM DB pra mês passado).
+        $totalRevenueAtual = (float) $companies->sum('revenue');
+
+        // Faturamento da carteira no PERÍODO ANTERIOR (mês passado ou janela
+        // 30-60d atrás). Mesma lógica de fallback.
+        $totalRevenueAnterior = 0.0;
+        foreach ($rawCompanies as $c) {
+            $rev = null;
+            if ($isMesAtual && $c->adman_account_id) {
+                $entry = $grossAnterior[$c->adman_account_id] ?? null;
+                if ($entry && $entry['value'] !== null) {
+                    $rev = $entry['value'];
+                }
+            }
+            if ($rev === null) {
+                $rev = (float) ($sumDbAnterior[$c->id] ?? 0);
+            }
+            $totalRevenueAnterior += $rev;
+        }
+
+        // Crescimento % vs período anterior. Null se não há baseline (anterior=0)
+        // pra UI mostrar "—" em vez de Infinity/NaN.
+        $revenueGrowthPct = null;
+        if ($totalRevenueAnterior > 0) {
+            $revenueGrowthPct = round((($totalRevenueAtual - $totalRevenueAnterior) / $totalRevenueAnterior) * 100, 2);
+        }
+
         $summary = [
-            'total_companies' => $companies->count(),
-            'avg_tacos'       => $companies->whereNotNull('tacos')->avg('tacos'),
-            'total_revenue'   => $companies->sum('revenue'),
-            'avg_margin'      => $companies->whereNotNull('contribution_margin_pct')->avg('contribution_margin_pct'),
-            'total_ad_spend'  => $companies->sum('ad_spend'),
+            'total_companies'         => $companies->count(),
+            'avg_tacos'               => $companies->whereNotNull('tacos')->avg('tacos'),
+            'total_revenue'           => $totalRevenueAtual,
+            'total_revenue_anterior'  => $totalRevenueAnterior,
+            'revenue_growth_pct'      => $revenueGrowthPct,
+            'avg_margin'              => $companies->whereNotNull('contribution_margin_pct')->avg('contribution_margin_pct'),
+            'total_ad_spend'          => (float) $companies->sum('ad_spend'),
         ];
 
         $availablePeriods = collect();

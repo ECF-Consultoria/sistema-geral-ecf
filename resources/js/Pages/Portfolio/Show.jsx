@@ -192,12 +192,24 @@ export default function PortfolioShow({
                     </div>
                 )}
 
-                {/* Resumo da carteira */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {/* Resumo da carteira — 5 KPIs (Crescimento adicionado) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     <MetricCard
                         label="Faturamento Total"
                         value={summary.total_revenue ? formatCurrency(summary.total_revenue) : '—'}
                         color="text-blue-400"
+                    />
+                    <MetricCard
+                        label="Crescimento vs anterior"
+                        value={summary.revenue_growth_pct != null
+                            ? `${summary.revenue_growth_pct > 0 ? '+' : ''}${Number(summary.revenue_growth_pct).toFixed(2)}%`
+                            : '—'}
+                        sub={summary.total_revenue_anterior > 0
+                            ? `Anterior: ${formatCurrency(summary.total_revenue_anterior)}`
+                            : 'sem base anterior'}
+                        color={summary.revenue_growth_pct == null
+                            ? 'text-white/50'
+                            : summary.revenue_growth_pct >= 0 ? 'text-emerald-400' : 'text-red-400'}
                     />
                     <MetricCard
                         label="TACOS Médio"

@@ -168,12 +168,26 @@ class DashboardController extends Controller
             ? $meetings->filter(fn($m) => !$m->consultant_present || !$m->mentor_present)->count() / $meetings->count() * 100
             : 0;
 
-        $avgTacos = $metrics->avg('tacos') ?? 0;
-        // Card 'Faturamento' = soma dos grossBilling 30d EXATOS da Adman
-        // (via cache pre-aquecido). Antes era SUM(adman_metrics.revenue)
-        // daily — divergia da Adman pelas mesmas causas conhecidas
-        // (sync diário pulava dias, ajustes retroativos não voltavam).
+        // Card 'Faturamento' = soma dos grossBilling 30d EXATOS da Adman.
         $totalRevenue = array_sum($revenue30dByCompany);
+
+        // TACOS médio = média dos TACOS 30d cacheados (Adman). Antes era
+        // $metrics->avg('tacos') = média do daily DB, divergia da Adman.
+        $tacosValues = array_filter($tacos30dByCompany, fn($v) => $v !== null);
+        $avgTacos = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
+
+        // Investimento em Ads 30d agregado = soma de metrics.investment.value
+        // de todas as empresas (cache /accounts/metrics). Substitui o card
+        // Absenteísmo no Dashboard admin.
+        $totalAdInvestment30d = 0.0;
+        foreach ($companies as $c) {
+            if (!$c->adman_account_id) continue;
+            $accEntry = $accountBatch30d[$c->adman_account_id] ?? null;
+            if ($accEntry && $accEntry['value'] !== null) {
+                $totalAdInvestment30d += (float) ($accEntry['value']['investment'] ?? 0);
+            }
+        }
+
         $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
         $productsWithoutCost = $metrics->avg(fn($m) => $m->products_without_cost_pct) ?? 0;
 
@@ -253,6 +267,7 @@ class DashboardController extends Controller
                 'avg_nps'                  => round($avgNps, 1),
                 'absenteeism_rate'         => round($absenteeismRate, 2),
                 'total_revenue'            => $totalRevenue,
+                'total_ad_investment_30d'  => $totalAdInvestment30d,
                 'total_net_billing'        => $totalNetBilling,
                 'total_sold_quantity'      => (int) $totalSoldQuantity,
                 'total_ad_spend'           => $totalAdSpend,

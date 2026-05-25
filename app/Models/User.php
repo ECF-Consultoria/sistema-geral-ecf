@@ -124,11 +124,16 @@ class User extends Authenticatable
             return $this->effectivePermissionsCache = Permissions::all();
         }
 
-        // União: permissões de todos os setores membros + lideranca.* se for líder
+        // União: permissões de todos os setores membros + lideranca.* se for líder.
+        // Filtramos lideranca.* das permissions derivadas de SetorPermissao —
+        // essas devem vir EXCLUSIVAMENTE via isLider() abaixo. Sem filtro, um
+        // setor podia conceder lideranca.dashboard_setor a membros não-líderes
+        // e o menu "Meu Setor" apareceria pra eles indevidamente.
         $keys = \App\Models\SetorPermissao::query()
             ->whereIn('setor_id', $this->setores()->pluck('setores.id'))
             ->pluck('permission_key')
             ->unique()
+            ->reject(fn($k) => str_starts_with($k, 'lideranca.'))
             ->values()
             ->all();
 

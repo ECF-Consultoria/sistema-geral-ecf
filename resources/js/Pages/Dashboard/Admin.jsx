@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
     Star, Users, AlertTriangle,
-    DollarSign, BarChart2, RefreshCw, Tv, ChevronDown, X, Trophy, ChevronRight, Briefcase
+    DollarSign, BarChart2, RefreshCw, Tv, ChevronDown, X, Trophy, ChevronRight, Briefcase, TrendingUp
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
@@ -114,16 +114,17 @@ export default function AdminDashboard({
     };
 
     const s = {
-        total_companies:    stats.total_companies ?? 0,
-        avg_tacos:          stats.avg_tacos ?? 0,
-        avg_nps:            stats.avg_nps ?? 0,
-        absenteeism_rate:   stats.absenteeism_rate ?? 0,
-        total_revenue:      stats.total_revenue ?? 0,
-        total_net_billing:  stats.total_net_billing ?? 0,
-        total_sold_quantity: stats.total_sold_quantity ?? 0,
-        total_ad_spend:     stats.total_ad_spend ?? 0,
-        avg_margin:         stats.avg_margin ?? 0,
-        avg_profit_share:   stats.avg_profit_share ?? 0,
+        total_companies:         stats.total_companies ?? 0,
+        avg_tacos:               stats.avg_tacos ?? 0,
+        avg_nps:                 stats.avg_nps ?? 0,
+        absenteeism_rate:        stats.absenteeism_rate ?? 0,
+        total_revenue:           stats.total_revenue ?? 0,
+        total_ad_investment_30d: stats.total_ad_investment_30d ?? 0,
+        total_net_billing:       stats.total_net_billing ?? 0,
+        total_sold_quantity:     stats.total_sold_quantity ?? 0,
+        total_ad_spend:          stats.total_ad_spend ?? 0,
+        avg_margin:              stats.avg_margin ?? 0,
+        avg_profit_share:        stats.avg_profit_share ?? 0,
     };
 
     const noData = s.total_companies === 0;
@@ -182,7 +183,7 @@ export default function AdminDashboard({
                         { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue' },
                         { title: 'TACOS Médio', value: formatPercent(s.avg_tacos), icon: BarChart2, color: 'yellow' },
                         { title: 'NPS Score', value: s.avg_nps, icon: Star, color: 'green', sub: `Score: ${npsScore}` },
-                        { title: 'Absenteísmo', value: formatPercent(s.absenteeism_rate), icon: AlertTriangle, color: 'red' },
+                        { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red' },
                         { title: 'Faturamento', value: formatCurrency(s.total_revenue), icon: DollarSign, color: 'purple' },
                     ].map(k => <KpiCard key={k.title} {...k} empty={noData} />)}
                 </div>
@@ -320,29 +321,9 @@ export default function AdminDashboard({
                     <KpiCard title="Empresas" value={s.total_companies} icon={Users} color="blue" empty={noData} />
                     <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} icon={BarChart2} color="yellow" empty={noData} />
                     <KpiCard title="NPS Médio" value={s.avg_nps} sub={`Score: ${npsScore}`} icon={Star} color="green" empty={noData} />
-                    <KpiCard title="Absenteísmo" value={formatPercent(s.absenteeism_rate)} icon={AlertTriangle} color="red" empty={noData} />
+                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} icon={TrendingUp} color="red" empty={noData} />
                     <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} icon={DollarSign} color="purple" empty={noData} />
                 </div>
-
-                {/* KPI Cards — métricas Adman */}
-                {!noData && (
-                    <div className="card-ecf rounded-2xl p-5 space-y-3">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">Adman · Performance de Vendas</p>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                            {[
-                                { label: 'Fat. Líquido', value: formatCurrency(s.total_net_billing), color: 'text-blue-400' },
-                                { label: 'Gasto em Ads', value: formatCurrency(s.total_ad_spend), color: 'text-orange-400' },
-                                { label: 'Margem Méd.', value: formatPercent(s.avg_margin), color: 'text-emerald-400' },
-                                { label: 'Qtd. Vendida', value: s.total_sold_quantity > 0 ? s.total_sold_quantity.toLocaleString('pt-BR') : '—', color: 'text-purple-400' },
-                            ].map(({ label, value, color }) => (
-                                <div key={label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-                                    <p className="text-white/40 text-[11px] mb-1">{label}</p>
-                                    <p className={`font-display font-bold text-xl ${color}`}>{value}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
 
                 {/* Charts row 1 */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
