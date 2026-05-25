@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.0
-milestone_name: Sistema de Notificações
-status: milestone_complete
-stopped_at: Milestone v3.0 Sistema de Notificações COMPLETA — Phases 8-12 entregues, suíte 33/33 GREEN
-last_updated: "2026-05-21T21:00:00.000Z"
-last_activity: 2026-05-22 - Completed quick task 260522-lds: Implementar sistema de envio de email do Relatorio Geral de Fechamento
+milestone: v4.0
+milestone_name: Fluxo Comercial
+status: planned
+stopped_at: Phase 13 planejada — 4 planos em 4 waves, verificação passou em todas as 10 dimensões
+last_updated: "2026-05-25T00:00:00.000Z"
+last_activity: 2026-05-25 - Phase 13 planejada (4 planos, COM-01..COM-11 cobertos)
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 5
-  total_plans: 8
+  total_plans: 12
   completed_plans: 8
-  percent: 42
+  percent: 38
 ---
 
 # Project State
@@ -20,8 +20,8 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-05-21)
 
-**Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro e comunicação interna (notificações)
-**Current focus:** Milestone v3.0 Sistema de Notificações COMPLETA — pronta para `/gsd-complete-milestone` ou próxima milestone
+**Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
+**Current focus:** Milestone v4.0 Fluxo Comercial — Phase 13 planejada, pronta para `/gsd:execute-phase 13`
 
 ## Current Position
 
