@@ -7,15 +7,19 @@ import { cn, formatDate } from '@/lib/utils';
 import axios from 'axios';
 
 const SERVICE_LABELS = {
-    polo:       'POLO',
-    assessoria: 'Assessoria',
-    incubadora: 'Incubadora',
+    polos:       'POLO',
+    assessoria:  'Assessoria',
+    incubadora:  'Incubadora',
+    publicidade: 'Publicidade',
+    gestao:      'Gestão',
 };
 
 const SERVICE_COLORS = {
-    polo:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
-    assessoria: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
-    incubadora: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    polos:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
+    assessoria:  'bg-purple-500/10 text-purple-300 border-purple-500/20',
+    incubadora:  'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    publicidade: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
+    gestao:      'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
 };
 
 const FAIXAS_LIMITES = {
@@ -106,10 +110,12 @@ function GraficoServico({ empresas }) {
     const cnt = {};
     empresas.forEach(e => { const k = e.service_type || 'sem_tipo'; cnt[k] = (cnt[k] || 0) + 1; });
     const data = [
-        { name: 'POLO',       key: 'polo',       color: '#3b82f6' },
-        { name: 'Assessoria', key: 'assessoria',  color: '#a855f7' },
-        { name: 'Incubadora', key: 'incubadora',  color: '#10b981' },
-        { name: 'Sem tipo',   key: 'sem_tipo',    color: '#374151' },
+        { name: 'POLO',        key: 'polos',       color: '#3b82f6' },
+        { name: 'Assessoria',  key: 'assessoria',  color: '#a855f7' },
+        { name: 'Incubadora',  key: 'incubadora',  color: '#10b981' },
+        { name: 'Publicidade', key: 'publicidade', color: '#f97316' },
+        { name: 'Gestão',      key: 'gestao',      color: '#06b6d4' },
+        { name: 'Sem tipo',    key: 'sem_tipo',    color: '#374151' },
     ].map(d => ({ ...d, value: cnt[d.key] || 0 })).filter(d => d.value > 0);
     return <ChartCard titulo="Tipo de serviço"><MiniPie data={data} /></ChartCard>;
 }

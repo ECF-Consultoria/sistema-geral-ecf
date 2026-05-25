@@ -50,7 +50,7 @@ class AdminController extends Controller
     public function updateEmpresa(Request $request, Company $company)
     {
         $validator = Validator::make($request->all(), [
-            'service_type'             => 'nullable|in:polo,assessoria,incubadora',
+            'service_type'             => 'nullable|in:polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'            => 'nullable|in:fixo,progressao',
             'contract_start'           => 'nullable|date',
             'contract_end'             => 'nullable|date|after_or_equal:contract_start',
@@ -237,7 +237,7 @@ class AdminController extends Controller
     public function updateFechamento(Request $request, Company $company)
     {
         $validator = Validator::make($request->all(), [
-            'service_type'       => 'nullable|in:polo,assessoria,incubadora',
+            'service_type'       => 'nullable|in:polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'      => 'nullable|in:fixo,progressao',
             'contract_start'     => 'nullable|date',
             'contract_end'       => 'nullable|date|after_or_equal:contract_start',
