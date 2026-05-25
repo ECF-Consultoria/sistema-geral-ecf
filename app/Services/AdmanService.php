@@ -6,6 +6,8 @@ use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\AdmanSyncLog;
 use App\Models\Company;
+use App\Models\CompanyMonthlyRevenue;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -33,8 +35,10 @@ class AdmanService
     public function syncAll(): array
     {
         $companies = Company::where('active', true)
-            ->whereNotNull('adman_account_id')
-            ->where('adman_account_id', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
+                  ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
+            })
             ->get();
 
         $results = ['success' => 0, 'failed' => 0, 'skipped' => 0];
@@ -57,7 +61,7 @@ class AdmanService
     {
         // Padrão: ontem — dados do dia corrente ficam incompletos até o processamento noturno da Adman
         $date   = $date ?? now()->subDay()->toDateString();
-        $custId = $company->adman_account_id;
+        $custId = $company->ml_store_id ?: $company->adman_account_id;
 
         try {
             $performance = $this->fetchPerformance($custId, $date, $date);
@@ -292,6 +296,39 @@ class AdmanService
 
         if ($response->failed()) throw new \RuntimeException("Adman accounts erro {$response->status()}");
         return $response->json() ?? [];
+    }
+
+    /**
+     * Puxa o faturamento bruto do mês completo via Adman e persiste em company_monthly_revenues.
+     * Usa dateFrom=início do mês, dateTo=hoje (mês corrente) ou fim do mês (meses passados).
+     */
+    public function syncMonthRevenue(Company $company, string $yearMonth): CompanyMonthlyRevenue
+    {
+        $custId = $company->ml_store_id ?: $company->adman_account_id;
+        if (!$custId) {
+            throw new \RuntimeException("Empresa {$company->id} sem ID Loja ML/Adman.");
+        }
+
+        $ref = Carbon::createFromFormat('Y-m', $yearMonth)->startOfMonth();
+
+        // Mês atual: rolling 30 dias (alinhado com VPS — captura billing mais recente)
+        // Mês passado: mês calendário completo
+        if ($ref->isSameMonth(Carbon::now())) {
+            $start = Carbon::now()->subDays(30)->toDateString();
+            $end   = Carbon::now()->toDateString();
+        } else {
+            $start = $ref->toDateString();
+            $end   = $ref->copy()->endOfMonth()->toDateString();
+        }
+
+        $performance  = $this->fetchPerformance($custId, $start, $end);
+        $summarized   = $performance['summarizedData'] ?? [];
+        $grossBilling = $summarized['grossBilling']['value'] ?? null;
+
+        return CompanyMonthlyRevenue::updateOrCreate(
+            ['company_id' => $company->id, 'year_month' => $yearMonth],
+            ['gross_revenue' => $grossBilling, 'synced_at' => now()]
+        );
     }
 
     // ─── Métodos para o módulo Sugadores ────────────────────────────────────

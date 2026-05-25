@@ -29,7 +29,7 @@ export default function Companies({ companies, users, estrategistas = [], empres
     );
 
     const { data, setData, post, put, processing, reset, errors } = useForm({
-        name: '', cnpj: '', adman_account_id: '', adman_store_id: '',
+        name: '', cnpj: '', adman_store_id: '',
         ml_store_id: '', segment: '', notes: '', consultor_id: '', estrategista_id: '',
     });
 
@@ -44,7 +44,6 @@ export default function Companies({ companies, users, estrategistas = [], empres
         setData({
             name: c.name || '',
             cnpj: c.cnpj || '',
-            adman_account_id: c.adman_account_id || '',
             adman_store_id: c.adman_store_id || '',
             ml_store_id: c.ml_store_id || '',
             segment: c.segment || '',
@@ -103,6 +102,13 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                     <span className="text-white/25 text-[11px]">
                                         {new Date(p.created_at).toLocaleDateString('pt-BR')}
                                     </span>
+                                    <button
+                                        onClick={() => openEdit(p)}
+                                        className="inline-flex items-center gap-1 text-ecf-yellow text-[11px] font-medium hover:text-ecf-yellow/70 transition-colors whitespace-nowrap"
+                                    >
+                                        <Pencil size={11} />
+                                        Preencher dados
+                                    </button>
                                 </div>
                             ))}
                         </div>
@@ -191,10 +197,6 @@ export default function Companies({ companies, users, estrategistas = [], empres
                             <div className="space-y-1.5">
                                 <Label>CNPJ</Label>
                                 <Input value={data.cnpj} onChange={e => setData('cnpj', e.target.value)} placeholder="00.000.000/0001-00" />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>ID Conta Adman</Label>
-                                <Input value={data.adman_account_id} onChange={e => setData('adman_account_id', e.target.value)} />
                             </div>
                             <div className="space-y-1.5">
                                 <Label>ID Loja ML</Label>

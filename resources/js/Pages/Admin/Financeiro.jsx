@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router, useForm } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
-import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings } from 'lucide-react';
+import { Banknote, ChevronDown, Building2, WifiOff, TrendingUp, TrendingDown, Minus, Check, FileText, Printer, Send, Settings, RefreshCw, X, BarChart2 } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { cn, formatDate } from '@/lib/utils';
 import axios from 'axios';
@@ -29,6 +29,18 @@ const FAIXAS_LIMITES = {
     faixa_4: { min: 2_000_000,   proximo: 3_000_000, nome: 'Faixa 4' },
     faixa_5: { min: 3_000_000,   proximo: 4_000_000, nome: 'Faixa 5' },
     faixa_6: { min: 4_000_000,   proximo: 5_000_000, nome: 'Faixa 6' },
+};
+
+const FAIXA_NOMES = {
+    faixa_1: 'Faixa 1', faixa_2: 'Faixa 2', faixa_3: 'Faixa 3',
+    faixa_4: 'Faixa 4', faixa_5: 'Faixa 5', faixa_6: 'Faixa 6',
+    maxima: 'Máxima',
+};
+
+const fmtMes = (anoMes) => {
+    const [y, m] = anoMes.split('-');
+    return new Date(Number(y), Number(m) - 1, 1)
+        .toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
 };
 
 const fmtBRL = (n) => n == null ? '—'
@@ -208,13 +220,13 @@ function RecebidoToggle({ empresa, mesSelecionado }) {
 }
 
 function TotalConsolidado({ empresas }) {
-    // Filhas não entram no total — valor já está no pai via valor_mensal_grupo
-    const contam        = empresas.filter(e => e.conta_no_total !== false && e.estado === 'ok');
+    // Filhas não entram no total — valor já está no pai via cobranca_mensal_grupo
+    const contam        = empresas.filter(e => e.conta_no_total !== false && (e.cobranca_mensal_grupo ?? 0) > 0);
     const recebidas     = contam.filter(e => e.recebido);
     const inadimplentes = contam.filter(e => !e.recebido);
-    const totalAReceber = contam.reduce((s, e) => s + Number(e.valor_mensal_grupo ?? e.valor_mensal ?? 0), 0);
-    const totalRecebido = recebidas.reduce((s, e) => s + Number(e.valor_mensal_grupo ?? e.valor_mensal ?? 0), 0);
-    const totalPendente = inadimplentes.reduce((s, e) => s + Number(e.valor_mensal_grupo ?? e.valor_mensal ?? 0), 0);
+    const totalAReceber = contam.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
+    const totalRecebido = recebidas.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
+    const totalPendente = inadimplentes.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
     const temDados      = contam.length > 0;
 
     return (
@@ -298,6 +310,105 @@ function FaixaProgresso({ faturamento, faixa }) {
     );
 }
 
+function ProgressaoModal({ empresa, onClose }) {
+    const rows = empresa.progressao ?? [];
+    if (!rows.length) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
+            <div
+                className="relative w-full max-w-2xl mx-4 rounded-2xl border border-white/[0.08] bg-ecf-card shadow-2xl max-h-[80vh] flex flex-col"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06] shrink-0">
+                    <div>
+                        <p className="text-[11px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
+                            <BarChart2 size={12} /> Progressão de faixa
+                        </p>
+                        <p className="text-white font-semibold text-[15px] mt-0.5">{empresa.name}</p>
+                        {empresa.inicio_dados && (
+                            <p className="text-white/30 text-[11px] mt-0.5">
+                                Dados desde {empresa.inicio_dados}
+                            </p>
+                        )}
+                    </div>
+                    <button onClick={onClose} className="text-white/40 hover:text-white/70 transition-colors p-1">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Tabela */}
+                <div className="overflow-y-auto flex-1">
+                    <table className="w-full text-[13px]">
+                        <thead className="sticky top-0 bg-ecf-card border-b border-white/[0.06]">
+                            <tr>
+                                <th className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-white/30">Mês</th>
+                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Fat. do mês</th>
+                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Acumulado</th>
+                                <th className="px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-white/30">Faixa</th>
+                                <th className="px-4 py-2.5 text-right text-[10px] font-semibold uppercase tracking-wider text-white/30">Mensalidade</th>
+                                <th className="px-4 py-2.5 text-center text-[10px] font-semibold uppercase tracking-wider text-white/30">Evolução</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {rows.map((p, i) => {
+                                const isLast = i === rows.length - 1;
+                                return (
+                                    <tr
+                                        key={p.mes}
+                                        className={cn(
+                                            'border-b border-white/[0.04]',
+                                            isLast ? 'bg-ecf-yellow/[0.05]' : 'hover:bg-white/[0.02]'
+                                        )}
+                                    >
+                                        <td className="px-4 py-2.5 text-white/70 capitalize whitespace-nowrap">
+                                            {fmtMes(p.mes)}
+                                            {isLast && (
+                                                <span className="ml-1.5 text-[10px] text-ecf-yellow/70 font-semibold">atual</span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right text-white/45 font-mono">{fmtBRL(p.mensal)}</td>
+                                        <td className="px-4 py-2.5 text-right font-mono font-semibold text-white/80">{fmtBRL(p.acumulado)}</td>
+                                        <td className="px-4 py-2.5 text-center">
+                                            <span className={cn(
+                                                'text-[11px] font-semibold px-2 py-0.5 rounded-full',
+                                                isLast
+                                                    ? 'bg-ecf-yellow/20 text-ecf-yellow'
+                                                    : 'bg-white/[0.05] text-white/50'
+                                            )}>
+                                                {FAIXA_NOMES[p.faixa] ?? p.faixa}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-2.5 text-right font-mono text-emerald-400/80">
+                                            {p.valor_faixa ? fmtBRL(p.valor_faixa) : '—'}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex justify-center">
+                                                <EvolucaoBadge evolucao={p.evolucao} />
+                                            </div>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Footer */}
+                <div className="px-5 py-3 border-t border-white/[0.06] shrink-0 flex justify-end">
+                    <button
+                        onClick={onClose}
+                        className="text-[13px] text-white/40 hover:text-white/70 h-8 px-4 rounded-lg border border-white/[0.08] hover:border-white/20 transition-colors"
+                    >
+                        Fechar
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
     const datas = (() => {
         if (empresa.contract_start && empresa.contract_end) {
@@ -337,17 +448,18 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
                 </div>
                 {empresa.estado === 'ok' && (
                     <span className="text-white/40 text-[12px] mt-0.5 block">
-                        {fmtBRL(empresa.faturamento)} · {empresa.periodo_inicio} a {empresa.periodo_fim}
+                        {fmtBRL(empresa.faturamento)}
+                        {empresa.synced_at ? ` · dados até ${empresa.synced_at}` : ''}
                     </span>
                 )}
             </div>
             <EvolucaoBadge evolucao={empresa.evolucao} />
             <ServiceBadge tipo={empresa.service_type} />
             {!empresa.has_adman && <IntegrationBadge />}
-            {empresa.estado === 'ok' && (empresa.valor_mensal_grupo ?? empresa.valor_mensal) != null && (
+            {(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal) != null && (
                 <span className={cn('text-[13px] font-semibold font-mono shrink-0',
                     empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
-                    {fmtBRL(empresa.valor_mensal_grupo ?? empresa.valor_mensal)}
+                    {fmtBRL(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal)}
                     <span className="text-white/30 font-normal text-[11px]">/mês</span>
                 </span>
             )}
@@ -359,11 +471,12 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
 
 function ServiceForm({ empresa, onClose }) {
     const { data, setData, patch, processing, errors } = useForm({
-        service_type:       empresa.service_type       ?? '',
-        contract_type:      empresa.contract_type      ?? '',
-        contract_start:     empresa.contract_start     ?? '',
-        contract_end:       empresa.contract_end       ?? '',
-        additional_service: empresa.additional_service ?? '',
+        service_type:             empresa.service_type             ?? '',
+        contract_type:            empresa.contract_type            ?? '',
+        contract_start:           empresa.contract_start           ?? '',
+        contract_end:             empresa.contract_end             ?? '',
+        additional_service:       empresa.additional_service       ?? '',
+        additional_service_price: empresa.additional_service_price ?? '',
     });
 
     function submit(e) {
@@ -387,9 +500,11 @@ function ServiceForm({ empresa, onClose }) {
                         className="w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
                     >
                         <option value="">Selecionar tipo...</option>
-                        <option value="polo">POLO</option>
+                        <option value="polos">POLO</option>
                         <option value="assessoria">Assessoria</option>
                         <option value="incubadora">Incubadora</option>
+                        <option value="publicidade">Publicidade</option>
+                        <option value="gestao">Gestão</option>
                     </select>
                     {errors.service_type && (
                         <span className="text-[11px] text-red-400 mt-1 block">{errors.service_type}</span>
@@ -443,20 +558,39 @@ function ServiceForm({ empresa, onClose }) {
                     )}
                 </div>
             </div>
-            <div className="mt-4">
-                <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
-                    Serviço adicional
-                </label>
-                <input
-                    type="text"
-                    value={data.additional_service}
-                    onChange={e => setData('additional_service', e.target.value)}
-                    placeholder="Descreva o serviço adicional..."
-                    className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
-                />
-                {errors.additional_service && (
-                    <span className="text-[11px] text-red-400 mt-1 block">{errors.additional_service}</span>
-                )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
+                        Serviço adicional
+                    </label>
+                    <input
+                        type="text"
+                        value={data.additional_service}
+                        onChange={e => setData('additional_service', e.target.value)}
+                        placeholder="Descreva o serviço adicional..."
+                        className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                    />
+                    {errors.additional_service && (
+                        <span className="text-[11px] text-red-400 mt-1 block">{errors.additional_service}</span>
+                    )}
+                </div>
+                <div>
+                    <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
+                        Valor do serviço adicional (R$)
+                    </label>
+                    <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={data.additional_service_price}
+                        onChange={e => setData('additional_service_price', e.target.value)}
+                        placeholder="0,00"
+                        className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                    />
+                    {errors.additional_service_price && (
+                        <span className="text-[11px] text-red-400 mt-1 block">{errors.additional_service_price}</span>
+                    )}
+                </div>
             </div>
             <div className="flex items-center gap-2 mt-4">
                 <button
@@ -480,12 +614,29 @@ function ServiceForm({ empresa, onClose }) {
 
 function FechamentoAccordion({ empresa, mesSelecionado, onClose }) {
     const temGrupo = empresa.filhas?.length > 0;
+    const [modalAberto, setModalAberto] = useState(false);
 
     return (
         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
+            {modalAberto && (
+                <ProgressaoModal empresa={empresa} onClose={() => setModalAberto(false)} />
+            )}
             {empresa.estado === 'ok' && (
                 <>
-                    <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                    <div className="flex items-center justify-between mb-1">
+                        <div className="flex-1">
+                            <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                        </div>
+                        {(empresa.progressao?.length > 0) && (
+                            <button
+                                onClick={() => setModalAberto(true)}
+                                className="shrink-0 inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-7 rounded-lg transition-colors ml-3"
+                            >
+                                <BarChart2 size={12} />
+                                Ver progressão
+                            </button>
+                        )}
+                    </div>
 
                     {/* Breakdown de grupo (pai + filhas) */}
                     {temGrupo && (
@@ -499,23 +650,23 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose }) {
                                         {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
                                     </span>
                                     <span className="text-white/50 text-[12px] font-mono">
-                                        {e.valor_mensal != null ? fmtBRL(e.valor_mensal) : '—'}
+                                        {e.cobranca_mensal != null ? fmtBRL(e.cobranca_mensal) : '—'}
                                     </span>
                                 </div>
                             ))}
                             <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
                                 <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
-                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtBRL(empresa.valor_mensal_grupo)}</span>
+                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtBRL(empresa.cobranca_mensal_grupo)}</span>
                             </div>
                         </div>
                     )}
 
                     {/* Mensalidade individual ou grupo */}
-                    {!temGrupo && empresa.valor_mensal != null && (
+                    {!temGrupo && empresa.cobranca_mensal != null && (
                         <div className="flex items-center justify-between py-2 mb-2 border-b border-white/[0.04]">
                             <span className="text-[11px] uppercase tracking-wider text-white/40">Mensalidade a cobrar</span>
                             <span className="text-emerald-400 text-[15px] font-bold font-mono">
-                                {fmtBRL(empresa.valor_mensal)}
+                                {fmtBRL(empresa.cobranca_mensal)}
                             </span>
                         </div>
                     )}
@@ -729,6 +880,34 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
     );
 }
 
+function SyncFaturamentoBtn({ mesSelecionado }) {
+    const [loading, setLoading] = useState(false);
+
+    async function handleSync() {
+        setLoading(true);
+        try {
+            await window.axios.post(route('admin.financeiro.sync'), { mes: mesSelecionado });
+            router.reload({ preserveScroll: true });
+        } catch (e) {
+            alert('Erro ao sincronizar: ' + (e.response?.data?.message ?? e.message));
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return (
+        <button
+            onClick={handleSync}
+            disabled={loading}
+            title="Sincronizar faturamento bruto do mês via Adman"
+            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.06] text-[13px] text-white/60 hover:text-white/90 transition-colors disabled:opacity-40 disabled:cursor-wait"
+        >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            {loading ? 'Sincronizando...' : 'Sincronizar faturamento'}
+        </button>
+    );
+}
+
 const FILTROS_INICIAL = { busca: '', service_type: '', contract_type: '', estado: '', recebido: '' };
 
 function FiltroBarra({ filtros, onChange, total, filtrado }) {
@@ -746,9 +925,11 @@ function FiltroBarra({ filtros, onChange, total, filtrado }) {
             />
             <select value={filtros.service_type} onChange={e => onChange({ ...filtros, service_type: e.target.value })} className={sel}>
                 <option value="">Serviço</option>
-                <option value="polo">POLO</option>
+                <option value="polos">POLO</option>
                 <option value="assessoria">Assessoria</option>
                 <option value="incubadora">Incubadora</option>
+                <option value="publicidade">Publicidade</option>
+                <option value="gestao">Gestão</option>
             </select>
             <select value={filtros.contract_type} onChange={e => onChange({ ...filtros, contract_type: e.target.value })} className={sel}>
                 <option value="">Contrato</option>
@@ -806,9 +987,10 @@ export default function Financeiro({ companies, mes_selecionado }) {
                                 <Banknote size={20} className="text-ecf-yellow" />
                                 <h1 className="text-xl font-semibold font-display text-white">Fechamento</h1>
                             </div>
-                            <p className="text-[13px] text-white/40">Faturamento mensal, faixa de investimento e dados de contrato por empresa ativa.</p>
+                            <p className="text-[13px] text-white/40">Faturamento do período, progressão de faixa e dados de contrato por empresa ativa.</p>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
+                            <SyncFaturamentoBtn mesSelecionado={mes_selecionado} />
                             <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={companies} />
                             <MesSeletor mesSelecionado={mes_selecionado} />
                         </div>

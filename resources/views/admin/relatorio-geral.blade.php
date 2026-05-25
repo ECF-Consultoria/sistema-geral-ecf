@@ -358,8 +358,8 @@
                     <span class="mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj ?? '')) ?: '—' }}</span>
                 </div>
                 <div class="field">
-                    <label>Cust ID (Adman)</label>
-                    <span class="mono">{{ $company->adman_account_id ?? '—' }}</span>
+                    <label>ID Loja ML</label>
+                    <span class="mono">{{ $company->ml_store_id ?: ($company->adman_account_id ?? '—') }}</span>
                 </div>
                 @if ($company->adman_store_id)
                 <div class="field"><label>Store ID</label><span class="mono">{{ $company->adman_store_id }}</span></div>
@@ -372,7 +372,7 @@
                 @endif
                 <div class="field">
                     <label>Tipo de serviço</label>
-                    <span>{{ match($company->service_type ?? '') { 'polo' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', default => '—' } }}</span>
+                    <span>{{ match($company->service_type ?? '') { 'polos' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', 'publicidade' => 'Publicidade', 'gestao' => 'Gestão', default => '—' } }}</span>
                 </div>
                 <div class="field">
                     <label>Tipo de contrato</label>
@@ -407,7 +407,12 @@
                             </td>
                             <td>@if ($r['faturamento'] !== null) {{ 'R$ '.number_format($r['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
                             <td>@if ($r['faixa_label']) <span class="faixa-badge">{{ $r['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right">{{ $r['valor_mensal'] ? 'R$ '.number_format($r['valor_mensal'],0,',','.') : '—' }}</td>
+                            <td class="right">
+                                @if ($r['valor_mensal'])R$ {{ number_format($r['valor_mensal'],0,',','.') }}@else —@endif
+                                @if ($company->additional_service_price)
+                                    <br><span style="font-size:10px;color:#888">+ R$ {{ number_format($company->additional_service_price,0,',','.') }} ({{ $company->additional_service ?: 'adicional' }})</span>
+                                @endif
+                            </td>
                         </tr>
                         @foreach ($r['vinculadas'] as $v)
                         <tr class="vinculada">
@@ -417,7 +422,12 @@
                             </td>
                             <td>@if ($v['faturamento'] !== null) {{ 'R$ '.number_format($v['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
                             <td>@if ($v['faixa_label']) <span class="faixa-badge">{{ $v['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right">{{ $v['valor_mensal'] ? 'R$ '.number_format($v['valor_mensal'],0,',','.') : '—' }}</td>
+                            <td class="right">
+                                @if ($v['valor_mensal'])R$ {{ number_format($v['valor_mensal'],0,',','.') }}@else —@endif
+                                @if (!empty($v['additional_service_price']))
+                                    <br><span style="font-size:10px;color:#888">+ R$ {{ number_format($v['additional_service_price'],0,',','.') }} ({{ $v['additional_service'] ?: 'adicional' }})</span>
+                                @endif
+                            </td>
                         </tr>
                         @endforeach
                         <tr class="total">
@@ -440,14 +450,31 @@
                         <tr>
                             <td>{{ 'R$ '.number_format($r['faturamento'],0,',','.') }}</td>
                             <td>@if ($r['faixa_label']) <span class="faixa-badge">{{ $r['faixa_label'] }}</span> @else — @endif</td>
-                            <td class="right"><span class="valor-destaque">{{ $r['valor_mensal'] ? 'R$ '.number_format($r['valor_mensal'],0,',','.') : '—' }}</span></td>
+                            <td class="right"><span class="valor-destaque">{{ $r['cobranca_mensal'] ? 'R$ '.number_format($r['cobranca_mensal'],0,',','.') : '—' }}</span></td>
                         </tr>
                     </tbody>
                 </table>
-                @if ($r['valor_mensal'])
+                @if ($r['cobranca_mensal'])
                 <div class="total-box">
-                    <span class="label">Mensalidade a cobrar</span>
-                    <span class="value">{{ 'R$ '.number_format($r['valor_mensal'],0,',','.') }}</span>
+                    @if ($company->additional_service_price && $r['valor_mensal'])
+                        <div style="display:flex;flex-direction:column;gap:4px;width:100%">
+                            <div style="display:flex;justify-content:space-between;font-size:12px;color:#555">
+                                <span>{{ match($company->contract_type ?? '') { 'progressao' => 'Mensalidade (Progressão)', default => 'Mensalidade (Fixo)' } }}</span>
+                                <span>R$ {{ number_format($r['valor_mensal'],0,',','.') }}</span>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:12px;color:#555">
+                                <span>{{ $company->additional_service ?: 'Serviço adicional' }}</span>
+                                <span>R$ {{ number_format($company->additional_service_price,0,',','.') }}</span>
+                            </div>
+                            <div style="border-top:1px solid #ddd;margin-top:4px;padding-top:6px;display:flex;justify-content:space-between;align-items:center">
+                                <span class="label">Total a cobrar</span>
+                                <span class="value">R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}</span>
+                            </div>
+                        </div>
+                    @else
+                        <span class="label">Mensalidade a cobrar</span>
+                        <span class="value">R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}</span>
+                    @endif
                 </div>
                 @endif
             @else
@@ -475,8 +502,8 @@
                     <tr>
                         <td class="empresa-nome">{{ $v['name'] }}</td>
                         <td class="label-mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $v['cnpj'] ?? '')) ?: '—' }}</td>
-                        <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>
-                        <td>{{ match($v['service_type'] ?? '') { 'polo' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', default => '—' } }}</td>
+                        <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>{{-- adman_account_id já é ml_store_id ?: adman_account_id via AdminController --}}
+                        <td>{{ match($v['service_type'] ?? '') { 'polos' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', 'publicidade' => 'Publicidade', 'gestao' => 'Gestão', default => '—' } }}</td>
                         <td>{{ match($v['contract_type'] ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Progressão', default => '—' } }}</td>
                         <td class="label-mono">{{ !empty($v['contract_start']) ? $v['contract_start'] . (!empty($v['contract_end']) ? ' – ' . $v['contract_end'] : '') : '—' }}</td>
                     </tr>

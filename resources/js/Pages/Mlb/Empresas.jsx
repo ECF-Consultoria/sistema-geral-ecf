@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { useForm, router, usePage } from '@inertiajs/react';
+import { useForm, router, usePage, Link } from '@inertiajs/react';
 
 import { useState, useEffect, useRef } from 'react';
 import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, RefreshCw, X, PlusCircle, AlertTriangle, ExternalLink, Clock, Link2, BookUser } from 'lucide-react';
@@ -849,15 +849,27 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                         <span className="text-white/30 text-[12px] ml-1">cadastradas pelo Comercial, aguardando dados da Publicação</span>
                     </div>
                     <div className="space-y-2">
-                        {empresas_pendentes.map(p => (
-                            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-2.5">
-                                <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
-                                <span className="text-ecf-yellow/60 text-[11px] font-medium capitalize">{p.service_type}</span>
-                                <span className="text-white/25 text-[11px]">
-                                    {new Date(p.created_at).toLocaleDateString('pt-BR')}
-                                </span>
-                            </div>
-                        ))}
+                        {empresas_pendentes.map(p => {
+                            const mlbEmpresa = empresas.find(e => e.company_id === p.id);
+                            return (
+                                <div key={p.id} className="flex items-center gap-3 rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-2.5">
+                                    <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
+                                    <span className="text-ecf-yellow/60 text-[11px] font-medium capitalize">{p.service_type}</span>
+                                    <span className="text-white/25 text-[11px]">
+                                        {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                                    </span>
+                                    {mlbEmpresa && (
+                                        <button
+                                            onClick={() => { setEditing(mlbEmpresa); setOpen(true); }}
+                                            className="inline-flex items-center gap-1 text-ecf-yellow text-[11px] font-medium hover:text-ecf-yellow/70 transition-colors whitespace-nowrap"
+                                        >
+                                            <Pencil size={11} />
+                                            Preencher dados
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}

@@ -39,8 +39,10 @@ class SugadorAnalysisService
     {
         $companies = Company::with('sugadorConfig')
             ->where('active', true)
-            ->whereNotNull('adman_account_id')
-            ->where('adman_account_id', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
+                  ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
+            })
             ->where(function ($q) {
                 // Empresas com config ativa OU sem config (default é ativo=true via forCompany)
                 $q->whereHas('sugadorConfig', fn($q) => $q->where('ativo', true))
@@ -89,7 +91,7 @@ class SugadorAnalysisService
     public function analyzeCompany(Company $company, ?Carbon $referenceDate = null, bool $dryRun = false): array
     {
         $referenceDate = $referenceDate ?? now()->startOfDay();
-        $custId        = $company->adman_account_id;
+        $custId        = $company->ml_store_id ?: $company->adman_account_id;
 
         $skip = function (string $reason) {
             return ['skipped' => true, 'reason' => $reason, 'campanhas' => 0, 'adgroups' => 0, 'detalhes' => []];

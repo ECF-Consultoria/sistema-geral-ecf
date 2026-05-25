@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\SyncTodasVendasAdmanJob;
 use App\Models\Company;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
@@ -1463,6 +1462,7 @@ class MlbController extends Controller
 
                 return [
                     'id'               => $e->id,
+                    'company_id'       => $e->company_id,
                     'nome'             => $e->nome,
                     'cust_id'          => $e->cust_id,
                     'polo'             => $e->polo,
@@ -1622,6 +1622,11 @@ class MlbController extends Controller
 
         // Não chama atualizaEstagio() aqui: o usuário está controlando o estágio explicitamente.
         // A progressão automática ocorre apenas ao marcar SKUs (marcarSku).
+
+        // Empresa cadastrada pelo Comercial: ao ser editada pela primeira vez, sai do estado pendente
+        if ($empresa->company_id) {
+            Company::where('id', $empresa->company_id)->where('status', 'pendente')->update(['status' => 'ativo']);
+        }
 
         return back()->with('success', 'Empresa atualizada.');
     }
@@ -1791,7 +1796,7 @@ class MlbController extends Controller
 
     /**
      * Sincroniza vendas de TODAS as empresas com cust_id. Apenas gestor.
-     * O loop pesado foi movido para SyncTodasVendasAdmanJob — controller retorna em ms.
+     * Executa de forma síncrona — o modal permanece aberto até a conclusão.
      */
     public function syncTodasVendasAdman(Request $request)
     {
@@ -1803,15 +1808,45 @@ class MlbController extends Controller
             'date_to'   => 'required|date|before_or_equal:today|after_or_equal:date_from',
         ]);
 
-        // Contagem leve para enriquecer a flash message sem rodar o loop
-        $totalEmpresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->count();
+        // Operação longa — remove o limite de 120s do PHP para este request
+        set_time_limit(0);
 
-        // pt-BR: Despacha o loop síncrono para queue worker — evita 504 do nginx em ~17 empresas * 120s.
-        SyncTodasVendasAdmanJob::dispatch($request->date_from, $request->date_to, $request->user()?->id);
+        $adman    = new AdmanService();
+        $empresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->get();
+        $totais   = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
+
+        foreach ($empresas as $empresa) {
+            try {
+                $performance  = $adman->fetchPerformance($empresa->cust_id, $request->date_from, $request->date_to);
+                $items        = $performance['items'] ?? [];
+                $mlbsComVenda = $this->extrairMlbsVendidos($items);
+
+                $totais['itens']     += count($items);
+                $totais['com_venda'] += count($mlbsComVenda);
+
+                foreach ($mlbsComVenda as $mlbCode => $data) {
+                    $intQty = (int) $data['qty'];
+                    $affected = Publicacao::where('mlb_code', $mlbCode)->update([
+                        'vendido'        => true,
+                        'vendas_qty'     => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
+                        'preco_unitario' => $data['preco'],
+                        'net_billing'    => $data['net_billing'] > 0 ? $data['net_billing'] : null,
+                    ]);
+                    $totais['encontradas'] += $affected;
+                }
+
+                usleep(600_000);
+            } catch (\Throwable $e) {
+                Log::error("[MLB SyncTodasVendas] {$empresa->nome}: " . $e->getMessage());
+                $totais['erros']++;
+            }
+        }
 
         return back()->with('success', sprintf(
-            'Sync de vendas iniciado em background para %d empresa(s). Acompanhe pelos logs.',
-            $totalEmpresas
+            '%d empresa(s) sincronizadas. %d item(ns) com venda, %d publicação(ões) atualizada(s).',
+            $empresas->count() - $totais['erros'],
+            $totais['com_venda'],
+            $totais['encontradas']
         ));
     }
 

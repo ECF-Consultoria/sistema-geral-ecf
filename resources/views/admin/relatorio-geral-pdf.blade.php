@@ -295,8 +295,8 @@
                         <span class="mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $company->cnpj ?? '')) ?: '—' }}</span>
                     </td>
                     <td>
-                        <label>Cust ID (Adman)</label>
-                        <span class="mono">{{ $company->adman_account_id ?? '—' }}</span>
+                        <label>ID Loja ML</label>
+                        <span class="mono">{{ $company->ml_store_id ?: ($company->adman_account_id ?? '—') }}</span>
                     </td>
                     <td>
                         @if (!empty($company->adman_store_id))

@@ -22,7 +22,7 @@ class CompanyController extends Controller
                 'active'           => $c->active,
                 'status'           => $c->status,
                 'notes'            => $c->notes,
-                'adman_account_id' => $c->adman_account_id,
+                'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
                 'consultor'        => $c->consultor->first()?->only(['id', 'name']),
@@ -132,7 +132,6 @@ class CompanyController extends Controller
         $data = $request->validate([
             'name'             => 'required|string|max:255',
             'cnpj'             => 'nullable|string|max:18|unique:companies',
-            'adman_account_id' => 'nullable|string|max:100',
             'adman_store_id'   => 'nullable|string|max:100',
             'ml_store_id'      => 'nullable|string|max:100',
             'segment'          => 'nullable|string|max:100',
@@ -158,7 +157,6 @@ class CompanyController extends Controller
         $data = $request->validate([
             'name'             => 'required|string|max:255',
             'cnpj'             => 'nullable|string|max:18',
-            'adman_account_id' => 'nullable|string|max:100',
             'adman_store_id'   => 'nullable|string|max:100',
             'ml_store_id'      => 'nullable|string|max:100',
             'segment'          => 'nullable|string|max:100',
@@ -169,6 +167,11 @@ class CompanyController extends Controller
         ]);
 
         $company->update($data);
+
+        // Empresa cadastrada pelo Comercial: ao ser editada pela primeira vez, sai do estado pendente
+        if ($company->status === 'pendente') {
+            $company->update(['status' => 'ativo']);
+        }
 
         $sync = [];
         if (!empty($data['consultor_id'])) {

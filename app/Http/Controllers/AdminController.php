@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Jobs\EnviarRelatorioFechamentoJob;
 use App\Models\AdmanMetric;
+use App\Services\AdmanService;
 use App\Models\Company;
+use App\Models\CompanyMonthlyRevenue;
 use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
 use Carbon\Carbon;
@@ -107,25 +109,55 @@ class AdminController extends Controller
         }
 
         $mesSelecionado = $ref->format('Y-m');
-        $inicio         = $ref->copy()->startOfMonth();
-        $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
+        $mesAnterior    = $ref->copy()->subMonth()->format('Y-m');
 
-        $inicioAnterior = $ref->copy()->subMonth()->startOfMonth();
-        $fimAnterior    = $ref->copy()->subMonth()->endOfMonth();
+        // Janela de datas — alinhada com a VPS:
+        // Mês atual: rolling 30 dias (captura billing mais recente da API)
+        // Mês passado e anteriores: mês calendário completo
+        $isMesAtual = $ref->isSameMonth(Carbon::now());
+        if ($isMesAtual) {
+            $inicio = Carbon::now()->subDays(30)->startOfDay()->toDateString();
+            $fim    = Carbon::now()->toDateString();
+        } else {
+            $inicio = $ref->copy()->startOfMonth()->toDateString();
+            $fim    = $ref->copy()->endOfMonth()->toDateString();
+        }
+        $inicioAnterior = $ref->copy()->subMonth()->startOfMonth()->toDateString();
+        $fimAnterior    = $ref->copy()->subMonth()->endOfMonth()->toDateString();
 
+        // Faturamento do período via adman_metrics (sincronizado diariamente pelo adman:sync)
         $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
             ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
+            ->selectRaw('company_id, SUM(revenue) as gross_revenue, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
 
+        // Fallback: company_monthly_revenues para empresas sem adman_metrics no período
+        $fallback = CompanyMonthlyRevenue::where('year_month', $mesSelecionado)
+            ->whereNotNull('gross_revenue')
+            ->get()
+            ->keyBy('company_id');
+
+        // Mês anterior para comparação de faixa
         $metricasAnterior = AdmanMetric::whereBetween('reference_date', [$inicioAnterior, $fimAnterior])
             ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as faturamento')
+            ->selectRaw('company_id, SUM(revenue) as gross_revenue')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
+
+        $fallbackAnterior = CompanyMonthlyRevenue::where('year_month', $mesAnterior)
+            ->whereNotNull('gross_revenue')
+            ->get()
+            ->keyBy('company_id');
+
+        // Progressão mensal para o modal de histórico
+        $mensalPorEmpresa = CompanyMonthlyRevenue::where('year_month', '<=', $mesSelecionado)
+            ->whereNotNull('gross_revenue')
+            ->orderBy('year_month')
+            ->get(['company_id', 'year_month', 'gross_revenue'])
+            ->groupBy('company_id');
 
         $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
             ->pluck('recebido_em', 'company_id');
@@ -143,8 +175,9 @@ class AdminController extends Controller
         $dadosPorId = [];
 
         foreach ($rawCompanies as $c) {
-            $hasAdman = (bool) $c->adman_account_id;
-            $metrica  = $metricas->get($c->id);
+            $hasAdman = (bool) ($c->ml_store_id ?: $c->adman_account_id);
+            // adman_metrics como fonte primária; company_monthly_revenues como fallback
+            $metrica  = $metricas->get($c->id) ?? $fallback->get($c->id);
 
             $estado = match (true) {
                 !$hasAdman => 'sem_integracao',
@@ -153,12 +186,12 @@ class AdminController extends Controller
             };
 
             $faixaData = ($estado === 'ok')
-                ? $this->calcularFaixa((float) $metrica->faturamento)
+                ? $this->calcularFaixa((float) $metrica->gross_revenue)
                 : null;
 
-            $metricaAnterior   = $metricasAnterior->get($c->id);
+            $metricaAnterior   = $metricasAnterior->get($c->id) ?? $fallbackAnterior->get($c->id);
             $faixaAnteriorData = ($hasAdman && $metricaAnterior)
-                ? $this->calcularFaixa((float) $metricaAnterior->faturamento)
+                ? $this->calcularFaixa((float) $metricaAnterior->gross_revenue)
                 : null;
 
             $evolucao = null;
@@ -170,6 +203,38 @@ class AdminController extends Controller
                     $numAtual < $numAnt => 'desceu',
                     default            => 'manteve',
                 };
+            }
+
+            // Progressão mensal: cada registro de company_monthly_revenues → acumulado → faixa no mês
+            $mesesDaEmpresa  = $mensalPorEmpresa->get($c->id, collect());
+            $progressao      = [];
+            $acumProg        = 0.0;
+            $faixaAntProg    = null;
+
+            foreach ($mesesDaEmpresa as $m) {
+                $acumProg += (float) $m->gross_revenue;
+                $fdProg    = $this->calcularFaixa($acumProg);
+                $evoProg   = null;
+
+                if ($faixaAntProg !== null) {
+                    $na      = $this->faixaNumero($fdProg['faixa']);
+                    $np      = $this->faixaNumero($faixaAntProg);
+                    $evoProg = match (true) {
+                        $na > $np => 'subiu',
+                        $na < $np => 'desceu',
+                        default   => 'manteve',
+                    };
+                }
+
+                $progressao[]  = [
+                    'mes'         => $m->year_month,
+                    'mensal'      => (float) $m->gross_revenue,
+                    'acumulado'   => $acumProg,
+                    'faixa'       => $fdProg['faixa'],
+                    'valor_faixa' => $fdProg['valor'],
+                    'evolucao'    => $evoProg,
+                ];
+                $faixaAntProg = $fdProg['faixa'];
             }
 
             $filhaIds = $c->filhas->pluck('id')->toArray();
@@ -185,14 +250,23 @@ class AdminController extends Controller
                 'contract_type'      => $c->contract_type,
                 'contract_start'     => $c->contract_start?->toDateString(),
                 'contract_end'       => $c->contract_end?->toDateString(),
-                'additional_service' => $c->additional_service,
+                'additional_service'       => $c->additional_service,
+                'additional_service_price' => $c->additional_service_price ? (float) $c->additional_service_price : null,
                 'has_adman'          => $hasAdman,
                 'estado'             => $estado,
-                'faturamento'        => $metrica ? (float) $metrica->faturamento : null,
-                'periodo_inicio'     => $metrica ? Carbon::parse($metrica->periodo_inicio)->format('d/m') : null,
-                'periodo_fim'        => $metrica ? Carbon::parse($metrica->periodo_fim)->format('d/m') : null,
+                'faturamento'        => $metrica ? (float) $metrica->gross_revenue : null,
+                'inicio_dados'       => null,
+                'synced_at'          => $metrica
+                    ? (isset($metrica->periodo_fim)
+                        ? Carbon::parse($metrica->periodo_fim)->format('d/m')
+                        : Carbon::createFromFormat('Y-m', $metrica->year_month)->format('m/Y'))
+                    : null,
+                'progressao'         => $progressao,
                 'faixa'              => $faixaData['faixa'] ?? null,
                 'valor_mensal'       => $faixaData['valor'] ?? null,
+                'cobranca_mensal'    => ($faixaData !== null || $c->additional_service_price)
+                    ? (float) ($faixaData['valor'] ?? 0) + (float) ($c->additional_service_price ?? 0)
+                    : null,
                 'recebido'           => isset($recebidos[$c->id]),
                 'evolucao'           => $evolucao,
             ];
@@ -203,25 +277,29 @@ class AdminController extends Controller
             $filhaIds = $dados['filha_ids'];
 
             if (!empty($filhaIds)) {
-                $grupoValor  = (float) ($dados['valor_mensal'] ?? 0);
-                $grupoFat    = (float) ($dados['faturamento']  ?? 0);
-                $filhasArray = [];
+                $grupoValor    = (float) ($dados['valor_mensal']    ?? 0);
+                $grupoCobranca = (float) ($dados['cobranca_mensal'] ?? 0);
+                $grupoFat      = (float) ($dados['faturamento']     ?? 0);
+                $filhasArray   = [];
 
                 foreach ($filhaIds as $filhaId) {
                     if (isset($dadosPorId[$filhaId])) {
-                        $grupoValor  += (float) ($dadosPorId[$filhaId]['valor_mensal'] ?? 0);
-                        $grupoFat    += (float) ($dadosPorId[$filhaId]['faturamento']  ?? 0);
-                        $filhasArray[] = $dadosPorId[$filhaId];
+                        $grupoValor    += (float) ($dadosPorId[$filhaId]['valor_mensal']    ?? 0);
+                        $grupoCobranca += (float) ($dadosPorId[$filhaId]['cobranca_mensal'] ?? 0);
+                        $grupoFat      += (float) ($dadosPorId[$filhaId]['faturamento']     ?? 0);
+                        $filhasArray[]  = $dadosPorId[$filhaId];
                     }
                 }
 
-                $dados['valor_mensal_grupo'] = $grupoValor;
-                $dados['faturamento_grupo']  = $grupoFat;
-                $dados['filhas']             = $filhasArray;
+                $dados['valor_mensal_grupo']   = $grupoValor    ?: null;
+                $dados['cobranca_mensal_grupo'] = $grupoCobranca ?: null;
+                $dados['faturamento_grupo']     = $grupoFat      ?: null;
+                $dados['filhas']               = $filhasArray;
             } else {
-                $dados['valor_mensal_grupo'] = $dados['valor_mensal'];
-                $dados['faturamento_grupo']  = $dados['faturamento'];
-                $dados['filhas']             = [];
+                $dados['valor_mensal_grupo']   = $dados['valor_mensal'];
+                $dados['cobranca_mensal_grupo'] = $dados['cobranca_mensal'];
+                $dados['faturamento_grupo']     = $dados['faturamento'];
+                $dados['filhas']               = [];
             }
 
             $dados['conta_no_total'] = $dados['parent_company_id'] === null;
@@ -234,6 +312,42 @@ class AdminController extends Controller
         ]);
     }
 
+    public function syncFaturamento(Request $request, AdmanService $adman)
+    {
+        $mes = $request->filled('mes')
+            ? Carbon::createFromFormat('Y-m', $request->input('mes'))->format('Y-m')
+            : Carbon::now()->format('Y-m');
+
+        $companies = Company::where('active', true)
+            ->where(function ($q) {
+                $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
+                  ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
+            })
+            ->get();
+
+        // Operação longa — remove o limite de 120s do PHP para este request
+        set_time_limit(0);
+
+        $results = ['success' => 0, 'failed' => 0];
+
+        foreach ($companies as $company) {
+            try {
+                $adman->syncMonthRevenue($company, $mes);
+                $results['success']++;
+                usleep(500_000);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error("[Faturamento] Erro empresa {$company->id} ({$company->name}): " . $e->getMessage());
+                $results['failed']++;
+            }
+        }
+
+        return response()->json([
+            'message'   => "Faturamento sincronizado: {$results['success']} empresa(s) atualizadas.",
+            'synced_at' => now()->format('H:i:s'),
+            'results'   => $results,
+        ]);
+    }
+
     public function updateFechamento(Request $request, Company $company)
     {
         $validator = Validator::make($request->all(), [
@@ -241,11 +355,12 @@ class AdminController extends Controller
             'contract_type'      => 'nullable|in:fixo,progressao',
             'contract_start'     => 'nullable|date',
             'contract_end'       => 'nullable|date|after_or_equal:contract_start',
-            'additional_service' => 'nullable|string|max:255',
+            'additional_service'       => 'nullable|string|max:255',
+            'additional_service_price' => 'nullable|numeric|min:0',
         ]);
 
         if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
+            return back()->withErrors($validator->errors());
         }
 
         $company->update($validator->validated());
@@ -299,12 +414,10 @@ class AdminController extends Controller
         // IDs para a query de métricas (pai + todas as filhas)
         $todosIds = collect([$company->id])->merge($company->filhas->pluck('id'));
 
-        // Agrega métricas do mês para todos os IDs
-        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-            ->whereNotNull('revenue')
+        // Agrega faturamento bruto do mês via company_monthly_revenues
+        $metricas = CompanyMonthlyRevenue::where('year_month', $mesSelecionado)
             ->whereIn('company_id', $todosIds)
-            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
-            ->groupBy('company_id')
+            ->whereNotNull('gross_revenue')
             ->get()
             ->keyBy('company_id');
 
@@ -315,30 +428,45 @@ class AdminController extends Controller
 
         // Monta dados da empresa principal
         $metricaPai = $metricas->get($company->id);
-        $faturamentoPai = $metricaPai ? (float) $metricaPai->faturamento : null;
+        $faturamentoPai = $metricaPai ? (float) $metricaPai->gross_revenue : null;
         $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
         // Monta dados das vinculadas
         $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
-            $m   = $metricas->get($f->id);
-            $fat = $m ? (float) $m->faturamento : null;
-            $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
+            $m            = $metricas->get($f->id);
+            $fat          = $m ? (float) $m->gross_revenue : null;
+            $fx           = $fat !== null ? $this->calcularFaixa($fat) : null;
+            $valorMensal  = $fx ? $fx['valor'] : null;
+            $adicional    = $f->additional_service_price ? (float) $f->additional_service_price : null;
             return [
-                'id'                  => $f->id,
-                'name'                => $f->name,
-                'cnpj'                => $f->cnpj,
-                'adman_account_id'    => $f->adman_account_id,
-                'faturamento'         => $fat,
-                'periodo_inicio'      => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
-                'periodo_fim'         => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y') : null,
-                'faixa_label'         => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                'valor_mensal'        => $fx ? $fx['valor'] : null,
+                'id'                       => $f->id,
+                'name'                     => $f->name,
+                'cnpj'                     => $f->cnpj,
+                'adman_account_id'         => $f->ml_store_id ?: $f->adman_account_id,
+                'adman_store_id'           => $f->adman_store_id ?? null,
+                'ml_store_id'              => $f->ml_store_id,
+                'service_type'             => $f->service_type,
+                'contract_type'            => $f->contract_type,
+                'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
+                'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
+                'faturamento'              => $fat,
+                'periodo_inicio'           => null,
+                'periodo_fim'              => null,
+                'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
+                'valor_mensal'             => $valorMensal,
+                'additional_service'       => $f->additional_service,
+                'additional_service_price' => $adicional,
+                'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
             ];
         })->values()->toArray();
 
+        $valorMensalPai  = $faixaPai ? $faixaPai['valor'] : null;
+        $adicionalPai    = $company->additional_service_price ? (float) $company->additional_service_price : null;
+        $cobrancaMensal  = ($valorMensalPai ?? 0) + ($adicionalPai ?? 0) ?: null;
+
         // Totais do grupo
         $totalFaturamento = ($faturamentoPai ?? 0) + collect($vinculadas)->sum('faturamento');
-        $totalMensalidade = ($faixaPai ? $faixaPai['valor'] : 0) + collect($vinculadas)->sum('valor_mensal');
+        $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 
         return view('admin.relatorio-fechamento', [
             'company'          => $company,
@@ -346,10 +474,11 @@ class AdminController extends Controller
             'mes_selecionado'  => $mesSelecionado,
             'metrica'          => $metricaPai,
             'faturamento'      => $faturamentoPai,
-            'periodo_inicio'   => $metricaPai ? Carbon::parse($metricaPai->periodo_inicio)->format('d/m/Y') : null,
-            'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y') : null,
+            'periodo_inicio'   => null,
+            'periodo_fim'      => null,
             'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
-            'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
+            'valor_mensal'     => $valorMensalPai,
+            'cobranca_mensal'  => $cobrancaMensal,
             'vinculadas'       => $vinculadas,
             'total_faturamento'=> $totalFaturamento,
             'total_mensalidade'=> $totalMensalidade,
@@ -394,12 +523,10 @@ class AdminController extends Controller
             fn($c) => collect([$c->id])->merge($c->filhas->pluck('id'))
         )->unique();
 
-        // Agrega métricas do mês
-        $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
-            ->whereNotNull('revenue')
+        // Faturamento bruto do mês via company_monthly_revenues
+        $metricas = CompanyMonthlyRevenue::where('year_month', $mesSelecionado)
             ->whereIn('company_id', $todosIds)
-            ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
-            ->groupBy('company_id')
+            ->whereNotNull('gross_revenue')
             ->get()
             ->keyBy('company_id');
 
@@ -418,13 +545,15 @@ class AdminController extends Controller
             if ($filtroRecebido === 'nao' && $recebido)  continue;
 
             $metricaPai     = $metricas->get($company->id);
-            $faturamentoPai = $metricaPai ? (float) $metricaPai->faturamento : null;
+            $faturamentoPai = $metricaPai ? (float) $metricaPai->gross_revenue : null;
             $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
             $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
-                $m   = $metricas->get($f->id);
-                $fat = $m ? (float) $m->faturamento : null;
-                $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
+                $m           = $metricas->get($f->id);
+                $fat         = $m ? (float) $m->gross_revenue : null;
+                $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
+                $valorMensal = $fx ? $fx['valor'] : null;
+                $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
                 return [
                     'id'                       => $f->id,
                     'name'                     => $f->name,
@@ -438,25 +567,31 @@ class AdminController extends Controller
                     'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
                     'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
                     'additional_service'       => $f->additional_service,
-                    'additional_service_price' => $f->additional_service_price ? (float) $f->additional_service_price : null,
+                    'additional_service_price' => $adicional,
                     'faturamento'              => $fat,
-                    'periodo_inicio'           => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
-                    'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,
+                    'periodo_inicio'           => null,
+                    'periodo_fim'              => null,
                     'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                    'valor_mensal'             => $fx ? $fx['valor'] : null,
+                    'valor_mensal'             => $valorMensal,
+                    'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
                 ];
             })->values()->toArray();
 
-            $totalMensalidade = ($faixaPai ? $faixaPai['valor'] : 0) + collect($vinculadas)->sum('valor_mensal');
+            $valorMensalPai  = $faixaPai ? $faixaPai['valor'] : null;
+            $adicionalPai    = $company->additional_service_price ? (float) $company->additional_service_price : null;
+            $cobrancaMensal  = ($valorMensalPai ?? 0) + ($adicionalPai ?? 0) ?: null;
+
+            $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 
             $relatorios[] = [
                 'company'          => $company,
                 'recebido'         => $recebido,
                 'faturamento'      => $faturamentoPai,
-                'periodo_inicio'   => $metricaPai ? Carbon::parse($metricaPai->periodo_inicio)->format('d/m/Y') : null,
-                'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y')  : null,
+                'periodo_inicio'   => null,
+                'periodo_fim'      => null,
                 'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
-                'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
+                'valor_mensal'     => $valorMensalPai,
+                'cobranca_mensal'  => $cobrancaMensal,
                 'vinculadas'       => $vinculadas,
                 'total_mensalidade'=> $totalMensalidade,
             ];

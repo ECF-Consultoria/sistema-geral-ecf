@@ -270,12 +270,13 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     // devem vir ANTES de /financeiro/{company} para evitar colisão com o parâmetro dinâmico.
     Route::get('/configuracoes/financeiro',  [AdminController::class, 'configuracoesFinanceiro'])->name('configuracoes.financeiro');
     Route::post('/configuracoes/financeiro', [AdminController::class, 'salvarConfiguracoesFinanceiro'])->name('configuracoes.financeiro.salvar');
-    Route::get('/financeiro',                      [AdminController::class, 'fechamento'])->name('financeiro');
-    Route::get('/financeiro/relatorio-geral',        [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
+    Route::get('/financeiro',                         [AdminController::class, 'fechamento'])->name('financeiro');
+    Route::get('/financeiro/relatorio-geral',         [AdminController::class, 'gerarRelatorioGeral'])->name('financeiro.relatorio.geral');
     Route::post('/financeiro/relatorio-geral/enviar', [AdminController::class, 'enviarRelatorioGeral'])->name('financeiro.relatorio.enviar');
-    Route::patch('/financeiro/{company}',          [AdminController::class, 'updateFechamento'])->name('financeiro.update');
-    Route::post('/financeiro/{company}/recebido',  [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
-    Route::get('/financeiro/{company}/relatorio',  [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
+    Route::post('/financeiro/sync-faturamento',       [AdminController::class, 'syncFaturamento'])->name('financeiro.sync');
+    Route::patch('/financeiro/{company}',             [AdminController::class, 'updateFechamento'])->name('financeiro.update');
+    Route::post('/financeiro/{company}/recebido',     [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
+    Route::get('/financeiro/{company}/relatorio',     [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
 
     // ── Setores / Cargos / Permissões / Líderes / Membros / Metas ────────────

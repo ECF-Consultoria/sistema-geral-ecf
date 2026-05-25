@@ -51,6 +51,12 @@ Schedule::job(new \App\Jobs\CalculateSetorGoalResults)
     ->name('calculate-setor-goal-results')
     ->withoutOverlapping();
 
+// Sincroniza faturamento bruto mensal via Adman — após calculate-setor-goal-results
+Schedule::command('adman:sync-faturamento')
+    ->dailyAt('07:30')
+    ->name('sync-faturamento-mensal')
+    ->withoutOverlapping();
+
 // Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
 // Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
 Schedule::command('notifications:cleanup')
