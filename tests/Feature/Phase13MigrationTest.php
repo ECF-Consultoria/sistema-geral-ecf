@@ -192,4 +192,191 @@ class Phase13MigrationTest extends TestCase
             "O campo 'company_id' deve estar no \$fillable do model MlbEmpresa."
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════
+    // WAVE 2 — Testes para a migration 100003
+    // (setor Comercial + setor_permissoes + migração retroativa)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * COM-01: Setor 'comercial' existe na tabela setores após a migration 100003.
+     */
+    public function test_setor_comercial_criado_pela_migration(): void
+    {
+        $this->assertTrue(
+            DB::table('setores')->where('slug', 'comercial')->exists(),
+            "O setor com slug='comercial' deve existir após a migration 100003."
+        );
+    }
+
+    /**
+     * Setor_permissoes: deve haver linha com permission_key='comercial.cadastrar_empresa' após migration 100003.
+     */
+    public function test_setor_permissoes_tem_chave_comercial_cadastrar_empresa(): void
+    {
+        $this->assertTrue(
+            DB::table('setor_permissoes')
+                ->where('permission_key', 'comercial.cadastrar_empresa')
+                ->exists(),
+            "A tabela setor_permissoes deve ter a chave 'comercial.cadastrar_empresa' após a migration 100003."
+        );
+    }
+
+    /**
+     * A chave de setor_permissoes deve estar vinculada ao setor 'comercial'.
+     */
+    public function test_setor_permissoes_vinculada_ao_setor_comercial(): void
+    {
+        $setor = DB::table('setores')->where('slug', 'comercial')->first();
+        $this->assertNotNull($setor, "Setor comercial deve existir.");
+
+        $this->assertTrue(
+            DB::table('setor_permissoes')
+                ->where('setor_id', $setor->id)
+                ->where('permission_key', 'comercial.cadastrar_empresa')
+                ->exists(),
+            "setor_permissoes deve ter a chave 'comercial.cadastrar_empresa' vinculada ao setor comercial."
+        );
+    }
+
+    /**
+     * COM-11 retroativo: após migração, mlb_empresas sem company_id devem ser zero.
+     *
+     * Insere mlb_empresas com company_id=NULL, executa o método up() da migration
+     * e verifica que todas foram processadas.
+     */
+    public function test_migracao_retroativa_preenche_todos_company_ids(): void
+    {
+        // Insere mlb_empresas sem company_id (simula dados pré-existentes)
+        DB::table('mlb_empresas')->insert([
+            ['nome' => 'Empresa POLO POLOS',    'tipo' => 'POLO',       'projeto' => 'POLOS',     'company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['nome' => 'Empresa POLO NULL',     'tipo' => 'POLO',       'projeto' => null,        'company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['nome' => 'Empresa Assessoria',    'tipo' => 'POLO',       'projeto' => 'Assessoria','company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['nome' => 'Empresa ASSESSORIA',    'tipo' => 'ASSESSORIA', 'projeto' => null,        'company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        // Executa o método up() da migration diretamente
+        $migration = require database_path('migrations/2026_05_25_100003_seed_setor_comercial_and_retro_migrate.php');
+        $migration->up();
+
+        // Verifica que nenhuma mlb_empresa ficou sem company_id
+        $semCompanyId = DB::table('mlb_empresas')->whereNull('company_id')->count();
+        $this->assertEquals(
+            0,
+            $semCompanyId,
+            "Após a migration retroativa, todas as mlb_empresas devem ter company_id preenchido."
+        );
+    }
+
+    /**
+     * COM-10 idempotência: re-executar up() não cria companies duplicadas.
+     */
+    public function test_migracao_retroativa_e_idempotente(): void
+    {
+        // Insere mlb_empresa com company_id=NULL
+        DB::table('mlb_empresas')->insert([
+            ['nome' => 'Empresa Idempotência', 'tipo' => 'POLO', 'projeto' => 'POLOS', 'company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $migration = require database_path('migrations/2026_05_25_100003_seed_setor_comercial_and_retro_migrate.php');
+
+        // Primeira execução
+        $migration->up();
+        $countApos1 = DB::table('companies')->where('name', 'Empresa Idempotência')->count();
+
+        // Segunda execução
+        $migration->up();
+        $countApos2 = DB::table('companies')->where('name', 'Empresa Idempotência')->count();
+
+        $this->assertEquals(
+            1,
+            $countApos1,
+            "A primeira execução deve criar exatamente 1 company."
+        );
+        $this->assertEquals(
+            $countApos1,
+            $countApos2,
+            "A segunda execução não deve criar company adicional (idempotência via whereNull)."
+        );
+    }
+
+    /**
+     * Derivação service_type: POLO + projeto=POLOS → 'polos'.
+     */
+    public function test_derivacao_service_type_polo_polos(): void
+    {
+        $id = DB::table('mlb_empresas')->insertGetId([
+            'nome'       => 'Empresa Polo Polos',
+            'tipo'       => 'POLO',
+            'projeto'    => 'POLOS',
+            'company_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_05_25_100003_seed_setor_comercial_and_retro_migrate.php');
+        $migration->up();
+
+        $empresa    = DB::table('mlb_empresas')->where('id', $id)->first();
+        $company    = DB::table('companies')->where('id', $empresa->company_id)->first();
+
+        $this->assertEquals(
+            'polos',
+            $company->service_type,
+            "POLO + projeto=POLOS deve resultar em service_type='polos'."
+        );
+    }
+
+    /**
+     * Derivação service_type: POLO + projeto contendo 'ssessoria' → 'assessoria'.
+     */
+    public function test_derivacao_service_type_polo_assessoria(): void
+    {
+        $id = DB::table('mlb_empresas')->insertGetId([
+            'nome'       => 'Empresa Polo Assessoria',
+            'tipo'       => 'POLO',
+            'projeto'    => 'Assessoria',
+            'company_id' => null,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $migration = require database_path('migrations/2026_05_25_100003_seed_setor_comercial_and_retro_migrate.php');
+        $migration->up();
+
+        $empresa  = DB::table('mlb_empresas')->where('id', $id)->first();
+        $company  = DB::table('companies')->where('id', $empresa->company_id)->first();
+
+        $this->assertEquals(
+            'assessoria',
+            $company->service_type,
+            "POLO + projeto='Assessoria' deve resultar em service_type='assessoria'."
+        );
+    }
+
+    /**
+     * Status retroativo: companies criadas pela migration têm status='ativo'.
+     */
+    public function test_companies_retroativas_tem_status_ativo(): void
+    {
+        DB::table('mlb_empresas')->insert([
+            ['nome' => 'Empresa Status Ativo 1', 'tipo' => 'POLO',       'projeto' => 'POLOS', 'company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+            ['nome' => 'Empresa Status Ativo 2', 'tipo' => 'ASSESSORIA', 'projeto' => null,    'company_id' => null, 'created_at' => now(), 'updated_at' => now()],
+        ]);
+
+        $migration = require database_path('migrations/2026_05_25_100003_seed_setor_comercial_and_retro_migrate.php');
+        $migration->up();
+
+        // Busca as companies criadas pelos nomes das mlb_empresas inseridas
+        $nomes = ['Empresa Status Ativo 1', 'Empresa Status Ativo 2'];
+        foreach ($nomes as $nome) {
+            $company = DB::table('companies')->where('name', $nome)->first();
+            $this->assertNotNull($company, "Company '$nome' deve ter sido criada pela migration.");
+            $this->assertEquals(
+                'ativo',
+                $company->status,
+                "Company retroativa '$nome' deve ter status='ativo'."
+            );
+        }
+    }
 }
