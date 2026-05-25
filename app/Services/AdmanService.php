@@ -245,13 +245,21 @@ class AdmanService
     private const ERROR_SENTINEL = '__error__';
     private const ERROR_CACHE_MINUTES = 10;
 
-    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60): ?float
+    /**
+     * @param  bool  $forceRefresh  Bypass cache hit lookup — chama Adman direto
+     *   e sobrescreve o cache. Usar no Job de refresh pra recuperar empresas
+     *   com ERROR_SENTINEL cacheado (sem isso, cache em erro fica preso até
+     *   o TTL de 10min expirar entre execuções).
+     */
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60, bool $forceRefresh = false): ?float
     {
         $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
 
-        $cached = Cache::get($cacheKey);
-        if ($cached !== null) {
-            return $cached === self::ERROR_SENTINEL ? null : (float) $cached;
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return $cached === self::ERROR_SENTINEL ? null : (float) $cached;
+            }
         }
 
         try {
@@ -375,13 +383,21 @@ class AdmanService
      *               liquid_margin: ?float, percentage_margin: ?float,
      *               billing: ?float}
      */
-    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60): ?array
+    /**
+     * @param  bool  $forceRefresh  Bypass cache hit lookup — chama Adman direto
+     *   e sobrescreve o cache. Usar no Job de refresh pra recuperar empresas
+     *   com ERROR_SENTINEL cacheado (sem isso, fica preso até o TTL de 10min
+     *   expirar entre execuções e timing nunca casa).
+     */
+    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60, bool $forceRefresh = false): ?array
     {
         $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
 
-        $cached = Cache::get($cacheKey);
-        if ($cached !== null) {
-            return $cached === self::ERROR_SENTINEL ? null : $cached;
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return $cached === self::ERROR_SENTINEL ? null : $cached;
+            }
         }
 
         try {

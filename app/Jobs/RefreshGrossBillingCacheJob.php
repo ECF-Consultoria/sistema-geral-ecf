@@ -99,11 +99,14 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 continue;
             }
 
-            // /performance → grossBilling
+            // /performance → grossBilling. forceRefresh=true bypassa o cache
+            // hit lookup — sem isso, empresas com ERROR_SENTINEL cacheado
+            // retornariam null imediato (sem chamar API), e o cache ficaria
+            // preso em erro até o TTL de 10min expirar.
             if ($needGross) {
                 if ($callsMade > 0) usleep(1_500_000);
                 try {
-                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 60);
+                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 60, forceRefresh: true);
                     $callsMade++;
                     if ($value === null) $fail++;
                     else                 $okGross++;
@@ -114,11 +117,11 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 }
             }
 
-            // /accounts/metrics → acos, tacos, margem, etc
+            // /accounts/metrics → acos, tacos, margem, etc (mesma motivação).
             if ($needAccount) {
                 if ($callsMade > 0) usleep(1_500_000);
                 try {
-                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 60);
+                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 60, forceRefresh: true);
                     $callsMade++;
                     if ($metrics === null) $fail++;
                     else                   $okAccount++;
