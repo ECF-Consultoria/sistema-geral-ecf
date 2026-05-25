@@ -129,13 +129,27 @@ class DashboardController extends Controller
             \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
-        $revenueChart = $metrics->groupBy('reference_date')
-            ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'revenue' => $g->sum('revenue')])
-            ->values();
+        // Gera série temporal CONTÍNUA: todas as datas do período no eixo X,
+        // preenchendo 0 onde não houve sync. Antes o chart pulava dias
+        // (algumas empresas com sync OK, outras não) e ficava visualmente
+        // desbalanceado — picos altos contrastando com gaps zerados.
+        $byDate     = $metrics->groupBy(fn($m) => $m->reference_date->toDateString());
+        $tacosByDate = $byDate->map(fn($g) => round($g->avg('tacos') ?? 0, 2));
+        $revByDate   = $byDate->map(fn($g) => (float) $g->sum('revenue'));
 
-        $tacosChart = $metrics->groupBy('reference_date')
-            ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'tacos' => round($g->avg('tacos'), 2)])
-            ->values();
+        $revenueChart = collect();
+        $tacosChart   = collect();
+        $cursor = $since->copy()->startOfDay();
+        $end    = now()->startOfDay();
+        while ($cursor->lte($end)) {
+            $key = $cursor->toDateString();
+            $lbl = $cursor->format('d/m');
+            $revenueChart->push(['date' => $lbl, 'revenue' => (float) ($revByDate[$key] ?? 0)]);
+            $tacosChart->push(['date' => $lbl, 'tacos' => (float) ($tacosByDate[$key] ?? 0)]);
+            $cursor->addDay();
+        }
+        $revenueChart = $revenueChart->values();
+        $tacosChart   = $tacosChart->values();
 
         $npsResponses = NpsSurvey::with('response')
             ->whereIn('company_id', $companies->pluck('id'))
@@ -155,7 +169,11 @@ class DashboardController extends Controller
             : 0;
 
         $avgTacos = $metrics->avg('tacos') ?? 0;
-        $totalRevenue = $metrics->sum('revenue');
+        // Card 'Faturamento' = soma dos grossBilling 30d EXATOS da Adman
+        // (via cache pre-aquecido). Antes era SUM(adman_metrics.revenue)
+        // daily — divergia da Adman pelas mesmas causas conhecidas
+        // (sync diário pulava dias, ajustes retroativos não voltavam).
+        $totalRevenue = array_sum($revenue30dByCompany);
         $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
         $productsWithoutCost = $metrics->avg(fn($m) => $m->products_without_cost_pct) ?? 0;
 
@@ -178,7 +196,7 @@ class DashboardController extends Controller
 
         $ranking = $this->buildRanking($users, $since);
 
-        $userPortfolios = $users->map(function ($u) use ($metrics, $companies) {
+        $userPortfolios = $users->map(function ($u) use ($metrics, $companies, $revenue30dByCompany) {
             $uCompanies = $companies->filter(function ($c) use ($u) {
                 return $u->isMentor()
                     ? $c->estrategista->contains('id', $u->id)
@@ -187,13 +205,22 @@ class DashboardController extends Controller
             if ($uCompanies->isEmpty()) return null;
             $uCompanyIds = $uCompanies->pluck('id')->toArray();
             $uMetrics = $metrics->whereIn('company_id', $uCompanyIds);
+
+            // Carteira do user = soma dos grossBilling 30d EXATOS da Adman
+            // das empresas atribuídas a ele (cache pre-aquecido). Antes era
+            // SUM daily DB e divergia.
+            $uTotalRevenue = 0.0;
+            foreach ($uCompanyIds as $cid) {
+                $uTotalRevenue += $revenue30dByCompany[$cid] ?? 0;
+            }
+
             return [
                 'id'              => $u->id,
                 'name'            => $u->name,
                 'role'            => $u->role,
                 'companies_count' => $uCompanies->count(),
                 'avg_tacos'       => $uMetrics->count() > 0 ? round($uMetrics->avg('tacos'), 2) : null,
-                'total_revenue'   => $uMetrics->sum('revenue'),
+                'total_revenue'   => $uTotalRevenue,
                 'avg_margin'      => $uMetrics->count() > 0 ? round($uMetrics->avg('contribution_margin_pct'), 2) : null,
                 'total_ad_spend'  => $uMetrics->sum('ad_spend'),
             ];
