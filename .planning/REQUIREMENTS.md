@@ -25,7 +25,7 @@
 ### Visibilidade de Pendentes (COM)
 
 - [x] **COM-08**: Ao cadastrar nova empresa, líderes do setor de destino recebem notificação automática via sistema de notificações (Phases 8-12) com informações da empresa cadastrada
-- [ ] **COM-09**: Setor de destino vê seção "Pendentes" na sua página existente (`/mlb/empresas` para Publicação, `/companies` para Publicidade/Gestão) com badge visual das empresas status='pendente'
+- [x] **COM-09**: Setor de destino vê seção "Pendentes" na sua página existente (`/mlb/empresas` para Publicação, `/companies` para Publicidade/Gestão) com badge visual das empresas status='pendente'
 
 ### Migração Retroativa (COM)
 
@@ -44,7 +44,7 @@
 | COM-06 | Phase 13 | Complete |
 | COM-07 | Phase 13 | Complete |
 | COM-08 | Phase 13 | Complete |
-| COM-09 | Phase 13 | Pending |
+| COM-09 | Phase 13 | Complete |
 | COM-10 | Phase 13 | Complete |
 | COM-11 | Phase 13 | Complete |
 

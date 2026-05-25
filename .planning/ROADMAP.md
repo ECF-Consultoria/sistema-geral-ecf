@@ -43,7 +43,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v4.0 — Fluxo Comercial
 
-- [ ] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies
+- [x] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies (completed 2026-05-25)
 
 ## Phase Details
 
@@ -294,7 +294,7 @@ Plans:
 - [x] 13-01-PLAN.md -- Migrations de schema (companies.status + mlb_empresas.company_id) + rename polo->polos + fix AdminController + Financeiro.jsx labels
 - [x] 13-02-PLAN.md -- Permission comercial.cadastrar_empresa + setor Comercial + migration retroativa idempotente mlb_empresas
 - [x] 13-03-PLAN.md -- ComercialController + EmpresaCadastradaNotification + rotas /comercial/* + suíte Phase13ComercialTest
-- [ ] 13-04-PLAN.md -- UI: sidebar item Comercial + NovaEmpresa.jsx + secoes Pendentes + checkpoint humano
+- [x] 13-04-PLAN.md -- UI: sidebar item Comercial + NovaEmpresa.jsx + secoes Pendentes + checkpoint humano
 
 **UI hint**: yes
 
@@ -320,4 +320,4 @@ v4.0 phases execute in order: 13
 | 10. UI do Sino e Página de Histórico | 1/1 | Complete   | 2026-05-21 |
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
-| 13. Reestruturação do Cadastro de Empresas | 3/4 | In Progress|  |
+| 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
