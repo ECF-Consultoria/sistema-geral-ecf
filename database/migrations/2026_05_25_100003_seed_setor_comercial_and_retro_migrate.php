@@ -52,29 +52,10 @@ return new class extends Migration
             ]);
         }
 
-        // ─── ETAPA 3: Migração retroativa de mlb_empresas sem company_id ────
-
-        // whereNull('company_id') garante idempotência: mlb_empresas já processadas são ignoradas
-        DB::table('mlb_empresas')
-            ->whereNull('company_id')
-            ->orderBy('id')
-            ->get()
-            ->each(function ($empresa) {
-                $serviceType = $this->derivarServiceType($empresa);
-
-                $companyId = DB::table('companies')->insertGetId([
-                    'name'         => $empresa->nome,
-                    'service_type' => $serviceType,
-                    'status'       => 'ativo',
-                    'active'       => true,
-                    'created_at'   => $empresa->created_at,
-                    'updated_at'   => now(),
-                ]);
-
-                DB::table('mlb_empresas')
-                    ->where('id', $empresa->id)
-                    ->update(['company_id' => $companyId]);
-            });
+        // ETAPA 3 removida: a migração retroativa criava um registro em companies
+        // para cada mlb_empresa existente, o que não é o comportamento desejado.
+        // O vínculo company_id só deve ser criado quando o Comercial cadastra
+        // explicitamente a empresa pelo fluxo NovaEmpresa.
     }
 
     public function down(): void
@@ -90,44 +71,4 @@ return new class extends Migration
             ->delete();
     }
 
-    /**
-     * Deriva o service_type da company a partir dos campos tipo e projeto da mlb_empresa.
-     *
-     * Regras (D-15 do CONTEXT.md):
-     *   POLO + projeto=POLOS|NULL|''  → 'polos'
-     *   POLO + projeto contém 'ssessoria' (case-insensitive)  → 'assessoria'
-     *   ASSESSORIA  → 'assessoria'
-     *   contém 'ncubadora' (case-insensitive)  → 'incubadora'
-     *   fallback conservador  → 'polos'
-     */
-    private function derivarServiceType(object $empresa): string
-    {
-        $tipo    = $empresa->tipo    ?? '';
-        $projeto = $empresa->projeto ?? '';
-
-        // ASSESSORIA direto → assessoria
-        if (stripos($tipo, 'ASSESSORIA') !== false) {
-            return 'assessoria';
-        }
-
-        // Incubadora → incubadora
-        if (stripos($tipo, 'ncubadora') !== false) {
-            return 'incubadora';
-        }
-
-        if (strtoupper($tipo) === 'POLO') {
-            // POLO + projeto contém 'ssessoria' → assessoria
-            if (! empty($projeto) && stripos($projeto, 'ssessoria') !== false) {
-                return 'assessoria';
-            }
-
-            // POLO + projeto=POLOS|NULL|'' → polos
-            if (empty($projeto) || strtoupper($projeto) === 'POLOS') {
-                return 'polos';
-            }
-        }
-
-        // Fallback conservador
-        return 'polos';
-    }
 };
