@@ -4,10 +4,13 @@
 
 Evolução do painel de administração interno do ECF Admin em milestones incrementais.
 **v1.0 — Setor Dev** (diagnóstico Adman) e **v2.0 — Administrativo Fechamento** já entregues.
-**v3.0 — Sistema de Notificações** (milestone ativo) adiciona sino no header, histórico paginado,
+**v3.0 — Sistema de Notificações** entregue (phases 8-12): sino no header, histórico paginado,
 criação manual com targeting (usuário / setor / líderes / todos), disparos automáticos a partir de
 eventos das três famílias de metas (`Goal`, `PortfolioGoal`, `SetorGoal`) e atualização real-time
-via polling + revalidação Inertia. Cada fase entrega uma capacidade observável de ponta a ponta.
+via polling + revalidação Inertia.
+**v4.0 — Fluxo Comercial** (milestone ativo) cria o fluxo centralizado de cadastro de empresas
+pelo setor Comercial, com roteamento automático por service_type, migração retroativa de mlb_empresas
+e visibilidade de pendentes nos setores de destino. Cada fase entrega uma capacidade observável de ponta a ponta.
 
 ## Phases
 
@@ -37,6 +40,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 10: UI do Sino e Página de Histórico** - Usuário vê e interage com suas notificações via sino no header e página `/notificacoes` (completed 2026-05-21)
 - [x] **Phase 11: Disparos Automáticos de Metas** - Atribuição e atingimento de qualquer tipo de meta gera notificações automáticas para o público correto (completed 2026-05-21)
 - [x] **Phase 12: Criação Manual, Permissão na UI de Setores e Cleanup** - Usuário autorizado envia notificações com targeting; permissão aparece em `/sistema/setores`; cleanup diário descarta lidas antigas (completed 2026-05-21)
+
+### Milestone v4.0 — Fluxo Comercial
+
+- [ ] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies
 
 ## Phase Details
 
@@ -268,19 +275,43 @@ Cross-cutting constraints:
   8. Cada envio manual gera entrada no `activity_log` registrando o autor, o público-alvo escolhido e a contagem de destinatários efetivos; disparos automáticos das fases anteriores não são logados
 **UI hint**: yes
 
+### Phase 13: Reestruturação do Cadastro de Empresas
+**Goal**: Setor Comercial é a única porta de entrada para cadastro de novas empresas; o cadastro roteia automaticamente por service_type criando os registros corretos em cada tabela; mlb_empresas existentes sem company_id são migradas retroativamente; setores de destino veem empresas pendentes nas suas páginas existentes
+**Mode:** mvp
+**Depends on**: Phase 12 (sistema de notificações para alertar líderes de setor)
+**Requirements**: COM-01, COM-02, COM-03, COM-04, COM-05, COM-06, COM-07, COM-08, COM-09, COM-10, COM-11
+**Success Criteria** (what must be TRUE):
+  1. Usuário do Comercial (ou admin) acessa `/comercial/empresas/novo` e vê formulário com campos Nome, CNPJ, service_type e subtipo condicional; usuário sem permissão `comercial.cadastrar_empresa` recebe 403
+  2. Ao cadastrar empresa tipo POLOS: `companies` (status='pendente') + `mlb_empresas` (tipo=POLO, projeto=POLOS) + `mlb_implementacao` (token + dadosPadrao() + implementacaoPadroes()) criados atomicamente em DB::transaction
+  3. Ao cadastrar empresa tipo Assessoria: `companies` (status='pendente') + `mlb_empresas` (tipo=ASSESSORIA); tipo Publicidade/Gestão: apenas `companies` (status='pendente')
+  4. Empresa recém-cadastrada aparece em `/administrativo/financeiro` e na seção "Pendentes" da página do setor de destino sem ação adicional
+  5. Líderes do setor de destino recebem notificação automática via sistema de notificações (Phases 8-12) ao novo cadastro
+  6. Migration de dados cria companies para todos os mlb_empresas sem company_id (idempotente), derivando service_type automaticamente, e preenche mlb_empresas.company_id; todos os registros existentes recebem status='ativo'
+  7. Guard de duplicatas bloqueia cadastro com nome igual (case-insensitive) a companies.name ou mlb_empresas.nome existente
+**Plans**: 4 plans
+
+Plans:
+- [ ] 13-01-PLAN.md -- Migrations de schema (companies.status + mlb_empresas.company_id) + rename polo->polos + fix AdminController + Financeiro.jsx labels
+- [ ] 13-02-PLAN.md -- Permission comercial.cadastrar_empresa + setor Comercial + migration retroativa idempotente mlb_empresas
+- [ ] 13-03-PLAN.md -- ComercialController + EmpresaCadastradaNotification + rotas /comercial/* + suíte Phase13ComercialTest
+- [ ] 13-04-PLAN.md -- UI: sidebar item Comercial + NovaEmpresa.jsx + secoes Pendentes + checkpoint humano
+
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
-v1.0 phases execute in order: 1 → 2 → 3 → 4 (phases 2–4 pausadas para v4.0)
+v1.0 phases execute in order: 1 → 2 → 3 → 4 (phases 2–4 pausadas para v5.0)
 v2.0 phases execute in order: 5 → 6 → 7
 v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
+v4.0 phases execute in order: 13
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Diagnóstico Adman | 3/3 | Complete | 2026-05-18 |
-| 2. Monitoramento de Jobs | 0/? | Paused (v4.0) | - |
-| 3. Observabilidade | 0/? | Paused (v4.0) | - |
-| 4. Configurações | 0/? | Paused (v4.0) | - |
+| 2. Monitoramento de Jobs | 0/? | Paused (v5.0) | - |
+| 3. Observabilidade | 0/? | Paused (v5.0) | - |
+| 4. Configurações | 0/? | Paused (v5.0) | - |
 | 5. Fundação Fechamento | 3/3 | Complete | 2026-05-19 |
 | 6. Backend Fechamento | 2/2 | Complete | 2026-05-19 |
 | 7. UI Fechamento | 1/1 | Complete | 2026-05-19 |
@@ -289,3 +320,4 @@ v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
 | 10. UI do Sino e Página de Histórico | 1/1 | Complete   | 2026-05-21 |
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
+| 13. Reestruturação do Cadastro de Empresas | 0/4 | Pending | - |
