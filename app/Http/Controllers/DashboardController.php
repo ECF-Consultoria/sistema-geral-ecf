@@ -77,6 +77,18 @@ class DashboardController extends Controller
             ->orderBy('reference_date')
             ->get();
 
+        // Faturamento 30d rolling por empresa — independente do filtro de
+        // período da Dashboard, a tabela "Performance por empresa" sempre
+        // mostra 30 dias pra bater com a aba Empresas e a dashboard Adman.
+        // Antes a tabela usava latestMetrics.revenue (= 1 DIA) e divergia.
+        $revenue30dByCompany = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
+
         $revenueChart = $metrics->groupBy('reference_date')
             ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'revenue' => $g->sum('revenue')])
             ->values();
@@ -207,7 +219,10 @@ class DashboardController extends Controller
                 'id'       => $c->id,
                 'name'     => $c->name,
                 'tacos'    => $c->latestMetrics?->tacos,
-                'revenue'  => $c->latestMetrics?->revenue,
+                // revenue agora é soma dos últimos 30 dias (bate com a aba
+                // Empresas e dashboard Adman). Antes era latestMetrics.revenue
+                // (= 1 dia) e divergia.
+                'revenue'  => (float) ($revenue30dByCompany[$c->id] ?? 0),
                 'margin'   => $c->latestMetrics?->contribution_margin_pct,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
@@ -271,6 +286,15 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
+        // 30d fixo pra "Faturamento por empresa" — mesma motivação do adminDashboard.
+        $revenue30dByCompany = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->whereNotNull('revenue')
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
+
         $npsResponses = NpsSurvey::with('response')
             ->whereIn('company_id', $companies->pluck('id'))
             ->where('status', 'completed')
@@ -311,7 +335,8 @@ class DashboardController extends Controller
                 'id' => $c->id,
                 'name' => $c->name,
                 'tacos' => $c->latestMetrics?->tacos,
-                'revenue' => $c->latestMetrics?->revenue,
+                // revenue = soma últimos 30d (vs latestMetrics.revenue antigo = 1 dia)
+                'revenue' => (float) ($revenue30dByCompany[$c->id] ?? 0),
                 'goals' => $c->goals->where('active', true)->values(),
             ]),
             'my_surveys' => $myNpsSurveys,
