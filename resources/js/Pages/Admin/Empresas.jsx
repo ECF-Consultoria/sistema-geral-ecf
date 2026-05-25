@@ -4,11 +4,17 @@ import { useState } from 'react';
 import { Building2, ChevronDown } from 'lucide-react';
 import { cn, formatDate } from '@/lib/utils';
 
-const SERVICE_LABELS = { polo: 'POLO', assessoria: 'Assessoria', incubadora: 'Incubadora' };
+const SERVICE_LABELS = {
+    polo: 'POLO', polos: 'POLO', assessoria: 'Assessoria',
+    incubadora: 'Incubadora', publicidade: 'Publicidade', gestao: 'Gestão',
+};
 const SERVICE_COLORS = {
-    polo:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
-    assessoria: 'bg-purple-500/10 text-purple-300 border-purple-500/20',
-    incubadora: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    polo:        'bg-blue-500/10 text-blue-300 border-blue-500/20',
+    polos:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
+    assessoria:  'bg-purple-500/10 text-purple-300 border-purple-500/20',
+    incubadora:  'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
+    publicidade: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
+    gestao:      'bg-teal-500/10 text-teal-300 border-teal-500/20',
 };
 const CONTRACT_LABELS = { fixo: 'Fixo', progressao: 'Progressão' };
 const CONTRACT_COLORS = {
@@ -77,8 +83,10 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
                     </span>
                 )}
             </div>
-            {empresa.service_type
-                ? <Chip label={SERVICE_LABELS[empresa.service_type]} color={SERVICE_COLORS[empresa.service_type]} />
+            {(empresa.service_type?.length > 0)
+                ? (empresa.service_type).map(t => (
+                    <Chip key={t} label={SERVICE_LABELS[t] ?? t} color={SERVICE_COLORS[t] ?? 'bg-white/[0.05] text-white/30 border-white/[0.08]'} />
+                ))
                 : <Chip label="Sem tipo" color="bg-white/[0.05] text-white/30 border-white/[0.08]" />
             }
             {empresa.contract_type
@@ -94,7 +102,7 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
     const filhasAtuais = new Set((empresa.filhas ?? []).map(f => f.id));
 
     const { data, setData, patch, processing, errors } = useForm({
-        service_type:              empresa.service_type              ?? '',
+        service_type:              Array.isArray(empresa.service_type) ? empresa.service_type : (empresa.service_type ? [empresa.service_type] : []),
         contract_type:             empresa.contract_type             ?? '',
         contract_start:            empresa.contract_start            ?? '',
         contract_end:              empresa.contract_end              ?? '',
@@ -140,12 +148,24 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                     <label className={label}>Tipo de serviço</label>
-                    <select value={data.service_type} onChange={e => setData('service_type', e.target.value)} className={select}>
-                        <option value="">Selecionar...</option>
-                        <option value="polo">POLO</option>
-                        <option value="assessoria">Assessoria</option>
-                        <option value="incubadora">Incubadora</option>
-                    </select>
+                    <div className="flex flex-col gap-1.5 pt-1">
+                        {[
+                            { value: 'polos',       label: 'Publicação — POLOS' },
+                            { value: 'assessoria',  label: 'Publicação — Assessoria' },
+                            { value: 'incubadora',  label: 'Incubadora' },
+                            { value: 'publicidade', label: 'Publicidade' },
+                            { value: 'gestao',      label: 'Gestão' },
+                        ].map(({ value, label: lbl }) => (
+                            <label key={value} className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={data.service_type.includes(value)}
+                                    onChange={() => setData('service_type', data.service_type.includes(value)
+                                        ? data.service_type.filter(t => t !== value)
+                                        : [...data.service_type, value])}
+                                    className="accent-ecf-yellow" />
+                                <span className="text-[12px] text-white/70">{lbl}</span>
+                            </label>
+                        ))}
+                    </div>
                     {errors.service_type && <span className={err}>{errors.service_type}</span>}
                 </div>
                 <div>

@@ -19,13 +19,16 @@ import { Building2, PlusCircle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
-// Labels amigáveis para exibição do tipo de serviço
-const SERVICE_TYPE_LABELS = {
-    polos:       'Publicação — POLOS',
-    assessoria:  'Publicação — Assessoria',
-    publicidade: 'Publicidade',
-    gestao:      'Gestão',
-};
+const TIPOS = [
+    { value: 'polos',       label: 'Publicação — POLOS',
+      hint: 'Cria empresa + registro MLB (POLOS) + implementação automaticamente.' },
+    { value: 'assessoria',  label: 'Publicação — Assessoria',
+      hint: 'Cria empresa + registro MLB (Assessoria). Implementação não é criada automaticamente.' },
+    { value: 'publicidade', label: 'Publicidade',
+      hint: 'Cria empresa no módulo de Publicidade. Dados de conta Adman são preenchidos depois.' },
+    { value: 'gestao',      label: 'Gestão',
+      hint: 'Cria empresa no módulo de Gestão. Consultor/estrategista atribuídos depois.' },
+];
 
 export default function NovaEmpresa() {
     const { flash } = usePage().props;
@@ -33,8 +36,16 @@ export default function NovaEmpresa() {
     const { data, setData, post, processing, errors, reset } = useForm({
         nome:         '',
         cnpj:         '',
-        service_type: '',
+        service_type: [],
     });
+
+    function toggleTipo(val) {
+        const cur = data.service_type;
+        // polos e assessoria são mutuamente exclusivos (ambos criam mlb_empresa)
+        if (val === 'polos'      && cur.includes('assessoria')) return;
+        if (val === 'assessoria' && cur.includes('polos'))      return;
+        setData('service_type', cur.includes(val) ? cur.filter(t => t !== val) : [...cur, val]);
+    }
 
     function handleSubmit(e) {
         e.preventDefault();
@@ -119,48 +130,48 @@ export default function NovaEmpresa() {
                             <label className="block text-xs text-white/60 font-medium">
                                 Tipo de Serviço <span className="text-ecf-yellow">*</span>
                             </label>
-                            <select
-                                value={data.service_type}
-                                onChange={e => setData('service_type', e.target.value)}
-                                className={cn(
-                                    'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                                    'focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                                    // Aplica cor de placeholder quando nenhuma opção foi selecionada
-                                    !data.service_type && 'text-white/30',
-                                    errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
-                                )}
-                                required
-                            >
-                                <option value="" disabled>Selecione o tipo...</option>
-                                <option value="polos">Publicação — POLOS</option>
-                                <option value="assessoria">Publicação — Assessoria</option>
-                                <option value="publicidade">Publicidade</option>
-                                <option value="gestao">Gestão</option>
-                            </select>
+                            <div className={cn(
+                                'rounded-lg border p-3 grid grid-cols-2 gap-2',
+                                errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
+                            )}>
+                                {TIPOS.map(tipo => {
+                                    const checked    = data.service_type.includes(tipo.value);
+                                    const bloqueado  = (tipo.value === 'polos'      && data.service_type.includes('assessoria')) ||
+                                                       (tipo.value === 'assessoria' && data.service_type.includes('polos'));
+                                    return (
+                                        <label
+                                            key={tipo.value}
+                                            className={cn(
+                                                'flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors',
+                                                checked    ? 'bg-ecf-yellow/10 border border-ecf-yellow/30' : 'bg-white/[0.03] border border-white/[0.06]',
+                                                bloqueado  && 'opacity-40 cursor-not-allowed'
+                                            )}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                disabled={bloqueado}
+                                                onChange={() => toggleTipo(tipo.value)}
+                                                className="accent-ecf-yellow w-3.5 h-3.5"
+                                            />
+                                            <span className={cn('text-[12px] font-medium', checked ? 'text-ecf-yellow' : 'text-white/60')}>
+                                                {tipo.label}
+                                            </span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
                             {errors.service_type && (
                                 <p className="text-red-400 text-xs mt-1">{errors.service_type}</p>
                             )}
-
-                            {/* Dica contextual por service_type */}
-                            {data.service_type === 'polos' && (
-                                <p className="text-white/30 text-[11px] leading-snug">
-                                    Cria empresa + registro MLB (projeto POLOS) + implementação automaticamente.
+                            {/* Dica contextual para cada tipo selecionado */}
+                            {TIPOS.filter(t => data.service_type.includes(t.value)).map(t => (
+                                <p key={t.value} className="text-white/30 text-[11px] leading-snug">
+                                    <span className="text-white/50 font-medium">{t.label}:</span> {t.hint}
                                 </p>
-                            )}
-                            {data.service_type === 'assessoria' && (
-                                <p className="text-white/30 text-[11px] leading-snug">
-                                    Cria empresa + registro MLB (Assessoria). Implementação não é criada automaticamente.
-                                </p>
-                            )}
-                            {data.service_type === 'publicidade' && (
-                                <p className="text-white/30 text-[11px] leading-snug">
-                                    Cria empresa no módulo de Publicidade. Dados de conta Adman são preenchidos depois.
-                                </p>
-                            )}
-                            {data.service_type === 'gestao' && (
-                                <p className="text-white/30 text-[11px] leading-snug">
-                                    Cria empresa no módulo de Gestão. Consultor/estrategista atribuídos depois.
-                                </p>
+                            ))}
+                            {data.service_type.includes('polos') && data.service_type.includes('assessoria') && (
+                                <p className="text-red-400 text-[11px]">POLOS e Assessoria não podem ser combinados.</p>
                             )}
                         </div>
 
@@ -168,7 +179,7 @@ export default function NovaEmpresa() {
                         <div className="pt-1">
                             <button
                                 type="submit"
-                                disabled={processing}
+                                disabled={processing || data.service_type.length === 0}
                                 className={cn(
                                     'inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all',
                                     'bg-ecf-yellow text-black hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed'

@@ -48,7 +48,8 @@ const fmtBRL = (n) => n == null ? '—'
         minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
 function ServiceBadge({ tipo }) {
-    if (!tipo) {
+    const types = Array.isArray(tipo) ? tipo : (tipo ? [tipo] : []);
+    if (types.length === 0) {
         return (
             <span className="bg-white/[0.05] text-white/40 border-white/[0.08] text-[11px] font-semibold px-2 py-0.5 rounded-full border">
                 Sem tipo
@@ -56,8 +57,12 @@ function ServiceBadge({ tipo }) {
         );
     }
     return (
-        <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border', SERVICE_COLORS[tipo])}>
-            {SERVICE_LABELS[tipo]}
+        <span className="inline-flex items-center gap-1 flex-wrap">
+            {types.map(t => (
+                <span key={t} className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border', SERVICE_COLORS[t])}>
+                    {SERVICE_LABELS[t] ?? t}
+                </span>
+            ))}
         </span>
     );
 }
@@ -120,7 +125,10 @@ function MiniPie({ data }) {
 
 function GraficoServico({ empresas }) {
     const cnt = {};
-    empresas.forEach(e => { const k = e.service_type || 'sem_tipo'; cnt[k] = (cnt[k] || 0) + 1; });
+    empresas.forEach(e => {
+        const types = Array.isArray(e.service_type) ? e.service_type : (e.service_type ? [e.service_type] : ['sem_tipo']);
+        types.forEach(k => { cnt[k] = (cnt[k] || 0) + 1; });
+    });
     const data = [
         { name: 'POLO',        key: 'polos',       color: '#3b82f6' },
         { name: 'Assessoria',  key: 'assessoria',  color: '#a855f7' },
@@ -471,7 +479,7 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
 
 function ServiceForm({ empresa, onClose }) {
     const { data, setData, patch, processing, errors } = useForm({
-        service_type:             empresa.service_type             ?? '',
+        service_type:             Array.isArray(empresa.service_type) ? empresa.service_type : (empresa.service_type ? [empresa.service_type] : []),
         contract_type:            empresa.contract_type            ?? '',
         contract_start:           empresa.contract_start           ?? '',
         contract_end:             empresa.contract_end             ?? '',
@@ -494,18 +502,24 @@ function ServiceForm({ empresa, onClose }) {
                     <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
                         Tipo de serviço
                     </label>
-                    <select
-                        value={data.service_type}
-                        onChange={e => setData('service_type', e.target.value)}
-                        className="w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
-                    >
-                        <option value="">Selecionar tipo...</option>
-                        <option value="polos">POLO</option>
-                        <option value="assessoria">Assessoria</option>
-                        <option value="incubadora">Incubadora</option>
-                        <option value="publicidade">Publicidade</option>
-                        <option value="gestao">Gestão</option>
-                    </select>
+                    <div className="flex flex-col gap-1.5 pt-1">
+                        {[
+                            { value: 'polos',       label: 'Publicação — POLOS' },
+                            { value: 'assessoria',  label: 'Publicação — Assessoria' },
+                            { value: 'incubadora',  label: 'Incubadora' },
+                            { value: 'publicidade', label: 'Publicidade' },
+                            { value: 'gestao',      label: 'Gestão' },
+                        ].map(({ value, label }) => (
+                            <label key={value} className="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" checked={data.service_type.includes(value)}
+                                    onChange={() => setData('service_type', data.service_type.includes(value)
+                                        ? data.service_type.filter(t => t !== value)
+                                        : [...data.service_type, value])}
+                                    className="accent-ecf-yellow" />
+                                <span className="text-[12px] text-white/70">{label}</span>
+                            </label>
+                        ))}
+                    </div>
                     {errors.service_type && (
                         <span className="text-[11px] text-red-400 mt-1 block">{errors.service_type}</span>
                     )}
@@ -969,7 +983,7 @@ export default function Financeiro({ companies, mes_selecionado }) {
 
     const filtradas = useMemo(() => companies.filter(e => {
         if (filtros.busca && !e.name.toLowerCase().includes(filtros.busca.toLowerCase())) return false;
-        if (filtros.service_type && e.service_type !== filtros.service_type) return false;
+        if (filtros.service_type && !(e.service_type || []).includes(filtros.service_type)) return false;
         if (filtros.contract_type && e.contract_type !== filtros.contract_type) return false;
         if (filtros.estado && e.estado !== filtros.estado) return false;
         if (filtros.recebido === 'sim' && !e.recebido) return false;

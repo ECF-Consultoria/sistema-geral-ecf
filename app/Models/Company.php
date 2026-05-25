@@ -38,7 +38,36 @@ class Company extends Model
         'status'         => 'string',
         'contract_start' => 'date:Y-m-d',
         'contract_end'   => 'date:Y-m-d',
+        'service_type'   => 'array',
     ];
+
+    /**
+     * Converte um valor de service_type (string legada ou array) em label legível.
+     * Usado em Blade views e acessores para exibição consistente.
+     *
+     * Ex: ['polos', 'gestao'] → 'POLO + Gestão'
+     */
+    public static function labelFromTypes(mixed $types): string
+    {
+        $map = [
+            'polos'       => 'POLO',
+            'polo'        => 'POLO',
+            'assessoria'  => 'Assessoria',
+            'incubadora'  => 'Incubadora',
+            'publicidade' => 'Publicidade',
+            'gestao'      => 'Gestão',
+        ];
+        $arr = is_array($types)
+            ? $types
+            : (($types !== null && $types !== '') ? [$types] : []);
+        $labels = array_map(fn($t) => $map[$t] ?? $t, $arr);
+        return implode(' + ', array_filter($labels)) ?: '—';
+    }
+
+    public function getServiceTypeLabelAttribute(): string
+    {
+        return static::labelFromTypes($this->service_type);
+    }
 
     public function filhas()
     {

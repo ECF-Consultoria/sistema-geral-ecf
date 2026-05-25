@@ -854,7 +854,11 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                             return (
                                 <div key={p.id} className="flex items-center gap-3 rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-2.5">
                                     <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
-                                    <span className="text-ecf-yellow/60 text-[11px] font-medium capitalize">{p.service_type}</span>
+                                    <span className="text-ecf-yellow/60 text-[11px] font-medium">
+                                        {(Array.isArray(p.service_type) ? p.service_type : (p.service_type ? [p.service_type] : []))
+                                            .map(t => ({ polos: 'POLO', assessoria: 'Assessoria', gestao: 'Gestão', publicidade: 'Publicidade', incubadora: 'Incubadora' }[t] || t))
+                                            .join(' + ') || '—'}
+                                    </span>
                                     <span className="text-white/25 text-[11px]">
                                         {new Date(p.created_at).toLocaleDateString('pt-BR')}
                                     </span>

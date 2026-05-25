@@ -316,7 +316,7 @@
                 <tr>
                     <td>
                         <label>Tipo de serviço</label>
-                        <span>{{ match($company->service_type ?? '') { 'polo' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', default => '—' } }}</span>
+                        <span>{{ \App\Models\Company::labelFromTypes($company->service_type) }}</span>
                     </td>
                     <td>
                         <label>Tipo de contrato</label>
@@ -423,7 +423,7 @@
                         <td class="empresa-nome">{{ $v['name'] }}</td>
                         <td class="label-mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $v['cnpj'] ?? '')) ?: '—' }}</td>
                         <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>
-                        <td>{{ match($v['service_type'] ?? '') { 'polo' => 'POLO', 'assessoria' => 'Assessoria', 'incubadora' => 'Incubadora', default => '—' } }}</td>
+                        <td>{{ \App\Models\Company::labelFromTypes($v['service_type'] ?? null) }}</td>
                         <td>{{ match($v['contract_type'] ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Progressão', default => '—' } }}</td>
                         <td class="label-mono">{{ !empty($v['contract_start']) ? $v['contract_start'] . (!empty($v['contract_end']) ? ' – ' . $v['contract_end'] : '') : '—' }}</td>
                     </tr>

@@ -76,11 +76,18 @@ class ComercialController extends Controller
 
         // (1) Validação
         $validated = $request->validate([
-            'nome'         => 'required|string|max:255',
-            'cnpj'         => 'nullable|string|max:20|unique:companies,cnpj',
-            'service_type' => 'required|in:polos,assessoria,publicidade,gestao',
-            'subtipo'      => 'nullable|in:polos,assessoria',
+            'nome'           => 'required|string|max:255',
+            'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj',
+            'service_type'   => 'required|array|min:1',
+            'service_type.*' => 'in:polos,assessoria,publicidade,gestao',
         ]);
+
+        // POLOS e Assessoria são mutuamente exclusivos (ambos criam mlb_empresa)
+        if (in_array('polos', $validated['service_type']) && in_array('assessoria', $validated['service_type'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'service_type' => 'Não é possível selecionar POLOS e Assessoria ao mesmo tempo.',
+            ]);
+        }
 
         // (2) Guard de duplicata — verifica companies.name e mlb_empresas.nome
         $existeEmCompanies  = Company::whereRaw('LOWER(name) = LOWER(?)', [$validated['nome']])->exists();
@@ -96,21 +103,21 @@ class ComercialController extends Controller
         $company = null;
 
         DB::transaction(function () use ($validated, $request, &$company) {
-            $nome        = $validated['nome'];
-            $cnpj        = $validated['cnpj'] ?? null;
-            $serviceType = $validated['service_type'];
-            $userId      = $request->user()->id;
+            $nome   = $validated['nome'];
+            $cnpj   = $validated['cnpj'] ?? null;
+            $types  = $validated['service_type']; // array
+            $userId = $request->user()->id;
 
-            if ($serviceType === 'polos') {
-                // POLOS: company + mlb_empresa (tipo=POLO) + mlb_implementacao
-                $company = Company::create([
-                    'name'         => $nome,
-                    'cnpj'         => $cnpj,
-                    'service_type' => 'polos',
-                    'status'       => 'pendente',
-                    'active'       => true,
-                ]);
+            $company = Company::create([
+                'name'         => $nome,
+                'cnpj'         => $cnpj,
+                'service_type' => $types,
+                'status'       => 'pendente',
+                'active'       => true,
+            ]);
 
+            // Cria registro MLB se o array incluir um tipo MLB
+            if (in_array('polos', $types)) {
                 $empresa = MlbEmpresa::create([
                     'nome'       => $nome,
                     'tipo'       => 'POLO',
@@ -120,34 +127,13 @@ class ComercialController extends Controller
                     'company_id' => $company->id,
                     'criado_por' => $userId,
                 ]);
-
                 $this->criarImplementacaoPolo($empresa);
-
-            } elseif ($serviceType === 'assessoria') {
-                // ASSESSORIA: company + mlb_empresa (tipo=ASSESSORIA), sem implementacao
-                $company = Company::create([
-                    'name'         => $nome,
-                    'cnpj'         => $cnpj,
-                    'service_type' => 'assessoria',
-                    'status'       => 'pendente',
-                    'active'       => true,
-                ]);
-
+            } elseif (in_array('assessoria', $types)) {
                 MlbEmpresa::create([
                     'nome'       => $nome,
                     'tipo'       => 'ASSESSORIA',
                     'company_id' => $company->id,
                     'criado_por' => $userId,
-                ]);
-
-            } else {
-                // PUBLICIDADE / GESTAO: apenas company
-                $company = Company::create([
-                    'name'         => $nome,
-                    'cnpj'         => $cnpj,
-                    'service_type' => $serviceType,
-                    'status'       => 'pendente',
-                    'active'       => true,
                 ]);
             }
         });
@@ -158,18 +144,21 @@ class ComercialController extends Controller
             ->withProperties(['empresa' => $company->name, 'service_type' => $company->service_type])
             ->log('Empresa cadastrada pelo Comercial: "' . $company->name . '"');
 
-        // (5) Notificação para líderes do setor de destino — fora da transaction
-        //     (Armadilha 4 do RESEARCH.md — não disparar notificação dentro de transaction)
-        $slugSetor = $this->resolverSlugSetor($company->service_type);
-        $setor     = Setor::where('slug', $slugSetor)->first();
-
-        if ($setor) {
-            $lideres = $setor->lideres;
-            if ($lideres->isNotEmpty()) {
-                Notification::send(
-                    $lideres,
-                    new EmpresaCadastradaNotification($company->name, $company->service_type, $request->user()->id)
-                );
+        // (5) Notificação para líderes de cada setor de destino — fora da transaction
+        foreach ($this->resolverSlugsSetores($company->service_type ?? []) as $slug) {
+            $setor = Setor::where('slug', $slug)->first();
+            if ($setor) {
+                $lideres = $setor->lideres;
+                if ($lideres->isNotEmpty()) {
+                    Notification::send(
+                        $lideres,
+                        new EmpresaCadastradaNotification(
+                            $company->name,
+                            implode('+', $company->service_type ?? []),
+                            $request->user()->id
+                        )
+                    );
+                }
             }
         }
 
@@ -191,42 +180,52 @@ class ComercialController extends Controller
         );
 
         $validated = $request->validate([
-            'name'         => 'required|string|max:255',
-            'cnpj'         => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
-            'notes'        => 'nullable|string|max:2000',
-            'service_type' => 'required|in:polos,assessoria,publicidade,gestao',
+            'name'           => 'required|string|max:255',
+            'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
+            'notes'          => 'nullable|string|max:2000',
+            'service_type'   => 'required|array|min:1',
+            'service_type.*' => 'in:polos,assessoria,publicidade,gestao',
         ]);
 
-        $novoTipo = $validated['service_type'];
+        if (in_array('polos', $validated['service_type']) && in_array('assessoria', $validated['service_type'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'service_type' => 'Não é possível selecionar POLOS e Assessoria ao mesmo tempo.',
+            ]);
+        }
 
-        DB::transaction(function () use ($company, $validated, $request, $novoTipo) {
+        $novosTipos = $validated['service_type'];
+
+        DB::transaction(function () use ($company, $validated, $request, $novosTipos) {
             $company->update($validated);
 
-            // Se mudou para um tipo com vínculo MLB, garante que o registro existe
-            if (in_array($novoTipo, ['polos', 'assessoria'])) {
-                $temMlb = MlbEmpresa::where('company_id', $company->id)->exists();
-
-                if (! $temMlb) {
+            // Se incluiu um tipo MLB e ainda não tem mlb_empresa vinculada: cria
+            $temMlb = MlbEmpresa::where('company_id', $company->id)->exists();
+            if (! $temMlb) {
+                if (in_array('polos', $novosTipos)) {
                     $empresa = MlbEmpresa::create([
                         'nome'       => $company->name,
-                        'tipo'       => $novoTipo === 'polos' ? 'POLO' : 'ASSESSORIA',
-                        'projeto'    => $novoTipo === 'polos' ? 'POLOS' : null,
-                        'fase'       => $novoTipo === 'polos' ? 'M0' : null,
-                        'estagio'    => $novoTipo === 'polos' ? 'Não Listado' : null,
+                        'tipo'       => 'POLO',
+                        'projeto'    => 'POLOS',
+                        'fase'       => 'M0',
+                        'estagio'    => 'Não Listado',
                         'company_id' => $company->id,
                         'criado_por' => $request->user()->id,
                     ]);
-
-                    if ($novoTipo === 'polos') {
-                        $this->criarImplementacaoPolo($empresa);
-                    }
+                    $this->criarImplementacaoPolo($empresa);
+                } elseif (in_array('assessoria', $novosTipos)) {
+                    MlbEmpresa::create([
+                        'nome'       => $company->name,
+                        'tipo'       => 'ASSESSORIA',
+                        'company_id' => $company->id,
+                        'criado_por' => $request->user()->id,
+                    ]);
                 }
             }
         });
 
         activity('comercial')
             ->causedBy($request->user())
-            ->withProperties(['empresa' => $company->name, 'service_type' => $novoTipo])
+            ->withProperties(['empresa' => $company->name, 'service_type' => $novosTipos])
             ->log('Empresa editada pelo Comercial: "' . $company->name . '"');
 
         return back()->with('success', 'Empresa "' . $company->name . '" atualizada com sucesso.');
@@ -258,18 +257,26 @@ class ComercialController extends Controller
     // ─── Métodos privados ────────────────────────────────────────────────────
 
     /**
-     * Resolve o slug do setor de destino com base no service_type da empresa.
-     * Usado para buscar os líderes que devem ser notificados.
+     * Resolve os slugs dos setores de destino a partir de um array de tipos.
+     * Notifica um setor por tipo de serviço, sem duplicatas.
      *
-     * polos/assessoria → publicacao (gerenciado pelo setor de Publicação)
-     * outros           → slug derivado do service_type via Str::slug
+     * polos/assessoria → publicacao
+     * publicidade      → publicidade
+     * gestao           → gestao
+     *
+     * @param  array<string>  $types
+     * @return array<string>
      */
-    private function resolverSlugSetor(string $serviceType): string
+    private function resolverSlugsSetores(array $types): array
     {
-        return match ($serviceType) {
-            'polos', 'assessoria' => 'publicacao',
-            default               => Str::slug($serviceType),
-        };
+        $slugs = [];
+        if (array_intersect($types, ['polos', 'assessoria'])) {
+            $slugs[] = 'publicacao';
+        }
+        foreach (array_diff($types, ['polos', 'assessoria']) as $type) {
+            $slugs[] = Str::slug($type);
+        }
+        return array_unique($slugs);
     }
 
     /**

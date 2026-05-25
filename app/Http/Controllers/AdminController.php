@@ -54,7 +54,8 @@ class AdminController extends Controller
     public function updateEmpresa(Request $request, Company $company)
     {
         $validator = Validator::make($request->all(), [
-            'service_type'             => 'nullable|in:polos,assessoria,incubadora,publicidade,gestao',
+            'service_type'             => 'nullable|array',
+            'service_type.*'           => 'in:polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'            => 'nullable|in:fixo,progressao',
             'contract_start'           => 'nullable|date',
             'contract_end'             => 'nullable|date|after_or_equal:contract_start',
@@ -369,7 +370,8 @@ class AdminController extends Controller
     public function updateFechamento(Request $request, Company $company)
     {
         $validator = Validator::make($request->all(), [
-            'service_type'       => 'nullable|in:polos,assessoria,incubadora,publicidade,gestao',
+            'service_type'       => 'nullable|array',
+            'service_type.*'     => 'in:polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'      => 'nullable|in:fixo,progressao',
             'contract_start'     => 'nullable|date',
             'contract_end'       => 'nullable|date|after_or_equal:contract_start',
@@ -568,7 +570,7 @@ class AdminController extends Controller
             ->orderBy('name');
 
         if ($request->filled('service_type')) {
-            $query->where('service_type', $request->input('service_type'));
+            $query->whereJsonContains('service_type', $request->input('service_type'));
         }
 
         $rawCompanies = $query->get();

@@ -1521,7 +1521,10 @@ class MlbController extends Controller
         ];
 
         // Companies cadastradas pelo Comercial que aguardam complemento de dados pelo time de Publicação
-        $empresasPendentes = Company::whereIn('service_type', ['polos', 'assessoria'])
+        $empresasPendentes = Company::where(function ($q) {
+                $q->whereJsonContains('service_type', 'polos')
+                  ->orWhereJsonContains('service_type', 'assessoria');
+            })
             ->where('status', 'pendente')
             ->orderBy('created_at', 'desc')
             ->get(['id', 'name', 'service_type', 'created_at']);

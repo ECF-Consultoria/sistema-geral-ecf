@@ -116,7 +116,10 @@ class CompanyController extends Controller
             : collect();
 
         // Companies cadastradas pelo Comercial que aguardam complemento de dados por Publicidade/Gestão
-        $empresasPendentes = Company::whereIn('service_type', ['publicidade', 'gestao'])
+        $empresasPendentes = Company::where(function ($q) {
+                $q->whereJsonContains('service_type', 'publicidade')
+                  ->orWhereJsonContains('service_type', 'gestao');
+            })
             ->where('status', 'pendente')
             ->orderBy('created_at', 'desc')
             ->get(['id', 'name', 'service_type', 'created_at']);

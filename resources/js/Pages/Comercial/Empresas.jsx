@@ -2,24 +2,22 @@
 //
 // Props do ComercialController::empresas():
 //   companies: [{ id, name, cnpj, service_type, status, created_at, adman_account_id, ml_store_id, notes }]
-//
-// Funcionalidades:
-//   - Tabela de todas as empresas (pendentes primeiro, depois alfabético)
-//   - Botão "Nova Empresa" abre modal com o formulário de cadastro
-//   - Clique em linha abre modal de edição (name, cnpj, notes)
-//   - Status badges (pendente / ativo)
-//   - Filtro por texto e por service_type
+//   service_type é um array JSON ex: ['polos', 'gestao']
 import { useState } from 'react';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import { Building2, PlusCircle, Search, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
+const TIPOS = [
+    { value: 'polos',       label: 'Publicação — POLOS' },
+    { value: 'assessoria',  label: 'Publicação — Assessoria' },
+    { value: 'publicidade', label: 'Publicidade' },
+    { value: 'gestao',      label: 'Gestão' },
+];
+
 const SERVICE_TYPE_LABELS = {
-    polos:       'Publicação — POLOS',
-    assessoria:  'Publicação — Assessoria',
-    publicidade: 'Publicidade',
-    gestao:      'Gestão',
+    polos: 'POLO', assessoria: 'Assessoria', publicidade: 'Publicidade', gestao: 'Gestão',
 };
 
 const SERVICE_TYPE_COLORS = {
@@ -31,18 +29,75 @@ const SERVICE_TYPE_COLORS = {
 
 const fmtDate = (iso) => {
     if (!iso) return '—';
-    const d = new Date(iso);
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+    return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 };
 
-// ─── Modal base ──────────────────────────────────────────────────────────────
+function TypeBadges({ types }) {
+    const arr = Array.isArray(types) ? types : (types ? [types] : []);
+    if (arr.length === 0) return <span className="text-white/20 text-xs">—</span>;
+    return (
+        <span className="inline-flex flex-wrap gap-1">
+            {arr.map(t => (
+                <span key={t} className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', SERVICE_TYPE_COLORS[t])}>
+                    {SERVICE_TYPE_LABELS[t] ?? t}
+                </span>
+            ))}
+        </span>
+    );
+}
+
+// ─── Checkboxes de tipo de serviço (reutilizado nos dois forms) ───────────────
+
+function TiposCheckbox({ value, onChange, error }) {
+    const temPolos      = value.includes('polos');
+    const temAssessoria = value.includes('assessoria');
+    const conflito      = temPolos && temAssessoria;
+
+    function toggle(tipo) {
+        onChange(value.includes(tipo) ? value.filter(t => t !== tipo) : [...value, tipo]);
+    }
+
+    return (
+        <div className="space-y-1.5">
+            <label className="block text-xs text-white/60 font-medium">
+                Tipo de Serviço <span className="text-ecf-yellow">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+                {TIPOS.map(({ value: v, label }) => (
+                    <label key={v} className={cn(
+                        'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors',
+                        value.includes(v)
+                            ? 'border-ecf-yellow/40 bg-ecf-yellow/5 text-white'
+                            : 'border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70'
+                    )}>
+                        <input type="checkbox" checked={value.includes(v)}
+                            onChange={() => toggle(v)} className="accent-ecf-yellow shrink-0" />
+                        <span className="text-[12px] leading-tight">{label}</span>
+                    </label>
+                ))}
+            </div>
+            {conflito && (
+                <p className="text-red-400 text-xs">POLOS e Assessoria são mutuamente exclusivos.</p>
+            )}
+            {error && <p className="text-red-400 text-xs">{Array.isArray(error) ? error[0] : error}</p>}
+            {value.includes('polos') && !conflito && (
+                <p className="text-white/30 text-[11px] leading-snug">Cria empresa + registro MLB (POLOS) + implementação automaticamente.</p>
+            )}
+            {value.includes('assessoria') && !conflito && (
+                <p className="text-white/30 text-[11px] leading-snug">Cria empresa + registro MLB (Assessoria). Implementação não é criada.</p>
+            )}
+        </div>
+    );
+}
+
+// ─── Modal base ───────────────────────────────────────────────────────────────
 
 function Modal({ open, onClose, children }) {
     if (!open) return null;
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/70" onClick={onClose} />
-            <div className="relative z-10 w-full max-w-lg rounded-2xl border border-white/[0.08] bg-ecf-card shadow-2xl">
+            <div className="relative z-10 w-full max-w-lg rounded-2xl border border-white/[0.08] bg-ecf-card shadow-2xl max-h-[90vh] overflow-y-auto">
                 {children}
             </div>
         </div>
@@ -55,7 +110,7 @@ function FormularioCriar({ onClose }) {
     const { data, setData, post, processing, errors, reset } = useForm({
         nome:         '',
         cnpj:         '',
-        service_type: '',
+        service_type: [],
     });
 
     function handleSubmit(e) {
@@ -84,19 +139,11 @@ function FormularioCriar({ onClose }) {
                 <label className="block text-xs text-white/60 font-medium">
                     Nome da Empresa <span className="text-ecf-yellow">*</span>
                 </label>
-                <input
-                    type="text"
-                    value={data.nome}
-                    onChange={e => setData('nome', e.target.value)}
-                    placeholder="Ex: Empresa XYZ Ltda"
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                <input type="text" value={data.nome} onChange={e => setData('nome', e.target.value)}
+                    placeholder="Ex: Empresa XYZ Ltda" autoFocus required
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
                         'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.nome ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                    required
-                    autoFocus
-                />
+                        errors.nome ? 'border-red-500/50' : 'border-white/[0.08]')} />
                 {errors.nome && <p className="text-red-400 text-xs">{errors.nome}</p>}
             </div>
 
@@ -104,55 +151,15 @@ function FormularioCriar({ onClose }) {
                 <label className="block text-xs text-white/60 font-medium">
                     CNPJ <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
                 </label>
-                <input
-                    type="text"
-                    value={data.cnpj}
-                    onChange={e => setData('cnpj', e.target.value)}
+                <input type="text" value={data.cnpj} onChange={e => setData('cnpj', e.target.value)}
                     placeholder="00.000.000/0001-00"
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
                         'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                />
+                        errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')} />
                 {errors.cnpj && <p className="text-red-400 text-xs">{errors.cnpj}</p>}
             </div>
 
-            <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    Tipo de Serviço <span className="text-ecf-yellow">*</span>
-                </label>
-                <select
-                    value={data.service_type}
-                    onChange={e => setData('service_type', e.target.value)}
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                        'focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        !data.service_type && 'text-white/30',
-                        errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                    required
-                >
-                    <option value="" disabled>Selecione o tipo...</option>
-                    <option value="polos">Publicação — POLOS</option>
-                    <option value="assessoria">Publicação — Assessoria</option>
-                    <option value="publicidade">Publicidade</option>
-                    <option value="gestao">Gestão</option>
-                </select>
-                {errors.service_type && <p className="text-red-400 text-xs">{errors.service_type}</p>}
-                {data.service_type === 'polos' && (
-                    <p className="text-white/30 text-[11px] leading-snug">Cria empresa + registro MLB (projeto POLOS) + implementação automaticamente.</p>
-                )}
-                {data.service_type === 'assessoria' && (
-                    <p className="text-white/30 text-[11px] leading-snug">Cria empresa + registro MLB (Assessoria). Implementação não é criada automaticamente.</p>
-                )}
-                {data.service_type === 'publicidade' && (
-                    <p className="text-white/30 text-[11px] leading-snug">Cria empresa no módulo de Publicidade. Dados de conta Adman são preenchidos depois.</p>
-                )}
-                {data.service_type === 'gestao' && (
-                    <p className="text-white/30 text-[11px] leading-snug">Cria empresa no módulo de Gestão. Consultor/estrategista atribuídos depois.</p>
-                )}
-            </div>
+            <TiposCheckbox value={data.service_type} onChange={v => setData('service_type', v)} error={errors.service_type} />
 
             <div className="flex items-center justify-end gap-3 pt-1">
                 <button type="button" onClick={onClose}
@@ -179,7 +186,8 @@ function FormularioEditar({ company, onClose }) {
         name:         company.name,
         cnpj:         company.cnpj ?? '',
         notes:        company.notes ?? '',
-        service_type: company.service_type,
+        service_type: Array.isArray(company.service_type) ? company.service_type
+                        : (company.service_type ? [company.service_type] : []),
     });
 
     function handleSubmit(e) {
@@ -199,8 +207,9 @@ function FormularioEditar({ company, onClose }) {
         });
     }
 
-    const mudouTipo = data.service_type !== company.service_type;
-    const novoTipoTemMlb = ['polos', 'assessoria'].includes(data.service_type);
+    const novoTipoTemMlb = data.service_type.some(t => ['polos', 'assessoria'].includes(t));
+    const originalTemMlb = (Array.isArray(company.service_type) ? company.service_type : [company.service_type])
+        .some(t => ['polos', 'assessoria'].includes(t));
 
     return (
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
@@ -220,18 +229,11 @@ function FormularioEditar({ company, onClose }) {
                 <label className="block text-xs text-white/60 font-medium">
                     Nome da Empresa <span className="text-ecf-yellow">*</span>
                 </label>
-                <input
-                    type="text"
-                    value={data.name}
-                    onChange={e => setData('name', e.target.value)}
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                <input type="text" value={data.name} onChange={e => setData('name', e.target.value)}
+                    autoFocus required
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
                         'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.name ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                    required
-                    autoFocus
-                />
+                        errors.name ? 'border-red-500/50' : 'border-white/[0.08]')} />
                 {errors.name && <p className="text-red-400 text-xs">{errors.name}</p>}
             </div>
 
@@ -239,65 +241,34 @@ function FormularioEditar({ company, onClose }) {
                 <label className="block text-xs text-white/60 font-medium">
                     CNPJ <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
                 </label>
-                <input
-                    type="text"
-                    value={data.cnpj}
-                    onChange={e => setData('cnpj', e.target.value)}
+                <input type="text" value={data.cnpj} onChange={e => setData('cnpj', e.target.value)}
                     placeholder="00.000.000/0001-00"
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
                         'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                />
+                        errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')} />
                 {errors.cnpj && <p className="text-red-400 text-xs">{errors.cnpj}</p>}
             </div>
 
-            <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    Tipo de Serviço <span className="text-ecf-yellow">*</span>
-                </label>
-                <select
-                    value={data.service_type}
-                    onChange={e => setData('service_type', e.target.value)}
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                        'focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                >
-                    <option value="polos">Publicação — POLOS</option>
-                    <option value="assessoria">Publicação — Assessoria</option>
-                    <option value="publicidade">Publicidade</option>
-                    <option value="gestao">Gestão</option>
-                </select>
-                {errors.service_type && <p className="text-red-400 text-xs">{errors.service_type}</p>}
-                {mudouTipo && novoTipoTemMlb && (
-                    <p className="text-yellow-400/70 text-[11px] leading-snug">
-                        Se não houver registro MLB vinculado, ele será criado automaticamente.
-                    </p>
-                )}
-            </div>
+            <TiposCheckbox value={data.service_type} onChange={v => setData('service_type', v)} error={errors.service_type} />
+
+            {novoTipoTemMlb && !originalTemMlb && (
+                <p className="text-yellow-400/70 text-[11px] leading-snug -mt-2">
+                    Registro MLB será criado automaticamente se não existir.
+                </p>
+            )}
 
             <div className="space-y-1.5">
                 <label className="block text-xs text-white/60 font-medium">
                     Observações <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
                 </label>
-                <textarea
-                    value={data.notes}
-                    onChange={e => setData('notes', e.target.value)}
-                    rows={3}
+                <textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={3}
                     placeholder="Notas internas sobre a empresa..."
-                    className={cn(
-                        'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none',
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none',
                         'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.notes ? 'border-red-500/50' : 'border-white/[0.08]'
-                    )}
-                />
+                        errors.notes ? 'border-red-500/50' : 'border-white/[0.08]')} />
                 {errors.notes && <p className="text-red-400 text-xs">{errors.notes}</p>}
             </div>
 
-            {/* Confirmação de exclusão */}
             {confirmandoExclusao ? (
                 <div className="rounded-xl border border-red-500/20 bg-red-950/40 p-4 space-y-3">
                     <div className="flex items-center gap-2 text-red-300">
@@ -352,10 +323,11 @@ export default function Empresas({ companies }) {
     const [filtroTipo, setFiltroTipo] = useState('');
 
     const empresasFiltradas = companies.filter(c => {
+        const types = Array.isArray(c.service_type) ? c.service_type : (c.service_type ? [c.service_type] : []);
         const textoOk = !filtroTexto
             || c.name.toLowerCase().includes(filtroTexto.toLowerCase())
             || (c.cnpj && c.cnpj.includes(filtroTexto));
-        const tipoOk = !filtroTipo || c.service_type === filtroTipo;
+        const tipoOk = !filtroTipo || types.includes(filtroTipo);
         return textoOk && tipoOk;
     });
 
@@ -377,7 +349,6 @@ export default function Empresas({ companies }) {
             </Modal>
 
             <div className="space-y-6">
-                {/* Cabeçalho */}
                 <div className="flex items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-ecf-yellow/10 border border-ecf-yellow/20 shrink-0">
@@ -388,51 +359,36 @@ export default function Empresas({ companies }) {
                             <p className="text-white/40 text-[13px]">{companies.length} empresa{companies.length !== 1 ? 's' : ''} cadastrada{companies.length !== 1 ? 's' : ''}</p>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setModalCriar(true)}
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-ecf-yellow text-black hover:bg-yellow-300 transition-all shrink-0"
-                    >
+                    <button onClick={() => setModalCriar(true)}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-ecf-yellow text-black hover:bg-yellow-300 transition-all shrink-0">
                         <PlusCircle size={14} />
                         Nova Empresa
                     </button>
                 </div>
 
-                {/* Flash de sucesso */}
                 {flash?.success && (
                     <div className="rounded-xl border border-green-500/20 bg-green-950/40 px-4 py-3 text-green-300 text-sm">
                         {flash.success}
                     </div>
                 )}
 
-                {/* Filtros */}
                 <div className="flex items-center gap-3 flex-wrap">
                     <div className="relative flex-1 min-w-[200px]">
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                        <input
-                            type="text"
-                            value={filtroTexto}
-                            onChange={e => setFiltroTexto(e.target.value)}
+                        <input type="text" value={filtroTexto} onChange={e => setFiltroTexto(e.target.value)}
                             placeholder="Buscar por nome ou CNPJ..."
-                            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors"
-                        />
+                            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors" />
                     </div>
-                    <select
-                        value={filtroTipo}
-                        onChange={e => setFiltroTipo(e.target.value)}
-                        className={cn(
-                            'bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                            !filtroTipo ? 'text-white/30' : 'text-white'
-                        )}
-                    >
+                    <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
+                        className={cn('bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-ecf-yellow/40 transition-colors',
+                            !filtroTipo ? 'text-white/30' : 'text-white')}>
                         <option value="">Todos os tipos</option>
-                        <option value="polos">Publicação — POLOS</option>
-                        <option value="assessoria">Publicação — Assessoria</option>
-                        <option value="publicidade">Publicidade</option>
-                        <option value="gestao">Gestão</option>
+                        {TIPOS.map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                        ))}
                     </select>
                 </div>
 
-                {/* Tabela */}
                 <div className="rounded-2xl border border-white/[0.08] bg-ecf-card overflow-hidden">
                     {empresasFiltradas.length === 0 ? (
                         <div className="py-16 text-center text-white/30 text-sm">
@@ -451,11 +407,9 @@ export default function Empresas({ companies }) {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/[0.04]">
-                                {/* Pendentes primeiro */}
                                 {pendentes.map(c => (
                                     <EmpresaRow key={c.id} company={c} onEdit={() => setEmpresaEditar(c)} />
                                 ))}
-                                {/* Separador visual se há ambos os grupos */}
                                 {pendentes.length > 0 && ativos.length > 0 && (
                                     <tr>
                                         <td colSpan={6} className="px-5 py-1.5 bg-white/[0.015]">
@@ -482,9 +436,7 @@ function EmpresaRow({ company: c, onEdit }) {
                 <span className="text-white font-medium">{c.name}</span>
             </td>
             <td className="px-4 py-3 hidden sm:table-cell">
-                <span className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', SERVICE_TYPE_COLORS[c.service_type])}>
-                    {SERVICE_TYPE_LABELS[c.service_type] ?? c.service_type}
-                </span>
+                <TypeBadges types={c.service_type} />
             </td>
             <td className="px-4 py-3 hidden md:table-cell text-white/40 text-xs">
                 {c.cnpj || '—'}
@@ -494,21 +446,15 @@ function EmpresaRow({ company: c, onEdit }) {
             </td>
             <td className="px-4 py-3">
                 {c.status === 'pendente' ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full border text-yellow-300 bg-yellow-950/50 border-yellow-500/20">
-                        Pendente
-                    </span>
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full border text-yellow-300 bg-yellow-950/50 border-yellow-500/20">Pendente</span>
                 ) : (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full border text-green-300 bg-green-950/50 border-green-500/20">
-                        Ativa
-                    </span>
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full border text-green-300 bg-green-950/50 border-green-500/20">Ativa</span>
                 )}
             </td>
             <td className="px-4 py-3">
-                <button
-                    onClick={onEdit}
+                <button onClick={onEdit}
                     className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-white/[0.06] text-white/40 hover:text-white/80 transition-all"
-                    title="Editar empresa"
-                >
+                    title="Editar empresa">
                     <Pencil size={13} />
                 </button>
             </td>
