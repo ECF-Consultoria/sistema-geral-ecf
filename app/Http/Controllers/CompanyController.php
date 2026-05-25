@@ -19,18 +19,42 @@ class CompanyController extends Controller
             ->orderBy('name')
             ->get();
 
-        // Faturamento 30d — SUM(adman_metrics.revenue) do DB. Era pra ser
-        // chamada direta à Adman mas isso estourou memory_limit (50 empresas
-        // × payload grande). Listagem usa SUM (pode divergir um pouco da
-        // Adman por causa de ajustes retroativos); detalhe (show) usa
-        // chamada direta com valor exato.
-        $revenue30d = AdmanMetric::query()
+        // Faturamento 30d — estratégia híbrida cache+fallback:
+        //  - Cache pre-aquecido pelo RefreshGrossBillingCacheJob (cron 30min)
+        //    contém o grossBilling EXATO da Adman.
+        //  - Se cache miss (após restart de cache), fallback é SUM(adman_metrics)
+        //    e dispara o job pra preencher cache.
+        // Chamada síncrona à Adman aqui estouraria memory_limit (N empresas × items[]).
+        $dateFrom = now()->subDays(30)->toDateString();
+        $dateTo   = now()->toDateString();
+
+        $sumDb = AdmanMetric::query()
             ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->where('reference_date', '>=', $dateFrom)
             ->whereNotNull('revenue')
             ->selectRaw('company_id, SUM(revenue) as total')
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
+
+        $revenue30d   = [];
+        $missingCache = false;
+        foreach ($companies as $c) {
+            if (!$c->adman_account_id) {
+                $revenue30d[$c->id] = 0.0;
+                continue;
+            }
+            $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFrom, $dateTo);
+            if ($cached !== null) {
+                $revenue30d[$c->id] = $cached;
+            } else {
+                $revenue30d[$c->id] = (float) ($sumDb[$c->id] ?? 0);
+                $missingCache = true;
+            }
+        }
+
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
 
         $companies = $companies->map(fn($c) => [
                 'id'               => $c->id,

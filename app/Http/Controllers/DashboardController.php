@@ -80,17 +80,37 @@ class DashboardController extends Controller
             ->orderBy('reference_date')
             ->get();
 
-        // Faturamento 30d por empresa — SUM(adman_metrics.revenue) do DB.
-        // Era pra ser chamada direta à Adman mas N chamadas síncronas
-        // estouram memory_limit. Para valores exatos da Adman, abrir a
-        // tela de detalhe (show) de cada empresa.
-        $revenue30dByCompany = AdmanMetric::query()
+        // Faturamento 30d por empresa — cache pre-aquecido pelo
+        // RefreshGrossBillingCacheJob (cron 30min) + fallback SUM DB
+        // se cache cold. Mesmo padrão de CompanyController::index.
+        $dateFrom30d = now()->subDays(30)->toDateString();
+        $dateTo30d   = now()->toDateString();
+        $sumDb30d = AdmanMetric::query()
             ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->where('reference_date', '>=', $dateFrom30d)
             ->whereNotNull('revenue')
             ->selectRaw('company_id, SUM(revenue) as total')
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
+
+        $revenue30dByCompany = [];
+        $missingCache        = false;
+        foreach ($companies as $c) {
+            if (!$c->adman_account_id) {
+                $revenue30dByCompany[$c->id] = 0.0;
+                continue;
+            }
+            $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFrom30d, $dateTo30d);
+            if ($cached !== null) {
+                $revenue30dByCompany[$c->id] = $cached;
+            } else {
+                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+                $missingCache = true;
+            }
+        }
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
 
         $revenueChart = $metrics->groupBy('reference_date')
             ->map(fn($g) => ['date' => $g->first()->reference_date->format('d/m'), 'revenue' => $g->sum('revenue')])
@@ -288,14 +308,35 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
-        // 30d via SUM do DB — N chamadas síncronas estouravam memory_limit.
-        $revenue30dByCompany = AdmanMetric::query()
+        // 30d cache+fallback (mesma estratégia do adminDashboard).
+        $dateFrom30d = now()->subDays(30)->toDateString();
+        $dateTo30d   = now()->toDateString();
+        $sumDb30d = AdmanMetric::query()
             ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', now()->subDays(30)->toDateString())
+            ->where('reference_date', '>=', $dateFrom30d)
             ->whereNotNull('revenue')
             ->selectRaw('company_id, SUM(revenue) as total')
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
+
+        $revenue30dByCompany = [];
+        $missingCache        = false;
+        foreach ($companies as $c) {
+            if (!$c->adman_account_id) {
+                $revenue30dByCompany[$c->id] = 0.0;
+                continue;
+            }
+            $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFrom30d, $dateTo30d);
+            if ($cached !== null) {
+                $revenue30dByCompany[$c->id] = $cached;
+            } else {
+                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+                $missingCache = true;
+            }
+        }
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
 
         $npsResponses = NpsSurvey::with('response')
             ->whereIn('company_id', $companies->pluck('id'))

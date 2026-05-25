@@ -136,9 +136,7 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
-        // SUM(adman_metrics.revenue) sempre — chamadas síncronas à Adman para
-        // N empresas estouravam memory_limit. Para valor exato da Adman, abrir
-        // o PDF individual (gerarRelatorio) que chama Adman pra 1 empresa.
+        // Fallback SUM(adman_metrics.revenue) caso cache cold.
         $metricas = AdmanMetric::whereBetween('reference_date', [$inicio, $fim])
             ->whereNotNull('revenue')
             ->selectRaw('company_id, SUM(revenue) as faturamento, MIN(reference_date) as periodo_inicio, MAX(reference_date) as periodo_fim')
@@ -155,6 +153,13 @@ class AdminController extends Controller
         $recebidos = FechamentoRecebido::where('mes', $mesSelecionado)
             ->pluck('recebido_em', 'company_id');
 
+        // Cache do faturamento da Adman pre-aquecido pelo Job. Quando hit,
+        // valor exato; quando miss (cache cold), fallback é o SUM do DB.
+        // Só pra mês ATUAL — meses passados sempre vêm do DB (histórico).
+        $dateFromStr  = $inicio->toDateString();
+        $dateToStr    = $fim->toDateString();
+        $missingCache = false;
+
         // Passo 2 — monta array indexado por company_id
         $dadosPorId = [];
 
@@ -165,6 +170,16 @@ class AdminController extends Controller
             $mAnt        = $metricasAnterior->get($c->id);
             $fatAtual    = $m    ? (float) $m->faturamento    : null;
             $fatAnterior = $mAnt ? (float) $mAnt->faturamento : null;
+
+            // Substitui pelo cache da Adman se disponível (só mês atual).
+            if ($isMesAtual && $hasAdman) {
+                $cached = $this->adman->getCachedGrossBilling($c->adman_account_id, $dateFromStr, $dateToStr);
+                if ($cached !== null) {
+                    $fatAtual = $cached;
+                } else {
+                    $missingCache = true;
+                }
+            }
 
             $estado = match (true) {
                 !$hasAdman          => 'sem_integracao',
@@ -250,6 +265,12 @@ class AdminController extends Controller
             $dados['conta_no_total'] = $dados['parent_company_id'] === null;
         }
         unset($dados);
+
+        // Cache cold pra alguma empresa? Dispara o job pra preencher na
+        // próxima request. ShouldBeUnique evita dispatches em paralelo.
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
 
         return Inertia::render('Admin/Financeiro', [
             'companies'       => array_values($dadosPorId),
@@ -447,8 +468,8 @@ class AdminController extends Controller
 
         $rawCompanies = $query->get();
 
-        // SUM(adman_metrics.revenue) sempre — gerarRelatorioGeral percorre
-        // TODAS empresas pais+filhas. Adman direto estouraria memória.
+        // Mês atual: cache (Adman pre-aquecido) + fallback SUM DB
+        // Mês passado: sempre SUM DB (histórico congelado)
         $todasEmpresas = $rawCompanies->flatMap(
             fn($c) => collect([$c])->merge($c->filhas)
         );
@@ -461,7 +482,18 @@ class AdminController extends Controller
             ->get()
             ->keyBy('company_id');
 
-        $faturamentoOf = function (Company $emp) use ($metricas): ?float {
+        $dateFromStr  = $inicio->toDateString();
+        $dateToStr    = $fim->toDateString();
+        $missingCache = false;
+
+        $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $dateFromStr, $dateToStr, &$missingCache): ?float {
+            // Mês atual: tenta cache da Adman primeiro
+            if ($isMesAtual && $emp->adman_account_id) {
+                $cached = $this->adman->getCachedGrossBilling($emp->adman_account_id, $dateFromStr, $dateToStr);
+                if ($cached !== null) return $cached;
+                $missingCache = true;
+            }
+            // Fallback: SUM do DB
             $m = $metricas->get($emp->id);
             return $m ? (float) $m->faturamento : null;
         };
@@ -524,6 +556,10 @@ class AdminController extends Controller
                 'vinculadas'       => $vinculadas,
                 'total_mensalidade'=> $totalMensalidade,
             ];
+        }
+
+        if ($missingCache) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
         return view('admin.relatorio-geral', [

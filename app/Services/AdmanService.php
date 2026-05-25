@@ -254,6 +254,22 @@ class AdmanService
     }
 
     /**
+     * Lê APENAS do cache (não chama Adman se miss). Usado pelos controllers
+     * que listam N empresas — fazer chamada síncrona aqui estouraria memória
+     * (response Adman traz items[] grande × N empresas) e travaria o request.
+     *
+     * O cache é pre-aquecido pelo RefreshGrossBillingCacheJob (cron 30min).
+     * Cache miss = aguardando 1ª execução do job → caller decide fallback
+     * (geralmente SUM(adman_metrics.revenue) do DB, aproximação aceitável).
+     */
+    public function getCachedGrossBilling(string $custId, string $dateFrom, string $dateTo): ?float
+    {
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        $value    = Cache::get($cacheKey);
+        return $value !== null ? (float) $value : null;
+    }
+
+    /**
      * Versão batch para N empresas — SEQUENCIAL THROTTLED por causa do rate
      * limit da Adman (~50 req/min). Versão anterior usava Http::pool paralelo
      * mas isso amplificava o rate limit e quebrava o sync diário em background.
