@@ -36,28 +36,38 @@ class CompanyController extends Controller
             ->groupBy('company_id')
             ->pluck('total', 'company_id');
 
-        // Batch read: 1 Cache::many round-trip pra todas custIds em vez
-        // de N×2 (escala linearmente até 1000+ empresas sem overhead).
+        // Batch read: 2 Cache::many round-trips (gross + account_metrics).
         $custIds = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
-        $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+        $grossBatch   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+        $accountBatch = $this->adman->getCachedAccountMetricsMany($custIds, $dateFrom, $dateTo);
 
         $revenue30d   = [];
+        $acos30d      = [];
+        $tacos30d     = [];
+        $margin30d    = [];
         $missingCache = false;
         foreach ($companies as $c) {
             if (!$c->adman_account_id) {
                 $revenue30d[$c->id] = 0.0;
                 continue;
             }
-            $entry = $cacheBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            // Faturamento bruto (grossBilling)
+            $entry = $grossBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
             if ($entry['value'] !== null) {
                 $revenue30d[$c->id] = $entry['value'];
             } else {
-                // Sem valor — fallback DB. Dispatch job só se cache miss real
-                // (sem qualquer entrada); erro cacheado = já tentou recente.
                 $revenue30d[$c->id] = (float) ($sumDb[$c->id] ?? 0);
-                if (!$entry['hasEntry']) {
-                    $missingCache = true;
-                }
+                if (!$entry['hasEntry']) $missingCache = true;
+            }
+
+            // ACOS, TACOS, margem (do /accounts/metrics)
+            $accEntry = $accountBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            if ($accEntry['value'] !== null) {
+                $acos30d[$c->id]   = $accEntry['value']['acos']              ?? null;
+                $tacos30d[$c->id]  = $accEntry['value']['tacos']             ?? null;
+                $margin30d[$c->id] = $accEntry['value']['percentage_margin'] ?? null;
+            } elseif (!$accEntry['hasEntry']) {
+                $missingCache = true;
             }
         }
 
@@ -77,12 +87,12 @@ class CompanyController extends Controller
                 'ml_store_id'      => $c->ml_store_id,
                 'consultor'        => $c->consultor->first()?->only(['id', 'name']),
                 'estrategista'           => $c->estrategista->first()?->only(['id', 'name']),
-                'tacos'            => $c->latestMetrics?->tacos,
-                // 30d substituiu o latest pra bater com a Adman. tacos/margem
-                // permanecem no latest porque são razões (não somam) e o "agora"
-                // tem mais sentido nessas métricas.
+                // ACOS, TACOS, margem vêm do cache /accounts/metrics da Adman
+                // (range 30d); fallback latestMetrics (1 dia) só se cache cold.
+                'tacos'            => $tacos30d[$c->id]  ?? $c->latestMetrics?->tacos,
+                'acos'             => $acos30d[$c->id]   ?? null,
+                'margin_pct'       => $margin30d[$c->id] ?? $c->latestMetrics?->contribution_margin_pct,
                 'revenue_30d'      => (float) ($revenue30d[$c->id] ?? 0),
-                'margin_pct'       => $c->latestMetrics?->contribution_margin_pct,
             ]);
 
         $users = User::where('active', true)
@@ -122,16 +132,35 @@ class CompanyController extends Controller
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(30),
         ]);
 
-        // Faturamento bruto dos últimos 30 dias — chamada direta à Adman
-        // (summarizedData.grossBilling.value), cache 10min. Não soma do DB
-        // porque sync diário pode pular dias e Adman aplica ajustes retroativos.
-        $revenue30d = $company->adman_account_id
-            ? (float) ($this->adman->fetchGrossBilling(
-                $company->adman_account_id,
-                now()->subDays(30)->toDateString(),
-                now()->toDateString(),
-            ) ?? 0)
-            : 0.0;
+        // Faturamento bruto + ACOS/TACOS/margem dos últimos 30 dias —
+        // chamadas diretas à Adman (1 empresa, ~2 chamadas, sem risco de
+        // memória). Cache 60min embutido nos métodos.
+        $dateFrom = now()->subDays(30)->toDateString();
+        $dateTo   = now()->toDateString();
+
+        $revenue30d = 0.0;
+        $acos30d    = null;
+        $tacos30d   = null;
+        $margin30d  = null;
+        $liquidMargin30d = null;
+        $adInvestment30d = null;
+
+        if ($company->adman_account_id) {
+            $revenue30d = (float) ($this->adman->fetchGrossBilling(
+                $company->adman_account_id, $dateFrom, $dateTo
+            ) ?? 0);
+
+            $accountMetrics = $this->adman->fetchAccountMetricsCached(
+                $company->adman_account_id, $dateFrom, $dateTo
+            );
+            if ($accountMetrics !== null) {
+                $acos30d         = $accountMetrics['acos'];
+                $tacos30d        = $accountMetrics['tacos'];
+                $margin30d       = $accountMetrics['percentage_margin'];
+                $liquidMargin30d = $accountMetrics['liquid_margin'];
+                $adInvestment30d = $accountMetrics['investment'];
+            }
+        }
 
         return Inertia::render('Companies/Show', [
             'company' => [
@@ -145,6 +174,11 @@ class CompanyController extends Controller
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
                 'revenue_30d'      => $revenue30d,
+                'acos_30d'         => $acos30d,
+                'tacos_30d'        => $tacos30d,
+                'margin_pct_30d'   => $margin30d,
+                'liquid_margin_30d'=> $liquidMargin30d,
+                'ad_investment_30d'=> $adInvestment30d,
                 'consultor'        => $company->consultor->map->only(['id', 'name'])->values(),
                 'estrategista'           => $company->estrategista->map->only(['id', 'name'])->values(),
                 'goals'            => $company->goals->map(fn($g) => [

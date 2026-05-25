@@ -357,6 +357,118 @@ class AdmanService
         return $out;
     }
 
+    // ─── Account Metrics (ACOS, TACOS, margem, etc) ───────────────────────────
+    //
+    // Endpoint /v1/{marketplace}/accounts/{custId}/metrics retorna métricas
+    // agregadas que NÃO estão no /performance: acos, tacos, liquidMargin,
+    // percentageMargin, billing, investment. Cacheamos em estrutura única
+    // pra UI consumir em 1 read.
+
+    /**
+     * Forma do array retornado/cachado por empresa. Null pra campo ausente.
+     *
+     * @return array{acos: ?float, tacos: ?float, investment: ?float,
+     *               liquid_margin: ?float, percentage_margin: ?float,
+     *               billing: ?float}
+     */
+    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60): ?array
+    {
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached === self::ERROR_SENTINEL ? null : $cached;
+        }
+
+        try {
+            $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo);
+
+            // A Adman embrulha cada métrica em {value, diff, prev} — extrai só o value.
+            $val = fn(string $key): ?float => isset($data['metrics'][$key]['value'])
+                ? (float) $data['metrics'][$key]['value']
+                : null;
+
+            $metrics = [
+                'acos'              => $val('acos'),
+                'tacos'             => $val('tacos'),
+                'investment'        => $val('investment'),
+                'liquid_margin'     => $val('liquidMargin'),
+                'percentage_margin' => $val('percentageMargin'),
+                'billing'           => $val('billing'),
+            ];
+
+            unset($data);
+            gc_collect_cycles();
+
+            // Se todos os campos vieram null, trata como erro (resposta inválida).
+            if (array_filter($metrics, fn($v) => $v !== null) === []) {
+                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+                return null;
+            }
+
+            Cache::put($cacheKey, $metrics, now()->addMinutes($cacheMinutes));
+            return $metrics;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/AccountMetrics] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
+    }
+
+    /**
+     * Lê APENAS do cache. Mesma motivação de getCachedGrossBilling: chamadas
+     * síncronas em controllers com N empresas estouram memória/rate limit.
+     */
+    public function getCachedAccountMetrics(string $custId, string $dateFrom, string $dateTo): ?array
+    {
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        $value    = Cache::get($cacheKey);
+        if ($value === null || $value === self::ERROR_SENTINEL) return null;
+        return is_array($value) ? $value : null;
+    }
+
+    /**
+     * True se existe QUALQUER entrada (valor real OU ERROR_SENTINEL).
+     */
+    public function hasCachedAccountMetricsEntry(string $custId, string $dateFrom, string $dateTo): bool
+    {
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        return Cache::has($cacheKey);
+    }
+
+    /**
+     * Batch read otimizado pra controllers com N empresas — 1 round-trip Redis.
+     *
+     * @param  array<string>  $custIds
+     * @return array<string, array{value: ?array, hasEntry: bool}>
+     */
+    public function getCachedAccountMetricsMany(array $custIds, string $dateFrom, string $dateTo): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        if (empty($custIds)) return [];
+
+        $keysByCustId = [];
+        foreach ($custIds as $custId) {
+            $keysByCustId[$custId] = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        }
+
+        $raw = Cache::many(array_values($keysByCustId));
+
+        $out = [];
+        foreach ($custIds as $custId) {
+            $key = $keysByCustId[$custId];
+            $val = $raw[$key] ?? null;
+            $hasEntry = $val !== null;
+
+            $out[$custId] = [
+                'value'    => ($val !== null && $val !== self::ERROR_SENTINEL && is_array($val)) ? $val : null,
+                'hasEntry' => $hasEntry,
+            ];
+        }
+
+        return $out;
+    }
+
     /**
      * Versão batch para N empresas — SEQUENCIAL THROTTLED por causa do rate
      * limit da Adman (~50 req/min). Versão anterior usava Http::pool paralelo

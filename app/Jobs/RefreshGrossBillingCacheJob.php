@@ -13,23 +13,25 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Pre-aquece o cache de faturamento bruto (Adman /performance) para todas
- * as empresas ativas com adman_account_id.
+ * Pre-aquece o cache de métricas Adman por empresa:
+ *  - /performance         → grossBilling (faturamento bruto 30d)
+ *  - /accounts/metrics    → acos, tacos, investment, liquid_margin,
+ *                            percentage_margin, billing
  *
- * Por que existir: chamadas diretas síncronas em listagens (Empresas,
- * Dashboard companies_performance, Fechamento) estouravam memory_limit
+ * Por que existir: chamadas síncronas em listagens estouravam memory_limit
  * (cada response Adman traz items[] grande × N empresas). E sem cache
- * quente, primeira request travava o request HTTP por minutos.
+ * quente, primeira request travava o HTTP por minutos.
  *
  * Solução: job sequencial em background, throttled a 1.5s entre chamadas
- * (~40 req/min, abaixo do limite Adman ~50/min). Resultados ficam no
- * cache (TTL 60min via fetchGrossBilling), e os controllers só LÊEM
- * o cache — instantâneo, sem consumir memória.
+ * (~40 req/min, abaixo do limite Adman ~50/min). Resultados ficam em
+ * cache 60min e os controllers só LÊEM o cache — instantâneo, sem
+ * consumir memória.
  *
- * Schedule: a cada 30min (alinhado com TTL 60min — cobertura completa).
- * ShouldBeUnique: 1 job rodando por vez (não dispara em paralelo).
+ * Schedule: a cada 30min (alinhado com TTL 60min). ShouldBeUnique evita
+ * disparos paralelos.
  *
- * Custo: ~50 empresas × 1.5s = 75s por execução.
+ * Custo: ~50 empresas × 2 chamadas (performance + accounts) × 1.5s = ~2.5min.
+ * Quando cache já está quente, skipa as empresas e tempo cai drasticamente.
  */
 class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
 {
@@ -69,47 +71,62 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
         $dateFrom = now()->subDays(30)->toDateString();
         $dateTo   = now()->toDateString();
 
-        $ok      = 0;
-        $fail    = 0;
-        $skipped = 0;
-        $total   = $companies->count();
+        $okGross   = 0;
+        $okAccount = 0;
+        $fail      = 0;
+        $skipped   = 0;
+        $total     = $companies->count();
         $callsMade = 0;
 
         foreach ($companies as $c) {
-            // Skip empresas com cache válido (valor real OU ERROR_SENTINEL):
-            //  - Valor real cacheado dentro do TTL (60min) → não precisa re-chamar
-            //  - ERROR_SENTINEL cacheado (10min) → Adman está com problema
-            //    persistente nessa empresa; esperar sentinel expirar pra
-            //    re-tentar. Sem skip, gastamos slot do throttle inutilmente
-            //    em empresas que vão falhar de novo na mesma janela.
-            if ($adman->hasCachedEntry($c->adman_account_id, $dateFrom, $dateTo)) {
+            $custId = $c->adman_account_id;
+
+            $needGross   = !$adman->hasCachedEntry($custId, $dateFrom, $dateTo);
+            $needAccount = !$adman->hasCachedAccountMetricsEntry($custId, $dateFrom, $dateTo);
+
+            // Skip empresa inteira se ambos caches já têm entrada (valor OU ERROR_SENTINEL).
+            // Cache TTL 60min de sucesso ou 10min de erro — quando expira, próxima
+            // execução do job (30min) pega de novo.
+            if (!$needGross && !$needAccount) {
                 $skipped++;
                 continue;
             }
 
-            // Throttle 1.5s entre chamadas REAIS — abaixo dos 50/min Adman.
-            // Skips não contam (não houve chamada de rede).
-            if ($callsMade > 0) usleep(1_500_000);
-
-            try {
-                $value = $adman->fetchGrossBilling($c->adman_account_id, $dateFrom, $dateTo, 60);
-                $callsMade++;
-                if ($value === null) {
+            // /performance → grossBilling
+            if ($needGross) {
+                if ($callsMade > 0) usleep(1_500_000);
+                try {
+                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 60);
+                    $callsMade++;
+                    if ($value === null) $fail++;
+                    else                 $okGross++;
+                } catch (\Throwable $e) {
                     $fail++;
-                } else {
-                    $ok++;
+                    $callsMade++;
+                    Log::warning("[RefreshAdmanCache/gross] company={$c->id} ({$c->name}): " . $e->getMessage());
                 }
-            } catch (\Throwable $e) {
-                $fail++;
-                $callsMade++;
-                Log::warning("[RefreshGrossBilling] company={$c->id} ({$c->name}): " . $e->getMessage());
+            }
+
+            // /accounts/metrics → acos, tacos, margem, etc
+            if ($needAccount) {
+                if ($callsMade > 0) usleep(1_500_000);
+                try {
+                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 60);
+                    $callsMade++;
+                    if ($metrics === null) $fail++;
+                    else                   $okAccount++;
+                } catch (\Throwable $e) {
+                    $fail++;
+                    $callsMade++;
+                    Log::warning("[RefreshAdmanCache/account] company={$c->id} ({$c->name}): " . $e->getMessage());
+                }
             }
         }
 
         $elapsed = round(microtime(true) - $started, 1);
         Log::info(sprintf(
-            '[RefreshGrossBilling] %d/%d ok, %d falhas, %d skipped (cache v\xC3\xA1lido) — %ss',
-            $ok, $total, $fail, $skipped, $elapsed
+            '[RefreshAdmanCache] empresas=%d (gross_ok=%d, account_ok=%d, fail=%d, skip=%d) calls=%d — %ss',
+            $total, $okGross, $okAccount, $fail, $skipped, $callsMade, $elapsed
         ));
     }
 
