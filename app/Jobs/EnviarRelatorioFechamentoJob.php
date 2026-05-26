@@ -78,9 +78,15 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
         $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
 
         // ── 3. Carrega empresas principais ativas com filhas ──────────────────
+        // Phase 14 (Frente B): eager loading de contratosServico.servico (pai + filhas)
+        // para o payload de email incluir `servicos_contratados` formatado sem N+1.
         $rawCompanies = Company::where('active', true)
             ->whereNull('parent_company_id')
-            ->with(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')])
+            ->with([
+                'filhas' => fn($q) => $q->where('active', true)->orderBy('name'),
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'filhas.contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -113,6 +119,13 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
             // Vinculadas com todos os campos (espelho de AdminController::gerarRelatorioGeral)
+            // Phase 14 (Frente B): chave nova `servicos_contratados` no formato
+            // "Nome (R$ X,XX), Outro (R$ Y,YY)" — derivada do modelo N:N. As 6 chaves
+            // legacy (service_type, contract_type, contract_start, contract_end,
+            // additional_service, additional_service_price) permanecem em
+            // COEXISTÊNCIA. Serão removidas no Plan 14-06. A view Blade do email
+            // (resources/views/emails/relatorio-fechamento.blade.php) será
+            // refatorada no Plan 14-05.
             $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
                 $m   = $metricas->get($f->id);
                 $fat = $m ? (float) $m->faturamento : null;
@@ -125,12 +138,17 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                     'adman_store_id'           => $f->adman_store_id,
                     'ml_store_id'              => $f->ml_store_id,
                     'segment'                  => $f->segment,
+                    // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
                     'service_type'             => $f->service_type,
                     'contract_type'            => $f->contract_type,
                     'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
                     'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
                     'additional_service'       => $f->additional_service,
                     'additional_service_price' => $f->additional_service_price ? (float) $f->additional_service_price : null,
+                    // ─── Chave nova (string formatada — "Nome (R$ X,XX), ...") ─
+                    'servicos_contratados'     => $f->contratosServico->where('ativo', true)
+                        ->map(fn($c) => ($c->servico?->nome ?? '—') . ' (R$ ' . number_format((float) $c->valor_contratado, 2, ',', '.') . ')')
+                        ->implode(', '),
                     'faturamento'              => $fat,
                     'periodo_inicio'           => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
                     'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,

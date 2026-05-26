@@ -81,13 +81,28 @@ class CompanyController extends Controller
             : collect();
 
         // Companies cadastradas pelo Comercial que aguardam complemento de dados por Publicidade/Gestão
-        $empresasPendentes = Company::where(function ($q) {
-                $q->whereJsonContains('service_type', 'publicidade')
-                  ->orWhereJsonContains('service_type', 'gestao');
-            })
-            ->where('status', 'pendente')
+        // Phase 14 (Frente B): filtro migrado de whereJsonContains('service_type', ...)
+        // para whereHas('contratosServico') JOIN servicos.nome (D-01, RESEARCH §5).
+        // Mantém `service_type` no select() porque a coluna ainda existe e o JSX
+        // atual lê (coexistência Wave 2 — drop no Plan 14-06). A chave
+        // `servicos_contratados` é adicionada via transform para a UI nova
+        // consumir progressivamente.
+        $empresasPendentes = Company::where('status', 'pendente')
+            ->whereHas('contratosServico', fn($q) =>
+                $q->where('ativo', true)
+                  ->whereHas('servico', fn($qs) =>
+                      $qs->whereIn('nome', ['Publicidade', 'Gestão'])
+                  )
+            )
+            ->with(['contratosServico' => fn($q) => $q->where('ativo', true)->with('servico')])
             ->orderBy('created_at', 'desc')
             ->get(['id', 'name', 'service_type', 'created_at']);
+
+        $empresasPendentes->transform(function ($e) {
+            $nomes = $e->contratosServico->where('ativo', true)->pluck('servico.nome')->filter();
+            $e->servicos_contratados = $nomes->values()->toArray();
+            return $e;
+        });
 
         return Inertia::render('Companies/Index', [
             'companies'          => $companies,
