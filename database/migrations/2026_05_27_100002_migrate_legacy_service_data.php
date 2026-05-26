@@ -93,18 +93,44 @@ return new class extends Migration
      */
     private function migrarContratosLegacy(Company $company, Collection $servicosByNome): void
     {
-        // data_contratacao: contract_start ou created_at como fallback (D-04).
-        // contract_start vem como Carbon (cast date:Y-m-d em Company.php); usamos
-        // toDateString() para sempre normalizar para 'Y-m-d' (Pitfall 8 — SQLite).
-        $dataContratacao = $company->contract_start
-            ? $company->contract_start->toDateString()
+        // Phase 14 (Frente B / Plan 14-06): esta migration foi escrita assumindo que
+        // Company.php tinha os casts 'service_type' => 'array' e 'contract_start' /
+        // 'contract_end' => 'date'. O Plan 14-06 removeu esses casts (preparando o drop
+        // das colunas), então qualquer execução de `migrate:fresh` em dev/CI/novo VPS
+        // chamaria $company->contract_start->toDateString() em string crua e quebraria
+        // com "Call to a member function toDateString() on string". E foreach((array)
+        // $company->service_type) sobre a string JSON crua produziria um array de UM
+        // elemento (a JSON inteira), nunca casando com o mapaLegacy.
+        //
+        // Solução: ler os 3 campos via DB::table cru (independente de cast) e parsear
+        // explicitamente. Em produção esta migration JÁ rodou antes do drop —
+        // este fix garante apenas a paridade em fresh installs.
+
+        // ─── Leitura raw dos 3 campos legacy (sem depender de cast Eloquent) ──
+        // Em fresh installs com colunas ainda presentes (esta migration roda ANTES da
+        // 100003 que dropa as colunas), as 3 colunas existem e value() retorna o conteúdo
+        // bruto (string JSON para service_type, string 'Y-m-d H:i:s' para datas).
+        $rawServiceType = DB::table('companies')->where('id', $company->id)->value('service_type');
+        $rawStart       = DB::table('companies')->where('id', $company->id)->value('contract_start');
+        $rawEnd         = DB::table('companies')->where('id', $company->id)->value('contract_end');
+
+        // service_type: decodifica JSON explicitamente. Defensivo contra (a) string
+        // JSON normal, (b) já-array (caso casts voltem no futuro), (c) null/vazio.
+        $slugs = is_string($rawServiceType) && $rawServiceType !== ''
+            ? (json_decode($rawServiceType, true) ?: [])
+            : (is_array($rawServiceType) ? $rawServiceType : []);
+
+        // Datas: parse via Carbon explícito (Pitfall 8 — normaliza para 'Y-m-d').
+        $dataContratacao = $rawStart
+            ? \Carbon\Carbon::parse($rawStart)->toDateString()
             : $company->created_at->toDateString();
 
-        $dataVencimento = $company->contract_end?->toDateString();
+        $dataVencimento = $rawEnd
+            ? \Carbon\Carbon::parse($rawEnd)->toDateString()
+            : null;
 
-        // ─── (1) Contratos derivados de service_type (JSON array) ────────────
-        // (array) cast: se for null vira []; se for array fica igual.
-        foreach ((array) $company->service_type as $slug) {
+        // ─── (1) Contratos derivados de service_type (JSON array decodificada acima) ──
+        foreach ($slugs as $slug) {
             $nome = $this->mapaLegacy[$slug] ?? null;
 
             // Slug desconhecido (ex: dado sujo histórico) → ignora.
@@ -137,7 +163,15 @@ return new class extends Migration
         }
 
         // ─── (2) Contrato adicional derivado de additional_service ──────────
-        $additionalRaw = (string) ($company->additional_service ?? '');
+        // Phase 14 (Frente B / Plan 14-06): leitura raw via DB::table para preservar
+        // independência de casts Eloquent (consistência com leitura de service_type
+        // acima). Em fresh installs com Company.php sem casts, $company->additional_service
+        // ainda funcionaria (string nativa), mas usar a mesma estratégia raw evita
+        // surpresas se futuros refactors removerem $fillable ou adicionarem accessors.
+        $rawAdditionalService      = DB::table('companies')->where('id', $company->id)->value('additional_service');
+        $rawAdditionalServicePrice = DB::table('companies')->where('id', $company->id)->value('additional_service_price');
+
+        $additionalRaw = (string) ($rawAdditionalService ?? '');
 
         if (trim($additionalRaw) === '') {
             // Sem additional_service → nada a fazer aqui (D-04 itens 3 e 4).
@@ -148,9 +182,9 @@ return new class extends Migration
         // "consultoria", "Consultoria", "  CONSULTORIA  " viram todos "Consultoria".
         $nomeAdicional = mb_convert_case(trim($additionalRaw), MB_CASE_TITLE, 'UTF-8');
 
-        // Pitfall 4 (cast decimal:2 retorna string em SQLite): (float) explícito
+        // Pitfall 4 (decimal:2 retorna string em SQLite): (float) explícito
         // antes de operações aritméticas e comparações.
-        $valorAdicional = (float) ($company->additional_service_price ?? 0);
+        $valorAdicional = (float) ($rawAdditionalServicePrice ?? 0);
 
         // find-or-create no catálogo para o nome adicional. valor_padrao do
         // catálogo recebe o valor real (heurística — usuário pode ajustar via UI).
