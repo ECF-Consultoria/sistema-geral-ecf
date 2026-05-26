@@ -80,7 +80,7 @@ class ComercialController extends Controller
             'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj',
             'notes'          => 'nullable|string|max:2000',
             'service_type'   => 'required|array|min:1',
-            'service_type.*' => 'in:publicacao,publicidade,gestao,incubadora',
+            'service_type.*' => 'in:publicacao,publicidade,gestao,incubadora,mentoria,implantacao',
         ]);
 
         // (2) Guard de duplicata — verifica companies.name e mlb_empresas.nome
@@ -158,7 +158,7 @@ class ComercialController extends Controller
             'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
             'notes'          => 'nullable|string|max:2000',
             'service_type'   => 'nullable|array',
-            'service_type.*' => 'in:publicacao,polos,assessoria,publicidade,gestao,incubadora',
+            'service_type.*' => 'in:publicacao,polos,assessoria,publicidade,gestao,incubadora,mentoria,implantacao',
         ]);
 
         $novosTipos = $validated['service_type'] ?? [];

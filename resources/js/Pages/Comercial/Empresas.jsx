@@ -13,11 +13,15 @@ const TIPOS = [
     { value: 'publicacao',  label: 'Publicação' },
     { value: 'publicidade', label: 'Publicidade' },
     { value: 'gestao',      label: 'Gestão' },
+    { value: 'mentoria',    label: 'Mentoria' },
+    { value: 'implantacao', label: 'Implantação' },
+    { value: 'incubadora',  label: 'Incubadora' },
 ];
 
 const SERVICE_TYPE_LABELS = {
-    publicacao: 'Publicação', polos: 'POLO', assessoria: 'Assessoria',
-    publicidade: 'Publicidade', gestao: 'Gestão',
+    publicacao:  'Publicação',  polos:       'POLO',        assessoria:  'Assessoria',
+    publicidade: 'Publicidade', gestao:      'Gestão',      mentoria:    'Mentoria',
+    implantacao: 'Implantação', incubadora:  'Incubadora',
 };
 
 const SERVICE_TYPE_COLORS = {
@@ -26,6 +30,9 @@ const SERVICE_TYPE_COLORS = {
     assessoria:  'text-purple-300 bg-purple-950/60 border-purple-500/20',
     publicidade: 'text-orange-300 bg-orange-950/60 border-orange-500/20',
     gestao:      'text-teal-300 bg-teal-950/60 border-teal-500/20',
+    mentoria:    'text-amber-300 bg-amber-950/60 border-amber-500/20',
+    implantacao: 'text-cyan-300 bg-cyan-950/60 border-cyan-500/20',
+    incubadora:  'text-emerald-300 bg-emerald-950/60 border-emerald-500/20',
 };
 
 const fmtDate = (iso) => {

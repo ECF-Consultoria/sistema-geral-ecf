@@ -57,6 +57,8 @@ class Company extends Model
             'incubadora'  => 'Incubadora',
             'publicidade' => 'Publicidade',
             'gestao'      => 'Gestão',
+            'mentoria'    => 'Mentoria',
+            'implantacao' => 'Implantação',
         ];
         $arr = is_array($types)
             ? $types

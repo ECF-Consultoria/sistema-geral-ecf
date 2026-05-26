@@ -26,6 +26,12 @@ const TIPOS = [
       hint: 'Cria empresa no módulo de Publicidade. Dados de conta Adman são preenchidos depois.' },
     { value: 'gestao',      label: 'Gestão',
       hint: 'Cria empresa no módulo de Gestão. Consultor/estrategista atribuídos depois.' },
+    { value: 'mentoria',    label: 'Mentoria',
+      hint: '' },
+    { value: 'implantacao', label: 'Implantação',
+      hint: '' },
+    { value: 'incubadora',  label: 'Incubadora',
+      hint: '' },
 ];
 
 export default function NovaEmpresa() {
