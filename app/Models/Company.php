@@ -14,7 +14,7 @@ class Company extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id', 'service_type', 'contract_start', 'contract_end'])
+            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -28,53 +28,17 @@ class Company extends Model
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'segment', 'active', 'status', 'notes',
-        'service_type', 'contract_type', 'contract_start', 'contract_end',
-        'additional_service', 'additional_service_price',
         'parent_company_id',
     ];
 
     protected $casts = [
         'active'         => 'boolean',
         'status'         => 'string',
-        'contract_start' => 'date:Y-m-d',
-        'contract_end'   => 'date:Y-m-d',
-        'service_type'   => 'array',
     ];
 
-    /**
-     * Converte um valor de service_type (string legada ou array) em label legível.
-     * Usado em Blade views e acessores para exibição consistente.
-     *
-     * Ex: ['polos', 'gestao'] → 'POLO + Gestão'
-     *
-     * @deprecated Phase 14 (Frente B): use {@see static::labelFromServicos()} —
-     * helper passa a derivar do novo modelo `contratos_servico` em vez dos campos
-     * legacy. Mantido como proxy temporário enquanto as 3 Blade views
-     * (admin/relatorio-fechamento, admin/relatorio-geral, admin/relatorio-geral-pdf)
-     * ainda chamam diretamente esta API. Será removido no Plan 14-06 junto com o
-     * drop das colunas legacy.
-     */
-    public static function labelFromTypes(mixed $types): string
-    {
-        $map = [
-            'publicacao'  => 'Publicação',
-            'polos'       => 'POLO',
-            'polo'        => 'POLO',
-            'assessoria'  => 'Assessoria',
-            'incubadora'  => 'Incubadora',
-            'publicidade' => 'Publicidade',
-            'gestao'      => 'Gestão',
-        ];
-        $arr = is_array($types)
-            ? $types
-            : (($types !== null && $types !== '') ? [$types] : []);
-        $labels = array_map(fn($t) => $map[$t] ?? $t, $arr);
-        return implode(' + ', array_filter($labels)) ?: '—';
-    }
 
     /**
      * Converte uma coleção (ou array) de Servicos em label legível, separados por vírgula.
-     * Substitui {@see static::labelFromTypes()} após Phase 14 — agora a fonte de
      * verdade são os contratos ativos da empresa, não os slugs legacy.
      *
      * Aceita qualquer iterável cujos itens exponham a propriedade `nome` (típico:
@@ -90,10 +54,8 @@ class Company extends Model
     }
 
     /**
-     * Accessor `service_type_label` — usado em Blade views e acessores.
      *
      * Phase 14 (Frente B): API estática preservada para os callers (Blades e JSX
-     * continuam consumindo `$company->service_type_label` sem mudança), mas a
      * fonte de verdade agora é a coleção `contratosServico` (eager-loaded ou
      * lazy via `loadMissing`).
      */
@@ -205,8 +167,6 @@ class Company extends Model
     /**
      * Contratos de serviço da empresa (Módulo Serviços — Frente A).
      *
-     * Coexiste com os campos legacy (service_type, contract_start/end,
-     * additional_service*) — Frente B fará a migração de dados.
      */
     public function contratosServico()
     {

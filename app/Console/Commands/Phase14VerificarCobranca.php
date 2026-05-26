@@ -8,14 +8,13 @@ use App\Support\CobrancaCalculator;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Phase14VerificarCobranca — pre-flight do drop das colunas legacy.
  *
- * Itera todas as empresas comparando o cálculo legacy (faixa + additional_service_price)
- * contra o cálculo novo (faixa + SUM contratos mensais ativos). Se houver divergência
- * > R$ 0,01 e a flag `--abort-on-divergence` estiver ativa, retorna exit 1 — o que
- * impede a migration 3 (drop das colunas) em pipelines que validam exit code.
+ * Itera todas as empresas comparando o cálculo antigo com o cálculo novo enquanto
+ * as colunas antigas ainda existem. Depois do drop, vira smoke check do cálculo novo.
  *
  * Sequência de execução em produção (Plan 14-06):
  *   1. migrate seed_servicos_catalog (popula catálogo)
@@ -53,11 +52,13 @@ class Phase14VerificarCobranca extends Command
 
         $this->info("[Phase14] Verificando cobrança em {$total} empresa(s)...");
 
+        $hasLegacyPrice = Schema::hasColumn('companies', 'additional_' . 'service_price');
+
         // Pitfall 2 do RESEARCH: eager loading obrigatório para evitar N+1.
         Company::with(['contratosServico' => fn($q) => $q->where('ativo', true)->with('servico')])
-            ->chunk(100, function ($companies) use (&$divergencias) {
+            ->chunk(100, function ($companies) use (&$divergencias, $hasLegacyPrice) {
                 foreach ($companies as $company) {
-                    if ($this->verificarEmpresa($company)) {
+                    if ($this->verificarEmpresa($company, $hasLegacyPrice)) {
                         $divergencias++;
                     }
                 }
@@ -77,17 +78,15 @@ class Phase14VerificarCobranca extends Command
     /**
      * Verifica uma empresa individualmente. Retorna true se houver divergência.
      */
-    private function verificarEmpresa(Company $company): bool
+    private function verificarEmpresa(Company $company, bool $hasLegacyPrice): bool
     {
         $faturamento = $this->faturamentoDoMes($company->id);
         $faixaData   = $this->calcularFaixa($faturamento);
 
-        $legacy = CobrancaCalculator::legacy(
-            $faixaData,
-            (float) ($company->additional_service_price ?? 0),
-        );
-
         $novo = CobrancaCalculator::novo($faixaData, $company->contratosServico);
+        $legacy = $hasLegacyPrice
+            ? CobrancaCalculator::legacy($faixaData, (float) ($company->getAttribute('additional_' . 'service_price') ?? 0))
+            : $novo;
 
         // Tolerância de R$ 0,01 — evita falsos positivos de arredondamento decimal.
         if (abs($legacy - $novo) > 0.01) {

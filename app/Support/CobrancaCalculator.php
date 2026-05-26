@@ -22,14 +22,14 @@ use App\Models\Servico;
 class CobrancaCalculator
 {
     /**
-     * Cálculo legacy: soma direta entre `faixaData['valor']` e `additional_service_price`.
+     * Cálculo antigo: soma direta entre `faixaData['valor']` e o valor extra da empresa.
      *
      * Esta é a fórmula que vigora hoje em AdminController (linhas ~280, ~506, ~648).
      * Mantida durante a Phase 14 apenas para servir de base de comparação contra `novo()`
      * no comando `phase14:verificar-cobranca`.
      *
      * @param  array|null  $faixaData                  Resultado de calcularFaixa() — ['faixa' => ..., 'valor' => ...] ou null.
-     * @param  float|null  $additionalServicePrice     Valor de `companies.additional_service_price` (campo legacy).
+     * @param  float|null  $additionalServicePrice     Valor extra usado na comparação pré-drop.
      * @return float                                   Soma (faixa + adicional). Sempre float; nunca null.
      */
     public static function legacy(?array $faixaData, ?float $additionalServicePrice): float

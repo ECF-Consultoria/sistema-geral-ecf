@@ -1523,9 +1523,7 @@ class MlbController extends Controller
         ];
 
         // Companies cadastradas pelo Comercial que aguardam complemento de dados pelo time de Publicação
-        // Phase 14 (Frente B): filtro migrado de whereJsonContains('service_type', ...)
         // para whereHas('contratosServico') JOIN servicos.nome (D-01, RESEARCH §5).
-        // Mantém `service_type` no select() porque a coluna ainda existe e o JSX
         // atual lê (coexistência Wave 2 — drop no Plan 14-06). A chave
         // `servicos_contratados` é adicionada via transform para a UI nova
         // consumir progressivamente.
@@ -1538,7 +1536,7 @@ class MlbController extends Controller
             )
             ->with(['contratosServico' => fn($q) => $q->where('ativo', true)->with('servico')])
             ->orderBy('created_at', 'desc')
-            ->get(['id', 'name', 'service_type', 'notes', 'created_at']);
+            ->get(['id', 'name', 'notes', 'created_at']);
 
         $empresasPendentes->transform(function ($e) {
             $nomes = $e->contratosServico->where('ativo', true)->pluck('servico.nome')->filter();

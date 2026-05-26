@@ -33,7 +33,6 @@ class AdminController extends Controller
     {
         // Phase 14 (Frente B): eager loading de contratosServico + servico para
         // popular a chave nova `servicos_contratados` sem N+1. As chaves legacy
-        // (service_type, contract_*, additional_*) permanecem no payload em
         // estratégia de COEXISTÊNCIA — serão removidas no Plan 14-06 junto com
         // o drop das colunas.
         $companies = Company::orderBy('name')
@@ -51,12 +50,6 @@ class AdminController extends Controller
                 'nome_pai'                 => $c->pai?->name,
                 'filhas'                   => $c->filhas->map(fn($f) => ['id' => $f->id, 'name' => $f->name])->values(),
                 // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                'service_type'             => $c->service_type,
-                'contract_type'            => $c->contract_type,
-                'contract_start'           => $c->contract_start?->toDateString(),
-                'contract_end'             => $c->contract_end?->toDateString(),
-                'additional_service'       => $c->additional_service,
-                'additional_service_price' => $c->additional_service_price ? (float) $c->additional_service_price : null,
                 // ─── Chave nova (modelo N:N de contratos) ────────────────
                 'servicos_contratados'     => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
                     'id'               => $ct->id,
@@ -70,22 +63,19 @@ class AdminController extends Controller
                 ])->values()->toArray(),
             ]);
 
-        return Inertia::render('Admin/Empresas', compact('companies'));
+        $servicosDisponiveis = \App\Models\Servico::active()
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
+        return Inertia::render('Admin/Empresas', [
+            'companies' => $companies,
+            'servicos_disponiveis' => $servicosDisponiveis,
+        ]);
     }
 
     public function updateEmpresa(Request $request, Company $company)
     {
-        // TODO Plan 14-06: remover validation rules legacy (service_type,
-        // contract_type, contract_start, contract_end, additional_service,
-        // additional_service_price) após drop das colunas legacy.
         $validator = Validator::make($request->all(), [
-            'service_type'             => 'nullable|array',
-            'service_type.*'           => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
-            'contract_type'            => 'nullable|in:fixo,progressao',
-            'contract_start'           => 'nullable|date',
-            'contract_end'             => 'nullable|date|after_or_equal:contract_start',
-            'additional_service'       => 'nullable|string|max:255',
-            'additional_service_price' => 'nullable|numeric|min:0',
             'parent_company_id'        => ['nullable', 'exists:companies,id', Rule::notIn([$company->id])],
             'filha_ids'                => 'nullable|array',
             'filha_ids.*'              => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
@@ -301,12 +291,6 @@ class AdminController extends Controller
                 'filha_ids'          => $filhaIds,
                 'is_filha'           => $c->parent_company_id !== null,
                 // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                'service_type'       => $c->service_type,
-                'contract_type'      => $c->contract_type,
-                'contract_start'     => $c->contract_start?->toDateString(),
-                'contract_end'       => $c->contract_end?->toDateString(),
-                'additional_service'       => $c->additional_service,
-                'additional_service_price' => $c->additional_service_price ? (float) $c->additional_service_price : null,
                 // ─── Chave nova (modelo N:N de contratos) ────────────────
                 'servicos_contratados' => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
                     'id'               => $ct->id,
@@ -424,26 +408,9 @@ class AdminController extends Controller
 
     public function updateFechamento(Request $request, Company $company)
     {
-        // TODO Plan 14-06: remover validation rules legacy (service_type,
-        // contract_type, contract_start, contract_end, additional_service,
-        // additional_service_price) após drop das colunas legacy.
-        $validator = Validator::make($request->all(), [
-            'service_type'       => 'nullable|array',
-            'service_type.*'     => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
-            'contract_type'      => 'nullable|in:fixo,progressao',
-            'contract_start'     => 'nullable|date',
-            'contract_end'       => 'nullable|date|after_or_equal:contract_start',
-            'additional_service'       => 'nullable|string|max:255',
-            'additional_service_price' => 'nullable|numeric|min:0',
-        ]);
-
-        if ($validator->fails()) {
-            return back()->withErrors($validator->errors());
-        }
-
-        $company->update($validator->validated());
-
-        return back()->with('success', 'Fechamento atualizado.');
+        // Phase 14 Plan 14-06: a gestao de servicos saiu deste endpoint e
+        // passou a usar exclusivamente as rotas de contratos de servico.
+        return back();
     }
 
     public function toggleRecebido(Request $request, Company $company)
@@ -546,12 +513,10 @@ class AdminController extends Controller
         // Monta dados das vinculadas
         // Phase 14 (Frente B): cobranca_mensal via CobrancaCalculator::novo + chave
         // nova `servicos_contratados` (string formatada para a Blade). Chaves legacy
-        // (service_type, contract_*, additional_*) permanecem em COEXISTÊNCIA.
         $vinculadas = $company->filhas->map(function (Company $f) use ($faturamentoOf, $periodoInicioFmt, $periodoFimFmt) {
             $fat         = $faturamentoOf($f);
             $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
             $valorMensal = $fx ? $fx['valor'] : null;
-            $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
             $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
             return [
                 'id'                       => $f->id,
@@ -561,12 +526,6 @@ class AdminController extends Controller
                 'adman_store_id'           => $f->adman_store_id ?? null,
                 'ml_store_id'              => $f->ml_store_id,
                 // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                'service_type'             => $f->service_type,
-                'contract_type'            => $f->contract_type,
-                'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
-                'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
-                'additional_service'       => $f->additional_service,
-                'additional_service_price' => $adicional,
                 // ─── Chave nova (string formatada para a Blade) ─────────
                 'servicos_contratados'     => $f->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
                 'faturamento'              => $fat,
@@ -599,7 +558,6 @@ class AdminController extends Controller
             'cobranca_mensal'  => $cobrancaMensal,
             // Phase 14 (Frente B): label de serviços derivado do modelo N:N para
             // a Blade view consumir gradualmente. O label legacy
-            // (Company::labelFromTypes) ainda funciona via deprecated proxy.
             'servicos_contratados_pai' => $company->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
             'vinculadas'       => $vinculadas,
             'total_faturamento'=> $totalFaturamento,
@@ -650,18 +608,8 @@ class AdminController extends Controller
             ])
             ->orderBy('name');
 
-        if ($request->filled('service_type')) {
-            // Phase 14 (Frente B): filtro agora usa JOIN via whereHas em contratos_servico
-            // → servicos.nome (D-01). Não mais JSON-scan em service_type legacy.
-            $tipo = $request->input('service_type');
-            $nomeServico = [
-                'publicacao'  => 'Publicação',
-                'polos'       => 'Polos',
-                'assessoria'  => 'Assessoria',
-                'incubadora'  => 'Incubadora',
-                'publicidade' => 'Publicidade',
-                'gestao'      => 'Gestão',
-            ][$tipo] ?? $tipo;
+        if ($request->filled('servico_nome')) {
+            $nomeServico = $request->input('servico_nome');
             $query->whereHas('contratosServico', fn($q) =>
                 $q->where('ativo', true)
                   ->whereHas('servico', fn($qs) => $qs->where('nome', $nomeServico))
@@ -730,7 +678,6 @@ class AdminController extends Controller
                 $fat         = $faturamentoOf($f);
                 $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
                 $valorMensal = $fx ? $fx['valor'] : null;
-                $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
                 // Phase 14 (Frente B): cobrança via CobrancaCalculator::novo.
                 $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
                 return [
@@ -742,12 +689,6 @@ class AdminController extends Controller
                     'ml_store_id'              => $f->ml_store_id,
                     'segment'                  => $f->segment,
                     // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                    'service_type'             => $f->service_type,
-                    'contract_type'            => $f->contract_type,
-                    'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
-                    'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
-                    'additional_service'       => $f->additional_service,
-                    'additional_service_price' => $adicional,
                     // ─── Chave nova (string formatada para a Blade) ─────────
                     'servicos_contratados'     => $f->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
                     'faturamento'              => $fat,

@@ -332,7 +332,7 @@ Plans:
 - [x] 14-05-PLAN.md — Admin/Financeiro.jsx substitui editor por seção de contratos (reusa rotas Frente A) + 3 Blade views usam service_type_label accessor + UAT humano deferido (SVC-03, SVC-04)
 
 **Wave 4** *(blocked on Wave 3; 14-06 e 14-07 sequenciais entre si)*
-- [ ] 14-06-PLAN.md — Pre-flight `phase14:verificar-cobranca --abort-on-divergence` + Migration 3 (drop 6 colunas, down recria TEXT) + cleanup backend (Company.php $fillable/$casts/logOnly, 5 controllers, EnviarRelatorioFechamentoJob) (SVC-06, SVC-04)
+- [x] 14-06-PLAN.md — Pre-flight `phase14:verificar-cobranca --abort-on-divergence` + Migration 3 aplicada localmente (drop 6 colunas, down recria TEXT) + cleanup backend (Company.php $fillable/$casts/logOnly, controllers/job/notification/comando) (SVC-06, SVC-04)
 - [ ] 14-07-PLAN.md — Cleanup dos 5 JSX consumers (Admin/Empresas, Comercial/Empresas, Mlb/Empresas, Companies/Index, Admin/Financeiro fragmentos) + smoke test humano fim-a-fim (SVC-04, SVC-06)
 
 Cross-cutting constraints:
@@ -367,4 +367,4 @@ v4.0 phases execute in order: 13 → 14
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
-| 14. Consolidação do Modelo de Serviços | 5/7 | In Progress|  |
+| 14. Consolidação do Modelo de Serviços | 6/7 | In Progress|  |

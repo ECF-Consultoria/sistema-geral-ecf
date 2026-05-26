@@ -29,7 +29,6 @@ use Inertia\Inertia;
  *
  * Phase 14 (Plan 14-04 — Frente B): cadastro passou a aceitar `servicos[]`
  * (lista de servico_id + valor_contratado opcional) em vez do enum legacy
- * `service_type`. Roteamento Phase 13 (POLOS/Assessoria/Incubadora/etc.)
  * preservado via helper estático `servicoDisparaImplementacao()`.
  *
  * Rotas protegidas por middleware 'permission:comercial.cadastrar_empresa'.
@@ -42,7 +41,6 @@ class ComercialController extends Controller
      * implementação que dispara criação de `mlb_empresas`/`mlb_implementacao`.
      *
      * Helper PURO — testável sem precisar do container Laravel. Substitui o
-     * antigo switch baseado em `service_type` enum (publicacao/polos/...).
      *
      * Critério: `str_contains` case-sensitive nos prefixos canônicos. Nomes
      * vindos do catálogo são normalizados em Title Case (D-02), então
@@ -66,13 +64,9 @@ class ComercialController extends Controller
      * Lista todas as empresas + expõe o formulário de cadastro embutido.
      * Acesso: users com 'comercial.cadastrar_empresa' ou admin.
      *
-     * Phase 14 Plan 14-04: a coluna legacy `service_type` deixou de ser lida
-     * via `get([...])`. Reconstruímos `service_type[]` (slugs legacy) +
      * `servicos_contratados[]` (nomes pt-BR) a partir de `contratosServico`
      * para preservar compat com a UI `Comercial/Empresas.jsx` (refator final
-     * no Plan 14-07). No Plan 14-06 a coluna `service_type` será dropada e
      * essa reconstrução vira a única fonte de verdade até o Plan 14-07
-     * eliminar a chave `service_type` do payload Inertia.
      */
     public function empresas()
     {
@@ -87,30 +81,12 @@ class ComercialController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes']);
 
-        // Mapa nome pt-BR (catálogo Frente A) → slug legacy (compat UI Comercial/Empresas.jsx).
-        // Sem essa reconstrução, a UI quebraria porque ainda filtra/badge via service_type[].
-        $mapaNomeParaSlug = [
-            'Publicação'  => 'publicacao',
-            'Polos'       => 'polos',
-            'Assessoria'  => 'assessoria',
-            'Incubadora'  => 'incubadora',
-            'Publicidade' => 'publicidade',
-            'Gestão'      => 'gestao',
-        ];
-
-        $companies->transform(function ($c) use ($mapaNomeParaSlug) {
+        $companies->transform(function ($c) {
             $nomes = $c->contratosServico
                 ->where('ativo', true)
                 ->pluck('servico.nome')
                 ->filter()
                 ->values();
-
-            // service_type[] compat — Plan 14-06/07 removem essa chave do payload
-            $c->service_type = $nomes
-                ->map(fn($n) => $mapaNomeParaSlug[$n] ?? null)
-                ->filter()
-                ->values()
-                ->toArray();
 
             // servicos_contratados[] — lista nominal já no formato novo
             $c->servicos_contratados = $nomes->toArray();
@@ -118,8 +94,13 @@ class ComercialController extends Controller
             return $c;
         });
 
+        $servicosDisponiveis = Servico::where('ativo', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
         return Inertia::render('Comercial/Empresas', [
             'companies' => $companies,
+            'servicos_disponiveis' => $servicosDisponiveis,
         ]);
     }
 
@@ -279,7 +260,6 @@ class ComercialController extends Controller
             ->log('Empresa cadastrada pelo Comercial: "' . $company->name . '"');
 
         // (5) Notificação para líderes dos setores de destino — fora da transaction
-        // Mapeia o NOME do serviço para o slug do setor (preserva resolverSlugsSetores).
         $slugsSetores = $servicosCriados
             ->map(fn($s) => $this->slugSetorParaServico($s->nome))
             ->filter()
@@ -312,8 +292,6 @@ class ComercialController extends Controller
      * método já não persiste nada legacy, então não precisará de mudanças
      * adicionais no Plan 14-06.
      *
-     * Os 6 campos legacy (service_type, contract_type, contract_start,
-     * contract_end, additional_service, additional_service_price) podem
      * ainda ser enviados pelo cliente Inertia (Comercial/Empresas.jsx
      * refator final no Plan 14-07), mas o controller os IGNORA silenciosa
      * e seguramente: campos não validados não chegam em `$validated`.
@@ -369,7 +347,6 @@ class ComercialController extends Controller
 
     /**
      * Mapeia o NOME de um serviço (catálogo Frente A) para o slug do setor
-     * destinatário da notificação. Substitui `resolverSlugsSetores()` legacy.
      *
      * Polos/Assessoria/Publicação → setor 'publicacao'
      * Publicidade                 → setor 'publicidade'
@@ -391,33 +368,6 @@ class ComercialController extends Controller
         };
     }
 
-    /**
-     * Resolve os slugs dos setores de destino a partir de um array de tipos.
-     * Notifica um setor por tipo de serviço, sem duplicatas.
-     *
-     * polos/assessoria → publicacao
-     * publicidade      → publicidade
-     * gestao           → gestao
-     *
-     * @deprecated Phase 14 Plan 14-04: substituído por `slugSetorParaServico()`
-     *             que mapeia NOMES (catálogo Frente A). Mantido apenas para
-     *             evitar quebra silenciosa caso outro método ainda chame.
-     *             Será removido no Plan 14-06 junto com o drop de service_type.
-     *
-     * @param  array<string>  $types
-     * @return array<string>
-     */
-    private function resolverSlugsSetores(array $types): array
-    {
-        $slugs = [];
-        if (array_intersect($types, ['polos', 'assessoria', 'publicacao'])) {
-            $slugs[] = 'publicacao';
-        }
-        foreach (array_diff($types, ['polos', 'assessoria', 'publicacao']) as $type) {
-            $slugs[] = Str::slug($type);
-        }
-        return array_unique($slugs);
-    }
 
     /**
      * Cria uma MlbImplementacao para uma empresa POLO com os dados padrão

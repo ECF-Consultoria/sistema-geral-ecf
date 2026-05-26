@@ -22,26 +22,16 @@ class EmpresaCadastradaNotification extends BaseNotification
      *
      * O autor é opcional: se null, a notificação aparece como originada pelo sistema.
      *
-     * Phase 14 (Frente B): aceita `string|array $servicos` em backward compat.
-     * - `string`: formato legacy "polos+publicidade" (separado por '+'); convertido
-     *   internamente para array de nomes.
-     * - `array`: formato novo — lista de nomes de Servico já resolvidos
-     *   (ex.: ['Polos', 'Publicidade']).
+     * Phase 14 (Frente B): recebe a lista de nomes de Servico já resolvidos
+     * (ex.: ['Polos', 'Publicidade']).
      *
-     * A chave `meta` passou de `service_type` (string) para `servicos` (array).
-     * Per CONTEXT.md D-07 item 6 e RESEARCH §9. A forma `string` será removida
-     * no Plan 14-04 quando ComercialController for refatorado.
+     * A chave `meta` usa `servicos` (array).
      *
-     * @param  string|array<string>  $servicos  Nomes dos serviços (formato novo) ou string legacy.
-     *
-     * @deprecated A assinatura aceitando `string` é mantida apenas como
-     *             backward compat até o Plan 14-04.
+     * @param  array<string>  $servicos  Nomes dos serviços.
      */
-    public function __construct(string $nomeEmpresa, string|array $servicos, ?int $autorUserId)
+    public function __construct(string $nomeEmpresa, array $servicos, ?int $autorUserId)
     {
-        $servicosNomes = is_array($servicos)
-            ? array_values(array_filter($servicos))
-            : array_values(array_filter(array_map('trim', explode('+', $servicos))));
+        $servicosNomes = array_values(array_filter($servicos));
         $servicosLabel = implode(', ', $servicosNomes) ?: 'sem serviços';
 
         parent::__construct(

@@ -89,4 +89,27 @@ UAT humano valida principalmente **percepção visual** (badges, layout do modal
 **Motivo:** Comando depende de banco populado com empresas reais; ambiente do executor não tem dados. Já documentado no Plan 14-04 mas vale reforçar — o comando precisa ser executado no host (XAMPP local com dump de produção OU produção em janela de manutenção) ANTES do Plan 14-06 disparar o drop. Critério de gate: exit 0 + 0 divergências.
 
 **Cobertura automatizada que substitui:** `Phase14AdminControllerCobrancaTest` (suíte golden no Plan 14-03) verifica o cálculo isolado em ambiente controlado — garante que o REFATOR está correto. O comando garante que os DADOS REAIS DE PRODUÇÃO não divergem entre o caminho legacy e o novo.
+## Plan 14-06 (descobertos em 2026-05-26)
+
+### Suites antigas ainda assumem colunas legacy apos o drop
+
+**Status:** `pending-regression-cleanup`
+
+A bateria focada pos-drop passou:
+
+```bash
+php artisan test --filter='Phase14FechamentoUiTest|Phase14BladeRefactorTest|Phase14MlbControllerFiltroTest'
+# 9 passed (101 assertions)
+```
+
+Mas a bateria combinada `Phase14|CobrancaCalculator|ComercialControllerHelper` ainda contem testes de coexistencia que criam ou esperam os campos dropados:
+
+- `Phase14MigrationTest` reexecuta a migration de dados criando companies com campos legacy depois que o schema ja foi dropado.
+- `Phase14VerificarCobrancaTest::test_aborta_com_divergencia` depende de divergencia no campo antigo; o comando agora vira smoke check pos-drop quando a coluna nao existe.
+- `Phase14AdminControllerCobrancaTest` ainda tem cenarios golden escritos para coexistencia.
+- `Phase14ComercialTest::test_update_ignora_campos_legacy` perdeu sentido apos remover a compat do schema.
+
+Tambem houve falhas ambientais no sandbox local: `storage/logs/laravel.log` sem permissao de append e chamadas Adman sem rede durante testes que acionam cache.
+
+**Decisao:** nao reescrever essas suites dentro do commit de drop. A limpeza deve entrar no gate de regression pos-execucao ou quick task propria, convertendo testes de coexistencia em testes de schema pos-drop.
 

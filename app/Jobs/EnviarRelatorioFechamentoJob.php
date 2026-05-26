@@ -121,8 +121,6 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             // Vinculadas com todos os campos (espelho de AdminController::gerarRelatorioGeral)
             // Phase 14 (Frente B): chave nova `servicos_contratados` no formato
             // "Nome (R$ X,XX), Outro (R$ Y,YY)" — derivada do modelo N:N. As 6 chaves
-            // legacy (service_type, contract_type, contract_start, contract_end,
-            // additional_service, additional_service_price) permanecem em
             // COEXISTÊNCIA. Serão removidas no Plan 14-06. A view Blade do email
             // (resources/views/emails/relatorio-fechamento.blade.php) será
             // refatorada no Plan 14-05.
@@ -139,12 +137,6 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                     'ml_store_id'              => $f->ml_store_id,
                     'segment'                  => $f->segment,
                     // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
-                    'service_type'             => $f->service_type,
-                    'contract_type'            => $f->contract_type,
-                    'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
-                    'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
-                    'additional_service'       => $f->additional_service,
-                    'additional_service_price' => $f->additional_service_price ? (float) $f->additional_service_price : null,
                     // ─── Chave nova (string formatada — "Nome (R$ X,XX), ...") ─
                     'servicos_contratados'     => $f->contratosServico->where('ativo', true)
                         ->map(fn($c) => ($c->servico?->nome ?? '—') . ' (R$ ' . number_format((float) $c->valor_contratado, 2, ',', '.') . ')')

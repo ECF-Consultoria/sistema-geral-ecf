@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
 status: executing
-stopped_at: "Phase 14 Plan 14-05 concluído — Admin/Financeiro.jsx substitui editor legacy por seção de contratos (modal URL crua); 3 Blade views usam $company->service_type_label (accessor); ServiceBadge prioriza servicos_contratados com fallback compat até 14-07; GraficoCobranca substitui GraficoContrato; 7 novos testes verdes (3 Blade + 4 Inertia, 70 assertions); UAT humano deferido como débito (12 itens de UX visual). Suíte Phase 14 combinada 28/28 (202 assertions). Próximo: Plan 14-06 (drop irreversível das 6 colunas legacy)"
-last_updated: "2026-05-26T20:00:00.000Z"
-last_activity: 2026-05-26 -- Plan 14-05 executed (4 commits, 7 novos testes verdes — 3 Blade + 4 Inertia, 70 assertions; UAT humano deferido como débito)
+stopped_at: "Phase 14 Plan 14-06 concluido — migration 3 aplicada localmente e 6 colunas legacy removidas de companies; backend limpo; app/ sem referencias funcionais aos campos legacy; phase14:verificar-cobranca retorna 0 divergencias pos-drop; testes focados pos-drop 9/9 (101 assertions). Proximo: Plan 14-07 cleanup frontend."
+last_updated: "2026-05-26T21:10:00.000Z"
+last_activity: 2026-05-26 -- Plan 14-06 executed (drop local + backend cleanup + 9 testes focados pos-drop verdes)
 progress:
   total_phases: 14
   completed_phases: 6
   total_plans: 19
-  completed_plans: 17
-  percent: 53
+  completed_plans: 18
+  percent: 56
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
-Plan: 6 of 7 (Plans 14-01, 14-02, 14-03, 14-04 e 14-05 concluídos)
-Status: Plan 14-05 complete — Admin/Financeiro.jsx substitui editor legacy por seção de contratos com modal Add/Edit/Desativar (URL crua); 3 Blade views (relatorio-fechamento, relatorio-geral, relatorio-geral-pdf) usam `$company->service_type_label` (accessor); ServiceBadge prioriza `servicos_contratados`; GraficoCobranca substitui GraficoContrato; FechamentoRow exibe contagem de contratos. UI Fechamento + Blades NÃO LEEM MAIS campos legacy no caminho principal. UAT humano deferido como débito (12 itens em deferred-items.md). Ready for Plan 14-06 (drop irreversível das 6 colunas legacy).
-Last activity: 2026-05-26 -- Plan 14-05 executed (4 commits, 7 novos testes verdes — 3 Blade + 4 Inertia, 70 assertions; suíte Phase 14 combinada 28/28 / 202 assertions)
+Plan: 7 of 7 (Plans 14-01 a 14-06 concluidos)
+Status: Plan 14-06 complete — migration 3 aplicada localmente; `companies` nao tem mais as 6 colunas legacy; backend limpo de reads/writes legacy. Ready for Plan 14-07 (cleanup frontend dos 5 JSX consumers).
+Last activity: 2026-05-26 -- Plan 14-06 executed (schema pos-drop confirmado, phase14 0 divergencias, testes focados 9/9)
 
 ## Performance Metrics
 
@@ -170,7 +170,7 @@ None.
 
 ### Blockers/Concerns
 
-(nenhum — Plan 14-05 entregou UI Fechamento refatorada + 3 Blade views + 7 testes verdes. UI Fechamento + Blades NÃO LEEM MAIS campos legacy no caminho principal. UAT humano deferido como débito em deferred-items.md — 12 itens de UX visual pendentes; não bloqueia Plan 14-06. Pronto para Plan 14-06 — drop irreversível das 6 colunas legacy)
+(nenhum bloqueante para Plan 14-07. Plan 14-06 dropou localmente as 6 colunas legacy e limpou backend; suites antigas de coexistencia precisam de cleanup no gate de regression, registrado em deferred-items.md.)
 
 ### Quick Tasks Completed
 
@@ -194,8 +194,9 @@ None.
 | Phase 14 | `phase14:verificar-cobranca` no host (gate Plan 14-06) | pending-host-run | 2026-05-26 |
 | Phase 14 | `Phase13ComercialTest` obsoleta (cobertura em Phase14ComercialTest) | port/deletion | 2026-05-26 |
 | Phase 14 | `AdminFechamentoControllerTest` 5 testes falhando pré-existentes | quick task | 2026-05-26 |
+| Phase 14 | Suites de coexistencia pos-drop obsoletas | pending-regression-cleanup | 2026-05-26 |
 
 ## Session Continuity
 
-Last session: 2026-05-26T20:00:00Z
-Stopped at: Phase 14 Plan 14-05 concluído — `Admin/Financeiro.jsx` (+440/-196): editor inline legacy (service_type enum + additional_service texto livre + additional_service_price) substituído por `ContratosSection` com tabela + Modal Add/Edit/Desativar (URL crua `/empresas/{id}/contratos-servico[/{id}]`); ServiceBadge prioriza `servicos_contratados` com fallback legacy; GraficoServico (catálogo) + GraficoCobranca (mensal/única) substituem GraficoContrato; FiltroBarra dropdown 'Serviço' dinâmico; FechamentoRow exibe 'N contratos ativos'. 3 Blade views (`relatorio-fechamento`, `relatorio-geral`, `relatorio-geral-pdf`) usam `$company->service_type_label` (accessor) + `$v['servicos_contratados']`. AdminController passa `servicos_disponiveis`. 7 novos testes verdes — `Phase14BladeRefactorTest` (3/12) + `Phase14FechamentoUiTest` (4/58). Suíte Phase 14 combinada 28/28 (202 assertions). Rule 1 - Bug: fix accessor `service_type_label` (forma `serviceTypeLabel()` do PLAN era incorreta). UAT humano (Task 5) deferido como débito em `deferred-items.md` — 12 itens visuais para próxima sessão. Próximo: Plan 14-06 (drop irreversível das 6 colunas legacy + cleanup backend).
+Last session: 2026-05-26T21:10:00Z
+Stopped at: Phase 14 Plan 14-06 concluido — migration 2026_05_27_100003 aplicada localmente; Schema::hasColumn confirmou service_type=0 e additional_service_price=0; backend limpo das chaves legacy; phase14 pre e pos-drop retornou 0 divergencias em 0 empresas; testes focados pos-drop passaram 9/9 (101 assertions). Proximo: Plan 14-07 cleanup frontend dos 5 JSX consumers.
