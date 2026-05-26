@@ -317,7 +317,7 @@
                     <td>
                         <label>Tipo de serviço</label>
                         {{-- Phase 14: labelFromTypes(legacy) → serviceTypeLabel(derivado de contratos) — D-09 --}}
-                        <span>{{ $company->serviceTypeLabel() }}</span>
+                        <span>{{ $company->service_type_label }}</span>
                     </td>
                     <td>
                         <label>Tipo de contrato</label>
