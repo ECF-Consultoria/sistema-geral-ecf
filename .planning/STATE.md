@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
 status: executing
-stopped_at: "Phase 14 Plan 14-03 concluído — 5 sites de cálculo via CobrancaCalculator::novo, filtros whereHas, Notification/Job consomem contratos, 5/5 testes verdes (21/21 Phase 14 combined). Runtime PHP NÃO LÊ MAIS legacy em CÁLCULOS. Próximo: Plan 14-04 (ComercialController)"
-last_updated: "2026-05-26T19:30:00.000Z"
-last_activity: 2026-05-26 -- Plan 14-03 executed (3 commits, 21/21 Phase 14 tests passed, 102 assertions)
+stopped_at: "Phase 14 Plan 14-04 concluído — ComercialController.store() aceita servicos[] do catálogo; cria contratos N:N atomicamente; update() enxuto (apenas name/cnpj/notes); NovaEmpresa.jsx seletor multi dinâmico; 17 testes verdes (9 unit + 8 feature). Cadastro Comercial NÃO PRODUZ MAIS dados legacy. Próximo: Plan 14-05 (UI Financeiro + Blades)"
+last_updated: "2026-05-26T19:35:00.000Z"
+last_activity: 2026-05-26 -- Plan 14-04 executed (3 commits, 17 novos testes verdes, suíte Phase 14 combinada 38/38 / 149 assertions)
 progress:
   total_phases: 14
   completed_phases: 6
   total_plans: 19
-  completed_plans: 15
-  percent: 47
+  completed_plans: 16
+  percent: 50
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
-Plan: 4 of 7 (Plans 14-01, 14-02 e 14-03 concluídos)
-Status: Plan 14-03 complete — runtime PHP não lê mais campos legacy em CÁLCULOS; mappers Inertia em COEXISTÊNCIA (legacy + servicos_contratados). Ready for Plan 14-04 (ComercialController + form NovaEmpresa.jsx).
-Last activity: 2026-05-26 -- Plan 14-03 executed (3 commits, 21/21 Phase 14 tests passed, 102 assertions)
+Plan: 5 of 7 (Plans 14-01, 14-02, 14-03 e 14-04 concluídos)
+Status: Plan 14-04 complete — ComercialController.store() valida servicos[] + cria contratos N:N atomicamente; update() valida APENAS name/cnpj/notes; NovaEmpresa.jsx usa seletor multi do catálogo. Cadastro Comercial NÃO PRODUZ MAIS dados legacy. Ready for Plan 14-05 (UI Financeiro + 3 Blade views).
+Last activity: 2026-05-26 -- Plan 14-04 executed (3 commits, 17 novos testes verdes — 9 unit + 8 feature, 47 assertions; suíte Phase 14 combinada 38/38)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Last activity: 2026-05-26 -- Plan 14-03 executed (3 commits, 21/21 Phase 14 test
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P01 | 5min | 2 tasks | 4 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P02 | 4 | 3 tasks | 3 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P03 | 10 | 3 tasks | 9 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P04 | 8 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -127,6 +128,18 @@ Last activity: 2026-05-26 -- Plan 14-03 executed (3 commits, 21/21 Phase 14 test
 - **Testes usam `viewData('page')['props']`** + `assertEqualsWithDelta` para evitar falsos negativos por serialização JSON `4700.0` → `4700`
 - **Falhas pré-existentes em `AdminFechamentoControllerTest` (5 testes)** documentadas em `deferred-items.md` — fora de escopo do plan (SCOPE BOUNDARY do executor)
 
+### Decisões do Plan 14-04 (registradas)
+
+- **Helper `servicoDisparaImplementacao` PUBLIC STATIC** (não privado) — permite chamada via `self::` dentro do `store()` E testes diretos sem instanciar controller
+- **Roteamento por NOME canônico (str_contains case-sensitive)** — D-02 garante Title Case no catálogo; variantes lowercase nunca entram via fluxo normal
+- **`store().servicos.*.valor_contratado` nullable** — cliente pode omitir e cai no `valor_padrao` do catálogo
+- **`update()` enxuto IGNORA silenciosa campos legacy** — validação não inclui `service_type`/`additional_service_price`/etc.; payload legacy enviado pelo cliente (UI Comercial/Empresas.jsx pré-refator) não causa erro 422
+- **`empresas()` reconstrói `service_type[]`** via mapa nome→slug — compat UI Comercial/Empresas.jsx até Plan 14-07
+- **Rota `comercial.empresas.novo` migrada para `create()`** (antes era `index()` redirect noop) — agora retorna página com prop `servicos_disponiveis`
+- **`slugSetorParaServico()` novo, `resolverSlugsSetores()` `@deprecated`** — preserva chamada legacy para evitar quebra silenciosa; ambos removidos no Plan 14-06
+- **Phase13ComercialTest documentada como obsoleta** em `deferred-items.md` — cobertura equivalente reproduzida em `Phase14ComercialTest` (COM-04/05/06/08); deletion/port adiada para quick task pós Plan 14-06
+- **Activity log passa `servicos` (array)** em vez de `service_type` legacy
+
 ### Decisões do Plan 14-02 (registradas)
 
 - `firstOrCreate` (não `updateOrCreate`) no catálogo `servicos` — preserva ajustes manuais de `valor_padrao` feitos via UI `/servicos` em re-runs da migration
@@ -144,7 +157,7 @@ None.
 
 ### Blockers/Concerns
 
-(nenhum — Plan 14-03 entregou refator dos 6 consumers PHP + 5 testes verdes; pronto para Plan 14-04 — ComercialController + NovaEmpresa.jsx)
+(nenhum — Plan 14-04 entregou refator do ComercialController + NovaEmpresa.jsx + 17 testes verdes; cadastro Comercial não produz mais dados legacy. Pronto para Plan 14-05 — UI Financeiro + 3 Blade views)
 
 ### Quick Tasks Completed
 
@@ -167,5 +180,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-26T19:30:00Z
-Stopped at: Phase 14 Plan 14-03 concluído — 6 consumers PHP refatorados (Company.labelFromServicos, AdminController via CobrancaCalculator::novo, Mlb/CompanyController via whereHas, Notification string|array, Job payload servicos_contratados) + 5/5 testes novos verdes (3+2). Suíte combinada Phase 14: 21/21 verdes (102 assertions). Runtime PHP NÃO LÊ MAIS campos legacy em CÁLCULOS — apenas mapper Inertia (coexistência Wave 2) e validation rules dormentes (TODO Plan 14-06). Próximo: Plan 14-04 (ComercialController + NovaEmpresa.jsx).
+Last session: 2026-05-26T19:35:00Z
+Stopped at: Phase 14 Plan 14-04 concluído — ComercialController refatorado: helper estático `servicoDisparaImplementacao()`, novo `create()`, `store()` aceita `servicos[]` (catálogo) + cria contratos N:N atomicamente, `update()` valida APENAS name/cnpj/notes (legacy ignorado), `empresas()` reconstrói `service_type[]` compat. NovaEmpresa.jsx: seletor multi do catálogo + valor por contrato. 17 novos testes verdes (9 unit + 8 feature) — suíte Phase 14 combinada 38/38 (149 assertions). Cadastro Comercial NÃO PRODUZ MAIS dados legacy. Próximo: Plan 14-05 (UI Financeiro + 3 Blade views + Admin/Financeiro.jsx).
