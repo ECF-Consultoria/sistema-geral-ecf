@@ -46,6 +46,13 @@ class Company extends Model
      * Usado em Blade views e acessores para exibição consistente.
      *
      * Ex: ['polos', 'gestao'] → 'POLO + Gestão'
+     *
+     * @deprecated Phase 14 (Frente B): use {@see static::labelFromServicos()} —
+     * helper passa a derivar do novo modelo `contratos_servico` em vez dos campos
+     * legacy. Mantido como proxy temporário enquanto as 3 Blade views
+     * (admin/relatorio-fechamento, admin/relatorio-geral, admin/relatorio-geral-pdf)
+     * ainda chamam diretamente esta API. Será removido no Plan 14-06 junto com o
+     * drop das colunas legacy.
      */
     public static function labelFromTypes(mixed $types): string
     {
@@ -65,9 +72,43 @@ class Company extends Model
         return implode(' + ', array_filter($labels)) ?: '—';
     }
 
+    /**
+     * Converte uma coleção (ou array) de Servicos em label legível, separados por vírgula.
+     * Substitui {@see static::labelFromTypes()} após Phase 14 — agora a fonte de
+     * verdade são os contratos ativos da empresa, não os slugs legacy.
+     *
+     * Aceita qualquer iterável cujos itens exponham a propriedade `nome` (típico:
+     * `Servico` Eloquent ou objeto anônimo nos testes).
+     *
+     * Per CONTEXT.md D-09. Joiner ', ' (não mais ' + ').
+     *
+     * Ex: [Servico{nome:'Polos'}, Servico{nome:'Gestão'}] → 'Polos, Gestão'
+     */
+    public static function labelFromServicos(iterable $servicos): string
+    {
+        return collect($servicos)->pluck('nome')->filter()->implode(', ') ?: '—';
+    }
+
+    /**
+     * Accessor `service_type_label` — usado em Blade views e acessores.
+     *
+     * Phase 14 (Frente B): API estática preservada para os callers (Blades e JSX
+     * continuam consumindo `$company->service_type_label` sem mudança), mas a
+     * fonte de verdade agora é a coleção `contratosServico` (eager-loaded ou
+     * lazy via `loadMissing`).
+     */
     public function getServiceTypeLabelAttribute(): string
     {
-        return static::labelFromTypes($this->service_type);
+        // Garante eager loading dos contratos + servico para evitar N+1
+        // quando o accessor é invocado dentro de loops (ex: Blade view de relatório).
+        $this->loadMissing('contratosServico.servico');
+
+        $servicosAtivos = $this->contratosServico
+            ->where('ativo', true)
+            ->pluck('servico')
+            ->filter();
+
+        return static::labelFromServicos($servicosAtivos);
     }
 
     public function filhas()
