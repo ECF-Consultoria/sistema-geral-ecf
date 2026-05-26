@@ -157,11 +157,11 @@ class ComercialController extends Controller
             'name'           => 'required|string|max:255',
             'cnpj'           => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
             'notes'          => 'nullable|string|max:2000',
-            'service_type'   => 'required|array|min:1',
+            'service_type'   => 'nullable|array',
             'service_type.*' => 'in:publicacao,polos,assessoria,publicidade,gestao,incubadora',
         ]);
 
-        $novosTipos = $validated['service_type'];
+        $novosTipos = $validated['service_type'] ?? [];
 
         $company->update($validated);
 
