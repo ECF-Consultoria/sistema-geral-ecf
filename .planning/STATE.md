@@ -4,8 +4,8 @@ milestone: v4.0
 milestone_name: Fluxo Comercial
 status: verifying
 stopped_at: Completed 13-03-PLAN.md
-last_updated: "2026-05-25T14:19:30.601Z"
-last_activity: 2026-05-25
+last_updated: "2026-05-26T17:30:00.000Z"
+last_activity: 2026-05-26
 progress:
   total_phases: 13
   completed_phases: 6
@@ -117,6 +117,7 @@ None.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260522-lds | Implementar sistema de envio de email do Relatorio Geral de Fechamento | 2026-05-22 | cb4f69a | [260522-lds-implementar-sistema-de-envio-de-email-do](.planning/quick/260522-lds-implementar-sistema-de-envio-de-email-do/) |
+| 260526-jgj | Módulo Serviços (Frente A) + ajustes na lista de empresas — coexiste com legacy | 2026-05-26 | 855038e | [260526-jgj-modulo-servicos-frente-a](.planning/quick/260526-jgj-modulo-servicos-frente-a/) |
 
 ## Deferred Items
 
@@ -132,5 +133,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-25T14:19:30.580Z
-Stopped at: Completed 13-03-PLAN.md
+Last session: 2026-05-26T17:30:00.000Z
+Stopped at: Completed quick task 260526-jgj — Módulo Serviços (Frente A)
