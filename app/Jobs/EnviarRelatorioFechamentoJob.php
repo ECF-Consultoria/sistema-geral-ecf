@@ -114,9 +114,11 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
 
             // Vinculadas com todos os campos (espelho de AdminController::gerarRelatorioGeral)
             $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
-                $m   = $metricas->get($f->id);
-                $fat = $m ? (float) $m->faturamento : null;
-                $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
+                $m        = $metricas->get($f->id);
+                $fat      = $m ? (float) $m->faturamento : null;
+                $fx       = $fat !== null ? $this->calcularFaixa($fat) : null;
+                $valorMensal = $fx ? $fx['valor'] : null;
+                $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
                 return [
                     'id'                       => $f->id,
                     'name'                     => $f->name,
@@ -130,16 +132,20 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                     'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
                     'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
                     'additional_service'       => $f->additional_service,
-                    'additional_service_price' => $f->additional_service_price ? (float) $f->additional_service_price : null,
+                    'additional_service_price' => $adicional,
                     'faturamento'              => $fat,
                     'periodo_inicio'           => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
                     'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,
                     'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                    'valor_mensal'             => $fx ? $fx['valor'] : null,
+                    'valor_mensal'             => $valorMensal,
+                    'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
                 ];
             })->values()->toArray();
 
-            $totalMensalidade = ($faixaPai ? $faixaPai['valor'] : 0) + collect($vinculadas)->sum('valor_mensal');
+            $valorMensalPai = $faixaPai ? $faixaPai['valor'] : null;
+            $adicionalPai   = $company->additional_service_price ? (float) $company->additional_service_price : null;
+            $cobrancaMensal = ($valorMensalPai ?? 0) + ($adicionalPai ?? 0) ?: null;
+            $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 
             $relatorios[] = [
                 'company'          => $company,
@@ -148,7 +154,8 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                 'periodo_inicio'   => $metricaPai ? Carbon::parse($metricaPai->periodo_inicio)->format('d/m/Y') : null,
                 'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y')  : null,
                 'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
-                'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
+                'valor_mensal'     => $valorMensalPai,
+                'cobranca_mensal'  => $cobrancaMensal,
                 'vinculadas'       => $vinculadas,
                 'total_mensalidade'=> $totalMensalidade,
             ];
