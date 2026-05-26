@@ -11,7 +11,51 @@ import { Textarea } from '@/Components/ui/textarea';
 import { useForm, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Plus, Pencil, Eye, Trash2, Building2 } from 'lucide-react';
-import { formatCurrency, formatPercent } from '@/lib/utils';
+import { formatCurrency, formatDate } from '@/lib/utils';
+
+/**
+ * Badges dos contratos ativos de uma empresa.
+ * Exibe até 2 contratos + indicador "+N" para o restante. Tooltip
+ * (title) detalha valor + datas.
+ */
+function ServicoBadges({ contratos }) {
+    if (!contratos || contratos.length === 0) {
+        return <span className="text-white/30">—</span>;
+    }
+
+    const visible = contratos.slice(0, 2);
+    const extra = contratos.length - 2;
+
+    const tooltip = (ct) => {
+        const nome = ct.servico?.nome ?? '—';
+        const valor = formatCurrency(ct.valor_contratado);
+        const inicio = ct.data_contratacao ? formatDate(ct.data_contratacao) : '—';
+        const fim = ct.data_vencimento ? formatDate(ct.data_vencimento) : 'sem vencimento';
+        return `${nome} — ${valor} — ${inicio} → ${fim}`;
+    };
+
+    return (
+        <div className="flex flex-wrap items-center gap-1">
+            {visible.map(ct => (
+                <span
+                    key={ct.id}
+                    title={tooltip(ct)}
+                    className="inline-flex items-center bg-white/10 border border-white/10 text-white/85 text-[10px] px-1.5 py-0.5 rounded-full"
+                >
+                    {ct.servico?.nome ?? '—'}
+                </span>
+            ))}
+            {extra > 0 && (
+                <span
+                    title={contratos.slice(2).map(tooltip).join('\n')}
+                    className="inline-flex items-center bg-white/10 border border-white/10 text-white/50 text-[10px] px-1.5 py-0.5 rounded-full"
+                >
+                    +{extra}
+                </span>
+            )}
+        </div>
+    );
+}
 
 export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [] }) {
     const [search, setSearch] = useState('');
@@ -128,8 +172,8 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                     <TableHead>Segmento</TableHead>
                                     <TableHead>Analista</TableHead>
                                     <TableHead>Estrategista</TableHead>
-                                    <TableHead>TACOS</TableHead>
-                                    <TableHead title="Soma do faturamento bruto (grossBilling) dos últimos 30 dias">Faturamento (30d)</TableHead>
+                                    {/* Coluna Serviço (substitui TACOS + Faturamento 30d — Módulo Serviços / Frente A) */}
+                                    <TableHead title="Contratos de serviço ativos da empresa">Serviço</TableHead>
                                     <TableHead>Status</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
@@ -142,10 +186,7 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                         <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
                                         <TableCell className="text-sm">{c.estrategista?.name || <span className="text-muted-foreground">-</span>}</TableCell>
                                         <TableCell>
-                                            {c.tacos ? <span className="text-yellow-400 font-medium">{formatPercent(c.tacos)}</span> : <span className="text-muted-foreground">-</span>}
-                                        </TableCell>
-                                        <TableCell>
-                                            {c.revenue_30d ? <span className="text-blue-400 font-medium">{formatCurrency(c.revenue_30d)}</span> : <span className="text-muted-foreground">-</span>}
+                                            <ServicoBadges contratos={c.contratos_servico || []} />
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant={c.active ? 'success' : 'destructive'}>
@@ -174,7 +215,7 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                 ))}
                                 {filtered.length === 0 && (
                                     <TableRow>
-                                        <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                                             <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
                                             Nenhuma empresa encontrada
                                         </TableCell>
