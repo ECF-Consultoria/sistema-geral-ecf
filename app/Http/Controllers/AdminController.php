@@ -372,9 +372,17 @@ class AdminController extends Controller
             \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
+        // Phase 14 (Frente B): catálogo de serviços ativos para popular o select
+        // do modal "Adicionar contrato" na UI do Fechamento — mesmo padrão de
+        // CompanyController::show().
+        $servicosDisponiveis = \App\Models\Servico::active()
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
         return Inertia::render('Admin/Financeiro', [
-            'companies'       => array_values($dadosPorId),
-            'mes_selecionado' => $mesSelecionado,
+            'companies'            => array_values($dadosPorId),
+            'mes_selecionado'      => $mesSelecionado,
+            'servicos_disponiveis' => $servicosDisponiveis,
         ]);
     }
 
