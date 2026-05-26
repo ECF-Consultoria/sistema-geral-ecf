@@ -154,17 +154,109 @@ Separação em 3 migrations permite rollback parcial: se algo der errado na migr
 
 ### D-07 — Refatoração de consumers (lista completa)
 
-7 arquivos que referenciam os campos legacy (confirmado via grep — `service_type|additional_service|contract_start|contract_end|additional_service_price`):
+**Atualizado pela pesquisa (Phase 14 research):** 10 arquivos (não 7) referenciam os campos legacy. Adicionados: `contract_type` (6ª coluna legacy, não estava no D-06 original) + 3 Blade views.
 
-1. **`app/Models/Company.php`** — remove `$fillable`/`$casts`/`logOnly` dos 5 campos; mantém `contratosServico()` relation (criada na Frente A)
-2. **`app/Http/Controllers/AdminController.php`** — `fechamento()` e `updateFechamento()` reescritos: `cobranca_mensal` segue D-03; editor da UI passa contratos no lugar de additional_service; filtros via JOIN servicos.nome
+PHP (7):
+1. **`app/Models/Company.php`** — remove `$fillable`/`$casts`/`logOnly` dos **6 campos** (service_type, **contract_type**, contract_start, contract_end, additional_service, additional_service_price); mantém `contratosServico()` relation (criada na Frente A). `labelFromTypes()` refatorado conforme D-09.
+2. **`app/Http/Controllers/AdminController.php`** — `fechamento()` e `updateFechamento()` reescritos: `cobranca_mensal` segue D-03; editor da UI passa contratos no lugar de additional_service; filtros via JOIN servicos.nome. **Atenção:** pesquisa mostrou que existem 3 sites de cálculo de cobranca (linhas ~280, ~506, ~648) e cada um precisa do helper extraído (D-08-helper) + teste.
 3. **`app/Http/Controllers/CompanyController.php`** — qualquer referência aos legacy fields removida (já parcialmente limpo na Frente A, validar)
 4. **`app/Http/Controllers/ComercialController.php`** — refatora cadastro conforme D-05
 5. **`app/Http/Controllers/MlbController.php`** — inspecionar uso (provavelmente filtro por service_type); migrar para JOIN em contratos_servico
 6. **`app/Notifications/EmpresaCadastradaNotification.php`** — conteúdo da notificação cita service_type; substituir por nomes dos contratos da empresa
-7. **`app/Jobs/EnviarRelatorioFechamentoJob.php`** — conteúdo do email cita additional_service; substituir por lista de contratos ativos
+7. **`app/Jobs/EnviarRelatorioFechamentoJob.php`** — conteúdo do email cita additional_service + contract_type; substituir por lista de contratos ativos
 
-Cada arquivo = 1 commit atômico no executor.
+Blade views (3) — todas consomem `Company::labelFromTypes($company->service_type)`:
+8. **`resources/views/admin/relatorio-fechamento.blade.php`** — chamadas em ~linha 275 e ~406
+9. **`resources/views/admin/relatorio-geral.blade.php`** — chamadas em ~linha 375 e ~506
+10. **`resources/views/admin/relatorio-geral-pdf.blade.php`** — chamadas em ~linha 319 e ~426
+
+JSX (3) — já parcialmente cobertos no D-05 e D-07 mas explicitamos para o planner:
+- `resources/js/Pages/Admin/Financeiro.jsx` — UI do Fechamento (substitui editor de service_type/additional_service por modal de contratos)
+- `resources/js/Pages/Comercial/Empresas.jsx` — se filtra por service_type, refatorar
+- `resources/js/Pages/Comercial/NovaEmpresa.jsx` — form (D-05)
+
+Cada arquivo PHP/Blade = 1 commit atômico no executor. JSX agrupados por screen (1 commit por screen).
+
+### D-09 — Refatoração de `Company::labelFromTypes()` (novo)
+
+**Locked: Refatorar para aceitar coleção de Servicos em vez de tipos legacy**
+
+Hoje (Company.php linhas 45-70):
+```php
+public static function labelFromTypes(mixed $types): string
+{
+    // recebe service_type (string ou JSON array de enum legacy)
+    // retorna "Publicação, Polos" via lookup interno
+}
+
+public function serviceTypeLabel(): string
+{
+    return static::labelFromTypes($this->service_type);
+}
+```
+
+Pós-refatoração:
+```php
+public static function labelFromServicos(iterable $servicos): string
+{
+    return collect($servicos)->pluck('nome')->filter()->implode(', ');
+}
+
+public function serviceTypeLabel(): string
+{
+    // mantém API antiga, agora derivando do novo modelo
+    return static::labelFromServicos(
+        $this->contratosServico->where('ativo', true)->pluck('servico')
+    );
+}
+```
+
+**Impacto nas 3 Blades:**
+- `relatorio-fechamento.blade.php`: troca `Company::labelFromTypes($company->service_type)` por `$company->serviceTypeLabel()` (mesma string de saída, agora computada do novo modelo)
+- Idem para `relatorio-geral.blade.php` e `relatorio-geral-pdf.blade.php`
+- Para os usos em arrays de fechamento (`$v['service_type']`): substituir pelo novo campo `$v['servicos_contratados']` (string já formatada, calculada no AdminController antes de passar pro array)
+
+**Por que manter a API estática:** evita 6 mudanças nas Blades (3 views × 2 chamadas). O backend (AdminController + Job) muda; as Blades quase não.
+
+### D-10 — Verificação financeira: helper estático puro (refina D-08)
+
+**Locked: extrair helper `calcularCobrancaMensal()` ANTES de refatorar os 3 call-sites de AdminController**
+
+Hoje há 3 sites onde a fórmula `($faixaData['valor'] ?? 0) + (float)($company->additional_service_price ?? 0)` é repetida (AdminController linhas ~280, ~506, ~648). A refatoração DEVE primeiro extrair um helper estático puro:
+
+```php
+// app/Support/CobrancaCalculator.php (novo)
+class CobrancaCalculator
+{
+    public static function legacy(?array $faixaData, ?float $additionalServicePrice): float
+    {
+        return (float) ($faixaData['valor'] ?? 0) + (float) ($additionalServicePrice ?? 0);
+    }
+
+    public static function novo(?array $faixaData, iterable $contratosAtivos): float
+    {
+        $somaContratos = collect($contratosAtivos)
+            ->filter(fn($c) => $c->servico->tipo_cobranca === 'mensal' && $c->ativo)
+            ->sum(fn($c) => (float) $c->valor_contratado);
+
+        return (float) ($faixaData['valor'] ?? 0) + $somaContratos;
+    }
+}
+```
+
+A migration 2 (data) NÃO depende desse helper. A migration 3 (drop) é precedida por:
+1. Comando Artisan `phase14:verificar-cobranca` que itera todas empresas, calcula `legacy` E `novo` lado-a-lado, e printa relatório de divergências.
+2. Refator dos 3 call-sites de AdminController para chamar `CobrancaCalculator::novo(...)` (1 commit por site, com teste).
+3. Sem nenhuma divergência > R$ 0,01, migration 3 dropa as colunas.
+
+Testes do helper (PHPUnit, sem container Laravel):
+- `legacy(null, null) === 0.0`
+- `legacy(['valor' => 100], 50) === 150.0`
+- `novo(null, [])` quando contratos vazios === 0.0
+- `novo(['valor' => 100], [contratoMock(50, mensal), contratoMock(20, unica)])` === 150.0 (ignora única)
+- `novo` deve filtrar contratos inativos
+
+Migration 3 PARA se `phase14:verificar-cobranca` retornar exit code != 0. Isso preserva o invariante de "fatura idêntica" (SVC-02).
 
 ### D-08 — Verificação financeira (claude's discretion + obrigatório)
 
