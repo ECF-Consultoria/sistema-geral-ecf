@@ -7,6 +7,7 @@ use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
+use App\Support\CobrancaCalculator;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -128,6 +129,10 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                 $m   = $metricas->get($f->id);
                 $fat = $m ? (float) $m->faturamento : null;
                 $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
+                // Phase 14 (Frente B / CR-03): cobranca_mensal agrega faixa +
+                // SUM dos contratos ativos mensais via CobrancaCalculator::novo
+                // (paridade com AdminController::gerarRelatorioGeral():707).
+                $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
                 return [
                     'id'                       => $f->id,
                     'name'                     => $f->name,
@@ -146,10 +151,17 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                     'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,
                     'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
                     'valor_mensal'             => $fx ? $fx['valor'] : null,
+                    'cobranca_mensal'          => $cobrancaMensalFilha,
                 ];
             })->values()->toArray();
 
-            $totalMensalidade = ($faixaPai ? $faixaPai['valor'] : 0) + collect($vinculadas)->sum('valor_mensal');
+            // Phase 14 (Frente B / CR-03): total agrega faixa + SUM contratos do
+            // pai + SUM cobranca_mensal das filhas. Pre-Phase 14 somava
+            // additional_service_price; pos-refator essa coluna foi dropada e o
+            // componente vinha sendo OMITIDO (regressao financeira). Agora usa
+            // CobrancaCalculator::novo (paridade com AdminController:707).
+            $cobrancaPai      = CobrancaCalculator::novo($faixaPai, $company->contratosServico) ?: null;
+            $totalMensalidade = ($cobrancaPai ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 
             $relatorios[] = [
                 'company'          => $company,
@@ -159,6 +171,10 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                 'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y')  : null,
                 'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
                 'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
+                // Phase 14 (Frente B / CR-03): cobranca_mensal exposta para a Blade
+                // do email consumir (paridade com AdminController). valor_mensal
+                // permanece (faixa pura) para compat com a view legacy.
+                'cobranca_mensal'  => $cobrancaPai,
                 'vinculadas'       => $vinculadas,
                 'total_mensalidade'=> $totalMensalidade,
             ];
