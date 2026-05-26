@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
 status: executing
-stopped_at: Phase 14 Plan 14-01 concluído — helper CobrancaCalculator + comando phase14:verificar-cobranca + 11/11 testes verdes. Próximo: Plan 14-02 (migrations 1 + 2)
-last_updated: "2026-05-26T18:52:00.000Z"
-last_activity: 2026-05-26 -- Plan 14-01 executed (4 commits, 11/11 tests passed)
+stopped_at: "Phase 14 Plan 14-02 concluído — migrations seed (6 servicos canônicos) + data legacy (contratos derivados) + 5/5 testes Phase14MigrationTest verdes. Sistema em COEXISTÊNCIA. Próximo: Plan 14-03 (refator dos consumers PHP)"
+last_updated: "2026-05-26T19:03:27.417Z"
+last_activity: 2026-05-26 -- Plan 14-02 executed (3 commits, 5/5 tests passed, 46 assertions)
 progress:
   total_phases: 14
   completed_phases: 6
-  total_plans: 26
-  completed_plans: 13
-  percent: 50
+  total_plans: 19
+  completed_plans: 14
+  percent: 43
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
-Plan: 2 of 7 (Plan 14-01 concluído)
-Status: Executing Phase 14 — Plan 14-01 complete, ready for Plan 14-02 (migrations seed + data)
-Last activity: 2026-05-26 -- Plan 14-01 executed (4 commits, 11/11 tests passed)
+Plan: 3 of 7 (Plans 14-01 e 14-02 concluídos)
+Status: Plan 14-02 complete — sistema em COEXISTÊNCIA (campos legacy populados E contratos_servico populados). Ready for Plan 14-03 (refator dos consumers PHP).
+Last activity: 2026-05-26 -- Plan 14-02 executed (3 commits, 5/5 tests passed, 46 assertions)
 
 ## Performance Metrics
 
@@ -58,6 +58,7 @@ Last activity: 2026-05-26 -- Plan 14-01 executed (4 commits, 11/11 tests passed)
 | Phase 13-reestruturacao-cadastro-empresas P02 | 20min | 2 tasks | 3 files |
 | Phase 13-reestruturacao-cadastro-empresas P03 | 7min | 2 tasks | 6 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P01 | 5min | 2 tasks | 4 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P02 | 4 | 3 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -113,13 +114,24 @@ Last activity: 2026-05-26 -- Plan 14-01 executed (4 commits, 11/11 tests passed)
 - Testes do helper usam `assertEqualsWithDelta(esperado, atual, 0.001)` para comparações de float (não `assertEquals`)
 - Tolerância de R$ 0,01 em comparações decimais no comando (`abs($legacy - $novo) > 0.01`) — evita falsos positivos de arredondamento
 
+### Decisões do Plan 14-02 (registradas)
+
+- `firstOrCreate` (não `updateOrCreate`) no catálogo `servicos` — preserva ajustes manuais de `valor_padrao` feitos via UI `/servicos` em re-runs da migration
+- Guards de idempotência usam tripla `(company_id, servico_id, valor_contratado)->exists()` — combinação exata por contrato, sem precisar de UNIQUE constraint no pivot
+- Migration 2 envolvida em `DB::transaction` + `Company::chunk(100)` — atomicidade + sem OOM em prod
+- Cache local `Servico::pluck('id', 'nome')` atualizado in-place quando `additional_service` dispara `firstOrCreate` de novo serviço (evita re-query)
+- `toDateString()` explícito em ambos branches de `data_contratacao` — normaliza Carbon ↔ string consistente entre SQLite (testes) e MySQL (prod)
+- `(float)` explícito em `valor_contratado` antes de comparações `where(...)` — cast `decimal:2` retorna string em SQLite (Pitfall 4)
+- `down()` no-op informativo em ambas migrations — reverter dados de migration exige backup do DB
+- Sistema em **COEXISTÊNCIA** após Plan 14-02: campos legacy AINDA populados E `contratos_servico` populado; runtime AINDA lê dos legacy até o Plan 14-03
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-(nenhum — Plan 14-01 entregou helper + comando; pronto para Plan 14-02 — migrations seed + data)
+(nenhum — Plan 14-02 entregou migrations + suíte de testes; pronto para Plan 14-03 — refator dos consumers PHP)
 
 ### Quick Tasks Completed
 
@@ -142,5 +154,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-26T18:52:00.000Z
-Stopped at: Phase 14 Plan 14-01 concluído — helper CobrancaCalculator + comando phase14:verificar-cobranca + 11/11 testes verdes. Próximo: Plan 14-02 (migrations seed + data)
+Last session: 2026-05-26T19:01:32Z
+Stopped at: Phase 14 Plan 14-02 concluído — migrations seed_servicos_catalog + migrate_legacy_service_data idempotentes + 5/5 testes Phase14MigrationTest verdes (46 assertions). Sistema em COEXISTÊNCIA. Próximo: Plan 14-03 (refator dos consumers PHP — Company, AdminController×3 sites, MlbController, CompanyController, EmpresaCadastradaNotification, EnviarRelatorioFechamentoJob)

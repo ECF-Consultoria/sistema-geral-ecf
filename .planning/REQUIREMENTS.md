@@ -34,7 +34,7 @@
 
 ### Consolidação do Modelo de Serviços (SVC)
 
-- [ ] **SVC-01**: Migration de dados popula `servicos` com os 6 tipos canônicos do legacy (`publicacao`, `polos`, `assessoria`, `incubadora`, `publicidade`, `gestao`) e cria `contratos_servico` correspondentes para cada empresa, preservando datas (`contract_start`/`contract_end` → `data_contratacao`/`data_vencimento`) e valor do `additional_service_price` quando presente
+- [x] **SVC-01**: Migration de dados popula `servicos` com os 6 tipos canônicos do legacy (`publicacao`, `polos`, `assessoria`, `incubadora`, `publicidade`, `gestao`) e cria `contratos_servico` correspondentes para cada empresa, preservando datas (`contract_start`/`contract_end` → `data_contratacao`/`data_vencimento`) e valor do `additional_service_price` quando presente
 - [ ] **SVC-02**: `AdminController::fechamento` calcula `cobranca_mensal` = `faixaData['valor']` + SUM dos `contratos_servico` ativos da empresa onde `tipo_cobranca='mensal'`; resultado idêntico (até R$ 0,01) ao cálculo pré-refatoração para toda empresa que tinha `additional_service_price` preenchido
 - [ ] **SVC-03**: `Admin/Financeiro.jsx` substitui o editor de "Serviço adicional" (texto livre + preço único) pela mesma UI de gestão de contratos usada em `Companies/Show.jsx` — modal de "Adicionar contrato", lista de contratos ativos, ações editar/desativar
 - [ ] **SVC-04**: Filtros e badges de tipo de serviço em Fechamento e demais telas (que hoje usam `whereJsonContains('service_type', ...)`) passam a apontar para `contratos_servico` via JOIN em `servicos.nome`; nenhuma referência funcional a `service_type` permanece em código aplicativo
