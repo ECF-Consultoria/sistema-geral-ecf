@@ -272,7 +272,8 @@
         @endif
         <div class="field">
             <label>Tipo de serviço</label>
-            <span>{{ \App\Models\Company::labelFromTypes($company->service_type) }}</span>
+            {{-- Phase 14: labelFromTypes(legacy) → serviceTypeLabel(derivado de contratos) — D-09 --}}
+            <span>{{ $company->serviceTypeLabel() }}</span>
         </div>
         <div class="field">
             <label>Tipo de contrato</label>
@@ -403,7 +404,8 @@
                 <td class="empresa-nome">{{ $v['name'] }}</td>
                 <td class="label-mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $v['cnpj'] ?? '')) ?: '—' }}</td>
                 <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>
-                <td>{{ \App\Models\Company::labelFromTypes($v['service_type'] ?? null) }}</td>
+                {{-- Phase 14: service_type (legacy) → servicos_contratados (string formatada pelo AdminController) --}}
+                <td>{{ $v['servicos_contratados'] ?? '—' }}</td>
                 <td>{{ match($v['contract_type'] ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Progressão', default => '—' } }}</td>
                 <td class="label-mono">{{ !empty($v['contract_start']) ? $v['contract_start'] . (!empty($v['contract_end']) ? ' – ' . $v['contract_end'] : '') : '—' }}</td>
             </tr>
