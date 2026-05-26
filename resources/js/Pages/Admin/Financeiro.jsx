@@ -11,29 +11,6 @@ import { Textarea } from '@/Components/ui/textarea';
 import { cn, formatDate, formatCurrency } from '@/lib/utils';
 import axios from 'axios';
 
-// ─── Mapas legacy do enum service_type ───────────────────────────────────────
-// Phase 14 (Frente B): mantidos APENAS como fallback do ServiceBadge enquanto
-// chaves legacy `service_type` ainda existem no payload Inertia (coexistência
-// até Plan 14-06/14-07). Após o drop, SERVICE_LABELS e SERVICE_COLORS podem ser
-// removidos. Por enquanto, a prioridade é `servicos_contratados` (catálogo).
-const SERVICE_LABELS = {
-    publicacao:  'Publicação',
-    polos:       'POLO',
-    assessoria:  'Assessoria',
-    incubadora:  'Incubadora',
-    publicidade: 'Publicidade',
-    gestao:      'Gestão',
-};
-
-const SERVICE_COLORS = {
-    publicacao:  'bg-violet-500/10 text-violet-300 border-violet-500/20',
-    polos:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
-    assessoria:  'bg-purple-500/10 text-purple-300 border-purple-500/20',
-    incubadora:  'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
-    publicidade: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
-    gestao:      'bg-cyan-500/10 text-cyan-300 border-cyan-500/20',
-};
-
 const FAIXAS_LIMITES = {
     faixa_1: { min: 0,           proximo: 500_000,   nome: 'Faixa 1' },
     faixa_2: { min: 500_000,     proximo: 1_000_000, nome: 'Faixa 2' },
@@ -59,11 +36,7 @@ const fmtBRL = (n) => n == null ? '—'
     : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL',
         minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-// Phase 14 (Frente B): ServiceBadge prioriza `servicos_contratados` (catálogo
-// derivado do modelo N:N) e mantém fallback legacy `tipo` (enum service_type)
-// como compat até Plan 14-06/14-07. Per D-09.
-function ServiceBadge({ servicos_contratados, tipo }) {
-    // Preferência: nova prop servicos_contratados (lista de objetos do catálogo)
+function ServiceBadge({ servicos_contratados }) {
     if (Array.isArray(servicos_contratados) && servicos_contratados.length > 0) {
         return (
             <span className="inline-flex items-center gap-1 flex-wrap">
@@ -79,22 +52,9 @@ function ServiceBadge({ servicos_contratados, tipo }) {
         );
     }
 
-    // Fallback legacy: tipo enum (compat até Plan 14-06)
-    const types = Array.isArray(tipo) ? tipo : (tipo ? [tipo] : []);
-    if (types.length === 0) {
-        return (
-            <span className="bg-white/[0.05] text-white/40 border-white/[0.08] text-[11px] font-semibold px-2 py-0.5 rounded-full border">
-                Sem serviços
-            </span>
-        );
-    }
     return (
-        <span className="inline-flex items-center gap-1 flex-wrap">
-            {types.map(t => (
-                <span key={t} className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border', SERVICE_COLORS[t])}>
-                    {SERVICE_LABELS[t] ?? t}
-                </span>
-            ))}
+        <span className="bg-white/[0.05] text-white/40 border-white/[0.08] text-[11px] font-semibold px-2 py-0.5 rounded-full border">
+            Sem serviços
         </span>
     );
 }
@@ -155,9 +115,7 @@ function MiniPie({ data }) {
     );
 }
 
-// Phase 14 (Frente B): GraficoServico agora deriva de `servicos_contratados`
-// (catálogo) em vez do enum legacy `service_type`. Cor estável por nome via
-// hash leve para preservar a paleta entre renders.
+// Cor estavel por nome para preservar a paleta entre renders.
 const SERVICO_PALETTE = ['#3b82f6', '#a855f7', '#10b981', '#f97316', '#06b6d4', '#ec4899', '#f59e0b', '#8b5cf6'];
 
 function corPorNome(nome) {
@@ -192,10 +150,7 @@ function GraficoServico({ empresas }) {
     return <ChartCard titulo="Serviços contratados"><MiniPie data={data} /></ChartCard>;
 }
 
-// Phase 14 (Frente B): substitui o gráfico legacy de "Tipo de contrato"
-// (fixo/progressao — colunas que serão dropadas no Plan 14-06) por um gráfico
-// "Tipo de cobrança" (mensal/única) derivado dos contratos ativos. Mantém o
-// layout de 3 colunas no topo da página.
+// Grafico de tipo de cobranca derivado dos contratos ativos.
 function GraficoCobranca({ empresas }) {
     const cnt = { mensal: 0, unica: 0 };
     empresas.forEach(e => {
@@ -478,8 +433,7 @@ function ProgressaoModal({ empresa, onClose }) {
 }
 
 function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
-    // Phase 14 (Frente B): substitui o range contract_start/contract_end (legacy)
-    // por um resumo "N contratos ativos" derivado de `servicos_contratados`.
+    // Resumo derivado dos contratos ativos.
     const totalContratos = (empresa.servicos_contratados || []).length;
     const resumoContratos = totalContratos === 0
         ? 'Sem contratos'
@@ -519,7 +473,7 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
                 )}
             </div>
             <EvolucaoBadge evolucao={empresa.evolucao} />
-            <ServiceBadge servicos_contratados={empresa.servicos_contratados} tipo={empresa.service_type} />
+            <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
             {!empresa.has_adman && <IntegrationBadge />}
             {(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal) != null && (
                 <span className={cn('text-[13px] font-semibold font-mono shrink-0',
@@ -534,9 +488,7 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
     );
 }
 
-// Phase 14 (Frente B): substitui o ServiceForm legacy (editor inline de
-// service_type/contract_type/additional_service/etc.) por uma seção de
-// contratos no mesmo padrão de `Companies/Show.jsx`. Per D-09 / SVC-03.
+// Contratos baseados no catalogo de servicos.
 function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     const contratos = empresa.servicos_contratados || [];
 
@@ -705,9 +657,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
                     </a>
                 </div>
             )}
-            {/* Phase 14 (Frente B): substitui o editor legacy (service_type/contract_type/
-                additional_service) pela seção de contratos. Modal gerenciado no
-                Financeiro (componente pai) — handlers passados via props. */}
+            {/* Contratos de servico gerenciados pelo modal da pagina. */}
             <div className="border-t border-white/[0.04] pt-4">
                 <ContratosSection
                     empresa={empresa}
@@ -939,9 +889,7 @@ function SyncFaturamentoBtn({ mesSelecionado }) {
     );
 }
 
-// Phase 14 (Frente B): filtros legacy `service_type` (enum) e `contract_type`
-// substituídos por `servico_nome` (derivado dinamicamente dos contratos ativos
-// do dataset). Mantém `busca`, `estado`, `recebido`. Per D-09.
+// Filtro de servico derivado dinamicamente dos contratos ativos do dataset.
 const FILTROS_INICIAL = { busca: '', servico_nome: '', estado: '', recebido: '' };
 
 function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
@@ -995,7 +943,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
     // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
-    // de contratos ativos — popular dropdown do filtro sem usar enum legacy.
+    // de contratos ativos para popular o dropdown do filtro.
     const servicosNomes = useMemo(
         () => [...new Set(
             companies.flatMap(c => (c.servicos_contratados || []).map(s => s.servico_nome).filter(Boolean))

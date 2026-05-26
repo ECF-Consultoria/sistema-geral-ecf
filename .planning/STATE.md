@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
-status: executing
-stopped_at: "Phase 14 Plan 14-06 concluido — migration 3 aplicada localmente e 6 colunas legacy removidas de companies; backend limpo; app/ sem referencias funcionais aos campos legacy; phase14:verificar-cobranca retorna 0 divergencias pos-drop; testes focados pos-drop 9/9 (101 assertions). Proximo: Plan 14-07 cleanup frontend."
-last_updated: "2026-05-26T21:10:00.000Z"
-last_activity: 2026-05-26 -- Plan 14-06 executed (drop local + backend cleanup + 9 testes focados pos-drop verdes)
+status: complete
+stopped_at: "Phase 14 Plan 14-07 concluido — cleanup final dos 5 JSX consumers; resources/js/Pages sem referencias aos campos legacy; npm build verde; regressao focada 9/9 (101 assertions); phase14:verificar-cobranca 0 divergencias. Proxima fase: TBD pelo usuario."
+last_updated: "2026-05-26T23:20:00.000Z"
+last_activity: 2026-05-26 -- Plan 14-07 executed (cleanup frontend + build + grep + regressao focada + verificador)
 progress:
   total_phases: 14
-  completed_phases: 6
+  completed_phases: 7
   total_plans: 19
-  completed_plans: 18
-  percent: 56
+  completed_plans: 19
+  percent: 57
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
-Plan: 7 of 7 (Plans 14-01 a 14-06 concluidos)
-Status: Plan 14-06 complete — migration 3 aplicada localmente; `companies` nao tem mais as 6 colunas legacy; backend limpo de reads/writes legacy. Ready for Plan 14-07 (cleanup frontend dos 5 JSX consumers).
-Last activity: 2026-05-26 -- Plan 14-06 executed (schema pos-drop confirmado, phase14 0 divergencias, testes focados 9/9)
+Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — COMPLETE
+Plan: 7 of 7 (Plans 14-01 a 14-07 concluidos)
+Status: Phase 14 complete — modelo unificado em `contratos_servico`; colunas legacy dropadas localmente; backend e 5 JSX consumers finais limpos.
+Last activity: 2026-05-26 -- Plan 14-07 executed (cleanup frontend, build verde, grep limpo, regressao focada 9/9, phase14 0 divergencias)
 
 ## Performance Metrics
 
@@ -62,6 +62,8 @@ Last activity: 2026-05-26 -- Plan 14-06 executed (schema pos-drop confirmado, ph
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P03 | 10 | 3 tasks | 9 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P04 | 8 | 3 tasks | 6 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P05 | 17 | 4 tasks | 7 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P06 | 35 | 4 tasks | 13 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P07 | 45 | 4 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -153,6 +155,15 @@ Last activity: 2026-05-26 -- Plan 14-06 executed (schema pos-drop confirmado, ph
 - **Phase13ComercialTest documentada como obsoleta** em `deferred-items.md` — cobertura equivalente reproduzida em `Phase14ComercialTest` (COM-04/05/06/08); deletion/port adiada para quick task pós Plan 14-06
 - **Activity log passa `servicos` (array)** em vez de `service_type` legacy
 
+### Decisões do Plan 14-07 (registradas)
+
+- **Admin/Empresas e Comercial/Empresas duplicam a UI de contratos** em vez de criar componente compartilhado — alinhado ao plan; refator comum fica para fase futura.
+- **Comercial/Empresas usa `/comercial/empresas/novo` para criação** — o formulário inline antigo foi removido; o fluxo novo com `servicos[]` ja foi entregue no Plan 14-04.
+- **ComercialController::empresas passa contratos com shape completo** — necessario para Add/Edit/Desativar no modal da listagem Comercial.
+- **Admin/Financeiro ServiceBadge sem fallback** — le apenas `servicos_contratados`.
+- **Grep final limpo em `resources/js/Pages`** para os 6 campos removidos.
+- **Smoke visual humano nao executado nesta sessao** — validacao feita por build, regressao focada, grep e `phase14:verificar-cobranca`; UAT real fica em deferred item.
+
 ### Decisões do Plan 14-02 (registradas)
 
 - `firstOrCreate` (não `updateOrCreate`) no catálogo `servicos` — preserva ajustes manuais de `valor_padrao` feitos via UI `/servicos` em re-runs da migration
@@ -170,7 +181,7 @@ None.
 
 ### Blockers/Concerns
 
-(nenhum bloqueante para Plan 14-07. Plan 14-06 dropou localmente as 6 colunas legacy e limpou backend; suites antigas de coexistencia precisam de cleanup no gate de regression, registrado em deferred-items.md.)
+Nenhum bloqueante tecnico conhecido. Phase 14 concluida por gates automatizados; smoke visual humano das 5 telas segue pendente como UAT.
 
 ### Quick Tasks Completed
 
@@ -195,8 +206,9 @@ None.
 | Phase 14 | `Phase13ComercialTest` obsoleta (cobertura em Phase14ComercialTest) | port/deletion | 2026-05-26 |
 | Phase 14 | `AdminFechamentoControllerTest` 5 testes falhando pré-existentes | quick task | 2026-05-26 |
 | Phase 14 | Suites de coexistencia pos-drop obsoletas | pending-regression-cleanup | 2026-05-26 |
+| Phase 14 | Smoke visual Plan 14-07 das 5 telas | pending-human-uat | 2026-05-26 |
 
 ## Session Continuity
 
-Last session: 2026-05-26T21:10:00Z
-Stopped at: Phase 14 Plan 14-06 concluido — migration 2026_05_27_100003 aplicada localmente; Schema::hasColumn confirmou service_type=0 e additional_service_price=0; backend limpo das chaves legacy; phase14 pre e pos-drop retornou 0 divergencias em 0 empresas; testes focados pos-drop passaram 9/9 (101 assertions). Proximo: Plan 14-07 cleanup frontend dos 5 JSX consumers.
+Last session: 2026-05-26T23:20:00Z
+Stopped at: Phase 14 Plan 14-07 concluido — cleanup final dos 5 JSX consumers; build verde; grep sem referencias aos campos legacy; regressao focada passou 9/9 (101 assertions); phase14:verificar-cobranca retornou 0 divergencias em 0 empresas. Proxima fase: TBD pelo usuario.

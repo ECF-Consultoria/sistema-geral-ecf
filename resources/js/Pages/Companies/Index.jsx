@@ -143,8 +143,9 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                 <div key={p.id} className="flex items-center gap-3 rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-2.5">
                                     <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
                                     <span className="text-ecf-yellow/60 text-[11px] font-medium">
-                                        {(Array.isArray(p.service_type) ? p.service_type : (p.service_type ? [p.service_type] : []))
-                                            .map(t => ({ polos: 'POLO', assessoria: 'Assessoria', gestao: 'Gestão', publicidade: 'Publicidade', incubadora: 'Incubadora' }[t] || t))
+                                        {(Array.isArray(p.servicos_contratados) ? p.servicos_contratados : [])
+                                            .map(s => typeof s === 'string' ? s : s.servico_nome)
+                                            .filter(Boolean)
                                             .join(' + ') || '—'}
                                     </span>
                                     <span className="text-white/25 text-[11px]">

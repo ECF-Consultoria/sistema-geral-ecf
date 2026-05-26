@@ -1,31 +1,17 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { useForm } from '@inertiajs/react';
+import { router, useForm } from '@inertiajs/react';
 import { useState } from 'react';
-import { Building2, ChevronDown } from 'lucide-react';
-import { cn, formatDate } from '@/lib/utils';
-
-const SERVICE_LABELS = {
-    publicacao: 'Publicação', polo: 'POLO', polos: 'POLO', assessoria: 'Assessoria',
-    incubadora: 'Incubadora', publicidade: 'Publicidade', gestao: 'Gestão',
-};
-const SERVICE_COLORS = {
-    publicacao:  'bg-violet-500/10 text-violet-300 border-violet-500/20',
-    polo:        'bg-blue-500/10 text-blue-300 border-blue-500/20',
-    polos:       'bg-blue-500/10 text-blue-300 border-blue-500/20',
-    assessoria:  'bg-purple-500/10 text-purple-300 border-purple-500/20',
-    incubadora:  'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
-    publicidade: 'bg-orange-500/10 text-orange-300 border-orange-500/20',
-    gestao:      'bg-teal-500/10 text-teal-300 border-teal-500/20',
-};
-const CONTRACT_LABELS = { fixo: 'Fixo', progressao: 'Progressão' };
-const CONTRACT_COLORS = {
-    fixo:       'bg-indigo-500/10 text-indigo-300 border-indigo-500/20',
-    progressao: 'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/20',
-};
+import { Briefcase, Building2, ChevronDown, Pencil, Plus, PowerOff } from 'lucide-react';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import { cn } from '@/lib/utils';
 
 const fmtBRL = (n) => n == null ? null
-    : Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL',
-        minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    : Number(n).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    });
 
 function Chip({ label, color }) {
     return (
@@ -36,11 +22,7 @@ function Chip({ label, color }) {
 }
 
 function EmpresaRow({ empresa, expandida, onToggle }) {
-    const datas = empresa.contract_start
-        ? empresa.contract_end
-            ? `${formatDate(empresa.contract_start)} – ${formatDate(empresa.contract_end)}`
-            : `${formatDate(empresa.contract_start)} –`
-        : null;
+    const contratos = empresa.servicos_contratados || [];
 
     return (
         <div
@@ -48,13 +30,15 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
             className={cn(
                 'flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors',
                 expandida ? 'bg-white/[0.05]' : 'hover:bg-white/[0.03]',
-                !empresa.active && 'opacity-50'
+                !empresa.active && 'opacity-50',
             )}
         >
             <ChevronDown
                 size={14}
-                className={cn('transition-transform duration-200 shrink-0',
-                    expandida ? 'rotate-180 text-ecf-yellow' : 'text-white/40')}
+                className={cn(
+                    'transition-transform duration-200 shrink-0',
+                    expandida ? 'rotate-180 text-ecf-yellow' : 'text-white/40',
+                )}
             />
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
@@ -66,68 +50,105 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
                     )}
                 </div>
                 {empresa.nome_pai && (
-                    <span className="text-white/30 text-[11px] mt-0.5 block">↳ {empresa.nome_pai}</span>
+                    <span className="text-white/30 text-[11px] mt-0.5 block">vinculada a {empresa.nome_pai}</span>
                 )}
                 {empresa.filhas?.length > 0 && (
                     <span className="text-ecf-yellow/50 text-[11px] mt-0.5 block">
-                        Grupo · {empresa.filhas.length} vinculada{empresa.filhas.length !== 1 ? 's' : ''}
+                        Grupo: {empresa.filhas.length} vinculada{empresa.filhas.length !== 1 ? 's' : ''}
                     </span>
                 )}
-                {(empresa.additional_service || empresa.additional_service_price) && (
-                    <span className="text-white/35 text-[12px] mt-0.5 block truncate">
-                        {empresa.additional_service}
-                        {empresa.additional_service_price != null && (
-                            <span className="text-emerald-400/70 ml-1">
-                                · {fmtBRL(empresa.additional_service_price)}/mês
-                            </span>
-                        )}
-                    </span>
-                )}
+                <span className="text-white/35 text-[12px] mt-0.5 block truncate">
+                    {contratos.length === 0
+                        ? 'Sem contratos ativos'
+                        : `${contratos.length} contrato${contratos.length === 1 ? '' : 's'} ativo${contratos.length === 1 ? '' : 's'}`}
+                </span>
             </div>
-            {(empresa.service_type?.length > 0)
-                ? (empresa.service_type).map(t => (
-                    <Chip key={t} label={SERVICE_LABELS[t] ?? t} color={SERVICE_COLORS[t] ?? 'bg-white/[0.05] text-white/30 border-white/[0.08]'} />
+            {contratos.length > 0
+                ? contratos.slice(0, 3).map(c => (
+                    <Chip key={c.id} label={c.servico_nome ?? 'Servico'} color="bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/20" />
                 ))
-                : <Chip label="Sem tipo" color="bg-white/[0.05] text-white/30 border-white/[0.08]" />
+                : <Chip label="Sem servicos" color="bg-white/[0.05] text-white/30 border-white/[0.08]" />
             }
-            {empresa.contract_type
-                ? <Chip label={CONTRACT_LABELS[empresa.contract_type]} color={CONTRACT_COLORS[empresa.contract_type]} />
-                : <Chip label="Sem contrato" color="bg-white/[0.05] text-white/30 border-white/[0.08]" />
-            }
-            {datas && <span className="text-white/35 text-[12px] font-mono shrink-0">{datas}</span>}
         </div>
     );
 }
 
-function EmpresaForm({ empresa, allCompanies, onClose }) {
-    const filhasAtuais = new Set((empresa.filhas ?? []).map(f => f.id));
+function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
+    const contratos = empresa.servicos_contratados || [];
 
+    return (
+        <div className="space-y-3 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <Briefcase size={14} className="text-ecf-yellow/70" />
+                    <span className="text-white/80 text-[13px] font-semibold">Servicos contratados</span>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => onAdicionar(empresa)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] rounded-md bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow border border-ecf-yellow/20"
+                >
+                    <Plus size={12} /> Adicionar contrato
+                </button>
+            </div>
+            {contratos.length === 0 ? (
+                <p className="text-white/35 text-[12px] py-2">Nenhum contrato ativo.</p>
+            ) : (
+                <div className="overflow-x-auto rounded-lg border border-white/[0.06]">
+                    <table className="w-full text-[12px]">
+                        <thead>
+                            <tr className="text-white/35 border-b border-white/[0.06]">
+                                <th className="text-left py-2 px-3">Servico</th>
+                                <th className="text-right py-2 px-3">Valor</th>
+                                <th className="text-center py-2 px-3">Tipo</th>
+                                <th className="text-right py-2 px-3">Acoes</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {contratos.map(c => (
+                                <tr key={c.id} className="border-b border-white/[0.03] last:border-0 text-white/70">
+                                    <td className="py-2 px-3">{c.servico_nome ?? '-'}</td>
+                                    <td className="py-2 px-3 text-right font-mono">{fmtBRL(c.valor_contratado) ?? '-'}</td>
+                                    <td className="py-2 px-3 text-center">{c.tipo_cobranca === 'mensal' ? 'Mensal' : 'Unica'}</td>
+                                    <td className="py-2 px-3">
+                                        <div className="flex justify-end gap-1">
+                                            <button type="button" onClick={() => onEditar(empresa, c)} className="p-1 text-white/40 hover:text-ecf-yellow">
+                                                <Pencil size={12} />
+                                            </button>
+                                            <button type="button" onClick={() => onDesativar(empresa, c)} className="p-1 text-white/40 hover:text-red-400">
+                                                <PowerOff size={12} />
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
+function EmpresaForm({ empresa, allCompanies, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+    const filhasAtuais = new Set((empresa.filhas ?? []).map(f => f.id));
     const { data, setData, patch, processing, errors } = useForm({
-        service_type:              Array.isArray(empresa.service_type) ? empresa.service_type : (empresa.service_type ? [empresa.service_type] : []),
-        contract_type:             empresa.contract_type             ?? '',
-        contract_start:            empresa.contract_start            ?? '',
-        contract_end:              empresa.contract_end              ?? '',
-        additional_service:        empresa.additional_service        ?? '',
-        additional_service_price:  empresa.additional_service_price  ?? '',
-        parent_company_id:         empresa.parent_company_id         ?? '',
-        filha_ids:                 [...filhasAtuais],
+        parent_company_id: empresa.parent_company_id ?? '',
+        filha_ids: [...filhasAtuais],
     });
 
-    // Empresas que podem ser filhas: não é a própria, não tem parent já (ou é filha desta)
     const candidatasFilha = allCompanies.filter(c =>
         c.id !== empresa.id &&
-        (!c.parent_company_id || c.parent_company_id === empresa.id)
+        (!c.parent_company_id || c.parent_company_id === empresa.id),
     );
-
-    // Empresas que podem ser o pai: não é a própria, não é já filha desta
     const opcoesPai = allCompanies.filter(c =>
-        c.id !== empresa.id && !filhasAtuais.has(c.id)
+        c.id !== empresa.id && !filhasAtuais.has(c.id),
     );
 
     function toggleFilha(id) {
         setData('filha_ids', data.filha_ids.includes(id)
             ? data.filha_ids.filter(i => i !== id)
-            : [...data.filha_ids, id]
+            : [...data.filha_ids, id],
         );
     }
 
@@ -139,75 +160,24 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
         });
     }
 
-    const input = 'w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40';
     const select = 'w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40';
     const label = 'block text-[11px] uppercase tracking-wider text-white/40 mb-1';
     const err = 'text-[11px] text-red-400 mt-1 block';
 
     return (
         <form onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label className={label}>Tipo de serviço</label>
-                    <div className="flex flex-col gap-1.5 pt-1">
-                        {[
-                            { value: 'polos',       label: 'Publicação — POLOS' },
-                            { value: 'assessoria',  label: 'Publicação — Assessoria' },
-                            { value: 'incubadora',  label: 'Incubadora' },
-                            { value: 'publicidade', label: 'Publicidade' },
-                            { value: 'gestao',      label: 'Gestão' },
-                        ].map(({ value, label: lbl }) => (
-                            <label key={value} className="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" checked={data.service_type.includes(value)}
-                                    onChange={() => setData('service_type', data.service_type.includes(value)
-                                        ? data.service_type.filter(t => t !== value)
-                                        : [...data.service_type, value])}
-                                    className="accent-ecf-yellow" />
-                                <span className="text-[12px] text-white/70">{lbl}</span>
-                            </label>
-                        ))}
-                    </div>
-                    {errors.service_type && <span className={err}>{errors.service_type}</span>}
-                </div>
-                <div>
-                    <label className={label}>Tipo de contrato</label>
-                    <select value={data.contract_type} onChange={e => setData('contract_type', e.target.value)} className={select}>
-                        <option value="">Selecionar...</option>
-                        <option value="fixo">Fixo</option>
-                        <option value="progressao">Escala de Progressão</option>
-                    </select>
-                    {errors.contract_type && <span className={err}>{errors.contract_type}</span>}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                    <label className={label}>Início do contrato</label>
-                    <input type="date" value={data.contract_start}
-                        onChange={e => setData('contract_start', e.target.value)}
-                        className={cn(input, 'appearance-none')} />
-                    {errors.contract_start && <span className={err}>{errors.contract_start}</span>}
-                </div>
-                <div>
-                    <label className={label}>Término do contrato</label>
-                    <input type="date" value={data.contract_end}
-                        onChange={e => setData('contract_end', e.target.value)}
-                        className={cn(input, 'appearance-none')} />
-                    {errors.contract_end && <span className={err}>{errors.contract_end}</span>}
-                </div>
-            </div>
-
-            {/* Vinculação: esta empresa é pai → selecionar filhas */}
             {!data.parent_company_id && (
                 <div>
                     <label className={label}>Empresas vinculadas</label>
                     {candidatasFilha.length === 0 ? (
-                        <p className="text-white/25 text-[12px] py-2">Nenhuma empresa disponível para vincular.</p>
+                        <p className="text-white/25 text-[12px] py-2">Nenhuma empresa disponivel para vincular.</p>
                     ) : (
                         <div className="rounded-lg border border-white/[0.08] divide-y divide-white/[0.04] max-h-48 overflow-y-auto">
                             {candidatasFilha.map(c => (
-                                <label key={c.id}
-                                    className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.03] transition-colors">
+                                <label
+                                    key={c.id}
+                                    className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.03] transition-colors"
+                                >
                                     <input
                                         type="checkbox"
                                         checked={data.filha_ids.includes(c.id)}
@@ -231,7 +201,6 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
                 </div>
             )}
 
-            {/* Vinculação: esta empresa é filha → selecionar o pai */}
             <div>
                 <label className={label}>Esta empresa faz parte do grupo de</label>
                 <select value={data.parent_company_id} onChange={e => setData('parent_company_id', e.target.value)} className={select}>
@@ -241,37 +210,31 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
                     ))}
                 </select>
                 {data.parent_company_id && (
-                    <p className="text-[11px] text-white/30 mt-1">Esta empresa será agrupada sob a empresa selecionada.</p>
+                    <p className="text-[11px] text-white/30 mt-1">Esta empresa sera agrupada sob a empresa selecionada.</p>
                 )}
                 {errors.parent_company_id && <span className={err}>{errors.parent_company_id}</span>}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2">
-                    <label className={label}>Serviço adicional</label>
-                    <input type="text" value={data.additional_service}
-                        onChange={e => setData('additional_service', e.target.value)}
-                        placeholder="Ex: Consultoria mensal, Treinamento..."
-                        className={cn(input, 'placeholder:text-white/20')} />
-                    {errors.additional_service && <span className={err}>{errors.additional_service}</span>}
-                </div>
-                <div>
-                    <label className={label}>Valor (R$/mês)</label>
-                    <input type="number" min="0" step="0.01" value={data.additional_service_price}
-                        onChange={e => setData('additional_service_price', e.target.value)}
-                        placeholder="0"
-                        className={cn(input, 'placeholder:text-white/20')} />
-                    {errors.additional_service_price && <span className={err}>{errors.additional_service_price}</span>}
-                </div>
-            </div>
+            <ContratosSection
+                empresa={empresa}
+                onAdicionar={onAdicionarContrato}
+                onEditar={onEditarContrato}
+                onDesativar={onDesativarContrato}
+            />
 
             <div className="flex items-center gap-2 pt-1">
-                <button type="submit" disabled={processing}
-                    className="bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[13px] h-9 px-4 rounded-lg transition-colors font-semibold">
-                    {processing ? 'Salvando...' : 'Salvar'}
+                <button
+                    type="submit"
+                    disabled={processing}
+                    className="bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[13px] h-9 px-4 rounded-lg transition-colors font-semibold"
+                >
+                    {processing ? 'Salvando...' : 'Salvar vinculos'}
                 </button>
-                <button type="button" onClick={onClose}
-                    className="text-white/40 hover:text-white/70 text-[13px] h-9 px-3 rounded-lg transition-colors">
+                <button
+                    type="button"
+                    onClick={onClose}
+                    className="text-white/40 hover:text-white/70 text-[13px] h-9 px-3 rounded-lg transition-colors"
+                >
                     Descartar
                 </button>
             </div>
@@ -279,7 +242,7 @@ function EmpresaForm({ empresa, allCompanies, onClose }) {
     );
 }
 
-function EmpresaList({ empresas, allCompanies }) {
+function EmpresaList({ empresas, allCompanies, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(null);
 
     return (
@@ -297,6 +260,9 @@ function EmpresaList({ empresas, allCompanies }) {
                                 empresa={empresa}
                                 allCompanies={allCompanies}
                                 onClose={() => setAberta(null)}
+                                onAdicionarContrato={onAdicionarContrato}
+                                onEditarContrato={onEditarContrato}
+                                onDesativarContrato={onDesativarContrato}
                             />
                         </div>
                     )}
@@ -306,15 +272,100 @@ function EmpresaList({ empresas, allCompanies }) {
     );
 }
 
-export default function Empresas({ companies }) {
+export default function Empresas({ companies, servicos_disponiveis = [] }) {
     const [busca, setBusca] = useState('');
+    const [servicoFiltro, setServicoFiltro] = useState('');
+    const [contratoModal, setContratoModal] = useState({ open: false, empresa: null, contrato: null });
+    const [contratoForm, setContratoForm] = useState({
+        servico_id: '',
+        valor_contratado: '',
+        data_contratacao: '',
+        data_vencimento: '',
+        observacoes: '',
+        ativo: true,
+    });
+    const [contratoErrors, setContratoErrors] = useState({});
+    const [contratoSalvando, setContratoSalvando] = useState(false);
 
-    const filtradas = busca.trim()
-        ? companies.filter(e => e.name.toLowerCase().includes(busca.toLowerCase()))
-        : companies;
+    const servicosNomes = [...new Set(
+        companies.flatMap(e => (e.servicos_contratados || []).map(s => s.servico_nome).filter(Boolean)),
+    )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+    const filtradas = companies.filter(e => {
+        const buscaOk = !busca.trim() || e.name.toLowerCase().includes(busca.toLowerCase());
+        const servicoOk = !servicoFiltro
+            || (e.servicos_contratados || []).some(s => s.servico_nome === servicoFiltro);
+        return buscaOk && servicoOk;
+    });
+
+    function abrirAdicionarContrato(empresa) {
+        setContratoModal({ open: true, empresa, contrato: null });
+        setContratoForm({
+            servico_id: '',
+            valor_contratado: '',
+            data_contratacao: new Date().toISOString().slice(0, 10),
+            data_vencimento: '',
+            observacoes: '',
+            ativo: true,
+        });
+        setContratoErrors({});
+    }
+
+    function abrirEditarContrato(empresa, contrato) {
+        setContratoModal({ open: true, empresa, contrato });
+        setContratoForm({
+            servico_id: String(contrato.servico_id ?? ''),
+            valor_contratado: contrato.valor_contratado ?? '',
+            data_contratacao: contrato.data_contratacao || '',
+            data_vencimento: contrato.data_vencimento || '',
+            observacoes: contrato.observacoes || '',
+            ativo: contrato.ativo !== false,
+        });
+        setContratoErrors({});
+    }
+
+    function fecharModalContrato() {
+        setContratoModal({ open: false, empresa: null, contrato: null });
+        setContratoErrors({});
+    }
+
+    function escolherServico(id) {
+        const servico = servicos_disponiveis.find(s => String(s.id) === String(id));
+        setContratoForm(prev => ({
+            ...prev,
+            servico_id: id,
+            valor_contratado: servico ? servico.valor_padrao : prev.valor_contratado,
+        }));
+    }
+
+    function salvarContrato(e) {
+        e.preventDefault();
+        if (!contratoModal.empresa) return;
+
+        const baseUrl = `/empresas/${contratoModal.empresa.id}/contratos-servico`;
+        const url = contratoModal.contrato ? `${baseUrl}/${contratoModal.contrato.id}` : baseUrl;
+        const method = contratoModal.contrato ? 'put' : 'post';
+
+        setContratoSalvando(true);
+        router[method](url, contratoForm, {
+            preserveScroll: true,
+            onSuccess: () => fecharModalContrato(),
+            onError: errors => setContratoErrors(errors || {}),
+            onFinish: () => setContratoSalvando(false),
+        });
+    }
+
+    function desativarContrato(empresa, contrato) {
+        const nome = contrato.servico_nome ?? 'servico';
+        if (!confirm(`Desativar contrato "${nome}"?`)) return;
+
+        router.delete(`/empresas/${empresa.id}/contratos-servico/${contrato.id}`, {
+            preserveScroll: true,
+        });
+    }
 
     return (
-        <AppLayout title="Empresas — Administrativo">
+        <AppLayout title="Empresas - Administrativo">
             <main className="p-6">
                 <div className="space-y-5">
                     <div className="flex items-start justify-between gap-4">
@@ -324,7 +375,7 @@ export default function Empresas({ companies }) {
                                 <h1 className="text-xl font-semibold font-display text-white">Empresas</h1>
                             </div>
                             <p className="text-[13px] text-white/40">
-                                Tipo de serviço, contrato e serviços adicionais. Dados usados no Fechamento.
+                                Contratos de servico e vinculos usados no Fechamento.
                             </p>
                         </div>
                         <span className="text-white/30 text-[12px] shrink-0 pt-1">
@@ -332,13 +383,28 @@ export default function Empresas({ companies }) {
                         </span>
                     </div>
 
-                    <input
-                        type="text"
-                        value={busca}
-                        onChange={e => setBusca(e.target.value)}
-                        placeholder="Buscar empresa..."
-                        className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
-                    />
+                    <div className="flex flex-wrap items-center gap-3">
+                        <input
+                            type="text"
+                            value={busca}
+                            onChange={e => setBusca(e.target.value)}
+                            placeholder="Buscar empresa..."
+                            className="h-9 flex-1 min-w-[220px] px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                        />
+                        <select
+                            value={servicoFiltro}
+                            onChange={e => setServicoFiltro(e.target.value)}
+                            className={cn(
+                                'h-9 min-w-[180px] px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] focus:outline-none focus:border-ecf-yellow/40',
+                                servicoFiltro ? 'text-white/80' : 'text-white/30',
+                            )}
+                        >
+                            <option value="">Todos os servicos</option>
+                            {servicosNomes.map(nome => (
+                                <option key={nome} value={nome}>{nome}</option>
+                            ))}
+                        </select>
+                    </div>
 
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
                         {filtradas.length === 0 ? (
@@ -347,11 +413,135 @@ export default function Empresas({ companies }) {
                                 <p className="text-[13px] text-white/40">Nenhuma empresa encontrada.</p>
                             </div>
                         ) : (
-                            <EmpresaList empresas={filtradas} allCompanies={companies} />
+                            <EmpresaList
+                                empresas={filtradas}
+                                allCompanies={companies}
+                                onAdicionarContrato={abrirAdicionarContrato}
+                                onEditarContrato={abrirEditarContrato}
+                                onDesativarContrato={desativarContrato}
+                            />
                         )}
                     </div>
                 </div>
             </main>
+
+            <Dialog open={contratoModal.open} onOpenChange={open => !open && fecharModalContrato()}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {contratoModal.contrato ? 'Editar' : 'Adicionar'} contrato
+                            {contratoModal.empresa && (
+                                <span className="text-white/40 font-normal"> - {contratoModal.empresa.name}</span>
+                            )}
+                        </DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={salvarContrato} className="space-y-4">
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">Servico *</label>
+                            {contratoModal.contrato ? (
+                                <input
+                                    value={contratoModal.contrato.servico_nome ?? '-'}
+                                    disabled
+                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white/60"
+                                />
+                            ) : (
+                                <select
+                                    value={contratoForm.servico_id}
+                                    onChange={e => escolherServico(e.target.value)}
+                                    required
+                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                                >
+                                    <option value="">Selecionar...</option>
+                                    {servicos_disponiveis.map(s => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.nome} - {s.tipo_cobranca === 'mensal' ? 'Mensal' : 'Unica'} - {fmtBRL(s.valor_padrao)}
+                                        </option>
+                                    ))}
+                                </select>
+                            )}
+                            {contratoErrors.servico_id && <p className="text-red-400 text-xs">{contratoErrors.servico_id}</p>}
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">Valor contratado (R$) *</label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={contratoForm.valor_contratado}
+                                onChange={e => setContratoForm(prev => ({ ...prev, valor_contratado: e.target.value }))}
+                                required
+                                className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                            />
+                            {contratoErrors.valor_contratado && <p className="text-red-400 text-xs">{contratoErrors.valor_contratado}</p>}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <label className="block text-xs text-white/60 font-medium">Contratacao *</label>
+                                <input
+                                    type="date"
+                                    value={contratoForm.data_contratacao}
+                                    onChange={e => setContratoForm(prev => ({ ...prev, data_contratacao: e.target.value }))}
+                                    required
+                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                                />
+                                {contratoErrors.data_contratacao && <p className="text-red-400 text-xs">{contratoErrors.data_contratacao}</p>}
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="block text-xs text-white/60 font-medium">Vencimento</label>
+                                <input
+                                    type="date"
+                                    value={contratoForm.data_vencimento || ''}
+                                    onChange={e => setContratoForm(prev => ({ ...prev, data_vencimento: e.target.value }))}
+                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                                />
+                                {contratoErrors.data_vencimento && <p className="text-red-400 text-xs">{contratoErrors.data_vencimento}</p>}
+                            </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">Observacoes</label>
+                            <textarea
+                                rows={2}
+                                value={contratoForm.observacoes}
+                                onChange={e => setContratoForm(prev => ({ ...prev, observacoes: e.target.value }))}
+                                className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white resize-none focus:border-ecf-yellow/40 focus:outline-none"
+                            />
+                            {contratoErrors.observacoes && <p className="text-red-400 text-xs">{contratoErrors.observacoes}</p>}
+                        </div>
+
+                        {contratoModal.contrato && (
+                            <label className="flex items-center gap-2 text-sm text-white/80">
+                                <input
+                                    type="checkbox"
+                                    checked={!!contratoForm.ativo}
+                                    onChange={e => setContratoForm(prev => ({ ...prev, ativo: e.target.checked }))}
+                                    className="h-4 w-4 accent-ecf-yellow"
+                                />
+                                Contrato ativo
+                            </label>
+                        )}
+
+                        <DialogFooter>
+                            <button
+                                type="button"
+                                onClick={fecharModalContrato}
+                                className="h-9 px-4 rounded-lg border border-white/[0.08] text-white/60 hover:text-white/90 text-[13px]"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={contratoSalvando}
+                                className="h-9 px-4 rounded-lg bg-ecf-yellow text-black font-semibold text-[13px] disabled:opacity-50"
+                            >
+                                {contratoSalvando ? 'Salvando...' : contratoModal.contrato ? 'Atualizar' : 'Adicionar'}
+                            </button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

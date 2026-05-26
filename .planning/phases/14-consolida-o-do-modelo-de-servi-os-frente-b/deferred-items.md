@@ -113,3 +113,33 @@ Tambem houve falhas ambientais no sandbox local: `storage/logs/laravel.log` sem 
 
 **Decisao:** nao reescrever essas suites dentro do commit de drop. A limpeza deve entrar no gate de regression pos-execucao ou quick task propria, convertendo testes de coexistencia em testes de schema pos-drop.
 
+## Plan 14-07 (descobertos em 2026-05-26)
+
+### Smoke visual das 5 telas pendente
+
+**Status:** `pending-human-uat`
+
+O cleanup final dos JSX foi validado por:
+
+```bash
+npm.cmd run build
+php artisan test --filter='Phase14FechamentoUiTest|Phase14BladeRefactorTest|Phase14MlbControllerFiltroTest'
+php artisan phase14:verificar-cobranca --abort-on-divergence
+rg -n "service_type|contract_type|contract_start|contract_end|additional_service|additional_service_price" resources/js/Pages
+```
+
+Resultados:
+- build Vite verde.
+- regressao focada 9 passed / 101 assertions.
+- verificador de cobranca com 0 divergencias em 0 empresas.
+- grep frontend sem matches.
+
+Nao foi feito smoke visual real no browser para:
+- `/administrativo/empresas`
+- `/comercial/empresas`
+- `/comercial/empresas/novo`
+- `/mlb/empresas`
+- `/companies`
+- `/administrativo/financeiro`
+
+**Decisao:** fechar Plan 14-07 com base nos gates automatizados e manter este UAT visual como debito operacional. Se algum erro visual/JS surgir no uso real, tratar como quick task de bug.

@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v4.0 — Fluxo Comercial
 
 - [x] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies (completed 2026-05-25)
-- [ ] **Phase 14: Consolidação do Modelo de Serviços (Frente B)** - Modelo unificado: campos legacy de companies (service_type/contract_start/contract_end/additional_service/additional_service_price) substituídos por contratos_servico N:N introduzido na quick task 260526-jgj; Fechamento, Comercial e demais consumidores migrados sem alterar resultados financeiros
+- [x] **Phase 14: Consolidação do Modelo de Serviços (Frente B)** - Modelo unificado: campos legacy de companies (service_type/contract_start/contract_end/additional_service/additional_service_price) substituídos por contratos_servico N:N introduzido na quick task 260526-jgj; Fechamento, Comercial e demais consumidores migrados sem alterar resultados financeiros (completed 2026-05-26)
 
 ## Phase Details
 
@@ -333,7 +333,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3; 14-06 e 14-07 sequenciais entre si)*
 - [x] 14-06-PLAN.md — Pre-flight `phase14:verificar-cobranca --abort-on-divergence` + Migration 3 aplicada localmente (drop 6 colunas, down recria TEXT) + cleanup backend (Company.php $fillable/$casts/logOnly, controllers/job/notification/comando) (SVC-06, SVC-04)
-- [ ] 14-07-PLAN.md — Cleanup dos 5 JSX consumers (Admin/Empresas, Comercial/Empresas, Mlb/Empresas, Companies/Index, Admin/Financeiro fragmentos) + smoke test humano fim-a-fim (SVC-04, SVC-06)
+- [x] 14-07-PLAN.md — Cleanup dos 5 JSX consumers (Admin/Empresas, Comercial/Empresas, Mlb/Empresas, Companies/Index, Admin/Financeiro fragmentos) + smoke test humano fim-a-fim deferido (SVC-04, SVC-06)
 
 Cross-cutting constraints:
 - `phase14:verificar-cobranca --abort-on-divergence` é gate obrigatório antes de Plan 14-06 (drop irreversível)
@@ -367,4 +367,4 @@ v4.0 phases execute in order: 13 → 14
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
-| 14. Consolidação do Modelo de Serviços | 6/7 | In Progress|  |
+| 14. Consolidação do Modelo de Serviços | 7/7 | Complete   | 2026-05-26 |

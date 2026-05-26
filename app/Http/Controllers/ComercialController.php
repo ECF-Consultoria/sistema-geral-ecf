@@ -82,14 +82,21 @@ class ComercialController extends Controller
             ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes']);
 
         $companies->transform(function ($c) {
-            $nomes = $c->contratosServico
+            $c->servicos_contratados = $c->contratosServico
                 ->where('ativo', true)
-                ->pluck('servico.nome')
-                ->filter()
-                ->values();
-
-            // servicos_contratados[] — lista nominal já no formato novo
-            $c->servicos_contratados = $nomes->toArray();
+                ->map(fn($ct) => [
+                    'id'               => $ct->id,
+                    'servico_id'       => $ct->servico_id,
+                    'servico_nome'     => $ct->servico?->nome,
+                    'valor_contratado' => (float) $ct->valor_contratado,
+                    'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
+                    'data_contratacao' => $ct->data_contratacao?->toDateString(),
+                    'data_vencimento'  => $ct->data_vencimento?->toDateString(),
+                    'observacoes'      => $ct->observacoes,
+                    'ativo'            => true,
+                ])
+                ->values()
+                ->toArray();
 
             return $c;
         });
