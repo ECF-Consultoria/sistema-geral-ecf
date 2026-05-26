@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
 status: executing
-stopped_at: "Phase 14 Plan 14-04 concluído — ComercialController.store() aceita servicos[] do catálogo; cria contratos N:N atomicamente; update() enxuto (apenas name/cnpj/notes); NovaEmpresa.jsx seletor multi dinâmico; 17 testes verdes (9 unit + 8 feature). Cadastro Comercial NÃO PRODUZ MAIS dados legacy. Próximo: Plan 14-05 (UI Financeiro + Blades)"
-last_updated: "2026-05-26T19:35:00.000Z"
-last_activity: 2026-05-26 -- Plan 14-04 executed (3 commits, 17 novos testes verdes, suíte Phase 14 combinada 38/38 / 149 assertions)
+stopped_at: "Phase 14 Plan 14-05 concluído — Admin/Financeiro.jsx substitui editor legacy por seção de contratos (modal URL crua); 3 Blade views usam $company->service_type_label (accessor); ServiceBadge prioriza servicos_contratados com fallback compat até 14-07; GraficoCobranca substitui GraficoContrato; 7 novos testes verdes (3 Blade + 4 Inertia, 70 assertions); UAT humano deferido como débito (12 itens de UX visual). Suíte Phase 14 combinada 28/28 (202 assertions). Próximo: Plan 14-06 (drop irreversível das 6 colunas legacy)"
+last_updated: "2026-05-26T20:00:00.000Z"
+last_activity: 2026-05-26 -- Plan 14-05 executed (4 commits, 7 novos testes verdes — 3 Blade + 4 Inertia, 70 assertions; UAT humano deferido como débito)
 progress:
   total_phases: 14
   completed_phases: 6
   total_plans: 19
-  completed_plans: 16
-  percent: 50
+  completed_plans: 17
+  percent: 53
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
-Plan: 5 of 7 (Plans 14-01, 14-02, 14-03 e 14-04 concluídos)
-Status: Plan 14-04 complete — ComercialController.store() valida servicos[] + cria contratos N:N atomicamente; update() valida APENAS name/cnpj/notes; NovaEmpresa.jsx usa seletor multi do catálogo. Cadastro Comercial NÃO PRODUZ MAIS dados legacy. Ready for Plan 14-05 (UI Financeiro + 3 Blade views).
-Last activity: 2026-05-26 -- Plan 14-04 executed (3 commits, 17 novos testes verdes — 9 unit + 8 feature, 47 assertions; suíte Phase 14 combinada 38/38)
+Plan: 6 of 7 (Plans 14-01, 14-02, 14-03, 14-04 e 14-05 concluídos)
+Status: Plan 14-05 complete — Admin/Financeiro.jsx substitui editor legacy por seção de contratos com modal Add/Edit/Desativar (URL crua); 3 Blade views (relatorio-fechamento, relatorio-geral, relatorio-geral-pdf) usam `$company->service_type_label` (accessor); ServiceBadge prioriza `servicos_contratados`; GraficoCobranca substitui GraficoContrato; FechamentoRow exibe contagem de contratos. UI Fechamento + Blades NÃO LEEM MAIS campos legacy no caminho principal. UAT humano deferido como débito (12 itens em deferred-items.md). Ready for Plan 14-06 (drop irreversível das 6 colunas legacy).
+Last activity: 2026-05-26 -- Plan 14-05 executed (4 commits, 7 novos testes verdes — 3 Blade + 4 Inertia, 70 assertions; suíte Phase 14 combinada 28/28 / 202 assertions)
 
 ## Performance Metrics
 
@@ -61,6 +61,7 @@ Last activity: 2026-05-26 -- Plan 14-04 executed (3 commits, 17 novos testes ver
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P02 | 4 | 3 tasks | 3 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P03 | 10 | 3 tasks | 9 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P04 | 8 | 3 tasks | 6 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P05 | 17 | 4 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,18 @@ Last activity: 2026-05-26 -- Plan 14-04 executed (3 commits, 17 novos testes ver
 - **Testes usam `viewData('page')['props']`** + `assertEqualsWithDelta` para evitar falsos negativos por serialização JSON `4700.0` → `4700`
 - **Falhas pré-existentes em `AdminFechamentoControllerTest` (5 testes)** documentadas em `deferred-items.md` — fora de escopo do plan (SCOPE BOUNDARY do executor)
 
+### Decisões do Plan 14-05 (registradas)
+
+- **URL crua nas chamadas Inertia (router.post/put/delete)** em vez de `route('empresas.contratos.store', ...)` — evita acoplamento ao Ziggy/route helper; se nome nomeado mudar, JSX não quebra silenciosamente. Decisão pre-flight Task 0.
+- **Accessor `service_type_label` (snake_case) em vez de método `serviceTypeLabel()`** — Plan 14-03 implementou como accessor Eloquent (`getServiceTypeLabelAttribute`), na Blade lê como `$company->service_type_label`. Fix (Rule 1 - Bug) aplicado nas 3 Blade views durante Task 3.
+- **ServiceBadge fallback legacy mantido (compat até Plan 14-07)** — prioriza `servicos_contratados`, cai em `tipo` legacy se ausente. Preserva renderização durante transição em produção. Removido no cleanup final do Plan 14-07.
+- **GraficoContrato substituído por GraficoCobranca** — antigo agrupava por `contract_type` (fixo/progressão — colunas a serem dropadas no Plan 14-06); novo agrupa por `tipo_cobranca` (mensal/única — campo de `contratos_servico`). Alinhamento com catálogo.
+- **FechamentoRow exibe 'N contratos ativos'** em vez de range `contract_start/end` — datas individuais moram em cada contrato (visíveis no modal Edit).
+- **AdminController::fechamento passa `servicos_disponiveis`** (catálogo ativo via `Servico::where('ativo', true)`) — alimenta o select do modal Add sem fetch separado.
+- **Modal usa `Dialog` do shadcn/ui** (mesmo de `Companies/Show.jsx`) — consistência visual e UX.
+- **UAT humano (Task 5) deferido como débito em `deferred-items.md`** — usuário decidiu pular checkpoint visual baseado nos 28/28 testes automatizados verdes + 202 assertions na suíte combinada Phase 14. 12 itens de verificação visual listados para próxima sessão de uso real. NÃO bloqueia Plan 14-06 (gate depende do `phase14:verificar-cobranca`, não da UI).
+- **5 JSX consumers restantes lendo legacy** (Admin/Empresas, Comercial/Empresas, Mlb/Empresas, Companies/Index, fallback do ServiceBadge em Admin/Financeiro) — cleanup no Plan 14-07.
+
 ### Decisões do Plan 14-04 (registradas)
 
 - **Helper `servicoDisparaImplementacao` PUBLIC STATIC** (não privado) — permite chamada via `self::` dentro do `store()` E testes diretos sem instanciar controller
@@ -157,7 +170,7 @@ None.
 
 ### Blockers/Concerns
 
-(nenhum — Plan 14-04 entregou refator do ComercialController + NovaEmpresa.jsx + 17 testes verdes; cadastro Comercial não produz mais dados legacy. Pronto para Plan 14-05 — UI Financeiro + 3 Blade views)
+(nenhum — Plan 14-05 entregou UI Fechamento refatorada + 3 Blade views + 7 testes verdes. UI Fechamento + Blades NÃO LEEM MAIS campos legacy no caminho principal. UAT humano deferido como débito em deferred-items.md — 12 itens de UX visual pendentes; não bloqueia Plan 14-06. Pronto para Plan 14-06 — drop irreversível das 6 colunas legacy)
 
 ### Quick Tasks Completed
 
@@ -177,8 +190,12 @@ None.
 | Fechamento | FCH-08 lógica adicional | v2.1+ | 2026-05-19 |
 | Histórico | HIST-01: histórico paginado por empresa | v2.1+ | 2026-05-18 |
 | Histórico | HIST-02: exportar logs de sync para CSV | v2.1+ | 2026-05-18 |
+| Phase 14 | UAT humano Plan 14-05 (12 itens UX visual Fechamento) | pending-human-uat | 2026-05-26 |
+| Phase 14 | `phase14:verificar-cobranca` no host (gate Plan 14-06) | pending-host-run | 2026-05-26 |
+| Phase 14 | `Phase13ComercialTest` obsoleta (cobertura em Phase14ComercialTest) | port/deletion | 2026-05-26 |
+| Phase 14 | `AdminFechamentoControllerTest` 5 testes falhando pré-existentes | quick task | 2026-05-26 |
 
 ## Session Continuity
 
-Last session: 2026-05-26T19:35:00Z
-Stopped at: Phase 14 Plan 14-04 concluído — ComercialController refatorado: helper estático `servicoDisparaImplementacao()`, novo `create()`, `store()` aceita `servicos[]` (catálogo) + cria contratos N:N atomicamente, `update()` valida APENAS name/cnpj/notes (legacy ignorado), `empresas()` reconstrói `service_type[]` compat. NovaEmpresa.jsx: seletor multi do catálogo + valor por contrato. 17 novos testes verdes (9 unit + 8 feature) — suíte Phase 14 combinada 38/38 (149 assertions). Cadastro Comercial NÃO PRODUZ MAIS dados legacy. Próximo: Plan 14-05 (UI Financeiro + 3 Blade views + Admin/Financeiro.jsx).
+Last session: 2026-05-26T20:00:00Z
+Stopped at: Phase 14 Plan 14-05 concluído — `Admin/Financeiro.jsx` (+440/-196): editor inline legacy (service_type enum + additional_service texto livre + additional_service_price) substituído por `ContratosSection` com tabela + Modal Add/Edit/Desativar (URL crua `/empresas/{id}/contratos-servico[/{id}]`); ServiceBadge prioriza `servicos_contratados` com fallback legacy; GraficoServico (catálogo) + GraficoCobranca (mensal/única) substituem GraficoContrato; FiltroBarra dropdown 'Serviço' dinâmico; FechamentoRow exibe 'N contratos ativos'. 3 Blade views (`relatorio-fechamento`, `relatorio-geral`, `relatorio-geral-pdf`) usam `$company->service_type_label` (accessor) + `$v['servicos_contratados']`. AdminController passa `servicos_disponiveis`. 7 novos testes verdes — `Phase14BladeRefactorTest` (3/12) + `Phase14FechamentoUiTest` (4/58). Suíte Phase 14 combinada 28/28 (202 assertions). Rule 1 - Bug: fix accessor `service_type_label` (forma `serviceTypeLabel()` do PLAN era incorreta). UAT humano (Task 5) deferido como débito em `deferred-items.md` — 12 itens visuais para próxima sessão. Próximo: Plan 14-06 (drop irreversível das 6 colunas legacy + cleanup backend).
