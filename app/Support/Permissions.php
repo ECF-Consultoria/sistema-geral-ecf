@@ -63,6 +63,8 @@ class Permissions
     public const SISTEMA_ACTIVITY_LOG      = 'sistema.activity_log';
     public const SISTEMA_DESENVOLVIMENTO   = 'sistema.desenvolvimento';
     public const SISTEMA_SETORES           = 'sistema.setores';
+    /** Catálogo de serviços e contratos por empresa (Módulo Serviços — Frente A). */
+    public const SISTEMA_SERVICOS          = 'sistema.servicos';
 
     /** Criar notificações manuais (admin sempre tem; líderes ganham via AUTO_LIDERANCA). */
     public const NOTIFICACOES_CRIAR        = 'notificacoes.criar';
@@ -134,6 +136,7 @@ class Permissions
                 ['key' => self::SISTEMA_ACTIVITY_LOG,    'label' => 'Activity Log',      'description' => 'Log de ações dos usuários'],
                 ['key' => self::SISTEMA_DESENVOLVIMENTO, 'label' => 'Desenvolvimento',   'description' => 'Área interna de devs'],
                 ['key' => self::SISTEMA_SETORES,         'label' => 'Setores',           'description' => 'Configuração de setores, cargos e permissões'],
+                ['key' => self::SISTEMA_SERVICOS,        'label' => 'Serviços',          'description' => 'Catálogo de serviços e contratos por empresa'],
             ],
             'Notificações' => [
                 ['key' => self::NOTIFICACOES_CRIAR, 'label' => 'Criar notificações', 'description' => 'Envia notificações manuais para usuários, setores, líderes ou todos'],
