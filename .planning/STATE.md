@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
 status: executing
-stopped_at: "Phase 14 Plan 14-02 concluído — migrations seed (6 servicos canônicos) + data legacy (contratos derivados) + 5/5 testes Phase14MigrationTest verdes. Sistema em COEXISTÊNCIA. Próximo: Plan 14-03 (refator dos consumers PHP)"
-last_updated: "2026-05-26T19:03:27.417Z"
-last_activity: 2026-05-26 -- Plan 14-02 executed (3 commits, 5/5 tests passed, 46 assertions)
+stopped_at: "Phase 14 Plan 14-03 concluído — 5 sites de cálculo via CobrancaCalculator::novo, filtros whereHas, Notification/Job consomem contratos, 5/5 testes verdes (21/21 Phase 14 combined). Runtime PHP NÃO LÊ MAIS legacy em CÁLCULOS. Próximo: Plan 14-04 (ComercialController)"
+last_updated: "2026-05-26T19:30:00.000Z"
+last_activity: 2026-05-26 -- Plan 14-03 executed (3 commits, 21/21 Phase 14 tests passed, 102 assertions)
 progress:
   total_phases: 14
   completed_phases: 6
   total_plans: 19
-  completed_plans: 14
-  percent: 43
+  completed_plans: 15
+  percent: 47
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
-Plan: 3 of 7 (Plans 14-01 e 14-02 concluídos)
-Status: Plan 14-02 complete — sistema em COEXISTÊNCIA (campos legacy populados E contratos_servico populados). Ready for Plan 14-03 (refator dos consumers PHP).
-Last activity: 2026-05-26 -- Plan 14-02 executed (3 commits, 5/5 tests passed, 46 assertions)
+Plan: 4 of 7 (Plans 14-01, 14-02 e 14-03 concluídos)
+Status: Plan 14-03 complete — runtime PHP não lê mais campos legacy em CÁLCULOS; mappers Inertia em COEXISTÊNCIA (legacy + servicos_contratados). Ready for Plan 14-04 (ComercialController + form NovaEmpresa.jsx).
+Last activity: 2026-05-26 -- Plan 14-03 executed (3 commits, 21/21 Phase 14 tests passed, 102 assertions)
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Last activity: 2026-05-26 -- Plan 14-02 executed (3 commits, 5/5 tests passed, 4
 | Phase 13-reestruturacao-cadastro-empresas P03 | 7min | 2 tasks | 6 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P01 | 5min | 2 tasks | 4 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P02 | 4 | 3 tasks | 3 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P03 | 10 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -114,6 +115,18 @@ Last activity: 2026-05-26 -- Plan 14-02 executed (3 commits, 5/5 tests passed, 4
 - Testes do helper usam `assertEqualsWithDelta(esperado, atual, 0.001)` para comparações de float (não `assertEquals`)
 - Tolerância de R$ 0,01 em comparações decimais no comando (`abs($legacy - $novo) > 0.01`) — evita falsos positivos de arredondamento
 
+### Decisões do Plan 14-03 (registradas)
+
+- **5 chamadas reais de `CobrancaCalculator::novo`** em `AdminController` (não 3 — cada um dos 3 sites tem variações pai/filha): `fechamento()` 1×, `gerarRelatorio()` pai+filhas 2×, `gerarRelatorioGeral()` pai+filhas 2×
+- **`?: null` no caller preserva semântica legacy** "null quando vazio" — helper sempre retorna float; caller decide
+- **Chaves legacy permanecem nos mappers Inertia** ao lado de `servicos_contratados` (estratégia de COEXISTÊNCIA Wave 2 — removidas só no Plan 14-06)
+- **`labelFromTypes()` mantido como `@deprecated` proxy** — evita quebrar as 6 chamadas em 3 Blade views (refator no Plan 14-05)
+- **`EmpresaCadastradaNotification` aceita `string|array` via union type** — backward compat com 1 caller em `ComercialController` que ainda passa string (refator no Plan 14-04); explode('+') no path string
+- **Filtro slug→nome em `gerarRelatorioGeral`:** request continua aceitando o slug legacy; lookup interno mapeia para `nome` do catálogo antes do `whereHas`
+- **Job payload formato string** `"Nome (R$ X,XX), Outro (R$ Y,YY)"` em vez de array — facilita consumo no email-template Blade
+- **Testes usam `viewData('page')['props']`** + `assertEqualsWithDelta` para evitar falsos negativos por serialização JSON `4700.0` → `4700`
+- **Falhas pré-existentes em `AdminFechamentoControllerTest` (5 testes)** documentadas em `deferred-items.md` — fora de escopo do plan (SCOPE BOUNDARY do executor)
+
 ### Decisões do Plan 14-02 (registradas)
 
 - `firstOrCreate` (não `updateOrCreate`) no catálogo `servicos` — preserva ajustes manuais de `valor_padrao` feitos via UI `/servicos` em re-runs da migration
@@ -131,7 +144,7 @@ None.
 
 ### Blockers/Concerns
 
-(nenhum — Plan 14-02 entregou migrations + suíte de testes; pronto para Plan 14-03 — refator dos consumers PHP)
+(nenhum — Plan 14-03 entregou refator dos 6 consumers PHP + 5 testes verdes; pronto para Plan 14-04 — ComercialController + NovaEmpresa.jsx)
 
 ### Quick Tasks Completed
 
@@ -154,5 +167,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-26T19:01:32Z
-Stopped at: Phase 14 Plan 14-02 concluído — migrations seed_servicos_catalog + migrate_legacy_service_data idempotentes + 5/5 testes Phase14MigrationTest verdes (46 assertions). Sistema em COEXISTÊNCIA. Próximo: Plan 14-03 (refator dos consumers PHP — Company, AdminController×3 sites, MlbController, CompanyController, EmpresaCadastradaNotification, EnviarRelatorioFechamentoJob)
+Last session: 2026-05-26T19:30:00Z
+Stopped at: Phase 14 Plan 14-03 concluído — 6 consumers PHP refatorados (Company.labelFromServicos, AdminController via CobrancaCalculator::novo, Mlb/CompanyController via whereHas, Notification string|array, Job payload servicos_contratados) + 5/5 testes novos verdes (3+2). Suíte combinada Phase 14: 21/21 verdes (102 assertions). Runtime PHP NÃO LÊ MAIS campos legacy em CÁLCULOS — apenas mapper Inertia (coexistência Wave 2) e validation rules dormentes (TODO Plan 14-06). Próximo: Plan 14-04 (ComercialController + NovaEmpresa.jsx).

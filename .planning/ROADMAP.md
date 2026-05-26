@@ -325,7 +325,7 @@ Plans:
 - [x] 14-02-PLAN.md — Migrations 1 (seed_servicos_catalog) + 2 (migrate_legacy_service_data) idempotentes + testes (SVC-01)
 
 **Wave 2** *(blocked on Wave 1 — paralelizável internamente entre 14-03 e 14-04)*
-- [ ] 14-03-PLAN.md — Refator de 6 consumers PHP (Company, AdminController×3 sites, MlbController, CompanyController, EmpresaCadastradaNotification, EnviarRelatorioFechamentoJob) + 2 suítes (golden cobranca + filtro JOIN) (SVC-02, SVC-04, SVC-07)
+- [x] 14-03-PLAN.md — Refator de 6 consumers PHP (Company, AdminController×3 sites, MlbController, CompanyController, EmpresaCadastradaNotification, EnviarRelatorioFechamentoJob) + 2 suítes (golden cobranca + filtro JOIN) (SVC-02, SVC-04, SVC-07)
 - [ ] 14-04-PLAN.md — ComercialController.store reescrito + NovaEmpresa.jsx seletor multi + helper servicoDisparaImplementacao + 2 suítes (helper + roteamento Phase 13 preservado) (SVC-05)
 
 **Wave 3** *(blocked on Wave 2)*
