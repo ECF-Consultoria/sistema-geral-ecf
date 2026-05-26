@@ -161,6 +161,17 @@ class Company extends Model
         return $this->hasMany(Sugador::class);
     }
 
+    /**
+     * Contratos de serviço da empresa (Módulo Serviços — Frente A).
+     *
+     * Coexiste com os campos legacy (service_type, contract_start/end,
+     * additional_service*) — Frente B fará a migração de dados.
+     */
+    public function contratosServico()
+    {
+        return $this->hasMany(ContratoServico::class);
+    }
+
     public function getActiveGrantAttribute(): ?CompanyGrant
     {
         return $this->grants()->where('status', 'active')->first();

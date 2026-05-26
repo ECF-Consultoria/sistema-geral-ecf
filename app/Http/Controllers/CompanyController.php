@@ -2,78 +2,37 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\ContratoServico;
+use App\Models\Servico;
 use App\Models\User;
 use App\Services\AdmanService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class CompanyController extends Controller
 {
     public function __construct(private AdmanService $adman) {}
 
+    /**
+     * Listagem de empresas (admin).
+     *
+     * Frente A do Módulo Serviços: a UI antiga exibia TACOS e Faturamento (30d)
+     * com cache híbrido contra a Adman; ambas foram REMOVIDAS — a lista agora
+     * mostra "Serviço" (badges dos contratos ativos). A lógica de cache foi
+     * removida junto pra não deixar código órfão / não despachar jobs sem uso.
+     */
     public function index()
     {
-        $companies = Company::with(['consultor', 'estrategista', 'latestMetrics'])
+        $companies = Company::with([
+                'consultor',
+                'estrategista',
+                // Contratos ATIVOS com servico embedado — alimenta a coluna "Serviço"
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            ])
             ->orderBy('name')
             ->get();
-
-        // Faturamento 30d — estratégia híbrida cache+fallback:
-        //  - Cache pre-aquecido pelo RefreshGrossBillingCacheJob (cron 30min)
-        //    contém o grossBilling EXATO da Adman.
-        //  - Se cache miss (após restart de cache), fallback é SUM(adman_metrics)
-        //    e dispara o job pra preencher cache.
-        // Chamada síncrona à Adman aqui estouraria memory_limit (N empresas × items[]).
-        $dateFrom = now()->subDays(30)->toDateString();
-        $dateTo   = now()->toDateString();
-
-        $sumDb = AdmanMetric::query()
-            ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', $dateFrom)
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
-
-        // Batch read: 2 Cache::many round-trips (gross + account_metrics).
-        $custIds = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
-        $grossBatch   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
-        $accountBatch = $this->adman->getCachedAccountMetricsMany($custIds, $dateFrom, $dateTo);
-
-        $revenue30d   = [];
-        $acos30d      = [];
-        $tacos30d     = [];
-        $margin30d    = [];
-        $missingCache = false;
-        foreach ($companies as $c) {
-            if (!$c->adman_account_id) {
-                $revenue30d[$c->id] = 0.0;
-                continue;
-            }
-            // Faturamento bruto (grossBilling)
-            $entry = $grossBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
-            if ($entry['value'] !== null) {
-                $revenue30d[$c->id] = $entry['value'];
-            } else {
-                $revenue30d[$c->id] = (float) ($sumDb[$c->id] ?? 0);
-                if (!$entry['hasEntry']) $missingCache = true;
-            }
-
-            // ACOS, TACOS, margem (do /accounts/metrics)
-            $accEntry = $accountBatch[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
-            if ($accEntry['value'] !== null) {
-                $acos30d[$c->id]   = $accEntry['value']['acos']              ?? null;
-                $tacos30d[$c->id]  = $accEntry['value']['tacos']             ?? null;
-                $margin30d[$c->id] = $accEntry['value']['percentage_margin'] ?? null;
-            } elseif (!$accEntry['hasEntry']) {
-                $missingCache = true;
-            }
-        }
-
-        if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
-        }
 
         $companies = $companies->map(fn($c) => [
                 'id'               => $c->id,
@@ -87,13 +46,19 @@ class CompanyController extends Controller
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
                 'consultor'        => $c->consultor->first()?->only(['id', 'name']),
-                'estrategista'           => $c->estrategista->first()?->only(['id', 'name']),
-                // ACOS, TACOS, margem vêm do cache /accounts/metrics da Adman
-                // (range 30d); fallback latestMetrics (1 dia) só se cache cold.
-                'tacos'            => $tacos30d[$c->id]  ?? $c->latestMetrics?->tacos,
-                'acos'             => $acos30d[$c->id]   ?? null,
-                'margin_pct'       => $margin30d[$c->id] ?? $c->latestMetrics?->contribution_margin_pct,
-                'revenue_30d'      => (float) ($revenue30d[$c->id] ?? 0),
+                'estrategista'     => $c->estrategista->first()?->only(['id', 'name']),
+                // Contratos ativos: payload mínimo para a coluna Serviço (badges + tooltip)
+                'contratos_servico' => $c->contratosServico->map(fn($ct) => [
+                    'id'               => $ct->id,
+                    'valor_contratado' => (float) $ct->valor_contratado,
+                    'data_contratacao' => optional($ct->data_contratacao)->toDateString(),
+                    'data_vencimento'  => optional($ct->data_vencimento)?->toDateString(),
+                    'servico'          => $ct->servico ? [
+                        'id'            => $ct->servico->id,
+                        'nome'          => $ct->servico->nome,
+                        'tipo_cobranca' => $ct->servico->tipo_cobranca,
+                    ] : null,
+                ])->values(),
             ]);
 
         $users = User::where('active', true)
@@ -110,7 +75,7 @@ class CompanyController extends Controller
         $cargoEstrategistaId = \App\Models\Cargo::where('slug', 'estrategista')->value('id');
         $estrategistas = $cargoEstrategistaId
             ? User::where('active', true)
-                ->whereIn('id', \DB::table('user_setores')->where('cargo_id', $cargoEstrategistaId)->pluck('user_id'))
+                ->whereIn('id', DB::table('user_setores')->where('cargo_id', $cargoEstrategistaId)->pluck('user_id'))
                 ->get(['id', 'name'])
                 ->values()
             : collect();
@@ -141,6 +106,8 @@ class CompanyController extends Controller
             'meetings' => fn($q) => $q->orderBy('scheduled_at', 'desc')->limit(10),
             'npsSurveys' => fn($q) => $q->where('status', 'completed')->with('response')->orderBy('completed_at', 'desc')->limit(10),
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(30),
+            // Contratos (ativos + inativos) com servico embedado — UI filtra na renderização
+            'contratosServico' => fn($q) => $q->orderBy('ativo', 'desc')->orderBy('data_contratacao', 'desc')->with('servico'),
         ]);
 
         // Faturamento bruto + ACOS/TACOS/margem dos últimos 30 dias —
@@ -173,6 +140,11 @@ class CompanyController extends Controller
             }
         }
 
+        // Catálogo de serviços ativos para popular o <Select> do modal "Adicionar contrato"
+        $servicosDisponiveis = Servico::active()
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
         return Inertia::render('Companies/Show', [
             'company' => [
                 'id'               => $company->id,
@@ -191,7 +163,7 @@ class CompanyController extends Controller
                 'liquid_margin_30d'=> $liquidMargin30d,
                 'ad_investment_30d'=> $adInvestment30d,
                 'consultor'        => $company->consultor->map->only(['id', 'name'])->values(),
-                'estrategista'           => $company->estrategista->map->only(['id', 'name'])->values(),
+                'estrategista'     => $company->estrategista->map->only(['id', 'name'])->values(),
                 'goals'            => $company->goals->map(fn($g) => [
                     'id' => $g->id, 'metric' => $g->metric, 'metric_label' => $g->metric_label,
                     'target_value' => $g->target_value, 'active' => $g->active,
@@ -226,7 +198,23 @@ class CompanyController extends Controller
                     'revenue' => $m->revenue, 'investment' => $m->investment,
                     'tacos' => $m->tacos, 'contribution_margin_pct' => $m->contribution_margin_pct,
                 ])->values(),
+                // Contratos de serviço (ativos + inativos) — UI filtra "Mostrar inativos"
+                'contratos_servico' => $company->contratosServico->map(fn($ct) => [
+                    'id'               => $ct->id,
+                    'valor_contratado' => (float) $ct->valor_contratado,
+                    'data_contratacao' => optional($ct->data_contratacao)->toDateString(),
+                    'data_vencimento'  => optional($ct->data_vencimento)?->toDateString(),
+                    'ativo'            => (bool) $ct->ativo,
+                    'observacoes'      => $ct->observacoes,
+                    'servico'          => $ct->servico ? [
+                        'id'            => $ct->servico->id,
+                        'nome'          => $ct->servico->nome,
+                        'valor_padrao'  => (float) $ct->servico->valor_padrao,
+                        'tipo_cobranca' => $ct->servico->tipo_cobranca,
+                    ] : null,
+                ])->values(),
             ],
+            'servicos_disponiveis' => $servicosDisponiveis,
         ]);
     }
 
@@ -298,5 +286,63 @@ class CompanyController extends Controller
         $company->delete();
         return back()->with('success', "Empresa {$name} excluída.");
     }
-}
 
+    // ─── Contratos de Serviço (Módulo Serviços — Frente A) ──────────────────
+
+    /**
+     * Cria contrato de serviço para a empresa.
+     */
+    public function storeContrato(Request $request, Company $company)
+    {
+        $data = $request->validate([
+            'servico_id'       => 'required|exists:servicos,id',
+            'valor_contratado' => 'required|numeric|min:0',
+            'data_contratacao' => 'required|date',
+            'data_vencimento'  => 'nullable|date|after_or_equal:data_contratacao',
+            'observacoes'      => 'nullable|string|max:1000',
+        ]);
+
+        $company->contratosServico()->create([
+            'servico_id'       => $data['servico_id'],
+            'valor_contratado' => $data['valor_contratado'],
+            'data_contratacao' => $data['data_contratacao'],
+            'data_vencimento'  => $data['data_vencimento'] ?? null,
+            'observacoes'      => $data['observacoes'] ?? null,
+            'ativo'            => true,
+        ]);
+
+        return back()->with('success', 'Contrato adicionado.');
+    }
+
+    /**
+     * Atualiza contrato existente (apenas se pertencer à empresa da URL).
+     */
+    public function updateContrato(Request $request, Company $company, ContratoServico $contrato)
+    {
+        abort_if($contrato->company_id !== $company->id, 404);
+
+        $data = $request->validate([
+            'valor_contratado' => 'required|numeric|min:0',
+            'data_contratacao' => 'required|date',
+            'data_vencimento'  => 'nullable|date|after_or_equal:data_contratacao',
+            'ativo'            => 'boolean',
+            'observacoes'      => 'nullable|string|max:1000',
+        ]);
+
+        $contrato->update($data);
+
+        return back()->with('success', 'Contrato atualizado.');
+    }
+
+    /**
+     * Desativa contrato (soft-deactivate via ativo=false — preserva histórico).
+     */
+    public function destroyContrato(Company $company, ContratoServico $contrato)
+    {
+        abort_if($contrato->company_id !== $company->id, 404);
+
+        $contrato->update(['ativo' => false]);
+
+        return back()->with('success', 'Contrato desativado.');
+    }
+}
