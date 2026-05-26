@@ -375,14 +375,12 @@
                     {{-- Phase 14: labelFromTypes(legacy) → serviceTypeLabel(derivado de contratos) — D-09 --}}
                     <span>{{ $company->service_type_label }}</span>
                 </div>
-                <div class="field">
-                    <label>Tipo de contrato</label>
-                    <span>{{ match($company->contract_type ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Escala de Progressão', default => '—' } }}</span>
-                </div>
-                <div class="field">
-                    <label>Vigência</label>
-                    <span>{{ $company->contract_start ? $company->contract_start->format('d/m/Y') . ($company->contract_end ? ' – ' . $company->contract_end->format('d/m/Y') : '') : '—' }}</span>
-                </div>
+                {{-- Phase 14 (Frente B): blocos "Tipo de contrato" e "Vigência" removidos.
+                     As colunas legacy contract_type / contract_start / contract_end foram
+                     dropadas no Plan 14-06. Cada contrato individual carrega sua própria
+                     data_vencimento via contratos_servico. Para preservar o slot 3-col
+                     do grid, exibimos os contratos ativos do pai aqui via service_type_label
+                     (já listado acima). --}}
             </div>
         </div>
 
@@ -409,10 +407,10 @@
                             <td>@if ($r['faturamento'] !== null) {{ 'R$ '.number_format($r['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
                             <td>@if ($r['faixa_label']) <span class="faixa-badge">{{ $r['faixa_label'] }}</span> @else — @endif</td>
                             <td class="right">
-                                @if ($r['valor_mensal'])R$ {{ number_format($r['valor_mensal'],0,',','.') }}@else —@endif
-                                @if ($company->additional_service_price)
-                                    <br><span style="font-size:10px;color:#888">+ R$ {{ number_format($company->additional_service_price,0,',','.') }} ({{ $company->additional_service ?: 'adicional' }})</span>
-                                @endif
+                                {{-- Phase 14 (Frente B): cobranca_mensal agrega faixa + contratos ativos
+                                     mensais (CobrancaCalculator::novo). Bloco legacy de
+                                     additional_service / additional_service_price removido. --}}
+                                @if (!empty($r['cobranca_mensal']))R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}@else —@endif
                             </td>
                         </tr>
                         @foreach ($r['vinculadas'] as $v)
@@ -424,10 +422,8 @@
                             <td>@if ($v['faturamento'] !== null) {{ 'R$ '.number_format($v['faturamento'],0,',','.') }} @else <span class="sem-dados">Sem dados</span> @endif</td>
                             <td>@if ($v['faixa_label']) <span class="faixa-badge">{{ $v['faixa_label'] }}</span> @else — @endif</td>
                             <td class="right">
-                                @if ($v['valor_mensal'])R$ {{ number_format($v['valor_mensal'],0,',','.') }}@else —@endif
-                                @if (!empty($v['additional_service_price']))
-                                    <br><span style="font-size:10px;color:#888">+ R$ {{ number_format($v['additional_service_price'],0,',','.') }} ({{ $v['additional_service'] ?: 'adicional' }})</span>
-                                @endif
+                                {{-- Phase 14 (Frente B): cobranca_mensal já agrega faixa + contratos da filha. --}}
+                                @if (!empty($v['cobranca_mensal']))R$ {{ number_format($v['cobranca_mensal'],0,',','.') }}@else —@endif
                             </td>
                         </tr>
                         @endforeach
@@ -456,26 +452,13 @@
                     </tbody>
                 </table>
                 @if ($r['cobranca_mensal'])
+                {{-- Phase 14 (Frente B): box simplificado. A decomposição "faixa + adicional"
+                     foi removida porque os componentes não vivem mais em colunas distintas
+                     no schema (Plan 14-06). cobranca_mensal já agrega faixa + soma dos
+                     contratos ativos mensais via CobrancaCalculator::novo. --}}
                 <div class="total-box">
-                    @if ($company->additional_service_price && $r['valor_mensal'])
-                        <div style="display:flex;flex-direction:column;gap:4px;width:100%">
-                            <div style="display:flex;justify-content:space-between;font-size:12px;color:#555">
-                                <span>{{ match($company->contract_type ?? '') { 'progressao' => 'Mensalidade (Progressão)', default => 'Mensalidade (Fixo)' } }}</span>
-                                <span>R$ {{ number_format($r['valor_mensal'],0,',','.') }}</span>
-                            </div>
-                            <div style="display:flex;justify-content:space-between;font-size:12px;color:#555">
-                                <span>{{ $company->additional_service ?: 'Serviço adicional' }}</span>
-                                <span>R$ {{ number_format($company->additional_service_price,0,',','.') }}</span>
-                            </div>
-                            <div style="border-top:1px solid #ddd;margin-top:4px;padding-top:6px;display:flex;justify-content:space-between;align-items:center">
-                                <span class="label">Total a cobrar</span>
-                                <span class="value">R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}</span>
-                            </div>
-                        </div>
-                    @else
-                        <span class="label">Mensalidade a cobrar</span>
-                        <span class="value">R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}</span>
-                    @endif
+                    <span class="label">Mensalidade a cobrar</span>
+                    <span class="value">R$ {{ number_format($r['cobranca_mensal'],0,',','.') }}</span>
                 </div>
                 @endif
             @else
@@ -487,6 +470,9 @@
         @if (count($r['vinculadas']) > 0)
         <div class="section">
             <div class="section-title">Detalhes das empresas vinculadas</div>
+            {{-- Phase 14 (Frente B): colunas "Contrato" e "Vigência" removidas — eram
+                 derivadas de contract_type/contract_start/contract_end (colunas dropadas).
+                 Linha extra de "additional_service" também removida — info já em "Serviço". --}}
             <table class="details-table">
                 <thead>
                     <tr>
@@ -494,8 +480,6 @@
                         <th>CNPJ</th>
                         <th>Adman ID</th>
                         <th>Serviço</th>
-                        <th>Contrato</th>
-                        <th>Vigência</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -506,20 +490,16 @@
                         <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>{{-- adman_account_id já é ml_store_id ?: adman_account_id via AdminController --}}
                         {{-- Phase 14: service_type (legacy) → servicos_contratados (string formatada pelo AdminController) --}}
                         <td>{{ $v['servicos_contratados'] ?? '—' }}</td>
-                        <td>{{ match($v['contract_type'] ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Progressão', default => '—' } }}</td>
-                        <td class="label-mono">{{ !empty($v['contract_start']) ? $v['contract_start'] . (!empty($v['contract_end']) ? ' – ' . $v['contract_end'] : '') : '—' }}</td>
                     </tr>
-                    @if (!empty($v['adman_store_id']) || !empty($v['ml_store_id']) || !empty($v['additional_service']))
+                    {{-- linha extra apenas para Store ID / Loja ML (additional_service legacy removido) --}}
+                    @if (!empty($v['adman_store_id']) || !empty($v['ml_store_id']))
                     <tr style="background:#fafafa">
-                        <td colspan="6" style="padding:3px 8px 6px 8px; font-size:10px; color:#888; border-bottom:1px solid #f0f0f0;">
+                        <td colspan="4" style="padding:3px 8px 6px 8px; font-size:10px; color:#888; border-bottom:1px solid #f0f0f0;">
                             @if (!empty($v['adman_store_id']))
                                 Store ID: <strong>{{ $v['adman_store_id'] }}</strong>&nbsp;&nbsp;
                             @endif
                             @if (!empty($v['ml_store_id']))
                                 Loja ML: <strong>{{ $v['ml_store_id'] }}</strong>&nbsp;&nbsp;
-                            @endif
-                            @if (!empty($v['additional_service']))
-                                Serviço adicional: <strong>{{ $v['additional_service'] . (!empty($v['additional_service_price']) ? ' — R$ ' . number_format($v['additional_service_price'],0,',','.') . '/mês' : '') }}</strong>
                             @endif
                         </td>
                     </tr>
@@ -530,18 +510,10 @@
         </div>
         @endif
 
-        {{-- Serviço adicional da empresa principal --}}
-        @if ($company->additional_service)
-        <div class="section">
-            <div class="section-title">Serviço adicional</div>
-            <div class="adicional-box">
-                <span class="name">{{ $company->additional_service }}</span>
-                @if ($company->additional_service_price)
-                    <span class="price">R$ {{ number_format($company->additional_service_price,0,',','.') }}/mês</span>
-                @endif
-            </div>
-        </div>
-        @endif
+        {{-- Phase 14 (Frente B): seção legacy "Serviço adicional" removida.
+             As colunas additional_service / additional_service_price foram dropadas
+             no Plan 14-06. A informação já é exibida em "Tipo de serviço" (label
+             derivado dos contratos) e o valor agregado em "Mensalidade a cobrar". --}}
 
         <div class="footer">
             <span>ECF Consultoria — Documento gerado automaticamente pelo sistema de fechamento</span>
