@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
-status: complete
-stopped_at: "Phase 14 Plan 14-07 concluido — cleanup final dos 5 JSX consumers; resources/js/Pages sem referencias aos campos legacy; npm build verde; regressao focada 9/9 (101 assertions); phase14:verificar-cobranca 0 divergencias. Proxima fase: TBD pelo usuario."
-last_updated: "2026-05-26T23:20:00.000Z"
+status: milestone_complete
+stopped_at: Milestone complete (Phase 14 was final phase)
+last_updated: 2026-05-26T23:25:14.446Z
 last_activity: 2026-05-26 -- Plan 14-07 executed (cleanup frontend + build + grep + regressao focada + verificador)
 progress:
   total_phases: 14
   completed_phases: 7
   total_plans: 19
   completed_plans: 19
-  percent: 57
+  percent: 50
 ---
 
 # Project State
@@ -21,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 14 — consolida-o-do-modelo-de-servi-os-frente-b
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — COMPLETE
-Plan: 7 of 7 (Plans 14-01 a 14-07 concluidos)
-Status: Phase 14 complete — modelo unificado em `contratos_servico`; colunas legacy dropadas localmente; backend e 5 JSX consumers finais limpos.
-Last activity: 2026-05-26 -- Plan 14-07 executed (cleanup frontend, build verde, grep limpo, regressao focada 9/9, phase14 0 divergencias)
+Phase: 14
+Plan: Not started
+Status: Milestone complete
+Last activity: 2026-05-26
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 6
+- Total plans completed: 13
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -51,6 +51,7 @@ Last activity: 2026-05-26 -- Plan 14-07 executed (cleanup frontend, build verde,
 | 10. UI do Sino e Página de Histórico | 0/? | - | - |
 | 11. Disparos Automáticos de Metas | 0/? | - | - |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 0/? | - | - |
+| 14 | 7 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
