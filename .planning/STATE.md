@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.0
 milestone_name: Fluxo Comercial
-status: verifying
-stopped_at: Completed 13-03-PLAN.md
-last_updated: "2026-05-26T17:30:00.000Z"
-last_activity: 2026-05-26
+status: executing
+stopped_at: Phase 14 Plan 14-01 concluído — helper CobrancaCalculator + comando phase14:verificar-cobranca + 11/11 testes verdes. Próximo: Plan 14-02 (migrations 1 + 2)
+last_updated: "2026-05-26T18:52:00.000Z"
+last_activity: 2026-05-26 -- Plan 14-01 executed (4 commits, 11/11 tests passed)
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 6
-  total_plans: 12
-  completed_plans: 12
-  percent: 46
+  total_plans: 26
+  completed_plans: 13
+  percent: 50
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Milestone v4.0 Fluxo Comercial — Phase 13 planejada, pronta para `/gsd:execute-phase 13`
+**Current focus:** Phase 14 — consolida-o-do-modelo-de-servi-os-frente-b
 
 ## Current Position
 
-Phase: 08 (funda-o-de-notifica-es) — EXECUTING
-Plan: 4 of 4
-Status: Phase complete — ready for verification
-Last activity: 2026-05-25
+Phase: 14 (consolida-o-do-modelo-de-servi-os-frente-b) — EXECUTING
+Plan: 2 of 7 (Plan 14-01 concluído)
+Status: Executing Phase 14 — Plan 14-01 complete, ready for Plan 14-02 (migrations seed + data)
+Last activity: 2026-05-26 -- Plan 14-01 executed (4 commits, 11/11 tests passed)
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Last activity: 2026-05-25
 | Phase 13-reestruturacao-cadastro-empresas P01 | 25min | 2 tasks | 7 files |
 | Phase 13-reestruturacao-cadastro-empresas P02 | 20min | 2 tasks | 3 files |
 | Phase 13-reestruturacao-cadastro-empresas P03 | 7min | 2 tasks | 6 files |
+| Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P01 | 5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -104,13 +105,21 @@ Last activity: 2026-05-25
 - Targeting (individual/setor/líderes/todos) resolvido no dispatch — expandido para `user_ids` no envio, sem lógica de audiência no read path
 - Atualização real-time = polling ~60s + revalidação Inertia em toda navegação; sem WebSockets/broadcast no MVP
 
+### Decisões do Plan 14-01 (registradas)
+
+- `CobrancaCalculator::novo()` aceita `iterable` (não `Collection` estrita) — permite testes unit com objetos anônimos sem container Laravel (Pitfall 4 RESEARCH)
+- Helper retorna `float` sempre (nunca `null`) — semântica "null quando vazio" delegada ao caller (será aplicada no Plan 14-03)
+- Tabela FAIXAS duplicada no comando `phase14:verificar-cobranca` (não compartilhada com `AdminController::FAIXAS`) — duplicação intencional pois o comando é descartável pós-Phase 14
+- Testes do helper usam `assertEqualsWithDelta(esperado, atual, 0.001)` para comparações de float (não `assertEquals`)
+- Tolerância de R$ 0,01 em comparações decimais no comando (`abs($legacy - $novo) > 0.01`) — evita falsos positivos de arredondamento
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-(nenhum — v3.0 com ROADMAP.md definido; aguardando `/gsd:plan-phase 8` para iniciar a primeira fase)
+(nenhum — Plan 14-01 entregou helper + comando; pronto para Plan 14-02 — migrations seed + data)
 
 ### Quick Tasks Completed
 
@@ -133,5 +142,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-26T17:30:00.000Z
-Stopped at: Phase 14 planejada — 7 plans (5 waves) aprovados pelo plan-checker em 2 iterações; aguardando `/gsd-execute-phase 14`
+Last session: 2026-05-26T18:52:00.000Z
+Stopped at: Phase 14 Plan 14-01 concluído — helper CobrancaCalculator + comando phase14:verificar-cobranca + 11/11 testes verdes. Próximo: Plan 14-02 (migrations seed + data)

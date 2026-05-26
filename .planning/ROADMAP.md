@@ -319,7 +319,7 @@ Plans:
 Plans:
 
 **Wave 0** *(prep work — nenhum impacto em produção)*
-- [ ] 14-01-PLAN.md — CobrancaCalculator helper + comando phase14:verificar-cobranca + 2 suítes de testes (SVC-02)
+- [x] 14-01-PLAN.md — CobrancaCalculator helper + comando phase14:verificar-cobranca + 2 suítes de testes (SVC-02)
 
 **Wave 1** *(blocked on Wave 0)*
 - [ ] 14-02-PLAN.md — Migrations 1 (seed_servicos_catalog) + 2 (migrate_legacy_service_data) idempotentes + testes (SVC-01)
@@ -367,4 +367,4 @@ v4.0 phases execute in order: 13 → 14
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
-| 14. Consolidação do Modelo de Serviços | 0/7 | Planned | - |
+| 14. Consolidação do Modelo de Serviços | 1/7 | Executing | - |
