@@ -35,12 +35,12 @@
 ### Consolidação do Modelo de Serviços (SVC)
 
 - [x] **SVC-01**: Migration de dados popula `servicos` com os 6 tipos canônicos do legacy (`publicacao`, `polos`, `assessoria`, `incubadora`, `publicidade`, `gestao`) e cria `contratos_servico` correspondentes para cada empresa, preservando datas (`contract_start`/`contract_end` → `data_contratacao`/`data_vencimento`) e valor do `additional_service_price` quando presente
-- [ ] **SVC-02**: `AdminController::fechamento` calcula `cobranca_mensal` = `faixaData['valor']` + SUM dos `contratos_servico` ativos da empresa onde `tipo_cobranca='mensal'`; resultado idêntico (até R$ 0,01) ao cálculo pré-refatoração para toda empresa que tinha `additional_service_price` preenchido
-- [ ] **SVC-03**: `Admin/Financeiro.jsx` substitui o editor de "Serviço adicional" (texto livre + preço único) pela mesma UI de gestão de contratos usada em `Companies/Show.jsx` — modal de "Adicionar contrato", lista de contratos ativos, ações editar/desativar
-- [ ] **SVC-04**: Filtros e badges de tipo de serviço em Fechamento e demais telas (que hoje usam `whereJsonContains('service_type', ...)`) passam a apontar para `contratos_servico` via JOIN em `servicos.nome`; nenhuma referência funcional a `service_type` permanece em código aplicativo
+- [x] **SVC-02**: `AdminController::fechamento` calcula `cobranca_mensal` = `faixaData['valor']` + SUM dos `contratos_servico` ativos da empresa onde `tipo_cobranca='mensal'`; resultado idêntico (até R$ 0,01) ao cálculo pré-refatoração para toda empresa que tinha `additional_service_price` preenchido
+- [x] **SVC-03**: `Admin/Financeiro.jsx` substitui o editor de "Serviço adicional" (texto livre + preço único) pela mesma UI de gestão de contratos usada em `Companies/Show.jsx` — modal de "Adicionar contrato", lista de contratos ativos, ações editar/desativar
+- [x] **SVC-04**: Filtros e badges de tipo de serviço em Fechamento e demais telas (que hoje usam `whereJsonContains('service_type', ...)`) passam a apontar para `contratos_servico` via JOIN em `servicos.nome`; nenhuma referência funcional a `service_type` permanece em código aplicativo
 - [x] **SVC-05**: `Comercial/NovaEmpresa.jsx` substitui o input `service_type` por seletor multi do catálogo de serviços; cria a empresa + contratos ativos atomicamente em uma única `DB::transaction`, mantendo o roteamento por tipo (POLOS/Assessoria/Publicidade/Gestão) intacto
-- [ ] **SVC-06**: Migration de schema descarta as 5 colunas legacy de `companies` (`service_type`, `contract_start`, `contract_end`, `additional_service`, `additional_service_price`); `down()` recria as colunas (sem rollback de dados pós-drop, documentado na migration)
-- [ ] **SVC-07**: `EmpresaCadastradaNotification` e `EnviarRelatorioFechamentoJob` adaptados para consumir `contratos_servico`; conteúdo das notificações e do email do relatório de fechamento permanece equivalente ao pré-refatoração
+- [x] **SVC-06**: Migration de schema descarta as 5 colunas legacy de `companies` (`service_type`, `contract_start`, `contract_end`, `additional_service`, `additional_service_price`); `down()` recria as colunas (sem rollback de dados pós-drop, documentado na migration)
+- [x] **SVC-07**: `EmpresaCadastradaNotification` e `EnviarRelatorioFechamentoJob` adaptados para consumir `contratos_servico`; conteúdo das notificações e do email do relatório de fechamento permanece equivalente ao pré-refatoração
 
 ## Traceability v4.0
 
@@ -57,13 +57,13 @@
 | COM-09 | Phase 13 | Complete |
 | COM-10 | Phase 13 | Complete |
 | COM-11 | Phase 13 | Complete |
-| SVC-01 | Phase 14 | Planned |
-| SVC-02 | Phase 14 | Planned |
-| SVC-03 | Phase 14 | Planned |
-| SVC-04 | Phase 14 | Planned |
+| SVC-01 | Phase 14 | Complete |
+| SVC-02 | Phase 14 | Complete |
+| SVC-03 | Phase 14 | Complete |
+| SVC-04 | Phase 14 | Complete |
 | SVC-05 | Phase 14 | Complete |
-| SVC-06 | Phase 14 | Planned |
-| SVC-07 | Phase 14 | Planned |
+| SVC-06 | Phase 14 | Complete |
+| SVC-07 | Phase 14 | Complete |
 
 **Cobertura v4.0:**
 - Requirements: 18 total (3 acesso/interface + 4 criação automática + 2 visibilidade + 2 migração + 7 consolidação serviços)
