@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Company;
 use App\Models\Sugador;
+use App\Models\SugadorAcao;
 use App\Models\SugadorConfig;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -287,12 +289,73 @@ class SugadorAnalysisService
             ]);
         }
 
+        // ─── Auto-resolução (Phase 15) ──────────────────────────────────────
+        // Pendentes históricos cuja chave (tipo|campaign_id|adgroup_id) não foi
+        // re-detectada hoje deixaram de bater os critérios — não acumular fila.
+        // Usa reference_date < hoje (estritamente menor) para proteger contra
+        // rerun manual no mesmo dia. STATUS_TRAVADOS NÃO são tocados (filtro
+        // pelo status='pendente' no where já garante isso).
+        $autoResolvidosCount = 0;
+        if (!$dryRun) {
+            // Set de chaves detectadas hoje a partir do upsert
+            $chavesHoje = [];
+            foreach ($toUpsert as $row) {
+                $chavesHoje["{$row['tipo']}|{$row['campaign_id']}|{$row['adgroup_id']}"] = true;
+            }
+
+            $pendentesAntigos = Sugador::where('company_id', $company->id)
+                ->where('status', Sugador::STATUS_PENDENTE)
+                ->where('reference_date', '<', $refDateStr)
+                ->get(['id', 'tipo', 'campaign_id', 'adgroup_id']);
+
+            $idsAutoResolvidos = [];
+            foreach ($pendentesAntigos as $s) {
+                $chave = "{$s->tipo}|{$s->campaign_id}|{$s->adgroup_id}";
+                if (!isset($chavesHoje[$chave])) {
+                    $idsAutoResolvidos[] = $s->id;
+                }
+            }
+
+            if (!empty($idsAutoResolvidos)) {
+                $nowDt = now();
+                DB::transaction(function () use ($idsAutoResolvidos, $nowDt) {
+                    // Atualiza status em massa
+                    Sugador::whereIn('id', $idsAutoResolvidos)->update([
+                        'status'        => Sugador::STATUS_AUTO_RESOLVIDO,
+                        'resolvido_em'  => $nowDt,
+                        'resolvido_por' => null,
+                        'updated_at'    => $nowDt,
+                    ]);
+
+                    // Audit log em massa. SugadorAcao::$timestamps = false, então
+                    // created_at precisa ser preenchido manualmente em cada row.
+                    $rows = [];
+                    foreach ($idsAutoResolvidos as $sid) {
+                        $rows[] = [
+                            'sugador_id'      => $sid,
+                            'user_id'         => null,
+                            'acao'            => SugadorAcao::ACAO_AUTO_RESOLVIDO,
+                            'status_anterior' => Sugador::STATUS_PENDENTE,
+                            'status_novo'     => Sugador::STATUS_AUTO_RESOLVIDO,
+                            'observacao'      => 'Resolvido automaticamente pelo sistema — não re-detectado em análise diária.',
+                            'created_at'      => $nowDt,
+                        ];
+                    }
+                    SugadorAcao::insert($rows);
+                });
+
+                $autoResolvidosCount = count($idsAutoResolvidos);
+                Log::info("[Sugadores] Auto-resolveu {$autoResolvidosCount} sugador(es) antigo(s) da empresa {$company->id} ({$company->name})");
+            }
+        }
+
         return [
-            'skipped'   => false,
-            'reason'    => null,
-            'campanhas' => $campanhasCount,
-            'adgroups'  => $adgroupsCount,
-            'detalhes'  => $detalhes,
+            'skipped'         => false,
+            'reason'          => null,
+            'campanhas'       => $campanhasCount,
+            'adgroups'        => $adgroupsCount,
+            'auto_resolvidos' => $autoResolvidosCount,
+            'detalhes'        => $detalhes,
         ];
     }
 
