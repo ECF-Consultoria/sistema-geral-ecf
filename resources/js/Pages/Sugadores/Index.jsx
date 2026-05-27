@@ -144,19 +144,36 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
                     <ArrowRight size={11} />
                 </button>
                 {canAnalyze && card.can_analyze && (
+                    // Phase 16 SC-6: quando o sync diário Adman já rodou hoje
+                    // ('analisado_hoje'=true), desabilita o botão — reanalisar
+                    // antes do próximo ciclo D-1 não traz dados novos.
                     <button
                         type="button"
-                        onClick={() => onReanalisar(card.company_id)}
-                        className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px]"
-                        title="Reanalisar esta empresa agora (job na fila)"
+                        onClick={() => !card.analisado_hoje && onReanalisar(card.company_id)}
+                        disabled={card.analisado_hoje}
+                        className={cn(
+                            'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px]',
+                            card.analisado_hoje
+                                ? 'opacity-40 cursor-not-allowed text-white/50'
+                                : 'text-white/70 hover:text-white hover:bg-white/[0.05]',
+                        )}
+                        title={card.analisado_hoje
+                            ? 'Análise diária já rodou hoje · próxima amanhã às 12h'
+                            : 'Reanalisar esta empresa agora (job na fila)'}
                     >
                         <RotateCw size={11} />
-                        Reanalisar
+                        {card.analisado_hoje ? 'Análise diária OK' : 'Reanalisar'}
                     </button>
                 )}
             </div>
 
-            {enqueuedAt && (
+            {card.analisado_hoje && (
+                <p className="text-white/40 text-[11px] -mt-1">
+                    Análise diária já rodou hoje · próxima amanhã às 12h
+                </p>
+            )}
+
+            {enqueuedAt && !card.analisado_hoje && (
                 <p className="text-emerald-300/80 text-[11px] -mt-1">
                     Enfileirado às {enqueuedAt}
                 </p>
