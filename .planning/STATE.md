@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.0
-milestone_name: Fluxo Comercial
+milestone: v4.1
+milestone_name: Eficiência Operacional Sugadores
 status: milestone_complete
-stopped_at: Milestone complete (Phase 14 was final phase)
-last_updated: 2026-05-26T23:25:14.446Z
-last_activity: 2026-05-26 -- Plan 14-07 executed (cleanup frontend + build + grep + regressao focada + verificador)
+stopped_at: Phase 15 deployed to production (2026-05-27)
+last_updated: 2026-05-27T16:20:00.000Z
+last_activity: 2026-05-27 -- Phase 15 deployada (cards/auto-resolução/copy MLBs/chip) + merge origin/main (filtro cascata) + deploy VPS
 progress:
-  total_phases: 14
-  completed_phases: 7
-  total_plans: 19
-  completed_plans: 19
-  percent: 50
+  total_phases: 15
+  completed_phases: 8
+  total_plans: 26
+  completed_plans: 26
+  percent: 53
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 14
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-05-26
+Phase: 15
+Plan: All complete (4 waves, 7 commits)
+Status: Milestone v4.1 complete — deployed
+Last activity: 2026-05-27
 
 ## Performance Metrics
 
@@ -176,13 +176,26 @@ Last activity: 2026-05-26
 - `down()` no-op informativo em ambas migrations — reverter dados de migration exige backup do DB
 - Sistema em **COEXISTÊNCIA** após Plan 14-02: campos legacy AINDA populados E `contratos_servico` populado; runtime AINDA lê dos legacy até o Plan 14-03
 
+### Decisões da Phase 15 (registradas)
+
+- **Novo status `auto_resolvido`** (não reutilizar `resolvido`) — separa auditoria do que o sistema limpa automaticamente do que o analista resolveu manualmente. Adicionado a `Sugador::STATUS_TRAVADOS` para evitar reaversion futura.
+- **Migration W1-T1 também alterou `sugador_acoes.user_id` para nullable** — pré-requisito invisível do plano original (audit log de auto-resolução não tem user real). Rule 2 deviation aplicada.
+- **Auto-resolução roda DENTRO de `analyzeCompany` após o upsert** com `reference_date < hoje` (estritamente menor) — protege contra rerun manual no mesmo dia que recriaria os mesmos pendentes.
+- **Cards são a vista default; lista permanece via toggle `view_mode`** — compat com bookmarks/links antigos; lista herda o `SearchableCompanyFilter` do outro dev (filtro cascata user→empresa).
+- **`companies_summary` usa query agregada única com `SUM(CASE WHEN)` GROUP BY** — sem N+1 (teste assert máximo 15 queries com 10 empresas + 20 sugadores).
+- **`DATE(reference_date)` no SQL** normaliza valores SQLite (datetime) e MySQL (date) — preço: previne uso de index puro na coluna, mas não há index hoje.
+- **`navigator.clipboard` com fallback `textarea + execCommand`** — necessário porque intranet HTTP não tem secure context.
+- **`listing_id` é o identificador MLB no payload MCP** — `.filter(Boolean)` defensivo no `.join(',')` caso payload mude.
+- **Merge com origin/main preservou AMBAS features** (Phase 15 + filtro cascata do outro dev) — são complementares: cards na visão default, combobox cascata no modo lista.
+- **Smoke test humano (W4-T2) NÃO foi executado em browser** antes do deploy — testes automatizados 13/13 cobriram backend e props, UX visual fica como item deferred.
+
 ### Pending Todos
 
 None.
 
 ### Blockers/Concerns
 
-Nenhum bloqueante tecnico conhecido. Phase 14 concluida por gates automatizados; smoke visual humano das 5 telas segue pendente como UAT.
+- **Rate limit 429 da Adman**: problema crônico, não relacionado à Phase 15. Endpoint `/sugadores/{id}/mlbs` retorna 502 quando MCP da Adman bate 429. Logs mostram 429 sequencial em vários `SyncAdmanCompanyJob` em produção. Mensagem formal enviada ao grupo da Adman em 2026-05-27 pedindo aumento de limite.
 
 ### Quick Tasks Completed
 
@@ -208,8 +221,10 @@ Nenhum bloqueante tecnico conhecido. Phase 14 concluida por gates automatizados;
 | Phase 14 | `AdminFechamentoControllerTest` 5 testes falhando pré-existentes | quick task | 2026-05-26 |
 | Phase 14 | Suites de coexistencia pos-drop obsoletas | pending-regression-cleanup | 2026-05-26 |
 | Phase 14 | Smoke visual Plan 14-07 das 5 telas | pending-human-uat | 2026-05-26 |
+| Phase 15 | Smoke visual W4-T2 (11 itens: cards/copy/chip/reanalisar/badge auto_resolvido) | pending-human-uat | 2026-05-27 |
+| Adman | Rate limit 429 — aumento de quota pedido ao provedor (mensagem enviada no grupo) | aguardando-resposta-provedor | 2026-05-27 |
 
 ## Session Continuity
 
-Last session: 2026-05-26T23:20:00Z
-Stopped at: Phase 14 Plan 14-07 concluido — cleanup final dos 5 JSX consumers; build verde; grep sem referencias aos campos legacy; regressao focada passou 9/9 (101 assertions); phase14:verificar-cobranca retornou 0 divergencias em 0 empresas. Proxima fase: TBD pelo usuario.
+Last session: 2026-05-27T16:20:00Z
+Stopped at: Phase 15 deployada com sucesso em produção. 10 commits enviados (7 Phase 15 + 1 merge origin/main + 2 docs/chore). Migration `auto_resolvido` rodou em prod (421ms). Workers reiniciados. Backup branch local `backup/phase-15-pre-merge` preservado para rollback se necessário. Rate limit Adman 429 reportado ao provedor — aguardando retorno. Próxima fase: TBD pelo usuario.

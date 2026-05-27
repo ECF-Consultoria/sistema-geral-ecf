@@ -48,7 +48,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v4.1 — Eficiência Operacional Sugadores
 
-- [ ] **Phase 15: Sugadores — UI por Empresa + Auto-resolução + Atalhos Operacionais** - Aba Sugadores migra do paradigma "lista global" para "cards por empresa com drilldown"; análise diária auto-resolve sugadores pendentes que não atendem mais critérios (combate acúmulo); botão de copiar MLBs em massa no drilldown do AdGroup; reanálise direto do card
+- [x] **Phase 15: Sugadores — UI por Empresa + Auto-resolução + Atalhos Operacionais** - Aba Sugadores migra do paradigma "lista global" para "cards por empresa com drilldown"; análise diária auto-resolve sugadores pendentes que não atendem mais critérios (combate acúmulo); botão de copiar MLBs em massa no drilldown do AdGroup; reanálise direto do card (completed 2026-05-27, deployed to prod)
 
 ## Phase Details
 
@@ -398,4 +398,4 @@ v4.0 phases execute in order: 13 → 14
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
-| 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 0/? | Planning    | - |
+| 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
