@@ -25,6 +25,7 @@ use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PpaController;
 use App\Http\Controllers\PpaTaskController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ServicoController;
 use App\Http\Controllers\SugadorConfigController;
 use App\Http\Controllers\SugadorController;
 use App\Http\Controllers\UserController;
@@ -99,7 +100,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
          ->name('comercial.')
          ->group(function () {
              Route::get('/empresas',               [ComercialController::class, 'empresas'])->name('empresas');
-             Route::get('/empresas/novo',          [ComercialController::class, 'index'])->name('empresas.novo');
+             Route::get('/empresas/novo',          [ComercialController::class, 'create'])->name('empresas.novo');
              Route::post('/empresas',              [ComercialController::class, 'store'])->name('empresas.store');
              Route::put('/empresas/{company}',     [ComercialController::class, 'update'])->name('empresas.update');
              Route::delete('/empresas/{company}',  [ComercialController::class, 'destroy'])->name('empresas.destroy');
@@ -212,6 +213,16 @@ Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
         Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
+
+        // ─── Módulo Serviços (Frente A) ──────────────────────────────────
+        // Catálogo de serviços + contratos por empresa. Acesso admin-only
+        // herdado do grupo pai. Frente B fará data migration + drop legacy.
+        Route::resource('servicos', ServicoController::class)
+            ->only(['index', 'store', 'update', 'destroy']);
+
+        Route::post('/empresas/{company}/contratos-servico',                  [CompanyController::class, 'storeContrato'])->name('empresas.contratos.store');
+        Route::put('/empresas/{company}/contratos-servico/{contrato}',        [CompanyController::class, 'updateContrato'])->name('empresas.contratos.update');
+        Route::delete('/empresas/{company}/contratos-servico/{contrato}',     [CompanyController::class, 'destroyContrato'])->name('empresas.contratos.destroy');
     });
 });
 

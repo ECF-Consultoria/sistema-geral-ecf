@@ -43,7 +43,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v4.0 — Fluxo Comercial
 
-- [x] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies (completed 2026-05-25)
+- [x] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies (completed 2026-05-25)
+- [x] **Phase 14: Consolidação do Modelo de Serviços (Frente B)** - Modelo unificado: campos legacy de companies (service_type/contract_start/contract_end/additional_service/additional_service_price) substituídos por contratos_servico N:N introduzido na quick task 260526-jgj; Fechamento, Comercial e demais consumidores migrados sem alterar resultados financeiros (completed 2026-05-26)
 
 ## Phase Details
 
@@ -298,13 +299,58 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 14: Consolidação do Modelo de Serviços (Frente B)
+**Goal**: Modelo unificado em `contratos_servico` — os 5 campos legacy de `companies` (`service_type`, `contract_start`, `contract_end`, `additional_service`, `additional_service_price`) substituídos pelo modelo N:N introduzido na quick task 260526-jgj (Frente A); Fechamento, Comercial e demais consumidores migrados sem alterar resultados financeiros
+**Mode:** mvp
+**Depends on**: Phase 13 (cadastro Comercial usa service_type), quick task 260526-jgj (Frente A — catálogo + tabela N:N já criados)
+**Requirements**: SVC-01, SVC-02, SVC-03, SVC-04, SVC-05, SVC-06, SVC-07
+**Success Criteria** (what must be TRUE):
+  1. Migration de dados popula `servicos` com os 6 tipos canônicos legacy (`publicacao`, `polos`, `assessoria`, `incubadora`, `publicidade`, `gestao`) — `valor_padrao=0`, `tipo_cobranca='mensal'`, `ativo=true` — e cria `contratos_servico` correspondentes para cada empresa, preservando `contract_start`/`contract_end` como `data_contratacao`/`data_vencimento`
+  2. Para empresas com `additional_service` não-vazio, migration cria um `servicos` adicional (find-or-create por nome) + `contratos_servico` com `valor_contratado=additional_service_price`, mantendo as datas do contrato principal
+  3. `AdminController::fechamento` calcula `cobranca_mensal` como `faixaData['valor']` + SUM(`contratos_servico.valor_contratado` WHERE `ativo=true` AND `tipo_cobranca='mensal'`); valor confere com o cálculo pré-refatoração para toda empresa que tinha `additional_service_price` preenchido
+  4. `Admin/Financeiro.jsx` substitui o editor de "Serviço adicional" (texto livre + preço único) pela mesma UI de gestão de contratos do `Companies/Show.jsx` — modal de "Adicionar contrato", lista de ativos, ações editar/desativar
+  5. Filtros e badges que hoje usam `whereJsonContains('service_type', ...)` apontam para `contratos_servico` via JOIN em `servicos.nome`; ServiceBadge no Fechamento mostra nomes dos contratos ativos
+  6. `Comercial/NovaEmpresa.jsx` substitui o input `service_type` por seletor multi do catálogo de serviços; cria empresa + contratos atomicamente em uma `DB::transaction`, mantendo o roteamento por tipo (POLOS/Assessoria/Publicidade/Gestão) intacto
+  7. Migration de schema descarta as 5 colunas legacy de `companies`; `down()` recria estrutura (sem rollback de dados pós-drop, documentado na migration)
+  8. `EmpresaCadastradaNotification` e `EnviarRelatorioFechamentoJob` adaptados para consumir `contratos_servico`; conteúdo de notificações e email do relatório de fechamento permanece equivalente ao pré-refatoração
+  9. Após a refatoração, `grep -rE 'service_type|contract_start|contract_end|additional_service|additional_service_price' app/ resources/js/` retorna zero matches em código aplicativo (migrations históricas excluídas)
+**Plans**: 7 plans
+
+Plans:
+
+**Wave 0** *(prep work — nenhum impacto em produção)*
+- [x] 14-01-PLAN.md — CobrancaCalculator helper + comando phase14:verificar-cobranca + 2 suítes de testes (SVC-02)
+
+**Wave 1** *(blocked on Wave 0)*
+- [x] 14-02-PLAN.md — Migrations 1 (seed_servicos_catalog) + 2 (migrate_legacy_service_data) idempotentes + testes (SVC-01)
+
+**Wave 2** *(blocked on Wave 1 — paralelizável internamente entre 14-03 e 14-04)*
+- [x] 14-03-PLAN.md — Refator de 6 consumers PHP (Company, AdminController×3 sites, MlbController, CompanyController, EmpresaCadastradaNotification, EnviarRelatorioFechamentoJob) + 2 suítes (golden cobranca + filtro JOIN) (SVC-02, SVC-04, SVC-07)
+- [x] 14-04-PLAN.md — ComercialController.store reescrito + NovaEmpresa.jsx seletor multi + helper servicoDisparaImplementacao + 2 suítes (helper + roteamento Phase 13 preservado) (SVC-05)
+
+**Wave 3** *(blocked on Wave 2)*
+- [x] 14-05-PLAN.md — Admin/Financeiro.jsx substitui editor por seção de contratos (reusa rotas Frente A) + 3 Blade views usam service_type_label accessor + UAT humano deferido (SVC-03, SVC-04)
+
+**Wave 4** *(blocked on Wave 3; 14-06 e 14-07 sequenciais entre si)*
+- [x] 14-06-PLAN.md — Pre-flight `phase14:verificar-cobranca --abort-on-divergence` + Migration 3 aplicada localmente (drop 6 colunas, down recria TEXT) + cleanup backend (Company.php $fillable/$casts/logOnly, controllers/job/notification/comando) (SVC-06, SVC-04)
+- [x] 14-07-PLAN.md — Cleanup dos 5 JSX consumers (Admin/Empresas, Comercial/Empresas, Mlb/Empresas, Companies/Index, Admin/Financeiro fragmentos) + smoke test humano fim-a-fim deferido (SVC-04, SVC-06)
+
+Cross-cutting constraints:
+- `phase14:verificar-cobranca --abort-on-divergence` é gate obrigatório antes de Plan 14-06 (drop irreversível)
+- Comentários e mensagens em pt-BR (CLAUDE.md mandate)
+- `npm run build` obrigatório após cada edição JSX (Pitfall 6 do RESEARCH)
+- Eager loading `contratosServico.servico` em queries do AdminController evita N+1 (Pitfall 2)
+- Down() da migration 3 recria `service_type` como TEXT (não string — Pitfall 7)
+
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
 v1.0 phases execute in order: 1 → 2 → 3 → 4 (phases 2–4 pausadas para v5.0)
 v2.0 phases execute in order: 5 → 6 → 7
 v3.0 phases execute in order: 8 → 9 → 10 → 11 → 12
-v4.0 phases execute in order: 13
+v4.0 phases execute in order: 13 → 14
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -321,3 +367,4 @@ v4.0 phases execute in order: 13
 | 11. Disparos Automáticos de Metas | 1/1 | Complete   | 2026-05-21 |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
+| 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |

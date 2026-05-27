@@ -314,19 +314,16 @@
                     </td>
                 </tr>
                 <tr>
-                    <td>
+                    <td colspan="3">
                         <label>Tipo de serviço</label>
-                        <span>{{ \App\Models\Company::labelFromTypes($company->service_type) }}</span>
-                    </td>
-                    <td>
-                        <label>Tipo de contrato</label>
-                        <span>{{ match($company->contract_type ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Escala de Progressão', default => '—' } }}</span>
-                    </td>
-                    <td>
-                        <label>Vigência</label>
-                        <span>{{ $company->contract_start ? $company->contract_start->format('d/m/Y') . ($company->contract_end ? ' – ' . $company->contract_end->format('d/m/Y') : '') : '—' }}</span>
+                        {{-- Phase 14: labelFromTypes(legacy) → serviceTypeLabel(derivado de contratos) — D-09 --}}
+                        <span>{{ $company->service_type_label }}</span>
                     </td>
                 </tr>
+                {{-- Phase 14 (Frente B): linha legacy "Tipo de contrato" / "Vigência" removida.
+                     As colunas contract_type / contract_start / contract_end foram dropadas
+                     no Plan 14-06. Cada contrato individual carrega data_vencimento via
+                     contratos_servico. --}}
             </table>
         </div>
 
@@ -406,6 +403,9 @@
         @if (count($r['vinculadas']) > 0)
         <div class="section">
             <div class="section-title">Detalhes das empresas vinculadas</div>
+            {{-- Phase 14 (Frente B): colunas "Contrato" e "Vigência" removidas — eram
+                 derivadas de contract_type/contract_start/contract_end (colunas dropadas).
+                 Linha extra de "additional_service" também removida — info já em "Serviço". --}}
             <table class="data-table details-table">
                 <thead>
                     <tr>
@@ -413,8 +413,6 @@
                         <th>CNPJ</th>
                         <th>Adman ID</th>
                         <th>Serviço</th>
-                        <th>Contrato</th>
-                        <th>Vigência</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -423,16 +421,15 @@
                         <td class="empresa-nome">{{ $v['name'] }}</td>
                         <td class="label-mono">{{ preg_replace('/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/', '$1.$2.$3/$4-$5', preg_replace('/\D/', '', $v['cnpj'] ?? '')) ?: '—' }}</td>
                         <td class="label-mono">{{ $v['adman_account_id'] ?? '—' }}</td>
-                        <td>{{ \App\Models\Company::labelFromTypes($v['service_type'] ?? null) }}</td>
-                        <td>{{ match($v['contract_type'] ?? '') { 'fixo' => 'Fixo', 'progressao' => 'Progressão', default => '—' } }}</td>
-                        <td class="label-mono">{{ !empty($v['contract_start']) ? $v['contract_start'] . (!empty($v['contract_end']) ? ' – ' . $v['contract_end'] : '') : '—' }}</td>
+                        {{-- Phase 14: service_type (legacy) → servicos_contratados (string formatada pelo AdminController) --}}
+                        <td>{{ $v['servicos_contratados'] ?? '—' }}</td>
                     </tr>
-                    @if (!empty($v['adman_store_id']) || !empty($v['ml_store_id']) || !empty($v['additional_service']))
+                    {{-- linha extra apenas para Store ID / Loja ML (additional_service legacy removido) --}}
+                    @if (!empty($v['adman_store_id']) || !empty($v['ml_store_id']))
                     <tr style="background:#fafafa">
-                        <td colspan="6" style="padding:3px 8px 6px 8px; font-size:10px; color:#888; border-bottom:1px solid #f0f0f0;">
+                        <td colspan="4" style="padding:3px 8px 6px 8px; font-size:10px; color:#888; border-bottom:1px solid #f0f0f0;">
                             @if (!empty($v['adman_store_id']))Store ID: <strong>{{ $v['adman_store_id'] }}</strong>&nbsp;&nbsp;@endif
                             @if (!empty($v['ml_store_id']))Loja ML: <strong>{{ $v['ml_store_id'] }}</strong>&nbsp;&nbsp;@endif
-                            @if (!empty($v['additional_service']))Serviço adicional: <strong>{{ $v['additional_service'] . (!empty($v['additional_service_price']) ? ' — R$ ' . number_format($v['additional_service_price'],0,',','.') . '/mês' : '') }}</strong>@endif
                         </td>
                     </tr>
                     @endif
@@ -442,20 +439,10 @@
         </div>
         @endif
 
-        {{-- Serviço adicional da empresa principal --}}
-        @if ($company->additional_service)
-        <div class="section">
-            <div class="section-title">Serviço adicional</div>
-            <div class="adicional-box">
-                <table class="adicional-table"><tr>
-                    <td><span class="name">{{ $company->additional_service }}</span></td>
-                    @if ($company->additional_service_price)
-                    <td style="text-align:right"><span class="price">R$ {{ number_format($company->additional_service_price,0,',','.') }}/mês</span></td>
-                    @endif
-                </tr></table>
-            </div>
-        </div>
-        @endif
+        {{-- Phase 14 (Frente B): seção legacy "Serviço adicional" removida.
+             As colunas additional_service / additional_service_price foram dropadas
+             no Plan 14-06. A informação já é exibida em "Tipo de serviço" (label
+             derivado dos contratos). --}}
 
         {{-- Rodapé por empresa --}}
         <table class="footer-table"><tr>

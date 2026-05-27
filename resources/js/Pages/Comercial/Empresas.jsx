@@ -1,94 +1,21 @@
-// Página /comercial/empresas — listagem e gestão de empresas pelo setor Comercial.
-//
-// Props do ComercialController::empresas():
-//   companies: [{ id, name, cnpj, service_type, status, created_at, adman_account_id, ml_store_id, notes }]
-//   service_type é um array JSON ex: ['polos', 'gestao']
 import { useState } from 'react';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
-import { Building2, PlusCircle, Search, X, Pencil, Trash2, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Briefcase, Building2, Pencil, Plus, PlusCircle, PowerOff, Search, Trash2, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
-const TIPOS = [
-    { value: 'publicacao',  label: 'Publicação' },
-    { value: 'publicidade', label: 'Publicidade' },
-    { value: 'gestao',      label: 'Gestão' },
-    { value: 'mentoria',    label: 'Mentoria' },
-    { value: 'implantacao', label: 'Implantação' },
-    { value: 'incubadora',  label: 'Incubadora' },
-];
-
-const SERVICE_TYPE_LABELS = {
-    publicacao:  'Publicação',  polos:       'POLO',        assessoria:  'Assessoria',
-    publicidade: 'Publicidade', gestao:      'Gestão',      mentoria:    'Mentoria',
-    implantacao: 'Implantação', incubadora:  'Incubadora',
-};
-
-const SERVICE_TYPE_COLORS = {
-    publicacao:  'text-violet-300 bg-violet-950/60 border-violet-500/20',
-    polos:       'text-blue-300 bg-blue-950/60 border-blue-500/20',
-    assessoria:  'text-purple-300 bg-purple-950/60 border-purple-500/20',
-    publicidade: 'text-orange-300 bg-orange-950/60 border-orange-500/20',
-    gestao:      'text-teal-300 bg-teal-950/60 border-teal-500/20',
-    mentoria:    'text-amber-300 bg-amber-950/60 border-amber-500/20',
-    implantacao: 'text-cyan-300 bg-cyan-950/60 border-cyan-500/20',
-    incubadora:  'text-emerald-300 bg-emerald-950/60 border-emerald-500/20',
-};
-
 const fmtDate = (iso) => {
-    if (!iso) return '—';
+    if (!iso) return '-';
     return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 };
 
-function TypeBadges({ types }) {
-    const arr = Array.isArray(types) ? types : (types ? [types] : []);
-    if (arr.length === 0) return <span className="text-white/20 text-xs">—</span>;
-    return (
-        <span className="inline-flex flex-wrap gap-1">
-            {arr.map(t => (
-                <span key={t} className={cn('text-xs font-medium px-2 py-0.5 rounded-full border', SERVICE_TYPE_COLORS[t])}>
-                    {SERVICE_TYPE_LABELS[t] ?? t}
-                </span>
-            ))}
-        </span>
-    );
-}
-
-// ─── Checkboxes de tipo de serviço (reutilizado nos dois forms) ───────────────
-
-function TiposCheckbox({ value, onChange, error }) {
-    function toggle(tipo) {
-        onChange(value.includes(tipo) ? value.filter(t => t !== tipo) : [...value, tipo]);
-    }
-
-    return (
-        <div className="space-y-1.5">
-            <label className="block text-xs text-white/60 font-medium">
-                Tipo de Serviço <span className="text-ecf-yellow">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2">
-                {TIPOS.map(({ value: v, label }) => (
-                    <label key={v} className={cn(
-                        'flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors',
-                        value.includes(v)
-                            ? 'border-ecf-yellow/40 bg-ecf-yellow/5 text-white'
-                            : 'border-white/[0.08] bg-white/[0.02] text-white/50 hover:text-white/70'
-                    )}>
-                        <input type="checkbox" checked={value.includes(v)}
-                            onChange={() => toggle(v)} className="accent-ecf-yellow shrink-0" />
-                        <span className="text-[12px] leading-tight">{label}</span>
-                    </label>
-                ))}
-            </div>
-            {error && <p className="text-red-400 text-xs">{Array.isArray(error) ? error[0] : error}</p>}
-            {value.includes('publicacao') && (
-                <p className="text-white/30 text-[11px] leading-snug">O time de Publicação escolherá se é POLO ou Assessoria ao receber a empresa.</p>
-            )}
-        </div>
-    );
-}
-
-// ─── Modal base ───────────────────────────────────────────────────────────────
+const fmtBRL = (n) => n == null ? '-'
+    : Number(n).toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    });
 
 function Modal({ open, onClose, children }) {
     if (!open) return null;
@@ -102,103 +29,74 @@ function Modal({ open, onClose, children }) {
     );
 }
 
-// ─── Formulário de Nova Empresa ───────────────────────────────────────────────
-
-function FormularioCriar({ onClose }) {
-    const { data, setData, post, processing, errors, reset } = useForm({
-        nome:         '',
-        cnpj:         '',
-        notes:        '',
-        service_type: [],
-    });
-
-    function handleSubmit(e) {
-        e.preventDefault();
-        post(route('comercial.empresas.store'), {
-            preserveScroll: true,
-            onSuccess: () => { reset(); onClose(); },
-        });
-    }
+function ServicoBadges({ servicos }) {
+    const lista = Array.isArray(servicos) ? servicos : [];
+    if (lista.length === 0) return <span className="text-white/20 text-xs">-</span>;
 
     return (
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-            <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ecf-yellow/10 border border-ecf-yellow/20 shrink-0">
-                        <PlusCircle size={15} className="text-ecf-yellow" />
-                    </div>
-                    <h2 className="text-white font-bold text-base">Nova Empresa</h2>
-                </div>
-                <button type="button" onClick={onClose} className="text-white/30 hover:text-white/70 transition-colors">
-                    <X size={18} />
-                </button>
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    Nome da Empresa <span className="text-ecf-yellow">*</span>
-                </label>
-                <input type="text" value={data.nome} onChange={e => setData('nome', e.target.value)}
-                    placeholder="Ex: Empresa XYZ Ltda" autoFocus required
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.nome ? 'border-red-500/50' : 'border-white/[0.08]')} />
-                {errors.nome && <p className="text-red-400 text-xs">{errors.nome}</p>}
-            </div>
-
-            <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    CNPJ <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
-                </label>
-                <input type="text" value={data.cnpj} onChange={e => setData('cnpj', e.target.value)}
-                    placeholder="00.000.000/0001-00"
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')} />
-                {errors.cnpj && <p className="text-red-400 text-xs">{errors.cnpj}</p>}
-            </div>
-
-            <TiposCheckbox value={data.service_type} onChange={v => setData('service_type', v)} error={errors.service_type} />
-
-            <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    Descrição <span className="text-white/30 text-[11px] font-normal">(opcional — ajuda o time receptor a entender o contexto)</span>
-                </label>
-                <textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={2}
-                    placeholder="Ex: empresa de autopeças do Sul, já teve contato com o João…"
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none',
-                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.notes ? 'border-red-500/50' : 'border-white/[0.08]')} />
-                {errors.notes && <p className="text-red-400 text-xs">{errors.notes}</p>}
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-1">
-                <button type="button" onClick={onClose}
-                    className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white/80 transition-colors">
-                    Cancelar
-                </button>
-                <button type="submit" disabled={processing}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all bg-ecf-yellow text-black hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                    <PlusCircle size={14} />
-                    {processing ? 'Cadastrando...' : 'Cadastrar'}
-                </button>
-            </div>
-        </form>
+        <span className="inline-flex flex-wrap gap-1">
+            {lista.map((servico, index) => {
+                const nome = typeof servico === 'string' ? servico : servico.servico_nome;
+                return (
+                    <span key={`${nome}-${index}`} className="text-xs font-medium px-2 py-0.5 rounded-full border text-ecf-yellow bg-ecf-yellow/10 border-ecf-yellow/20">
+                        {nome || '-'}
+                    </span>
+                );
+            })}
+        </span>
     );
 }
 
-// ─── Formulário de Edição ─────────────────────────────────────────────────────
+function ContratosSection({ company, onAdicionar, onEditar, onDesativar }) {
+    const contratos = Array.isArray(company.servicos_contratados) ? company.servicos_contratados : [];
 
-function FormularioEditar({ company, onClose }) {
+    return (
+        <div className="space-y-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+            <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <Briefcase size={14} className="text-ecf-yellow/70" />
+                    <span className="text-white/80 text-sm font-semibold">Servicos contratados</span>
+                </div>
+                <button
+                    type="button"
+                    onClick={() => onAdicionar(company)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-ecf-yellow/20 bg-ecf-yellow/10 px-2.5 py-1 text-xs font-semibold text-ecf-yellow hover:bg-ecf-yellow/20"
+                >
+                    <Plus size={12} />
+                    Adicionar contrato
+                </button>
+            </div>
+            {contratos.length === 0 ? (
+                <p className="text-white/30 text-xs">Nenhum contrato ativo.</p>
+            ) : (
+                <div className="rounded-lg border border-white/[0.06] overflow-hidden">
+                    {contratos.map(c => (
+                        <div key={c.id} className="flex items-center gap-3 px-3 py-2 border-b border-white/[0.04] last:border-0">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-white/75 text-sm truncate">{c.servico_nome}</p>
+                                <p className="text-white/30 text-[11px]">{c.tipo_cobranca === 'mensal' ? 'Mensal' : 'Unica'} - {fmtBRL(c.valor_contratado)}</p>
+                            </div>
+                            <button type="button" onClick={() => onEditar(company, c)} className="p-1.5 rounded-lg text-white/40 hover:text-ecf-yellow hover:bg-white/[0.04]">
+                                <Pencil size={13} />
+                            </button>
+                            <button type="button" onClick={() => onDesativar(company, c)} className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-white/[0.04]">
+                                <PowerOff size={13} />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
     const [excluindo, setExcluindo] = useState(false);
-
     const { data, setData, put, processing, errors } = useForm({
-        name:         company.name,
-        cnpj:         company.cnpj ?? '',
-        notes:        company.notes ?? '',
-        service_type: Array.isArray(company.service_type) ? company.service_type
-                        : (company.service_type ? [company.service_type] : []),
+        name: company.name,
+        cnpj: company.cnpj ?? '',
+        notes: company.notes ?? '',
     });
 
     function handleSubmit(e) {
@@ -218,7 +116,6 @@ function FormularioEditar({ company, onClose }) {
         });
     }
 
-
     return (
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
             <div className="flex items-center justify-between">
@@ -234,58 +131,63 @@ function FormularioEditar({ company, onClose }) {
             </div>
 
             <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    Nome da Empresa <span className="text-ecf-yellow">*</span>
-                </label>
-                <input type="text" value={data.name} onChange={e => setData('name', e.target.value)}
-                    autoFocus required
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.name ? 'border-red-500/50' : 'border-white/[0.08]')} />
+                <label className="block text-xs text-white/60 font-medium">Nome da Empresa <span className="text-ecf-yellow">*</span></label>
+                <input
+                    type="text"
+                    value={data.name}
+                    onChange={e => setData('name', e.target.value)}
+                    autoFocus
+                    required
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors', errors.name ? 'border-red-500/50' : 'border-white/[0.08]')}
+                />
                 {errors.name && <p className="text-red-400 text-xs">{errors.name}</p>}
             </div>
 
             <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    CNPJ <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
-                </label>
-                <input type="text" value={data.cnpj} onChange={e => setData('cnpj', e.target.value)}
+                <label className="block text-xs text-white/60 font-medium">CNPJ <span className="text-white/30 text-[11px] font-normal">(opcional)</span></label>
+                <input
+                    type="text"
+                    value={data.cnpj}
+                    onChange={e => setData('cnpj', e.target.value)}
                     placeholder="00.000.000/0001-00"
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
-                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')} />
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors', errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')}
+                />
                 {errors.cnpj && <p className="text-red-400 text-xs">{errors.cnpj}</p>}
             </div>
 
-            <TiposCheckbox value={data.service_type} onChange={v => setData('service_type', v)} error={errors.service_type} />
-
             <div className="space-y-1.5">
-                <label className="block text-xs text-white/60 font-medium">
-                    Descrição / Observações <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
-                </label>
-                <textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={3}
+                <label className="block text-xs text-white/60 font-medium">Descricao / Observacoes <span className="text-white/30 text-[11px] font-normal">(opcional)</span></label>
+                <textarea
+                    value={data.notes}
+                    onChange={e => setData('notes', e.target.value)}
+                    rows={3}
                     placeholder="Notas internas sobre a empresa..."
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none',
-                        'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                        errors.notes ? 'border-red-500/50' : 'border-white/[0.08]')} />
+                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors', errors.notes ? 'border-red-500/50' : 'border-white/[0.08]')}
+                />
                 {errors.notes && <p className="text-red-400 text-xs">{errors.notes}</p>}
             </div>
+
+            <ContratosSection
+                company={company}
+                onAdicionar={onAdicionarContrato}
+                onEditar={onEditarContrato}
+                onDesativar={onDesativarContrato}
+            />
 
             {confirmandoExclusao ? (
                 <div className="rounded-xl border border-red-500/20 bg-red-950/40 p-4 space-y-3">
                     <div className="flex items-center gap-2 text-red-300">
                         <AlertTriangle size={14} />
-                        <span className="text-sm font-medium">Confirmar remoção</span>
+                        <span className="text-sm font-medium">Confirmar remocao</span>
                     </div>
                     <p className="text-white/50 text-xs leading-relaxed">
-                        A empresa <strong className="text-white/80">{company.name}</strong> será removida da listagem.
-                        Os registros relacionados (MLB, sugadores) são preservados.
+                        A empresa <strong className="text-white/80">{company.name}</strong> sera removida da listagem.
                     </p>
                     <div className="flex items-center gap-2">
                         <button type="button" onClick={handleExcluir} disabled={excluindo}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-500 text-white transition-colors disabled:opacity-50">
                             <Trash2 size={12} />
-                            {excluindo ? 'Removendo...' : 'Confirmar remoção'}
+                            {excluindo ? 'Removendo...' : 'Confirmar remocao'}
                         </button>
                         <button type="button" onClick={() => setConfirmandoExclusao(false)}
                             className="px-3 py-1.5 rounded-lg text-xs text-white/40 hover:text-white/70 transition-colors">
@@ -308,46 +210,189 @@ function FormularioEditar({ company, onClose }) {
                 </button>
                 <button type="submit" disabled={processing}
                     className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all bg-ecf-yellow text-black hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                    {processing ? 'Salvando...' : 'Salvar Alterações'}
+                    {processing ? 'Salvando...' : 'Salvar alteracoes'}
                 </button>
             </div>
         </form>
     );
 }
 
-// ─── Página principal ─────────────────────────────────────────────────────────
-
-export default function Empresas({ companies }) {
+export default function Empresas({ companies, servicos_disponiveis = [] }) {
     const { flash } = usePage().props;
-    const [modalCriar, setModalCriar] = useState(false);
     const [empresaEditar, setEmpresaEditar] = useState(null);
     const [filtroTexto, setFiltroTexto] = useState('');
-    const [filtroTipo, setFiltroTipo] = useState('');
+    const [filtroServico, setFiltroServico] = useState('');
+    const [contratoModal, setContratoModal] = useState({ open: false, empresa: null, contrato: null });
+    const [contratoForm, setContratoForm] = useState({
+        servico_id: '',
+        valor_contratado: '',
+        data_contratacao: '',
+        data_vencimento: '',
+        observacoes: '',
+        ativo: true,
+    });
+    const [contratoErrors, setContratoErrors] = useState({});
+    const [contratoSalvando, setContratoSalvando] = useState(false);
+
+    const servicosNomes = [...new Set(
+        companies.flatMap(c => (c.servicos_contratados || []).map(s => typeof s === 'string' ? s : s.servico_nome).filter(Boolean)),
+    )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
     const empresasFiltradas = companies.filter(c => {
-        const types = Array.isArray(c.service_type) ? c.service_type : (c.service_type ? [c.service_type] : []);
         const textoOk = !filtroTexto
             || c.name.toLowerCase().includes(filtroTexto.toLowerCase())
             || (c.cnpj && c.cnpj.includes(filtroTexto));
-        const tipoOk = !filtroTipo || types.includes(filtroTipo);
-        return textoOk && tipoOk;
+        const servicoOk = !filtroServico
+            || (c.servicos_contratados || []).some(s => (typeof s === 'string' ? s : s.servico_nome) === filtroServico);
+        return textoOk && servicoOk;
     });
 
     const pendentes = empresasFiltradas.filter(c => c.status === 'pendente');
-    const ativos    = empresasFiltradas.filter(c => c.status !== 'pendente');
+    const ativos = empresasFiltradas.filter(c => c.status !== 'pendente');
+
+    function abrirAdicionarContrato(empresa) {
+        setContratoModal({ open: true, empresa, contrato: null });
+        setContratoForm({
+            servico_id: '',
+            valor_contratado: '',
+            data_contratacao: new Date().toISOString().slice(0, 10),
+            data_vencimento: '',
+            observacoes: '',
+            ativo: true,
+        });
+        setContratoErrors({});
+    }
+
+    function abrirEditarContrato(empresa, contrato) {
+        setContratoModal({ open: true, empresa, contrato });
+        setContratoForm({
+            servico_id: String(contrato.servico_id ?? ''),
+            valor_contratado: contrato.valor_contratado ?? '',
+            data_contratacao: contrato.data_contratacao || '',
+            data_vencimento: contrato.data_vencimento || '',
+            observacoes: contrato.observacoes || '',
+            ativo: contrato.ativo !== false,
+        });
+        setContratoErrors({});
+    }
+
+    function fecharModalContrato() {
+        setContratoModal({ open: false, empresa: null, contrato: null });
+        setContratoErrors({});
+    }
+
+    function escolherServico(id) {
+        const servico = servicos_disponiveis.find(s => String(s.id) === String(id));
+        setContratoForm(prev => ({
+            ...prev,
+            servico_id: id,
+            valor_contratado: servico ? servico.valor_padrao : prev.valor_contratado,
+        }));
+    }
+
+    function salvarContrato(e) {
+        e.preventDefault();
+        if (!contratoModal.empresa) return;
+
+        const baseUrl = `/empresas/${contratoModal.empresa.id}/contratos-servico`;
+        const url = contratoModal.contrato ? `${baseUrl}/${contratoModal.contrato.id}` : baseUrl;
+        const method = contratoModal.contrato ? 'put' : 'post';
+
+        setContratoSalvando(true);
+        router[method](url, contratoForm, {
+            preserveScroll: true,
+            onSuccess: () => fecharModalContrato(),
+            onError: errors => setContratoErrors(errors || {}),
+            onFinish: () => setContratoSalvando(false),
+        });
+    }
+
+    function desativarContrato(empresa, contrato) {
+        const nome = contrato.servico_nome ?? 'servico';
+        if (!confirm(`Desativar contrato "${nome}"?`)) return;
+
+        router.delete(`/empresas/${empresa.id}/contratos-servico/${contrato.id}`, {
+            preserveScroll: true,
+        });
+    }
 
     return (
         <AppLayout title="Empresas">
-            <Head title="Empresas — Comercial" />
-
-            <Modal open={modalCriar} onClose={() => setModalCriar(false)}>
-                <FormularioCriar onClose={() => setModalCriar(false)} />
-            </Modal>
+            <Head title="Empresas - Comercial" />
 
             <Modal open={!!empresaEditar} onClose={() => setEmpresaEditar(null)}>
                 {empresaEditar && (
-                    <FormularioEditar company={empresaEditar} onClose={() => setEmpresaEditar(null)} />
+                    <FormularioEditar
+                        company={empresaEditar}
+                        onClose={() => setEmpresaEditar(null)}
+                        onAdicionarContrato={abrirAdicionarContrato}
+                        onEditarContrato={abrirEditarContrato}
+                        onDesativarContrato={desativarContrato}
+                    />
                 )}
+            </Modal>
+
+            <Modal open={contratoModal.open} onClose={fecharModalContrato}>
+                <form onSubmit={salvarContrato} className="p-6 space-y-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-white font-bold text-base">
+                            {contratoModal.contrato ? 'Editar' : 'Adicionar'} contrato
+                        </h2>
+                        <button type="button" onClick={fecharModalContrato} className="text-white/30 hover:text-white/70">
+                            <X size={18} />
+                        </button>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">Servico *</label>
+                        {contratoModal.contrato ? (
+                            <input value={contratoModal.contrato.servico_nome ?? '-'} disabled className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5 text-white/60 text-sm" />
+                        ) : (
+                            <select value={contratoForm.servico_id} onChange={e => escolherServico(e.target.value)} required className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-ecf-yellow/40">
+                                <option value="">Selecionar...</option>
+                                {servicos_disponiveis.map(s => (
+                                    <option key={s.id} value={s.id}>
+                                        {s.nome} - {s.tipo_cobranca === 'mensal' ? 'Mensal' : 'Unica'} - {fmtBRL(s.valor_padrao)}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        {contratoErrors.servico_id && <p className="text-red-400 text-xs">{contratoErrors.servico_id}</p>}
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">Valor contratado (R$) *</label>
+                        <input type="number" min="0" step="0.01" value={contratoForm.valor_contratado} onChange={e => setContratoForm(prev => ({ ...prev, valor_contratado: e.target.value }))} required className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-ecf-yellow/40" />
+                        {contratoErrors.valor_contratado && <p className="text-red-400 text-xs">{contratoErrors.valor_contratado}</p>}
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">Contratacao *</label>
+                            <input type="date" value={contratoForm.data_contratacao} onChange={e => setContratoForm(prev => ({ ...prev, data_contratacao: e.target.value }))} required className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-ecf-yellow/40" />
+                            {contratoErrors.data_contratacao && <p className="text-red-400 text-xs">{contratoErrors.data_contratacao}</p>}
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">Vencimento</label>
+                            <input type="date" value={contratoForm.data_vencimento || ''} onChange={e => setContratoForm(prev => ({ ...prev, data_vencimento: e.target.value }))} className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-ecf-yellow/40" />
+                            {contratoErrors.data_vencimento && <p className="text-red-400 text-xs">{contratoErrors.data_vencimento}</p>}
+                        </div>
+                    </div>
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">Observacoes</label>
+                        <textarea rows={2} value={contratoForm.observacoes} onChange={e => setContratoForm(prev => ({ ...prev, observacoes: e.target.value }))} className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2.5 text-white text-sm resize-none focus:outline-none focus:border-ecf-yellow/40" />
+                        {contratoErrors.observacoes && <p className="text-red-400 text-xs">{contratoErrors.observacoes}</p>}
+                    </div>
+                    {contratoModal.contrato && (
+                        <label className="flex items-center gap-2 text-sm text-white/80">
+                            <input type="checkbox" checked={!!contratoForm.ativo} onChange={e => setContratoForm(prev => ({ ...prev, ativo: e.target.checked }))} className="h-4 w-4 accent-ecf-yellow" />
+                            Contrato ativo
+                        </label>
+                    )}
+                    <div className="flex items-center justify-end gap-3 pt-1">
+                        <button type="button" onClick={fecharModalContrato} className="px-4 py-2 rounded-lg text-sm text-white/50 hover:text-white/80">Cancelar</button>
+                        <button type="submit" disabled={contratoSalvando} className="px-5 py-2.5 rounded-lg text-sm font-bold bg-ecf-yellow text-black hover:bg-yellow-300 disabled:opacity-50">
+                            {contratoSalvando ? 'Salvando...' : contratoModal.contrato ? 'Atualizar' : 'Adicionar'}
+                        </button>
+                    </div>
+                </form>
             </Modal>
 
             <div className="space-y-6">
@@ -361,7 +406,7 @@ export default function Empresas({ companies }) {
                             <p className="text-white/40 text-[13px]">{companies.length} empresa{companies.length !== 1 ? 's' : ''} cadastrada{companies.length !== 1 ? 's' : ''}</p>
                         </div>
                     </div>
-                    <button onClick={() => setModalCriar(true)}
+                    <button onClick={() => router.visit('/comercial/empresas/novo')}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-ecf-yellow text-black hover:bg-yellow-300 transition-all shrink-0">
                         <PlusCircle size={14} />
                         Nova Empresa
@@ -381,12 +426,11 @@ export default function Empresas({ companies }) {
                             placeholder="Buscar por nome ou CNPJ..."
                             className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg pl-9 pr-3 py-2 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors" />
                     </div>
-                    <select value={filtroTipo} onChange={e => setFiltroTipo(e.target.value)}
-                        className={cn('bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-ecf-yellow/40 transition-colors',
-                            !filtroTipo ? 'text-white/30' : 'text-white')}>
-                        <option value="">Todos os tipos</option>
-                        {TIPOS.map(({ value, label }) => (
-                            <option key={value} value={value}>{label}</option>
+                    <select value={filtroServico} onChange={e => setFiltroServico(e.target.value)}
+                        className={cn('bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-ecf-yellow/40 transition-colors', !filtroServico ? 'text-white/30' : 'text-white')}>
+                        <option value="">Todos os servicos</option>
+                        {servicosNomes.map(nome => (
+                            <option key={nome} value={nome}>{nome}</option>
                         ))}
                     </select>
                 </div>
@@ -401,7 +445,7 @@ export default function Empresas({ companies }) {
                             <thead>
                                 <tr className="border-b border-white/[0.06]">
                                     <th className="text-left text-xs text-white/30 font-medium px-5 py-3">Empresa</th>
-                                    <th className="text-left text-xs text-white/30 font-medium px-4 py-3 hidden sm:table-cell">Tipo</th>
+                                    <th className="text-left text-xs text-white/30 font-medium px-4 py-3 hidden sm:table-cell">Servicos</th>
                                     <th className="text-left text-xs text-white/30 font-medium px-4 py-3 hidden md:table-cell">CNPJ</th>
                                     <th className="text-left text-xs text-white/30 font-medium px-4 py-3 hidden lg:table-cell">Cadastro</th>
                                     <th className="text-left text-xs text-white/30 font-medium px-4 py-3">Status</th>
@@ -438,10 +482,10 @@ function EmpresaRow({ company: c, onEdit }) {
                 <span className="text-white font-medium">{c.name}</span>
             </td>
             <td className="px-4 py-3 hidden sm:table-cell">
-                <TypeBadges types={c.service_type} />
+                <ServicoBadges servicos={c.servicos_contratados} />
             </td>
             <td className="px-4 py-3 hidden md:table-cell text-white/40 text-xs">
-                {c.cnpj || '—'}
+                {c.cnpj || '-'}
             </td>
             <td className="px-4 py-3 hidden lg:table-cell text-white/30 text-xs">
                 {fmtDate(c.created_at)}

@@ -7,6 +7,7 @@ use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
+use App\Support\CobrancaCalculator;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -78,9 +79,15 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
         $fim            = $ref->isSameMonth(Carbon::now()) ? Carbon::now() : $ref->copy()->endOfMonth();
 
         // ── 3. Carrega empresas principais ativas com filhas ──────────────────
+        // Phase 14 (Frente B): eager loading de contratosServico.servico (pai + filhas)
+        // para o payload de email incluir `servicos_contratados` formatado sem N+1.
         $rawCompanies = Company::where('active', true)
             ->whereNull('parent_company_id')
-            ->with(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')])
+            ->with([
+                'filhas' => fn($q) => $q->where('active', true)->orderBy('name'),
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'filhas.contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -113,12 +120,19 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
             $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
             // Vinculadas com todos os campos (espelho de AdminController::gerarRelatorioGeral)
+            // Phase 14 (Frente B): chave nova `servicos_contratados` no formato
+            // "Nome (R$ X,XX), Outro (R$ Y,YY)" — derivada do modelo N:N. As 6 chaves
+            // COEXISTÊNCIA. Serão removidas no Plan 14-06. A view Blade do email
+            // (resources/views/emails/relatorio-fechamento.blade.php) será
+            // refatorada no Plan 14-05.
             $vinculadas = $company->filhas->map(function (Company $f) use ($metricas) {
-                $m        = $metricas->get($f->id);
-                $fat      = $m ? (float) $m->faturamento : null;
-                $fx       = $fat !== null ? $this->calcularFaixa($fat) : null;
-                $valorMensal = $fx ? $fx['valor'] : null;
-                $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
+                $m   = $metricas->get($f->id);
+                $fat = $m ? (float) $m->faturamento : null;
+                $fx  = $fat !== null ? $this->calcularFaixa($fat) : null;
+                // Phase 14 (Frente B / CR-03): cobranca_mensal agrega faixa +
+                // SUM dos contratos ativos mensais via CobrancaCalculator::novo
+                // (paridade com AdminController::gerarRelatorioGeral():707).
+                $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
                 return [
                     'id'                       => $f->id,
                     'name'                     => $f->name,
@@ -127,25 +141,27 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                     'adman_store_id'           => $f->adman_store_id,
                     'ml_store_id'              => $f->ml_store_id,
                     'segment'                  => $f->segment,
-                    'service_type'             => $f->service_type,
-                    'contract_type'            => $f->contract_type,
-                    'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
-                    'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
-                    'additional_service'       => $f->additional_service,
-                    'additional_service_price' => $adicional,
+                    // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
+                    // ─── Chave nova (string formatada — "Nome (R$ X,XX), ...") ─
+                    'servicos_contratados'     => $f->contratosServico->where('ativo', true)
+                        ->map(fn($c) => ($c->servico?->nome ?? '—') . ' (R$ ' . number_format((float) $c->valor_contratado, 2, ',', '.') . ')')
+                        ->implode(', '),
                     'faturamento'              => $fat,
                     'periodo_inicio'           => $m ? Carbon::parse($m->periodo_inicio)->format('d/m/Y') : null,
                     'periodo_fim'              => $m ? Carbon::parse($m->periodo_fim)->format('d/m/Y')  : null,
                     'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
-                    'valor_mensal'             => $valorMensal,
-                    'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
+                    'valor_mensal'             => $fx ? $fx['valor'] : null,
+                    'cobranca_mensal'          => $cobrancaMensalFilha,
                 ];
             })->values()->toArray();
 
-            $valorMensalPai = $faixaPai ? $faixaPai['valor'] : null;
-            $adicionalPai   = $company->additional_service_price ? (float) $company->additional_service_price : null;
-            $cobrancaMensal = ($valorMensalPai ?? 0) + ($adicionalPai ?? 0) ?: null;
-            $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
+            // Phase 14 (Frente B / CR-03): total agrega faixa + SUM contratos do
+            // pai + SUM cobranca_mensal das filhas. Pre-Phase 14 somava
+            // additional_service_price; pos-refator essa coluna foi dropada e o
+            // componente vinha sendo OMITIDO (regressao financeira). Agora usa
+            // CobrancaCalculator::novo (paridade com AdminController:707).
+            $cobrancaPai      = CobrancaCalculator::novo($faixaPai, $company->contratosServico) ?: null;
+            $totalMensalidade = ($cobrancaPai ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 
             $relatorios[] = [
                 'company'          => $company,
@@ -154,8 +170,11 @@ class EnviarRelatorioFechamentoJob implements ShouldQueue
                 'periodo_inicio'   => $metricaPai ? Carbon::parse($metricaPai->periodo_inicio)->format('d/m/Y') : null,
                 'periodo_fim'      => $metricaPai ? Carbon::parse($metricaPai->periodo_fim)->format('d/m/Y')  : null,
                 'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
-                'valor_mensal'     => $valorMensalPai,
-                'cobranca_mensal'  => $cobrancaMensal,
+                'valor_mensal'     => $faixaPai ? $faixaPai['valor'] : null,
+                // Phase 14 (Frente B / CR-03): cobranca_mensal exposta para a Blade
+                // do email consumir (paridade com AdminController). valor_mensal
+                // permanece (faixa pura) para compat com a view legacy.
+                'cobranca_mensal'  => $cobrancaPai,
                 'vinculadas'       => $vinculadas,
                 'total_mensalidade'=> $totalMensalidade,
             ];

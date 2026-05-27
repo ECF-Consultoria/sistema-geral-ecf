@@ -21,6 +21,7 @@ const NAV_ITEMS = [
     { label: 'Dashboard',  routeName: 'dashboard',         page: 'Dashboard',   icon: LayoutDashboard, permission: 'core.dashboard' },
     { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio',   icon: Briefcase,       permission: 'core.carteira' },
     { label: 'Empresas',   routeName: 'companies.index',   page: 'Companies',   icon: Building2,       permission: 'core.empresas' },
+    { label: 'Serviços',   routeName: 'servicos.index',    page: 'Servicos',    icon: Briefcase,       permission: 'sistema.servicos' },
     { label: 'Usuários',   routeName: 'users.index',       page: 'Users',       icon: Users,           permission: 'core.usuarios' },
     { label: 'Setores',    routeName: 'admin.setores.index', page: 'Admin/Setores', icon: Shield,        permission: 'sistema.setores' },
     { label: 'Enviar notificação', routeName: 'notificacoes.nova', page: 'Notificacoes/Nova', icon: Send, permission: 'notificacoes.criar' },

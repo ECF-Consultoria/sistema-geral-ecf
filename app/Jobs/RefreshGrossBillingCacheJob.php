@@ -57,10 +57,16 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
     {
         $started = microtime(true);
 
+        // Aceita empresas com ml_store_id OU adman_account_id — o cache key
+        // canônico é Company::cust_id (ml_store_id ?: adman_account_id), mesma
+        // resolução usada por AdmanService::syncCompany. Antes filtrava só
+        // adman_account_id e empresas só-ml_store_id ficavam sem warm-up.
         $companies = Company::where('active', true)
-            ->whereNotNull('adman_account_id')
-            ->where('adman_account_id', '!=', '')
-            ->get(['id', 'name', 'adman_account_id']);
+            ->where(function ($q) {
+                $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
+                  ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
+            })
+            ->get(['id', 'name', 'adman_account_id', 'ml_store_id']);
 
         if ($companies->isEmpty()) {
             Log::info('[RefreshGrossBilling] nenhuma empresa para processar');
@@ -79,7 +85,12 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
         $callsMade = 0;
 
         foreach ($companies as $c) {
-            $custId = $c->adman_account_id;
+            // Cache key canônico via accessor — bate com leitura dos controllers.
+            $custId = $c->cust_id;
+            if (!$custId) {
+                $skipped++;
+                continue;
+            }
 
             // Re-tenta sempre que NÃO tem VALOR REAL cacheado:
             //  - Cache miss (sem entrada) → fetch

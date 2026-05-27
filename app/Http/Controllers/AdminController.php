@@ -9,6 +9,7 @@ use App\Models\CompanyMonthlyRevenue;
 use App\Models\Configuracao;
 use App\Models\FechamentoRecebido;
 use App\Services\AdmanService;
+use App\Support\CobrancaCalculator;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -30,8 +31,16 @@ class AdminController extends Controller
 
     public function empresas()
     {
+        // Phase 14 (Frente B): eager loading de contratosServico + servico para
+        // popular a chave nova `servicos_contratados` sem N+1. As chaves legacy
+        // estratégia de COEXISTÊNCIA — serão removidas no Plan 14-06 junto com
+        // o drop das colunas.
         $companies = Company::orderBy('name')
-            ->with(['filhas:id,name,parent_company_id', 'pai:id,name'])
+            ->with([
+                'filhas:id,name,parent_company_id',
+                'pai:id,name',
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            ])
             ->get()
             ->map(fn (Company $c) => [
                 'id'                       => $c->id,
@@ -40,29 +49,33 @@ class AdminController extends Controller
                 'parent_company_id'        => $c->parent_company_id,
                 'nome_pai'                 => $c->pai?->name,
                 'filhas'                   => $c->filhas->map(fn($f) => ['id' => $f->id, 'name' => $f->name])->values(),
-                'service_type'             => $c->service_type,
-                'contract_type'            => $c->contract_type,
-                'valor_fixo'               => $c->valor_fixo !== null ? (float) $c->valor_fixo : null,
-                'contract_start'           => $c->contract_start?->toDateString(),
-                'contract_end'             => $c->contract_end?->toDateString(),
-                'additional_service'       => $c->additional_service,
-                'additional_service_price' => $c->additional_service_price ? (float) $c->additional_service_price : null,
+                // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
+                // ─── Chave nova (modelo N:N de contratos) ────────────────
+                'servicos_contratados'     => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
+                    'id'               => $ct->id,
+                    'servico_id'       => $ct->servico_id,
+                    'servico_nome'     => $ct->servico?->nome,
+                    'valor_contratado' => (float) $ct->valor_contratado,
+                    'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
+                    'data_contratacao' => $ct->data_contratacao?->toDateString(),
+                    'data_vencimento'  => $ct->data_vencimento?->toDateString(),
+                    'ativo'            => true,
+                ])->values()->toArray(),
             ]);
 
-        return Inertia::render('Admin/Empresas', compact('companies'));
+        $servicosDisponiveis = \App\Models\Servico::active()
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
+        return Inertia::render('Admin/Empresas', [
+            'companies' => $companies,
+            'servicos_disponiveis' => $servicosDisponiveis,
+        ]);
     }
 
     public function updateEmpresa(Request $request, Company $company)
     {
         $validator = Validator::make($request->all(), [
-            'service_type'             => 'nullable|array',
-            'service_type.*'           => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
-            'contract_type'            => 'nullable|in:fixo,progressao',
-            'valor_fixo'               => 'nullable|numeric|min:0',
-            'contract_start'           => 'nullable|date',
-            'contract_end'             => 'nullable|date|after_or_equal:contract_start',
-            'additional_service'       => 'nullable|string|max:255',
-            'additional_service_price' => 'nullable|numeric|min:0',
             'parent_company_id'        => ['nullable', 'exists:companies,id', Rule::notIn([$company->id])],
             'filha_ids'                => 'nullable|array',
             'filha_ids.*'              => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
@@ -138,11 +151,14 @@ class AdminController extends Controller
             ->get(['company_id', 'year_month', 'gross_revenue'])
             ->groupBy('company_id');
 
-        // Passo 1 — carrega empresas ativas com relações de grupo
+        // Passo 1 — carrega empresas ativas com relações de grupo + contratos ativos
+        // Phase 14 (Frente B): eager loading de contratosServico.servico evita N+1
+        // ao calcular cobrança_mensal via CobrancaCalculator::novo (Pitfall 2 RESEARCH).
         $rawCompanies = Company::where('active', true)
             ->with([
                 'filhas' => fn($q) => $q->where('active', true)->select('id', 'name', 'parent_company_id'),
                 'pai'    => fn($q) => $q->select('id', 'name'),
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
             ])
             ->orderBy('name')
             ->get();
@@ -167,13 +183,19 @@ class AdminController extends Controller
         // Cache do faturamento da Adman pre-aquecido pelo Job. Mês atual usa
         // cache; mês passado sempre vem do DB (histórico). Batch read pra
         // todas custIds em 1 round-trip Redis.
+        //
+        // Importante: o cache key é Company::cust_id (ml_store_id ?: adman_account_id) —
+        // mesma resolução usada por RefreshGrossBillingCacheJob (writer) e
+        // AdmanService::syncCompany. Antes plucávamos 'adman_account_id' aqui mas o
+        // lookup linha 200 usava ml_store_id ?: adman_account_id, causando cache
+        // miss perpétuo para empresas com ml_store_id set.
         $dateFromStr  = $inicio->toDateString();
         $dateToStr    = $fim->toDateString();
         $missingCache = false;
 
         $cacheBatch = [];
         if ($isMesAtual) {
-            $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $custIds = $rawCompanies->pluck('cust_id')->filter()->values()->all();
             $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromStr, $dateToStr);
         }
 
@@ -181,7 +203,7 @@ class AdminController extends Controller
         $dadosPorId = [];
 
         foreach ($rawCompanies as $c) {
-            $custId   = $c->ml_store_id ?: $c->adman_account_id;
+            $custId   = $c->cust_id;
             $hasAdman = (bool) $custId;
 
             $m           = $metricas->get($c->id);
@@ -205,20 +227,13 @@ class AdminController extends Controller
                 default             => 'ok',
             };
 
-            // Contrato fixo usa valor manual; progressão calcula pela tabela de faixas.
-            if ($c->contract_type === 'fixo') {
-                $faixaData         = $c->valor_fixo !== null
-                    ? ['faixa' => null, 'valor' => (float) $c->valor_fixo]
-                    : null;
-                $faixaAnteriorData = null;
-            } else {
-                $faixaData = ($estado === 'ok')
-                    ? $this->calcularFaixa((float) $fatAtual)
-                    : null;
-                $faixaAnteriorData = ($hasAdman && $fatAnterior !== null)
-                    ? $this->calcularFaixa((float) $fatAnterior)
-                    : null;
-            }
+            $faixaData = ($estado === 'ok')
+                ? $this->calcularFaixa((float) $fatAtual)
+                : null;
+
+            $faixaAnteriorData = ($hasAdman && $fatAnterior !== null)
+                ? $this->calcularFaixa((float) $fatAnterior)
+                : null;
 
             $evolucao = null;
             if ($faixaData && $faixaAnteriorData) {
@@ -265,6 +280,15 @@ class AdminController extends Controller
 
             $filhaIds = $c->filhas->pluck('id')->toArray();
 
+            // Phase 14 (Frente B): cobranca_mensal agora calculada via CobrancaCalculator::novo
+            // (faixa + SUM contratos ativos mensais). Preserva semântica "null quando vazio"
+            // via `?: null` no caller. Per CONTEXT.md D-03.
+            $temContratoMensal = $c->contratosServico->where('ativo', true)
+                ->contains(fn($ct) => $ct->servico && $ct->servico->tipo_cobranca === \App\Models\Servico::TIPO_MENSAL);
+            $cobrancaMensal = ($faixaData !== null || $temContratoMensal)
+                ? (CobrancaCalculator::novo($faixaData, $c->contratosServico) ?: null)
+                : null;
+
             $dadosPorId[$c->id] = [
                 'id'                 => $c->id,
                 'name'               => $c->name,
@@ -272,13 +296,18 @@ class AdminController extends Controller
                 'nome_pai'           => $c->pai?->name,
                 'filha_ids'          => $filhaIds,
                 'is_filha'           => $c->parent_company_id !== null,
-                'service_type'       => $c->service_type,
-                'contract_type'      => $c->contract_type,
-                'valor_fixo'         => $c->valor_fixo !== null ? (float) $c->valor_fixo : null,
-                'contract_start'     => $c->contract_start?->toDateString(),
-                'contract_end'       => $c->contract_end?->toDateString(),
-                'additional_service'       => $c->additional_service,
-                'additional_service_price' => $c->additional_service_price ? (float) $c->additional_service_price : null,
+                // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
+                // ─── Chave nova (modelo N:N de contratos) ────────────────
+                'servicos_contratados' => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
+                    'id'               => $ct->id,
+                    'servico_id'       => $ct->servico_id,
+                    'servico_nome'     => $ct->servico?->nome,
+                    'valor_contratado' => (float) $ct->valor_contratado,
+                    'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
+                    'data_contratacao' => $ct->data_contratacao?->toDateString(),
+                    'data_vencimento'  => $ct->data_vencimento?->toDateString(),
+                    'ativo'            => true,
+                ])->values()->toArray(),
                 'has_adman'          => $hasAdman,
                 'estado'             => $estado,
                 'faturamento'        => $fatAtual,
@@ -287,9 +316,7 @@ class AdminController extends Controller
                 'progressao'         => $progressao,
                 'faixa'              => $faixaData['faixa'] ?? null,
                 'valor_mensal'       => $faixaData['valor'] ?? null,
-                'cobranca_mensal'    => ($faixaData !== null || $c->additional_service_price)
-                    ? (float) ($faixaData['valor'] ?? 0) + (float) ($c->additional_service_price ?? 0)
-                    : null,
+                'cobranca_mensal'    => $cobrancaMensal,
                 'recebido'           => isset($recebidos[$c->id]),
                 'evolucao'           => $evolucao,
             ];
@@ -335,9 +362,17 @@ class AdminController extends Controller
             \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
+        // Phase 14 (Frente B): catálogo de serviços ativos para popular o select
+        // do modal "Adicionar contrato" na UI do Fechamento — mesmo padrão de
+        // CompanyController::show().
+        $servicosDisponiveis = \App\Models\Servico::active()
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
         return Inertia::render('Admin/Financeiro', [
-            'companies'       => array_values($dadosPorId),
-            'mes_selecionado' => $mesSelecionado,
+            'companies'            => array_values($dadosPorId),
+            'mes_selecionado'      => $mesSelecionado,
+            'servicos_disponiveis' => $servicosDisponiveis,
         ]);
     }
 
@@ -379,24 +414,9 @@ class AdminController extends Controller
 
     public function updateFechamento(Request $request, Company $company)
     {
-        $validator = Validator::make($request->all(), [
-            'service_type'       => 'nullable|array',
-            'service_type.*'     => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
-            'contract_type'      => 'nullable|in:fixo,progressao',
-            'valor_fixo'         => 'nullable|numeric|min:0',
-            'contract_start'     => 'nullable|date',
-            'contract_end'       => 'nullable|date|after_or_equal:contract_start',
-            'additional_service'       => 'nullable|string|max:255',
-            'additional_service_price' => 'nullable|numeric|min:0',
-        ]);
-
-        if ($validator->fails()) {
-            return back()->withErrors($validator->errors());
-        }
-
-        $company->update($validator->validated());
-
-        return back()->with('success', 'Fechamento atualizado.');
+        // Phase 14 Plan 14-06: a gestao de servicos saiu deste endpoint e
+        // passou a usar exclusivamente as rotas de contratos de servico.
+        return back();
     }
 
     public function toggleRecebido(Request $request, Company $company)
@@ -449,18 +469,26 @@ class AdminController extends Controller
             $mesLabel = ucfirst($ref->translatedFormat('F Y'));
         }
 
-        // Carrega empresa principal com vinculadas ativas
-        $company->load(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')]);
+        // Carrega empresa principal com vinculadas ativas + contratos ativos.
+        // Phase 14 (Frente B): contratosServico.servico eager-loaded para evitar
+        // N+1 ao calcular cobrança_mensal via CobrancaCalculator::novo.
+        $company->load([
+            'filhas' => fn($q) => $q->where('active', true)->orderBy('name'),
+            'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            'filhas.contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+        ]);
 
         // Mês atual = Adman direto; mês passado = DB agregado.
+        // Resolução de custId via accessor cust_id (ml_store_id ?: adman_account_id) —
+        // coerente com cache e sync.
         $todasEmpresas = collect([$company])->merge($company->filhas);
 
         if ($isMesAtual) {
-            $custIds = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $custIds = $todasEmpresas->pluck('cust_id')->filter()->values()->all();
             $billing = $this->adman->fetchGrossBillingsBatch($custIds, $inicio->toDateString(), $fim->toDateString());
 
-            $faturamentoOf = fn(Company $emp): ?float => $emp->adman_account_id
-                ? ($billing[$emp->adman_account_id] ?? null)
+            $faturamentoOf = fn(Company $emp): ?float => $emp->cust_id
+                ? ($billing[$emp->cust_id] ?? null)
                 : null;
         } else {
             $todosIds = $todasEmpresas->pluck('id');
@@ -491,11 +519,13 @@ class AdminController extends Controller
         $faixaPai       = $faturamentoPai !== null ? $this->calcularFaixa($faturamentoPai) : null;
 
         // Monta dados das vinculadas
+        // Phase 14 (Frente B): cobranca_mensal via CobrancaCalculator::novo + chave
+        // nova `servicos_contratados` (string formatada para a Blade). Chaves legacy
         $vinculadas = $company->filhas->map(function (Company $f) use ($faturamentoOf, $periodoInicioFmt, $periodoFimFmt) {
             $fat         = $faturamentoOf($f);
             $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
             $valorMensal = $fx ? $fx['valor'] : null;
-            $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
+            $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
             return [
                 'id'                       => $f->id,
                 'name'                     => $f->name,
@@ -503,24 +533,21 @@ class AdminController extends Controller
                 'adman_account_id'         => $f->ml_store_id ?: $f->adman_account_id,
                 'adman_store_id'           => $f->adman_store_id ?? null,
                 'ml_store_id'              => $f->ml_store_id,
-                'service_type'             => $f->service_type,
-                'contract_type'            => $f->contract_type,
-                'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
-                'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
+                // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
+                // ─── Chave nova (string formatada para a Blade) ─────────
+                'servicos_contratados'     => $f->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
                 'faturamento'              => $fat,
                 'periodo_inicio'           => $fat !== null ? $periodoInicioFmt : null,
                 'periodo_fim'              => $fat !== null ? $periodoFimFmt    : null,
                 'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
                 'valor_mensal'             => $valorMensal,
-                'additional_service'       => $f->additional_service,
-                'additional_service_price' => $adicional,
-                'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
+                'cobranca_mensal'          => $cobrancaMensalFilha,
             ];
         })->values()->toArray();
 
         $valorMensalPai  = $faixaPai ? $faixaPai['valor'] : null;
-        $adicionalPai    = $company->additional_service_price ? (float) $company->additional_service_price : null;
-        $cobrancaMensal  = ($valorMensalPai ?? 0) + ($adicionalPai ?? 0) ?: null;
+        // Phase 14 (Frente B): cálculo do pai também via CobrancaCalculator::novo.
+        $cobrancaMensal  = CobrancaCalculator::novo($faixaPai, $company->contratosServico) ?: null;
 
         // Totais do grupo
         $totalFaturamento = ($faturamentoPai ?? 0) + collect($vinculadas)->sum('faturamento');
@@ -537,6 +564,9 @@ class AdminController extends Controller
             'faixa_label'      => $faixaPai ? $this->faixaLabel($faixaPai['faixa']) : null,
             'valor_mensal'     => $valorMensalPai,
             'cobranca_mensal'  => $cobrancaMensal,
+            // Phase 14 (Frente B): label de serviços derivado do modelo N:N para
+            // a Blade view consumir gradualmente. O label legacy
+            'servicos_contratados_pai' => $company->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
             'vinculadas'       => $vinculadas,
             'total_faturamento'=> $totalFaturamento,
             'total_mensalidade'=> $totalMensalidade,
@@ -575,13 +605,23 @@ class AdminController extends Controller
         }
 
         // Carrega todas as empresas principais ativas (não filhas)
+        // Phase 14 (Frente B): eager loading de contratosServico.servico (pai + filhas)
+        // evita N+1 ao calcular cobrança_mensal via CobrancaCalculator::novo.
         $query = Company::where('active', true)
             ->whereNull('parent_company_id')
-            ->with(['filhas' => fn($q) => $q->where('active', true)->orderBy('name')])
+            ->with([
+                'filhas' => fn($q) => $q->where('active', true)->orderBy('name'),
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'filhas.contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+            ])
             ->orderBy('name');
 
-        if ($request->filled('service_type')) {
-            $query->whereJsonContains('service_type', $request->input('service_type'));
+        if ($request->filled('servico_nome')) {
+            $nomeServico = $request->input('servico_nome');
+            $query->whereHas('contratosServico', fn($q) =>
+                $q->where('ativo', true)
+                  ->whereHas('servico', fn($qs) => $qs->where('nome', $nomeServico))
+            );
         }
 
         $rawCompanies = $query->get();
@@ -605,15 +645,17 @@ class AdminController extends Controller
         $missingCache = false;
 
         // Batch read do cache pra todas as empresas do relatório de uma vez.
+        // cust_id (ml_store_id ?: adman_account_id) bate com a chave do writer.
         $cacheBatch = [];
         if ($isMesAtual) {
-            $custIdsAll = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->unique()->all();
+            $custIdsAll = $todasEmpresas->pluck('cust_id')->filter()->unique()->values()->all();
             $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIdsAll, $dateFromStr, $dateToStr);
         }
 
         $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $cacheBatch, &$missingCache): ?float {
-            if ($isMesAtual && $emp->adman_account_id) {
-                $entry = $cacheBatch[$emp->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            $custId = $emp->cust_id;
+            if ($isMesAtual && $custId) {
+                $entry = $cacheBatch[$custId] ?? ['value' => null, 'hasEntry' => false];
                 if ($entry['value'] !== null) return $entry['value'];
                 if (!$entry['hasEntry']) $missingCache = true;
             }
@@ -646,7 +688,8 @@ class AdminController extends Controller
                 $fat         = $faturamentoOf($f);
                 $fx          = $fat !== null ? $this->calcularFaixa($fat) : null;
                 $valorMensal = $fx ? $fx['valor'] : null;
-                $adicional   = $f->additional_service_price ? (float) $f->additional_service_price : null;
+                // Phase 14 (Frente B): cobrança via CobrancaCalculator::novo.
+                $cobrancaMensalFilha = CobrancaCalculator::novo($fx, $f->contratosServico) ?: null;
                 return [
                     'id'                       => $f->id,
                     'name'                     => $f->name,
@@ -655,24 +698,21 @@ class AdminController extends Controller
                     'adman_store_id'           => $f->adman_store_id,
                     'ml_store_id'              => $f->ml_store_id,
                     'segment'                  => $f->segment,
-                    'service_type'             => $f->service_type,
-                    'contract_type'            => $f->contract_type,
-                    'contract_start'           => $f->contract_start ? Carbon::parse($f->contract_start)->format('d/m/Y') : null,
-                    'contract_end'             => $f->contract_end  ? Carbon::parse($f->contract_end)->format('d/m/Y')  : null,
-                    'additional_service'       => $f->additional_service,
-                    'additional_service_price' => $adicional,
+                    // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
+                    // ─── Chave nova (string formatada para a Blade) ─────────
+                    'servicos_contratados'     => $f->contratosServico->where('ativo', true)->pluck('servico.nome')->filter()->implode(', '),
                     'faturamento'              => $fat,
                     'periodo_inicio'           => $fat !== null ? $periodoInicioFmt : null,
                     'periodo_fim'              => $fat !== null ? $periodoFimFmt    : null,
                     'faixa_label'              => $fx ? $this->faixaLabel($fx['faixa']) : null,
                     'valor_mensal'             => $valorMensal,
-                    'cobranca_mensal'          => ($valorMensal ?? 0) + ($adicional ?? 0) ?: null,
+                    'cobranca_mensal'          => $cobrancaMensalFilha,
                 ];
             })->values()->toArray();
 
             $valorMensalPai  = $faixaPai ? $faixaPai['valor'] : null;
-            $adicionalPai    = $company->additional_service_price ? (float) $company->additional_service_price : null;
-            $cobrancaMensal  = ($valorMensalPai ?? 0) + ($adicionalPai ?? 0) ?: null;
+            // Phase 14 (Frente B): cálculo do pai via CobrancaCalculator::novo.
+            $cobrancaMensal  = CobrancaCalculator::novo($faixaPai, $company->contratosServico) ?: null;
 
             $totalMensalidade = ($cobrancaMensal ?? 0) + collect($vinculadas)->sum('cobranca_mensal');
 

@@ -933,15 +933,15 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                     <div className="space-y-2">
                         {empresas_pendentes.map(p => {
                             const mlbEmpresa  = empresas.find(e => e.company_id === p.id);
-                            const ehPublicacao = (Array.isArray(p.service_type) ? p.service_type : []).includes('publicacao');
+                            const servicos = Array.isArray(p.servicos_contratados) ? p.servicos_contratados : [];
+                            const nomesServicos = servicos.map(s => typeof s === 'string' ? s : s.servico_nome).filter(Boolean);
+                            const ehPublicacao = nomesServicos.some(nome => ['Publicação', 'Polos', 'Assessoria', 'Incubadora'].includes(nome));
                             return (
                                 <div key={p.id} className="rounded-xl border border-ecf-yellow/10 bg-ecf-yellow/[0.03] px-4 py-3 space-y-1.5">
                                     <div className="flex items-center gap-3">
                                         <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
                                         <span className="text-ecf-yellow/60 text-[11px] font-medium">
-                                            {(Array.isArray(p.service_type) ? p.service_type : (p.service_type ? [p.service_type] : []))
-                                                .map(t => ({ publicacao: 'Publicação', polos: 'POLO', assessoria: 'Assessoria', gestao: 'Gestão', publicidade: 'Publicidade', incubadora: 'Incubadora' }[t] || t))
-                                                .join(' + ') || '—'}
+                                            {nomesServicos.join(' + ') || '—'}
                                         </span>
                                         <span className="text-white/25 text-[11px]">
                                             {new Date(p.created_at).toLocaleDateString('pt-BR')}

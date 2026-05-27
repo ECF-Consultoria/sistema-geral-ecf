@@ -14,7 +14,7 @@ class Company extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id', 'service_type', 'contract_start', 'contract_end'])
+            ->logOnly(['name', 'cnpj', 'segment', 'active', 'status', 'notes', 'adman_account_id', 'ml_store_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
@@ -28,48 +28,69 @@ class Company extends Model
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'segment', 'active', 'status', 'notes',
-        'service_type', 'contract_type', 'valor_fixo', 'contract_start', 'contract_end',
-        'additional_service', 'additional_service_price',
         'parent_company_id',
     ];
 
     protected $casts = [
         'active'         => 'boolean',
         'status'         => 'string',
-        'contract_start' => 'date:Y-m-d',
-        'contract_end'   => 'date:Y-m-d',
-        'service_type'   => 'array',
     ];
 
     /**
-     * Converte um valor de service_type (string legada ou array) em label legível.
-     * Usado em Blade views e acessores para exibição consistente.
+     * ID canônico de cliente para chamadas Adman e chave de cache de faturamento.
      *
-     * Ex: ['polos', 'gestao'] → 'POLO + Gestão'
+     * Por que existir: o codebase usava `ml_store_id ?: adman_account_id` em alguns
+     * call-sites (AdmanService::syncCompany, AdminController::fechamento) e apenas
+     * `adman_account_id` em outros (DashboardController, RefreshGrossBillingCacheJob,
+     * CompanyController::show). Esse desalinhamento produzia:
+     *  - empresas com apenas `ml_store_id` saindo zeradas do dashboard;
+     *  - cache miss perpétuo no Fechamento (job warm-a por adman_account_id,
+     *    controller lê por ml_store_id) → mistura cache hit + DB SUM → oscilação.
+     *
+     * Acessor único `$company->cust_id` para todos os call-sites. Retorna null
+     * quando a empresa não tem integração Adman/ML configurada.
      */
-    public static function labelFromTypes(mixed $types): string
+    public function getCustIdAttribute(): ?string
     {
-        $map = [
-            'publicacao'  => 'Publicação',
-            'polos'       => 'POLO',
-            'polo'        => 'POLO',
-            'assessoria'  => 'Assessoria',
-            'incubadora'  => 'Incubadora',
-            'publicidade' => 'Publicidade',
-            'gestao'      => 'Gestão',
-            'mentoria'    => 'Mentoria',
-            'implantacao' => 'Implantação',
-        ];
-        $arr = is_array($types)
-            ? $types
-            : (($types !== null && $types !== '') ? [$types] : []);
-        $labels = array_map(fn($t) => $map[$t] ?? $t, $arr);
-        return implode(' + ', array_filter($labels)) ?: '—';
+        $custId = $this->ml_store_id ?: $this->adman_account_id;
+        return $custId !== '' ? $custId : null;
     }
 
+
+    /**
+     * Converte uma coleção (ou array) de Servicos em label legível, separados por vírgula.
+     * verdade são os contratos ativos da empresa, não os slugs legacy.
+     *
+     * Aceita qualquer iterável cujos itens exponham a propriedade `nome` (típico:
+     * `Servico` Eloquent ou objeto anônimo nos testes).
+     *
+     * Per CONTEXT.md D-09. Joiner ', ' (não mais ' + ').
+     *
+     * Ex: [Servico{nome:'Polos'}, Servico{nome:'Gestão'}] → 'Polos, Gestão'
+     */
+    public static function labelFromServicos(iterable $servicos): string
+    {
+        return collect($servicos)->pluck('nome')->filter()->implode(', ') ?: '—';
+    }
+
+    /**
+     *
+     * Phase 14 (Frente B): API estática preservada para os callers (Blades e JSX
+     * fonte de verdade agora é a coleção `contratosServico` (eager-loaded ou
+     * lazy via `loadMissing`).
+     */
     public function getServiceTypeLabelAttribute(): string
     {
-        return static::labelFromTypes($this->service_type);
+        // Garante eager loading dos contratos + servico para evitar N+1
+        // quando o accessor é invocado dentro de loops (ex: Blade view de relatório).
+        $this->loadMissing('contratosServico.servico');
+
+        $servicosAtivos = $this->contratosServico
+            ->where('ativo', true)
+            ->pluck('servico')
+            ->filter();
+
+        return static::labelFromServicos($servicosAtivos);
     }
 
     public function filhas()
@@ -161,6 +182,15 @@ class Company extends Model
     public function sugadores()
     {
         return $this->hasMany(Sugador::class);
+    }
+
+    /**
+     * Contratos de serviço da empresa (Módulo Serviços — Frente A).
+     *
+     */
+    public function contratosServico()
+    {
+        return $this->hasMany(ContratoServico::class);
     }
 
     public function getActiveGrantAttribute(): ?CompanyGrant

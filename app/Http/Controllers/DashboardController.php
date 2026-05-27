@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class DashboardController extends Controller
@@ -80,53 +81,105 @@ class DashboardController extends Controller
             ->orderBy('reference_date')
             ->get();
 
-        // Faturamento 30d por empresa — cache pre-aquecido pelo
-        // RefreshGrossBillingCacheJob (cron 30min) + fallback SUM DB
-        // se cache cold. Mesmo padrão de CompanyController::index.
+        // ─── Cards 30d (Faturamento, Invest. Ads, TACOS médio) ────────────────
+        //
+        // Política tudo-ou-nada: se TODAS as empresas com cust_id (ml_store_id
+        // ?: adman_account_id) têm cache /performance + /accounts/metrics
+        // quente, usa valores EXATOS da Adman. Se QUALQUER empresa está em
+        // cache miss/erro, descarta o cache do conjunto inteiro e cai para
+        // SUM(adman_metrics) no DB local para TODAS as empresas.
+        //
+        // Por que tudo-ou-nada: mesclar "Adman exato" para algumas empresas com
+        // "SUM DB" para outras (estado anterior) produzia totais oscilantes em
+        // ±R$ 20M entre requests, conforme a composição cache-hit muda. Agora
+        // a leitura é determinística por request: ou tudo cache, ou tudo DB.
+        //
+        // Por que cust_id (não só adman_account_id): empresas com apenas
+        // ml_store_id (cadastradas via Comercial pós-Phase 13) eram silenciosamente
+        // excluídas com a lookup antiga (if !$c->adman_account_id continue) →
+        // apareciam zeradas no dashboard. cust_id casa com a chave usada por
+        // RefreshGrossBillingCacheJob (writer) e AdmanService::syncCompany.
+        //
+        // Mantém o cache key consistente com RefreshGrossBillingCacheJob:
+        // range = now()->subDays(30)..now() (today inclusive).
         $dateFrom30d = now()->subDays(30)->toDateString();
         $dateTo30d   = now()->toDateString();
-        $sumDb30d = AdmanMetric::query()
-            ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', $dateFrom30d)
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
 
         // Batch read: gross + account metrics em 2 round-trips Redis.
-        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $custIds30d = $companies->pluck('cust_id')->filter()->values()->all();
         $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
         $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
 
+        // Detecta cache completo: TODA empresa com cust_id precisa ter VALOR
+        // REAL no cache (não null, não ERROR_SENTINEL). Empresas sem cust_id
+        // são ignoradas no critério — contribuem 0 em ambos os modos.
+        $grossCacheCompleto   = true;
+        $accountCacheCompleto = true;
+        foreach ($companies as $c) {
+            $custId = $c->cust_id;
+            if (!$custId) continue;
+            $g = $grossBatch30d[$custId]   ?? ['value' => null];
+            $a = $accountBatch30d[$custId] ?? ['value' => null];
+            if ($g['value'] === null) $grossCacheCompleto   = false;
+            if ($a['value'] === null) $accountCacheCompleto = false;
+        }
+
+        // Se algo está faltando, dispara warm-up do cache em background — não
+        // afeta este request, mas próximas requests podem ter cache completo.
+        if (!$grossCacheCompleto || !$accountCacheCompleto) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
+
+        // Revenue 30d por empresa — SEM mistura: ou todas pelo cache Adman, ou
+        // todas pelo SUM DB. tacos/acos/margem por empresa seguem o mesmo
+        // critério separado (cache /accounts/metrics).
         $revenue30dByCompany = [];
         $acos30dByCompany    = [];
         $tacos30dByCompany   = [];
         $margin30dByCompany  = [];
-        $missingCache        = false;
-        foreach ($companies as $c) {
-            if (!$c->adman_account_id) {
-                $revenue30dByCompany[$c->id] = 0.0;
-                continue;
-            }
-            $entry = $grossBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
-            if ($entry['value'] !== null) {
-                $revenue30dByCompany[$c->id] = $entry['value'];
-            } else {
-                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
-                if (!$entry['hasEntry']) $missingCache = true;
-            }
 
-            $accEntry = $accountBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
-            if ($accEntry['value'] !== null) {
-                $acos30dByCompany[$c->id]   = $accEntry['value']['acos']              ?? null;
-                $tacos30dByCompany[$c->id]  = $accEntry['value']['tacos']             ?? null;
-                $margin30dByCompany[$c->id] = $accEntry['value']['percentage_margin'] ?? null;
-            } elseif (!$accEntry['hasEntry']) {
-                $missingCache = true;
+        if ($grossCacheCompleto) {
+            foreach ($companies as $c) {
+                $custId = $c->cust_id;
+                if (!$custId) {
+                    $revenue30dByCompany[$c->id] = 0.0;
+                    continue;
+                }
+                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$custId]['value'];
             }
+        } else {
+            // Cache incompleto → SUM(adman_metrics.revenue) 30d para TODAS as
+            // empresas. Usa o MESMO range do cache (BETWEEN $dateFrom30d AND
+            // $dateTo30d) pra os dois modos baterem o máximo possível.
+            $sumDb30d = AdmanMetric::query()
+                ->whereIn('company_id', $companies->pluck('id'))
+                ->whereBetween('reference_date', [$dateFrom30d, $dateTo30d])
+                ->whereNotNull('revenue')
+                ->selectRaw('company_id, SUM(revenue) as total')
+                ->groupBy('company_id')
+                ->pluck('total', 'company_id');
+
+            foreach ($companies as $c) {
+                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+            }
+            Log::info('[Dashboard] revenue 30d em fallback DB (cache Adman incompleto)');
         }
-        if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+
+        // ACOS / TACOS / margem por empresa — só ficam preenchidos quando cache
+        // /accounts/metrics está completo. No fallback DB esses campos por
+        // empresa ficam null (a tabela de performance no front exibe latestMetrics
+        // como fallback secundário; ver companies_performance abaixo). O TOTAL
+        // (avg_tacos, total_ad_investment_30d) sim tem fallback DB agregado
+        // logo abaixo.
+        if ($accountCacheCompleto) {
+            foreach ($companies as $c) {
+                $custId = $c->cust_id;
+                if (!$custId) continue;
+                $v = $accountBatch30d[$custId]['value'];
+                $acos30dByCompany[$c->id]   = $v['acos']              ?? null;
+                $tacos30dByCompany[$c->id]  = $v['tacos']             ?? null;
+                $margin30dByCompany[$c->id] = $v['percentage_margin'] ?? null;
+            }
         }
 
         // Gera série temporal CONTÍNUA: todas as datas do período no eixo X,
@@ -168,24 +221,40 @@ class DashboardController extends Controller
             ? $meetings->filter(fn($m) => !$m->consultant_present || !$m->mentor_present)->count() / $meetings->count() * 100
             : 0;
 
-        // Card 'Faturamento' = soma dos grossBilling 30d EXATOS da Adman.
+        // Card 'Faturamento' = soma do que foi escolhido acima (cache Adman OU
+        // SUM DB, tudo-ou-nada). Determinístico por request.
         $totalRevenue = array_sum($revenue30dByCompany);
 
-        // TACOS médio = média dos TACOS 30d cacheados (Adman). Antes era
-        // $metrics->avg('tacos') = média do daily DB, divergia da Adman.
-        $tacosValues = array_filter($tacos30dByCompany, fn($v) => $v !== null);
-        $avgTacos = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
+        // Card 'Invest. Ads 30d' e 'TACOS médio': mesma política tudo-ou-nada
+        // do account cache. Quando cache incompleto, ambos caem para o DB
+        // local — total_ad_spend somado em 1 query e TACOS recalculado como
+        // (total_ad_spend / total_revenue) * 100. Antes do fix esses dois
+        // cards excluíam silenciosamente empresas em cache cold, oscilando
+        // o denominador e gerando totais aleatórios.
+        if ($accountCacheCompleto) {
+            $tacosValues = array_filter($tacos30dByCompany, fn($v) => $v !== null);
+            $avgTacos    = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
 
-        // Investimento em Ads 30d agregado = soma de metrics.investment.value
-        // de todas as empresas (cache /accounts/metrics). Substitui o card
-        // Absenteísmo no Dashboard admin.
-        $totalAdInvestment30d = 0.0;
-        foreach ($companies as $c) {
-            if (!$c->adman_account_id) continue;
-            $accEntry = $accountBatch30d[$c->adman_account_id] ?? null;
-            if ($accEntry && $accEntry['value'] !== null) {
-                $totalAdInvestment30d += (float) ($accEntry['value']['investment'] ?? 0);
+            $totalAdInvestment30d = 0.0;
+            foreach ($companies as $c) {
+                $custId = $c->cust_id;
+                if (!$custId) continue;
+                $accEntry = $accountBatch30d[$custId] ?? null;
+                if ($accEntry && $accEntry['value'] !== null) {
+                    $totalAdInvestment30d += (float) ($accEntry['value']['investment'] ?? 0);
+                }
             }
+        } else {
+            // Fallback DB agregado: SUM(ad_spend) e TACOS = ad_spend/revenue * 100.
+            // Usa o mesmo range do cache para coerência entre os dois modos.
+            $totalAdInvestment30d = (float) AdmanMetric::query()
+                ->whereIn('company_id', $companies->pluck('id'))
+                ->whereBetween('reference_date', [$dateFrom30d, $dateTo30d])
+                ->sum('ad_spend');
+            $avgTacos = $totalRevenue > 0
+                ? ($totalAdInvestment30d / $totalRevenue) * 100
+                : 0;
+            Log::info('[Dashboard] avg_tacos + total_ad_investment_30d em fallback DB (cache Adman incompleto)');
         }
 
         $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
@@ -220,9 +289,9 @@ class DashboardController extends Controller
             $uCompanyIds = $uCompanies->pluck('id')->toArray();
             $uMetrics = $metrics->whereIn('company_id', $uCompanyIds);
 
-            // Carteira do user = soma dos grossBilling 30d EXATOS da Adman
-            // das empresas atribuídas a ele (cache pre-aquecido). Antes era
-            // SUM daily DB e divergia.
+            // Carteira do user = soma do revenue30dByCompany já decidido pelo
+            // critério tudo-ou-nada (cache Adman OU SUM DB) — herda o mesmo
+            // modo do total global, sem mistura.
             $uTotalRevenue = 0.0;
             foreach ($uCompanyIds as $cid) {
                 $uTotalRevenue += $revenue30dByCompany[$cid] ?? 0;
@@ -368,47 +437,63 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
-        // 30d cache+fallback (mesma estratégia do adminDashboard).
+        // 30d cache com política tudo-ou-nada (mesma estratégia do
+        // adminDashboard, agora via cust_id = ml_store_id ?: adman_account_id).
         $dateFrom30d = now()->subDays(30)->toDateString();
         $dateTo30d   = now()->toDateString();
-        $sumDb30d = AdmanMetric::query()
-            ->whereIn('company_id', $companies->pluck('id'))
-            ->where('reference_date', '>=', $dateFrom30d)
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
 
-        // Batch read: gross + account metrics em 2 round-trips Redis.
-        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $custIds30d = $companies->pluck('cust_id')->filter()->values()->all();
         $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
         $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
 
+        $grossCacheCompleto   = true;
+        $accountCacheCompleto = true;
+        foreach ($companies as $c) {
+            $custId = $c->cust_id;
+            if (!$custId) continue;
+            $g = $grossBatch30d[$custId]   ?? ['value' => null];
+            $a = $accountBatch30d[$custId] ?? ['value' => null];
+            if ($g['value'] === null) $grossCacheCompleto   = false;
+            if ($a['value'] === null) $accountCacheCompleto = false;
+        }
+
+        if (!$grossCacheCompleto || !$accountCacheCompleto) {
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+        }
+
         $revenue30dByCompany = [];
         $tacos30dByCompany   = [];
-        $missingCache        = false;
-        foreach ($companies as $c) {
-            if (!$c->adman_account_id) {
-                $revenue30dByCompany[$c->id] = 0.0;
-                continue;
-            }
-            $entry = $grossBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
-            if ($entry['value'] !== null) {
-                $revenue30dByCompany[$c->id] = $entry['value'];
-            } else {
-                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
-                if (!$entry['hasEntry']) $missingCache = true;
-            }
 
-            $accEntry = $accountBatch30d[$c->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
-            if ($accEntry['value'] !== null) {
-                $tacos30dByCompany[$c->id] = $accEntry['value']['tacos'] ?? null;
-            } elseif (!$accEntry['hasEntry']) {
-                $missingCache = true;
+        if ($grossCacheCompleto) {
+            foreach ($companies as $c) {
+                $custId = $c->cust_id;
+                if (!$custId) {
+                    $revenue30dByCompany[$c->id] = 0.0;
+                    continue;
+                }
+                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$custId]['value'];
             }
+        } else {
+            $sumDb30d = AdmanMetric::query()
+                ->whereIn('company_id', $companies->pluck('id'))
+                ->whereBetween('reference_date', [$dateFrom30d, $dateTo30d])
+                ->whereNotNull('revenue')
+                ->selectRaw('company_id, SUM(revenue) as total')
+                ->groupBy('company_id')
+                ->pluck('total', 'company_id');
+
+            foreach ($companies as $c) {
+                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+            }
+            Log::info('[Dashboard] revenue 30d (userDashboard) em fallback DB (cache Adman incompleto)');
         }
-        if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+
+        if ($accountCacheCompleto) {
+            foreach ($companies as $c) {
+                $custId = $c->cust_id;
+                if (!$custId) continue;
+                $tacos30dByCompany[$c->id] = $accountBatch30d[$custId]['value']['tacos'] ?? null;
+            }
         }
 
         $npsResponses = NpsSurvey::with('response')
@@ -460,4 +545,3 @@ class DashboardController extends Controller
         ]);
     }
 }
-

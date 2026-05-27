@@ -18,19 +18,29 @@ namespace App\Notifications;
 class EmpresaCadastradaNotification extends BaseNotification
 {
     /**
-     * Construtor enxuto — nome da empresa, tipo de serviço e autor (o user do Comercial).
+     * Construtor enxuto — nome da empresa, lista de serviços e autor (o user do Comercial).
      *
      * O autor é opcional: se null, a notificação aparece como originada pelo sistema.
+     *
+     * Phase 14 (Frente B): recebe a lista de nomes de Servico já resolvidos
+     * (ex.: ['Polos', 'Publicidade']).
+     *
+     * A chave `meta` usa `servicos` (array).
+     *
+     * @param  array<string>  $servicos  Nomes dos serviços.
      */
-    public function __construct(string $nomeEmpresa, string $serviceType, ?int $autorUserId)
+    public function __construct(string $nomeEmpresa, array $servicos, ?int $autorUserId)
     {
+        $servicosNomes = array_values(array_filter($servicos));
+        $servicosLabel = implode(', ', $servicosNomes) ?: 'sem serviços';
+
         parent::__construct(
             titulo:      'Nova empresa cadastrada: ' . $nomeEmpresa,
-            mensagem:    'O setor Comercial cadastrou a empresa "' . $nomeEmpresa . '" (tipo: ' . $serviceType . '). Verifique os pendentes.',
+            mensagem:    'O setor Comercial cadastrou a empresa "' . $nomeEmpresa . '" (serviços: ' . $servicosLabel . '). Verifique os pendentes.',
             categoria:   Categoria::MANUAL,
             autorUserId: $autorUserId,
             url:         route('notificacoes.index'),
-            meta:        ['empresa' => $nomeEmpresa, 'service_type' => $serviceType],
+            meta:        ['empresa' => $nomeEmpresa, 'servicos' => $servicosNomes],
         );
     }
 }

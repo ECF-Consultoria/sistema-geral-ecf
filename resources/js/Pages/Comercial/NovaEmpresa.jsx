@@ -1,51 +1,61 @@
 // Página /comercial/empresas/novo — cadastro de nova empresa pelo setor Comercial.
 //
-// Recebe flash.success do ComercialController::store() via shared props do HandleInertiaRequests.
-// Sem props adicionais do controller além do flash.
+// Recebe `servicos_disponiveis` do ComercialController::create() — lista do
+// catálogo de serviços ativos (Frente A). Também recebe flash.success via
+// HandleInertiaRequests após POST bem-sucedido.
 //
 // Form via useForm do Inertia:
-//   - nome:         obrigatório (texto livre)
-//   - cnpj:         opcional (texto livre — sem máscara automática)
-//   - service_type: obrigatório (polos | assessoria | publicidade | gestao)
+//   - nome:     obrigatório (texto livre)
+//   - cnpj:     opcional (texto livre — sem máscara automática)
+//   - notes:    opcional (texto livre)
+//   - servicos: array de { servico_id, valor_contratado } — pelo menos 1 obrigatório
 //
 // Submit chama POST comercial.empresas.store — backend cria atomicamente:
-//   - polos:       Company + MlbEmpresa + MlbImplementacao
-//   - assessoria:  Company + MlbEmpresa
-//   - publicidade: Company
-//   - gestao:      Company
+//   - Polos:       Company + MlbEmpresa (tipo=POLO) + MlbImplementacao
+//   - Assessoria:  Company + MlbEmpresa (tipo=ASSESSORIA)
+//   - Incubadora:  Company + MlbEmpresa (tipo=INCUBADORA)
+//   - Publicidade/Gestão/Publicação: apenas Company (sem mlb_empresas)
 // E notifica líderes do setor de destino.
+//
+// Phase 14 Plan 14-04 (Frente B): substituiu os 3 checkboxes hardcoded
+// ('publicacao'/'publicidade'/'gestao') por seletor multi do catálogo
+// dinâmico. Cada serviço selecionado expõe input de valor_contratado
+// (default = valor_padrao do catálogo).
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { Building2, PlusCircle } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 
-const TIPOS = [
-    { value: 'publicacao',  label: 'Publicação',
-      hint: 'O time de Publicação escolherá se é POLO ou Assessoria ao receber a empresa.' },
-    { value: 'publicidade', label: 'Publicidade',
-      hint: 'Cria empresa no módulo de Publicidade. Dados de conta Adman são preenchidos depois.' },
-    { value: 'gestao',      label: 'Gestão',
-      hint: 'Cria empresa no módulo de Gestão. Consultor/estrategista atribuídos depois.' },
-    { value: 'mentoria',    label: 'Mentoria',
-      hint: '' },
-    { value: 'implantacao', label: 'Implantação',
-      hint: '' },
-    { value: 'incubadora',  label: 'Incubadora',
-      hint: '' },
-];
-
-export default function NovaEmpresa() {
+export default function NovaEmpresa({ servicos_disponiveis = [] }) {
     const { flash } = usePage().props;
 
     const { data, setData, post, processing, errors, reset } = useForm({
-        nome:         '',
-        cnpj:         '',
-        service_type: [],
+        nome:     '',
+        cnpj:     '',
+        notes:    '',
+        servicos: [], // array de { servico_id, valor_contratado }
     });
 
-    function toggleTipo(val) {
-        const cur = data.service_type;
-        setData('service_type', cur.includes(val) ? cur.filter(t => t !== val) : [...cur, val]);
+    // ─── Helpers de manipulação do array servicos[] ──────────────────────────
+
+    function toggleServico(servicoId) {
+        const cur = data.servicos;
+        const existe = cur.find(s => s.servico_id === servicoId);
+        if (existe) {
+            setData('servicos', cur.filter(s => s.servico_id !== servicoId));
+        } else {
+            const cat = servicos_disponiveis.find(s => s.id === servicoId);
+            setData('servicos', [...cur, {
+                servico_id:       servicoId,
+                valor_contratado: cat?.valor_padrao ?? 0,
+            }]);
+        }
+    }
+
+    function updateValor(servicoId, valor) {
+        setData('servicos', data.servicos.map(s =>
+            s.servico_id === servicoId ? { ...s, valor_contratado: valor } : s
+        ));
     }
 
     function handleSubmit(e) {
@@ -126,53 +136,88 @@ export default function NovaEmpresa() {
                             )}
                         </div>
 
-                        {/* Tipo de Serviço */}
+                        {/* Serviços contratados — catálogo dinâmico (Frente A) */}
                         <div className="space-y-1.5">
                             <label className="block text-xs text-white/60 font-medium">
-                                Tipo de Serviço <span className="text-ecf-yellow">*</span>
+                                Serviços contratados <span className="text-ecf-yellow">*</span>
                             </label>
                             <div className={cn(
-                                'rounded-lg border p-3 grid grid-cols-2 gap-2',
-                                errors.service_type ? 'border-red-500/50' : 'border-white/[0.08]'
+                                'rounded-lg border p-3 space-y-2 bg-ecf-bg',
+                                errors.servicos ? 'border-red-500/50' : 'border-white/[0.08]'
                             )}>
-                                {TIPOS.map(tipo => {
-                                    const checked = data.service_type.includes(tipo.value);
-                                    return (
-                                        <label
-                                            key={tipo.value}
-                                            className={cn(
-                                                'flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-colors',
-                                                checked ? 'bg-ecf-yellow/10 border border-ecf-yellow/30' : 'bg-white/[0.03] border border-white/[0.06]',
-                                            )}
-                                        >
-                                            <input
-                                                type="checkbox"
-                                                checked={checked}
-                                                onChange={() => toggleTipo(tipo.value)}
-                                                className="accent-ecf-yellow w-3.5 h-3.5"
-                                            />
-                                            <span className={cn('text-[12px] font-medium', checked ? 'text-ecf-yellow' : 'text-white/60')}>
-                                                {tipo.label}
-                                            </span>
-                                        </label>
-                                    );
-                                })}
+                                {servicos_disponiveis.length === 0 ? (
+                                    <p className="text-white/40 text-xs px-1">
+                                        Nenhum serviço cadastrado no catálogo. Acesse <span className="text-ecf-yellow/70">/servicos</span> para adicionar.
+                                    </p>
+                                ) : (
+                                    servicos_disponiveis.map(servico => {
+                                        const selecionado = data.servicos.find(s => s.servico_id === servico.id);
+                                        const checked     = !!selecionado;
+                                        return (
+                                            <div
+                                                key={servico.id}
+                                                className={cn(
+                                                    'flex items-center gap-3 rounded-lg px-3 py-2 transition-colors',
+                                                    checked
+                                                        ? 'bg-ecf-yellow/10 border border-ecf-yellow/30'
+                                                        : 'bg-white/[0.03] border border-white/[0.06]',
+                                                )}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    id={`servico-${servico.id}`}
+                                                    checked={checked}
+                                                    onChange={() => toggleServico(servico.id)}
+                                                    className="accent-ecf-yellow w-3.5 h-3.5"
+                                                />
+                                                <label
+                                                    htmlFor={`servico-${servico.id}`}
+                                                    className="flex-1 cursor-pointer flex items-center gap-2"
+                                                >
+                                                    <span className={cn(
+                                                        'text-[12px] font-medium',
+                                                        checked ? 'text-ecf-yellow' : 'text-white/70'
+                                                    )}>
+                                                        {servico.nome}
+                                                    </span>
+                                                    <span className="text-white/30 text-[10px]">
+                                                        ({servico.tipo_cobranca})
+                                                    </span>
+                                                </label>
+                                                {checked && (
+                                                    <div className="flex items-center gap-1">
+                                                        <span className="text-white/30 text-[10px]">R$</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={selecionado.valor_contratado}
+                                                            onChange={e => updateValor(servico.id, e.target.value)}
+                                                            placeholder="0,00"
+                                                            className="w-20 px-2 py-1 rounded bg-ecf-card border border-white/[0.08] text-white text-[11px] text-right focus:outline-none focus:border-ecf-yellow/40"
+                                                        />
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })
+                                )}
                             </div>
-                            {errors.service_type && (
-                                <p className="text-red-400 text-xs mt-1">{errors.service_type}</p>
+                            {errors.servicos && (
+                                <p className="text-red-400 text-xs mt-1">{errors.servicos}</p>
                             )}
-                            {TIPOS.filter(t => data.service_type.includes(t.value)).map(t => (
-                                <p key={t.value} className="text-white/30 text-[11px] leading-snug">
-                                    <span className="text-white/50 font-medium">{t.label}:</span> {t.hint}
+                            {data.servicos.length > 0 && (
+                                <p className="text-white/40 text-[11px] leading-snug pt-1">
+                                    {data.servicos.length} serviço(s) selecionado(s) — após o cadastro, líderes do setor de destino serão notificados.
                                 </p>
-                            ))}
+                            )}
                         </div>
 
                         {/* Botão de submit */}
                         <div className="pt-1">
                             <button
                                 type="submit"
-                                disabled={processing || data.service_type.length === 0}
+                                disabled={processing || data.servicos.length === 0}
                                 className={cn(
                                     'inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all',
                                     'bg-ecf-yellow text-black hover:bg-yellow-300 disabled:opacity-50 disabled:cursor-not-allowed'
