@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, useForm } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     AlertTriangle, Building2, ExternalLink, ArrowLeft, Megaphone, Tag,
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
@@ -132,6 +132,18 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
         acao_tomada: sugador.acao_tomada || '',
         observacao:  sugador.observacao || '',
     });
+
+    // Alimenta o chip "Continuar com X" do Index quando o user entra direto via /sugadores/{id}
+    // (link compartilhado, bookmark, navegação direta). SSR-safe via useEffect.
+    useEffect(() => {
+        const companyId = sugador?.company?.id;
+        if (!companyId) return;
+        try {
+            localStorage.setItem('sugadores:last_company_id', String(companyId));
+        } catch {
+            // localStorage indisponível — sem efeito colateral.
+        }
+    }, [sugador?.company?.id]);
 
     // Info do adgroup: prioriza colunas tipadas (preenchidas na análise), com fallback
     // pro raw_data para registros antigos que precederam a migration de metadados.
