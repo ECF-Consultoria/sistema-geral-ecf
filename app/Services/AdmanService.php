@@ -14,6 +14,16 @@ use Illuminate\Support\Facades\Log;
 
 class AdmanService
 {
+    /**
+     * Limite de requisições por minuto da API Adman.
+     *
+     * Documentado pela Adman em 2026-05-27: 10 req/min por API key.
+     * Throttle aplicado entre chamadas sequenciais = 7s.
+     * Cálculo: 60s / 10 req = 6s teórico + 1s de folga para
+     * garantir nunca passar do limite mesmo com jitter de rede.
+     */
+    public const ADMAN_RATE_LIMIT_RPM = 10;
+
     private string $baseUrl;
     private string $apiKey;
     private string $marketplace;
@@ -48,7 +58,8 @@ class AdmanService
                     try {
                         $this->syncCompany($company);
                         $results['success']++;
-                        usleep(700_000);
+                        // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM (10 rpm → 7s/req com folga)
+                        usleep(7_000_000);
                     } catch (\Throwable $e) {
                         Log::error("[Adman] Erro empresa {$company->id} ({$company->name}): " . $e->getMessage());
                         $results['failed']++;

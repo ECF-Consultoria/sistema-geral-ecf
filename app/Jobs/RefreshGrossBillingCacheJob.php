@@ -115,7 +115,8 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
             // retornariam null imediato (sem chamar API), e o cache ficaria
             // preso em erro até o TTL de 10min expirar.
             if ($needGross) {
-                if ($callsMade > 0) usleep(1_500_000);
+                // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM (10 rpm → 7s/req com folga)
+                if ($callsMade > 0) usleep(7_000_000);
                 try {
                     $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 60, forceRefresh: true);
                     $callsMade++;
@@ -130,7 +131,8 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
 
             // /accounts/metrics → acos, tacos, margem, etc (mesma motivação).
             if ($needAccount) {
-                if ($callsMade > 0) usleep(1_500_000);
+                // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM (10 rpm → 7s/req com folga)
+                if ($callsMade > 0) usleep(7_000_000);
                 try {
                     $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 60, forceRefresh: true);
                     $callsMade++;
