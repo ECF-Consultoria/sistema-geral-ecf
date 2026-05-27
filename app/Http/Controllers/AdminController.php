@@ -183,13 +183,19 @@ class AdminController extends Controller
         // Cache do faturamento da Adman pre-aquecido pelo Job. Mês atual usa
         // cache; mês passado sempre vem do DB (histórico). Batch read pra
         // todas custIds em 1 round-trip Redis.
+        //
+        // Importante: o cache key é Company::cust_id (ml_store_id ?: adman_account_id) —
+        // mesma resolução usada por RefreshGrossBillingCacheJob (writer) e
+        // AdmanService::syncCompany. Antes plucávamos 'adman_account_id' aqui mas o
+        // lookup linha 200 usava ml_store_id ?: adman_account_id, causando cache
+        // miss perpétuo para empresas com ml_store_id set.
         $dateFromStr  = $inicio->toDateString();
         $dateToStr    = $fim->toDateString();
         $missingCache = false;
 
         $cacheBatch = [];
         if ($isMesAtual) {
-            $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $custIds = $rawCompanies->pluck('cust_id')->filter()->values()->all();
             $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromStr, $dateToStr);
         }
 
@@ -197,7 +203,7 @@ class AdminController extends Controller
         $dadosPorId = [];
 
         foreach ($rawCompanies as $c) {
-            $custId   = $c->ml_store_id ?: $c->adman_account_id;
+            $custId   = $c->cust_id;
             $hasAdman = (bool) $custId;
 
             $m           = $metricas->get($c->id);
@@ -473,14 +479,16 @@ class AdminController extends Controller
         ]);
 
         // Mês atual = Adman direto; mês passado = DB agregado.
+        // Resolução de custId via accessor cust_id (ml_store_id ?: adman_account_id) —
+        // coerente com cache e sync.
         $todasEmpresas = collect([$company])->merge($company->filhas);
 
         if ($isMesAtual) {
-            $custIds = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+            $custIds = $todasEmpresas->pluck('cust_id')->filter()->values()->all();
             $billing = $this->adman->fetchGrossBillingsBatch($custIds, $inicio->toDateString(), $fim->toDateString());
 
-            $faturamentoOf = fn(Company $emp): ?float => $emp->adman_account_id
-                ? ($billing[$emp->adman_account_id] ?? null)
+            $faturamentoOf = fn(Company $emp): ?float => $emp->cust_id
+                ? ($billing[$emp->cust_id] ?? null)
                 : null;
         } else {
             $todosIds = $todasEmpresas->pluck('id');
@@ -637,15 +645,17 @@ class AdminController extends Controller
         $missingCache = false;
 
         // Batch read do cache pra todas as empresas do relatório de uma vez.
+        // cust_id (ml_store_id ?: adman_account_id) bate com a chave do writer.
         $cacheBatch = [];
         if ($isMesAtual) {
-            $custIdsAll = $todasEmpresas->pluck('adman_account_id')->filter(fn($id) => !empty($id))->unique()->all();
+            $custIdsAll = $todasEmpresas->pluck('cust_id')->filter()->unique()->values()->all();
             $cacheBatch = $this->adman->getCachedGrossBillingsMany($custIdsAll, $dateFromStr, $dateToStr);
         }
 
         $faturamentoOf = function (Company $emp) use ($metricas, $isMesAtual, $cacheBatch, &$missingCache): ?float {
-            if ($isMesAtual && $emp->adman_account_id) {
-                $entry = $cacheBatch[$emp->adman_account_id] ?? ['value' => null, 'hasEntry' => false];
+            $custId = $emp->cust_id;
+            if ($isMesAtual && $custId) {
+                $entry = $cacheBatch[$custId] ?? ['value' => null, 'hasEntry' => false];
                 if ($entry['value'] !== null) return $entry['value'];
                 if (!$entry['hasEntry']) $missingCache = true;
             }

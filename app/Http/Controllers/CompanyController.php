@@ -126,6 +126,9 @@ class CompanyController extends Controller
         // Faturamento bruto + ACOS/TACOS/margem dos últimos 30 dias —
         // chamadas diretas à Adman (1 empresa, ~2 chamadas, sem risco de
         // memória). Cache 60min embutido nos métodos.
+        //
+        // Usa o accessor cust_id (ml_store_id ?: adman_account_id) — empresas
+        // cadastradas via Comercial só com ml_store_id também passam.
         $dateFrom = now()->subDays(30)->toDateString();
         $dateTo   = now()->toDateString();
 
@@ -136,13 +139,14 @@ class CompanyController extends Controller
         $liquidMargin30d = null;
         $adInvestment30d = null;
 
-        if ($company->adman_account_id) {
+        $custId = $company->cust_id;
+        if ($custId) {
             $revenue30d = (float) ($this->adman->fetchGrossBilling(
-                $company->adman_account_id, $dateFrom, $dateTo
+                $custId, $dateFrom, $dateTo
             ) ?? 0);
 
             $accountMetrics = $this->adman->fetchAccountMetricsCached(
-                $company->adman_account_id, $dateFrom, $dateTo
+                $custId, $dateFrom, $dateTo
             );
             if ($accountMetrics !== null) {
                 $acos30d         = $accountMetrics['acos'];

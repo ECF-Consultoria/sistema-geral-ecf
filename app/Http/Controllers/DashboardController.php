@@ -83,16 +83,22 @@ class DashboardController extends Controller
 
         // ─── Cards 30d (Faturamento, Invest. Ads, TACOS médio) ────────────────
         //
-        // Política tudo-ou-nada: se TODAS as empresas com adman_account_id têm
-        // cache /performance + /accounts/metrics quente, usa valores EXATOS da
-        // Adman. Se QUALQUER empresa está em cache miss/erro, descarta o cache
-        // do conjunto inteiro e cai para SUM(adman_metrics) no DB local para
-        // TODAS as empresas.
+        // Política tudo-ou-nada: se TODAS as empresas com cust_id (ml_store_id
+        // ?: adman_account_id) têm cache /performance + /accounts/metrics
+        // quente, usa valores EXATOS da Adman. Se QUALQUER empresa está em
+        // cache miss/erro, descarta o cache do conjunto inteiro e cai para
+        // SUM(adman_metrics) no DB local para TODAS as empresas.
         //
         // Por que tudo-ou-nada: mesclar "Adman exato" para algumas empresas com
         // "SUM DB" para outras (estado anterior) produzia totais oscilantes em
         // ±R$ 20M entre requests, conforme a composição cache-hit muda. Agora
         // a leitura é determinística por request: ou tudo cache, ou tudo DB.
+        //
+        // Por que cust_id (não só adman_account_id): empresas com apenas
+        // ml_store_id (cadastradas via Comercial pós-Phase 13) eram silenciosamente
+        // excluídas com a lookup antiga (if !$c->adman_account_id continue) →
+        // apareciam zeradas no dashboard. cust_id casa com a chave usada por
+        // RefreshGrossBillingCacheJob (writer) e AdmanService::syncCompany.
         //
         // Mantém o cache key consistente com RefreshGrossBillingCacheJob:
         // range = now()->subDays(30)..now() (today inclusive).
@@ -100,20 +106,20 @@ class DashboardController extends Controller
         $dateTo30d   = now()->toDateString();
 
         // Batch read: gross + account metrics em 2 round-trips Redis.
-        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $custIds30d = $companies->pluck('cust_id')->filter()->values()->all();
         $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
         $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
 
-        // Detecta cache completo: TODA empresa com adman_account_id precisa ter
-        // VALOR REAL no cache (não null, não ERROR_SENTINEL). Empresas sem
-        // adman_account_id são ignoradas no critério — contribuem 0 em ambos
-        // os modos.
+        // Detecta cache completo: TODA empresa com cust_id precisa ter VALOR
+        // REAL no cache (não null, não ERROR_SENTINEL). Empresas sem cust_id
+        // são ignoradas no critério — contribuem 0 em ambos os modos.
         $grossCacheCompleto   = true;
         $accountCacheCompleto = true;
         foreach ($companies as $c) {
-            if (!$c->adman_account_id) continue;
-            $g = $grossBatch30d[$c->adman_account_id]   ?? ['value' => null];
-            $a = $accountBatch30d[$c->adman_account_id] ?? ['value' => null];
+            $custId = $c->cust_id;
+            if (!$custId) continue;
+            $g = $grossBatch30d[$custId]   ?? ['value' => null];
+            $a = $accountBatch30d[$custId] ?? ['value' => null];
             if ($g['value'] === null) $grossCacheCompleto   = false;
             if ($a['value'] === null) $accountCacheCompleto = false;
         }
@@ -134,11 +140,12 @@ class DashboardController extends Controller
 
         if ($grossCacheCompleto) {
             foreach ($companies as $c) {
-                if (!$c->adman_account_id) {
+                $custId = $c->cust_id;
+                if (!$custId) {
                     $revenue30dByCompany[$c->id] = 0.0;
                     continue;
                 }
-                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$c->adman_account_id]['value'];
+                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$custId]['value'];
             }
         } else {
             // Cache incompleto → SUM(adman_metrics.revenue) 30d para TODAS as
@@ -166,8 +173,9 @@ class DashboardController extends Controller
         // logo abaixo.
         if ($accountCacheCompleto) {
             foreach ($companies as $c) {
-                if (!$c->adman_account_id) continue;
-                $v = $accountBatch30d[$c->adman_account_id]['value'];
+                $custId = $c->cust_id;
+                if (!$custId) continue;
+                $v = $accountBatch30d[$custId]['value'];
                 $acos30dByCompany[$c->id]   = $v['acos']              ?? null;
                 $tacos30dByCompany[$c->id]  = $v['tacos']             ?? null;
                 $margin30dByCompany[$c->id] = $v['percentage_margin'] ?? null;
@@ -229,8 +237,9 @@ class DashboardController extends Controller
 
             $totalAdInvestment30d = 0.0;
             foreach ($companies as $c) {
-                if (!$c->adman_account_id) continue;
-                $accEntry = $accountBatch30d[$c->adman_account_id] ?? null;
+                $custId = $c->cust_id;
+                if (!$custId) continue;
+                $accEntry = $accountBatch30d[$custId] ?? null;
                 if ($accEntry && $accEntry['value'] !== null) {
                     $totalAdInvestment30d += (float) ($accEntry['value']['investment'] ?? 0);
                 }
@@ -429,20 +438,21 @@ class DashboardController extends Controller
             ->get();
 
         // 30d cache com política tudo-ou-nada (mesma estratégia do
-        // adminDashboard). Ver comentário extenso lá.
+        // adminDashboard, agora via cust_id = ml_store_id ?: adman_account_id).
         $dateFrom30d = now()->subDays(30)->toDateString();
         $dateTo30d   = now()->toDateString();
 
-        $custIds30d = $companies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        $custIds30d = $companies->pluck('cust_id')->filter()->values()->all();
         $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
         $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
 
         $grossCacheCompleto   = true;
         $accountCacheCompleto = true;
         foreach ($companies as $c) {
-            if (!$c->adman_account_id) continue;
-            $g = $grossBatch30d[$c->adman_account_id]   ?? ['value' => null];
-            $a = $accountBatch30d[$c->adman_account_id] ?? ['value' => null];
+            $custId = $c->cust_id;
+            if (!$custId) continue;
+            $g = $grossBatch30d[$custId]   ?? ['value' => null];
+            $a = $accountBatch30d[$custId] ?? ['value' => null];
             if ($g['value'] === null) $grossCacheCompleto   = false;
             if ($a['value'] === null) $accountCacheCompleto = false;
         }
@@ -456,11 +466,12 @@ class DashboardController extends Controller
 
         if ($grossCacheCompleto) {
             foreach ($companies as $c) {
-                if (!$c->adman_account_id) {
+                $custId = $c->cust_id;
+                if (!$custId) {
                     $revenue30dByCompany[$c->id] = 0.0;
                     continue;
                 }
-                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$c->adman_account_id]['value'];
+                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$custId]['value'];
             }
         } else {
             $sumDb30d = AdmanMetric::query()
@@ -479,8 +490,9 @@ class DashboardController extends Controller
 
         if ($accountCacheCompleto) {
             foreach ($companies as $c) {
-                if (!$c->adman_account_id) continue;
-                $tacos30dByCompany[$c->id] = $accountBatch30d[$c->adman_account_id]['value']['tacos'] ?? null;
+                $custId = $c->cust_id;
+                if (!$custId) continue;
+                $tacos30dByCompany[$c->id] = $accountBatch30d[$custId]['value']['tacos'] ?? null;
             }
         }
 

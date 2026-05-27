@@ -36,6 +36,26 @@ class Company extends Model
         'status'         => 'string',
     ];
 
+    /**
+     * ID canônico de cliente para chamadas Adman e chave de cache de faturamento.
+     *
+     * Por que existir: o codebase usava `ml_store_id ?: adman_account_id` em alguns
+     * call-sites (AdmanService::syncCompany, AdminController::fechamento) e apenas
+     * `adman_account_id` em outros (DashboardController, RefreshGrossBillingCacheJob,
+     * CompanyController::show). Esse desalinhamento produzia:
+     *  - empresas com apenas `ml_store_id` saindo zeradas do dashboard;
+     *  - cache miss perpétuo no Fechamento (job warm-a por adman_account_id,
+     *    controller lê por ml_store_id) → mistura cache hit + DB SUM → oscilação.
+     *
+     * Acessor único `$company->cust_id` para todos os call-sites. Retorna null
+     * quando a empresa não tem integração Adman/ML configurada.
+     */
+    public function getCustIdAttribute(): ?string
+    {
+        $custId = $this->ml_store_id ?: $this->adman_account_id;
+        return $custId !== '' ? $custId : null;
+    }
+
 
     /**
      * Converte uma coleção (ou array) de Servicos em label legível, separados por vírgula.
