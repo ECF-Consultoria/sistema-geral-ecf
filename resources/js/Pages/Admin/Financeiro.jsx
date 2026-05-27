@@ -483,6 +483,7 @@ function ServiceForm({ empresa, onClose }) {
     const { data, setData, patch, processing, errors } = useForm({
         service_type:             Array.isArray(empresa.service_type) ? empresa.service_type : (empresa.service_type ? [empresa.service_type] : []),
         contract_type:            empresa.contract_type            ?? '',
+        valor_fixo:               empresa.valor_fixo               ?? '',
         contract_start:           empresa.contract_start           ?? '',
         contract_end:             empresa.contract_end             ?? '',
         additional_service:       empresa.additional_service       ?? '',
@@ -541,6 +542,25 @@ function ServiceForm({ empresa, onClose }) {
                     </select>
                     {errors.contract_type && (
                         <span className="text-[11px] text-red-400 mt-1 block">{errors.contract_type}</span>
+                    )}
+                    {data.contract_type === 'fixo' && (
+                        <div className="mt-3">
+                            <label className="block text-[11px] uppercase tracking-wider text-white/40 mb-1">
+                                Valor mensal (R$)
+                            </label>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={data.valor_fixo}
+                                onChange={e => setData('valor_fixo', e.target.value)}
+                                placeholder="0,00"
+                                className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                            />
+                            {errors.valor_fixo && (
+                                <span className="text-[11px] text-red-400 mt-1 block">{errors.valor_fixo}</span>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
@@ -639,20 +659,22 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose }) {
             )}
             {empresa.estado === 'ok' && (
                 <>
-                    <div className="flex items-center justify-between mb-1">
-                        <div className="flex-1">
-                            <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                    {empresa.contract_type !== 'fixo' && (
+                        <div className="flex items-center justify-between mb-1">
+                            <div className="flex-1">
+                                <FaixaProgresso faturamento={empresa.faturamento} faixa={empresa.faixa} />
+                            </div>
+                            {(empresa.progressao?.length > 0) && (
+                                <button
+                                    onClick={() => setModalAberto(true)}
+                                    className="shrink-0 inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-7 rounded-lg transition-colors ml-3"
+                                >
+                                    <BarChart2 size={12} />
+                                    Ver progressão
+                                </button>
+                            )}
                         </div>
-                        {(empresa.progressao?.length > 0) && (
-                            <button
-                                onClick={() => setModalAberto(true)}
-                                className="shrink-0 inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-7 rounded-lg transition-colors ml-3"
-                            >
-                                <BarChart2 size={12} />
-                                Ver progressão
-                            </button>
-                        )}
-                    </div>
+                    )}
 
                     {/* Breakdown de grupo (pai + filhas) */}
                     {temGrupo && (

@@ -42,6 +42,7 @@ class AdminController extends Controller
                 'filhas'                   => $c->filhas->map(fn($f) => ['id' => $f->id, 'name' => $f->name])->values(),
                 'service_type'             => $c->service_type,
                 'contract_type'            => $c->contract_type,
+                'valor_fixo'               => $c->valor_fixo !== null ? (float) $c->valor_fixo : null,
                 'contract_start'           => $c->contract_start?->toDateString(),
                 'contract_end'             => $c->contract_end?->toDateString(),
                 'additional_service'       => $c->additional_service,
@@ -57,6 +58,7 @@ class AdminController extends Controller
             'service_type'             => 'nullable|array',
             'service_type.*'           => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'            => 'nullable|in:fixo,progressao',
+            'valor_fixo'               => 'nullable|numeric|min:0',
             'contract_start'           => 'nullable|date',
             'contract_end'             => 'nullable|date|after_or_equal:contract_start',
             'additional_service'       => 'nullable|string|max:255',
@@ -203,13 +205,20 @@ class AdminController extends Controller
                 default             => 'ok',
             };
 
-            $faixaData = ($estado === 'ok')
-                ? $this->calcularFaixa((float) $fatAtual)
-                : null;
-
-            $faixaAnteriorData = ($hasAdman && $fatAnterior !== null)
-                ? $this->calcularFaixa((float) $fatAnterior)
-                : null;
+            // Contrato fixo usa valor manual; progressão calcula pela tabela de faixas.
+            if ($c->contract_type === 'fixo') {
+                $faixaData         = $c->valor_fixo !== null
+                    ? ['faixa' => null, 'valor' => (float) $c->valor_fixo]
+                    : null;
+                $faixaAnteriorData = null;
+            } else {
+                $faixaData = ($estado === 'ok')
+                    ? $this->calcularFaixa((float) $fatAtual)
+                    : null;
+                $faixaAnteriorData = ($hasAdman && $fatAnterior !== null)
+                    ? $this->calcularFaixa((float) $fatAnterior)
+                    : null;
+            }
 
             $evolucao = null;
             if ($faixaData && $faixaAnteriorData) {
@@ -265,6 +274,7 @@ class AdminController extends Controller
                 'is_filha'           => $c->parent_company_id !== null,
                 'service_type'       => $c->service_type,
                 'contract_type'      => $c->contract_type,
+                'valor_fixo'         => $c->valor_fixo !== null ? (float) $c->valor_fixo : null,
                 'contract_start'     => $c->contract_start?->toDateString(),
                 'contract_end'       => $c->contract_end?->toDateString(),
                 'additional_service'       => $c->additional_service,
@@ -373,6 +383,7 @@ class AdminController extends Controller
             'service_type'       => 'nullable|array',
             'service_type.*'     => 'in:publicacao,polos,assessoria,incubadora,publicidade,gestao',
             'contract_type'      => 'nullable|in:fixo,progressao',
+            'valor_fixo'         => 'nullable|numeric|min:0',
             'contract_start'     => 'nullable|date',
             'contract_end'       => 'nullable|date|after_or_equal:contract_start',
             'additional_service'       => 'nullable|string|max:255',

@@ -28,7 +28,7 @@ class Company extends Model
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'segment', 'active', 'status', 'notes',
-        'service_type', 'contract_type', 'contract_start', 'contract_end',
+        'service_type', 'contract_type', 'valor_fixo', 'contract_start', 'contract_end',
         'additional_service', 'additional_service_price',
         'parent_company_id',
     ];
