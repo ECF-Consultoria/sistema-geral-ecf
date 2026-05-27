@@ -12,18 +12,44 @@ import MoveToSgiModal from '@/Components/MoveToSgiModal';
 import { cn } from '@/lib/utils';
 
 const STATUS_LABELS = {
-    pendente:  'Pendente',
-    em_acao:   'Em ação',
-    resolvido: 'Resolvido',
-    ignorado:  'Ignorado',
-    movido:    'Movido p/ SGI',
+    pendente:       'Pendente',
+    em_acao:        'Em ação',
+    resolvido:      'Resolvido',
+    ignorado:       'Ignorado',
+    movido:         'Movido p/ SGI',
+    auto_resolvido: 'Auto-resolvido',
 };
 const STATUS_BADGE = {
-    pendente:  'bg-red-500/15 text-red-300 border-red-500/30',
-    em_acao:   'bg-amber-500/15 text-amber-300 border-amber-500/30',
-    resolvido: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-    ignorado:  'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
-    movido:    'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30',
+    pendente:       'bg-red-500/15 text-red-300 border-red-500/30',
+    em_acao:        'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    resolvido:      'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    ignorado:       'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+    movido:         'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30',
+    // Verde claro distinto do `resolvido` cheio — sinaliza que o sistema resolveu sozinho.
+    auto_resolvido: 'bg-emerald-500/10 text-emerald-200/70 border-emerald-500/20',
+};
+
+// Helper de copy com fallback pra intranet HTTP (navigator.clipboard exige secure context).
+// Mantido no escopo do módulo pra evitar recriação a cada render.
+const copyToClipboard = async (text) => {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        // Fallback necessário para intranet sem HTTPS — `navigator.clipboard` exige secure context.
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
 };
 const ACOES_AUDIT_LABEL = {
     marcou_em_acao:    'marcou como em ação',
@@ -152,7 +178,10 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-3 mb-2">
-                            <span className={cn('inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border', STATUS_BADGE[sugador.status])}>
+                            <span
+                                className={cn('inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border', STATUS_BADGE[sugador.status])}
+                                title={sugador.status === 'auto_resolvido' ? 'Resolvido automaticamente pelo sistema' : undefined}
+                            >
                                 {STATUS_LABELS[sugador.status]}
                             </span>
                             <span className="inline-flex items-center gap-1.5 text-white/60 text-xs">
@@ -520,6 +549,8 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
  */
 function MlbsDoAdgroup({ sugadorId, adgroupName }) {
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
+    // 'all' | 'provaveis' | null — botão que mostrou o feedback "Copiado!" há <2s.
+    const [copiedTag, setCopiedTag] = useState(null);
 
     const load = async () => {
         setState(s => ({ ...s, loading: true, error: null }));
@@ -544,6 +575,21 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
     const allMlbs = state.data?.mlbs ?? [];
     const shown   = allMlbs.filter(m => m.matches_adgroup);
 
+    // Copia lista de MLBs separados por vírgula. tag identifica o botão pra feedback visual.
+    const handleCopy = async (tag, ids) => {
+        if (!ids.length) return;
+        const ok = await copyToClipboard(ids.join(','));
+        if (ok) {
+            setCopiedTag(tag);
+            setTimeout(() => setCopiedTag(prev => (prev === tag ? null : prev)), 2000);
+        }
+    };
+
+    // Identificador do MLB no payload da Adman MCP é `listing_id` (ex: MLB1234567).
+    const allIds       = allMlbs.map(m => m.listing_id).filter(Boolean);
+    const provaveisIds = allMlbs.filter(m => m.matches_adgroup).map(m => m.listing_id).filter(Boolean);
+    const hasProvaveis = provaveisIds.length > 0;
+
     return (
         <div className="card-ecf rounded-xl p-5 mb-4">
             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
@@ -555,7 +601,30 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
                     )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Botoes de copy — só fazem sentido após a carga dos MLBs. */}
+                    {state.loaded && allIds.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => handleCopy('all', allIds)}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-xs"
+                            title={`Copia ${allIds.length} MLB${allIds.length !== 1 ? 's' : ''} separados por vírgula`}
+                        >
+                            {copiedTag === 'all' ? <Check size={12} className="text-emerald-300" /> : <Copy size={12} />}
+                            {copiedTag === 'all' ? 'Copiado!' : `Copiar MLBs (${allIds.length})`}
+                        </button>
+                    )}
+                    {state.loaded && hasProvaveis && (
+                        <button
+                            type="button"
+                            onClick={() => handleCopy('provaveis', provaveisIds)}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12] text-xs"
+                            title={`Copia apenas os ${provaveisIds.length} MLB${provaveisIds.length !== 1 ? 's' : ''} prováveis do adgroup`}
+                        >
+                            {copiedTag === 'provaveis' ? <Check size={12} /> : <Copy size={12} />}
+                            {copiedTag === 'provaveis' ? 'Copiado!' : `Copiar prováveis (${provaveisIds.length})`}
+                        </button>
+                    )}
                     <button
                         type="button"
                         onClick={load}
