@@ -129,7 +129,15 @@
       "Bash(/c/xampp/php/php -l app/Http/Controllers/CompanyController.php)",
       "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'cd /var/www/ecf_admin && sudo -u www-data php -r '\\\\''require \"vendor/autoload.php\"; $app = require \"bootstrap/app.php\"; $app->make\\(Illuminate\\\\Contracts\\\\Console\\\\Kernel::class\\)->bootstrap\\(\\); dispatch\\(new App\\\\Jobs\\\\RefreshGrossBillingCacheJob\\); echo \"dispatched\".PHP_EOL;'\\\\''')",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"tail -3 /var/www/ecf_admin/storage/logs/worker.log 2>/dev/null | tail -1 | grep -q 'RefreshGrossBillingCacheJob.*DONE'\")",
-      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"echo '---WORKER---'; tail -5 /var/www/ecf_admin/storage/logs/worker.log; echo '---REFRESH LOG---'; grep RefreshAdmanCache /var/www/ecf_admin/storage/logs/laravel.log | tail -3\")"
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"echo '---WORKER---'; tail -5 /var/www/ecf_admin/storage/logs/worker.log; echo '---REFRESH LOG---'; grep RefreshAdmanCache /var/www/ecf_admin/storage/logs/laravel.log | tail -3\")",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 ' *)",
+      "Bash(git rev-list *)",
+      "PowerShell(php artisan test 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test --filter=Sugador 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test 2>&1 | Select-String -Pattern \"FAILED\" | ForEach-Object { $_.Line } | Select-Object -First 50)",
+      "Bash(git branch *)",
+      "Bash(git merge *)"
     ]
   }
 }
