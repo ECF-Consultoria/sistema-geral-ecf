@@ -8,13 +8,18 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-// Sync automático a cada 5 minutos (cron: * * * * *)
+// Sync diário Adman às 11:00 BRT (cascata D-1).
+// API Adman é D-1: publica dados consolidados às 10h BRT; sync 1h depois
+// dá margem ao processamento Adman. Cron resultante: 0 11 * * *.
 // No Hostinger: configure o cron: * * * * * php /home/user/public_html/ecf-admin/artisan schedule:run
-Schedule::command('adman:sync')->everyFiveMinutes()->withoutOverlapping();
+Schedule::command('adman:sync')
+    ->dailyAt('11:00')
+    ->name('adman-sync-d1')
+    ->withoutOverlapping();
 
-// Calcula resultados de metas diariamente às 06:00 (usa dados mais recentes do Adman)
+// Calcula resultados de metas diariamente às 11:45 BRT (depois do adman:sync D-1)
 Schedule::command('goals:calculate')
-    ->dailyAt('06:00')
+    ->dailyAt('11:45')
     ->name('calculate-goal-results')
     ->withoutOverlapping();
 
@@ -31,9 +36,9 @@ Schedule::command('grants:sync-sftp')
     ->name('sync-ml-grants-sftp')
     ->withoutOverlapping();
 
-// Detecta sugadores (campanhas/anúncios drenando investimento) — depois do adman:sync
+// Detecta sugadores (campanhas/anúncios drenando investimento) — depois do adman:sync D-1
 Schedule::command('sugadores:analyze')
-    ->dailyAt('06:30')
+    ->dailyAt('12:00')
     ->name('analyze-sugadores')
     ->withoutOverlapping();
 
@@ -41,28 +46,28 @@ Schedule::command('sugadores:analyze')
 // ou pausada — analista já tratou. Roda depois do analyze pra pegar
 // adgroups que entraram em quarentena entre a detecção e o cron.
 Schedule::command('sugadores:cleanup-quarentena')
-    ->dailyAt('06:45')
+    ->dailyAt('12:30')
     ->name('cleanup-sugadores-quarentena')
     ->withoutOverlapping();
 
 // Calcula resultados das metas de setor (publicacoes_mes, etc) — diariamente
 Schedule::job(new \App\Jobs\CalculateSetorGoalResults)
-    ->dailyAt('07:00')
+    ->dailyAt('11:55')
     ->name('calculate-setor-goal-results')
     ->withoutOverlapping();
 
 // Pre-aquece cache de faturamento bruto (Adman /performance) das 30d.
-// A cada 30min: cobre 50+ empresas com throttle de 1.5s = ~75s de execução.
-// Resultados ficam em cache 60min, e os controllers (Empresas, Dashboard,
-// Fechamento) leem do cache instantâneo sem chamar Adman síncrono.
+// Roda 1×/dia às 12:45 BRT (cascata D-1) — antes era 30min/30min, mas com
+// throttle de 7s e ~168 empresas o loop leva ~20min e só faz sentido depois
+// do adman:sync diário ter rodado. Cache TTL alinhado em 24h (W1-T3).
 Schedule::job(new \App\Jobs\RefreshGrossBillingCacheJob)
-    ->everyThirtyMinutes()
-    ->name('refresh-gross-billing-cache')
+    ->dailyAt('12:45')
+    ->name('refresh-gross-billing-cache-d1')
     ->withoutOverlapping();
 
-// Sincroniza faturamento bruto mensal via Adman — após calculate-setor-goal-results
+// Sincroniza faturamento bruto mensal via Adman — depois do adman:sync D-1
 Schedule::command('adman:sync-faturamento')
-    ->dailyAt('07:30')
+    ->dailyAt('11:30')
     ->name('sync-faturamento-mensal')
     ->withoutOverlapping();
 
