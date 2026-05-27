@@ -137,7 +137,24 @@
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test --filter=Sugador 2>&1)",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test 2>&1 | Select-String -Pattern \"FAILED\" | ForEach-Object { $_.Line } | Select-Object -First 50)",
       "Bash(git branch *)",
-      "Bash(git merge *)"
+      "Bash(git merge *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} | TLS %{ssl_verify_result} | tempo %{time_total}s\\\\n\" https://admin.ecfconsultoria.com.br)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\\\\n\" https://admin.ecfconsultoria.com.br/sugadores)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan migrate:status 2>&1 | grep -E 'auto_resolvido|2026_05_27' && echo '---LOG--' && tail -5 storage/logs/laravel.log 2>/dev/null || echo 'log vazio'\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && tail -40 storage/logs/laravel.log 2>/dev/null | head -25 && echo '---WORKER---' && tail -5 storage/logs/worker.log 2>/dev/null\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"grep -E 'Sugadores/MLBs.*8825|sugador 8825|429' /var/www/ecf_admin/storage/logs/laravel.log | tail -10\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan tinker --execute='echo \\\\\"Empresas ativas com adman_account_id: \\\\\" . \\\\App\\\\Models\\\\Company::where\\(\\\\\"active\\\\\", true\\)->whereNotNull\\(\\\\\"adman_account_id\\\\\"\\)->where\\(\\\\\"adman_account_id\\\\\", \\\\\"!=\\\\\", \\\\\"\\\\\"\\)->count\\(\\); echo PHP_EOL; echo \\\\\"Total empresas com adman_account_id: \\\\\" . \\\\App\\\\Models\\\\Company::whereNotNull\\(\\\\\"adman_account_id\\\\\"\\)->where\\(\\\\\"adman_account_id\\\\\", \\\\\"!=\\\\\", \\\\\"\\\\\"\\)->count\\(\\); echo PHP_EOL;'\")",
+      "Bash(grep -rn \"syncNow\\\\|/adman/sync\\\\|route\\('adman.sync'\\)\\\\|adman\\\\\\\\.sync\" \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\resources\\\\js\")",
+      "Bash(grep -rn \"cachedFullScanIfReady\\\\|class AdmanMcpService\\\\|->cache\\\\|TTL\\\\|24.\\\\\\\\*60\" \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\app\\\\Services\\\\AdmanMcpService.php\")",
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content 'c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\.planning\\\\phases\\\\16-adequacao-cadencia-d1-adman\\\\PLAN.md' | Measure-Object -Line\\).Lines\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"grep timeout /etc/supervisor/conf.d/ecf-worker.conf\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"sed -i 's/--timeout=900/--timeout=1800/' /etc/supervisor/conf.d/ecf-worker.conf && grep timeout /etc/supervisor/conf.d/ecf-worker.conf\")",
+      "Bash(grep -v \"^\\\\s*[0-9]*:\\\\s*//\")",
+      "Bash(C:\\\\xampp\\\\php\\\\php.exe artisan *)",
+      "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/AdmanController.php)",
+      "Bash(/c/xampp/php/php.exe -l routes/web.php)",
+      "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/DashboardController.php)",
+      "Bash(\"C:\\\\xampp\\\\php\\\\php.exe\" artisan *)"
     ]
   }
 }
