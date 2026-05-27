@@ -1,274 +1,360 @@
-<!-- refreshed: 2026-05-18 -->
-# Architecture
+<!-- refreshed: 2026-05-27 -->
+# Arquitetura
 
-**Analysis Date:** 2026-05-18
+**Data de Análise:** 2026-05-27
 
-## System Overview
+## Visão Geral do Sistema
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    Browser (React + Inertia.js)                         │
-│  `resources/js/Pages/**/*.jsx`  ←→  `resources/js/Layouts/AppLayout.jsx`│
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │  HTTP (Inertia protocol / JSON XHR)
-                               ▼
+│  Frontend SPA (Inertia + React 18)                                       │
+│  ┌──────────────────┬──────────────────┬──────────────────┐             │
+│  │  Pages/*.jsx     │  Layouts/*.jsx   │  Components/ui   │             │
+│  │  (≈48 páginas)   │  AppLayout       │  (Radix+shadcn)  │             │
+│  └────────┬─────────┴────────┬─────────┴─────────┬────────┘             │
+└───────────┼──────────────────┼───────────────────┼─────────────────────┘
+            │ Inertia visit    │                    │ axios (fetch APIs)
+            ▼                  ▼                    ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                      Laravel (PHP 8.x)                                  │
-│  Entry: `public/index.php` → `bootstrap/app.php`                        │
-├────────────────┬────────────────┬───────────────┬────────────────────── ┤
-│  Middleware    │  Controllers   │   Policies    │  Console Commands     │
-│ `app/Http/     │ `app/Http/     │ `app/Policies/│ `app/Console/         │
-│  Middleware/`  │  Controllers/` │  `            │  Commands/`           │
-└────────────────┴───────┬────────┴───────────────┴────────────┬──────────┘
-                         │                                     │
-          ┌──────────────┤                       ┌────────────┤
-          ▼              ▼                       ▼            ▼
-  ┌──────────────┐ ┌──────────────┐     ┌──────────────┐ ┌──────────────┐
-  │   Services   │ │    Models    │     │     Jobs     │ │  Scheduler   │
-  │ `app/Services│ │ `app/Models/ │     │ `app/Jobs/`  │ │`routes/       │
-  │  /`          │ │  `          │     │              │ │ console.php` │
-  └──────┬───────┘ └──────┬───────┘     └──────┬───────┘ └──────────────┘
-         │                │                    │
-         └────────────────┴────────────────────┘
-                          │
-                          ▼
-         ┌────────────────────────────────────┐
-         │           MySQL Database            │
-         │   `database/migrations/`            │
-         └────────────────────────────────────┘
-                          │
-         ┌────────────────┘
-         ▼
-┌─────────────────────────┐
-│  External APIs           │
-│  - Adman (ad-man.io/v1)  │
-│  - Mercado Livre (SFTP)  │
-│  - Google Calendar API   │
-└─────────────────────────┘
+│  Middleware Stack (bootstrap/app.php)                                    │
+│  ┌─────────────────────────┬──────────────────┬──────────────────┐      │
+│  │ HandleInertiaRequests   │ EnsureUserHasRole│ EnsurePermission │      │
+│  │ (props compartilhadas)  │ (role:admin etc) │ (permission:KEY) │      │
+│  └────────────┬────────────┴─────────┬────────┴────────┬─────────┘      │
+└───────────────┼──────────────────────┼─────────────────┼────────────────┘
+                ▼                      ▼                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Controllers (app/Http/Controllers — 27 controllers)                     │
+│  ┌──────────────┬──────────────┬──────────────┬──────────────────┐      │
+│  │ Dashboard    │ Mlb          │ Sugador      │ Admin/*          │      │
+│  │ Comercial    │ Servico      │ Goal         │ Adman            │      │
+│  │ Lideranca    │ Performance  │ Notificacao  │ ActivityLog      │      │
+│  └──────┬───────┴──────┬───────┴──────┬───────┴──────┬───────────┘      │
+└─────────┼──────────────┼──────────────┼──────────────┼──────────────────┘
+          ▼              ▼              ▼              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Services (app/Services)                                                 │
+│  ┌──────────────────┬──────────────────┬──────────────────┐             │
+│  │ AdmanService     │ AdmanMcpService  │ SugadorAnalysis  │             │
+│  │ (REST legada)    │ (JSON-RPC drill) │ Service          │             │
+│  └────────┬─────────┴────────┬─────────┴────────┬─────────┘             │
+│                              │ GoogleCalendarService                     │
+└──────────────────────────────┼──────────────────────────────────────────┘
+          │                    │                    │
+          ▼                    ▼                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  Jobs (queue:database) ─── Models (Eloquent, 36 modelos)                 │
+│  ┌──────────────────┬─────────────────────────────────────────┐         │
+│  │ SyncAdmanCompany │ Company → AdmanMetric/SyncLog/Campaign  │         │
+│  │ AnalyzeCompany   │ User → setores/setor_permissoes/lideres │         │
+│  │ Sugadores        │ Sugador / Publicacao / Goal / Ppa       │         │
+│  │ Refresh*Cache    │ Servico / ContratoServico               │         │
+│  │ CalculateGoals   │ Configuracao / FechamentoRecebido       │         │
+│  └────────┬─────────┴────────────────────┬────────────────────┘         │
+└───────────┼──────────────────────────────┼──────────────────────────────┘
+            ▼                              ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│  MySQL/MariaDB ── Cache (database) ── jobs/failed_jobs ── activity_log   │
+└─────────────────────────────────────────────────────────────────────────┘
+            ▲                              ▲                              ▲
+            │ Adman REST API               │ Adman MCP (JSON-RPC)         │
+            └────────────────────── HTTP via Http:: Facade ───────────────┘
+                                           │
+                                           ▼
+                              ML SFTP / Google Calendar / SMTP
 ```
 
-## Component Responsibilities
+## Responsabilidades dos Componentes
 
-| Component | Responsibility | Path |
-|-----------|----------------|------|
-| `HandleInertiaRequests` | Shares global props (auth, flash, sugadores badge) to all pages | `app/Http/Middleware/HandleInertiaRequests.php` |
-| `EnsureUserHasRole` | Route-level RBAC via `role:admin` middleware alias | `app/Http/Middleware/EnsureUserHasRole.php` |
-| `AppServiceProvider` | Boots Vite prefetch, logs Login/Logout events via Spatie | `app/Providers/AppServiceProvider.php` |
-| `AdmanService` | All HTTP calls to Adman API; syncs metrics per company | `app/Services/AdmanService.php` |
-| `SugadorAnalysisService` | Runs sugador detection logic; calls AdmanService internally | `app/Services/SugadorAnalysisService.php` |
-| `GoogleCalendarService` | OAuth flow + Calendar event sync | `app/Services/GoogleCalendarService.php` |
-| `MlbController` | Handles all MLB publication module routes (~30 actions) | `app/Http/Controllers/MlbController.php` |
-| `MlbImplementacaoController` | Token-based public workspace for client MLB onboarding | `app/Http/Controllers/MlbImplementacaoController.php` |
-| `DashboardController` | Builds admin vs. user dashboard data; redirects pub-only users | `app/Http/Controllers/DashboardController.php` |
-| `SugadorController` | Sugador CRUD + dispatches async analysis jobs | `app/Http/Controllers/SugadorController.php` |
-| `SugadorPolicy` | Access control for sugador module (global vs. carteira view) | `app/Policies/SugadorPolicy.php` |
-| `AnalyzeCompanySugadoresJob` | Async sugador analysis per company (15 min timeout, 2 tries) | `app/Jobs/AnalyzeCompanySugadoresJob.php` |
-| `AppLayout` | Main authenticated sidebar layout; nav gated by role + pubPerm | `resources/js/Layouts/AppLayout.jsx` |
+| Componente | Responsabilidade | Arquivo |
+|-----------|------------------|---------|
+| `HandleInertiaRequests` | Compartilha props globais (auth.user, permissions, setores, lideranca, flash, csrf_token, contador sugadores/notificações) | [app/Http/Middleware/HandleInertiaRequests.php](app/Http/Middleware/HandleInertiaRequests.php) |
+| `EnsureUserHasRole` | RBAC por `users.role` (admin/consultor/mentor); alias `role:` | [app/Http/Middleware/EnsureUserHasRole.php](app/Http/Middleware/EnsureUserHasRole.php) |
+| `EnsurePermission` | Verifica `User::hasPermission()` com lógica OR; alias `permission:` | [app/Http/Middleware/EnsurePermission.php](app/Http/Middleware/EnsurePermission.php) |
+| `AppServiceProvider` | Boot do Vite prefetch + listeners de Login/Logout (activitylog) | [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php) |
+| `Permissions` | Catálogo canônico estático de permission keys + `AUTO_LIDERANCA` | [app/Support/Permissions.php](app/Support/Permissions.php) |
+| `AdmanService` | Cliente da Adman REST legada; sync de métricas/vendas | [app/Services/AdmanService.php](app/Services/AdmanService.php) |
+| `AdmanMcpService` | Cliente da Adman MCP (JSON-RPC); somente drilldown Sugadores | [app/Services/AdmanMcpService.php](app/Services/AdmanMcpService.php) |
+| `SugadorAnalysisService` | Engine de detecção de sugadores (campanhas/adgroups drenando investimento) | [app/Services/SugadorAnalysisService.php](app/Services/SugadorAnalysisService.php) |
+| `GoogleCalendarService` | OAuth + sync Calendar → Meetings | [app/Services/GoogleCalendarService.php](app/Services/GoogleCalendarService.php) |
+| `MlbController` | Módulo Publicações MLB (~30 ações em uma única classe) | [app/Http/Controllers/MlbController.php](app/Http/Controllers/MlbController.php) |
+| `MlbImplementacaoController` | Workspace público de onboarding (token-based) | [app/Http/Controllers/MlbImplementacaoController.php](app/Http/Controllers/MlbImplementacaoController.php) |
+| `DashboardController` | Monta dashboards admin/user; redirect para módulos pub-only | [app/Http/Controllers/DashboardController.php](app/Http/Controllers/DashboardController.php) |
+| `SugadorController` | CRUD + drilldown MCP + dispatch da análise on-demand | [app/Http/Controllers/SugadorController.php](app/Http/Controllers/SugadorController.php) |
+| `ComercialController` | Cadastro centralizado de empresas (Phase 13) | [app/Http/Controllers/ComercialController.php](app/Http/Controllers/ComercialController.php) |
+| `ServicoController` | Catálogo de serviços (Phase 14 — Frente A) | [app/Http/Controllers/ServicoController.php](app/Http/Controllers/ServicoController.php) |
+| `Admin\SetorController` | Setores/permissões/líderes (substituiu o legado `publication_role`) | [app/Http/Controllers/Admin/SetorController.php](app/Http/Controllers/Admin/SetorController.php) |
+| `DevController` | Dashboard de devs (sync logs, jobs, métricas) | [app/Http/Controllers/DevController.php](app/Http/Controllers/DevController.php) |
+| `NotificacaoController` | Notifications nativas (Phase 8–12) | [app/Http/Controllers/NotificacaoController.php](app/Http/Controllers/NotificacaoController.php) |
+| `SugadorPolicy` | Única Policy do projeto — escopo carteira vs global | [app/Policies/SugadorPolicy.php](app/Policies/SugadorPolicy.php) |
+| `AppLayout` | Sidebar autenticada; nav gated por `auth.permissions` | [resources/js/Layouts/AppLayout.jsx](resources/js/Layouts/AppLayout.jsx) |
 
-## Pattern Overview
+## Visão Geral de Padrões
 
-**Overall:** Laravel MVC + Inertia.js (server-driven SPA)
+**Padrão Global:** Monolito Laravel + SPA Inertia (sem REST API formal)
 
-**Key Characteristics:**
-- No separate API layer — controllers return `Inertia::render()` with PHP-assembled props
-- Two independent role systems: `User.role` (admin/consultor/mentor) + `User.publication_role` (gestor/lider/publicador/analista)
-- Background processing via Laravel Queue (database driver) for long-running Adman operations
-- Scheduled jobs via `routes/console.php` (not `App\Console\Kernel`)
-- Activity logging on all major models via `spatie/laravel-activitylog`
+**Características-Chave:**
+- Controllers retornam `Inertia::render('Pages/X', [...])` com props PHP-assembled — não há camada JSON intermediária
+- Dois sistemas de role independentes (legado convivendo com novo, após Phase 7):
+  - **Legado**: `users.role` (admin/consultor/mentor) — gate principal de módulo, ainda em uso via `role:admin` middleware
+  - **Novo (Phase 7+)**: `user_setores` + `setor_permissoes` + `setor_lideres` — granular por permission key; consultado via `User::hasPermission()` e middleware `permission:KEY`
+  - Colunas legacy do antigo modelo: `publication_role_legacy`, `setor_legacy`, `cargo_legacy`, `publication_permissions_legacy` (renomeadas em Phase 7, mantidas até cleanup pós-validação)
+- Processamento assíncrono via Laravel Queue (driver `database`) para operações longas Adman/Sugadores/Faturamento
+- Scheduler declarado em [routes/console.php](routes/console.php) (estilo Laravel 11+), NÃO em `App\Console\Kernel`
+- Activity logging via `spatie/laravel-activitylog` em todos os modelos primários
+- Catálogo canônico de permission keys em [app/Support/Permissions.php](app/Support/Permissions.php) — fonte única de verdade
 
-## Layers
+## Camadas
 
-**Routing Layer:**
-- Purpose: Declares all HTTP routes; applies middleware groups; defines public vs. auth-protected vs. admin-only sections
-- Location: `routes/web.php`, `routes/auth.php`, `routes/console.php`
-- Contains: Route definitions, middleware application, schedule declarations
-- Depends on: Controllers, Middleware
-- Used by: Laravel HTTP kernel
+**Rotas:**
+- Propósito: Declara todas as rotas HTTP; aplica grupos de middleware; declara scheduler
+- Localização: [routes/web.php](routes/web.php) (174 rotas), [routes/auth.php](routes/auth.php) (17 rotas Breeze), [routes/console.php](routes/console.php) (scheduler)
+- Depende de: Controllers, Middleware
+- Usado por: HTTP Kernel do Laravel
 
-**Middleware Layer:**
-- Purpose: Request interception — RBAC enforcement and Inertia shared-data injection
-- Location: `app/Http/Middleware/`
-- Contains: `EnsureUserHasRole` (route guard), `HandleInertiaRequests` (global props)
-- Depends on: Models (User, Sugador)
-- Used by: All authenticated routes
+**Middleware:**
+- Propósito: Interceptação de request — RBAC, permissions, injeção de shared data
+- Localização: [app/Http/Middleware/](app/Http/Middleware/)
+- Contém: `HandleInertiaRequests`, `EnsureUserHasRole` (alias `role`), `EnsurePermission` (alias `permission`)
+- Registrado em: [bootstrap/app.php](bootstrap/app.php) linhas 13–27 (Laravel 11+ inline config)
 
-**Controller Layer:**
-- Purpose: Handle HTTP requests, orchestrate service/model calls, return Inertia responses or JSON
-- Location: `app/Http/Controllers/`
-- Contains: 20 controllers (one per domain area + Auth subdirectory)
-- Depends on: Services, Models, Jobs, Policies
-- Used by: Routes
+**Controllers:**
+- Propósito: Receber request, orquestrar service/model, retornar Inertia ou JSON
+- Localização: [app/Http/Controllers/](app/Http/Controllers/) — 27 controllers totais (incluindo subpasta `Admin/` com 4 e `Auth/` Breeze)
+- Depende de: Services, Models, Jobs, Policies, Support
+- Usado por: Rotas
 
-**Service Layer:**
-- Purpose: Business logic that touches external APIs or is shared across controllers
-- Location: `app/Services/`
-- Contains: `AdmanService` (Adman API), `SugadorAnalysisService` (detection engine), `GoogleCalendarService`
-- Depends on: Models, Laravel HTTP client (`Http::`)
-- Used by: Controllers, Console Commands, Jobs
+**Services:**
+- Propósito: Lógica de negócio que toca APIs externas ou é compartilhada entre controllers
+- Localização: [app/Services/](app/Services/) — 4 serviços (`AdmanService`, `AdmanMcpService`, `SugadorAnalysisService`, `GoogleCalendarService`)
+- Depende de: Models, `Http::` Facade, Cache
+- Usado por: Controllers, Console Commands, Jobs
 
-**Model Layer:**
-- Purpose: Eloquent ORM — DB access, relationships, casts, scopes, business-logic helpers
-- Location: `app/Models/`
-- Contains: 24 models; all major models use `LogsActivity` trait
-- Depends on: MySQL database
-- Used by: Controllers, Services, Jobs
+**Models:**
+- Propósito: Eloquent ORM — DB access, relacionamentos, casts, scopes, helpers de domínio
+- Localização: [app/Models/](app/Models/) — 36 modelos
+- Maioria dos modelos primários usa trait `LogsActivity` com `getActivitylogOptions()` em pt-BR
+- Depende de: MySQL/MariaDB
+- Usado por: Controllers, Services, Jobs
 
-**Job Layer:**
-- Purpose: Async background processing (queue worker) for long-running tasks
-- Location: `app/Jobs/`
-- Contains: `AnalyzeCompanySugadoresJob`, `SyncAdmanCompanyJob`, `CalculateGoalResults`, `CalculatePortfolioGoalResults`
-- Depends on: Services, Models
-- Used by: Controllers (dispatch), Scheduler (dispatchSync)
+**Jobs:**
+- Propósito: Processamento assíncrono via queue worker (driver `database`)
+- Localização: [app/Jobs/](app/Jobs/) — 10 jobs
+- Contém: `SyncAdmanCompanyJob`, `SyncTodasVendasAdmanJob` (resolve 504 do nginx), `AnalyzeCompanySugadoresJob`, `CalculateGoalResults`, `CalculatePortfolioGoalResults`, `CalculateSetorGoalResults`, `RefreshGrossBillingCacheJob`, `SyncFaturamentoMensalJob`, `FetchAdmanMlbsByCampaignJob`, `EnviarRelatorioFechamentoJob`
+- Depende de: Services, Models
+- Usado por: Controllers (dispatch), Scheduler (`Schedule::job` ou `dispatch` dentro de `Schedule::call`)
 
-**Console Layer:**
-- Purpose: Artisan commands for sync/maintenance; scheduled via `routes/console.php`
-- Location: `app/Console/Commands/`
-- Contains: `SyncAdmanData`, `CalculateGoals`, `SyncGrantsFromSftp`, `AnalyzeSugadores`, `MetricsCleanup`, and diagnostic commands
-- Depends on: Services, Jobs, Models
-- Used by: Scheduler, manual `php artisan` invocations
+**Console Commands:**
+- Propósito: Artisan commands de sync/manutenção; schedule via [routes/console.php](routes/console.php)
+- Localização: [app/Console/Commands/](app/Console/Commands/) — 16 commands
+- Inclui: `SyncAdmanData`, `CalculateGoals`, `SyncGrantsFromSftp`, `AnalyzeSugadores`, `CleanupSugadoresQuarentena`, `MetricsCleanup`, `NotificationsCleanup`, `SyncFaturamentoMensal`, `SyncThumbnailsPublicacoes`, `SyncVendasAdman`, `DiagnosticSyncVendas`, `InspecionarAdman`, `ImportarPlanilhaMLB`, `ImportarPlanilhaMaycon`, `MigrateUsersToSetores`, `Phase14VerificarCobranca`
+- Usado por: Scheduler, invocações manuais `php artisan`
 
-**Frontend Layer:**
-- Purpose: React components rendered server-side via Inertia; reads props passed from PHP controllers
-- Location: `resources/js/`
-- Contains: Pages, Layouts, Components (shadcn/ui + app-specific), lib utilities
-- Depends on: Inertia.js, React, Lucide icons, `@inertiajs/react`
-- Used by: Browser (bundled by Vite)
+**Notifications:**
+- Propósito: Sistema de notificações nativas (Phase 8–12)
+- Localização: [app/Notifications/](app/Notifications/) — `BaseNotification`, `Categoria`, `EmpresaCadastradaNotification`, `ManualNotification`, `MetaAtingidaNotification`, `MetaAtribuidaNotification`
+- Backing: tabela `notifications` (migration `2026_05_21_100001_create_notifications_table.php`)
+- Cleanup automático: command `notifications:cleanup` diariamente às 04:00
 
-## Data Flow
+**Frontend:**
+- Propósito: React server-rendered via Inertia; lê props de PHP controllers
+- Localização: [resources/js/](resources/js/) — 103 arquivos `.js`/`.jsx`
+- Contém: Pages (≈48 .jsx em 21 diretórios), Layouts (3), Components (17 app-específicos + 14 ui/primitivos), lib/utils
+- Depende de: Inertia.js, React, Lucide, helper `route()` do Ziggy
+- Usado por: Browser (bundle Vite em `public/build/`)
 
-### Authenticated Page Request
+## Fluxo de Dados
 
-1. Browser navigates to `/mlb/dashboard` → Laravel HTTP kernel
-2. `HandleInertiaRequests::share()` injects `auth.user`, `flash`, `sugadores_pendentes` (`app/Http/Middleware/HandleInertiaRequests.php`)
-3. `EnsureUserHasRole` checks `role:admin` or equivalent if route requires it
-4. `MlbController::dashboard()` queries Models, builds props array, calls `Inertia::render('Mlb/Dashboard', [...])` (`app/Http/Controllers/MlbController.php`)
-5. Inertia returns full HTML on first visit; subsequent visits receive JSON with props delta
-6. `resources/js/app.jsx` resolves `Pages/Mlb/Dashboard.jsx` and mounts into `<div id="app">`
-7. `AppLayout.jsx` wraps the page; nav items filtered by `user.role` + `user.publication_role`
+### Request Autenticado (Inertia)
 
-### Adman Sync Flow (Scheduled)
+1. Browser dispara `Inertia.visit('/sugadores')` ou click em `<Link href={route('sugadores.index')}>`
+2. Vite-built JS envia request com header `X-Inertia` ([resources/js/app.jsx](resources/js/app.jsx))
+3. HTTP Kernel resolve rota em [routes/web.php](routes/web.php) → aplica middleware `auth`, `verified`, opcional `role:`/`permission:`
+4. `HandleInertiaRequests::share()` injeta `auth`, `flash`, `csrf_token`, `sugadores_pendentes`, `notificacoes_nao_lidas`
+5. Controller (ex.: [app/Http/Controllers/SugadorController.php](app/Http/Controllers/SugadorController.php)) consulta Models/Services, retorna `Inertia::render('Sugadores/Index', [...])`
+6. Inertia client recebe JSON, importa `./Pages/Sugadores/Index.jsx` via `import.meta.glob`
+7. React renderiza com as props; CSRF token refrescado em `router.on('success')` ([resources/js/app.jsx](resources/js/app.jsx) linhas 35–50)
 
-1. Scheduler fires `adman:sync` every 5 minutes (`routes/console.php`)
-2. `SyncAdmanData::handle()` calls `AdmanService::syncAll()` (`app/Console/Commands/SyncAdmanData.php`)
-3. `AdmanService::syncAll()` fetches all active companies with `adman_account_id`, loops calling `syncCompany()` with 700ms throttle (`app/Services/AdmanService.php`)
-4. Each `syncCompany()` calls Adman REST API, stores result in `adman_metrics` and `adman_campaign_metrics` tables
-5. Results visible on Dashboard/Admin via `AdmanMetric` model queries
+### Sync Adman Agendado
 
-### Sugador On-Demand Analysis Flow
+1. Cron host (`* * * * * php artisan schedule:run`) dispara
+2. [routes/console.php](routes/console.php) linha 13: `Schedule::command('adman:sync')->everyFiveMinutes()->withoutOverlapping()`
+3. [app/Console/Commands/SyncAdmanData.php](app/Console/Commands/SyncAdmanData.php) invoca `AdmanService::syncAll()`
+4. [app/Services/AdmanService.php](app/Services/AdmanService.php) `syncAll()` filtra `Company::where('active', true)` com `ml_store_id` ou `adman_account_id`, processa em chunks de 20 com `usleep(700_000)` entre empresas
+5. Para cada empresa: GET `/performance` com `Company::cust_id` → upsert em `adman_metrics` e `adman_campaign_metrics`
+6. Resultado consolidado registrado em `adman_sync_logs`
+7. Erros: `Log::error("[Adman] Erro empresa {$company->id}...")` e contabiliza em `['failed']`
 
-1. User clicks "Rodar análise" on `/sugadores` → `POST /sugadores/companies/{company}/analyze`
-2. `SugadorController::analyzeCompany()` calls `Gate::authorize('analyze', Sugador::class)` (`app/Http/Controllers/SugadorController.php`)
-3. Controller dispatches `AnalyzeCompanySugadoresJob::dispatch($company)` to database queue (`app/Jobs/AnalyzeCompanySugadoresJob.php`)
-4. Queue worker picks up job; `AnalyzeCompanySugadoresJob::handle()` injects `SugadorAnalysisService`
-5. `SugadorAnalysisService::analyzeCompany()` fetches Adman adgroup data, evaluates detection criteria, upserts `sugadores` table (respecting `STATUS_TRAVADOS` idempotency) (`app/Services/SugadorAnalysisService.php`)
-6. Frontend polls or user refreshes to see updated list
+### Sync Vendas Adman (todas empresas via queue)
 
-### Token-based Public Workspace Flow (MLB Implementação / PPA / NPS)
+1. Usuário clica em "Sincronizar Vendas" em `/mlb/empresas` → `POST /mlb/sync-vendas` ([routes/web.php](routes/web.php) linha 265)
+2. `MlbController::syncTodasVendasAdman` dispara `SyncTodasVendasAdmanJob::dispatch($from, $to, $userId)` com spacing de 1.5s entre dispatches (evita rate limit) e retorna flash imediato
+3. Worker processa job em background ([app/Jobs/SyncTodasVendasAdmanJob.php](app/Jobs/SyncTodasVendasAdmanJob.php)) — `$timeout = 0` pois ~17 empresas × até 120s/cada
+4. Job cria `MlbSyncVendasLog` antes do processamento (observabilidade imediata em `/dev/desenvolvimento`)
+5. Falhas capturadas como 422 (memory_limit elevado); ver commits `af23000`, `5e85425`
 
-1. Admin generates a token link → stored in DB against the entity
-2. Client opens `/implementacao/{token}` or `/ppa/workspace/{token}` or `/nps/{token}` — no auth required
-3. Controller validates token, loads entity, renders public Inertia page
-4. Client submits form via `PATCH /implementacao/{token}` — CSRF exempt for `/implementacao/*`
+### Análise Sugadores On-Demand
 
-**State Management:**
-- No client-side global state store (no Redux/Zustand). All state comes from Inertia page props.
-- Local React `useState` for UI-only state (modals, filters, form fields).
-- Inertia `useForm()` hook handles form state and submission.
-- Flash messages surfaced via `flash` shared prop in `HandleInertiaRequests`.
+1. Admin clica em "Analisar empresa" em `/sugadores` → `POST /sugadores/companies/{company}/analyze`
+2. [app/Http/Controllers/SugadorController.php](app/Http/Controllers/SugadorController.php) faz `Gate::authorize('manage', Sugador::class)` → `AnalyzeCompanySugadoresJob::dispatch($company)`
+3. Worker pega job: `SugadorAnalysisService::analyzeCompany($company)` — chama Adman MCP via `AdmanMcpService` para drilldown adgroup
+4. Sugadores detectados são upsertados em `sugadores`; status `pendente` (com proteção `STATUS_TRAVADOS` para `em_acao`/`resolvido`/`ignorado`)
+5. Job tem 15min de timeout, 2 tentativas; failure registra em log via `failed()`
 
-## Key Abstractions
+### Workspace Público por Token (MLB Implementação / PPA / NPS)
 
-**Dual Role System:**
-- Purpose: Two independent permission axes on `User`
-- Main role (`role`): `admin`, `consultor`, `mentor` — controls ECF core module access
-- Publication role (`publication_role`): `gestor`, `lider`, `publicador`, `analista` — controls MLB module access
-- Helpers: `User::isAdmin()`, `User::hasPubPermission(string)`, `User::DEFAULT_PUB_PERMISSIONS`
-- Files: `app/Models/User.php`, `app/Http/Middleware/EnsureUserHasRole.php`, `resources/js/Layouts/AppLayout.jsx`
+1. Cliente acessa `/implementacao/{token}` ou `/ppa/workspace/{token}` ou `/nps/{token}`
+2. CSRF dispensado para `implementacao/*` em [bootstrap/app.php](bootstrap/app.php) linha 15
+3. Sem middleware `auth` — controller valida token contra DB
+4. Retorna Inertia page (renderizada igualmente, sem `auth.user`)
 
-**Company (Empresa) as Central Entity:**
-- Purpose: Pivot for all consultancy data
-- Most domain models FK to `companies.id`
-- Users linked to companies via `company_users` pivot (role: consultor/mentor/analista)
-- File: `app/Models/Company.php`
+### Estado no Frontend
 
-**Carteira (Portfolio) Scoping:**
-- Purpose: Restricts data visibility for non-admin users to their own companies
-- Pattern: Queries use `whereIn('company_id', $user->companies()->pluck('companies.id'))` or scope `scopeDaCarteira()`
-- Used in: `SugadorController`, `SugadorPolicy`, `DashboardController::userDashboard()`
+- Sem state store global (Redux/Zustand não usados)
+- `useState` local apenas para UI (modals, filtros, forms)
+- `useForm()` do Inertia para forms e submissão
+- Flash messages via shared prop `flash` em [app/Http/Middleware/HandleInertiaRequests.php](app/Http/Middleware/HandleInertiaRequests.php)
 
-**Sugador STATUS_TRAVADOS (Idempotency Lock):**
-- Purpose: Prevents overwriting human-reviewed status during re-analysis
-- Locked statuses: `em_acao`, `resolvido`, `ignorado`
-- File: `app/Models/Sugador.php` — `STATUS_TRAVADOS` constant
+## Abstrações-Chave
 
-**Inertia Shared Props:**
-- Purpose: Data available on every page without per-controller injection
-- Contents: `auth.user`, `flash.*`, `asset_url`, `csrf_token`, `sugadores_pendentes`
-- File: `app/Http/Middleware/HandleInertiaRequests.php`
+**Sistema de Roles Híbrido (legado + novo, pós-Phase 7):**
+- **`User::role`** (legado): admin / consultor / mentor — gating de módulo ECF; middleware `role:`
+- **`User::hasPermission(key)`** (novo): resolve via UNION das permissões dos setores (membro) + `AUTO_LIDERANCA` (se líder); admin sempre `true` (short-circuit em [app/Models/User.php](app/Models/User.php) linha 106)
+- **`User::effectivePermissions()`** (cache por request): consultado em [app/Http/Middleware/HandleInertiaRequests.php](app/Http/Middleware/HandleInertiaRequests.php) → exposto em `auth.permissions`
+- Catálogo: [app/Support/Permissions.php](app/Support/Permissions.php) com keys `core.*`, `mlb.*`, `admin.*`, `sistema.*`, `lideranca.*`, `notificacoes.*`, `comercial.*`
+- Tabelas: `user_setores` (membro), `setor_lideres` (líder), `setor_permissoes` (key → setor), `cargos` (vinculado a `user_setores.cargo_id`)
+- ATENÇÃO: as colunas legacy do User foram renomeadas para `*_legacy` na Phase 7 — call-sites antigos podem causar 500 (ver memória)
+
+**Company como pivot:**
+- Maioria dos modelos de domínio FK para `companies.id`
+- Users ↔ Companies via pivot `company_users` (roles: consultor/estrategista/analista — `mentor` → `estrategista` na migration `2026_05_22_200001`)
+- `Company::cust_id` é o acessor unificado `ml_store_id ?: adman_account_id` (commit `f9d0547`) — resolve divergência entre call-sites Adman
+
+**Data isolation por carteira:**
+- Restringe visibilidade a não-admins para suas próprias empresas
+- Padrão: `whereIn('company_id', $user->companies()->pluck('companies.id'))` ou scope `Sugador::scopeDaCarteira()`
+- Usado em: [app/Http/Controllers/SugadorController.php](app/Http/Controllers/SugadorController.php), [app/Policies/SugadorPolicy.php](app/Policies/SugadorPolicy.php), [app/Http/Controllers/DashboardController.php](app/Http/Controllers/DashboardController.php) (`userDashboard`)
+
+**Status Travados (Sugador):**
+- Constante `Sugador::STATUS_TRAVADOS = ['em_acao', 'resolvido', 'ignorado']`
+- Reanálise NÃO sobrescreve esses status (preserva revisão humana)
+- Definida em [app/Models/Sugador.php](app/Models/Sugador.php)
+
+**Shared Inertia Props:**
+- `auth.user` (payload básico + setor principal), `auth.permissions`, `auth.setores`, `auth.lideranca`
+- `flash.{success,error,nps_link,workspace_url}`
+- `asset_url`, `csrf_token`
+- `sugadores_pendentes` (closure — lazy, conta só quando lido)
+- `notificacoes_nao_lidas` (closure — recalcula em toda navegação Inertia)
+- Definidas em [app/Http/Middleware/HandleInertiaRequests.php](app/Http/Middleware/HandleInertiaRequests.php)
+
+**Catálogo de Serviços (Phase 14):**
+- Tabela `servicos` (catálogo) ↔ `contratos_servico` (vinculação por empresa)
+- Migrations: `2026_05_26_120001`, `2026_05_26_120002`, `2026_05_27_100001..100004`
+- Mentoria + Implantação adicionadas no commit `a4aff30` preservando intenção de `b10041f`
+- Colunas legacy de serviço foram dropadas em `2026_05_27_100003_drop_legacy_service_columns_from_companies.php`
 
 ## Entry Points
 
-**Web HTTP:**
-- Location: `public/index.php`
-- Triggers: All browser HTTP requests
-- Responsibilities: Boots Laravel app via `bootstrap/app.php`
+**HTTP:**
+- Localização: [public/index.php](public/index.php)
+- Disparado por: todas as requisições HTTP do browser
+- Responsabilidade: boot do Laravel via [bootstrap/app.php](bootstrap/app.php)
 
-**Artisan CLI:**
-- Location: `artisan`
-- Triggers: `php artisan <command>`
-- Responsibilities: Runs console commands; `schedule:run` drives all cron jobs
+**CLI:**
+- Localização: [artisan](artisan)
+- Disparado por: `php artisan <command>`
+- Responsabilidade: roda console commands; `schedule:run` consome [routes/console.php](routes/console.php)
 
-**Inertia Frontend:**
-- Location: `resources/js/app.jsx`
-- Triggers: Browser loads `public/build/assets/app-*.js` (Vite bundle)
-- Responsibilities: Mounts React app, resolves pages from `resources/js/Pages/**/*.jsx`, handles CSRF token refresh on every Inertia response
+**JS:**
+- Localização: [resources/js/app.jsx](resources/js/app.jsx)
+- Disparado por: browser carrega `public/build/assets/app-*.js` (bundle Vite)
+- Responsabilidade: monta React, resolve páginas de [resources/js/Pages/**/*.jsx](resources/js/Pages/), refresca CSRF token em `router.on('success')`
 
-**Queue Worker:**
-- Location: `artisan` via `php artisan queue:work`
-- Triggers: Jobs dispatched by controllers or scheduler
-- Responsibilities: Processes `AnalyzeCompanySugadoresJob`, `SyncAdmanCompanyJob`, etc. from `jobs` table
+**Worker:**
+- Localização: `php artisan queue:work` (ou `queue:listen` em dev) — supervisor `ecf-worker:*` em produção
+- Disparado por: jobs dispatched por controllers ou scheduler
+- Responsabilidade: processa `SyncAdmanCompanyJob`, `SyncTodasVendasAdmanJob`, `AnalyzeCompanySugadoresJob`, `CalculateGoalResults`, `EnviarRelatorioFechamentoJob`, `RefreshGrossBillingCacheJob` da tabela `jobs`
 
-## Architectural Constraints
+## Restrições Arquiteturais
 
-- **Threading:** Single-threaded PHP per request; concurrency via queue workers. Long external API calls (Adman) must go through Jobs to avoid nginx/php-fpm timeout.
-- **Global state:** No module-level singletons beyond Laravel's service container. `AdmanService` is instantiated per-request via DI.
-- **CSRF:** Disabled for `/implementacao/*` (public client workspace). All other routes enforce CSRF. Frontend refreshes token from `csrf_token` shared prop after each Inertia response.
-- **Queue driver:** `database` (jobs stored in `jobs` table). No Redis configured.
-- **Scheduler:** Declared in `routes/console.php` (Laravel 11 style), not `App\Console\Kernel`. Cron entry: `* * * * * php artisan schedule:run`.
+- **Threading:** Single-threaded por request (PHP-FPM). Concorrência via queue workers. Chamadas longas para Adman precisam ir via Jobs para evitar timeout nginx/php-fpm (504 — resolvido em commit `af23000` movendo sync de todas vendas para queue)
+- **Memory:** `memory_limit` elevado em `syncNow` (commit `5e85425`); falhas capturadas como 422
+- **Rate limit:** Adman MCP tem 50 req/min — `AdmanMcpService` faz retry com sleep de 60s em 429
+- **Dispatch spacing:** Dispatches da queue Adman espaçados em 1.5s (commit `f0fdb44`) para não estourar rate limit
+- **Global state:** Sem singletons além do container do Laravel. `AdmanService` instanciado por request via DI
+- **CSRF:** Desabilitado para `implementacao/*` (workspace público cliente) em [bootstrap/app.php](bootstrap/app.php) linha 15. Demais rotas com CSRF; frontend refresca token via shared prop após cada resposta Inertia
+- **Queue driver:** `database` (tabela `jobs`). Redis NÃO configurado como queue (apenas opcional para cache)
+- **Scheduler:** Declarado em [routes/console.php](routes/console.php) (estilo Laravel 11+), NÃO em `App\Console\Kernel`. Entrada cron: `* * * * * php artisan schedule:run`
+- **Drilldown Sugadores:** Limita ~16 páginas na MCP (memória do usuário sobre "limite de tempo") — fix definitivo seria mover para Job
 
 ## Anti-Patterns
 
-### Permission checks inside controllers (MlbController)
+### Permissions ainda residuais dentro de controllers
 
-**What happens:** `MlbController` uses inline `checkPubAccess()` / `checkPubRole()` private helpers instead of Laravel Policies for the MLB module (`app/Http/Controllers/MlbController.php`, lines 25-43).
-**Why it's wrong:** Authorization logic is scattered across a 30-action controller, not centralized or testable as a Policy.
-**Do this instead:** Create `MlbPolicy` (like `SugadorPolicy`) and use `Gate::authorize()` in each action, mirroring `app/Policies/SugadorPolicy.php`.
+**O que acontece:** Algumas verificações de permissão antigas seguem em métodos privados como `checkPubAccess()`/`checkPubRole()` em [app/Http/Controllers/MlbController.php](app/Http/Controllers/MlbController.php), além das colunas `*_legacy` no User
 
-### Business logic in DashboardController
+**Por que é problema aqui:** Após Phase 7, a fonte canônica passou a ser `User::hasPermission()` + middleware `permission:`. Manter checks legados aumenta superfície para 500 quando `*_legacy` ficar `null`
 
-**What happens:** `DashboardController::adminDashboard()` and `buildRanking()` contain significant query and data-transformation logic inline (~200 lines, `app/Http/Controllers/DashboardController.php`).
-**Why it's wrong:** Controllers should be thin; complex queries mixed with HTTP logic are hard to test and reuse.
-**Do this instead:** Extract to a `DashboardService` or dedicated query classes, similar to how `SugadorAnalysisService` encapsulates sugador logic.
+**Faça em vez disso:** Use `Route::middleware('permission:KEY')` para gate de rota (ver exemplo em [routes/web.php](routes/web.php) linhas 90–93 e 98–107). Use `User::hasPermission()` para checks ad-hoc
 
-## Error Handling
+### Lógica de negócio em controllers grandes
 
-**Strategy:** Laravel default exception handler with HTTP status codes. No global custom exception classes defined.
+**O que acontece:** [app/Http/Controllers/MlbController.php](app/Http/Controllers/MlbController.php) tem ~30 ações; [app/Http/Controllers/DashboardController.php](app/Http/Controllers/DashboardController.php) faz montagem complexa de KPI
 
-**Patterns:**
-- `abort(403, 'message')` — inline auth failures (e.g., `MlbController::checkPubAccess()`)
-- `Gate::authorize()` — policy-based 403 throw (e.g., `SugadorController`)
-- `abort_unless()` — convenience guard in controllers
-- `try/catch (\Throwable $e)` with `Log::error()` in service loops (`AdmanService::syncAll()`)
-- Jobs use `failed(\Throwable $e)` hook for dead-letter logging (`AnalyzeCompanySugadoresJob`)
+**Por que é problema aqui:** Dificulta reuso (jobs/commands precisam duplicar), test surface fica enorme
+
+**Faça em vez disso:** Extrair para Service (padrão de [app/Services/AdmanService.php](app/Services/AdmanService.php), [app/Services/SugadorAnalysisService.php](app/Services/SugadorAnalysisService.php)) e injetar via construtor
+
+### Adman tem duas fontes de verdade
+
+**O que acontece:** Dashboards leem de `adman_metrics` (sync agendado a cada 5min); drilldown Sugadores chama MCP direto
+
+**Por que é problema aqui:** Usuário relatou discrepância TACOS entre tela e métrica MCP (memória `project_adman_data_sources`)
+
+**Faça em vez disso:** Documentar a fonte em cada tela; sempre que mostrar métrica MCP, anotar "calculada agora" vs "sincronizada há X min" para evitar comparação injusta
+
+## Tratamento de Erros
+
+**Estratégia geral:**
+- HTTP: `abort(403, 'mensagem')` para falhas de auth inline
+- Policies: `Gate::authorize('action', $model)` (somente em Sugadores hoje)
+- Service loops: `try/catch (\Throwable $e)` + `Log::error("[Modulo] ...")` e continua (swallow per-item)
+- Jobs: sempre definem `failed(\Throwable $e)` para dead-letter logging
+- Forms Inertia: `return back()->with('success', '...')` ou `with('error', '...')`
+- JSON APIs internas: `response()->json(['message' => ...], 422)`
+- Validação: `$request->validate([...])` direto no controller (auto-throws `ValidationException`)
 
 ## Cross-Cutting Concerns
 
-**Logging:** `spatie/laravel-activitylog` on all major models (User, Company, MlbEmpresa, Sugador, etc.) — logs dirty fields only. Auth events (login/logout) logged in `AppServiceProvider`. Service errors logged via `Log::error()`.
+**Logging:**
+- Prefixo `"[Modulo]"` em toda mensagem (`"[Adman]"`, `"[Sugadores]"`, `"[MLB SyncVendas]"`)
+- Driver `stack` → `single` em `storage/logs/laravel.log`
+- Severidade mapeada: `info` para operações esperadas, `warning` para anomalias recuperáveis, `error` para falhas que não interrompem o loop, `critical` para crashes fatais
+- Pail em dev via `composer dev`
 
-**Validation:** Laravel `FormRequest` classes in `app/Http/Requests/` for auth routes. Inline `$request->validate()` in most domain controllers.
+**Validação:**
+- Inline `$request->validate([...])` nos controllers
+- Sem Form Requests dedicados em [app/Http/Requests/](app/Http/Requests/) (diretório existe mas vazio/pouco usado)
 
-**Authentication:** Laravel Breeze (email/password). `auth` + `verified` middleware on all protected routes. Google OAuth stored in `google_tokens` table via `GoogleCalendarService`.
+**Autenticação:**
+- Sessão via Laravel Breeze
+- Login/Logout disparam activitylog em [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php)
+
+**Autorização:**
+- Middleware `role:` e `permission:` por rota (ver [routes/web.php](routes/web.php))
+- Policy explícita em [app/Policies/SugadorPolicy.php](app/Policies/SugadorPolicy.php)
+- Short-circuit `isAdmin()` em `User::hasPermission()` — admin nunca cai em check granular
+
+**Activity Log:**
+- Trait `LogsActivity` em modelos primários (User, Company, Sugador, Goal, Publicacao, MlbEmpresa, etc.)
+- Cada modelo define `getActivitylogOptions()` com `logOnlyDirty()` e descrições em pt-BR
+- Login/Logout customizados em [app/Providers/AppServiceProvider.php](app/Providers/AppServiceProvider.php)
+
+**i18n:**
+- Sem framework de tradução em uso
+- `APP_LOCALE=en` por padrão mas todo o conteúdo de domínio é pt-BR (UI, comentários, log messages, activity descriptions)
 
 ---
 
-*Architecture analysis: 2026-05-18*
+*Análise de arquitetura: 2026-05-27*

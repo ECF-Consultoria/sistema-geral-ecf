@@ -46,6 +46,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 13: Reestruturação do Cadastro de Empresas** - Setor Comercial é a única porta de entrada para novas empresas; cadastro roteia automaticamente por service_type; migração retroativa vincula mlb_empresas a companies (completed 2026-05-25)
 - [x] **Phase 14: Consolidação do Modelo de Serviços (Frente B)** - Modelo unificado: campos legacy de companies (service_type/contract_start/contract_end/additional_service/additional_service_price) substituídos por contratos_servico N:N introduzido na quick task 260526-jgj; Fechamento, Comercial e demais consumidores migrados sem alterar resultados financeiros (completed 2026-05-26)
 
+### Milestone v4.1 — Eficiência Operacional Sugadores
+
+- [ ] **Phase 15: Sugadores — UI por Empresa + Auto-resolução + Atalhos Operacionais** - Aba Sugadores migra do paradigma "lista global" para "cards por empresa com drilldown"; análise diária auto-resolve sugadores pendentes que não atendem mais critérios (combate acúmulo); botão de copiar MLBs em massa no drilldown do AdGroup; reanálise direto do card
+
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
@@ -344,6 +348,32 @@ Cross-cutting constraints:
 
 **UI hint**: yes
 
+### Phase 15: Sugadores — UI por Empresa + Auto-resolução + Atalhos Operacionais
+**Goal**: A aba `/sugadores` muda do paradigma "lista global paginada" para "cards por empresa com drilldown filtrado"; a análise diária auto-resolve sugadores `pendente` que não foram re-detectados na nova rodada (combate acúmulo); operadores ganham botão de copy em massa dos MLBs no drilldown do AdGroup e reanálise direto do card da empresa.
+**Mode:** mvp
+**Depends on**: Phase 14 (sistema estável após cleanup de serviços) + módulo Sugadores existente (já entregue em milestone anterior)
+**Requirements**: SUG-01, SUG-02, SUG-03, SUG-04, SUG-05, SUG-06, SUG-07 *(novos — registrar em REQUIREMENTS.md durante o discuss/plan)*
+**Success Criteria** (what must be TRUE):
+  1. `/sugadores` exibe grid de **cards de empresa** como visão padrão — cada card mostra nome da empresa, contagem de sugadores `pendente` identificados HOJE em destaque, total de pendentes acumulados, e timestamp da última análise daquela empresa
+  2. Cards estão ordenados por `count_hoje DESC, total_pendentes DESC, nome ASC`; clicar no card abre o drilldown da empresa (lista filtrada com `company_id` pré-aplicado) mantendo todos os filtros existentes (tipo/status/data/include_resolved); modo "lista global" continua acessível via toggle (compat com bookmarks)
+  3. No drilldown de MLBs do AdGroup (`Sugadores/Show.jsx` → `mlbs`), **botão "Copiar MLBs"** copia a lista completa (ex: `MLB1234,MLB5678,...`) para o clipboard via `navigator.clipboard.writeText`; quando há MLBs com `matches_adgroup=true`, aparece botão extra "Copiar prováveis" com a sub-lista
+  4. Cada card tem **botão "Reanalisar"** que enfileira `AnalyzeCompanySugadoresJob` via rota existente `sugadores.analyze-company` e mostra feedback visual ("Enfileirado às HH:mm"); botão respeita Policy `manage` (não aparece para quem não tem permissão)
+  5. Após análise diária de uma empresa, sugadores com `status=pendente` e `reference_date < hoje` daquela empresa cujo `(tipo, campaign_id, adgroup_id)` NÃO consta no upsert atual são marcados como `auto_resolvido` (novo status), com `resolvido_em=now()`, `resolvido_por=null` e entrada de `SugadorAcao` com `acao=auto_resolvido`; STATUS_TRAVADOS (`em_acao`, `resolvido`, `ignorado`, `movido`) NÃO são tocados
+  6. Sugadores com `status=auto_resolvido` aparecem visualmente diferentes na listagem (badge cinza/verde claro com tooltip "Resolvido automaticamente pelo sistema"), são excluídos do count "Pendentes" mas contam no histórico filtrável (mesmo tratamento de `resolvido`)
+  7. Filtro persistente leve: ao abrir o drilldown de uma empresa, a UI grava em `localStorage` (`sugadores:last_company_id`); ao reabrir `/sugadores` na mesma sessão, oferece chip "Continuar com [Empresa X]" — clicar restaura o drilldown. Sem auto-redirect (analista pode querer ver os cards novamente)
+**Plans**: TBD (a definir pelo planner — provavelmente 3-4 plans: 1 backend auto-resolução + 2 frontend cards/copy/restore + 1 testes)
+
+Cross-cutting constraints:
+- pt-BR em comentários, mensagens e activity log (CLAUDE.md mandate)
+- `npm run build` obrigatório após cada edição JSX
+- Reusar rotas existentes (`sugadores.analyze-company`, `sugadores.index?company_id=`) — não criar endpoints duplicados
+- Novo status `auto_resolvido` exige migration de schema (enum) + atualização de `Sugador::STATUS_TRAVADOS` (adicionar para evitar regressão futura) + UI labels
+- Auto-resolução roda dentro de `SugadorAnalysisService::analyzeCompany` APÓS o upsert (consome `$toUpsert` keys); cuidado com `dryRun=true` (não deve auto-resolver em dry run)
+- Botão "Copiar MLBs" precisa de fallback para browsers sem `navigator.clipboard` (textarea + execCommand)
+- LocalStorage não pode quebrar SSR/Inertia: usar `useEffect`
+
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
@@ -368,3 +398,4 @@ v4.0 phases execute in order: 13 → 14
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 1/1 | Complete   | 2026-05-21 |
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
+| 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 0/? | Planning    | - |
