@@ -118,7 +118,8 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM (10 rpm → 7s/req com folga)
                 if ($callsMade > 0) usleep(7_000_000);
                 try {
-                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 60, forceRefresh: true);
+                    // TTL = 1440min (24h) — alinhado com cadência D-1 do Adman (Phase 16 W1-T3)
+                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 1440, forceRefresh: true);
                     $callsMade++;
                     if ($value === null) $fail++;
                     else                 $okGross++;
@@ -134,7 +135,8 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM (10 rpm → 7s/req com folga)
                 if ($callsMade > 0) usleep(7_000_000);
                 try {
-                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 60, forceRefresh: true);
+                    // TTL = 1440min (24h) — alinhado com cadência D-1 do Adman (Phase 16 W1-T3)
+                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 1440, forceRefresh: true);
                     $callsMade++;
                     if ($metrics === null) $fail++;
                     else                   $okAccount++;

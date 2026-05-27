@@ -258,14 +258,29 @@ class AdmanService
     private const ERROR_CACHE_MINUTES = 10;
 
     /**
+     * Data atual em BRT no formato YYYY-MM-DD — usada como sufixo das chaves
+     * de cache (gross_billing / account_metrics) para auto-invalidar ao virar
+     * o dia. A API Adman é D-1 (publica 10h BRT, 1× ao dia), portanto faz
+     * sentido manter TTL=24h e chave por dia: na 1ª chamada do dia há cache
+     * miss → busca fresh; demais chamadas do mesmo dia leem do cache.
+     */
+    private function cacheDay(): string
+    {
+        return now()->setTimezone(config('app.timezone'))->toDateString();
+    }
+
+    /**
      * @param  bool  $forceRefresh  Bypass cache hit lookup — chama Adman direto
      *   e sobrescreve o cache. Usar no Job de refresh pra recuperar empresas
      *   com ERROR_SENTINEL cacheado (sem isso, cache em erro fica preso até
      *   o TTL de 10min expirar entre execuções).
+     *
+     * TTL = 24h (1440min) — API Adman é D-1; chave inclui data atual em BRT
+     * (via cacheDay()) para auto-invalidar ao virar o dia.
      */
-    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60, bool $forceRefresh = false): ?float
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false): ?float
     {
-        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
 
         if (!$forceRefresh) {
             $cached = Cache::get($cacheKey);
@@ -313,7 +328,8 @@ class AdmanService
      */
     public function getCachedGrossBilling(string $custId, string $dateFrom, string $dateTo): ?float
     {
-        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        // Chave inclui cacheDay() — leitura só "vê" o cache do dia atual em BRT.
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         $value    = Cache::get($cacheKey);
         if ($value === null || $value === self::ERROR_SENTINEL) return null;
         return (float) $value;
@@ -328,7 +344,8 @@ class AdmanService
      */
     public function hasCachedEntry(string $custId, string $dateFrom, string $dateTo): bool
     {
-        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
+        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         return Cache::has($cacheKey);
     }
 
@@ -347,10 +364,12 @@ class AdmanService
         if (empty($custIds)) return [];
 
         // Mapeia custId → cacheKey e vice-versa pra recompor depois.
+        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
         $keysByCustId = [];
         $custIdsByKey = [];
+        $day          = $this->cacheDay();
         foreach ($custIds as $custId) {
-            $key = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+            $key = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
             $keysByCustId[$custId] = $key;
             $custIdsByKey[$key]    = $custId;
         }
@@ -400,10 +419,13 @@ class AdmanService
      *   e sobrescreve o cache. Usar no Job de refresh pra recuperar empresas
      *   com ERROR_SENTINEL cacheado (sem isso, fica preso até o TTL de 10min
      *   expirar entre execuções e timing nunca casa).
+     *
+     * TTL = 24h (1440min) — API Adman é D-1; chave inclui data atual em BRT
+     * (via cacheDay()) para auto-invalidar ao virar o dia.
      */
-    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 60, bool $forceRefresh = false): ?array
+    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false): ?array
     {
-        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
 
         if (!$forceRefresh) {
             $cached = Cache::get($cacheKey);
@@ -453,7 +475,8 @@ class AdmanService
      */
     public function getCachedAccountMetrics(string $custId, string $dateFrom, string $dateTo): ?array
     {
-        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        // Chave inclui cacheDay() — leitura só "vê" o cache do dia atual em BRT.
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         $value    = Cache::get($cacheKey);
         if ($value === null || $value === self::ERROR_SENTINEL) return null;
         return is_array($value) ? $value : null;
@@ -464,7 +487,8 @@ class AdmanService
      */
     public function hasCachedAccountMetricsEntry(string $custId, string $dateFrom, string $dateTo): bool
     {
-        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
+        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         return Cache::has($cacheKey);
     }
 
@@ -479,9 +503,11 @@ class AdmanService
         $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
         if (empty($custIds)) return [];
 
+        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
         $keysByCustId = [];
+        $day          = $this->cacheDay();
         foreach ($custIds as $custId) {
-            $keysByCustId[$custId] = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}";
+            $keysByCustId[$custId] = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
         }
 
         $raw = Cache::many(array_values($keysByCustId));
@@ -518,17 +544,21 @@ class AdmanService
      * Depois é instantâneo durante 30min. Aceitável dado que isso só ocorre
      * 1x a cada 30min quando o admin abre Dashboard/Empresas.
      *
+     * TTL = 24h (1440min) — API Adman é D-1; chave inclui data atual em BRT
+     * (via cacheDay()) para auto-invalidar ao virar o dia.
+     *
      * @param  array<string>  $custIds  Adman account IDs
      * @return array<string, ?float>    Map [custId => grossBilling] (null em falha)
      */
-    public function fetchGrossBillingsBatch(array $custIds, string $dateFrom, string $dateTo, int $cacheMinutes = 30): array
+    public function fetchGrossBillingsBatch(array $custIds, string $dateFrom, string $dateTo, int $cacheMinutes = 1440): array
     {
         $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
         $result  = [];
         $toFetch = [];
+        $day     = $this->cacheDay();
 
         foreach ($custIds as $custId) {
-            $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}";
+            $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
             $cached   = Cache::get($cacheKey);
             if ($cached !== null) {
                 $result[$custId] = (float) $cached;
