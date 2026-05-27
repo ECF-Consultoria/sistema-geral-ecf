@@ -28,9 +28,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // ALTER ENUM é sintaxe MySQL — em SQLite (testes) o enum vira CHECK
-        // no create da tabela, então simplesmente pulamos.
         if (DB::getDriverName() !== 'sqlite') {
+            // ALTER ENUM é sintaxe MySQL — em SQLite o ENUM vira CHECK no create.
             DB::statement("ALTER TABLE sugadores MODIFY COLUMN status ENUM('pendente','em_acao','resolvido','ignorado','movido','auto_resolvido') NOT NULL DEFAULT 'pendente'");
 
             // Auto-resolução grava SugadorAcao com user_id=NULL (não há analista).
@@ -38,10 +37,17 @@ return new class extends Migration
             // user_id como constrained() — implícito NOT NULL.
             DB::statement("ALTER TABLE sugador_acoes MODIFY COLUMN user_id BIGINT UNSIGNED NULL");
         } else {
-            // SQLite: as constraints CHECK/ENUM são recriadas no schema in-memory
-            // de cada teste; nada a fazer aqui. user_id nullable funciona pois
-            // SQLite não tem ENUM nativo e as foreign keys sem ON DELETE NO ACTION
-            // já aceitam NULL implicitamente quando a coluna é definida sem NOT NULL.
+            // SQLite (testes): usar schema builder com ->change() para tornar
+            // user_id nullable. Laravel 12 não exige doctrine/dbal para mudanças
+            // simples de nullability. Sem isso o INSERT do audit log da
+            // auto-resolução estoura NOT NULL constraint nos testes.
+            Schema::table('sugador_acoes', function (Blueprint $table) {
+                $table->foreignId('user_id')->nullable()->change();
+            });
+            // Status ENUM em SQLite é um CHECK constraint criado no schema da
+            // tabela; como o create original lista apenas 4 valores e migrations
+            // posteriores (movido) só atuam em MySQL, o teste já roda sem CHECK
+            // efetivo em SQLite. Não há nada a fazer aqui.
         }
     }
 
