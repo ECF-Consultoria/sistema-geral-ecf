@@ -143,8 +143,24 @@ class SugadorController extends Controller
             $aggregates = collect();
         }
 
+        // Bloqueia botão "Reanalisar" no card quando já houve sync com sucesso hoje
+        // (Phase 16 SC-6). Análise diária é D-1 da Adman, reanalisar antes do próximo
+        // ciclo não traz dados novos — sync falho (`error_message` preenchido) NÃO
+        // conta como "rodado", permitindo retry manual.
+        if (!empty($visibleIds)) {
+            $companiesAnalisadasHoje = \App\Models\AdmanSyncLog::query()
+                ->whereIn('company_id', $visibleIds)
+                ->whereDate('created_at', today())
+                ->whereNull('error_message')
+                ->distinct()
+                ->pluck('company_id')
+                ->flip();
+        } else {
+            $companiesAnalisadasHoje = collect();
+        }
+
         // LEFT JOIN lógico — toda empresa visível aparece, mesmo sem sugadores.
-        $companiesSummary = $companies->map(function ($c) use ($aggregates, $canAnalyze) {
+        $companiesSummary = $companies->map(function ($c) use ($aggregates, $canAnalyze, $companiesAnalisadasHoje) {
             $agg = $aggregates->get($c->id);
 
             // `ultima_analise` pode vir como string (driver MySQL/SQLite); normaliza pra ISO.
@@ -158,6 +174,7 @@ class SugadorController extends Controller
                 'total_pendentes' => (int) ($agg?->total_pendentes ?? 0),
                 'ultima_analise'  => $ultima,
                 'can_analyze'     => $canAnalyze,
+                'analisado_hoje'  => $companiesAnalisadasHoje->has($c->id),
             ];
         })
             // Ordenação: count_hoje DESC, total_pendentes DESC, nome ASC (case-insensitive).
