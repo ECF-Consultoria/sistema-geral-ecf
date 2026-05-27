@@ -2210,12 +2210,13 @@ class MlbController extends Controller
             $netRaw = $item['netBilling'] ?? null;
             $net    = is_array($netRaw) ? (float) ($netRaw['value'] ?? 0) : (float) ($netRaw ?? 0);
 
-            // Acumula (mesmo MLB pode aparecer em múltiplos itens)
+            // Mesmo MLB pode aparecer em múltiplos itens (ex: orgânico + ADS).
+            // Usa max em vez de soma para evitar duplicação de contagem.
             if (!isset($result[$mlb])) {
                 $result[$mlb] = ['qty' => 0, 'preco' => $preco, 'net_billing' => 0];
             }
-            $result[$mlb]['qty']         += $qty;
-            $result[$mlb]['net_billing'] += $net;
+            $result[$mlb]['qty']         = max($result[$mlb]['qty'], $qty);
+            $result[$mlb]['net_billing'] = max($result[$mlb]['net_billing'], $net);
             // Mantém o preço mais recente (não-nulo)
             if ($preco !== null) $result[$mlb]['preco'] = $preco;
         }
