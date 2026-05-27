@@ -50,6 +50,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 15: Sugadores — UI por Empresa + Auto-resolução + Atalhos Operacionais** - Aba Sugadores migra do paradigma "lista global" para "cards por empresa com drilldown"; análise diária auto-resolve sugadores pendentes que não atendem mais critérios (combate acúmulo); botão de copiar MLBs em massa no drilldown do AdGroup; reanálise direto do card (completed 2026-05-27, deployed to prod)
 
+### Milestone v4.2 — Adequação à Cadência D-1 da Adman
+
+- [ ] **Phase 16: Adequação à cadência D-1 da API Adman** - Reduz chamadas de ~2k/h para ~168/dia alinhando schedule, caches e UX ao fato de que a API é D-1 (atualiza 1× às 10h BRT). Cascata de jobs reorganizada para 11h-12h30. Botão "Sincronizar agora" removido. Botão "Reanalisar" do card Sugadores bloqueia quando já houve sync no dia. Throttle ≥6s para respeitar limite de 10 req/min documentado pela Adman.
+
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
@@ -374,6 +378,33 @@ Cross-cutting constraints:
 
 **UI hint**: yes
 
+### Phase 16: Adequação à cadência D-1 da API Adman
+**Goal**: Reduzir chamadas à API Adman de ~2k/hora para ~168/dia alinhando schedule, caches e UX ao fato de que a Adman é D-1 (atualiza 1× ao dia, às 10h BRT, com limite de 10 req/min por API key). Eliminar o 429 crônico em produção sem perder funcionalidade.
+**Mode:** mvp
+**Depends on**: Phase 15 (módulo Sugadores estável) + confirmação Adman: "API D-1 atualiza às 10h" + doc Adman "10 req/min por API key"
+**Requirements**: ADM-01 a ADM-08 *(novos — registrar em REQUIREMENTS.md durante o discuss/plan)*
+**Success Criteria** (what must be TRUE):
+  1. Schedule `adman:sync` roda **1× por dia às 11h BRT** (cron `0 11 * * *`) — não mais `everyFiveMinutes()`
+  2. Cascata reorganizada para depois das 11h: `adman:sync` (11:00) → `adman:sync-faturamento` (11:30) → `calculate-goal-results` (11:45) → `calculate-setor-goal-results` (11:55) → `sugadores:analyze` (12:00) → `sugadores:cleanup-quarentena` (12:30) → `RefreshGrossBillingCacheJob` (12:45, 1×/dia)
+  3. `AdmanService` documenta a constante `ADMAN_RATE_LIMIT_RPM = 10`; throttle entre chamadas sequenciais ajustado para **7 segundos** (folga sobre o limite de 6s teórico) — implementado em `SyncAdmanData` command e `RefreshGrossBillingCacheJob`
+  4. Cache TTLs runtime sobem para **24h**: `fetchGrossBilling` (era 60min), `fetchAccountMetricsCached` (era 60min), `fetchGrossBillingsBatch` (era 30min); chaves de cache incluem `YYYY-MM-DD` para invalidar automaticamente ao virar o dia
+  5. Botão **"Sincronizar agora"** removido: rota `POST /adman/sync` deletada de `routes/web.php`; `AdmanController::syncNow()` removido; botões na UI substituídos por badge `"Atualizado em DD/MM HH:mm · D-1 da Adman"` (lê de `MAX(adman_sync_logs.created_at)` ou `MAX(adman_metrics.updated_at)` por empresa visível)
+  6. Botão **"Reanalisar"** no card de Sugadores (Phase 15) só fica ativo se `NÃO houve sync no dia atual`; quando bloqueado mostra `"Análise diária já rodou hoje · próxima amanhã às 12h"`; lookup via `AdmanSyncLog::whereDate('created_at', today())->where('company_id', $id)->exists()`
+  7. UI mostra disclaimer **"Dados D-1 da Adman"** com tooltip explicativo em Dashboard, Fechamento e cards de Sugadores
+  8. Logs do servidor durante 24h pós-deploy mostram **zero 429** em uso normal; `php artisan tinker` rodando `(new AdmanService)->fetchPerformance(...)` 10× seguidas sem dormir mostra throttling automático e sem 429
+**Plans**: TBD (a definir pelo planner — sugestão: 3 plans — backend schedule+cache+throttle / UI remoção botão sync + disclaimers / UI bloqueio reanalisar + testes)
+
+Cross-cutting constraints:
+- pt-BR em comentários, mensagens flash e activity log
+- `npm run build` obrigatório após cada edição JSX
+- **NÃO quebrar** dados existentes — caches antigos expiram naturalmente (TTL atual ≤ 60min); novos TTLs aplicam-se a partir do próximo refresh
+- **NÃO remover** `AdmanController::syncNow` antes de remover/migrar TODOS os callers no JSX (grep prévio obrigatório)
+- Constante `ADMAN_RATE_LIMIT_RPM` deve ser referenciada em comentários onde throttle for aplicado (rastreabilidade)
+- Migration de schema NÃO é necessária — apenas mudança de código
+- Decisão de remover botão "Sincronizar agora" é irreversível em UX; ao executar Plan, confirmar que badge de "última atualização" foi mostrado nas mesmas posições
+
+**UI hint**: yes
+
 ## Progress
 
 **Execution Order:**
@@ -399,3 +430,4 @@ v4.0 phases execute in order: 13 → 14
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
+| 16. Adequação à cadência D-1 da Adman | 0/? | Planning | - |
