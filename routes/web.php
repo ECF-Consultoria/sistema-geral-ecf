@@ -140,10 +140,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('role:admin')
         ->name('performance.show');
 
-    // Adman sync manual (admin apenas)
-    Route::post('/adman/sync', [AdmanController::class, 'syncNow'])
-        ->middleware('role:admin')
-        ->name('adman.sync');
+    // Adman: leitura do ultimo sync (admin apenas).
+    // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):
+    // API Adman e D-1, sync ocorre 1x/dia via scheduler (11h BRT).
     Route::get('/adman/last-sync', [AdmanController::class, 'lastSync'])
         ->middleware('role:admin')
         ->name('adman.last-sync');
