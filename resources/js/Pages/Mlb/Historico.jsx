@@ -102,7 +102,11 @@ export default function Historico({ publicacoes, meses, empresas, publicadores, 
     const [excluirModal, setExcluirModal] = useState(null);
 
     function applyFilters(updates) {
-        const novo = { ...f, ...updates };
+        let novo = { ...f, ...updates };
+        // Ao trocar publicador, limpa empresa (lista vai ser recarregada filtrada)
+        if ('func' in updates && updates.func !== f.func && novo.empresa) {
+            novo = { ...novo, empresa: '' };
+        }
         setF(novo);
         router.get(route('mlb.historico'), novo, { preserveState: true });
     }

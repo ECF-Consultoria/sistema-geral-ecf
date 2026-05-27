@@ -809,8 +809,6 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
     const [filtroResp, setFiltroResp] = useState('');
 
     const k = kpis ?? {};
-    const temFiltros = estagiosOpts.length > 0 || fasesOpts.length > 0 || projetosOpts.length > 0;
-    const filtroAtivo = filtroEstagio || filtroFase || filtroProjeto || filtroBusca;
 
     // Publicadores disponíveis (para admin filtrar por responsável)
     const publicadoresMap = {};
@@ -818,6 +816,43 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
         if (e.responsavel_id && e.responsavel) publicadoresMap[e.responsavel_id] = e.responsavel;
     });
     const publicadoresDisponiveis = Object.entries(publicadoresMap).map(([id, nome]) => ({ id, nome }));
+
+    // Opções de estágio/fase/projeto filtradas pelo responsável selecionado (cascata)
+    const empresasDoResp = useMemo(() =>
+        filtroResp
+            ? (empresas ?? []).filter(e => String(e.responsavel_id) === String(filtroResp))
+            : (empresas ?? []),
+        [empresas, filtroResp]
+    );
+    const estagiosDisponiveis = useMemo(() =>
+        [...new Set(empresasDoResp.map(e => e.estagio).filter(Boolean))].sort(),
+        [empresasDoResp]
+    );
+    const fasesDisponiveis = useMemo(() =>
+        [...new Set(empresasDoResp.map(e => e.fase).filter(Boolean))].sort(),
+        [empresasDoResp]
+    );
+    const projetosDisponiveis = useMemo(() =>
+        [...new Set(empresasDoResp.map(e => e.projeto).filter(Boolean))].sort(),
+        [empresasDoResp]
+    );
+
+    const temFiltros = estagiosDisponiveis.length > 0 || fasesDisponiveis.length > 0 || projetosDisponiveis.length > 0;
+    const filtroAtivo = filtroEstagio || filtroFase || filtroProjeto || filtroBusca || filtroResp;
+
+    // Ao trocar responsável, limpa filtros de estágio/fase/projeto que saíram das opções
+    function handleFiltroResp(newResp) {
+        const base = newResp
+            ? (empresas ?? []).filter(e => String(e.responsavel_id) === String(newResp))
+            : (empresas ?? []);
+        const novosEstagios = new Set(base.map(e => e.estagio).filter(Boolean));
+        const novasFases    = new Set(base.map(e => e.fase).filter(Boolean));
+        const novosProjetos = new Set(base.map(e => e.projeto).filter(Boolean));
+        setFiltroResp(newResp);
+        if (filtroEstagio && !novosEstagios.has(filtroEstagio)) setFiltroEstagio('');
+        if (filtroFase    && !novasFases.has(filtroFase))       setFiltroFase('');
+        if (filtroProjeto && !novosProjetos.has(filtroProjeto)) setFiltroProjeto('');
+    }
 
     // Filtragem base (estagio/fase/projeto/responsavel/busca)
     let empresasParaView = (empresas ?? []).filter(e => {
@@ -881,30 +916,30 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
                     className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none placeholder:text-white/20 min-w-[180px]"
                 />
                 {temFiltros && (<>
-                    {estagiosOpts.length > 0 && (
+                    {estagiosDisponiveis.length > 0 && (
                         <select value={filtroEstagio} onChange={e => setFiltroEstagio(e.target.value)}
                             className="h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer">
                             <option value="">Todos os estágios</option>
-                            {estagiosOpts.map(v => <option key={v} value={v}>{v}</option>)}
+                            {estagiosDisponiveis.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                     )}
-                    {fasesOpts.length > 0 && (
+                    {fasesDisponiveis.length > 0 && (
                         <select value={filtroFase} onChange={e => setFiltroFase(e.target.value)}
                             className="h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer">
                             <option value="">Todos os status</option>
-                            {fasesOpts.map(v => <option key={v} value={v}>{v}</option>)}
+                            {fasesDisponiveis.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                     )}
-                    {projetosOpts.length > 0 && (
+                    {projetosDisponiveis.length > 0 && (
                         <select value={filtroProjeto} onChange={e => setFiltroProjeto(e.target.value)}
                             className="h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer">
                             <option value="">Todos os projetos</option>
-                            {projetosOpts.map(v => <option key={v} value={v}>{v}</option>)}
+                            {projetosDisponiveis.map(v => <option key={v} value={v}>{v}</option>)}
                         </select>
                     )}
                 </>)}
                 {filtroAtivo && (
-                    <button onClick={() => { setFiltroEstagio(''); setFiltroFase(''); setFiltroProjeto(''); setFiltroBusca(''); }}
+                    <button onClick={() => { setFiltroEstagio(''); setFiltroFase(''); setFiltroProjeto(''); setFiltroBusca(''); setFiltroResp(''); }}
                         className="h-8 px-3 rounded-lg border border-white/[0.08] text-white/40 text-[11px] hover:text-white transition-colors flex items-center gap-1">
                         <X size={11} /> Limpar
                     </button>
@@ -945,7 +980,7 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
                 ))}
 
                 {isAdmin && publicadoresDisponiveis.length > 0 && (
-                    <select value={filtroResp} onChange={e => setFiltroResp(e.target.value)}
+                    <select value={filtroResp} onChange={e => handleFiltroResp(e.target.value)}
                         className="ml-2 h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer">
                         <option value="">Todos os publicadores</option>
                         {publicadoresDisponiveis.map(p => (

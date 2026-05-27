@@ -163,13 +163,13 @@ export default function SugadoresConfig({ company, config }) {
 
     return (
         <AppLayout title="Configuração de Sugadores">
-            <Link
-                href={route('sugadores.index')}
+            <button
+                onClick={() => window.history.back()}
                 className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-4"
             >
                 <ArrowLeft size={14} />
                 Voltar para Sugadores
-            </Link>
+            </button>
 
             <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
                 <div>

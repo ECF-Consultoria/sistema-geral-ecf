@@ -1001,6 +1001,7 @@ class MlbController extends Controller
 
         $empresasQ = Publicacao::select('empresa')->distinct()->orderBy('empresa');
         if ($isPub) $empresasQ->where('user_id', $user->id);
+        if ($func && !$isPub) $empresasQ->where('user_id', $func);
         $empresas = $empresasQ->pluck('empresa')->toArray();
 
         $publicadoresLista = $isPub ? [] : $this->publicadores()

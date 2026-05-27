@@ -154,12 +154,12 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
         <AppLayout title={company.name}>
             <div className="space-y-5 max-w-[1100px]">
                 {/* Breadcrumb */}
-                <Link
-                    href={route('companies.index')}
+                <button
+                    onClick={() => window.history.back()}
                     className="inline-flex items-center gap-1.5 text-white/40 hover:text-white/70 text-sm transition-colors"
                 >
                     <ArrowLeft size={14} /> Empresas
-                </Link>
+                </button>
 
                 {/* Header */}
                 <div className="card-ecf rounded-2xl p-6 flex items-start justify-between gap-4">

@@ -99,6 +99,16 @@ class SugadorController extends Controller
             })->orderBy('name')->get(['id', 'name'])
             : collect();
 
+        // Mapa user_id → [company_ids] para filtro cascata no frontend:
+        // ao selecionar responsável, o dropdown de empresa exibe só as suas empresas.
+        $userCompanies = $user->isAdmin()
+            ? \DB::table('company_users')
+                ->select('user_id', 'company_id')
+                ->get()
+                ->groupBy('user_id')
+                ->map(fn($rows) => $rows->pluck('company_id')->values()->toArray())
+            : collect();
+
         // Contador de pendentes (na visão atual do usuário) — `pendentes()` filtra
         // STATUS_PENDENTE, então `auto_resolvido` naturalmente fica de fora.
         $pendentesQuery = Sugador::pendentes();
@@ -175,6 +185,7 @@ class SugadorController extends Controller
             'companies_summary' => $companiesSummary,
             'view_mode'         => $viewMode,
             'users'             => $users,
+            'user_companies'    => $userCompanies,
             'filters'           => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id', 'include_resolved']),
             'total_pendentes'   => $totalPendentes,
             'can_manage'        => Gate::allows('manage', Sugador::class),

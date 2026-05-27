@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router, useForm } from '@inertiajs/react';
-import { useEffect, useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
     PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
@@ -191,6 +191,108 @@ function NativeSelect({ value, onChange, placeholder, options, className }) {
     );
 }
 
+function SearchableCompanyFilter({ value, onChange, companies, placeholder }) {
+    const [open, setOpen]   = useState(false);
+    const [q, setQ]         = useState('');
+    const containerRef      = useRef(null);
+    const inputRef          = useRef(null);
+
+    const selected = companies.find(c => String(c.id) === String(value));
+    const filtered = q
+        ? companies.filter(c => c.name.toLowerCase().includes(q.toLowerCase()))
+        : companies;
+
+    useEffect(() => {
+        if (!open) return;
+        function handler(e) {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setOpen(false);
+                setQ('');
+            }
+        }
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [open]);
+
+    function select(company) {
+        onChange(company ? String(company.id) : '');
+        setOpen(false);
+        setQ('');
+    }
+
+    function handleOpen() {
+        setOpen(true);
+        setTimeout(() => inputRef.current?.focus(), 0);
+    }
+
+    return (
+        <div ref={containerRef} className="relative">
+            <button
+                type="button"
+                onClick={handleOpen}
+                className="w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-left flex items-center justify-between gap-2 focus:outline-none focus:border-ecf-yellow/40"
+            >
+                <span className={cn('truncate', selected ? 'text-white/80' : 'text-white/40')}>
+                    {selected ? selected.name : placeholder}
+                </span>
+                {selected && (
+                    <span
+                        role="button"
+                        onClick={e => { e.stopPropagation(); select(null); }}
+                        className="shrink-0 text-white/30 hover:text-white/70 cursor-pointer"
+                    >
+                        <X size={12} />
+                    </span>
+                )}
+            </button>
+
+            {open && (
+                <div className="absolute z-30 top-10 left-0 w-64 card-ecf rounded-lg border border-white/[0.08] shadow-xl p-2">
+                    <div className="relative mb-2">
+                        <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={q}
+                            onChange={e => setQ(e.target.value)}
+                            onKeyDown={e => e.key === 'Escape' && (setOpen(false), setQ(''))}
+                            placeholder="Buscar empresa..."
+                            className="w-full h-8 pl-7 pr-3 rounded-md border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/30"
+                        />
+                    </div>
+                    <ul className="max-h-52 overflow-y-auto space-y-0.5">
+                        <li>
+                            <button
+                                onClick={() => select(null)}
+                                className="w-full text-left px-2.5 py-1.5 rounded text-[12px] text-white/40 hover:text-white/70 hover:bg-white/[0.04]"
+                            >
+                                {placeholder}
+                            </button>
+                        </li>
+                        {filtered.length === 0 ? (
+                            <li className="text-white/30 text-[12px] py-3 text-center">Nenhuma empresa encontrada</li>
+                        ) : (
+                            filtered.map(c => (
+                                <li key={c.id}>
+                                    <button
+                                        onClick={() => select(c)}
+                                        className={cn(
+                                            'w-full text-left px-2.5 py-1.5 rounded text-[12px] hover:bg-white/[0.04]',
+                                            String(value) === String(c.id) ? 'text-ecf-yellow' : 'text-white/80 hover:text-white',
+                                        )}
+                                    >
+                                        {c.name}
+                                    </button>
+                                </li>
+                            ))
+                        )}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+}
+
 /**
  * Picker simples de empresa que abre Config de Sugadores ao escolher.
  * Pulado o seletor quando há uma só empresa (vai direto pra config).
@@ -352,6 +454,7 @@ export default function SugadoresIndex({
     sugadores,
     companies,
     users = [],
+    user_companies = {},
     filters,
     total_pendentes,
     can_manage,
@@ -398,8 +501,25 @@ export default function SugadoresIndex({
     const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
     const [configPickerOpen, setConfigPickerOpen] = useState(false);
 
+    // Empresas disponíveis no filtro: se um responsável está selecionado,
+    // mostra apenas as empresas vinculadas a ele via company_users.
+    const companiesParaFiltro = f.user_id && user_companies[f.user_id]
+        ? companies.filter(c => user_companies[f.user_id].map(String).includes(String(c.id)))
+        : companies;
+
     function applyFilters(updates = {}) {
-        const merged = { ...f, ...updates };
+        let merged = { ...f, ...updates };
+
+        // Filtro cascata: ao trocar responsável, limpa empresa se ela não pertence ao novo responsável.
+        if ('user_id' in updates && updates.user_id !== f.user_id) {
+            const permitidas = updates.user_id
+                ? (user_companies[updates.user_id] || []).map(String)
+                : null;
+            if (permitidas && merged.company_id && !permitidas.includes(String(merged.company_id))) {
+                merged = { ...merged, company_id: '' };
+            }
+        }
+
         setF(merged);
         const clean = Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== '' && v != null));
         // Preserva view_mode atual na navegação (filtros só fazem sentido em modo lista).
@@ -692,12 +812,11 @@ export default function SugadoresIndex({
             {showFilters && (
                 <div className="card-ecf rounded-xl p-4 mb-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
-                        <NativeSelect
+                        <SearchableCompanyFilter
                             value={f.company_id}
                             onChange={v => applyFilters({ company_id: v })}
+                            companies={companiesParaFiltro}
                             placeholder="Todas empresas"
-                            options={companies.map(c => ({ value: c.id, label: c.name }))}
-                            className="w-full"
                         />
                         {can_manage && users.length > 0 && (
                             <NativeSelect
