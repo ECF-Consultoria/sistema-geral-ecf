@@ -99,21 +99,86 @@ class SugadorController extends Controller
             })->orderBy('name')->get(['id', 'name'])
             : collect();
 
-        // Contador de pendentes (na visão atual do usuário)
+        // Contador de pendentes (na visão atual do usuário) — `pendentes()` filtra
+        // STATUS_PENDENTE, então `auto_resolvido` naturalmente fica de fora.
         $pendentesQuery = Sugador::pendentes();
         if (!$hasGlobalView) {
             $pendentesQuery->daCarteira($user);
         }
         $totalPendentes = $pendentesQuery->count();
 
+        // Phase 15 — Resumo agregado por empresa para a vista de cards (default).
+        // Query única com SUM(CASE WHEN ...) evita N+1 por empresa. Empresas
+        // visíveis sem nenhum sugador ainda aparecem com counts zerados via
+        // LEFT JOIN lógico em PHP (Collection::map sobre $companies).
+        $canAnalyze = Gate::allows('analyze', Sugador::class);
+        $visibleIds = $companies->pluck('id')->all();
+
+        if (!empty($visibleIds)) {
+            // DATE(reference_date) normaliza valores que vêm como datetime em
+            // alguns drivers (SQLite usado nos testes guarda 'YYYY-MM-DD HH:MM:SS'),
+            // garantindo match exato com `$hoje` (YYYY-MM-DD).
+            $aggregates = Sugador::selectRaw(
+                'company_id,
+                 SUM(CASE WHEN status = ? AND DATE(reference_date) = ? THEN 1 ELSE 0 END) AS count_hoje,
+                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) AS total_pendentes,
+                 MAX(created_at) AS ultima_analise',
+                [Sugador::STATUS_PENDENTE, $hoje, Sugador::STATUS_PENDENTE]
+            )
+                ->whereIn('company_id', $visibleIds)
+                ->groupBy('company_id')
+                ->get()
+                ->keyBy('company_id');
+        } else {
+            $aggregates = collect();
+        }
+
+        // LEFT JOIN lógico — toda empresa visível aparece, mesmo sem sugadores.
+        $companiesSummary = $companies->map(function ($c) use ($aggregates, $canAnalyze) {
+            $agg = $aggregates->get($c->id);
+
+            // `ultima_analise` pode vir como string (driver MySQL/SQLite); normaliza pra ISO.
+            $ultimaRaw = $agg?->ultima_analise;
+            $ultima    = $ultimaRaw ? \Carbon\Carbon::parse($ultimaRaw)->toIso8601String() : null;
+
+            return [
+                'company_id'      => (int) $c->id,
+                'name'            => (string) $c->name,
+                'count_hoje'      => (int) ($agg?->count_hoje ?? 0),
+                'total_pendentes' => (int) ($agg?->total_pendentes ?? 0),
+                'ultima_analise'  => $ultima,
+                'can_analyze'     => $canAnalyze,
+            ];
+        })
+            // Ordenação: count_hoje DESC, total_pendentes DESC, nome ASC (case-insensitive).
+            ->sort(function ($a, $b) {
+                if ($a['count_hoje'] !== $b['count_hoje']) {
+                    return $b['count_hoje'] <=> $a['count_hoje'];
+                }
+                if ($a['total_pendentes'] !== $b['total_pendentes']) {
+                    return $b['total_pendentes'] <=> $a['total_pendentes'];
+                }
+                return strcmp(strtolower($a['name']), strtolower($b['name']));
+            })
+            ->values()
+            ->all();
+
+        // `view_mode` controla o default da UI; aceita apenas 'cards' ou 'list'.
+        $viewMode = $request->input('view', 'cards');
+        if (!in_array($viewMode, ['cards', 'list'], true)) {
+            $viewMode = 'cards';
+        }
+
         return Inertia::render('Sugadores/Index', [
-            'sugadores'       => $sugadores,
-            'companies'       => $companies,
-            'users'           => $users,
-            'filters'         => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id', 'include_resolved']),
-            'total_pendentes' => $totalPendentes,
-            'can_manage'      => Gate::allows('manage', Sugador::class),
-            'can_analyze'     => Gate::allows('analyze', Sugador::class),
+            'sugadores'         => $sugadores,
+            'companies'         => $companies,
+            'companies_summary' => $companiesSummary,
+            'view_mode'         => $viewMode,
+            'users'             => $users,
+            'filters'           => $request->only(['company_id', 'status', 'tipo', 'date_from', 'date_to', 'user_id', 'include_resolved']),
+            'total_pendentes'   => $totalPendentes,
+            'can_manage'        => Gate::allows('manage', Sugador::class),
+            'can_analyze'       => $canAnalyze,
         ]);
     }
 
