@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Textarea } from '@/Components/ui/textarea';
-import { useForm, Link, router } from '@inertiajs/react';
+import { useForm, Link, router, useRemember } from '@inertiajs/react';
 import { useState } from 'react';
 import { Plus, Pencil, Eye, Trash2, Building2 } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
@@ -58,7 +58,7 @@ function ServicoBadges({ contratos }) {
 }
 
 export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [] }) {
-    const [search, setSearch] = useState('');
+    const [search, setSearch] = useRemember('', 'companies-index-search');
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
 

@@ -139,13 +139,13 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
     return (
         <AppLayout title="Sugador">
             {/* Voltar */}
-            <Link
-                href={route('sugadores.index')}
+            <button
+                onClick={() => window.history.back()}
                 className="inline-flex items-center gap-2 text-white/50 hover:text-white text-sm mb-4"
             >
                 <ArrowLeft size={14} />
                 Voltar para lista
-            </Link>
+            </button>
 
             {/* Header card */}
             <div className="card-ecf rounded-xl p-5 mb-4">
