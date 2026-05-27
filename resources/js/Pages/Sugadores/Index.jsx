@@ -1,29 +1,32 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router, useForm } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
     PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
-    Settings, Search,
+    Settings, Search, LayoutGrid, List, RotateCw, ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MoveToSgiModal from '@/Components/MoveToSgiModal';
 
 // ─── Constantes de UI ──────────────────────────────────────────────────────
 const STATUS_LABELS = {
-    pendente:  'Pendente',
-    em_acao:   'Em ação',
-    resolvido: 'Resolvido',
-    ignorado:  'Ignorado',
-    movido:    'Movido p/ SGI',
+    pendente:       'Pendente',
+    em_acao:        'Em ação',
+    resolvido:      'Resolvido',
+    ignorado:       'Ignorado',
+    movido:         'Movido p/ SGI',
+    auto_resolvido: 'Auto-resolvido',
 };
 
 const STATUS_BADGE = {
-    pendente:  'bg-red-500/15 text-red-300 border-red-500/30',
-    em_acao:   'bg-amber-500/15 text-amber-300 border-amber-500/30',
-    resolvido: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-    ignorado:  'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
-    movido:    'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30',
+    pendente:       'bg-red-500/15 text-red-300 border-red-500/30',
+    em_acao:        'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    resolvido:      'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    ignorado:       'bg-zinc-500/15 text-zinc-300 border-zinc-500/30',
+    movido:         'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/30',
+    // Verde claro distinto do `resolvido` cheio — sinaliza que o sistema resolveu sozinho.
+    auto_resolvido: 'bg-emerald-500/10 text-emerald-200/70 border-emerald-500/20',
 };
 
 const TIPO_LABELS = { adgroup: 'Adgroup', campanha: 'Campanha' };
@@ -65,10 +68,100 @@ const isHoje = (d) => {
 // ─── Componentes locais ────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
+    // Tooltip explicativo só faz sentido pro auto_resolvido — outros status são autoexplicativos.
+    const title = status === 'auto_resolvido' ? 'Resolvido automaticamente pelo sistema' : undefined;
     return (
-        <span className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border', STATUS_BADGE[status])}>
+        <span
+            className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border', STATUS_BADGE[status])}
+            title={title}
+        >
             {STATUS_LABELS[status] || status}
         </span>
+    );
+}
+
+// ─── Helpers de tempo relativo (sem deps externas — date-fns só usado em outros módulos) ──
+const fmtRelative = (iso) => {
+    if (!iso) return '—';
+    const ts = new Date(iso).getTime();
+    if (Number.isNaN(ts)) return '—';
+    const diff = Date.now() - ts;
+    const min = Math.round(diff / 60000);
+    if (min < 1) return 'agora';
+    if (min < 60) return `há ${min} min`;
+    const h = Math.round(min / 60);
+    if (h < 24) return `há ${h}h`;
+    const d = Math.round(h / 24);
+    if (d < 30) return `há ${d}d`;
+    // Fallback pra datas antigas — exibe a data formatada.
+    return new Date(iso).toLocaleDateString('pt-BR');
+};
+
+// Formata HH:mm pra feedback de enfileiramento ("Enfileirado às HH:mm").
+const fmtHHMM = (date) => {
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${h}:${m}`;
+};
+
+// ─── Card por empresa ──────────────────────────────────────────────────────
+// Componente local — segue convenção de StatusBadge/MotivoBadge no mesmo arquivo.
+function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
+    const hasHoje = (card.count_hoje ?? 0) > 0;
+    return (
+        <div className="card-ecf rounded-xl p-4 flex flex-col gap-3 hover:border-white/[0.12] transition-colors">
+            <div className="flex items-start gap-2 min-w-0">
+                <Building2 size={14} className="text-white/40 shrink-0 mt-0.5" />
+                <h3 className="text-white font-display font-semibold text-[14px] truncate flex-1" title={card.name}>
+                    {card.name}
+                </h3>
+            </div>
+
+            <div>
+                <p className={cn(
+                    'font-display font-bold text-3xl tabular-nums leading-none',
+                    hasHoje ? 'text-ecf-yellow' : 'text-white/40',
+                )}>
+                    {fmtInt(card.count_hoje)}
+                </p>
+                <p className="text-white/40 text-[10px] uppercase tracking-wider font-semibold mt-1">
+                    Pendentes HOJE
+                </p>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-white/50 pt-2 border-t border-white/[0.04]">
+                <span>{fmtInt(card.total_pendentes)} acumulado{Number(card.total_pendentes) !== 1 ? 's' : ''}</span>
+                <span title={card.ultima_analise || ''}>{fmtRelative(card.ultima_analise)}</span>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+                <button
+                    type="button"
+                    onClick={() => onVer(card.company_id)}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg bg-ecf-yellow/15 text-ecf-yellow border border-ecf-yellow/30 hover:bg-ecf-yellow/25 text-[12px] font-semibold"
+                >
+                    Ver sugadores
+                    <ArrowRight size={11} />
+                </button>
+                {canAnalyze && card.can_analyze && (
+                    <button
+                        type="button"
+                        onClick={() => onReanalisar(card.company_id)}
+                        className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px]"
+                        title="Reanalisar esta empresa agora (job na fila)"
+                    >
+                        <RotateCw size={11} />
+                        Reanalisar
+                    </button>
+                )}
+            </div>
+
+            {enqueuedAt && (
+                <p className="text-emerald-300/80 text-[11px] -mt-1">
+                    Enfileirado às {enqueuedAt}
+                </p>
+            )}
+        </div>
     );
 }
 
@@ -255,7 +348,17 @@ function StatusUpdateModal({ sugador, onClose }) {
 
 // ─── Página principal ──────────────────────────────────────────────────────
 
-export default function SugadoresIndex({ sugadores, companies, users = [], filters, total_pendentes, can_manage, can_analyze }) {
+export default function SugadoresIndex({
+    sugadores,
+    companies,
+    users = [],
+    filters,
+    total_pendentes,
+    can_manage,
+    can_analyze,
+    companies_summary = [],
+    view_mode = 'cards',
+}) {
     const [f, setF] = useState({
         company_id:       filters?.company_id || '',
         user_id:          filters?.user_id || '',
@@ -268,6 +371,23 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
     const [showFilters, setShowFilters] = useState(false);
     const [actionTarget, setActionTarget] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
+
+    // ─── Estado de feedback do botão "Reanalisar" (por empresa) ───────────────
+    // Map company_id → "HH:mm" do momento do enfileiramento; expira após 10s.
+    const [enqueuedAt, setEnqueuedAt] = useState({});
+
+    // ─── Chip "Continuar com [Empresa]" via localStorage ──────────────────────
+    // SSR-safe: leitura/escrita SEMPRE em useEffect ou handler, nunca no body.
+    const [lastCompanyId, setLastCompanyId] = useState(null);
+
+    useEffect(() => {
+        try {
+            const v = localStorage.getItem('sugadores:last_company_id');
+            if (v) setLastCompanyId(Number(v));
+        } catch {
+            // localStorage pode estar bloqueado (modo privado/Storage Access API) — ignora.
+        }
+    }, []);
 
     // ─── Bulk selection: só adgroups (tipo=adgroup) podem ser movidos pra SGI.
     // Estado é Set de IDs. Constraint dura: todos selecionados devem ser da MESMA
@@ -282,12 +402,14 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
         const merged = { ...f, ...updates };
         setF(merged);
         const clean = Object.fromEntries(Object.entries(merged).filter(([, v]) => v !== '' && v != null));
+        // Preserva view_mode atual na navegação (filtros só fazem sentido em modo lista).
+        if (view_mode) clean.view = view_mode;
         router.get(route('sugadores.index'), clean, { preserveState: true, preserveScroll: true });
     }
 
     function clearFilters() {
         setF({ company_id: '', user_id: '', status: '', tipo: '', date_from: '', date_to: '', include_resolved: '' });
-        router.get(route('sugadores.index'), {}, { preserveState: true });
+        router.get(route('sugadores.index'), { view: view_mode }, { preserveState: true });
     }
 
     function runAnalysis() {
@@ -299,9 +421,72 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
         });
     }
 
+    // ─── Toggle entre cards e lista (preserva filtros relevantes) ────────────
+    function switchView(nextView) {
+        if (nextView === view_mode) return;
+        const params = nextView === 'list'
+            ? { ...Object.fromEntries(Object.entries(f).filter(([, v]) => v !== '' && v != null)), view: 'list' }
+            : { view: 'cards' };
+        router.get(route('sugadores.index'), params, { preserveScroll: true, preserveState: true });
+    }
+
+    // ─── Abre drilldown filtrado por empresa (modo lista) ───────────────────
+    function abrirDrilldown(companyId) {
+        try {
+            localStorage.setItem('sugadores:last_company_id', String(companyId));
+            setLastCompanyId(Number(companyId));
+        } catch {
+            // localStorage indisponível — segue navegação normalmente.
+        }
+        router.get(route('sugadores.index'), { company_id: companyId, view: 'list' }, {
+            preserveScroll: false,
+        });
+    }
+
+    // ─── Dispara reanálise de UMA empresa (reusa rota existente) ────────────
+    function reanalisarEmpresa(companyId) {
+        router.post(route('sugadores.analyze-company', companyId), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                const hhmm = fmtHHMM(new Date());
+                setEnqueuedAt(prev => ({ ...prev, [companyId]: hhmm }));
+                // Limpa o feedback após ~10s — só uma indicação visual de "deu certo".
+                setTimeout(() => {
+                    setEnqueuedAt(prev => {
+                        const next = { ...prev };
+                        delete next[companyId];
+                        return next;
+                    });
+                }, 10000);
+            },
+        });
+    }
+
+    // ─── Limpar chip "Continuar com X" ───────────────────────────────────────
+    function dismissContinueChip() {
+        try {
+            localStorage.removeItem('sugadores:last_company_id');
+        } catch {
+            // ignora — apenas estado local
+        }
+        setLastCompanyId(null);
+    }
+
     const list = sugadores?.data ?? [];
     const meta = sugadores ?? { current_page: 1, last_page: 1, links: [] };
     const hasAnyFilter = Object.values(f).some(v => v && v !== '');
+
+    // ─── Resolve empresa do chip "Continuar com X" ──────────────────────────
+    // Só renderiza se: tem id salvo, está no modo cards, e a empresa aparece no summary
+    // (evita chip "fantasma" referenciando empresa que sumiu da carteira do user).
+    const continueCompany = view_mode === 'cards' && lastCompanyId
+        ? companies_summary.find(c => Number(c.company_id) === Number(lastCompanyId))
+        : null;
+
+    // ─── Nome da empresa filtrada (modo lista) ──────────────────────────────
+    const filteredCompanyName = view_mode === 'list' && f.company_id
+        ? (companies.find(c => Number(c.id) === Number(f.company_id))?.name || null)
+        : null;
 
     // Empresa-fonte da seleção: 1ª empresa do 1º selecionado. Usada pra (a) saber
     // pra qual empresa pedir lista de SGI no modal e (b) bloquear checkboxes de
@@ -365,14 +550,47 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                 </div>
 
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={() => setShowFilters(s => !s)}
-                        className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[13px] font-medium"
-                    >
-                        <Filter size={14} />
-                        Filtros
-                        {hasAnyFilter && <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow" />}
-                    </button>
+                    {/* Toggle Cards / Lista — Cards é a visão default; Lista é o paradigma legado. */}
+                    <div className="inline-flex items-center rounded-lg border border-white/[0.08] bg-white/[0.03] p-0.5">
+                        <button
+                            type="button"
+                            onClick={() => switchView('cards')}
+                            className={cn(
+                                'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-[12px] font-medium transition-colors',
+                                view_mode === 'cards'
+                                    ? 'bg-ecf-yellow/15 text-ecf-yellow'
+                                    : 'text-white/60 hover:text-white',
+                            )}
+                            title="Visão por empresa"
+                        >
+                            <LayoutGrid size={12} />
+                            Cards
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => switchView('list')}
+                            className={cn(
+                                'inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md text-[12px] font-medium transition-colors',
+                                view_mode === 'list'
+                                    ? 'bg-ecf-yellow/15 text-ecf-yellow'
+                                    : 'text-white/60 hover:text-white',
+                            )}
+                            title="Lista global (paradigma antigo, compat com bookmarks)"
+                        >
+                            <List size={12} />
+                            Lista
+                        </button>
+                    </div>
+                    {view_mode === 'list' && (
+                        <button
+                            onClick={() => setShowFilters(s => !s)}
+                            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[13px] font-medium"
+                        >
+                            <Filter size={14} />
+                            Filtros
+                            {hasAnyFilter && <span className="w-1.5 h-1.5 rounded-full bg-ecf-yellow" />}
+                        </button>
+                    )}
                     {can_manage && (
                         <button
                             onClick={() => setConfigPickerOpen(true)}
@@ -395,6 +613,80 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                     )}
                 </div>
             </div>
+
+            {/* Chip "Continuar com [Empresa]" — só no modo cards e quando há empresa salva. */}
+            {continueCompany && (
+                <div className="mb-3 -mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-ecf-yellow/[0.08] border border-ecf-yellow/30 text-ecf-yellow text-[12px]">
+                    <span className="text-ecf-yellow/70">Continuar com</span>
+                    <button
+                        type="button"
+                        onClick={() => abrirDrilldown(continueCompany.company_id)}
+                        className="font-semibold hover:underline inline-flex items-center gap-1"
+                    >
+                        {continueCompany.name}
+                        <ArrowRight size={11} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={dismissContinueChip}
+                        className="text-ecf-yellow/60 hover:text-ecf-yellow ml-1"
+                        title="Dispensar"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            )}
+
+            {/* Chip "Filtrando empresa: [Nome] ✕" — só no modo lista quando há filtro de empresa ativo. */}
+            {view_mode === 'list' && filteredCompanyName && (
+                <div className="mb-3 -mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.10] text-white/80 text-[12px]">
+                    <Building2 size={12} className="text-white/50" />
+                    <span className="text-white/50">Filtrando empresa:</span>
+                    <b className="text-white/90">{filteredCompanyName}</b>
+                    <button
+                        type="button"
+                        onClick={() => applyFilters({ company_id: '' })}
+                        className="text-white/40 hover:text-white ml-1"
+                        title="Limpar filtro de empresa"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            )}
+
+            {/* ─── Modo Cards ─── */}
+            {view_mode === 'cards' && (
+                <>
+                    {companies_summary.length === 0 ? (
+                        <div className="card-ecf rounded-xl p-12 text-center">
+                            <Building2 size={32} className="mx-auto text-white/20 mb-3" />
+                            <p className="text-white/60 text-sm font-medium">Nenhuma empresa visível.</p>
+                            <p className="text-white/30 text-xs mt-1">
+                                {can_manage
+                                    ? 'Configure thresholds em uma empresa e rode a análise.'
+                                    : 'Aguarde a próxima análise diária ou peça acesso a uma carteira.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {companies_summary.map(card => (
+                                <CompanyCard
+                                    key={card.company_id}
+                                    card={card}
+                                    canAnalyze={!!can_analyze}
+                                    enqueuedAt={enqueuedAt[card.company_id]}
+                                    onReanalisar={reanalisarEmpresa}
+                                    onVer={abrirDrilldown}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </>
+            )}
+
+            {/* ─── Modo Lista (paradigma antigo) ─── */}
+            {view_mode === 'list' && (
+                <>
 
             {/* Filtros */}
             {showFilters && (
@@ -718,6 +1010,8 @@ export default function SugadoresIndex({ sugadores, companies, users = [], filte
                     </div>
                 )}
             </div>
+                </>
+            )}
 
             {actionTarget && (
                 <StatusUpdateModal sugador={actionTarget} onClose={() => setActionTarget(null)} />
