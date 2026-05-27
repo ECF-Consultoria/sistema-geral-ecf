@@ -534,7 +534,10 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
                                 >
                                     <td className="py-2 px-3 font-medium">{c.servico_nome ?? '—'}</td>
                                     <td className="py-2 px-3 text-right font-mono tabular-nums">
-                                        {formatCurrency(c.valor_contratado)}
+                                        {c.valor_contratado > 0
+                                            ? formatCurrency(c.valor_contratado)
+                                            : <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold border uppercase tracking-wide bg-white/[0.05] text-white/50 border-white/10">Escala</span>
+                                        }
                                     </td>
                                     <td className="py-2 px-3 text-center">
                                         <span className={cn(
@@ -970,6 +973,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
     const [contratoModal, setContratoModal] = useState({ open: false, empresa: null, contrato: null });
     const [contratoForm, setContratoForm]   = useState({
         servico_id:       '',
+        tipo_contrato:    'progressao',
         valor_contratado: '',
         data_contratacao: '',
         data_vencimento:  '',
@@ -983,6 +987,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         setContratoModal({ open: true, empresa, contrato: null });
         setContratoForm({
             servico_id:       '',
+            tipo_contrato:    'progressao',
             valor_contratado: '',
             data_contratacao: new Date().toISOString().slice(0, 10),
             data_vencimento:  '',
@@ -994,9 +999,11 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
 
     function abrirEditarContrato(empresa, contrato) {
         setContratoModal({ open: true, empresa, contrato });
+        const tipoContrato = contrato.valor_contratado > 0 ? 'fixo' : 'progressao';
         setContratoForm({
             servico_id:       String(contrato.servico_id ?? ''),
-            valor_contratado: contrato.valor_contratado ?? '',
+            tipo_contrato:    tipoContrato,
+            valor_contratado: tipoContrato === 'fixo' ? contrato.valor_contratado : '',
             data_contratacao: contrato.data_contratacao || '',
             data_vencimento:  contrato.data_vencimento || '',
             observacoes:      contrato.observacoes || '',
@@ -1010,15 +1017,8 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         setContratoErrors({});
     }
 
-    // Quando troca o serviço no select, pré-preenche valor_contratado com o
-    // valor padrão do catálogo (usuário pode editar livremente depois).
     function escolherServico(id) {
-        const svc = servicos_disponiveis.find(s => String(s.id) === String(id));
-        setContratoForm(prev => ({
-            ...prev,
-            servico_id:       id,
-            valor_contratado: svc ? svc.valor_padrao : prev.valor_contratado,
-        }));
+        setContratoForm(prev => ({ ...prev, servico_id: id }));
     }
 
     function salvarContrato(e) {
@@ -1029,8 +1029,13 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
         const url     = contratoModal.contrato ? `${baseUrl}/${contratoModal.contrato.id}` : baseUrl;
         const method  = contratoModal.contrato ? 'put' : 'post';
 
+        const payload = {
+            ...contratoForm,
+            valor_contratado: contratoForm.tipo_contrato === 'progressao' ? 0 : contratoForm.valor_contratado,
+        };
+
         setContratoSalvando(true);
-        router[method](url, contratoForm, {
+        router[method](url, payload, {
             preserveScroll: true,
             onSuccess: () => fecharModal(),
             onError:   (errors) => setContratoErrors(errors || {}),
@@ -1106,7 +1111,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                     <form onSubmit={salvarContrato} className="space-y-4">
                         {/* Select de serviço — bloqueado na edição (servico_id imutável) */}
                         <div className="space-y-1.5">
-                            <Label>Serviço *</Label>
+                            <Label>Tipo de serviço *</Label>
                             {contratoModal.contrato ? (
                                 <Input value={contratoModal.contrato.servico_nome ?? '—'} disabled />
                             ) : (
@@ -1118,9 +1123,7 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                                 >
                                     <option value="">Selecionar...</option>
                                     {servicos_disponiveis.map(s => (
-                                        <option key={s.id} value={s.id}>
-                                            {s.nome} — {s.tipo_cobranca === 'mensal' ? 'Mensal' : 'Única'} · {formatCurrency(s.valor_padrao)}
-                                        </option>
+                                        <option key={s.id} value={s.id}>{s.nome}</option>
                                     ))}
                                 </select>
                             )}
@@ -1130,23 +1133,48 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         </div>
 
                         <div className="space-y-1.5">
-                            <Label>Valor contratado (R$) *</Label>
-                            <Input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={contratoForm.valor_contratado}
-                                onChange={e => setContratoForm(prev => ({ ...prev, valor_contratado: e.target.value }))}
-                                required
-                                placeholder="0,00"
-                            />
-                            <p className="text-white/30 text-[11px]">
-                                Pré-preenchido com o valor padrão do serviço. Pode ser editado.
-                            </p>
-                            {contratoErrors.valor_contratado && (
-                                <p className="text-red-400 text-xs">{contratoErrors.valor_contratado}</p>
-                            )}
+                            <Label>Tipo de contrato *</Label>
+                            <div className="flex gap-3 pt-0.5">
+                                {[
+                                    { value: 'progressao', label: 'Escala de Progressão' },
+                                    { value: 'fixo',       label: 'Fixo' },
+                                ].map(({ value, label }) => (
+                                    <label key={value} className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="tipo_contrato"
+                                            value={value}
+                                            checked={contratoForm.tipo_contrato === value}
+                                            onChange={() => setContratoForm(prev => ({
+                                                ...prev,
+                                                tipo_contrato:    value,
+                                                valor_contratado: value === 'progressao' ? '' : prev.valor_contratado,
+                                            }))}
+                                            className="accent-ecf-yellow"
+                                        />
+                                        <span className="text-[13px] text-white/75">{label}</span>
+                                    </label>
+                                ))}
+                            </div>
                         </div>
+
+                        {contratoForm.tipo_contrato === 'fixo' && (
+                            <div className="space-y-1.5">
+                                <Label>Valor mensal (R$) *</Label>
+                                <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={contratoForm.valor_contratado}
+                                    onChange={e => setContratoForm(prev => ({ ...prev, valor_contratado: e.target.value }))}
+                                    required
+                                    placeholder="0,00"
+                                />
+                                {contratoErrors.valor_contratado && (
+                                    <p className="text-red-400 text-xs">{contratoErrors.valor_contratado}</p>
+                                )}
+                            </div>
+                        )}
 
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1.5">
