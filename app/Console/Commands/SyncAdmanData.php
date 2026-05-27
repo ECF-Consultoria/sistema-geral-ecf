@@ -2,6 +2,9 @@
 
 namespace App\Console\Commands;
 
+use App\Jobs\SyncAdmanCompanyJob;
+use App\Models\Company;
+use App\Services\AdmanService;
 use Illuminate\Console\Command;
 
 class SyncAdmanData extends Command
@@ -20,7 +23,7 @@ class SyncAdmanData extends Command
 
     protected $description = 'Sincroniza dados da API Adman para todas as empresas ativas';
 
-    public function handle(\App\Services\AdmanService $adman): int
+    public function handle(AdmanService $adman): int
     {
         // Listar contas da Adman
         if ($this->option('list-accounts')) {
@@ -40,9 +43,9 @@ class SyncAdmanData extends Command
         $from      = $this->option('from');
         $to        = $this->option('to') ?? $date;
 
-        // Sincroniza empresa específica
+        // Sincroniza empresa específica (síncrono — 1 empresa só, sem risco de rate limit)
         if ($companyId) {
-            $company = \App\Models\Company::findOrFail($companyId);
+            $company = Company::findOrFail($companyId);
             $this->info("Sincronizando {$company->name} (custId: {$company->adman_account_id})...");
 
             try {
@@ -60,16 +63,35 @@ class SyncAdmanData extends Command
             return self::SUCCESS;
         }
 
-        // Sincroniza todas as empresas
-        $this->info('Iniciando sincronização Adman (' . now()->format('H:i:s') . ')...');
-        $results = $adman->syncAll();
+        // Fan-out com delay incremental de 7s (AdmanService::ADMAN_RATE_LIMIT_RPM = 10 rpm
+        // → 60s/10 = 6s teórico + 1s de folga). Respeita o limite global mesmo com
+        // numprocs=2 no Supervisor: apenas 1 job fica "ready" a cada 7s, independente
+        // do número de workers. Substitui o $adman->syncAll() síncrono usado anteriormente,
+        // que dependia do throttle interno do processo (não cobria paralelismo do worker).
+        $this->info('Iniciando fan-out Adman (' . now()->format('H:i:s') . ')...');
 
-        $this->table(
-            ['Sucesso', 'Falha', 'Pulado'],
-            [[$results['success'], $results['failed'], $results['skipped']]]
-        );
+        $companies = Company::query()
+            ->where('active', true)
+            ->where(function ($q) {
+                $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
+                  ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
+            })
+            ->get();
 
-        $this->info('Sincronização concluída em ' . now()->format('H:i:s'));
+        $total = $companies->count();
+        if ($total === 0) {
+            $this->info('Nenhuma empresa ativa com ID Adman/ML — nada a enfileirar.');
+            return self::SUCCESS;
+        }
+
+        foreach ($companies as $i => $company) {
+            SyncAdmanCompanyJob::dispatch($company)
+                ->delay(now()->addSeconds($i * 7));
+        }
+
+        $estimadoMin = (int) ceil(($total * 7) / 60);
+        $this->info("Enfileirados {$total} SyncAdmanCompanyJob com delays de 0s..." . (($total - 1) * 7) . "s (~{$estimadoMin}min até o último processar).");
+
         return self::SUCCESS;
     }
 }

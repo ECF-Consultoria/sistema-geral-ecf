@@ -189,6 +189,11 @@ Last activity: 2026-05-27
 - **Merge com origin/main preservou AMBAS features** (Phase 15 + filtro cascata do outro dev) — são complementares: cards na visão default, combobox cascata no modo lista.
 - **Smoke test humano (W4-T2) NÃO foi executado em browser** antes do deploy — testes automatizados 13/13 cobriram backend e props, UX visual fica como item deferred.
 
+### Decisões da Phase 16 (registradas)
+
+- **2026-05-27 — Supervisor `--timeout` elevado de 900s para 1800s** em `/etc/supervisor/conf.d/ecf-worker.conf` no VPS (Phase 16 W1-T4 Sub-task A). Mudança de infra, não-commit. Motivo: o loop interno do `RefreshGrossBillingCacheJob` agora leva ~20min (168 empresas × 7s de throttle) e o timeout antigo de 15min causaria SIGTERM mid-loop. Workers reiniciados via `supervisorctl reread && supervisorctl update ecf-worker`; PIDs novos: `ecf-worker_00=4119849`, `ecf-worker_01=4119850`. Rollback: `sed -i 's/--timeout=1800/--timeout=900/' ... && supervisorctl reread && supervisorctl update ecf-worker`.
+- **`RefreshGrossBillingCacheJob` mantido como loop único (não-fan-out)** — decisão W1-T4 Sub-task C. Com `--timeout=1800` + throttle interno 7s + `->withoutOverlapping()` + 1×/dia, não há risco de colisão paralela. Defesa em profundidade: reavaliar se smoke W3-T3 mostrar 429 originados deste job.
+
 ### Pending Todos
 
 None.
