@@ -95,11 +95,13 @@ class Sugador extends Model
     public const TIPO_CAMPANHA = 'campanha';
     public const TIPO_ADGROUP  = 'adgroup';
 
-    public const STATUS_PENDENTE   = 'pendente';
-    public const STATUS_EM_ACAO    = 'em_acao';
-    public const STATUS_RESOLVIDO  = 'resolvido';
-    public const STATUS_IGNORADO   = 'ignorado';
-    public const STATUS_MOVIDO     = 'movido';
+    public const STATUS_PENDENTE       = 'pendente';
+    public const STATUS_EM_ACAO        = 'em_acao';
+    public const STATUS_RESOLVIDO      = 'resolvido';
+    public const STATUS_IGNORADO       = 'ignorado';
+    public const STATUS_MOVIDO         = 'movido';
+    // Phase 15: baixa automática quando a análise diária não re-detecta o item.
+    public const STATUS_AUTO_RESOLVIDO = 'auto_resolvido';
 
     /** Status que NÃO devem ser sobrescritos por uma re-análise (idempotência). */
     public const STATUS_TRAVADOS = [
@@ -107,6 +109,7 @@ class Sugador extends Model
         self::STATUS_RESOLVIDO,
         self::STATUS_IGNORADO,
         self::STATUS_MOVIDO,
+        self::STATUS_AUTO_RESOLVIDO,
     ];
 
     public const ACAO_PAUSADO         = 'pausado';

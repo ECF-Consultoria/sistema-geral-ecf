@@ -29,6 +29,8 @@ class SugadorAcao extends Model
     public const ACAO_VOLTOU_PENDENTE    = 'voltou_pendente';
     public const ACAO_EDITOU_OBSERVACAO  = 'editou_observacao';
     public const ACAO_MOVEU              = 'moveu';
+    // Phase 15: baixa automática pelo serviço (user_id NULL).
+    public const ACAO_AUTO_RESOLVIDO     = 'auto_resolvido';
 
     public function sugador(): BelongsTo
     {
