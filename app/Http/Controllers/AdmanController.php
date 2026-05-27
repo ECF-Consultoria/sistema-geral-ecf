@@ -34,12 +34,12 @@ class AdmanController extends Controller
             }
         }
 
-        // Sync de TODAS as empresas: dispatcha 1 job por empresa para a queue.
-        // Roda inline estourava memory_limit (128M PHP-FPM vs 512M worker) e
-        // timeout (300s nginx/php-fpm) quando a base passou de 168 empresas com
-        // rate limits 429 da Adman API que disparam retries com backoff.
-        // Worker (ecf-worker:00 e _01) processa em paralelo e respeita o
-        // backoff exponencial do SyncAdmanCompanyJob (60s/300s/900s).
+        // Sync de TODAS as empresas: dispatcha 1 job por empresa para a queue,
+        // espaçados em 1.5s para respeitar o rate limit da Adman API
+        // (que retorna 429 sustentado quando martelada). 168 empresas × 1.5s =
+        // ~4min de janela total. Workers processam paralelo dentro dessa janela
+        // sem estourar o limit; cada job mantém backoff 60s/300s/900s para
+        // 429 residual em cada chamada individual.
         $dispatched = 0;
         Company::where('active', true)
             ->where(function ($q) {
@@ -48,7 +48,8 @@ class AdmanController extends Controller
             })
             ->chunk(50, function ($companies) use (&$dispatched) {
                 foreach ($companies as $company) {
-                    SyncAdmanCompanyJob::dispatch($company);
+                    SyncAdmanCompanyJob::dispatch($company)
+                        ->delay(now()->addMilliseconds($dispatched * 1500));
                     $dispatched++;
                 }
             });
