@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncAdmanCompanyJob;
 use App\Models\AdmanMetric;
+use App\Models\Company;
 use App\Services\AdmanService;
 use Illuminate\Http\Request;
 
@@ -10,43 +12,52 @@ class AdmanController extends Controller
 {
     public function syncNow(Request $request, AdmanService $adman)
     {
-        // Sync síncrono inline (revert f186083 voltou pra esse modelo). Com 168+
-        // empresas, fetchPerformance acumula items em memória até estourar o
-        // memory_limit padrão de 128M do PHP-FPM. Eleva para 512M (mesmo que os
-        // queue workers) e timeout para o limite do php-fpm/nginx (300s).
-        ini_set('memory_limit', '512M');
-        set_time_limit(290);
-
         $companyId = $request->input('company_id');
-        $results   = ['success' => 0, 'failed' => 0, 'skipped' => 0];
 
+        // Sync de UMA empresa: roda síncrono inline (rápido, ~3-5s, cabe no
+        // request HTTP). Aumenta limites para garantir que payload grande de
+        // produtos não estoure memory_limit padrão (128M).
         if ($companyId) {
-            $company = \App\Models\Company::findOrFail($companyId);
+            ini_set('memory_limit', '512M');
+            set_time_limit(290);
+
+            $company = Company::findOrFail($companyId);
             try {
                 $adman->syncCompany($company);
-                $results['success'] = 1;
-            } catch (\Throwable $e) {
-                $results['failed'] = 1;
-                return response()->json(['message' => $e->getMessage()], 422);
-            }
-        } else {
-            try {
-                $results = $adman->syncAll();
-            } catch (\Throwable $e) {
-                // Evita 500 puro quando syncAll falha (OOM, timeout, etc).
-                // Retorna 422 com a mensagem visível para o front exibir o motivo.
-                \Log::error('[Adman] syncAll falhou: ' . $e->getMessage());
                 return response()->json([
-                    'message' => 'Sincronização falhou: ' . $e->getMessage(),
-                    'results' => $results,
-                ], 422);
+                    'message'   => "Sincronização concluída para {$company->name}.",
+                    'synced_at' => now()->format('H:i:s'),
+                    'results'   => ['success' => 1, 'failed' => 0, 'skipped' => 0],
+                ]);
+            } catch (\Throwable $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
             }
         }
 
+        // Sync de TODAS as empresas: dispatcha 1 job por empresa para a queue.
+        // Roda inline estourava memory_limit (128M PHP-FPM vs 512M worker) e
+        // timeout (300s nginx/php-fpm) quando a base passou de 168 empresas com
+        // rate limits 429 da Adman API que disparam retries com backoff.
+        // Worker (ecf-worker:00 e _01) processa em paralelo e respeita o
+        // backoff exponencial do SyncAdmanCompanyJob (60s/300s/900s).
+        $dispatched = 0;
+        Company::where('active', true)
+            ->where(function ($q) {
+                $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
+                  ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
+            })
+            ->chunk(50, function ($companies) use (&$dispatched) {
+                foreach ($companies as $company) {
+                    SyncAdmanCompanyJob::dispatch($company);
+                    $dispatched++;
+                }
+            });
+
         return response()->json([
-            'message'   => "Sincronização concluída: {$results['success']} empresa(s) atualizadas.",
-            'synced_at' => now()->format('H:i:s'),
-            'results'   => $results,
+            'message'    => "Sincronização iniciada: {$dispatched} empresa(s) na fila. Acompanhe em /dev/desenvolvimento.",
+            'synced_at'  => now()->format('H:i:s'),
+            'dispatched' => $dispatched,
+            'results'    => ['success' => 0, 'failed' => 0, 'skipped' => 0],
         ]);
     }
 
