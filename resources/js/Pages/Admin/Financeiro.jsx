@@ -1061,6 +1061,14 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                             <div className="flex items-center gap-2 mb-2">
                                 <Banknote size={20} className="text-ecf-yellow" />
                                 <h1 className="text-xl font-semibold font-display text-white">Fechamento</h1>
+                                {/* Disclaimer D-1 da Adman (Phase 16 SC-7): números de
+                                    investimento/TACOS vêm da API Adman, que publica D-1. */}
+                                <span
+                                    className="text-white/40 text-xs"
+                                    title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT."
+                                >
+                                    Dados D-1 da Adman
+                                </span>
                             </div>
                             <p className="text-[13px] text-white/40">Faturamento do período, progressão de faixa e contratos ativos por empresa.</p>
                         </div>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
+use App\Models\AdmanSyncLog;
 use App\Models\Company;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
@@ -314,6 +315,20 @@ class DashboardController extends Controller
         $totalAdSpend       = $metrics->sum('ad_spend');
         $avgProfitShare     = $metrics->avg('profit_share') ?? 0;
 
+        // Último sync Adman bem-sucedido (qualquer empresa) — alimenta o badge
+        // "Atualizado em DD/MM HH:mm · D-1 da Adman" no Dashboard. Filtra
+        // `error_message IS NULL` para considerar apenas execuções de sucesso.
+        $admanLastSyncAt = AdmanSyncLog::query()
+            ->whereNull('error_message')
+            ->latest('created_at')
+            ->value('created_at');
+        $admanLastSync = $admanLastSyncAt
+            ? [
+                'iso'   => $admanLastSyncAt->toIso8601String(),
+                'label' => $admanLastSyncAt->copy()->setTimezone(config('app.timezone'))->format('d/m H:i'),
+            ]
+            : null;
+
         // Sugadores: total pendentes + top 5 empresas
         $sugadoresPendentes = Sugador::pendentes()->count();
         $sugadoresTopEmpresas = Sugador::pendentes()
@@ -382,6 +397,7 @@ class DashboardController extends Controller
                 'total_pendentes' => $sugadoresPendentes,
                 'top_empresas'    => $sugadoresTopEmpresas,
             ],
+            'adman_last_sync' => $admanLastSync,
         ]);
     }
 

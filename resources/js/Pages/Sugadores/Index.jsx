@@ -667,6 +667,14 @@ export default function SugadoresIndex({
                         )}
                     </div>
                     <p className="text-white/40 text-sm mt-1">Adgroups (e opcionalmente campanhas) drenando investimento sem retorno</p>
+                    {/* Disclaimer D-1 da Adman (Phase 16 SC-7): análise lê métricas
+                        da API Adman, que publica D-1; análise diária roda 12h BRT. */}
+                    <span
+                        className="inline-flex items-center text-white/40 text-xs mt-1"
+                        title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. Análise diária roda às 12h BRT."
+                    >
+                        Dados D-1 da Adman · próxima análise: amanhã 12h
+                    </span>
                 </div>
 
                 <div className="flex items-center gap-2">

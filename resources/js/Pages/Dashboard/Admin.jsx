@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
     Star, Users, AlertTriangle,
-    DollarSign, BarChart2, RefreshCw, Tv, ChevronDown, X, Trophy, ChevronRight, Briefcase, TrendingUp
+    DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, Briefcase, TrendingUp
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
@@ -86,23 +86,9 @@ export default function AdminDashboard({
     ranking = [],
     user_portfolios = [],
     sugadores_stats = { total_pendentes: 0, top_empresas: [] },
+    adman_last_sync = null,
 }) {
     const [tvMode, setTvMode] = useState(false);
-    const [syncing, setSyncing] = useState(false);
-    const [lastSync, setLastSync] = useState(null);
-
-    const handleSync = async () => {
-        setSyncing(true);
-        try {
-            const res = await window.axios.post(route('adman.sync'));
-            setLastSync(res.data.synced_at);
-            router.reload({ preserveScroll: true });
-        } catch (e) {
-            alert('Erro ao sincronizar: ' + (e.response?.data?.message ?? e.message));
-        } finally {
-            setSyncing(false);
-        }
-    };
 
     const applyFilter = (key, value) => {
         router.get(route('dashboard'), {
@@ -282,19 +268,17 @@ export default function AdminDashboard({
                     />
 
                     <div className="ml-auto flex items-center gap-2">
-                        {lastSync && (
-                            <span className="text-white/25 text-[11px] hidden sm:inline">
-                                Sync: {lastSync}
-                            </span>
-                        )}
-                        <button
-                            onClick={handleSync}
-                            disabled={syncing}
-                            className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-white text-[13px] transition-all hover:bg-white/[0.06] disabled:opacity-50 disabled:cursor-wait"
+                        {/* Badge D-1 da Adman — substitui o antigo botão "Sincronizar agora"
+                            (Phase 16, SC-5/SC-7). Sync é automático 1×/dia às 11h BRT. */}
+                        <div
+                            title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. Sincronização automática diária às 11h."
+                            className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/50 text-[12px]"
                         >
-                            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-                            {syncing ? 'Sincronizando...' : 'Sincronizar'}
-                        </button>
+                            <Clock size={12} />
+                            {adman_last_sync
+                                ? `Atualizado em ${adman_last_sync.label} · D-1 da Adman`
+                                : 'D-1 da Adman · sem sync ainda'}
+                        </div>
                         <button
                             onClick={() => setTvMode(true)}
                             className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-ecf-yellow text-[#252525] font-bold text-[13px] hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ecf-yellow/20 transition-all"
