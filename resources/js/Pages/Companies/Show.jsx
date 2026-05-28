@@ -669,7 +669,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
 
                 {/* Métricas Adman recentes */}
                 {(company.adman_metrics || []).length > 0 && (
-                    <Section icon={TrendingUp} title="Métricas Adman (últimos 30 dias)">
+                    <Section icon={TrendingUp} title={company.adman_account_id ? 'Métricas Adman (últimos 30 dias)' : 'Métricas Mercado Livre (últimos 30 dias)'}>
                         <div className="overflow-x-auto">
                             <table className="w-full text-[12px]">
                                 <thead>
