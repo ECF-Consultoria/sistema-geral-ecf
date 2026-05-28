@@ -59,7 +59,7 @@ function StatusBadge({ company, generatedUrl }) {
     );
 }
 
-function CompanyRow({ company, onDisconnect }) {
+function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
     const [loading, setLoading]       = useState(false);
     const [generatedUrl, setGeneratedUrl] = useState(null);
     const [copied, setCopied]         = useState(false);
@@ -79,7 +79,10 @@ function CompanyRow({ company, onDisconnect }) {
                 },
             });
             const data = await res.json();
-            if (data.url) setGeneratedUrl(data.url);
+            if (data.url) {
+                setGeneratedUrl(data.url);
+                onLinkGenerated?.(company.id);
+            }
         } finally {
             setLoading(false);
         }
@@ -214,9 +217,15 @@ export default function MlOAuthIndex({ companies: initial }) {
         ));
     };
 
+    const handleLinkGenerated = (id) => {
+        setCompanies(prev => prev.map(c =>
+            c.id === id ? { ...c, ml_link_generated_at: new Date().toISOString() } : c
+        ));
+    };
+
     const connected = companies.filter(c => c.ml_token?.status === 'active');
-    const pending   = companies.filter(c => !c.ml_token?.status !== 'active' && c.ml_link_generated_at && c.ml_token?.status !== 'active');
-    const rest      = companies.filter(c => !c.ml_token && !c.ml_link_generated_at);
+    const pending   = companies.filter(c => c.ml_token?.status !== 'active' && c.ml_link_generated_at);
+    const rest      = companies.filter(c => c.ml_token?.status !== 'active' && !c.ml_link_generated_at);
 
     const filtered = search.trim()
         ? companies.filter(c => c.name.toLowerCase().includes(search.toLowerCase()))
@@ -225,7 +234,7 @@ export default function MlOAuthIndex({ companies: initial }) {
     const renderList = (list, emptyMsg) => (
         list.length === 0
             ? <p className="text-white/20 text-[12px] px-1">{emptyMsg}</p>
-            : <div className="space-y-2">{list.map(c => <CompanyRow key={c.id} company={c} onDisconnect={handleDisconnect} />)}</div>
+            : <div className="space-y-2">{list.map(c => <CompanyRow key={c.id} company={c} onDisconnect={handleDisconnect} onLinkGenerated={handleLinkGenerated} />)}</div>
     );
 
     return (
@@ -254,7 +263,7 @@ export default function MlOAuthIndex({ companies: initial }) {
                         <div className="space-y-2">
                             {filtered.length === 0
                                 ? <p className="text-white/20 text-[12px] px-1">Nenhuma empresa encontrada.</p>
-                                : filtered.map(c => <CompanyRow key={c.id} company={c} onDisconnect={handleDisconnect} />)
+                                : filtered.map(c => <CompanyRow key={c.id} company={c} onDisconnect={handleDisconnect} onLinkGenerated={handleLinkGenerated} />)
                             }
                         </div>
                     </section>

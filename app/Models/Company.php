@@ -32,8 +32,9 @@ class Company extends Model
     ];
 
     protected $casts = [
-        'active'         => 'boolean',
-        'status'         => 'string',
+        'active'               => 'boolean',
+        'status'               => 'string',
+        'ml_link_generated_at' => 'datetime',
     ];
 
     /**
