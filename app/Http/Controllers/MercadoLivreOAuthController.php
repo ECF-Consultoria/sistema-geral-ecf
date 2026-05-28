@@ -82,10 +82,11 @@ class MercadoLivreOAuthController extends Controller
             $tokenData = $this->ml->exchangeCode($code, $codeVerifier);
             $mlToken   = $this->ml->saveToken($company, $tokenData);
 
-            // Preenche ml_store_id se a empresa ainda não tiver
-            if (! $company->ml_store_id) {
-                $company->update(['ml_store_id' => $mlToken->ml_user_id]);
-            }
+            // Preenche ml_store_id e limpa o link pendente
+            $company->update([
+                'ml_store_id'          => $company->ml_store_id ?? $mlToken->ml_user_id,
+                'ml_link_generated_at' => null,
+            ]);
 
             // Divergência: ml_store_id existente difere do user_id retornado
             $diverge = $company->ml_store_id && $company->ml_store_id !== $mlToken->ml_user_id;

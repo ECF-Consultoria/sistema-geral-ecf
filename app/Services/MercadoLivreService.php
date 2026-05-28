@@ -44,6 +44,8 @@ class MercadoLivreService
             'code_verifier' => $codeVerifier,
         ], self::STATE_TTL);
 
+        $company->update(['ml_link_generated_at' => now()]);
+
         return self::AUTH_URL . '?' . http_build_query([
             'response_type'         => 'code',
             'client_id'             => config('services.mercadolivre.client_id'),
