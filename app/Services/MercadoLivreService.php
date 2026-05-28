@@ -564,7 +564,17 @@ class MercadoLivreService
         $orders = $this->fetchOrdersSummary($company, $date, $date);
 
         // ── Publicidade do dia ──────────────────────────────────────────────
-        $ads = $this->fetchAdsSummary($company, $date, $date);
+        // Contas sem Mercado Ads retornam user_not_authorized — tratar como sem publicidade
+        try {
+            $ads = $this->fetchAdsSummary($company, $date, $date);
+        } catch (\RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'user_not_authorized') || str_contains($e->getMessage(), 'Acesso negado')) {
+                Log::info("[MercadoLivre] Empresa {$company->id} ({$company->name}) sem Mercado Ads — ad_spend zerado");
+                $ads = ['ad_spend' => 0.0, 'ad_revenue' => 0.0, 'clicks' => 0, 'impressions' => 0, 'acos' => null, 'roas' => null, 'cpc' => null, 'sold_quantity' => 0];
+            } else {
+                throw $e;
+            }
+        }
 
         // ── TACOS = investimento / faturamento bruto ────────────────────────
         $tacos = $orders['revenue'] > 0
