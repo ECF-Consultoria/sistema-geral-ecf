@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\Servico;
@@ -143,7 +144,8 @@ class CompanyController extends Controller
         $adInvestment30d = null;
 
         $custId = $company->cust_id;
-        if ($custId) {
+        if ($custId && $company->adman_account_id) {
+            // Empresa com Adman: busca via API
             $revenue30d = (float) ($this->adman->fetchGrossBilling(
                 $custId, $dateFrom, $dateTo
             ) ?? 0);
@@ -157,6 +159,20 @@ class CompanyController extends Controller
                 $margin30d       = $accountMetrics['percentage_margin'];
                 $liquidMargin30d = $accountMetrics['liquid_margin'];
                 $adInvestment30d = $accountMetrics['investment'];
+            }
+        } elseif (! $company->adman_account_id && $company->mlToken) {
+            // Empresa ML-only (sem Adman): lê dos últimos 30 registros em adman_metrics
+            $mlMetrics = AdmanMetric::where('company_id', $company->id)
+                ->orderBy('reference_date', 'desc')
+                ->limit(30)
+                ->get();
+
+            if ($mlMetrics->isNotEmpty()) {
+                $revenue30d      = round((float) $mlMetrics->sum('revenue'), 2);
+                $adInvestment30d = round((float) $mlMetrics->sum('ad_spend'), 2);
+                $tacos30d        = $revenue30d > 0
+                    ? round($adInvestment30d / $revenue30d * 100, 4)
+                    : null;
             }
         }
 
