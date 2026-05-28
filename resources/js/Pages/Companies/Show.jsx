@@ -6,7 +6,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug } from 'lucide-react';
+import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useState, useMemo } from 'react';
@@ -60,6 +60,32 @@ function MlConnectionCard({ company }) {
     const [authUrl, setAuthUrl]               = useState('');
     const [loadingLink, setLoadingLink]       = useState(false);
     const [copied, setCopied]                 = useState(false);
+    const [syncing, setSyncing]               = useState(false);
+    const [syncDate, setSyncDate]             = useState(() => {
+        const d = new Date(); d.setDate(d.getDate() - 1);
+        return d.toISOString().slice(0, 10);
+    });
+    const [syncResult, setSyncResult]         = useState(null); // {revenue, ad_spend, tacos, date} | {error}
+
+    const sincronizar = async () => {
+        setSyncing(true);
+        setSyncResult(null);
+        try {
+            const res = await fetch(route('ml.sync.now', company.id) + '?date=' + syncDate, {
+                method:  'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    'Accept':       'application/json',
+                },
+            });
+            const data = await res.json();
+            setSyncResult(data);
+        } catch {
+            setSyncResult({ error: 'Erro de conexão. Tente novamente.' });
+        } finally {
+            setSyncing(false);
+        }
+    };
 
     const statusCfg = {
         active:  { label: 'Conectado',    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' },
@@ -136,6 +162,40 @@ function MlConnectionCard({ company }) {
                                     <span className="text-white/70 text-[13px]">{token.expires_at ? formatDateTime(token.expires_at) : '—'}</span>
                                 </div>
                             </div>
+                            {/* Sync manual */}
+                            <div className="pt-2 space-y-2 border-t border-white/[0.06]">
+                                <p className="text-white/40 text-[11px] uppercase tracking-wide">Sincronizar dados</p>
+                                <div className="flex gap-2 items-center">
+                                    <input
+                                        type="date"
+                                        value={syncDate}
+                                        onChange={e => setSyncDate(e.target.value)}
+                                        className="bg-white/[0.05] border border-white/[0.10] rounded-md px-2 py-1 text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/50 w-36"
+                                    />
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        className="text-[12px] gap-1.5"
+                                        onClick={sincronizar}
+                                        disabled={syncing || token?.status !== 'active'}
+                                    >
+                                        <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+                                        {syncing ? 'Sincronizando...' : 'Sincronizar'}
+                                    </Button>
+                                </div>
+                                {syncResult && !syncResult.error && (
+                                    <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-[12px] text-emerald-400 space-y-0.5">
+                                        <p className="font-semibold">✓ {syncResult.date}</p>
+                                        <p>Faturamento: R$ {Number(syncResult.revenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                        <p>Ad spend: R$ {Number(syncResult.ad_spend).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                                        {syncResult.tacos != null && <p>TACOS: {syncResult.tacos}%</p>}
+                                    </div>
+                                )}
+                                {syncResult?.error && (
+                                    <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{syncResult.error}</p>
+                                )}
+                            </div>
+
                             <div className="flex gap-2 pt-1">
                                 <Button
                                     type="button"

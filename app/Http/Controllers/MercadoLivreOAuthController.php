@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Services\MercadoLivreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Http\JsonResponse;
 
 class MercadoLivreOAuthController extends Controller
 {
@@ -108,6 +109,37 @@ class MercadoLivreOAuthController extends Controller
                 'success' => false,
                 'message' => 'Erro ao processar autorização. Tente novamente ou contate o suporte.',
             ]);
+        }
+    }
+
+    // ── Sync manual ──────────────────────────────────────────────────────────
+
+    /**
+     * Dispara sync ML imediato para a empresa (admin only).
+     * Aceita ?date=YYYY-MM-DD; padrão: ontem (D-1).
+     */
+    public function syncNow(Request $request, Company $company): JsonResponse
+    {
+        if (! $company->mlToken || $company->mlToken->status !== 'active') {
+            return response()->json(['error' => 'Empresa sem token ML ativo.'], 422);
+        }
+
+        $date = $request->input('date', now()->subDay()->toDateString());
+
+        try {
+            $metric = $this->ml->syncCompany($company, $date);
+
+            Log::info("[MercadoLivre] Sync manual empresa {$company->id} ({$company->name}) data {$date}");
+
+            return response()->json([
+                'date'      => $date,
+                'revenue'   => $metric->revenue,
+                'ad_spend'  => $metric->ad_spend,
+                'tacos'     => $metric->tacos,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error("[MercadoLivre] Erro sync manual empresa {$company->id}: {$e->getMessage()}");
+            return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 
