@@ -60,10 +60,16 @@ const ML_PERIODOS = [
     { label: '90 dias', days: 90 },
 ];
 
+function localDateStr(d) {
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 function mlKpis(metrics, days) {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - days);
-    const slice = metrics.filter(m => new Date(m.date) >= cutoff);
+    const cutoffStr = localDateStr(cutoff);
+    const slice = metrics.filter(m => m.date >= cutoffStr);
     const revenue = slice.reduce((s, m) => s + m.revenue, 0);
     const adSpend = slice.reduce((s, m) => s + m.ad_spend, 0);
     const tacos   = revenue > 0 ? adSpend / revenue * 100 : null;
@@ -323,6 +329,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
     const estrategista = company.estrategista?.[0];
     const latestMetric = company.adman_metrics?.[0];
     const isMlOnly = !company.adman_account_id && !!company.ml_token;
+    const kpi30    = isMlOnly ? mlKpis(company.ml_metrics ?? [], 30) : null;
 
     const completedMeetings = (company.meetings || []).filter(m => m.status === 'completed');
     const absences = completedMeetings.filter(m => !m.consultant_present || !m.mentor_present).length;
@@ -467,8 +474,21 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                     </div>
                 </div>
 
-                {/* KPIs financeiros — Adman apenas; empresas ML-only usam o card de integração abaixo */}
-                {!isMlOnly && (
+                {/* KPIs financeiros — Adman ou ML conforme tipo da empresa */}
+                {isMlOnly ? (
+                    <div className="grid grid-cols-3 gap-3">
+                        {[
+                            { label: 'Faturamento (30d)', value: kpi30.revenue > 0 ? formatCurrency(kpi30.revenue) : '—', color: 'text-blue-400' },
+                            { label: 'Ad Spend (30d)',    value: kpi30.adSpend > 0 ? formatCurrency(kpi30.adSpend) : '—', color: 'text-white/60' },
+                            { label: 'TACOS (30d)',       value: kpi30.tacos != null ? formatPercent(kpi30.tacos) : '—', color: 'text-ecf-yellow' },
+                        ].map(k => (
+                            <div key={k.label} className="card-ecf rounded-2xl p-4">
+                                <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">{k.label}</p>
+                                <p className={cn('font-display font-extrabold text-2xl mt-1', k.color)}>{k.value}</p>
+                            </div>
+                        ))}
+                    </div>
+                ) : (
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         {[
                             { label: 'Faturamento (30d)', value: company.revenue_30d ? formatCurrency(company.revenue_30d) : '—', color: 'text-blue-400' },
@@ -485,20 +505,18 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                 )}
 
                 {/* KPIs operacionais — linha secundária, menor */}
-                {!isMlOnly && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {[
-                            { label: 'NPS Médio', value: avgNps ? avgNps : '—', color: avgNps >= 9 ? 'text-emerald-400' : avgNps >= 7 ? 'text-ecf-yellow' : 'text-red-400' },
-                            { label: 'Absenteísmo', value: completedMeetings.length > 0 ? `${absenteeism}%` : '—', color: 'text-orange-400' },
-                            { label: 'Invest. Ads (30d)', value: company.ad_investment_30d ? formatCurrency(company.ad_investment_30d) : '—', color: 'text-white/80' },
-                        ].map(k => (
-                            <div key={k.label} className="card-ecf rounded-xl p-3">
-                                <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wide">{k.label}</p>
-                                <p className={cn('font-display font-bold text-lg mt-0.5 tabular-nums', k.color)}>{k.value}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {[
+                        { label: 'NPS Médio', value: avgNps ? avgNps : '—', color: avgNps >= 9 ? 'text-emerald-400' : avgNps >= 7 ? 'text-ecf-yellow' : 'text-red-400' },
+                        { label: 'Absenteísmo', value: completedMeetings.length > 0 ? `${absenteeism}%` : '—', color: 'text-orange-400' },
+                        { label: 'Invest. Ads (30d)', value: company.ad_investment_30d ? formatCurrency(company.ad_investment_30d) : '—', color: 'text-white/80' },
+                    ].map(k => (
+                        <div key={k.label} className="card-ecf rounded-xl p-3">
+                            <p className="text-white/40 text-[10px] font-semibold uppercase tracking-wide">{k.label}</p>
+                            <p className={cn('font-display font-bold text-lg mt-0.5 tabular-nums', k.color)}>{k.value}</p>
+                        </div>
+                    ))}
+                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     {/* Dados cadastrais */}
