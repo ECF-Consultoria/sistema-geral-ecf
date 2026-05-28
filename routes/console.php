@@ -77,6 +77,13 @@ Schedule::command('ml:refresh-tokens')
     ->name('refresh-ml-tokens')
     ->withoutOverlapping();
 
+// Sync direto ML (D-1) — roda às 11:05 logo após o adman:sync, enquanto migração está em curso
+// Só processa empresas com token OAuth ativo; as demais seguem via Adman
+Schedule::command('ml:sync')
+    ->dailyAt('11:05')
+    ->name('sync-ml-direct')
+    ->withoutOverlapping();
+
 // Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
 // Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
 Schedule::command('notifications:cleanup')
