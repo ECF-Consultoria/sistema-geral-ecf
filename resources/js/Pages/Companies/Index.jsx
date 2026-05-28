@@ -10,8 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, Link, router, useRemember } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Eye, Trash2, Building2 } from 'lucide-react';
+import { Plus, Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 /**
  * Badges dos contratos ativos de uma empresa.
@@ -57,10 +58,67 @@ function ServicoBadges({ contratos }) {
     );
 }
 
+// ─── Badge de status ML ──────────────────────────────────────────────────────
+function MlStatusBadge({ status }) {
+    if (status === 'active') {
+        return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                ML
+            </span>
+        );
+    }
+    if (status === 'expired' || status === 'revoked') {
+        return (
+            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/25 text-orange-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                ML
+            </span>
+        );
+    }
+    return null;
+}
+
 export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [] }) {
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
+
+    // ── Link ML OAuth ──────────────────────────────────────────────────────────
+    const [mlLinkOpen, setMlLinkOpen]     = useState(false);
+    const [mlLinkUrl, setMlLinkUrl]       = useState('');
+    const [mlLinkCompany, setMlLinkCompany] = useState(null);
+    const [mlLinkLoading, setMlLinkLoading] = useState(false);
+    const [mlLinkCopied, setMlLinkCopied] = useState(false);
+
+    const gerarLinkMl = async (company) => {
+        setMlLinkLoading(true);
+        setMlLinkCompany(company);
+        try {
+            const res = await fetch(route('ml.oauth.initiate', company.id), {
+                method:  'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    'Accept':       'application/json',
+                    'Content-Type': 'application/json',
+                },
+            });
+            const data = await res.json();
+            setMlLinkUrl(data.url);
+            setMlLinkOpen(true);
+        } catch {
+            alert('Erro ao gerar link. Tente novamente.');
+        } finally {
+            setMlLinkLoading(false);
+        }
+    };
+
+    const copiarLinkMl = () => {
+        navigator.clipboard.writeText(mlLinkUrl).then(() => {
+            setMlLinkCopied(true);
+            setTimeout(() => setMlLinkCopied(false), 2000);
+        });
+    };
 
     const consultores = users.filter(u => u.role === 'consultor');
     // "Mentor" foi renomeado pra "Estrategista" (DB + UI). Lista vem do backend
@@ -182,7 +240,12 @@ export default function Companies({ companies, users, estrategistas = [], empres
                             <TableBody>
                                 {filtered.map(c => (
                                     <TableRow key={c.id}>
-                                        <TableCell className="font-medium">{c.name}</TableCell>
+                                        <TableCell className="font-medium">
+                                            <div className="flex items-center gap-2">
+                                                {c.name}
+                                                <MlStatusBadge status={c.ml_token_status} />
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{c.segment || '-'}</TableCell>
                                         <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
                                         <TableCell className="text-sm">{c.estrategista?.name || <span className="text-muted-foreground">-</span>}</TableCell>
@@ -199,6 +262,20 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                                 <Link href={route('companies.show', c.id)}>
                                                     <Button size="icon" variant="ghost"><Eye className="h-4 w-4" /></Button>
                                                 </Link>
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    title="Gerar link de autorização ML"
+                                                    className={cn(
+                                                        c.ml_token_status === 'active'
+                                                            ? 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10'
+                                                            : 'text-white/40 hover:text-white hover:bg-white/[0.05]'
+                                                    )}
+                                                    onClick={() => gerarLinkMl(c)}
+                                                    disabled={mlLinkLoading}
+                                                >
+                                                    <ShoppingCart className="h-4 w-4" />
+                                                </Button>
                                                 <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
@@ -227,6 +304,54 @@ export default function Companies({ companies, users, estrategistas = [], empres
                     </CardContent>
                 </Card>
             </div>
+
+            {/* Modal link ML OAuth */}
+            <Dialog open={mlLinkOpen} onOpenChange={setMlLinkOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <ShoppingCart size={16} className="text-ecf-yellow/70" />
+                            Link de autorização — Mercado Livre
+                        </DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        {mlLinkCompany && (
+                            <p className="text-white/55 text-[13px]">
+                                Envie este link ao cliente da empresa{' '}
+                                <strong className="text-white/85">{mlLinkCompany.name}</strong>.
+                                Após a autorização, a conta ML será vinculada automaticamente.
+                                O link expira em <strong className="text-ecf-yellow">15 minutos</strong>.
+                            </p>
+                        )}
+                        <div className="flex gap-2">
+                            <input
+                                readOnly
+                                value={mlLinkUrl}
+                                onClick={e => e.target.select()}
+                                className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] text-white/70 font-mono focus:outline-none cursor-text"
+                            />
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="shrink-0 gap-1.5 text-[12px]"
+                                onClick={copiarLinkMl}
+                            >
+                                {mlLinkCopied
+                                    ? <><Check size={13} className="text-emerald-400" /> Copiado!</>
+                                    : <><Copy size={13} /> Copiar</>
+                                }
+                            </Button>
+                        </div>
+                        <p className="text-white/30 text-[11px]">
+                            Gere um novo link a qualquer momento — cada link invalida o anterior.
+                        </p>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" size="sm" onClick={() => setMlLinkOpen(false)}>Fechar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-2xl">

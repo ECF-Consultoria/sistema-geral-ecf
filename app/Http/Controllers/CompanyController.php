@@ -30,6 +30,7 @@ class CompanyController extends Controller
                 'estrategista',
                 // Contratos ATIVOS com servico embedado — alimenta a coluna "Serviço"
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'mlToken',
             ])
             ->orderBy('name')
             ->get();
@@ -59,6 +60,7 @@ class CompanyController extends Controller
                         'tipo_cobranca' => $ct->servico->tipo_cobranca,
                     ] : null,
                 ])->values(),
+                'ml_token_status'  => $c->mlToken?->status ?? null,
             ]);
 
         $users = User::where('active', true)
