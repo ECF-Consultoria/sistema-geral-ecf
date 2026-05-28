@@ -139,6 +139,7 @@ class Permissions
                 ['key' => self::SISTEMA_DESENVOLVIMENTO, 'label' => 'Desenvolvimento',   'description' => 'Área interna de devs'],
                 ['key' => self::SISTEMA_SETORES,         'label' => 'Setores',           'description' => 'Configuração de setores, cargos e permissões'],
                 ['key' => self::SISTEMA_SERVICOS,        'label' => 'Serviços',          'description' => 'Catálogo de serviços e contratos por empresa'],
+                ['key' => self::SISTEMA_ML_OAUTH,        'label' => 'ML OAuth',          'description' => 'Painel de gestão OAuth Mercado Livre'],
             ],
             'Notificações' => [
                 ['key' => self::NOTIFICACOES_CRIAR, 'label' => 'Criar notificações', 'description' => 'Envia notificações manuais para usuários, setores, líderes ou todos'],
