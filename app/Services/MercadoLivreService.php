@@ -40,6 +40,8 @@ class MercadoLivreService
             'client_id'     => config('services.mercadolivre.client_id'),
             'redirect_uri'  => config('services.mercadolivre.redirect'),
             'state'         => $state,
+            // read: dados da conta; offline_access: mantém refresh token válido indefinidamente
+            'scope'         => 'read offline_access',
         ]);
     }
 
