@@ -55,15 +55,18 @@ class MercadoLivreOAuthController extends Controller
         }
 
         // Recupera e invalida o state (evita replay)
-        $companyId = $this->ml->consumeState($state);
+        $stateData = $this->ml->consumeState($state);
 
-        if (! $companyId) {
+        if (! $stateData) {
             Log::warning('[MercadoLivre] State inválido ou expirado no callback', ['state' => $state]);
             return view('oauth.ml-result', [
                 'success' => false,
                 'message' => 'Link expirado (válido por 15 minutos). Peça um novo link ao administrador.',
             ]);
         }
+
+        $companyId    = $stateData['company_id'];
+        $codeVerifier = $stateData['code_verifier'];
 
         $company = Company::find($companyId);
 
@@ -75,7 +78,7 @@ class MercadoLivreOAuthController extends Controller
         }
 
         try {
-            $tokenData = $this->ml->exchangeCode($code);
+            $tokenData = $this->ml->exchangeCode($code, $codeVerifier);
             $mlToken   = $this->ml->saveToken($company, $tokenData);
 
             // Preenche ml_store_id se a empresa ainda não tiver

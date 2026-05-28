@@ -35,28 +35,47 @@ class MercadoLivreService
     {
         $state = Str::uuid()->toString();
 
-        Cache::put("ml_oauth_state_{$state}", $company->id, self::STATE_TTL);
+        // PKCE: code_verifier aleatório → code_challenge = BASE64URL(SHA256(verifier))
+        $codeVerifier  = rtrim(strtr(base64_encode(random_bytes(64)), '+/', '-_'), '=');
+        $codeChallenge = rtrim(strtr(base64_encode(hash('sha256', $codeVerifier, true)), '+/', '-_'), '=');
+
+        Cache::put("ml_oauth_state_{$state}", [
+            'company_id'    => $company->id,
+            'code_verifier' => $codeVerifier,
+        ], self::STATE_TTL);
 
         return self::AUTH_URL . '?' . http_build_query([
-            'response_type' => 'code',
-            'client_id'     => config('services.mercadolivre.client_id'),
-            'redirect_uri'  => config('services.mercadolivre.redirect'),
-            'state'         => $state,
+            'response_type'         => 'code',
+            'client_id'             => config('services.mercadolivre.client_id'),
+            'redirect_uri'          => config('services.mercadolivre.redirect'),
+            'state'                 => $state,
             // read: dados da conta; offline_access: mantém refresh token válido indefinidamente
-            'scope'         => 'read offline_access',
+            'scope'                 => 'read offline_access',
+            'code_challenge'        => $codeChallenge,
+            'code_challenge_method' => 'S256',
         ]);
     }
 
     /**
-     * Recupera o company_id vinculado ao state e remove do cache.
-     * Retorna null se o state for inválido ou expirado.
+     * Recupera os dados vinculados ao state e remove do cache.
+     * Retorna array ['company_id' => int, 'code_verifier' => string] ou null se inválido/expirado.
      */
-    public function consumeState(string $state): ?int
+    public function consumeState(string $state): ?array
     {
-        $key       = "ml_oauth_state_{$state}";
-        $companyId = Cache::get($key);
+        $key  = "ml_oauth_state_{$state}";
+        $data = Cache::get($key);
         Cache::forget($key);
-        return $companyId;
+
+        if (! $data) {
+            return null;
+        }
+
+        // Compatibilidade: versão anterior armazenava apenas o int
+        if (is_int($data)) {
+            return ['company_id' => $data, 'code_verifier' => null];
+        }
+
+        return $data;
     }
 
     // ═══ OAuth: troca e renovação de tokens ══════════════════════════════════
@@ -66,15 +85,21 @@ class MercadoLivreService
      *
      * @throws \RuntimeException
      */
-    public function exchangeCode(string $code): array
+    public function exchangeCode(string $code, ?string $codeVerifier = null): array
     {
-        $response = Http::asForm()->post(self::TOKEN_URL, [
+        $payload = [
             'grant_type'    => 'authorization_code',
             'client_id'     => config('services.mercadolivre.client_id'),
             'client_secret' => config('services.mercadolivre.client_secret'),
             'code'          => $code,
             'redirect_uri'  => config('services.mercadolivre.redirect'),
-        ]);
+        ];
+
+        if ($codeVerifier) {
+            $payload['code_verifier'] = $codeVerifier;
+        }
+
+        $response = Http::asForm()->post(self::TOKEN_URL, $payload);
 
         if (! $response->successful()) {
             throw new \RuntimeException('[MercadoLivre] Falha ao trocar código: ' . $response->body());
