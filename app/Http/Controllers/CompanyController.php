@@ -121,7 +121,7 @@ class CompanyController extends Controller
             'ppas.mentor',
             'meetings' => fn($q) => $q->orderBy('scheduled_at', 'desc')->limit(10),
             'npsSurveys' => fn($q) => $q->where('status', 'completed')->with('response')->orderBy('completed_at', 'desc')->limit(10),
-            'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(30),
+            'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(90),
             // Contratos (ativos + inativos) com servico embedado — UI filtra na renderização
             'contratosServico' => fn($q) => $q->orderBy('ativo', 'desc')->orderBy('data_contratacao', 'desc')->with('servico'),
             'mlToken',
@@ -161,19 +161,7 @@ class CompanyController extends Controller
                 $adInvestment30d = $accountMetrics['investment'];
             }
         } elseif (! $company->adman_account_id && $company->mlToken) {
-            // Empresa ML-only (sem Adman): lê dos últimos 30 registros em adman_metrics
-            $mlMetrics = AdmanMetric::where('company_id', $company->id)
-                ->orderBy('reference_date', 'desc')
-                ->limit(30)
-                ->get();
-
-            if ($mlMetrics->isNotEmpty()) {
-                $revenue30d      = round((float) $mlMetrics->sum('revenue'), 2);
-                $adInvestment30d = round((float) $mlMetrics->sum('ad_spend'), 2);
-                $tacos30d        = $revenue30d > 0
-                    ? round($adInvestment30d / $revenue30d * 100, 4)
-                    : null;
-            }
+            // Empresa ML-only: KPIs calculados no frontend a partir de ml_metrics
         }
 
         // Catálogo de serviços ativos para popular o <Select> do modal "Adicionar contrato"
@@ -256,6 +244,16 @@ class CompanyController extends Controller
                         'tipo_cobranca' => $ct->servico->tipo_cobranca,
                     ] : null,
                 ])->values(),
+                // Métricas ML diárias (últimos 90 dias) — usadas para KPIs com filtro de período
+                'ml_metrics' => ! $company->adman_account_id && $company->mlToken
+                    ? $company->admanMetrics->map(fn($m) => [
+                        'date'     => $m->reference_date instanceof \Carbon\Carbon
+                            ? $m->reference_date->toDateString()
+                            : (string) $m->reference_date,
+                        'revenue'  => (float) $m->revenue,
+                        'ad_spend' => (float) $m->ad_spend,
+                    ])->values()
+                    : [],
             ],
             'servicos_disponiveis' => $servicosDisponiveis,
         ]);

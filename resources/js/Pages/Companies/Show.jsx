@@ -53,45 +53,51 @@ function InfoRow({ label, value }) {
     );
 }
 
+const ML_PERIODOS = [
+    { label: 'Ontem',   days: 1  },
+    { label: '7 dias',  days: 7  },
+    { label: '30 dias', days: 30 },
+    { label: '90 dias', days: 90 },
+];
+
+function mlKpis(metrics, days) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    const slice = metrics.filter(m => new Date(m.date) >= cutoff);
+    const revenue = slice.reduce((s, m) => s + m.revenue, 0);
+    const adSpend = slice.reduce((s, m) => s + m.ad_spend, 0);
+    const tacos   = revenue > 0 ? adSpend / revenue * 100 : null;
+    return { revenue, adSpend, tacos, count: slice.length };
+}
+
 // ─── Card de integração ML OAuth ────────────────────────────────────────────
 function MlConnectionCard({ company }) {
-    const token = company.ml_token;
+    const token   = company.ml_token;
+    const metrics = company.ml_metrics ?? [];
+
     const [linkDialogOpen, setLinkDialogOpen] = useState(false);
     const [authUrl, setAuthUrl]               = useState('');
     const [loadingLink, setLoadingLink]       = useState(false);
     const [copied, setCopied]                 = useState(false);
-    const PERIODOS = [
-        { label: 'Ontem',   days: 1  },
-        { label: '7 dias',  days: 7  },
-        { label: '30 dias', days: 30 },
-        { label: '90 dias', days: 90 },
-    ];
-    const [syncing, setSyncing]         = useState(false);
-    const [syncDays, setSyncDays]       = useState(1);
-    const [syncProgress, setSyncProgress] = useState(null); // {current, total}
-    const [syncResult, setSyncResult]   = useState(null);
+    const [period, setPeriod]                 = useState(30);
+    const [syncing, setSyncing]               = useState(false);
+    const [syncResult, setSyncResult]         = useState(null);
 
-    const sincronizar = async () => {
-        const dates = [];
-        for (let i = 1; i <= syncDays; i++) {
-            const d = new Date(); d.setDate(d.getDate() - i);
-            dates.push(d.toISOString().slice(0, 10));
-        }
+    const kpis = useMemo(() => mlKpis(metrics, period), [metrics, period]);
+
+    const forceSyncD1 = async () => {
         setSyncing(true); setSyncResult(null);
-        let revenue = 0, adSpend = 0, ok = 0, fail = 0;
-        for (let i = 0; i < dates.length; i++) {
-            setSyncProgress({ current: i + 1, total: dates.length });
-            try {
-                const res = await fetch(route('ml.sync.now', company.id) + '?date=' + dates[i], {
-                    method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '', 'Accept': 'application/json' },
-                });
-                const data = await res.json();
-                if (data.error) { fail++; } else { revenue += Number(data.revenue); adSpend += Number(data.ad_spend); ok++; }
-            } catch { fail++; }
-        }
-        setSyncResult({ revenue, ad_spend: adSpend, days: dates.length, ok, fail });
-        setSyncing(false); setSyncProgress(null);
+        const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+        const date = yesterday.toISOString().slice(0, 10);
+        try {
+            const res = await fetch(route('ml.sync.now', company.id) + '?date=' + date, {
+                method: 'POST',
+                headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '', 'Accept': 'application/json' },
+            });
+            const data = await res.json();
+            setSyncResult(data.error ? { error: data.error } : { ok: true, date });
+        } catch { setSyncResult({ error: 'Erro de conexão.' }); }
+        finally { setSyncing(false); }
     };
 
     const statusCfg = {
@@ -169,51 +175,64 @@ function MlConnectionCard({ company }) {
                                     <span className="text-white/70 text-[13px]">{token.expires_at ? formatDateTime(token.expires_at) : '—'}</span>
                                 </div>
                             </div>
-                            {/* Sync manual */}
-                            <div className="pt-2 space-y-2 border-t border-white/[0.06]">
-                                <p className="text-white/40 text-[11px] uppercase tracking-wide">Sincronizar dados</p>
-                                <div className="flex gap-1.5 flex-wrap">
-                                    {PERIODOS.map(p => (
-                                        <button
-                                            key={p.days}
-                                            onClick={() => { setSyncDays(p.days); setSyncResult(null); }}
-                                            className={cn(
-                                                'px-3 py-1 rounded-md text-[11px] font-medium border transition-colors',
-                                                syncDays === p.days
-                                                    ? 'bg-ecf-yellow/15 border-ecf-yellow/30 text-ecf-yellow'
-                                                    : 'bg-white/[0.03] border-white/[0.08] text-white/40 hover:text-white/70'
-                                            )}
-                                        >
-                                            {p.label}
-                                        </button>
-                                    ))}
+                            {/* KPIs ML com filtro de período */}
+                            {metrics.length > 0 && (
+                                <div className="pt-2 space-y-3 border-t border-white/[0.06]">
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-white/40 text-[11px] uppercase tracking-wide">Métricas</p>
+                                        <div className="flex gap-1">
+                                            {ML_PERIODOS.map(p => (
+                                                <button
+                                                    key={p.days}
+                                                    onClick={() => setPeriod(p.days)}
+                                                    className={cn(
+                                                        'px-2.5 py-0.5 rounded text-[10px] font-medium border transition-colors',
+                                                        period === p.days
+                                                            ? 'bg-ecf-yellow/15 border-ecf-yellow/30 text-ecf-yellow'
+                                                            : 'border-white/[0.06] text-white/30 hover:text-white/60'
+                                                    )}
+                                                >
+                                                    {p.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                            <p className="text-white/30 text-[10px] mb-1">Faturamento</p>
+                                            <p className="text-blue-400 font-semibold text-[13px]">{formatCurrency(kpis.revenue)}</p>
+                                        </div>
+                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                            <p className="text-white/30 text-[10px] mb-1">Ad Spend</p>
+                                            <p className="text-white/60 font-semibold text-[13px]">{formatCurrency(kpis.adSpend)}</p>
+                                        </div>
+                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] px-3 py-2.5">
+                                            <p className="text-white/30 text-[10px] mb-1">TACOS</p>
+                                            <p className="text-ecf-yellow font-semibold text-[13px]">{kpis.tacos != null ? formatPercent(kpis.tacos) : '—'}</p>
+                                        </div>
+                                    </div>
+                                    <p className="text-white/20 text-[10px]">{kpis.count} dia{kpis.count !== 1 ? 's' : ''} com dados</p>
                                 </div>
+                            )}
+
+                            {/* Forçar resync D-1 — para quando o job automático falhou */}
+                            <div className="pt-1 border-t border-white/[0.04]">
                                 <Button
                                     type="button"
+                                    variant="ghost"
                                     size="sm"
-                                    className="w-full text-[12px] gap-1.5"
-                                    onClick={sincronizar}
+                                    className="w-full text-[11px] gap-1.5 text-white/30 hover:text-white/60"
+                                    onClick={forceSyncD1}
                                     disabled={syncing || token?.status !== 'active'}
                                 >
-                                    <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-                                    {syncing && syncProgress
-                                        ? `Sincronizando ${syncProgress.current}/${syncProgress.total}…`
-                                        : 'Sincronizar'}
+                                    <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} />
+                                    {syncing ? 'Sincronizando D-1…' : 'Forçar sync D-1'}
                                 </Button>
-                                {syncResult && (
-                                    <div className={cn(
-                                        'rounded-lg px-3 py-2 text-[12px] space-y-0.5',
-                                        syncResult.fail === syncResult.days
-                                            ? 'bg-red-500/10 border border-red-500/20 text-red-400'
-                                            : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
-                                    )}>
-                                        <p className="font-semibold">
-                                            ✓ {syncResult.ok}/{syncResult.days} dia{syncResult.days !== 1 ? 's' : ''} sincronizados
-                                            {syncResult.fail > 0 && <span className="text-orange-400 ml-1">({syncResult.fail} falha{syncResult.fail !== 1 ? 's' : ''})</span>}
-                                        </p>
-                                        <p>Faturamento: {formatCurrency(syncResult.revenue)}</p>
-                                        <p>Ad spend: {formatCurrency(syncResult.ad_spend)}</p>
-                                    </div>
+                                {syncResult?.ok && (
+                                    <p className="text-center text-[11px] text-emerald-400 mt-1">✓ {syncResult.date} sincronizado</p>
+                                )}
+                                {syncResult?.error && (
+                                    <p className="text-center text-[11px] text-red-400 mt-1">{syncResult.error}</p>
                                 )}
                             </div>
 
