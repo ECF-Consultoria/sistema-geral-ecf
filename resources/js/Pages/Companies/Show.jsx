@@ -60,31 +60,38 @@ function MlConnectionCard({ company }) {
     const [authUrl, setAuthUrl]               = useState('');
     const [loadingLink, setLoadingLink]       = useState(false);
     const [copied, setCopied]                 = useState(false);
-    const [syncing, setSyncing]               = useState(false);
-    const [syncDate, setSyncDate]             = useState(() => {
-        const d = new Date(); d.setDate(d.getDate() - 1);
-        return d.toISOString().slice(0, 10);
-    });
-    const [syncResult, setSyncResult]         = useState(null); // {revenue, ad_spend, tacos, date} | {error}
+    const PERIODOS = [
+        { label: 'Ontem',   days: 1  },
+        { label: '7 dias',  days: 7  },
+        { label: '30 dias', days: 30 },
+        { label: '90 dias', days: 90 },
+    ];
+    const [syncing, setSyncing]         = useState(false);
+    const [syncDays, setSyncDays]       = useState(1);
+    const [syncProgress, setSyncProgress] = useState(null); // {current, total}
+    const [syncResult, setSyncResult]   = useState(null);
 
     const sincronizar = async () => {
-        setSyncing(true);
-        setSyncResult(null);
-        try {
-            const res = await fetch(route('ml.sync.now', company.id) + '?date=' + syncDate, {
-                method:  'POST',
-                headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-                    'Accept':       'application/json',
-                },
-            });
-            const data = await res.json();
-            setSyncResult(data);
-        } catch {
-            setSyncResult({ error: 'Erro de conexão. Tente novamente.' });
-        } finally {
-            setSyncing(false);
+        const dates = [];
+        for (let i = 1; i <= syncDays; i++) {
+            const d = new Date(); d.setDate(d.getDate() - i);
+            dates.push(d.toISOString().slice(0, 10));
         }
+        setSyncing(true); setSyncResult(null);
+        let revenue = 0, adSpend = 0, ok = 0, fail = 0;
+        for (let i = 0; i < dates.length; i++) {
+            setSyncProgress({ current: i + 1, total: dates.length });
+            try {
+                const res = await fetch(route('ml.sync.now', company.id) + '?date=' + dates[i], {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '', 'Accept': 'application/json' },
+                });
+                const data = await res.json();
+                if (data.error) { fail++; } else { revenue += Number(data.revenue); adSpend += Number(data.ad_spend); ok++; }
+            } catch { fail++; }
+        }
+        setSyncResult({ revenue, ad_spend: adSpend, days: dates.length, ok, fail });
+        setSyncing(false); setSyncProgress(null);
     };
 
     const statusCfg = {
@@ -165,34 +172,48 @@ function MlConnectionCard({ company }) {
                             {/* Sync manual */}
                             <div className="pt-2 space-y-2 border-t border-white/[0.06]">
                                 <p className="text-white/40 text-[11px] uppercase tracking-wide">Sincronizar dados</p>
-                                <div className="flex gap-2 items-center">
-                                    <input
-                                        type="date"
-                                        value={syncDate}
-                                        onChange={e => setSyncDate(e.target.value)}
-                                        className="bg-white/[0.05] border border-white/[0.10] rounded-md px-2 py-1 text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/50 w-36"
-                                    />
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        className="text-[12px] gap-1.5"
-                                        onClick={sincronizar}
-                                        disabled={syncing || token?.status !== 'active'}
-                                    >
-                                        <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
-                                        {syncing ? 'Sincronizando...' : 'Sincronizar'}
-                                    </Button>
+                                <div className="flex gap-1.5 flex-wrap">
+                                    {PERIODOS.map(p => (
+                                        <button
+                                            key={p.days}
+                                            onClick={() => { setSyncDays(p.days); setSyncResult(null); }}
+                                            className={cn(
+                                                'px-3 py-1 rounded-md text-[11px] font-medium border transition-colors',
+                                                syncDays === p.days
+                                                    ? 'bg-ecf-yellow/15 border-ecf-yellow/30 text-ecf-yellow'
+                                                    : 'bg-white/[0.03] border-white/[0.08] text-white/40 hover:text-white/70'
+                                            )}
+                                        >
+                                            {p.label}
+                                        </button>
+                                    ))}
                                 </div>
-                                {syncResult && !syncResult.error && (
-                                    <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2 text-[12px] text-emerald-400 space-y-0.5">
-                                        <p className="font-semibold">✓ {syncResult.date}</p>
-                                        <p>Faturamento: R$ {Number(syncResult.revenue).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                        <p>Ad spend: R$ {Number(syncResult.ad_spend).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                                        {syncResult.tacos != null && <p>TACOS: {syncResult.tacos}%</p>}
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    className="w-full text-[12px] gap-1.5"
+                                    onClick={sincronizar}
+                                    disabled={syncing || token?.status !== 'active'}
+                                >
+                                    <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} />
+                                    {syncing && syncProgress
+                                        ? `Sincronizando ${syncProgress.current}/${syncProgress.total}…`
+                                        : 'Sincronizar'}
+                                </Button>
+                                {syncResult && (
+                                    <div className={cn(
+                                        'rounded-lg px-3 py-2 text-[12px] space-y-0.5',
+                                        syncResult.fail === syncResult.days
+                                            ? 'bg-red-500/10 border border-red-500/20 text-red-400'
+                                            : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                                    )}>
+                                        <p className="font-semibold">
+                                            ✓ {syncResult.ok}/{syncResult.days} dia{syncResult.days !== 1 ? 's' : ''} sincronizados
+                                            {syncResult.fail > 0 && <span className="text-orange-400 ml-1">({syncResult.fail} falha{syncResult.fail !== 1 ? 's' : ''})</span>}
+                                        </p>
+                                        <p>Faturamento: {formatCurrency(syncResult.revenue)}</p>
+                                        <p>Ad spend: {formatCurrency(syncResult.ad_spend)}</p>
                                     </div>
-                                )}
-                                {syncResult?.error && (
-                                    <p className="text-[12px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{syncResult.error}</p>
                                 )}
                             </div>
 
