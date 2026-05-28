@@ -71,6 +71,12 @@ Schedule::command('adman:sync-faturamento')
     ->name('sync-faturamento-mensal')
     ->withoutOverlapping();
 
+// Renova tokens Mercado Livre próximos de expirar (janela: <2h)
+Schedule::command('ml:refresh-tokens')
+    ->dailyAt('08:00')
+    ->name('refresh-ml-tokens')
+    ->withoutOverlapping();
+
 // Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
 // Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
 Schedule::command('notifications:cleanup')

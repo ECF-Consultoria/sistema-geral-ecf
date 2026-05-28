@@ -6,7 +6,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff } from 'lucide-react';
+import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useState, useMemo } from 'react';
@@ -50,6 +50,171 @@ function InfoRow({ label, value }) {
             <span className="text-white/40 text-[12px] shrink-0">{label}</span>
             <span className="text-white/80 text-[13px] font-medium text-right">{value || '—'}</span>
         </div>
+    );
+}
+
+// ─── Card de integração ML OAuth ────────────────────────────────────────────
+function MlConnectionCard({ company }) {
+    const token = company.ml_token;
+    const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+    const [authUrl, setAuthUrl]               = useState('');
+    const [loadingLink, setLoadingLink]       = useState(false);
+    const [copied, setCopied]                 = useState(false);
+
+    const statusCfg = {
+        active:  { label: 'Conectado',    className: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25' },
+        expired: { label: 'Expirado',     className: 'bg-orange-500/15 text-orange-400 border-orange-500/25' },
+        revoked: { label: 'Revogado',     className: 'bg-red-500/15 text-red-400 border-red-500/25' },
+    };
+
+    const gerarLink = async () => {
+        setLoadingLink(true);
+        try {
+            const res = await fetch(route('ml.oauth.initiate', company.id), {
+                method:  'POST',
+                headers: {
+                    'X-CSRF-TOKEN':  document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    'Accept':        'application/json',
+                    'Content-Type':  'application/json',
+                },
+            });
+            const data = await res.json();
+            setAuthUrl(data.url);
+            setLinkDialogOpen(true);
+        } catch {
+            alert('Erro ao gerar link. Tente novamente.');
+        } finally {
+            setLoadingLink(false);
+        }
+    };
+
+    const copiarLink = () => {
+        navigator.clipboard.writeText(authUrl).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
+    const desconectar = () => {
+        if (! confirm(`Remover a conexão ML da empresa "${company.name}"?`)) return;
+        router.delete(route('ml.oauth.disconnect', company.id));
+    };
+
+    return (
+        <>
+            <div className="card-ecf rounded-2xl overflow-hidden">
+                <div className="flex items-center gap-2.5 px-5 py-4 border-b border-white/[0.06]">
+                    <ShoppingCart size={15} className="text-ecf-yellow/70" />
+                    <p className="text-white font-display font-bold text-[14px]">Integração Mercado Livre</p>
+                    {token && (
+                        <span className={cn(
+                            'ml-auto inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] font-semibold uppercase tracking-wide',
+                            statusCfg[token.status]?.className,
+                        )}>
+                            {statusCfg[token.status]?.label ?? token.status}
+                        </span>
+                    )}
+                </div>
+                <div className="p-5 space-y-4">
+                    {token ? (
+                        <>
+                            <div className="space-y-2">
+                                <div className="flex items-start justify-between py-1.5 border-b border-white/[0.04]">
+                                    <span className="text-white/40 text-[12px]">User ID ML</span>
+                                    <span className="text-white/80 text-[13px] font-mono">{token.ml_user_id}</span>
+                                </div>
+                                <div className="flex items-start justify-between py-1.5 border-b border-white/[0.04]">
+                                    <span className="text-white/40 text-[12px]">Conectado em</span>
+                                    <span className="text-white/70 text-[13px]">{token.connected_at ? formatDateTime(token.connected_at) : '—'}</span>
+                                </div>
+                                <div className="flex items-start justify-between py-1.5 border-b border-white/[0.04]">
+                                    <span className="text-white/40 text-[12px]">Última renovação</span>
+                                    <span className="text-white/70 text-[13px]">{token.last_refreshed_at ? formatDateTime(token.last_refreshed_at) : '—'}</span>
+                                </div>
+                                <div className="flex items-start justify-between py-1.5">
+                                    <span className="text-white/40 text-[12px]">Expira em</span>
+                                    <span className="text-white/70 text-[13px]">{token.expires_at ? formatDateTime(token.expires_at) : '—'}</span>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 pt-1">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-[12px] gap-1.5"
+                                    onClick={gerarLink}
+                                    disabled={loadingLink}
+                                >
+                                    <ShoppingCart size={13} />
+                                    {loadingLink ? 'Gerando...' : 'Reconectar'}
+                                </Button>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-[12px] gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                    onClick={desconectar}
+                                >
+                                    <Unplug size={13} />
+                                    Desconectar
+                                </Button>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="text-center py-4 space-y-3">
+                            <p className="text-white/30 text-[13px]">Nenhuma conta ML vinculada</p>
+                            <Button
+                                type="button"
+                                size="sm"
+                                className="gap-1.5 text-[12px]"
+                                onClick={gerarLink}
+                                disabled={loadingLink}
+                            >
+                                <ShoppingCart size={13} />
+                                {loadingLink ? 'Gerando link...' : 'Gerar link de conexão'}
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Modal do link OAuth */}
+            <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                        <DialogTitle>Link de autorização — Mercado Livre</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                        <p className="text-white/55 text-[13px]">
+                            Envie este link ao cliente. Após a autorização, a conta será vinculada automaticamente à empresa <strong className="text-white/80">{company.name}</strong>.
+                            O link expira em <strong className="text-ecf-yellow">15 minutos</strong>.
+                        </p>
+                        <div className="flex gap-2">
+                            <input
+                                readOnly
+                                value={authUrl}
+                                className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] text-white/70 font-mono truncate focus:outline-none"
+                            />
+                            <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="shrink-0 gap-1.5 text-[12px]"
+                                onClick={copiarLink}
+                            >
+                                {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+                                {copied ? 'Copiado!' : 'Copiar'}
+                            </Button>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" size="sm" onClick={() => setLinkDialogOpen(false)}>
+                            Fechar
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 
@@ -438,6 +603,9 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                         </div>
                     </Section>
                 )}
+
+                {/* Integração Mercado Livre */}
+                <MlConnectionCard company={company} />
 
                 {/* Métricas Adman recentes */}
                 {(company.adman_metrics || []).length > 0 && (

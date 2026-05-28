@@ -16,6 +16,7 @@ use App\Http\Controllers\LiderancaController;
 use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
+use App\Http\Controllers\MercadoLivreOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
@@ -49,6 +50,10 @@ Route::patch('/implementacao/{token}', [MlbImplementacaoController::class, 'salv
 
 // Visão do publicador (sem autenticação, somente leitura)
 Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::class, 'publicador'])->name('implementacao.publicador');
+
+// ML OAuth — callback público (o cliente autoriza fora do painel)
+Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
+    ->name('ml.oauth.callback');
 
 // Google OAuth (público — sem autenticação durante o callback)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
@@ -212,6 +217,10 @@ Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
         Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
+
+        // ML OAuth — geração de link e desconexão (admin only, herdado do grupo)
+        Route::post('/companies/{company}/ml/initiate',    [MercadoLivreOAuthController::class, 'initiate'])->name('ml.oauth.initiate');
+        Route::delete('/companies/{company}/ml/disconnect',[MercadoLivreOAuthController::class, 'disconnect'])->name('ml.oauth.disconnect');
 
         // ─── Módulo Serviços (Frente A) ──────────────────────────────────
         // Catálogo de serviços + contratos por empresa. Acesso admin-only

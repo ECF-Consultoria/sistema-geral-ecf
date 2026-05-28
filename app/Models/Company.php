@@ -193,6 +193,11 @@ class Company extends Model
         return $this->hasMany(ContratoServico::class);
     }
 
+    public function mlToken()
+    {
+        return $this->hasOne(MlToken::class);
+    }
+
     public function getActiveGrantAttribute(): ?CompanyGrant
     {
         return $this->grants()->where('status', 'active')->first();

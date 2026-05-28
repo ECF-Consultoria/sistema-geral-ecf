@@ -45,6 +45,12 @@ return [
         'api_key' => env('ADMAN_MCP_API_KEY', env('ADMAN_API_KEY', '')),
     ],
 
+    'mercadolivre' => [
+        'client_id'     => env('ML_CLIENT_ID', '5662190514685421'),
+        'client_secret' => env('ML_CLIENT_SECRET'),
+        'redirect'      => env('ML_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/mercadolivre/callback'),
+    ],
+
     'google' => [
         'client_id'     => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

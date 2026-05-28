@@ -121,6 +121,7 @@ class CompanyController extends Controller
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(30),
             // Contratos (ativos + inativos) com servico embedado — UI filtra na renderização
             'contratosServico' => fn($q) => $q->orderBy('ativo', 'desc')->orderBy('data_contratacao', 'desc')->with('servico'),
+            'mlToken',
         ]);
 
         // Faturamento bruto + ACOS/TACOS/margem dos últimos 30 dias —
@@ -173,6 +174,13 @@ class CompanyController extends Controller
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
+                'ml_token'         => $company->mlToken ? [
+                    'status'            => $company->mlToken->status,
+                    'ml_user_id'        => $company->mlToken->ml_user_id,
+                    'expires_at'        => $company->mlToken->expires_at?->toISOString(),
+                    'connected_at'      => $company->mlToken->connected_at?->toISOString(),
+                    'last_refreshed_at' => $company->mlToken->last_refreshed_at?->toISOString(),
+                ] : null,
                 'revenue_30d'      => $revenue30d,
                 'acos_30d'         => $acos30d,
                 'tacos_30d'        => $tacos30d,
