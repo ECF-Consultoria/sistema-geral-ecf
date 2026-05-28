@@ -22,7 +22,7 @@ class MercadoLivreService
     private const AUTH_URL  = 'https://auth.mercadolivre.com.br/authorization';
     private const TOKEN_URL = 'https://api.mercadolibre.com/oauth/token';
     private const API_BASE  = 'https://api.mercadolibre.com';
-    private const STATE_TTL = 900;   // 15 minutos para o cliente autorizar
+    private const STATE_TTL = 604800; // 7 dias para o cliente autorizar
     private const SITE_ID   = 'MLB'; // Brasil
 
     // ═══ OAuth: geração de URL ════════════════════════════════════════════════

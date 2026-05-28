@@ -62,7 +62,7 @@ class MercadoLivreOAuthController extends Controller
             Log::warning('[MercadoLivre] State inválido ou expirado no callback', ['state' => $state]);
             return view('oauth.ml-result', [
                 'success' => false,
-                'message' => 'Link expirado (válido por 15 minutos). Peça um novo link ao administrador.',
+                'message' => 'Link expirado (válido por 7 dias). Peça um novo link ao administrador.',
             ]);
         }
 
