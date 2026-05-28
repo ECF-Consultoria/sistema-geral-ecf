@@ -320,7 +320,7 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                 Envie este link ao cliente da empresa{' '}
                                 <strong className="text-white/85">{mlLinkCompany.name}</strong>.
                                 Após a autorização, a conta ML será vinculada automaticamente.
-                                O link expira em <strong className="text-ecf-yellow">15 minutos</strong>.
+                                O link expira em <strong className="text-ecf-yellow">7 dias</strong>.
                             </p>
                         )}
                         <div className="flex gap-2">

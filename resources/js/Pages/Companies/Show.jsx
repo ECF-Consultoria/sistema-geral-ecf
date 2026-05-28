@@ -247,7 +247,7 @@ function MlConnectionCard({ company }) {
                     <div className="space-y-4">
                         <p className="text-white/55 text-[13px]">
                             Envie este link ao cliente. Após a autorização, a conta será vinculada automaticamente à empresa <strong className="text-white/80">{company.name}</strong>.
-                            O link expira em <strong className="text-ecf-yellow">15 minutos</strong>.
+                            O link expira em <strong className="text-ecf-yellow">7 dias</strong>.
                         </p>
                         <div className="flex gap-2">
                             <input
