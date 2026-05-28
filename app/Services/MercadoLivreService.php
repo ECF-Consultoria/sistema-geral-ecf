@@ -211,9 +211,29 @@ class MercadoLivreService
             ->get(self::API_BASE . $endpoint, $query);
 
         if ($response->status() === 401) {
-            $token->update(['status' => 'revoked']);
-            Log::error("[MercadoLivre] Token rejeitado empresa {$company->id} ({$company->name})");
-            throw new \RuntimeException("[MercadoLivre] Token inválido para {$company->name}.");
+            Log::warning("[MercadoLivre] 401 em {$endpoint} empresa {$company->id} — tentando refresh", [
+                'body' => $response->body(),
+            ]);
+
+            // Tenta renovar o token antes de desistir
+            try {
+                $token = $this->refreshToken($token);
+                $response = Http::withToken($token->access_token)
+                    ->get(self::API_BASE . $endpoint, $query);
+            } catch (\RuntimeException) {
+                // refreshToken já marcou como revoked e logou
+                throw new \RuntimeException("[MercadoLivre] Token inválido para {$company->name}.");
+            }
+
+            // Após refresh, se ainda 401, endpoint não permite acesso
+            if ($response->status() === 401) {
+                Log::error("[MercadoLivre] 401 persistente após refresh em {$endpoint} empresa {$company->id}", [
+                    'body' => $response->body(),
+                ]);
+                throw new \RuntimeException(
+                    "[MercadoLivre] Acesso negado em {$endpoint}: " . $response->body()
+                );
+            }
         }
 
         if (! $response->successful()) {
