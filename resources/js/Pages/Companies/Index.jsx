@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, Link, router, useRemember } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, Clock, CheckCircle2, Link2 } from 'lucide-react';
+import { Plus, Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -79,7 +79,7 @@ function MlStatusBadge({ status }) {
     return null;
 }
 
-export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [], ml_connected = [], ml_pending = [] }) {
+export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [] }) {
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -185,72 +185,6 @@ export default function Companies({ companies, users, estrategistas = [], empres
                         <Plus className="h-4 w-4 mr-1" /> Nova Empresa
                     </Button>
                 </div>
-
-                {/* Painel de status OAuth Mercado Livre */}
-                {(ml_pending.length > 0 || ml_connected.length > 0) && (
-                    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4">
-                        <div className="flex items-center gap-2">
-                            <Link2 size={15} className="text-[#ffe116]" />
-                            <h2 className="text-white font-semibold text-[14px]">Mercado Livre OAuth</h2>
-                        </div>
-
-                        {ml_pending.length > 0 && (
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Clock size={12} className="text-amber-400" />
-                                    <span className="text-amber-400 text-[12px] font-semibold">Aguardando autorização</span>
-                                    <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-400 text-[10px] font-bold">
-                                        {ml_pending.length}
-                                    </span>
-                                </div>
-                                <div className="space-y-1.5">
-                                    {ml_pending.map(p => {
-                                        const expiresAt = new Date(p.expires_at);
-                                        const now = new Date();
-                                        const daysLeft = Math.ceil((expiresAt - now) / (1000 * 60 * 60 * 24));
-                                        const expired = daysLeft <= 0;
-                                        return (
-                                            <div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2">
-                                                <span className="text-white text-[13px] font-medium flex-1">{p.name}</span>
-                                                <span className={cn('text-[11px]', expired ? 'text-red-400' : 'text-white/40')}>
-                                                    {expired ? 'Expirado' : `expira em ${daysLeft}d`}
-                                                </span>
-                                                <Link href={route('companies.show', p.id)} className="text-white/40 hover:text-white transition-colors">
-                                                    <Eye size={13} />
-                                                </Link>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                        {ml_connected.length > 0 && (
-                            <div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <CheckCircle2 size={12} className="text-emerald-400" />
-                                    <span className="text-emerald-400 text-[12px] font-semibold">Conectadas</span>
-                                    <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-400 text-[10px] font-bold">
-                                        {ml_connected.length}
-                                    </span>
-                                </div>
-                                <div className="space-y-1.5">
-                                    {ml_connected.map(c => (
-                                        <div key={c.id} className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-2">
-                                            <span className="text-white text-[13px] font-medium flex-1">{c.name}</span>
-                                            <span className="text-white/30 text-[11px]">
-                                                {c.connected_at ? `conectado em ${new Date(c.connected_at).toLocaleDateString('pt-BR')}` : '—'}
-                                            </span>
-                                            <Link href={route('companies.show', c.id)} className="text-white/40 hover:text-white transition-colors">
-                                                <Eye size={13} />
-                                            </Link>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
 
                 {/* Seção Pendentes — companies cadastradas pelo Comercial aguardando Publicidade/Gestão */}
                 {empresas_pendentes.length > 0 && (

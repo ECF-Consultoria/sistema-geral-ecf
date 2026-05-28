@@ -65,6 +65,8 @@ class Permissions
     public const SISTEMA_SETORES           = 'sistema.setores';
     /** Catálogo de serviços e contratos por empresa (Módulo Serviços — Frente A). */
     public const SISTEMA_SERVICOS          = 'sistema.servicos';
+    /** Painel de gestão OAuth Mercado Livre (admin only). */
+    public const SISTEMA_ML_OAUTH          = 'sistema.ml_oauth';
 
     /** Criar notificações manuais (admin sempre tem; líderes ganham via AUTO_LIDERANCA). */
     public const NOTIFICACOES_CRIAR        = 'notificacoes.criar';

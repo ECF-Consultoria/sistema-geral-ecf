@@ -7,10 +7,38 @@ use App\Services\MercadoLivreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Http\JsonResponse;
+use Inertia\Inertia;
 
 class MercadoLivreOAuthController extends Controller
 {
     public function __construct(private MercadoLivreService $ml) {}
+
+    // ── Painel admin ─────────────────────────────────────────────────────────
+
+    /**
+     * Lista todas as empresas com status OAuth ML para o painel dedicado.
+     */
+    public function adminIndex(): \Inertia\Response
+    {
+        $companies = Company::with('mlToken')
+            ->orderBy('name')
+            ->get(['id', 'name', 'ml_store_id', 'ml_link_generated_at'])
+            ->map(fn($c) => [
+                'id'                   => $c->id,
+                'name'                 => $c->name,
+                'ml_store_id'          => $c->ml_store_id,
+                'ml_link_generated_at' => $c->ml_link_generated_at?->toISOString(),
+                'ml_link_expires_at'   => $c->ml_link_generated_at?->addDays(7)->toISOString(),
+                'ml_token'             => $c->mlToken ? [
+                    'status'       => $c->mlToken->status,
+                    'ml_user_id'   => $c->mlToken->ml_user_id,
+                    'connected_at' => $c->mlToken->connected_at?->toISOString(),
+                    'expires_at'   => $c->mlToken->expires_at?->toISOString(),
+                ] : null,
+            ])->values();
+
+        return Inertia::render('MlOAuth/Index', ['companies' => $companies]);
+    }
 
     // ── Gerar URL de autorização ──────────────────────────────────────────────
 

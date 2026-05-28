@@ -6,7 +6,7 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send
+    Code2, Crown, Shield, Send, Link2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -37,6 +37,7 @@ const NAV_ITEMS = [
     // ── Dev (interno) ───────────────────────────────────────────────────────
     { label: 'Log',             routeName: 'activity-log.index',  page: 'ActivityLog',         icon: ScrollText, permission: 'sistema.activity_log',    devSeparatorBefore: true },
     { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,      permission: 'sistema.desenvolvimento' },
+    { label: 'ML OAuth',        routeName: 'ml.oauth.index',      page: 'MlOAuth/Index',        icon: Link2,      permission: 'sistema.ml_oauth' },
     // ── Comercial ───────────────────────────────────────────────────────────
     { label: 'Empresas', routeName: 'comercial.empresas', page: 'Comercial/Empresas', icon: Building2, permission: 'comercial.cadastrar_empresa', comercialSeparatorBefore: true },
     // ── Publicações MLB ─────────────────────────────────────────────────────

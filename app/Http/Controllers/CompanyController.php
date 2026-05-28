@@ -105,37 +105,11 @@ class CompanyController extends Controller
             return $e;
         });
 
-        // Empresas com token ML ativo
-        $mlConnected = Company::with('mlToken')
-            ->whereHas('mlToken', fn($q) => $q->where('status', 'active'))
-            ->orderBy('name')
-            ->get(['id', 'name', 'ml_store_id'])
-            ->map(fn($c) => [
-                'id'           => $c->id,
-                'name'         => $c->name,
-                'ml_store_id'  => $c->ml_store_id,
-                'connected_at' => $c->mlToken?->connected_at?->toISOString(),
-            ])->values();
-
-        // Empresas com link gerado aguardando autorização (sem token ativo ainda)
-        $mlPending = Company::whereNotNull('ml_link_generated_at')
-            ->whereDoesntHave('mlToken', fn($q) => $q->where('status', 'active'))
-            ->orderBy('ml_link_generated_at', 'desc')
-            ->get(['id', 'name', 'ml_link_generated_at'])
-            ->map(fn($c) => [
-                'id'                  => $c->id,
-                'name'                => $c->name,
-                'ml_link_generated_at' => $c->ml_link_generated_at?->toISOString(),
-                'expires_at'          => $c->ml_link_generated_at?->addDays(7)->toISOString(),
-            ])->values();
-
         return Inertia::render('Companies/Index', [
             'companies'          => $companies,
             'users'              => $users,
             'estrategistas'      => $estrategistas,
             'empresas_pendentes' => $empresasPendentes,
-            'ml_connected'       => $mlConnected,
-            'ml_pending'         => $mlPending,
         ]);
     }
 
