@@ -133,7 +133,7 @@ function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
                     )}
                 </div>
 
-                <StatusBadge company={company} generatedUrl={generatedUrl} />
+                <StatusBadge company={company} generatedUrl={sessionUrl} />
 
                 <div className="flex items-center gap-2 shrink-0">
                     {/* Botão copiar — visível sempre que há URL (sessão ou banco) */}
