@@ -28,7 +28,7 @@ class Company extends Model
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'segment', 'active', 'status', 'notes',
-        'parent_company_id', 'ml_link_generated_at',
+        'parent_company_id', 'ml_link_generated_at', 'ml_link_url',
     ];
 
     protected $casts = [

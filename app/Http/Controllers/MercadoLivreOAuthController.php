@@ -22,13 +22,14 @@ class MercadoLivreOAuthController extends Controller
     {
         $companies = Company::with('mlToken')
             ->orderBy('name')
-            ->get(['id', 'name', 'ml_store_id', 'ml_link_generated_at'])
+            ->get(['id', 'name', 'ml_store_id', 'ml_link_generated_at', 'ml_link_url'])
             ->map(fn($c) => [
                 'id'                   => $c->id,
                 'name'                 => $c->name,
                 'ml_store_id'          => $c->ml_store_id,
                 'ml_link_generated_at' => $c->ml_link_generated_at?->toISOString(),
                 'ml_link_expires_at'   => $c->ml_link_generated_at?->addDays(7)->toISOString(),
+                'ml_link_url'          => $c->ml_link_url,
                 'ml_token'             => $c->mlToken ? [
                     'status'       => $c->mlToken->status,
                     'ml_user_id'   => $c->mlToken->ml_user_id,
@@ -114,6 +115,7 @@ class MercadoLivreOAuthController extends Controller
             $company->update([
                 'ml_store_id'          => $company->ml_store_id ?? $mlToken->ml_user_id,
                 'ml_link_generated_at' => null,
+                'ml_link_url'          => null,
             ]);
 
             // Divergência: ml_store_id existente difere do user_id retornado

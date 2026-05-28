@@ -44,9 +44,7 @@ class MercadoLivreService
             'code_verifier' => $codeVerifier,
         ], self::STATE_TTL);
 
-        $company->update(['ml_link_generated_at' => now()]);
-
-        return self::AUTH_URL . '?' . http_build_query([
+        $url = self::AUTH_URL . '?' . http_build_query([
             'response_type'         => 'code',
             'client_id'             => config('services.mercadolivre.client_id'),
             'redirect_uri'          => config('services.mercadolivre.redirect'),
@@ -56,6 +54,13 @@ class MercadoLivreService
             'code_challenge'        => $codeChallenge,
             'code_challenge_method' => 'S256',
         ]);
+
+        $company->update([
+            'ml_link_generated_at' => now(),
+            'ml_link_url'          => $url,
+        ]);
+
+        return $url;
     }
 
     /**

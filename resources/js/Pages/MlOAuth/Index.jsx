@@ -60,13 +60,15 @@ function StatusBadge({ company, generatedUrl }) {
 }
 
 function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
-    const [loading, setLoading]       = useState(false);
-    const [generatedUrl, setGeneratedUrl] = useState(null);
-    const [copied, setCopied]         = useState(false);
+    const [loading, setLoading]           = useState(false);
+    const [sessionUrl, setSessionUrl]     = useState(null); // URL gerada nesta sessão
+    const [copied, setCopied]             = useState(false);
     const [disconnecting, setDisconnecting] = useState(false);
 
     const token = company.ml_token;
     const isConnected = token?.status === 'active';
+    // URL disponível: prioriza sessão atual (mais fresca), cai para banco
+    const linkUrl = sessionUrl ?? company.ml_link_url;
 
     const gerarLink = async () => {
         setLoading(true);
@@ -80,7 +82,7 @@ function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
             });
             const data = await res.json();
             if (data.url) {
-                setGeneratedUrl(data.url);
+                setSessionUrl(data.url);
                 onLinkGenerated?.(company.id);
             }
         } finally {
@@ -89,9 +91,8 @@ function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
     };
 
     const copiar = () => {
-        const url = generatedUrl ?? company.ml_link_generated_at;
-        if (!url) return;
-        navigator.clipboard.writeText(generatedUrl);
+        if (!linkUrl) return;
+        navigator.clipboard.writeText(linkUrl);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -135,6 +136,16 @@ function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
                 <StatusBadge company={company} generatedUrl={generatedUrl} />
 
                 <div className="flex items-center gap-2 shrink-0">
+                    {/* Botão copiar — visível sempre que há URL (sessão ou banco) */}
+                    {!isConnected && linkUrl && (
+                        <button
+                            onClick={copiar}
+                            title="Copiar link"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-lg border border-white/[0.08] text-white/40 hover:text-white hover:border-white/20 transition-colors"
+                        >
+                            {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                        </button>
+                    )}
                     {isConnected ? (
                         <>
                             <Link
@@ -163,44 +174,22 @@ function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
                                 ? <RefreshCw size={11} className="animate-spin" />
                                 : <ShoppingBag size={11} />
                             }
-                            {generatedUrl || company.ml_link_generated_at ? 'Regerar link' : 'Gerar link'}
+                            {linkUrl ? 'Regerar link' : 'Gerar link'}
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Link gerado — aparece após clicar "Gerar link" */}
-            {generatedUrl && (
-                <div className="rounded-lg border border-[#ffe116]/15 bg-[#ffe116]/[0.03] p-3 space-y-2">
-                    <p className="text-white/40 text-[11px] font-medium">Link para enviar ao cliente — válido por 7 dias</p>
-                    <div className="flex items-center gap-2">
-                        <code className="flex-1 text-[11px] text-white/60 bg-white/[0.04] rounded px-2 py-1.5 truncate font-mono">
-                            {generatedUrl}
-                        </code>
-                        <button
-                            onClick={copiar}
-                            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/[0.08] text-white/50 hover:text-white hover:border-white/20 text-[11px] transition-colors"
-                        >
-                            {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                            {copied ? 'Copiado!' : 'Copiar'}
-                        </button>
-                    </div>
-                </div>
-            )}
-
-            {/* Link pendente (gerado em sessão anterior, sem URL disponível) */}
-            {!generatedUrl && !isConnected && company.ml_link_generated_at && (
-                <div className="rounded-lg border border-amber-400/10 bg-amber-400/[0.03] px-3 py-2">
-                    <p className="text-amber-400/60 text-[11px]">
-                        Link gerado em {fmtDateTime(company.ml_link_generated_at)}
+            {/* Link disponível (sessão atual ou salvo no banco) */}
+            {!isConnected && linkUrl && (
+                <div className="rounded-lg border border-amber-400/10 bg-amber-400/[0.03] px-3 py-2 flex items-center gap-2">
+                    <code className="flex-1 text-[11px] text-white/50 truncate font-mono">{linkUrl}</code>
+                    <span className="text-white/20 text-[10px] shrink-0">
                         {company.ml_link_expires_at && (() => {
                             const days = daysLeft(company.ml_link_expires_at);
-                            return days !== null
-                                ? (days > 0 ? ` · expira em ${days} dia${days !== 1 ? 's' : ''}` : ' · expirado')
-                                : '';
+                            return days !== null ? (days > 0 ? `${days}d restantes` : 'expirado') : '';
                         })()}
-                        . Clique em "Regerar link" para obter uma nova URL.
-                    </p>
+                    </span>
                 </div>
             )}
         </div>
