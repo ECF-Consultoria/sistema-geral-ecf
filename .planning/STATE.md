@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v4.1
 milestone_name: Eficiência Operacional Sugadores
-status: milestone_complete
-stopped_at: Phase 15 deployed to production (2026-05-27)
-last_updated: 2026-05-27T16:20:00.000Z
-last_activity: 2026-05-27 -- Phase 15 deployada (cards/auto-resolução/copy MLBs/chip) + merge origin/main (filtro cascata) + deploy VPS
+status: executing
+stopped_at: Phase 17 UI-SPEC approved
+last_updated: "2026-06-01T20:38:35.820Z"
+last_activity: 2026-06-01 -- Phase 17 planning complete
 progress:
-  total_phases: 15
-  completed_phases: 8
-  total_plans: 26
-  completed_plans: 26
-  percent: 53
+  total_phases: 17
+  completed_phases: 7
+  total_plans: 24
+  completed_plans: 19
+  percent: 41
 ---
 
 # Project State
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 Phase: 15
 Plan: All complete (4 waves, 7 commits)
-Status: Milestone v4.1 complete — deployed
-Last activity: 2026-05-27
+Status: Ready to execute
+Last activity: 2026-06-01 -- Phase 17 planning complete
 
 ## Performance Metrics
 
@@ -67,6 +67,10 @@ Last activity: 2026-05-27
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P07 | 45 | 4 tasks | 9 files |
 
 ## Accumulated Context
+
+### Roadmap Evolution
+
+- 2026-06-01 — Novo **Milestone v5.0 — Inteligência de Anúncios ML**; adicionada **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)**. Decisões travadas via probe ML (busca `/sites/MLB/search` = 403; usar `/products/search` + `/highlights` + `/trends` via app token). Não depende da Phase 16. Próximo: `/gsd-plan-phase 17`.
 
 ### Decisões herdadas do v1.0
 
@@ -235,5 +239,5 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-27T16:20:00Z
-Stopped at: Phase 15 deployada com sucesso em produção. 10 commits enviados (7 Phase 15 + 1 merge origin/main + 2 docs/chore). Migration `auto_resolvido` rodou em prod (421ms). Workers reiniciados. Backup branch local `backup/phase-15-pre-merge` preservado para rollback se necessário. Rate limit Adman 429 reportado ao provedor — aguardando retorno. Próxima fase: TBD pelo usuario.
+Last session: 2026-06-01T20:17:17.178Z
+Stopped at: Phase 17 UI-SPEC approved
