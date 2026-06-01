@@ -6,7 +6,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw, Info } from 'lucide-react';
+import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw, Info, CheckCircle2 } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useState, useMemo } from 'react';
@@ -163,6 +163,17 @@ function MlConnectionCard({ company }) {
                 <div className="p-5 space-y-4">
                     {token ? (
                         <>
+                            {/* Status amigável — a conexão (refresh token) não expira enquanto
+                                renova automaticamente; o "expires_at" abaixo é só do access token. */}
+                            {token.status === 'active' && (
+                                <div className="rounded-lg bg-emerald-500/[0.07] border border-emerald-500/15 px-3 py-2.5 flex items-start gap-2">
+                                    <CheckCircle2 size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                                    <div>
+                                        <p className="text-emerald-300 text-[12px] font-semibold">Conexão ativa</p>
+                                        <p className="text-white/40 text-[11px] leading-snug">Renovação automática — permanece ativa sem reconexão manual.</p>
+                                    </div>
+                                </div>
+                            )}
                             <div className="space-y-2">
                                 <div className="flex items-start justify-between py-1.5 border-b border-white/[0.04]">
                                     <span className="text-white/40 text-[12px]">User ID ML</span>
@@ -176,8 +187,10 @@ function MlConnectionCard({ company }) {
                                     <span className="text-white/40 text-[12px]">Última renovação</span>
                                     <span className="text-white/70 text-[13px]">{token.last_refreshed_at ? formatDateTime(token.last_refreshed_at) : '—'}</span>
                                 </div>
+                                {/* Access token expira em ~6h e renova sozinho — rotulado como
+                                    "próxima renovação" para não passar ideia de que a conta cai. */}
                                 <div className="flex items-start justify-between py-1.5">
-                                    <span className="text-white/40 text-[12px]">Expira em</span>
+                                    <span className="text-white/40 text-[12px]">Próxima renovação do token</span>
                                     <span className="text-white/70 text-[13px]">{token.expires_at ? formatDateTime(token.expires_at) : '—'}</span>
                                 </div>
                             </div>
@@ -295,6 +308,10 @@ function MlConnectionCard({ company }) {
                             Envie este link ao cliente. Após a autorização, a conta será vinculada automaticamente à empresa <strong className="text-white/80">{company.name}</strong>.
                             O link expira em <strong className="text-ecf-yellow">7 dias</strong>.
                         </p>
+                        <p className="text-white/35 text-[12px] leading-relaxed flex items-start gap-1.5">
+                            <Info size={13} className="text-white/25 mt-0.5 shrink-0" />
+                            Ao abrir o link, o cliente é levado à tela oficial de permissões do Mercado Livre. Se ele já autorizou o app antes, o ML conecta direto sem exibir a tela novamente — isso é normal.
+                        </p>
                         <div className="flex gap-2">
                             <input
                                 readOnly
@@ -332,6 +349,10 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
     // Os KPIs financeiros 30d (revenue/acos/tacos/margin) já vêm agregados do
     // backend (CompanyController), então usa a MESMA grade do Adman.
     const isMlOnly = !company.adman_account_id && !!company.ml_token;
+
+    // Cust ID canônico = Seller ID (ml_user_id) do token OAuth; cai para
+    // ml_store_id quando ainda não há token. Identificador único da loja ML.
+    const custId = company.ml_token?.ml_user_id ?? company.ml_store_id;
 
     const completedMeetings = (company.meetings || []).filter(m => m.status === 'completed');
     const absences = completedMeetings.filter(m => !m.consultant_present || !m.mentor_present).length;
@@ -523,9 +544,11 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                     <Section icon={Building2} title="Dados da Empresa">
                         <InfoRow label="Analista" value={consultor?.name} />
                         <InfoRow label="Estrategista" value={estrategista?.name} />
-                        <InfoRow label="ID Conta Adman" value={company.adman_account_id} />
-                        <InfoRow label="ID Loja ML" value={company.ml_store_id} />
-                        <InfoRow label="ID Adman Store" value={company.adman_store_id} />
+                        {/* Identificador único da conta (Cust ID = Seller ID ML).
+                            Campos Adman legados só aparecem quando preenchidos. */}
+                        <InfoRow label="Cust ID (Seller ID ML)" value={custId} />
+                        {company.adman_account_id && <InfoRow label="ID Conta Adman" value={company.adman_account_id} />}
+                        {company.adman_store_id && <InfoRow label="ID Adman Store" value={company.adman_store_id} />}
                         {company.notes && (
                             <div className="mt-3 pt-3 border-t border-white/[0.04]">
                                 <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Observações</p>

@@ -128,7 +128,7 @@ function CompanyRow({ company, onDisconnect, onLinkGenerated }) {
                     {isConnected && token?.connected_at && (
                         <p className="text-white/30 text-[11px] mt-0.5">
                             Conectado em {fmtDate(token.connected_at)}
-                            {token.expires_at && ` · token expira ${fmtDate(token.expires_at)}`}
+                            {' · renovação automática'}
                         </p>
                     )}
                 </div>
