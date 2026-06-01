@@ -54,15 +54,18 @@ padrão de `button.jsx` size `sm`. A área de toque do botão "Iniciar Coleta" u
 ## Tipografia
 
 Idêntica ao padrão MLB existente — sem introdução de novos tamanhos.
+Escala fixa de **4 tamanhos** e **2 pesos**. Nenhum valor fora desta tabela é permitido.
 
 | Papel | Tamanho | Peso | Line Height | Classe Tailwind | Exemplo de uso |
 |-------|---------|------|-------------|-----------------|----------------|
-| Display / KPI | 24–28 px | extrabold (800) | 1.1 | `font-display font-extrabold text-2xl` | Contadores KPI do relatório |
+| Display / KPI e Título de página | 24 px | bold (700) | 1.2 | `font-display font-bold text-2xl` | Título "Inteligência de Anúncios"; contadores KPI do relatório |
 | Heading de seção | 20 px | bold (700) | 1.2 | `font-display font-bold text-xl` | "Ranking de Keywords", "Top Dúvidas" |
-| Título de página | 20–24 px | bold (700) | 1.2 | `font-display font-bold text-2xl` | "Inteligência de Anúncios" |
-| Body / rótulo | 13 px | regular (400) | 1.5 | `text-[13px]` | Descrições, textos de suporte |
-| Label uppercase | 11 px | semibold (600) | 1.4 | `text-[11px] font-semibold uppercase tracking-wide` | Rótulos de campo, cabeçalhos de coluna |
-| Mono / destaque | 13 px | bold (700) | 1.4 | `font-mono text-[13px] font-bold` | Keywords destacadas no ranking |
+| Body / rótulo / mono | 13 px | regular (400) | 1.5 | `text-[13px]` / `font-mono text-[13px]` | Descrições, textos de suporte, keywords destacadas no ranking |
+| Label uppercase | 11 px | bold (700) | 1.4 | `text-[11px] font-bold uppercase tracking-wide` | Rótulos de campo, cabeçalhos de coluna |
+
+> Pesos permitidos: `font-normal` (400) e `font-bold` (700) exclusivamente.
+> Tamanhos permitidos: 11 px, 13 px, 20 px, 24 px exclusivamente.
+> Classes proibidas nesta fase: `font-semibold`, `font-extrabold`, `font-medium`, `text-2xl` com peso diferente de `font-bold`.
 
 ---
 
@@ -116,8 +119,9 @@ Esta seção mapeia cada região da UI para os primitivos exatos a reutilizar.
 ### [1] Cabeçalho da página
 
 - `<h1 className="text-white font-display font-bold text-2xl">Inteligência de Anúncios</h1>`
-- `<p className="text-white/40 text-sm mt-0.5">Pesquise palavras-chave e veja o que os concorrentes top usam nos anúncios do Mercado Livre.</p>`
+- `<p className="text-white/40 text-[13px] mt-1">Pesquise palavras-chave e veja o que os concorrentes top usam nos anúncios do Mercado Livre.</p>`
 - Padrão idêntico a `Historico.jsx` linha 118–120.
+- Nota: `mt-1` (4 px) substitui `mt-0.5` (6 px — fora da grade de 4); `text-[13px]` substitui `text-sm` para consistência com a escala tipográfica desta fase.
 
 ### [2] Formulário de nova coleta
 
@@ -129,9 +133,9 @@ Campos:
 - **Condição (opcional)** — `<select>` nativo: "Qualquer", "Novo", "Usado"
 - **Botão "Iniciar Coleta"** — `<button className="h-10 px-6 rounded-xl bg-ecf-yellow text-black font-bold text-[13px] hover:bg-ecf-yellow-2 transition-colors disabled:opacity-50">`
 
-Labels de campo: `text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1`
+Labels de campo: `text-white/50 text-[11px] uppercase tracking-wide font-bold block mb-1`
 
-Tratamento de erro de validação: `<p className="text-red-400 text-xs mt-1">{erro}</p>` (padrão `Vendas.jsx` linha 140).
+Tratamento de erro de validação: `<p className="text-red-400 text-[13px] mt-1">{erro}</p>` (padrão `Vendas.jsx` linha 140).
 
 ### [3] Barra de progresso / status
 
@@ -140,7 +144,8 @@ Exibida somente quando `coleta.status === 'pendente' || coleta.status === 'rodan
 - Bloco `card-ecf rounded-2xl p-4 flex items-center gap-3` com borda `border-ecf-yellow/20`
 - Ícone spinner `<RefreshCw size={16} className="text-ecf-yellow animate-spin shrink-0" />`
 - Texto: `"Coleta em andamento — analisando {coleta.keyword}…"`
-- Componente `<Progress>` de `@/Components/ui/progress` com cor override: `className="h-1.5 [&>div]:bg-ecf-yellow"` — largura indeterminada (animar de 0→70 % durante `rodando`)
+- Componente `<Progress>` de `@/Components/ui/progress` com cor override: `className="h-2 [&>div]:bg-ecf-yellow"` — largura indeterminada (animar de 0→70 % durante `rodando`)
+- Nota: `h-2` (8 px) substitui `h-1.5` (6 px — fora da grade de 4).
 - Timeout frontend visível: se após 10 min ainda não concluiu, exibir `"A coleta está demorando mais do esperado. Verifique os logs ou tente novamente."`
 
 ### [4] Histórico de coletas
@@ -149,8 +154,9 @@ Listagem compacta em `card-ecf rounded-2xl` com `<table>` do shadcn (`@/Componen
 
 Colunas: Keyword | Categoria | Status | Duração | Data | Ação
 
+- **Coluna "Keyword" é o âncora visual da linha**: `font-bold` no valor; aplicar `truncate max-w-[200px]` (equivalente a `whitespace-nowrap overflow-hidden text-ellipsis`) para termos longos.
 - Cada linha tem badge de status usando `<Badge>` de `@/Components/ui/badge` com as classes de cor da seção de Cor acima
-- Coluna "Ação": link/botão `"Ver relatório"` — `text-ecf-yellow text-[12px] hover:underline`
+- Coluna "Ação": link/botão `"Ver relatório"` — `text-ecf-yellow text-[13px] hover:underline`
 - Coleta selecionada: linha destacada com `bg-ecf-yellow/5 border-l-2 border-ecf-yellow`
 
 Estado vazio da tabela: linha única com `text-white/30 text-[13px] text-center py-8`
@@ -161,28 +167,31 @@ Dividido em 3 seções, cada uma em `card-ecf rounded-2xl p-5`:
 
 #### 5a. Ranking de Keywords
 
-- Grid `grid grid-cols-1 gap-1.5`
+- Grid `grid grid-cols-1 gap-2`
+- Nota: `gap-2` (8 px) substitui `gap-1.5` (6 px — fora da grade de 4).
 - Cada entrada: `flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02]`
 - Posição: `text-white/30 text-[11px] font-mono w-6 text-right shrink-0`
-- Termo: `text-white text-[13px] font-medium flex-1 ml-2`
-- Badge "Tendência" (quando `eh_tendencia: true`): `inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-ecf-yellow/20 border border-ecf-yellow/40 text-ecf-yellow`
-- Frequência: `text-white/40 text-[12px] font-mono`
+- Termo: `text-white text-[13px] flex-1 ml-2`
+- Badge "Tendência" (quando `eh_tendencia: true`): `inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold bg-ecf-yellow/20 border border-ecf-yellow/40 text-ecf-yellow`
+- Nota: `py-1` (4 px) substitui `py-0.5` (2 px — fora da grade de 4); `font-bold` substitui `font-semibold`.
+- Frequência: `text-white/40 text-[13px] font-mono`
 - Top 1 frequência: texto `text-ecf-yellow font-bold`
 
 #### 5b. Top Dúvidas / Objeções
 
 - Lista com ícone `MessageSquare` (lucide) de cor `text-blue-400`
 - Cada item: `flex items-start gap-2 py-2 border-b border-white/[0.04]`
-- Tema: `text-white/80 text-[13px] font-semibold`
-- Exemplo de pergunta: `text-white/40 text-[12px] italic`
+- Tema: `text-white/80 text-[13px] font-bold`
+- Exemplo de pergunta: `text-white/40 text-[13px] italic`
 - Frequência: badge `text-[11px] text-white/40`
 - Se `questions_disponivel === false`: bloco de aviso `bg-blue-500/5 border border-blue-500/20 rounded-xl p-3` com `<Info size={14} className="text-blue-400" />` e texto de fallback (ver Copywriting)
 
 #### 5c. Recomendação Heurística
 
 - Aviso proeminente no topo da seção: `bg-ecf-yellow/5 border border-ecf-yellow/20 rounded-xl p-3 flex items-start gap-2` com ícone `Lightbulb` e texto de disclaimer (ver Copywriting)
-- Título sugerido: `<p className="font-mono text-white text-[14px] font-bold bg-white/[0.04] rounded-xl px-4 py-3">`
-- Lista "Palavras-chave para incluir": chips horizontais — `inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white/[0.06] border border-white/[0.10] text-white/70`
+- Título sugerido: `<p className="font-mono text-white text-[13px] font-bold bg-white/[0.04] rounded-xl px-4 py-3">`
+- Lista "Palavras-chave para incluir": chips horizontais — `inline-flex items-center px-3 py-1 rounded-full text-[11px] font-bold bg-white/[0.06] border border-white/[0.10] text-white/70`
+- Nota: `px-3` (12 px) substitui `px-2.5` (10 px — fora da grade de 4); `py-1` (4 px) substitui `py-0.5` (2 px — fora da grade de 4); `font-bold` substitui `font-semibold`.
 - Lista "Pontos a antecipar": ícone `CheckCircle2` verde + texto `text-white/70 text-[13px]`
 
 ---
