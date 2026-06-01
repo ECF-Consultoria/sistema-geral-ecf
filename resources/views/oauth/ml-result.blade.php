@@ -50,7 +50,7 @@
         @if($success)
             <div class="icon">✅</div>
             <h1>Conexão realizada com sucesso!</h1>
-            <p>A conta do Mercado Livre foi vinculada à empresa <strong>{{ $company_name }}</strong>.</p>
+            <p>A conta do Mercado Livre foi vinculada com sucesso ao sistema <strong>ECF Consultoria</strong>.</p>
 
             @if($corrected ?? false)
                 <div class="warn">
