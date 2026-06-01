@@ -275,7 +275,14 @@ class DashboardController extends Controller
             'detratores' => $npsResponses->filter(fn($s) => ($s->response?->score_overall ?? 0) < 7)->count(),
         ];
 
-        $users = User::where('active', true)->where('role', '!=', 'admin')->get();
+        // Ranking "Analistas e Mentores" + filtros: só time de consultoria.
+        // Antes era `role != admin`, que deixava publicadores (role=consultor +
+        // publication_role=publicador) vazarem para o ranking. Mesma regra da
+        // página Desempenho (PerformanceController::index).
+        $users = User::where('active', true)
+            ->whereIn('role', ['consultor', 'mentor'])
+            ->whereNull('publication_role')
+            ->get();
         $allCompanies = Company::where('active', true)->get(['id', 'name']);
 
         $ranking = $this->buildRanking($users, $since);
