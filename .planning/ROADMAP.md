@@ -54,6 +54,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [ ] **Phase 16: Adequação à cadência D-1 da API Adman** - Reduz chamadas de ~2k/h para ~168/dia alinhando schedule, caches e UX ao fato de que a API é D-1 (atualiza 1× às 10h BRT). Cascata de jobs reorganizada para 11h-12h30. Botão "Sincronizar agora" removido. Botão "Reanalisar" do card Sugadores bloqueia quando já houve sync no dia. Throttle ≥6s para respeitar limite de 10 req/min documentado pela Adman.
 
+### Milestone v5.0 — Inteligência de Anúncios ML
+
+- [ ] **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)** - Dada uma keyword, minera keywords de concorrentes via API oficial do ML (app token), agrupa dúvidas das perguntas dos clientes e gera recomendação heurística de título/descrição — assíncrono, com feedback de progresso e persistência para histórico.
+
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
@@ -431,3 +435,37 @@ v4.0 phases execute in order: 13 → 14
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
 | 16. Adequação à cadência D-1 da Adman | 0/? | Planning | - |
+| 17. Coleta de Dados ML (Fase 1 — sem IA) | 0/5 | Planning | - |
+
+### Phase 17: Coleta de Dados ML (Fase 1 — sem IA)
+
+**Goal:** Dada uma palavra-chave de produto, o sistema coleta dados via API oficial do Mercado Livre (app token client_credentials), minera estatisticamente as keywords mais usadas pelos concorrentes top, agrupa as principais dúvidas das perguntas dos clientes e gera uma recomendação heurística de título/descrição para o nosso anúncio — assíncrono, com feedback de progresso e persistência para histórico/reuso. Módulo Publicação/MLB; acesso por `publication_role`.
+**Requirements**: D-01..D-07 (decisões travadas em 17-CONTEXT.md — Phase 17 não possui REQ-IDs mapeados)
+**Depends on:** Módulo Publicação/MLB existente (`MlbController`) + integração ML OAuth/`MercadoLivreService` (NÃO depende da Phase 16)
+**Plans:** 5 plans
+
+**Success Criteria:**
+- Dada uma keyword, retorna ranking de keywords dos concorrentes + top dúvidas/objeções das perguntas + recomendação heurística de título/descrição
+- Coleta roda assíncrona (Job, queue `database`) com feedback de progresso (pendente/rodando/concluído/erro) e logging tag `[MLB Coleta]` com id+nome
+- Falha de 1 item não interrompe o lote; erros logados e visíveis na UI
+- Resultado persistido (migration + models) para histórico e reuso
+- Página React em `resources/js/Pages/Mlb/` com design system `ecf-*` (dark, `DevCard`, `cn()`, shadcn/Radix), sem state global
+
+**Decisões travadas (probe 2026-06-01 — ver memória `project_ml_api_search_restriction`):**
+- Fonte via APP TOKEN (`client_credentials`), não user token. `/sites/MLB/search` = 403 (bloqueada). Endpoints OK: `/products/search?q=`, `/highlights/MLB/category/{cat}`, `/trends/MLB[/{cat}]`, `/sites/MLB/domain_discovery/search?q=`, `/items/{id}`, `/items/{id}/description`, `/questions/search?item=`. Reviews best-effort, cai p/ só perguntas.
+- Volume: top 10 produtos; análise a fundo nos 5 melhores.
+- IA FORA da Fase 1 (mineração estatística; recomendação heurística). Recomendação por IA = Fase 2.
+- Restrições: só API oficial (sem scraping/ToS); não persistir dados pessoais além do necessário; `sold_quantity` pode vir oculto — tratar graciosamente.
+
+Plans:
+
+**Wave 1** *(paralelo — sem overlap de arquivos)*
+- [ ] 17-01-PLAN.md — MlKeywordMinerService (mineração estatística pt-BR + recomendação heurística, PHP puro) + testes unitários (D-04, D-05)
+- [ ] 17-02-PLAN.md — Migration + model MlbColeta + MlbColetaJob (ciclo de status/failed) + teste do failed() (D-06)
+
+**Wave 2** *(bloqueado na Wave 1; 17-03 e 17-04 paralelos entre si)*
+- [ ] 17-03-PLAN.md — MlColetaService (app token cacheado + pipeline ML + 429/fallback questions) + testes (D-01, D-02, D-03, D-04, D-05)
+- [ ] 17-04-PLAN.md — Permission mlb.coleta + actions MlbController + rotas mlb.coleta.* + suíte Feature 403/store/status (D-06, D-07)
+
+**Wave 3** *(bloqueado na Wave 2)*
+- [ ] 17-05-PLAN.md — Página Mlb/Coleta.jsx (formulário + polling + relatório) + nav AppLayout + npm run build + checkpoint humano (D-06, D-07)
