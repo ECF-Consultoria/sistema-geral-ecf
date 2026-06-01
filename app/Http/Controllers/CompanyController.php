@@ -161,7 +161,28 @@ class CompanyController extends Controller
                 $adInvestment30d = $accountMetrics['investment'];
             }
         } elseif (! $company->adman_account_id && $company->mlToken) {
-            // Empresa ML-only: KPIs calculados no frontend a partir de ml_metrics
+            // Empresa ML-only: reproduz os KPIs da Adman agregando as métricas
+            // já gravadas pelo sync direto do Mercado Livre (adman_metrics).
+            //
+            // ACOS/TACOS são RECOMPUTADOS sobre as somas do período (não média
+            // dos valores diários) — assim batem com a definição da Adman.
+            // ad_revenue não tem coluna própria; vem do raw_data.ads do sync ML.
+            $cutoff = now()->subDays(30)->startOfDay();
+            $slice  = $company->admanMetrics->filter(
+                fn($m) => $m->reference_date && $m->reference_date->gte($cutoff)
+            );
+
+            $sumRevenue   = (float) $slice->sum(fn($m) => (float) $m->revenue);
+            $sumAdSpend   = (float) $slice->sum(fn($m) => (float) $m->ad_spend);
+            $sumAdRevenue = (float) $slice->sum(fn($m) => (float) ($m->raw_data['ads']['ad_revenue'] ?? 0));
+
+            $revenue30d      = $sumRevenue;
+            $adInvestment30d = $sumAdSpend > 0 ? $sumAdSpend : null;
+            $tacos30d        = $sumRevenue   > 0 ? round(($sumAdSpend / $sumRevenue)   * 100, 2) : null;
+            $acos30d         = $sumAdRevenue > 0 ? round(($sumAdSpend / $sumAdRevenue) * 100, 2) : null;
+            // Margem % exige CMV + impostos — indisponível na API ML. Mantém null;
+            // a UI exibe "—" com aviso para empresas ML-only.
+            $margin30d       = null;
         }
 
         // Catálogo de serviços ativos para popular o <Select> do modal "Adicionar contrato"

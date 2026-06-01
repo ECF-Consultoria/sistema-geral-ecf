@@ -6,7 +6,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw, Info } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useState, useMemo } from 'react';
@@ -328,8 +328,10 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
     const consultor = company.consultor?.[0];
     const estrategista = company.estrategista?.[0];
     const latestMetric = company.adman_metrics?.[0];
+    // ML-only: empresa sem Adman, integrada direto à API do Mercado Livre.
+    // Os KPIs financeiros 30d (revenue/acos/tacos/margin) já vêm agregados do
+    // backend (CompanyController), então usa a MESMA grade do Adman.
     const isMlOnly = !company.adman_account_id && !!company.ml_token;
-    const kpi30    = isMlOnly ? mlKpis(company.ml_metrics ?? [], 30) : null;
 
     const completedMeetings = (company.meetings || []).filter(m => m.status === 'completed');
     const absences = completedMeetings.filter(m => !m.consultant_present || !m.mentor_present).length;
@@ -474,35 +476,33 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                     </div>
                 </div>
 
-                {/* KPIs financeiros — Adman ou ML conforme tipo da empresa */}
-                {isMlOnly ? (
-                    <div className="grid grid-cols-3 gap-3">
-                        {[
-                            { label: 'Faturamento (30d)', value: kpi30.revenue > 0 ? formatCurrency(kpi30.revenue) : '—', color: 'text-blue-400' },
-                            { label: 'Ad Spend (30d)',    value: kpi30.adSpend > 0 ? formatCurrency(kpi30.adSpend) : '—', color: 'text-white/60' },
-                            { label: 'TACOS (30d)',       value: kpi30.tacos != null ? formatPercent(kpi30.tacos) : '—', color: 'text-ecf-yellow' },
-                        ].map(k => (
-                            <div key={k.label} className="card-ecf rounded-2xl p-4">
-                                <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">{k.label}</p>
-                                <p className={cn('font-display font-extrabold text-2xl mt-1', k.color)}>{k.value}</p>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                        {[
-                            { label: 'Faturamento (30d)', value: company.revenue_30d ? formatCurrency(company.revenue_30d) : '—', color: 'text-blue-400' },
-                            { label: 'ACOS (30d)', value: (company.acos_30d ?? null) !== null ? formatPercent(company.acos_30d) : '—', color: 'text-orange-400' },
-                            { label: 'TACOS (30d)', value: (company.tacos_30d ?? null) !== null ? formatPercent(company.tacos_30d) : '—', color: 'text-ecf-yellow' },
-                            { label: 'Margem % (30d)', value: (company.margin_pct_30d ?? null) !== null ? formatPercent(company.margin_pct_30d) : '—', color: 'text-emerald-400' },
-                        ].map(k => (
-                            <div key={k.label} className="card-ecf rounded-2xl p-4">
-                                <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">{k.label}</p>
-                                <p className={cn('font-display font-extrabold text-2xl mt-1', k.color)}>{k.value}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
+                {/* KPIs financeiros — mesma grade para Adman e ML (ML-only é
+                    agregado no backend a partir da API do Mercado Livre). */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                        { label: 'Faturamento (30d)', value: company.revenue_30d ? formatCurrency(company.revenue_30d) : '—', color: 'text-blue-400' },
+                        { label: 'ACOS (30d)', value: (company.acos_30d ?? null) !== null ? formatPercent(company.acos_30d) : '—', color: 'text-orange-400' },
+                        { label: 'TACOS (30d)', value: (company.tacos_30d ?? null) !== null ? formatPercent(company.tacos_30d) : '—', color: 'text-ecf-yellow' },
+                        // Margem % depende de CMV/impostos, que a API ML não fornece —
+                        // p/ empresa ML-only mostra "—" com aviso explicativo.
+                        {
+                            label: 'Margem % (30d)',
+                            value: (company.margin_pct_30d ?? null) !== null ? formatPercent(company.margin_pct_30d) : '—',
+                            color: 'text-emerald-400',
+                            hint: (company.margin_pct_30d ?? null) === null && isMlOnly
+                                ? 'Requer CMV — indisponível na API do Mercado Livre'
+                                : null,
+                        },
+                    ].map(k => (
+                        <div key={k.label} className="card-ecf rounded-2xl p-4" title={k.hint || undefined}>
+                            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide flex items-center gap-1">
+                                {k.label}
+                                {k.hint && <Info size={11} className="text-white/30 shrink-0" />}
+                            </p>
+                            <p className={cn('font-display font-extrabold text-2xl mt-1', k.color)}>{k.value}</p>
+                        </div>
+                    ))}
+                </div>
 
                 {/* KPIs operacionais — linha secundária, menor */}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
