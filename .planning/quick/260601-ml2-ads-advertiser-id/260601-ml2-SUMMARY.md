@@ -51,6 +51,19 @@ campanha "Lançamento" cost=R$2,89, total_amount=R$35,90, acos=8,05%.
 - Pós-deploy: re-sincronizar histórico (30d) das empresas ML para popular o
   `ad_spend`/`ad_revenue` retroativo: `php artisan ml:sync --company=ID --from=… --to=…`.
 
+## Edge case (commit fe83661)
+Advertiser que existe mas não tem campanhas retorna `404
+advertiser_campaigns_not_found` — estava quebrando o sync inteiro do dia
+(MG Store L / advertiser 404656, 30 falhas). `fetchAdsSummary`/`fetchCampaigns`
+agora tratam esse 404 (+ user_not_authorized) via `isNoAdsError()` → zeros/vazio.
+
+## Resultado verificado em produção (30d, após deploy + backfill)
+| Empresa | Faturamento | Invest.Ads | ACOS | TACOS |
+|---------|-------------|-----------|------|-------|
+| Empresa Teste Felipe (298) | R$ 2.307.414 | R$ 68.595,80 | 4,61% | 2,97% |
+| Rei do Mix (296) | R$ 229,40 | R$ 2,89 | 8,05% | 1,26% |
+| MG Store L (294) | — | — | — | — (0 pedidos/0 ads no período) |
+
 ## Follow-up
-- Backfill 30d das empresas ML conectadas após deploy.
 - `fetchAdsItems` (sugadores ML) usa advertiser_id errado — corrigir se/quando ativar.
+- NPS/Absenteísmo dependem de reuniões e pesquisas NPS cadastradas (CRM), não do ML.
