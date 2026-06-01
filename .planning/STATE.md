@@ -211,6 +211,7 @@ None.
 | 260601-fm3 | KPIs Adman (Faturamento/ACOS/TACOS/Margem%) para empresas ML-only via API do Mercado Livre | 2026-06-01 | a2e8237 | [260601-fm3-kpis-adman-via-ml](.planning/quick/260601-fm3-kpis-adman-via-ml/) |
 | 260601-ml1 | Resiliência OAuth ML: corrige revogação por erro transitório, status amigável, Cust ID único | 2026-06-01 | 8d21fed | [260601-ml1-oauth-resiliencia](.planning/quick/260601-ml1-oauth-resiliencia/) |
 | 260601-ml2 | Mercado Ads: advertiser_id correto + aggregation_type CAMPAIGN + trata advertiser sem campanhas (404) — destrava ACOS/TACOS/Invest.Ads | 2026-06-01 | fe83661 | [260601-ml2-ads-advertiser-id](.planning/quick/260601-ml2-ads-advertiser-id/) |
+| 260601-ml3 | Cutover Adman → ML por empresa (token ML ativo assume); fim do conflito de sync; sugadores usa ID Adman | 2026-06-01 | c85b86f | [260601-ml3-cutover-adman-ml](.planning/quick/260601-ml3-cutover-adman-ml/) |
 
 ## Deferred Items
 
