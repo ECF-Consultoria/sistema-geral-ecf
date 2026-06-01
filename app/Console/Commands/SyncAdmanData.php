@@ -76,6 +76,11 @@ class SyncAdmanData extends Command
                 $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
                   ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
             })
+            // Cutover Adman → ML (Opção A): empresas com token ML ativo são
+            // sincronizadas só pelo ml:sync. Sem isso, adman:sync (11:00) e
+            // ml:sync (11:05) gravavam a MESMA linha adman_metrics e o ML
+            // sobrescrevia — gerando linhas mistas (revenue ML + margem Adman).
+            ->whereDoesntHave('mlToken', fn($q) => $q->where('status', 'active'))
             ->get();
 
         $total = $companies->count();

@@ -345,10 +345,10 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
     const consultor = company.consultor?.[0];
     const estrategista = company.estrategista?.[0];
     const latestMetric = company.adman_metrics?.[0];
-    // ML-only: empresa sem Adman, integrada direto à API do Mercado Livre.
-    // Os KPIs financeiros 30d (revenue/acos/tacos/margin) já vêm agregados do
-    // backend (CompanyController), então usa a MESMA grade do Adman.
-    const isMlOnly = !company.adman_account_id && !!company.ml_token;
+    // ML-driven: empresa com token Mercado Livre ATIVO — o backend serve os
+    // KPIs financeiros 30d (revenue/acos/tacos/margin) pelo caminho ML mesmo
+    // que ainda exista adman_account_id (cutover Adman → ML, Opção A).
+    const isMlDriven = company.ml_token?.status === 'active';
 
     // Cust ID canônico = Seller ID (ml_user_id) do token OAuth; cai para
     // ml_store_id quando ainda não há token. Identificador único da loja ML.
@@ -510,7 +510,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                             label: 'Margem % (30d)',
                             value: (company.margin_pct_30d ?? null) !== null ? formatPercent(company.margin_pct_30d) : '—',
                             color: 'text-emerald-400',
-                            hint: (company.margin_pct_30d ?? null) === null && isMlOnly
+                            hint: (company.margin_pct_30d ?? null) === null && isMlDriven
                                 ? 'Requer CMV — indisponível na API do Mercado Livre'
                                 : null,
                         },

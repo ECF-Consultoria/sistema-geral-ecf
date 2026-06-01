@@ -57,6 +57,21 @@ class Company extends Model
         return $custId !== '' ? $custId : null;
     }
 
+    /**
+     * Empresa "ML-driven": possui token Mercado Livre ativo.
+     *
+     * Cutover de migração Adman → ML (Opção A): quando true, o sistema usa o
+     * caminho ML (sync direto + KPIs agregados de adman_metrics) e PARA de
+     * chamar a Adman para esta empresa — mesmo que ela ainda tenha
+     * adman_account_id. Sem token ativo, segue 100% Adman como antes.
+     *
+     * Requer a relação mlToken carregada (eager) para evitar N+1.
+     */
+    public function getIsMlDrivenAttribute(): bool
+    {
+        return optional($this->mlToken)->status === 'active';
+    }
+
 
     /**
      * Converte uma coleção (ou array) de Servicos em label legível, separados por vírgula.

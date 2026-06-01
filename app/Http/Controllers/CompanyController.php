@@ -144,25 +144,12 @@ class CompanyController extends Controller
         $adInvestment30d = null;
 
         $custId = $company->cust_id;
-        if ($custId && $company->adman_account_id) {
-            // Empresa com Adman: busca via API
-            $revenue30d = (float) ($this->adman->fetchGrossBilling(
-                $custId, $dateFrom, $dateTo
-            ) ?? 0);
-
-            $accountMetrics = $this->adman->fetchAccountMetricsCached(
-                $custId, $dateFrom, $dateTo
-            );
-            if ($accountMetrics !== null) {
-                $acos30d         = $accountMetrics['acos'];
-                $tacos30d        = $accountMetrics['tacos'];
-                $margin30d       = $accountMetrics['percentage_margin'];
-                $liquidMargin30d = $accountMetrics['liquid_margin'];
-                $adInvestment30d = $accountMetrics['investment'];
-            }
-        } elseif (! $company->adman_account_id && $company->mlToken) {
-            // Empresa ML-only: reproduz os KPIs da Adman agregando as métricas
-            // já gravadas pelo sync direto do Mercado Livre (adman_metrics).
+        if ($company->is_ml_driven) {
+            // Cutover (Opção A): empresa com token ML ativo é servida pelo
+            // caminho ML — agrega as métricas já gravadas pelo sync direto do
+            // Mercado Livre (adman_metrics), mesmo que ainda tenha adman_account_id.
+            // O sistema NÃO chama a Adman para ela (o cust_id seria o Seller ID
+            // ML, que a Adman não reconhece).
             //
             // ACOS/TACOS são RECOMPUTADOS sobre as somas do período (não média
             // dos valores diários) — assim batem com a definição da Adman.
@@ -181,8 +168,24 @@ class CompanyController extends Controller
             $tacos30d        = $sumRevenue   > 0 ? round(($sumAdSpend / $sumRevenue)   * 100, 2) : null;
             $acos30d         = $sumAdRevenue > 0 ? round(($sumAdSpend / $sumAdRevenue) * 100, 2) : null;
             // Margem % exige CMV + impostos — indisponível na API ML. Mantém null;
-            // a UI exibe "—" com aviso para empresas ML-only.
+            // a UI exibe "—" com aviso para empresas ML-driven.
             $margin30d       = null;
+        } elseif ($custId && $company->adman_account_id) {
+            // Empresa Adman (sem token ML ativo): busca via API Adman
+            $revenue30d = (float) ($this->adman->fetchGrossBilling(
+                $custId, $dateFrom, $dateTo
+            ) ?? 0);
+
+            $accountMetrics = $this->adman->fetchAccountMetricsCached(
+                $custId, $dateFrom, $dateTo
+            );
+            if ($accountMetrics !== null) {
+                $acos30d         = $accountMetrics['acos'];
+                $tacos30d        = $accountMetrics['tacos'];
+                $margin30d       = $accountMetrics['percentage_margin'];
+                $liquidMargin30d = $accountMetrics['liquid_margin'];
+                $adInvestment30d = $accountMetrics['investment'];
+            }
         }
 
         // Catálogo de serviços ativos para popular o <Select> do modal "Adicionar contrato"
@@ -266,7 +269,7 @@ class CompanyController extends Controller
                     ] : null,
                 ])->values(),
                 // Métricas ML diárias (últimos 90 dias) — usadas para KPIs com filtro de período
-                'ml_metrics' => ! $company->adman_account_id && $company->mlToken
+                'ml_metrics' => $company->is_ml_driven
                     ? $company->admanMetrics->map(fn($m) => [
                         'date'     => $m->reference_date instanceof \Carbon\Carbon
                             ? $m->reference_date->toDateString()

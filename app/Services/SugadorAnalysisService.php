@@ -93,7 +93,12 @@ class SugadorAnalysisService
     public function analyzeCompany(Company $company, ?Carbon $referenceDate = null, bool $dryRun = false): array
     {
         $referenceDate = $referenceDate ?? now()->startOfDay();
-        $custId        = $company->ml_store_id ?: $company->adman_account_id;
+        // A detecção de sugadores consulta a API Adman ao vivo — preferir o ID
+        // Adman (adman_account_id). Antes usava ml_store_id ?: adman_account_id,
+        // o que, em empresa com vínculo ML, passava o Seller ID do ML para a
+        // Adman (que não o reconhece) e quebrava a análise. Detecção via ML é
+        // follow-up separado.
+        $custId        = $company->adman_account_id ?: $company->ml_store_id;
 
         $skip = function (string $reason) {
             return ['skipped' => true, 'reason' => $reason, 'campanhas' => 0, 'adgroups' => 0, 'detalhes' => []];
