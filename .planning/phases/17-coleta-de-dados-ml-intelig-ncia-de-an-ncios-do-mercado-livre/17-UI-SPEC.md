@@ -1,10 +1,11 @@
 ---
 phase: 17
 slug: coleta-de-dados-ml
-status: draft
+status: approved
 shadcn_initialized: true
 preset: projeto existente — sem preset novo
 created: 2026-06-01
+reviewed_at: 2026-06-01
 ---
 
 # Phase 17 — Contrato de Design de UI
