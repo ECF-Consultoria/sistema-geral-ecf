@@ -458,6 +458,18 @@ class MercadoLivreService
         return $cached ?: null;
     }
 
+    /**
+     * Erros da API de ads que significam "sem dados de publicidade" (não falha):
+     * advertiser sem campanhas (404) ou conta sem permissão de Mercado Ads (401).
+     */
+    private function isNoAdsError(\Throwable $e): bool
+    {
+        $msg = $e->getMessage();
+        return str_contains($msg, 'advertiser_campaigns_not_found')
+            || str_contains($msg, 'user_not_authorized')
+            || str_contains($msg, 'Acesso negado');
+    }
+
     public function fetchAdsSummary(Company $company, string $dateFrom, string $dateTo): array
     {
         $zero = [
@@ -472,19 +484,27 @@ class MercadoLivreService
 
         // aggregation_type aceita CAMPAIGN ou DAILY (não "total"); agregamos as
         // campanhas do período. Endpoint exige header Api-Version: 1.
-        $data = $this->get(
-            $company,
-            "/marketplace/advertising/" . self::SITE_ID . "/advertisers/{$advertiserId}/product_ads/campaigns/search",
-            [
-                'date_from'        => $dateFrom,
-                'date_to'          => $dateTo,
-                'aggregation_type' => 'CAMPAIGN',
-                'metrics'          => 'cost,clicks,prints,total_amount,direct_amount,indirect_amount,acos,roas',
-                'limit'            => 100,
-                'offset'           => 0,
-            ],
-            ['Api-Version' => '1'],
-        );
+        try {
+            $data = $this->get(
+                $company,
+                "/marketplace/advertising/" . self::SITE_ID . "/advertisers/{$advertiserId}/product_ads/campaigns/search",
+                [
+                    'date_from'        => $dateFrom,
+                    'date_to'          => $dateTo,
+                    'aggregation_type' => 'CAMPAIGN',
+                    'metrics'          => 'cost,clicks,prints,total_amount,direct_amount,indirect_amount,acos,roas',
+                    'limit'            => 100,
+                    'offset'           => 0,
+                ],
+                ['Api-Version' => '1'],
+            );
+        } catch (\RuntimeException $e) {
+            // Advertiser sem campanhas ou sem permissão → sem ads (não é erro)
+            if ($this->isNoAdsError($e)) {
+                return $zero;
+            }
+            throw $e;
+        }
 
         $campaigns = $data['results'] ?? [];
 
@@ -537,19 +557,27 @@ class MercadoLivreService
         $limit     = 50;
 
         do {
-            $data = $this->get(
-                $company,
-                "/marketplace/advertising/" . self::SITE_ID . "/advertisers/{$advertiserId}/product_ads/campaigns/search",
-                [
-                    'date_from'        => $dateFrom,
-                    'date_to'          => $dateTo,
-                    'aggregation_type' => 'CAMPAIGN',
-                    'metrics'          => 'cost,clicks,prints,total_amount,acos,roas',
-                    'limit'            => $limit,
-                    'offset'           => $offset,
-                ],
-                ['Api-Version' => '1'],
-            );
+            try {
+                $data = $this->get(
+                    $company,
+                    "/marketplace/advertising/" . self::SITE_ID . "/advertisers/{$advertiserId}/product_ads/campaigns/search",
+                    [
+                        'date_from'        => $dateFrom,
+                        'date_to'          => $dateTo,
+                        'aggregation_type' => 'CAMPAIGN',
+                        'metrics'          => 'cost,clicks,prints,total_amount,acos,roas',
+                        'limit'            => $limit,
+                        'offset'           => $offset,
+                    ],
+                    ['Api-Version' => '1'],
+                );
+            } catch (\RuntimeException $e) {
+                // Advertiser sem campanhas ou sem permissão → lista vazia (não é erro)
+                if ($this->isNoAdsError($e)) {
+                    break;
+                }
+                throw $e;
+            }
 
             $results    = $data['results'] ?? [];
             $campaigns  = array_merge($campaigns, $results);
