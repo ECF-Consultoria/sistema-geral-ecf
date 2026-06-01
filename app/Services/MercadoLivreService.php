@@ -268,7 +268,7 @@ class MercadoLivreService
      *
      * @throws \RuntimeException
      */
-    public function get(Company $company, string $endpoint, array $query = []): array
+    public function get(Company $company, string $endpoint, array $query = [], array $headers = []): array
     {
         $token = $this->ensureValidToken($company);
 
@@ -277,6 +277,7 @@ class MercadoLivreService
         }
 
         $response = Http::withToken($token->access_token)
+            ->withHeaders($headers)
             ->get(self::API_BASE . $endpoint, $query);
 
         if ($response->status() === 401) {
@@ -288,6 +289,7 @@ class MercadoLivreService
             try {
                 $token = $this->refreshToken($token);
                 $response = Http::withToken($token->access_token)
+                    ->withHeaders($headers)
                     ->get(self::API_BASE . $endpoint, $query);
             } catch (\RuntimeException) {
                 // refreshToken já marcou como revoked e logou
@@ -422,27 +424,66 @@ class MercadoLivreService
      *   sold_quantity: int,       // unidades vendidas via anúncios
      * }
      */
+    /**
+     * Resolve o advertiser_id do Mercado Ads (Product Ads) da empresa.
+     *
+     * CRÍTICO: o advertiser_id NÃO é o ml_user_id (Seller ID) — é um ID próprio
+     * do Mercado Ads (ex: seller 465723451 → advertiser 71098). Usar o ml_user_id
+     * resulta em 401 user_not_authorized e zera toda a publicidade. O ID correto
+     * vem de /advertising/advertisers?product_id=PADS (exige header Api-Version: 1).
+     *
+     * Cacheado 24h por empresa (o advertiser_id é estável). Retorna null quando a
+     * conta não possui Mercado Ads — nesse caso cacheia 0 como sentinela.
+     */
+    private function resolveAdvertiserId(Company $company): ?int
+    {
+        $cached = Cache::remember("ml_advertiser_{$company->id}", now()->addHours(24), function () use ($company) {
+            try {
+                $data = $this->get(
+                    $company,
+                    '/advertising/advertisers',
+                    ['product_id' => 'PADS'],
+                    ['Api-Version' => '1'],
+                );
+                $advertisers = $data['advertisers'] ?? [];
+                $id = $advertisers[0]['advertiser_id'] ?? null;
+
+                return $id !== null ? (int) $id : 0; // 0 = sem Mercado Ads (cacheável)
+            } catch (\Throwable $e) {
+                Log::info("[MercadoLivre] Sem advertiser PADS empresa {$company->id}: {$e->getMessage()}");
+                return 0;
+            }
+        });
+
+        return $cached ?: null;
+    }
+
     public function fetchAdsSummary(Company $company, string $dateFrom, string $dateTo): array
     {
-        $token = $this->ensureValidToken($company);
+        $zero = [
+            'ad_spend' => 0.0, 'ad_revenue' => 0.0, 'clicks' => 0, 'impressions' => 0,
+            'acos' => null, 'roas' => null, 'cpc' => null, 'sold_quantity' => 0,
+        ];
 
-        if (! $token) {
-            throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
+        $advertiserId = $this->resolveAdvertiserId($company);
+        if (! $advertiserId) {
+            return $zero; // conta sem Mercado Ads — publicidade zerada (não é erro)
         }
 
-        $advertiserId = $token->ml_user_id;
-
+        // aggregation_type aceita CAMPAIGN ou DAILY (não "total"); agregamos as
+        // campanhas do período. Endpoint exige header Api-Version: 1.
         $data = $this->get(
             $company,
             "/marketplace/advertising/" . self::SITE_ID . "/advertisers/{$advertiserId}/product_ads/campaigns/search",
             [
                 'date_from'        => $dateFrom,
                 'date_to'          => $dateTo,
-                'aggregation_type' => 'total',
-                'metrics'          => 'cost,clicks,prints,total_amount,direct_amount,indirect_amount,acos,roas,cpc,units_quantity',
+                'aggregation_type' => 'CAMPAIGN',
+                'metrics'          => 'cost,clicks,prints,total_amount,direct_amount,indirect_amount,acos,roas',
                 'limit'            => 100,
                 'offset'           => 0,
-            ]
+            ],
+            ['Api-Version' => '1'],
         );
 
         $campaigns = $data['results'] ?? [];
@@ -452,15 +493,13 @@ class MercadoLivreService
         $adRevenue  = 0.0;
         $clicks     = 0;
         $impressions = 0;
-        $soldQty    = 0;
 
         foreach ($campaigns as $c) {
             $m = $c['metrics'] ?? $c;
-            $adSpend    += (float) ($m['cost']           ?? 0);
-            $adRevenue  += (float) ($m['total_amount']   ?? 0);
-            $clicks     += (int)   ($m['clicks']         ?? 0);
-            $impressions += (int)  ($m['prints']         ?? 0);
-            $soldQty    += (int)   ($m['units_quantity'] ?? 0);
+            $adSpend    += (float) ($m['cost']         ?? 0);
+            $adRevenue  += (float) ($m['total_amount'] ?? 0);
+            $clicks     += (int)   ($m['clicks']       ?? 0);
+            $impressions += (int)  ($m['prints']       ?? 0);
         }
 
         $acos = $adRevenue > 0 ? round(($adSpend / $adRevenue) * 100, 4) : null;
@@ -475,7 +514,7 @@ class MercadoLivreService
             'acos'         => $acos,
             'roas'         => $roas,
             'cpc'          => $cpc,
-            'sold_quantity' => $soldQty,
+            'sold_quantity' => 0, // não disponível na agregação por campanha
         ];
     }
 
@@ -488,16 +527,14 @@ class MercadoLivreService
      */
     public function fetchCampaigns(Company $company, string $dateFrom, string $dateTo): array
     {
-        $token = $this->ensureValidToken($company);
-
-        if (! $token) {
-            throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
+        $advertiserId = $this->resolveAdvertiserId($company);
+        if (! $advertiserId) {
+            return []; // conta sem Mercado Ads
         }
 
-        $advertiserId = $token->ml_user_id;
-        $campaigns    = [];
-        $offset       = 0;
-        $limit        = 50;
+        $campaigns = [];
+        $offset    = 0;
+        $limit     = 50;
 
         do {
             $data = $this->get(
@@ -506,11 +543,12 @@ class MercadoLivreService
                 [
                     'date_from'        => $dateFrom,
                     'date_to'          => $dateTo,
-                    'aggregation_type' => 'total',
-                    'metrics'          => 'cost,clicks,prints,total_amount,acos,roas,cpc,units_quantity',
+                    'aggregation_type' => 'CAMPAIGN',
+                    'metrics'          => 'cost,clicks,prints,total_amount,acos,roas',
                     'limit'            => $limit,
                     'offset'           => $offset,
-                ]
+                ],
+                ['Api-Version' => '1'],
             );
 
             $results    = $data['results'] ?? [];

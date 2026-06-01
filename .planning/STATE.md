@@ -210,6 +210,7 @@ None.
 | 260526-jgj | Módulo Serviços (Frente A) + ajustes na lista de empresas — coexiste com legacy | 2026-05-26 | 855038e | [260526-jgj-modulo-servicos-frente-a](.planning/quick/260526-jgj-modulo-servicos-frente-a/) |
 | 260601-fm3 | KPIs Adman (Faturamento/ACOS/TACOS/Margem%) para empresas ML-only via API do Mercado Livre | 2026-06-01 | a2e8237 | [260601-fm3-kpis-adman-via-ml](.planning/quick/260601-fm3-kpis-adman-via-ml/) |
 | 260601-ml1 | Resiliência OAuth ML: corrige revogação por erro transitório, status amigável, Cust ID único | 2026-06-01 | 8d21fed | [260601-ml1-oauth-resiliencia](.planning/quick/260601-ml1-oauth-resiliencia/) |
+| 260601-ml2 | Mercado Ads: resolve advertiser_id correto + aggregation_type CAMPAIGN (destrava ACOS/TACOS/Invest.Ads) | 2026-06-01 | (pendente) | [260601-ml2-ads-advertiser-id](.planning/quick/260601-ml2-ads-advertiser-id/) |
 
 ## Deferred Items
 
