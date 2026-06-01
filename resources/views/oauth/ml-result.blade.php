@@ -52,11 +52,11 @@
             <h1>Conexão realizada com sucesso!</h1>
             <p>A conta do Mercado Livre foi vinculada à empresa <strong>{{ $company_name }}</strong>.</p>
 
-            @if($diverge ?? false)
+            @if($corrected ?? false)
                 <div class="warn">
-                    ⚠️ <strong>Atenção:</strong> o ID da conta autorizada (<code>{{ $received_id }}</code>)
-                    difere do ID cadastrado na empresa (<code>{{ $stored_id }}</code>).
-                    Um administrador precisará verificar a vinculação.
+                    ℹ️ <strong>ID atualizado:</strong> o identificador da loja foi ajustado
+                    automaticamente para o da conta autorizada (<code>{{ $received_id }}</code>),
+                    substituindo o valor anterior (<code>{{ $previous_id }}</code>).
                 </div>
             @endif
         @else

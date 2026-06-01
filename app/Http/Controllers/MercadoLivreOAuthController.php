@@ -111,26 +111,34 @@ class MercadoLivreOAuthController extends Controller
             $tokenData = $this->ml->exchangeCode($code, $codeVerifier);
             $mlToken   = $this->ml->saveToken($company, $tokenData);
 
-            // Preenche ml_store_id e limpa o link pendente
+            // ml_store_id = Seller ID (ml_user_id) da conta autorizada. Esse é o
+            // identificador canônico (Cust ID) — sobrescreve qualquer valor
+            // divergente digitado manualmente. A mudança é auditada pelo Spatie
+            // activitylog (ml_store_id está no logOnly da Company).
+            $previousStoreId = $company->ml_store_id;
             $company->update([
-                'ml_store_id'          => $company->ml_store_id ?? $mlToken->ml_user_id,
+                'ml_store_id'          => $mlToken->ml_user_id,
                 'ml_link_generated_at' => null,
                 'ml_link_url'          => null,
             ]);
 
-            // Divergência: ml_store_id existente difere do user_id retornado
-            $diverge = $company->ml_store_id && $company->ml_store_id !== $mlToken->ml_user_id;
+            // Corrigido: havia um ml_store_id diferente do user_id retornado
+            $corrected = $previousStoreId && $previousStoreId !== $mlToken->ml_user_id;
+
+            if ($corrected) {
+                Log::warning("[MercadoLivre] ml_store_id corrigido empresa {$company->id}: '{$previousStoreId}' → '{$mlToken->ml_user_id}' (Seller ID do OAuth)");
+            }
 
             Log::info("[MercadoLivre] Token salvo empresa {$company->id} ({$company->name})", [
                 'ml_user_id' => $mlToken->ml_user_id,
-                'diverge'    => $diverge,
+                'corrected'  => $corrected,
             ]);
 
             return view('oauth.ml-result', [
                 'success'      => true,
                 'company_name' => $company->name,
-                'diverge'      => $diverge,
-                'stored_id'    => $company->ml_store_id,
+                'corrected'    => $corrected,
+                'previous_id'  => $previousStoreId,
                 'received_id'  => $mlToken->ml_user_id,
             ]);
 

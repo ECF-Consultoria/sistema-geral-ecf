@@ -141,37 +141,99 @@ class MercadoLivreService
      * Renova o access_token via refresh_token.
      * ML também gera um novo refresh_token — ambos são substituídos.
      *
-     * @throws \RuntimeException se o refresh foi revogado
+     * RESILIÊNCIA (OAuth 2.0 do ML):
+     * - O refresh token é single-use (rotaciona a cada uso). Serializamos a
+     *   renovação por empresa com Cache::lock para evitar que dois processos
+     *   (cron das 08h + sync manual) usem o mesmo refresh_token em paralelo —
+     *   o segundo receberia invalid_grant e mataria a conexão.
+     * - Só revogamos quando o ML responde `invalid_grant` (refresh token
+     *   realmente inválido). Erros transitórios (5xx, 429, timeout, falha de
+     *   rede) NÃO revogam — lançam exceção retentável e mantêm status=active.
+     * - Um refresh bem-sucedido de um token `revoked` o reativa (recuperação
+     *   de revogações causadas por erro transitório no passado).
+     *
+     * @throws \RuntimeException em invalid_grant (reconectar) ou erro transitório (retry)
      */
     public function refreshToken(MlToken $token): MlToken
     {
-        $response = Http::asForm()->post(self::TOKEN_URL, [
-            'grant_type'    => 'refresh_token',
-            'client_id'     => config('services.mercadolivre.client_id'),
-            'client_secret' => config('services.mercadolivre.client_secret'),
-            'refresh_token' => $token->refresh_token,
-        ]);
+        $companyId = $token->company_id;
 
-        if (! $response->successful()) {
-            $token->update(['status' => 'revoked']);
-            Log::warning('[MercadoLivre] Refresh token revogado', [
-                'company_id' => $token->company_id,
-                'response'   => $response->body(),
-            ]);
-            throw new \RuntimeException('[MercadoLivre] Refresh token inválido — empresa precisa reconectar.');
+        try {
+            return Cache::lock("ml-refresh-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
+                // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
+                $token = $token->fresh() ?? $token;
+
+                // Já ativo, renovado há <30s e longe de expirar → reaproveita (evita rotação à toa).
+                if ($token->status === 'active'
+                    && ! $token->expiresSoon(5)
+                    && $token->last_refreshed_at?->gt(now()->subSeconds(30))) {
+                    return $token;
+                }
+
+                try {
+                    $response = Http::asForm()->post(self::TOKEN_URL, [
+                        'grant_type'    => 'refresh_token',
+                        'client_id'     => config('services.mercadolivre.client_id'),
+                        'client_secret' => config('services.mercadolivre.client_secret'),
+                        'refresh_token' => $token->refresh_token,
+                    ]);
+                } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                    // Falha de rede — transitória. NÃO revoga; deixa para a próxima tentativa.
+                    Log::warning("[MercadoLivre] Falha de conexão ao renovar token empresa {$companyId}: {$e->getMessage()}");
+                    throw new \RuntimeException('[MercadoLivre] Erro de conexão ao renovar token (transitório).');
+                }
+
+                if (! $response->successful()) {
+                    $body           = strtolower($response->body());
+                    $errorCode      = strtolower((string) ($response->json('error') ?? ''));
+                    $isInvalidGrant = $errorCode === 'invalid_grant' || str_contains($body, 'invalid_grant');
+
+                    if ($isInvalidGrant) {
+                        // Refresh token realmente inválido — só aqui revogamos.
+                        $token->update(['status' => 'revoked']);
+                        Log::warning('[MercadoLivre] Refresh token revogado (invalid_grant)', [
+                            'company_id' => $companyId,
+                            'response'   => $response->body(),
+                        ]);
+                        throw new \RuntimeException('[MercadoLivre] Refresh token inválido — empresa precisa reconectar.');
+                    }
+
+                    // Transitório (5xx, 429, etc): mantém a conexão ativa e deixa retentar.
+                    Log::warning("[MercadoLivre] Erro transitório ao renovar token empresa {$companyId} (HTTP {$response->status()}) — conexão mantida ativa", [
+                        'response' => $response->body(),
+                    ]);
+                    throw new \RuntimeException("[MercadoLivre] Erro {$response->status()} ao renovar token (transitório).");
+                }
+
+                $data = $response->json();
+
+                $reactivated = $token->status === 'revoked';
+
+                $token->update([
+                    'access_token'      => $data['access_token'],
+                    'refresh_token'     => $data['refresh_token'],
+                    'expires_at'        => now()->addSeconds($data['expires_in'] - 60),
+                    'last_refreshed_at' => now(),
+                    'status'            => 'active',
+                ]);
+
+                if ($reactivated) {
+                    Log::info("[MercadoLivre] Token reativado empresa {$companyId} (refresh bem-sucedido após revogação)");
+                }
+
+                return $token->fresh();
+            });
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            // Outro processo está renovando agora — reutiliza o que estiver no banco.
+            Log::info("[MercadoLivre] Refresh concorrente empresa {$companyId} — reutilizando token do banco.");
+            $fresh = $token->fresh();
+
+            if (! $fresh || $fresh->status !== 'active') {
+                throw new \RuntimeException('[MercadoLivre] Não foi possível renovar token (concorrência de lock).');
+            }
+
+            return $fresh;
         }
-
-        $data = $response->json();
-
-        $token->update([
-            'access_token'      => $data['access_token'],
-            'refresh_token'     => $data['refresh_token'],
-            'expires_at'        => now()->addSeconds($data['expires_in'] - 60),
-            'last_refreshed_at' => now(),
-            'status'            => 'active',
-        ]);
-
-        return $token->fresh();
     }
 
     // ═══ Token: helpers ═══════════════════════════════════════════════════════
