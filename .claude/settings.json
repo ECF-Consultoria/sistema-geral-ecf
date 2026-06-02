@@ -154,7 +154,15 @@
       "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/AdmanController.php)",
       "Bash(/c/xampp/php/php.exe -l routes/web.php)",
       "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/DashboardController.php)",
-      "Bash(\"C:\\\\xampp\\\\php\\\\php.exe\" artisan *)"
+      "Bash(\"C:\\\\xampp\\\\php\\\\php.exe\" artisan *)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code} | %{time_total}s\\\\n\" https://admin.ecfconsultoria.com.br)",
+      "Bash(curl -s -o /dev/null -w \"/ HTTP %{http_code}\\\\n\" https://admin.ecfconsultoria.com.br)",
+      "Bash(curl -s -o /dev/null -w \"/sugadores HTTP %{http_code}\\\\n\" https://admin.ecfconsultoria.com.br/sugadores)",
+      "Bash(curl -s -o /dev/null -w \"/mlb/coleta HTTP %{http_code}\\\\n\" https://admin.ecfconsultoria.com.br/mlb/coleta)",
+      "Bash(curl -s -o /dev/null -w \"/ml-oauth HTTP %{http_code}\\\\n\" https://admin.ecfconsultoria.com.br/ml-oauth)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && echo '===LOG INFO===' && ls -lh storage/logs/laravel.log && head -1 storage/logs/laravel.log | cut -c1-30 && echo '===429 BY DAY===' && grep 'rate limit \\(429\\)' storage/logs/laravel.log | awk -F'[][]' '{print substr\\(\\\\$2, 1, 10\\)}' | sort | uniq -c | tail -20 && echo '===429 LAST 6H===' && grep 'rate limit \\(429\\)' storage/logs/laravel.log | awk -F'[][]' '{print substr\\(\\\\$2, 1, 13\\)}' | sort | uniq -c | tail -8\")",
+      "Bash(\"C:/xampp/php/php.exe\" -l app/Http/Controllers/DashboardController.php)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }
