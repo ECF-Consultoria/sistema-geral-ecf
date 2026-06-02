@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\MlbColetaJob;
 use App\Models\Company;
+use App\Models\MlbColeta;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
@@ -11,6 +13,8 @@ use App\Models\Publicacao;
 use App\Models\User;
 use App\Services\AdmanService;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
@@ -2226,5 +2230,123 @@ class MlbController extends Controller
         }
 
         return $result;
+    }
+
+    // =========================================================================
+    // COLETA DE DADOS ML (Inteligência de Anúncios) — Phase 17
+    // =========================================================================
+
+    /**
+     * Lista todas as coletas (visibilidade compartilhada dentro do módulo Publicação —
+     * RESEARCH Q2: colaborativo é mais útil; admin vê tudo).
+     */
+    public function coletaIndex(Request $request): Response
+    {
+        $this->checkPubAccess('coleta');
+
+        return Inertia::render('Mlb/Coleta', [
+            'coletas' => $this->listarColetas(),
+            'coleta'  => null,
+        ]);
+    }
+
+    /**
+     * Valida a entrada, cria a coleta pendente e dispara o Job assíncrono (D-06).
+     */
+    public function coletaStore(Request $request): RedirectResponse
+    {
+        $this->checkPubAccess('coleta');
+
+        // Validação de entrada (T-17-11): keyword obrigatória; condição restrita ao enum ML
+        $request->validate([
+            'keyword'      => 'required|string|max:255',
+            'categoria_id' => 'nullable|string|max:50',
+            'faixa_preco'  => 'nullable|string|max:20',
+            'condicao'     => 'nullable|in:new,used',
+        ]);
+
+        $coleta = MlbColeta::create([
+            'user_id'      => auth()->id(),
+            'keyword'      => $request->keyword,
+            'categoria_id' => $request->categoria_id,
+            'faixa_preco'  => $request->faixa_preco,
+            'condicao'     => $request->condicao,
+            'status'       => MlbColeta::STATUS_PENDENTE,
+        ]);
+
+        MlbColetaJob::dispatch($coleta->id);
+
+        return redirect()->route('mlb.coleta.show', $coleta->id);
+    }
+
+    /**
+     * Renderiza o relatório de uma coleta específica + a lista de histórico.
+     */
+    public function coletaShow(Request $request, int $id): Response
+    {
+        $this->checkPubAccess('coleta');
+
+        $coleta = MlbColeta::findOrFail($id);
+
+        return Inertia::render('Mlb/Coleta', [
+            'coletas' => $this->listarColetas(),
+            'coleta'  => [
+                'id'            => $coleta->id,
+                'keyword'       => $coleta->keyword,
+                'categoria_id'  => $coleta->categoria_id,
+                'status'        => $coleta->status,
+                'resultado'     => $coleta->resultado,
+                'erro_mensagem' => $coleta->erro_mensagem,
+                'created_at'    => $coleta->created_at?->format('d/m/Y H:i'),
+            ],
+        ]);
+    }
+
+    /**
+     * Endpoint JSON de status para o polling do frontend.
+     * Pitfall 5: status='rodando' por mais de 10 min é tratado como timeout/erro.
+     */
+    public function coletaStatus(int $id): JsonResponse
+    {
+        $this->checkPubAccess('coleta');
+
+        $coleta = MlbColeta::findOrFail($id);
+
+        $timedOut = $coleta->status === MlbColeta::STATUS_RODANDO
+            && $coleta->started_at
+            && $coleta->started_at->lt(now()->subMinutes(10));
+
+        return response()->json([
+            'status' => $timedOut ? MlbColeta::STATUS_ERRO : $coleta->status,
+        ]);
+    }
+
+    /**
+     * Helper: lista de coletas mapeada para a UI (compartilhada entre index e show).
+     */
+    private function listarColetas(): Collection
+    {
+        return MlbColeta::latest()->get()->map(fn ($c) => [
+            'id'           => $c->id,
+            'keyword'      => $c->keyword,
+            'categoria_id' => $c->categoria_id,
+            'status'       => $c->status,
+            'created_at'   => $c->created_at?->format('d/m/Y H:i'),
+            'duracao'      => $this->duracaoColeta($c),
+        ]);
+    }
+
+    /**
+     * Helper: duração legível da coleta (finished - started), ou null se incompleta.
+     */
+    private function duracaoColeta(MlbColeta $c): ?string
+    {
+        if (! $c->started_at || ! $c->finished_at) {
+            return null;
+        }
+
+        $seg = (int) abs($c->finished_at->diffInSeconds($c->started_at));
+
+        return $seg < 60 ? "{$seg}s" : intdiv($seg, 60) . 'min ' . ($seg % 60) . 's';
     }
 }

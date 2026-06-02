@@ -54,6 +54,8 @@ class Permissions
     public const MLB_EMPRESAS              = 'mlb.empresas';
     public const MLB_IMPLEMENTACAO         = 'mlb.implementacao';
     public const MLB_METAS                 = 'mlb.metas';
+    /** Inteligência de anúncios MLB — coleta e mineração de keywords de concorrentes. */
+    public const MLB_COLETA                = 'mlb.coleta';
 
     public const ADMIN_EMPRESAS            = 'admin.empresas';
     public const ADMIN_RELATORIO           = 'admin.relatorio';
@@ -127,6 +129,7 @@ class Permissions
                 ['key' => self::MLB_EMPRESAS,      'label' => 'Pub · Empresas',       'description' => 'Empresas com módulo Publicação ativo'],
                 ['key' => self::MLB_IMPLEMENTACAO, 'label' => 'Pub · Implementação',  'description' => 'Onboarding de novas empresas'],
                 ['key' => self::MLB_METAS,         'label' => 'Pub · Metas',          'description' => 'Configuração de metas de publicação'],
+                ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
             ],
             'Administrativo' => [
                 ['key' => self::ADMIN_EMPRESAS,    'label' => 'Adm · Empresas',    'description' => 'Cadastro administrativo de empresas'],

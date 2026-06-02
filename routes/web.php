@@ -279,6 +279,12 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/metas',          [MlbController::class, 'storeMeta'])->name('metas.store');
     Route::delete('/metas/{id}',   [MlbController::class, 'destroyMeta'])->name('metas.destroy');
 
+    // Coleta de dados ML (inteligência de anúncios) — Phase 17
+    Route::get('/coleta',             [MlbController::class, 'coletaIndex'])->name('coleta.index');
+    Route::post('/coleta',            [MlbController::class, 'coletaStore'])->name('coleta.store');
+    Route::get('/coleta/{id}',        [MlbController::class, 'coletaShow'])->name('coleta.show');
+    Route::get('/coleta/{id}/status', [MlbController::class, 'coletaStatus'])->name('coleta.status');
+
     // Implementação MLB (admin)
     Route::get('/implementacao/indicadores',                  [MlbImplementacaoController::class, 'indicadores'])->name('implementacao.indicadores');
     Route::get('/implementacao',                              [MlbImplementacaoController::class, 'index'])->name('implementacao.index');
