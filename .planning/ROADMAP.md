@@ -56,7 +56,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v5.0 — Inteligência de Anúncios ML
 
-- [ ] **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)** - Dada uma keyword, minera keywords de concorrentes via API oficial do ML (app token), agrupa dúvidas das perguntas dos clientes e gera recomendação heurística de título/descrição — assíncrono, com feedback de progresso e persistência para histórico.
+- [x] **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)** - Dada uma keyword, minera keywords de concorrentes via API oficial do ML (app token), agrupa dúvidas das perguntas dos clientes e gera recomendação heurística de título/descrição — assíncrono, com feedback de progresso e persistência para histórico. (completed 2026-06-02)
 
 ## Phase Details
 
@@ -435,14 +435,14 @@ v4.0 phases execute in order: 13 → 14
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
 | 16. Adequação à cadência D-1 da Adman | 0/? | Planning | - |
-| 17. Coleta de Dados ML (Fase 1 — sem IA) | 4/5 | In Progress|  |
+| 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete   | 2026-06-02 |
 
 ### Phase 17: Coleta de Dados ML (Fase 1 — sem IA)
 
 **Goal:** Dada uma palavra-chave de produto, o sistema coleta dados via API oficial do Mercado Livre (app token client_credentials), minera estatisticamente as keywords mais usadas pelos concorrentes top, agrupa as principais dúvidas das perguntas dos clientes e gera uma recomendação heurística de título/descrição para o nosso anúncio — assíncrono, com feedback de progresso e persistência para histórico/reuso. Módulo Publicação/MLB; acesso por `publication_role`.
 **Requirements**: D-01..D-07 (decisões travadas em 17-CONTEXT.md — Phase 17 não possui REQ-IDs mapeados)
 **Depends on:** Módulo Publicação/MLB existente (`MlbController`) + integração ML OAuth/`MercadoLivreService` (NÃO depende da Phase 16)
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 **Success Criteria:**
 - Dada uma keyword, retorna ranking de keywords dos concorrentes + top dúvidas/objeções das perguntas + recomendação heurística de título/descrição
@@ -468,4 +468,4 @@ Plans:
 - [x] 17-04-PLAN.md — Permission mlb.coleta + actions MlbController + rotas mlb.coleta.* + suíte Feature 403/store/status (D-06, D-07)
 
 **Wave 3** *(bloqueado na Wave 2)*
-- [ ] 17-05-PLAN.md — Página Mlb/Coleta.jsx (formulário + polling + relatório) + nav AppLayout + npm run build + checkpoint humano (D-06, D-07)
+- [x] 17-05-PLAN.md — Página Mlb/Coleta.jsx (formulário + polling + relatório) + nav AppLayout + npm run build + checkpoint humano (D-06, D-07)
