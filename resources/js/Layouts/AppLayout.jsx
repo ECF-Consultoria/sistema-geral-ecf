@@ -6,7 +6,7 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send, Link2
+    Code2, Crown, Shield, Send, Link2, Search
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -52,6 +52,8 @@ const NAV_ITEMS = [
     { label: 'Empresas',        routeName: 'mlb.empresas',              page: 'Mlb/Empresas',       icon: Store,              permission: 'mlb.empresas' },
     { label: 'Implementação',   routeName: 'mlb.implementacao.index',   page: 'Mlb/Implementacao',  icon: ListChecks,         permission: 'mlb.implementacao' },
     { label: 'Metas',           routeName: 'mlb.metas.index',           page: 'Mlb/Metas',          icon: SlidersHorizontal,  permission: 'mlb.metas' },
+    // Inteligência de anúncios MLB (coleta de keywords de concorrentes) — Phase 17
+    { label: 'Int. Anúncios',   routeName: 'mlb.coleta.index',          page: 'Mlb/Coleta',         icon: Search,             permission: 'mlb.coleta' },
     // ── Administrativo ──────────────────────────────────────────────────────
     { label: 'Empresas',   routeName: 'admin.empresas',   page: 'Admin/Empresas',   icon: Building2,    permission: 'admin.empresas',    adminSeparatorBefore: true },
     { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, permission: 'admin.relatorio' },
