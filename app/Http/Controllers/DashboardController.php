@@ -383,7 +383,15 @@ class DashboardController extends Controller
             'tacos_chart'    => $tacosChart,
             'nps_distribution' => $npsDistribution,
             'period'         => $period,
-            'filters'        => compact('companyFilter', 'consultorFilter', 'estrategistaFilter'),
+            // Phase 18 (W1-T1) — chaves em snake_case alinhadas com os query params lidos
+            // nas linhas 68-70 (mesma fonte de verdade). Antes usava compact() que produzia
+            // camelCase no Inertia e quebrava o spread `...filters` em Admin.jsx (Bug 2 do
+            // dia 2026-06-02: empresa sumia ao trocar período).
+            'filters'        => [
+                'company_id'      => $companyFilter,
+                'consultor_id'    => $consultorFilter,
+                'estrategista_id' => $estrategistaFilter,
+            ],
             'users'          => $users->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'role' => $u->role]),
             'companies_list' => $allCompanies,
             'ranking'         => $ranking->take(5)->values(),
