@@ -531,6 +531,9 @@ class DashboardController extends Controller
                 'tacos'    => $tacosByCompany[$c->id]  ?? $c->latestMetrics?->tacos,
                 'revenue'  => (float) ($revenueByCompany[$c->id] ?? 0),
                 'margin'   => $marginByCompany[$c->id] ?? $c->latestMetrics?->contribution_margin_pct,
+                // Phase 18 W5-T3 — flag persistida; frontend usa para badge
+                // "Cust ID Invalido" na lista de performance per empresa.
+                'cust_id_status' => $c->cust_id_status,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
             ]),

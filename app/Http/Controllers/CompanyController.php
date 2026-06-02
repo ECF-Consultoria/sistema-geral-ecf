@@ -24,8 +24,16 @@ class CompanyController extends Controller
      * mostra "Serviço" (badges dos contratos ativos). A lógica de cache foi
      * removida junto pra não deixar código órfão / não despachar jobs sem uso.
      */
-    public function index()
+    public function index(Request $request)
     {
+        // Phase 18 W5-T4 — Filtro opcional por cust_id_status. Aceita apenas
+        // valores do dominio da coluna ENUM; fora disso, ignora silenciosamente
+        // (no-op em when() — preserva comportamento anterior).
+        $custIdStatusFilter = $request->input('cust_id_status');
+        if (!in_array($custIdStatusFilter, ['ok', 'invalido', 'desconhecido', 'nao_aplicavel'], true)) {
+            $custIdStatusFilter = null;
+        }
+
         $companies = Company::with([
                 'consultor',
                 'estrategista',
@@ -33,6 +41,7 @@ class CompanyController extends Controller
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
                 'mlToken',
             ])
+            ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
             ->orderBy('name')
             ->get();
 
@@ -43,6 +52,9 @@ class CompanyController extends Controller
                 'segment'          => $c->segment,
                 'active'           => $c->active,
                 'status'           => $c->status,
+                // Phase 18 W5-T3 — flag persistida por dashboard:mark-custid-status.
+                // Frontend usa para badge "Cust ID Invalido" quando === 'invalido'.
+                'cust_id_status'   => $c->cust_id_status,
                 'notes'            => $c->notes,
                 'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id,
                 'adman_store_id'   => $c->adman_store_id,
@@ -110,6 +122,10 @@ class CompanyController extends Controller
             'users'              => $users,
             'estrategistas'      => $estrategistas,
             'empresas_pendentes' => $empresasPendentes,
+            // Phase 18 W5-T4 — Filtro snake_case; null se nao aplicado.
+            'filters'            => [
+                'cust_id_status' => $custIdStatusFilter,
+            ],
         ]);
     }
 

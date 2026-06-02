@@ -85,11 +85,13 @@ class SugadorController extends Controller
         $sugadores = $query->paginate(50)->withQueryString();
 
         // Empresas para o filtro: globais ou apenas da carteira
+        // Phase 18 W5-T3 — incluimos `cust_id_status` no SELECT para popular o
+        // badge "Cust ID Invalido" no CompanyCard sem fazer N+1 lookup.
         $companiesQuery = Company::where('active', true)->orderBy('name');
         if (!$hasGlobalView) {
             $companiesQuery->whereIn('id', $user->companies()->pluck('companies.id'));
         }
-        $companies = $companiesQuery->get(['id', 'name']);
+        $companies = $companiesQuery->get(['id', 'name', 'cust_id_status']);
 
         // Usuários para o filtro "Responsável" (admin only): apenas os que têm
         // ao menos 1 empresa em company_users — outros não fariam diferença no filtro.
@@ -175,6 +177,9 @@ class SugadorController extends Controller
                 'ultima_analise'  => $ultima,
                 'can_analyze'     => $canAnalyze,
                 'analisado_hoje'  => $companiesAnalisadasHoje->has($c->id),
+                // Phase 18 W5-T3 — flag preloaded em $companies->get(['id','name','cust_id_status']);
+                // sem N+1 porque ja vem na query unica acima.
+                'cust_id_status'  => (string) ($c->cust_id_status ?? 'desconhecido'),
             ];
         })
             // Ordenação: count_hoje DESC, total_pendentes DESC, nome ASC (case-insensitive).
