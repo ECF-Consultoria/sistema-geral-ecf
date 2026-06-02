@@ -26,6 +26,16 @@ class AdmanService
 
     private string $baseUrl;
     private string $apiKey;
+
+    /**
+     * Marketplace fallback transicional (Phase 18.5).
+     *
+     * DIVIDA: a propriedade NAO e mais lida em paths (todos os 8 endpoints
+     * + 9 wrappers de cache aceitam `string $marketplace = 'meli'` como
+     * argumento). Mantida como propriedade somente para inspecao via
+     * debug/tinker — pode ser removida apos a fase estabilizar e todos os
+     * callers passarem `$marketplace` explicitamente.
+     */
     private string $marketplace;
 
     public function __construct()
@@ -76,8 +86,12 @@ class AdmanService
         $date   = $date ?? now()->subDay()->toDateString();
         $custId = $company->ml_store_id ?: $company->adman_account_id;
 
+        // Phase 18.5: marketplace dinamico por empresa. Empresas Shopee/Amazon
+        // batem em endpoints diferentes (path /shopee/... e /amazon/...).
+        $marketplace = $company->marketplace ?? 'meli';
+
         try {
-            $performance = $this->fetchPerformance($custId, $date, $date);
+            $performance = $this->fetchPerformance($custId, $date, $date, 3, $marketplace);
             $summarized  = $performance['summarizedData'] ?? [];
             $items       = $performance['items'] ?? [];
 
@@ -141,7 +155,7 @@ class AdmanService
             ]);
 
             try {
-                $this->syncCampaigns($company, $custId, $date);
+                $this->syncCampaigns($company, $custId, $date, $marketplace);
             } catch (\Throwable $e) {
                 Log::warning("[Adman] Campanhas empresa {$company->id}: " . $e->getMessage());
             }
@@ -161,16 +175,16 @@ class AdmanService
         }
     }
 
-    public function syncCampaigns(Company $company, string $custId, string $date): void
+    public function syncCampaigns(Company $company, string $custId, string $date, string $marketplace = 'meli'): void
     {
-        $campaigns = $this->fetchCampaigns($custId);
+        $campaigns = $this->fetchCampaigns($custId, $marketplace);
 
         foreach ($campaigns as $campaign) {
             $campaignId = (string) ($campaign['campaignId'] ?? $campaign['id'] ?? null);
             if (!$campaignId) continue;
 
             try {
-                $cm = $this->fetchCampaignMetrics($custId, $campaignId, $date, $date);
+                $cm = $this->fetchCampaignMetrics($custId, $campaignId, $date, $date, $marketplace);
 
                 // A API pode retornar valores diretos ou dentro de um sub-objeto {value: X}
                 $val = fn($key) => is_array($cm[$key] ?? null)
@@ -202,14 +216,14 @@ class AdmanService
         }
     }
 
-    public function fetchPerformance(string $custId, string $dateFrom, string $dateTo, int $maxRetries = 3): array
+    public function fetchPerformance(string $custId, string $dateFrom, string $dateTo, int $maxRetries = 3, string $marketplace = 'meli'): array
     {
         $attempt = 0;
         while (true) {
             $response = Http::withHeaders($this->headers())
                 ->connectTimeout(15)
                 ->timeout(120)
-                ->get("{$this->baseUrl}/{$this->marketplace}/performance/{$custId}", [
+                ->get("{$this->baseUrl}/{$marketplace}/performance/{$custId}", [
                     'dateFrom' => $dateFrom,
                     'dateTo'   => $dateTo,
                 ]);
@@ -278,9 +292,12 @@ class AdmanService
      * TTL = 24h (1440min) — API Adman é D-1; chave inclui data atual em BRT
      * (via cacheDay()) para auto-invalidar ao virar o dia.
      */
-    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false): ?float
+    public function fetchGrossBilling(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false, string $marketplace = 'meli'): ?float
     {
-        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        // Phase 18.5: cache key inclui marketplace para evitar colisao entre
+        // marketplaces que por acaso compartilhem o mesmo custId. Entradas
+        // antigas (sem marketplace) ficam orfas e expiram naturalmente em 24h.
+        $cacheKey = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
 
         if (!$forceRefresh) {
             $cached = Cache::get($cacheKey);
@@ -293,7 +310,7 @@ class AdmanService
             // fetchPerformance retorna o JSON completo (com items[] grande).
             // unset+gc imediato libera a memória — necessário pra job batch
             // não acumular 50 responses na memória do worker.
-            $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo);
+            $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo, 3, $marketplace);
             $value = $data['summarizedData']['grossBilling']['value'] ?? null;
             unset($data);
             gc_collect_cycles();
@@ -326,10 +343,11 @@ class AdmanService
      *  - Cache hit com null (não deveria acontecer, mas seguro)
      * Use hasCachedEntry() pra distinguir "miss" de "erro" no controller.
      */
-    public function getCachedGrossBilling(string $custId, string $dateFrom, string $dateTo): ?float
+    public function getCachedGrossBilling(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): ?float
     {
-        // Chave inclui cacheDay() — leitura só "vê" o cache do dia atual em BRT.
-        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        // Chave inclui marketplace (Phase 18.5) + cacheDay() — leitura so "ve"
+        // o cache do dia atual em BRT, e nunca colide com outro marketplace.
+        $cacheKey = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         $value    = Cache::get($cacheKey);
         if ($value === null || $value === self::ERROR_SENTINEL) return null;
         return (float) $value;
@@ -342,10 +360,11 @@ class AdmanService
      *  - hasCachedEntry=true mas getCachedGrossBilling=null → erro cacheado
      *    → NÃO dispatch (já tentou recentemente, evita martelar)
      */
-    public function hasCachedEntry(string $custId, string $dateFrom, string $dateTo): bool
+    public function hasCachedEntry(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): bool
     {
-        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
-        $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        // Chave inclui marketplace (Phase 18.5) + cacheDay() — consulta so "ve"
+        // entradas do dia atual em BRT para o marketplace correto.
+        $cacheKey = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         return Cache::has($cacheKey);
     }
 
@@ -358,18 +377,23 @@ class AdmanService
      * @return array<string, array{value: ?float, hasEntry: bool}>
      *         Map [custId => ['value' => ?, 'hasEntry' => bool]]
      */
-    public function getCachedGrossBillingsMany(array $custIds, string $dateFrom, string $dateTo): array
+    public function getCachedGrossBillingsMany(array $custIds, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
         $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
         if (empty($custIds)) return [];
 
         // Mapeia custId → cacheKey e vice-versa pra recompor depois.
-        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
+        // Chave inclui marketplace (Phase 18.5) + cacheDay() — consulta so "ve"
+        // entradas do dia atual em BRT para o marketplace correto.
+        // Decisao: marketplace e UNICO por chamada (homogeneo). Callers com
+        // lista mista (meli+shopee+amazon) agrupam por marketplace e chamam
+        // 1x por marketplace antes de fazer merge — evita explodir a assinatura
+        // do batch em array<custId => marketplace>.
         $keysByCustId = [];
         $custIdsByKey = [];
         $day          = $this->cacheDay();
         foreach ($custIds as $custId) {
-            $key = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
+            $key = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
             $keysByCustId[$custId] = $key;
             $custIdsByKey[$key]    = $custId;
         }
@@ -423,9 +447,10 @@ class AdmanService
      * TTL = 24h (1440min) — API Adman é D-1; chave inclui data atual em BRT
      * (via cacheDay()) para auto-invalidar ao virar o dia.
      */
-    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false): ?array
+    public function fetchAccountMetricsCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false, string $marketplace = 'meli'): ?array
     {
-        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        // Phase 18.5: cache key inclui marketplace.
+        $cacheKey = "adman:account_metrics:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
 
         if (!$forceRefresh) {
             $cached = Cache::get($cacheKey);
@@ -435,7 +460,7 @@ class AdmanService
         }
 
         try {
-            $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo);
+            $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo, $marketplace);
 
             // A Adman embrulha cada métrica em {value, diff, prev} — extrai só o value.
             $val = fn(string $key): ?float => isset($data['metrics'][$key]['value'])
@@ -473,10 +498,10 @@ class AdmanService
      * Lê APENAS do cache. Mesma motivação de getCachedGrossBilling: chamadas
      * síncronas em controllers com N empresas estouram memória/rate limit.
      */
-    public function getCachedAccountMetrics(string $custId, string $dateFrom, string $dateTo): ?array
+    public function getCachedAccountMetrics(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): ?array
     {
-        // Chave inclui cacheDay() — leitura só "vê" o cache do dia atual em BRT.
-        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        // Chave inclui marketplace (Phase 18.5) + cacheDay().
+        $cacheKey = "adman:account_metrics:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         $value    = Cache::get($cacheKey);
         if ($value === null || $value === self::ERROR_SENTINEL) return null;
         return is_array($value) ? $value : null;
@@ -485,10 +510,10 @@ class AdmanService
     /**
      * True se existe QUALQUER entrada (valor real OU ERROR_SENTINEL).
      */
-    public function hasCachedAccountMetricsEntry(string $custId, string $dateFrom, string $dateTo): bool
+    public function hasCachedAccountMetricsEntry(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): bool
     {
-        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
-        $cacheKey = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        // Chave inclui marketplace (Phase 18.5) + cacheDay().
+        $cacheKey = "adman:account_metrics:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
         return Cache::has($cacheKey);
     }
 
@@ -498,16 +523,17 @@ class AdmanService
      * @param  array<string>  $custIds
      * @return array<string, array{value: ?array, hasEntry: bool}>
      */
-    public function getCachedAccountMetricsMany(array $custIds, string $dateFrom, string $dateTo): array
+    public function getCachedAccountMetricsMany(array $custIds, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
         $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
         if (empty($custIds)) return [];
 
-        // Chave inclui cacheDay() — consulta só "vê" entradas do dia atual em BRT.
+        // Chave inclui marketplace (Phase 18.5) + cacheDay(). Mesma decisao do
+        // getCachedGrossBillingsMany: marketplace unico por chamada.
         $keysByCustId = [];
         $day          = $this->cacheDay();
         foreach ($custIds as $custId) {
-            $keysByCustId[$custId] = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
+            $keysByCustId[$custId] = "adman:account_metrics:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
         }
 
         $raw = Cache::many(array_values($keysByCustId));
@@ -550,7 +576,7 @@ class AdmanService
      * @param  array<string>  $custIds  Adman account IDs
      * @return array<string, ?float>    Map [custId => grossBilling] (null em falha)
      */
-    public function fetchGrossBillingsBatch(array $custIds, string $dateFrom, string $dateTo, int $cacheMinutes = 1440): array
+    public function fetchGrossBillingsBatch(array $custIds, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, string $marketplace = 'meli'): array
     {
         $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
         $result  = [];
@@ -558,7 +584,8 @@ class AdmanService
         $day     = $this->cacheDay();
 
         foreach ($custIds as $custId) {
-            $cacheKey = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
+            // Phase 18.5: cache key inclui marketplace.
+            $cacheKey = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
             $cached   = Cache::get($cacheKey);
             if ($cached !== null) {
                 $result[$custId] = (float) $cached;
@@ -576,18 +603,18 @@ class AdmanService
             // para 429. Alinhado com RefreshGrossBillingCacheJob.
             if ($i > 0) usleep(7_000_000);
 
-            $value = $this->fetchGrossBilling($custId, $dateFrom, $dateTo, $cacheMinutes);
+            $value = $this->fetchGrossBilling($custId, $dateFrom, $dateTo, $cacheMinutes, false, $marketplace);
             $result[$custId] = $value;
         }
 
         return $result;
     }
 
-    public function fetchCampaigns(string $custId): array
+    public function fetchCampaigns(string $custId, string $marketplace = 'meli'): array
     {
         $response = Http::withHeaders($this->headers())
             ->timeout(30)
-            ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/campaigns");
+            ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/campaigns");
 
         if ($response->failed()) {
             throw new \RuntimeException("Adman campanhas erro {$response->status()} custId={$custId}");
@@ -597,11 +624,11 @@ class AdmanService
         return is_array($data) && isset($data[0]) ? $data : ($data['data'] ?? $data['campaigns'] ?? []);
     }
 
-    public function fetchCampaignMetrics(string $custId, string $campaignId, string $dateFrom, string $dateTo): array
+    public function fetchCampaignMetrics(string $custId, string $campaignId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
         $response = Http::withHeaders($this->headers())
             ->timeout(30)
-            ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/{$campaignId}/metrics", [
+            ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/{$campaignId}/metrics", [
                 'dateFrom' => $dateFrom,
                 'dateTo'   => $dateTo,
             ]);
@@ -635,11 +662,11 @@ class AdmanService
         return $results;
     }
 
-    public function fetchAccountMetrics(string $custId, string $dateFrom, string $dateTo): array
+    public function fetchAccountMetrics(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
         $response = Http::withHeaders($this->headers())
             ->timeout(30)
-            ->get("{$this->baseUrl}/{$this->marketplace}/accounts/{$custId}/metrics", [
+            ->get("{$this->baseUrl}/{$marketplace}/accounts/{$custId}/metrics", [
                 'dateFrom' => $dateFrom,
                 'dateTo'   => $dateTo,
             ]);
@@ -648,14 +675,14 @@ class AdmanService
         return $response->json() ?? [];
     }
 
-    public function listAccounts(?string $filter = null, int $page = 1): array
+    public function listAccounts(?string $filter = null, int $page = 1, string $marketplace = 'meli'): array
     {
         $params = ['page' => $page];
         if ($filter) $params['filter'] = $filter;
 
         $response = Http::withHeaders($this->headers())
             ->timeout(30)
-            ->get("{$this->baseUrl}/{$this->marketplace}/accounts", $params);
+            ->get("{$this->baseUrl}/{$marketplace}/accounts", $params);
 
         if ($response->failed()) throw new \RuntimeException("Adman accounts erro {$response->status()}");
         return $response->json() ?? [];
@@ -685,8 +712,10 @@ class AdmanService
         }
 
         // fetchGrossBilling já faz unset + gc após extrair o valor,
-        // evitando estouro de memória com a resposta completa da API
-        $grossBilling = $this->fetchGrossBilling($custId, $start, $end, cacheMinutes: 0);
+        // evitando estouro de memória com a resposta completa da API.
+        // Phase 18.5: passa marketplace do model (default 'meli' preservado).
+        $marketplace = $company->marketplace ?? 'meli';
+        $grossBilling = $this->fetchGrossBilling($custId, $start, $end, cacheMinutes: 0, marketplace: $marketplace);
 
         return CompanyMonthlyRevenue::updateOrCreate(
             ['company_id' => $company->id, 'year_month' => $yearMonth],
@@ -700,7 +729,7 @@ class AdmanService
      * Lista TODAS as campanhas de um custId, paginando até esgotar.
      * Cada item contém: campaignId, name, status, budget.
      */
-    public function fetchAllCampaigns(string $custId): array
+    public function fetchAllCampaigns(string $custId, string $marketplace = 'meli'): array
     {
         $all  = [];
         $page = 1;
@@ -708,7 +737,7 @@ class AdmanService
         do {
             $response = Http::withHeaders($this->headers())
                 ->timeout(30)
-                ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/campaigns", [
+                ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/campaigns", [
                     'page' => $page,
                 ]);
 
@@ -736,9 +765,9 @@ class AdmanService
      *
      * Cada item: ['id' => string, 'name' => string, 'status' => string|null]
      */
-    public function fetchSugadorCampaigns(string $custId): array
+    public function fetchSugadorCampaigns(string $custId, string $marketplace = 'meli'): array
     {
-        $campaigns = $this->fetchAllCampaigns($custId);
+        $campaigns = $this->fetchAllCampaigns($custId, $marketplace);
         $out = [];
 
         foreach ($campaigns as $c) {
@@ -791,9 +820,9 @@ class AdmanService
      *   'raw'             => array,        // payload bruto da Adman pra debug
      * ]
      */
-    public function fetchCampaignsRange(string $custId, string $dateFrom, string $dateTo): array
+    public function fetchCampaignsRange(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
     {
-        $campaigns = $this->fetchAllCampaigns($custId);
+        $campaigns = $this->fetchAllCampaigns($custId, $marketplace);
         $enriched  = [];
 
         foreach ($campaigns as $campaign) {
@@ -801,7 +830,7 @@ class AdmanService
             if ($campaignId === '') continue;
 
             try {
-                $cm  = $this->fetchCampaignMetrics($custId, $campaignId, $dateFrom, $dateTo);
+                $cm  = $this->fetchCampaignMetrics($custId, $campaignId, $dateFrom, $dateTo, $marketplace);
                 $val = fn($key) => is_array($cm[$key] ?? null)
                     ? ($cm[$key]['value'] ?? null)
                     : ($cm[$key] ?? null);
@@ -858,7 +887,7 @@ class AdmanService
      *   'raw'             => array,
      * ]
      */
-    public function fetchAdsMetrics(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50): array
+    public function fetchAdsMetrics(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, string $marketplace = 'meli'): array
     {
         // Adman cap: itemsPerPage > 50 retorna HTTP 400 ("itemsPerPage must be less than 50").
         $itemsPerPage = min($itemsPerPage, 50);
@@ -873,7 +902,7 @@ class AdmanService
             for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
                 $response = Http::withHeaders($this->headers())
                     ->timeout(60)
-                    ->get("{$this->baseUrl}/{$this->marketplace}/ads/{$custId}/adgroups/metrics", [
+                    ->get("{$this->baseUrl}/{$marketplace}/ads/{$custId}/adgroups/metrics", [
                         'dateFrom'     => $dateFrom,
                         'dateTo'       => $dateTo,
                         'page'         => $page,

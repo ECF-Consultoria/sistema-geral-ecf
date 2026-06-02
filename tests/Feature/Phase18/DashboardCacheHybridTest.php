@@ -61,14 +61,17 @@ class DashboardCacheHybridTest extends TestCase
     /**
      * Pre-popula cache para o range 30d (alinhado com $period === '30'
      * default). Replica EXATAMENTE a chave do AdmanService.
+     *
+     * Phase 18.5: chave passou a incluir {marketplace} entre o prefixo e o
+     * custId. Empresas criadas pelos testes usam o default 'meli'.
      */
-    private function semearCacheGross(string $custId, float $value): void
+    private function semearCacheGross(string $custId, float $value, string $marketplace = 'meli'): void
     {
         $dateFrom = now()->subDays(30)->toDateString();
         $dateTo   = now()->toDateString();
         $day      = now()->setTimezone(config('app.timezone'))->toDateString();
 
-        $key = "adman:gross_billing:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
+        $key = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
         Cache::put($key, $value, now()->addHours(24));
     }
 
@@ -76,13 +79,14 @@ class DashboardCacheHybridTest extends TestCase
      * Pre-popula tambem o account_metrics — necessario pra cards_exatos=true
      * (a flag exige accountCacheCompleto). Conteudo minimo: tacos/acos/margem.
      */
-    private function semearCacheAccount(string $custId, float $investment = 100.0): void
+    private function semearCacheAccount(string $custId, float $investment = 100.0, string $marketplace = 'meli'): void
     {
         $dateFrom = now()->subDays(30)->toDateString();
         $dateTo   = now()->toDateString();
         $day      = now()->setTimezone(config('app.timezone'))->toDateString();
 
-        $key = "adman:account_metrics:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
+        // Phase 18.5: chave passou a incluir {marketplace}.
+        $key = "adman:account_metrics:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
         Cache::put($key, [
             'investment'        => $investment,
             'acos'              => 10.0,
