@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/react';
-import { Activity, AlertTriangle, Check, Code2, Copy, ExternalLink, FileText, ListChecks, Puzzle, RefreshCw } from 'lucide-react';
+import { Activity, AlertTriangle, Check, Code2, Copy, ExternalLink, FileText, Puzzle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
 
 function CopyBtn({ text }) {
@@ -110,7 +110,6 @@ export default function Desenvolvimento({ diagnostico }) {
     // Defaults seguros caso a prop chegue undefined (ex.: erros de bootstrap)
     const diag = diagnostico ?? {
         sem_sync: [],
-        fila: { pendentes: 0, falhos: 0 },
         total: 0,
     };
 
@@ -160,7 +159,7 @@ export default function Desenvolvimento({ diagnostico }) {
 
                 {/* ─── Diagnóstico Adman ──────────────────────────────────── */}
                 {diag.total === 0 ? (
-                    // Estado vazio: nenhum alerta, mas fila ainda é exibida abaixo
+                    // Estado vazio: nenhum alerta de sync no momento
                     <DevCard
                         icon={Activity}
                         title="Diagnóstico Adman"
@@ -194,32 +193,6 @@ export default function Desenvolvimento({ diagnostico }) {
 
                     </>
                 )}
-
-                {/* Card: fila & jobs — sempre visível independente do estado vazio */}
-                <DevCard
-                    icon={ListChecks}
-                    title="Fila & jobs"
-                    subtitle="Contadores atuais das tabelas jobs e failed_jobs"
-                >
-                    <div className="flex gap-4">
-                        <div className="flex-1 rounded-lg bg-black/30 border border-white/[0.04] px-3 py-3 text-center">
-                            <p className="text-white/40 text-[11px] uppercase tracking-wider mb-1">Pendentes</p>
-                            <p className="text-white font-semibold text-[22px] leading-tight">
-                                {diag.fila.pendentes}
-                            </p>
-                        </div>
-                        <div className="flex-1 rounded-lg bg-black/30 border border-white/[0.04] px-3 py-3 text-center">
-                            <p className="text-white/40 text-[11px] uppercase tracking-wider mb-1">Falhos</p>
-                            {/* Destacar em vermelho quando há jobs falhos */}
-                            <p className={cn(
-                                'font-semibold text-[22px] leading-tight',
-                                diag.fila.falhos > 0 ? 'text-red-400' : 'text-white',
-                            )}>
-                                {diag.fila.falhos}
-                            </p>
-                        </div>
-                    </div>
-                </DevCard>
 
                 <div className="rounded-xl border border-dashed border-white/[0.08] p-5 text-center">
                     <FileText className="mx-auto text-white/20 mb-2" size={28} />

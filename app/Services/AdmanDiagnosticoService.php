@@ -4,17 +4,15 @@ namespace App\Services;
 
 use App\Models\AdmanSyncLog;
 use App\Models\Company;
-use Illuminate\Support\Facades\DB;
 
 /**
  * Gera diagnósticos proativos do sync Adman lendo APENAS o banco local.
  *
  * Sem IA e sem chamada externa — heurística PHP pura sobre os dados
- * que já existem nas tabelas adman_sync_logs, adman_metrics, jobs e failed_jobs.
+ * que já existem na tabela adman_sync_logs.
  *
- * Dois grupos de diagnóstico:
- *  1. Empresas com conta Adman sem sync recente (último synced_at > limiar ou nunca).
- *  2. Contadores de fila: jobs pendentes e jobs falhos.
+ * Diagnóstico: empresas com conta Adman sem sync recente
+ * (último synced_at > limiar ou nunca sincronizou).
  */
 class AdmanDiagnosticoService
 {
@@ -34,29 +32,22 @@ class AdmanDiagnosticoService
      *
      * @return array{
      *   sem_sync: array<int, array{company_id: int, empresa: string, severidade: 'alta'|'media'|'baixa', descricao: string, acao: string}>,
-     *   fila:     array{pendentes: int, falhos: int},
      *   total:    int,
      * }
      */
     public function gerar(): array
     {
         $semSync = $this->diagnosticarSemSync();
-        $fila    = $this->diagnosticarFila();
-
-        $total = count($semSync) + ($fila['falhos'] > 0 ? 1 : 0);
 
         // Chave 'sem_sync' (snake_case) para casar com o contrato do PHPDoc e o consumo no JSX.
         return [
             'sem_sync' => $semSync,
-            'fila'     => $fila,
-            'total'    => $total,
+            'total'    => count($semSync),
         ];
     }
 
-    // ─── Grupos de diagnóstico ───────────────────────────────────────────────
-
     /**
-     * Grupo 1 — Empresas com conta Adman sem sync recente.
+     * Empresas com conta Adman sem sync recente.
      *
      * Obtém o último synced_at por empresa em UMA query agregada.
      * Sem N+1: nomes carregados via pluck em lote antes do loop.
@@ -113,18 +104,5 @@ class AdmanDiagnosticoService
         usort($alertas, fn ($a, $b) => ($a['severidade'] === 'alta' ? 0 : 1) <=> ($b['severidade'] === 'alta' ? 0 : 1));
 
         return array_slice($alertas, 0, self::TOP_N);
-    }
-
-    /**
-     * Grupo 2 — Contadores da fila de jobs.
-     *
-     * Usa consultas diretas nas tabelas 'jobs' e 'failed_jobs' (driver database).
-     */
-    private function diagnosticarFila(): array
-    {
-        return [
-            'pendentes' => DB::table('jobs')->count(),
-            'falhos'    => DB::table('failed_jobs')->count(),
-        ];
     }
 }
