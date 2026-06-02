@@ -190,7 +190,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Re-sync manual de empresa Adman via diagnóstico (admin only)
         Route::post('/dev/resync', [DevController::class, 'resyncCompany'])
             ->name('dev.resync');
-Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
+
+        Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
 
