@@ -61,6 +61,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v6.0 — Precisão e Praticidade na Dashboard
 
 - [ ] **Phase 18: Dashboard precisa e com filtros empilháveis** - Corrige 3 bugs reportados pelo usuário em 2026-06-02: (1) trocar o filtro de tempo não muda os dados dos cards principais (range 30d hardcoded ignora `$period`); (2) selecionar empresa + período perde a empresa (inconsistência camelCase/snake_case entre `filters` retornado pelo controller e query params lidos pelo controller); (3) soma de faturamento da Dashboard não bate com a Adman para o mesmo período. Aplica diretamente as duas regras-mestras: **acertividade** (números batem com a fonte) e **praticidade** (filtros combinam de verdade).
+- [ ] **Phase 18.5: Marketplace dinâmico no AdmanService + import CSV oficial** - Investigação da Phase 18 revelou que o `AdmanService::$marketplace` está hardcoded em `'meli'` e quebra para 34 contas Shopee/Amazon (foram classificadas como INVALIDO_CONFIRMADO incorretamente). Solução: coluna `companies.marketplace`, comando que importa do CSV oficial da Adman cruzando por `cust_id`, refator do `AdmanService` para receber marketplace dinâmico, atualização dos callers. Pré-requisito para deploy correto da W5 da Phase 18 (badges "Cust ID Inválido" só fazem sentido depois que essas 34 voltam a sincronizar).
 
 ## Phase Details
 
