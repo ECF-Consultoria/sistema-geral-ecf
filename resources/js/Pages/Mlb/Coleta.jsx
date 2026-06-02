@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useForm, router } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, MessageSquare, Info, Lightbulb, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, MessageSquare, Info, Lightbulb, CheckCircle2, ChevronDown, ChevronRight } from 'lucide-react';
 import { Progress } from '@/Components/ui/progress';
 import { cn } from '@/lib/utils';
 
@@ -270,11 +270,10 @@ export default function Coleta({ coletas = [], coleta = null }) {
                 )}
 
                 {coleta && localStatus === 'concluido' && resultado && (
-                    <div className="space-y-5 animate-fade-in">
+                    <div className="space-y-3 animate-fade-in">
 
                         {/* 5a. Ranking de Keywords */}
-                        <div className="card-ecf rounded-2xl p-5">
-                            <h2 className="text-white font-display font-bold text-xl mb-3">Ranking de Keywords</h2>
+                        <Secao titulo="Ranking de Keywords" badge={`${ranking.length} termos`} defaultOpen>
                             <div className="grid grid-cols-1 gap-2">
                                 {ranking.map((k, i) => (
                                     <div key={`${k.termo}-${i}`} className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02]">
@@ -294,11 +293,10 @@ export default function Coleta({ coletas = [], coleta = null }) {
                                     <p className="text-white/30 text-[13px]">Nenhuma keyword minerada.</p>
                                 )}
                             </div>
-                        </div>
+                        </Secao>
 
                         {/* 5b. Top Dúvidas dos Compradores */}
-                        <div className="card-ecf rounded-2xl p-5">
-                            <h2 className="text-white font-display font-bold text-xl mb-3">Top Dúvidas dos Compradores</h2>
+                        <Secao titulo="Top Dúvidas dos Compradores" badge={meta.questions_disponivel === false ? 'indisponível' : `${duvidas.length}`}>
                             {meta.questions_disponivel === false ? (
                                 <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-3 flex items-start gap-2">
                                     <Info size={14} className="text-blue-400 shrink-0 mt-0.5" aria-hidden="true" />
@@ -323,13 +321,11 @@ export default function Coleta({ coletas = [], coleta = null }) {
                                     )}
                                 </div>
                             )}
-                        </div>
+                        </Secao>
 
                         {/* 5c. Recomendação de Título e Descrição (heurística) */}
                         {recomendacao && (
-                            <div className="card-ecf rounded-2xl p-5">
-                                <h2 className="text-white font-display font-bold text-xl mb-3">Recomendação de Título e Descrição</h2>
-
+                            <Secao titulo="Recomendação de Título e Descrição">
                                 <div className="bg-ecf-yellow/5 border border-ecf-yellow/20 rounded-xl p-3 flex items-start gap-2 mb-4">
                                     <Lightbulb size={14} className="text-ecf-yellow shrink-0 mt-0.5" aria-hidden="true" />
                                     <p className="text-white/60 text-[13px]">
@@ -369,13 +365,12 @@ export default function Coleta({ coletas = [], coleta = null }) {
                                         </ul>
                                     </div>
                                 )}
-                            </div>
+                            </Secao>
                         )}
 
                         {/* Produtos analisados (sold_quantity oculto → N/D) */}
                         {produtos.length > 0 && (
-                            <div className="card-ecf rounded-2xl p-5">
-                                <h2 className="text-white font-display font-bold text-xl mb-3">Produtos Analisados</h2>
+                            <Secao titulo="Produtos Analisados" badge={`${produtos.length}`}>
                                 <div className="grid grid-cols-1 gap-2">
                                     {produtos.map((p, i) => (
                                         <div key={`${p.item_id}-${i}`} className="flex items-center justify-between px-3 py-2 rounded-xl bg-white/[0.02]">
@@ -387,11 +382,37 @@ export default function Coleta({ coletas = [], coleta = null }) {
                                         </div>
                                     ))}
                                 </div>
-                            </div>
+                            </Secao>
                         )}
                     </div>
                 )}
             </div>
         </AppLayout>
+    );
+}
+
+/**
+ * Card de seção colapsável do relatório — clique no cabeçalho para abrir/fechar.
+ * Atende ao feedback: dados da coleta ficam atrás de um card clicável, não "soltos".
+ */
+function Secao({ titulo, badge = null, defaultOpen = false, children }) {
+    const [aberto, setAberto] = useState(defaultOpen);
+
+    return (
+        <div className="card-ecf rounded-2xl overflow-hidden">
+            <button
+                type="button"
+                onClick={() => setAberto((a) => !a)}
+                aria-expanded={aberto}
+                className="w-full flex items-center gap-2 px-5 py-4 hover:bg-white/[0.02] transition-colors text-left"
+            >
+                {aberto
+                    ? <ChevronDown size={18} className="text-white/40 shrink-0" aria-hidden="true" />
+                    : <ChevronRight size={18} className="text-white/40 shrink-0" aria-hidden="true" />}
+                <span className="text-white font-display font-bold text-xl flex-1">{titulo}</span>
+                {badge !== null && <span className="text-white/30 text-[13px] font-mono">{badge}</span>}
+            </button>
+            {aberto && <div className="px-5 pb-5">{children}</div>}
+        </div>
     );
 }
