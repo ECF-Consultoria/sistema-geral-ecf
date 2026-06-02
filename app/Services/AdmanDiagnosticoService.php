@@ -76,7 +76,14 @@ class AdmanDiagnosticoService
             + count($anomalias)
             + ($fila['falhos'] > 0 ? 1 : 0);
 
-        return compact('semSync', 'erros', 'fila', 'anomalias', 'total');
+        // Chave 'sem_sync' (snake_case) para casar com o contrato do PHPDoc e o consumo no JSX.
+        return [
+            'sem_sync'  => $semSync,
+            'erros'     => $erros,
+            'fila'      => $fila,
+            'anomalias' => $anomalias,
+            'total'     => $total,
+        ];
     }
 
     // ─── Grupos de diagnóstico ───────────────────────────────────────────────
