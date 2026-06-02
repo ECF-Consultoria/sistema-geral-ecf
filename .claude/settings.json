@@ -183,7 +183,21 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan list 2>&1 | grep diagnose-cust-id && echo '---STARTING---' && nohup php artisan dashboard:diagnose-cust-id --no-interaction > /tmp/diagnose-custid.txt 2>&1 & echo 'PID:' \\\\$!\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 3632301 2>/dev/null && echo running || echo done\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"wc -l /tmp/diagnose-custid.txt && head -15 /tmp/diagnose-custid.txt\")",
-      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test --filter=DiagnoseCustIdTest 2>&1)"
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test --filter=DiagnoseCustIdTest 2>&1)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && nohup php artisan dashboard:diagnose-cust-id --no-interaction > /tmp/diagnose-custid-v2.txt 2>&1 & echo 'PID:' \\\\$!\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 3633904 2>/dev/null && echo running || echo done\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 3633904 2>/dev/null && echo running || echo done && wc -l /tmp/diagnose-custid-v2.txt && tail -5 /tmp/diagnose-custid-v2.txt\")",
+      "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164:/tmp/diagnose-custid-v2.txt .planning/phases/18-dashboard-precisao-filtros/DIAGNOSE-CUSTID-OUTPUT.txt)",
+      "Bash(grep \"FAILED\\\\|Tests\\\\\\\\\\\\\\\\Feature\")",
+      "Bash(awk -F',' 'NR>1 {print $2 \"|\" $1}' accounts-1780435690861.csv)",
+      "Bash(awk -F',' 'NR>1 {count++} END {print count}' accounts-1780435690861.csv)",
+      "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch accounts-1780435690861.csv root@177.7.53.164:/tmp/accounts-adman.csv)",
+      "Bash(findstr /N \"Phase 18.5\\\\|Phase 18.5:\\\\|18.5-marketplace\" \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\.planning\\\\ROADMAP.md\")",
+      "Bash(findstr /R /N \"Phase 18\\\\.5\" \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\.planning\\\\ROADMAP.md\")",
+      "Bash(findstr /N \"MercadoLibre Shopee Amazon\" \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\.planning\\\\phases\\\\18.5-marketplace-dinamico\\\\accounts-adman.csv\")",
+      "Bash(findstr /V \"MercadoLibre\")",
+      "Bash(dir /B \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\.planning\\\\phases\\\\18.5-marketplace-dinamico\\\\\")",
+      "Bash(\"/c/xampp/php/php.exe\" -l app/Services/AdmanService.php)"
     ]
   }
 }
