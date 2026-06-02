@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SyncAdmanCompanyJob;
 use App\Models\Company;
+use App\Models\MlbSyncVendasLog;
 use App\Services\AdmanDiagnosticoService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,8 +18,28 @@ class DevController extends Controller
      */
     public function index(AdmanDiagnosticoService $diagnostico): \Inertia\Response
     {
+        // Histórico dos últimos syncs de vendas MLB (background) para o card de progresso.
+        $syncVendasLogs = MlbSyncVendasLog::orderByDesc('started_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (MlbSyncVendasLog $l) => [
+                'id'                => $l->id,
+                'status'            => $l->status,
+                'date_from'         => $l->date_from,
+                'date_to'           => $l->date_to,
+                'started_at'        => $l->started_at?->toIso8601String(),
+                'finished_at'       => $l->finished_at?->toIso8601String(),
+                'total_empresas'    => $l->total_empresas,
+                'total_itens'       => $l->total_itens,
+                'com_venda'         => $l->com_venda,
+                'encontradas'       => $l->encontradas,
+                'erros'             => $l->erros,
+                'empresas_com_erro' => $l->empresas_com_erro ?? [],
+            ]);
+
         return Inertia::render('Dev/Desenvolvimento', [
-            'diagnostico' => $diagnostico->gerar(),
+            'diagnostico'    => $diagnostico->gerar(),
+            'syncVendasLogs' => $syncVendasLogs,
         ]);
     }
 

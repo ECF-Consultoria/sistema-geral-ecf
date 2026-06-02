@@ -1,8 +1,12 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/react';
-import { Activity, AlertTriangle, Check, Code2, Copy, ExternalLink, FileText, Puzzle, RefreshCw } from 'lucide-react';
+import { format } from 'date-fns';
+import { Activity, AlertTriangle, Check, ChevronDown, Code2, Copy, ExternalLink, FileText, Puzzle, RefreshCw, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
+
+// Formata ISO → 'dd/MM HH:mm' (null-safe)
+const fmtTs = (iso) => (iso ? format(new Date(iso), 'dd/MM HH:mm') : null);
 
 function CopyBtn({ text }) {
     const [copied, setCopied] = useState(false);
@@ -106,7 +110,108 @@ function AlertRow({ item, resyncing, onResync }) {
     );
 }
 
-export default function Desenvolvimento({ diagnostico }) {
+// ─── Sync de Vendas MLB ───────────────────────────────────────────────────────
+
+const STATUS_LABEL = { running: 'Em andamento', completed: 'Concluído', failed: 'Falhou' };
+const STATUS_CLS = {
+    running:   'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/20 animate-pulse',
+    completed: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    failed:    'bg-red-500/10 text-red-400 border-red-500/20',
+};
+
+function fmtDuracao(started, finished) {
+    if (!started || !finished) return null;
+    const s = Math.round((new Date(finished) - new Date(started)) / 1000);
+    return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m${s % 60}s`;
+}
+
+function SyncVendasLogAccordion({ log }) {
+    const erros = log.empresas_com_erro ?? [];
+    if (erros.length === 0) {
+        return (
+            <div className="px-4 py-3 bg-black/30 border border-white/[0.04]">
+                <p className="text-white/30 text-[12px] italic">Nenhuma empresa com erro neste sync.</p>
+            </div>
+        );
+    }
+    return (
+        <div className="px-4 py-3 bg-black/30 border border-white/[0.04] space-y-1">
+            <p className="text-[11px] uppercase tracking-wider text-white/40 mb-2">Empresas com erro</p>
+            {erros.map((e, i) => (
+                <div key={i} className="flex items-start gap-2">
+                    <span className="text-red-400 text-[12px] font-semibold shrink-0">{e.nome}</span>
+                    <span className="text-white/40 text-[12px]">{e.motivo}</span>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function SyncVendasLogRow({ log, expandido, onToggle }) {
+    const duracao = fmtDuracao(log.started_at, log.finished_at);
+    const periodo = `${log.date_from} → ${log.date_to}`;
+
+    return (
+        <div>
+            <div
+                onClick={onToggle}
+                className={cn('flex items-center gap-3 px-2 py-3 cursor-pointer transition-colors',
+                    expandido ? 'bg-white/[0.05]' : 'hover:bg-white/[0.03]')}
+            >
+                <ChevronDown size={14} className={cn('text-white/40 transition-transform shrink-0', expandido && 'rotate-180 text-ecf-yellow')} />
+                <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-[11px] border shrink-0', STATUS_CLS[log.status])}>
+                    {STATUS_LABEL[log.status]}
+                </span>
+                <code className="text-white/50 text-[11px] font-mono shrink-0">{periodo}</code>
+                <div className="flex items-center gap-2 flex-1 min-w-0 justify-end flex-wrap">
+                    {log.total_itens != null && (
+                        <span className="text-white/40 text-[11px]">{log.total_itens} itens</span>
+                    )}
+                    {log.encontradas != null && (
+                        <span className="text-emerald-400 text-[11px]">{log.encontradas} pub. atualizadas</span>
+                    )}
+                    {log.erros > 0 && (
+                        <span className="text-red-400 text-[11px]">{log.erros} erro(s)</span>
+                    )}
+                    {duracao && <span className="text-white/30 text-[11px]">{duracao}</span>}
+                </div>
+                <code className="text-white/40 text-[11px] font-mono shrink-0">
+                    {log.started_at ? fmtTs(log.started_at) : '—'}
+                </code>
+            </div>
+            {expandido && <SyncVendasLogAccordion log={log} />}
+        </div>
+    );
+}
+
+function SyncVendasLogSection({ logs }) {
+    const [aberto, setAberto] = useState(null);
+
+    if (!logs || logs.length === 0) {
+        return (
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
+                <AlertTriangle size={24} className="text-white/20" />
+                <p className="text-white/40 text-[13px]">Nenhum sync de vendas executado ainda.</p>
+                <p className="text-white/30 text-[11px]">Dispare um sync em Publicações → Empresas para ver o histórico aqui.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="divide-y divide-white/[0.04]">
+            {logs.map(log => (
+                <SyncVendasLogRow
+                    key={log.id}
+                    log={log}
+                    expandido={aberto === log.id}
+                    onToggle={() => setAberto(prev => (prev === log.id ? null : log.id))}
+                />
+            ))}
+        </div>
+    );
+}
+
+export default function Desenvolvimento({ diagnostico, syncVendasLogs = [] }) {
     // Defaults seguros caso a prop chegue undefined (ex.: erros de bootstrap)
     const diag = diagnostico ?? {
         sem_sync: [],
@@ -193,6 +298,11 @@ export default function Desenvolvimento({ diagnostico }) {
 
                     </>
                 )}
+
+                {/* ─── Sync de Vendas MLB ─────────────────────────────────── */}
+                <DevCard icon={TrendingUp} title="Sync de Vendas MLB" subtitle="Histórico dos últimos syncs em background">
+                    <SyncVendasLogSection logs={syncVendasLogs} />
+                </DevCard>
 
                 <div className="rounded-xl border border-dashed border-white/[0.08] p-5 text-center">
                     <FileText className="mx-auto text-white/20 mb-2" size={28} />
