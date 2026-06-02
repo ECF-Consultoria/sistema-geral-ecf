@@ -111,7 +111,7 @@ class DashboardController extends Controller
             ->orderBy('reference_date')
             ->get();
 
-        // ─── Cards 30d (Faturamento, Invest. Ads, TACOS médio) ────────────────
+        // ─── Cards do período (Faturamento, Invest. Ads, TACOS médio) ────────
         //
         // Política tudo-ou-nada: se TODAS as empresas com cust_id (ml_store_id
         // ?: adman_account_id) têm cache /performance + /accounts/metrics
@@ -130,15 +130,27 @@ class DashboardController extends Controller
         // apareciam zeradas no dashboard. cust_id casa com a chave usada por
         // RefreshGrossBillingCacheJob (writer) e AdmanService::syncCompany.
         //
-        // Mantém o cache key consistente com RefreshGrossBillingCacheJob:
-        // range = now()->subDays(30)..now() (today inclusive).
-        $dateFrom30d = now()->subDays(30)->toDateString();
-        $dateTo30d   = now()->toDateString();
+        // ─── Cache strategy (Phase 18 W2-T3) ─────────────────────────────────
+        // RefreshGrossBillingCacheJob (Phase 16) pré-aquece o cache APENAS
+        // para range 30d (alinhado com cadência D-1 da Adman). Quando $period
+        // é 1d/7d/180d, o cache não tem hit e os cards caem no fallback DB
+        // (SUM adman_metrics). A UI sinaliza "≈ aproximado" via SC-5 (Phase 18
+        // W5) através da prop `cards_exatos` exportada abaixo.
+        //
+        // Trade-off intencional: respeita Phase 16 sem custo extra de chamadas
+        // Adman (pre-warm de 4 ranges × 168 empresas × 7s throttle ≈ 80min/dia).
+        // Para ranges ≠ 30d aceitamos fallback DB → herda o problema de gaps
+        // em adman_metrics até W3/W4 fecharem a divergência.
+        //
+        // Range agora é derivado de $period via getPeriodRange() (W2-T1/T2);
+        // cache key continua consistente com RefreshGrossBillingCacheJob
+        // quando $period === '30'.
+        [$dateFromN, $dateToN] = array_values($this->getPeriodRange($period));
 
         // Batch read: gross + account metrics em 2 round-trips Redis.
-        $custIds30d = $companies->pluck('cust_id')->filter()->values()->all();
-        $grossBatch30d   = $this->adman->getCachedGrossBillingsMany($custIds30d, $dateFrom30d, $dateTo30d);
-        $accountBatch30d = $this->adman->getCachedAccountMetricsMany($custIds30d, $dateFrom30d, $dateTo30d);
+        $custIds = $companies->pluck('cust_id')->filter()->values()->all();
+        $grossBatch   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromN, $dateToN);
+        $accountBatch = $this->adman->getCachedAccountMetricsMany($custIds, $dateFromN, $dateToN);
 
         // Detecta cache completo: TODA empresa com cust_id precisa ter VALOR
         // REAL no cache (não null, não ERROR_SENTINEL). Empresas sem cust_id
@@ -148,51 +160,54 @@ class DashboardController extends Controller
         foreach ($companies as $c) {
             $custId = $c->cust_id;
             if (!$custId) continue;
-            $g = $grossBatch30d[$custId]   ?? ['value' => null];
-            $a = $accountBatch30d[$custId] ?? ['value' => null];
+            $g = $grossBatch[$custId]   ?? ['value' => null];
+            $a = $accountBatch[$custId] ?? ['value' => null];
             if ($g['value'] === null) $grossCacheCompleto   = false;
             if ($a['value'] === null) $accountCacheCompleto = false;
         }
 
         // Se algo está faltando, dispara warm-up do cache em background — não
         // afeta este request, mas próximas requests podem ter cache completo.
+        // Observação W2-T3: o Job só pré-aquece range 30d, então para
+        // $period != '30' o cache continua frio mesmo após o warm-up.
         if (!$grossCacheCompleto || !$accountCacheCompleto) {
             \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
-        // Revenue 30d por empresa — SEM mistura: ou todas pelo cache Adman, ou
-        // todas pelo SUM DB. tacos/acos/margem por empresa seguem o mesmo
-        // critério separado (cache /accounts/metrics).
-        $revenue30dByCompany = [];
-        $acos30dByCompany    = [];
-        $tacos30dByCompany   = [];
-        $margin30dByCompany  = [];
+        // Revenue por empresa no $period — SEM mistura: ou todas pelo cache
+        // Adman, ou todas pelo SUM DB. tacos/acos/margem por empresa seguem o
+        // mesmo critério separado (cache /accounts/metrics).
+        $revenueByCompany = [];
+        $acosByCompany    = [];
+        $tacosByCompany   = [];
+        $marginByCompany  = [];
 
         if ($grossCacheCompleto) {
             foreach ($companies as $c) {
                 $custId = $c->cust_id;
                 if (!$custId) {
-                    $revenue30dByCompany[$c->id] = 0.0;
+                    $revenueByCompany[$c->id] = 0.0;
                     continue;
                 }
-                $revenue30dByCompany[$c->id] = (float) $grossBatch30d[$custId]['value'];
+                $revenueByCompany[$c->id] = (float) $grossBatch[$custId]['value'];
             }
         } else {
-            // Cache incompleto → SUM(adman_metrics.revenue) 30d para TODAS as
-            // empresas. Usa o MESMO range do cache (BETWEEN $dateFrom30d AND
-            // $dateTo30d) pra os dois modos baterem o máximo possível.
-            $sumDb30d = AdmanMetric::query()
+            // Cache incompleto → SUM(adman_metrics.revenue) no $period para
+            // TODAS as empresas. Usa o MESMO range do cache (BETWEEN
+            // $dateFromN AND $dateToN) pra os dois modos baterem o máximo
+            // possível.
+            $sumDb = AdmanMetric::query()
                 ->whereIn('company_id', $companies->pluck('id'))
-                ->whereBetween('reference_date', [$dateFrom30d, $dateTo30d])
+                ->whereBetween('reference_date', [$dateFromN, $dateToN])
                 ->whereNotNull('revenue')
                 ->selectRaw('company_id, SUM(revenue) as total')
                 ->groupBy('company_id')
                 ->pluck('total', 'company_id');
 
             foreach ($companies as $c) {
-                $revenue30dByCompany[$c->id] = (float) ($sumDb30d[$c->id] ?? 0);
+                $revenueByCompany[$c->id] = (float) ($sumDb[$c->id] ?? 0);
             }
-            Log::info('[Dashboard] revenue 30d em fallback DB (cache Adman incompleto)');
+            Log::info('[Dashboard] revenue em fallback DB (period=' . $period . ')');
         }
 
         // ACOS / TACOS / margem por empresa — só ficam preenchidos quando cache
@@ -205,10 +220,10 @@ class DashboardController extends Controller
             foreach ($companies as $c) {
                 $custId = $c->cust_id;
                 if (!$custId) continue;
-                $v = $accountBatch30d[$custId]['value'];
-                $acos30dByCompany[$c->id]   = $v['acos']              ?? null;
-                $tacos30dByCompany[$c->id]  = $v['tacos']             ?? null;
-                $margin30dByCompany[$c->id] = $v['percentage_margin'] ?? null;
+                $v = $accountBatch[$custId]['value'];
+                $acosByCompany[$c->id]   = $v['acos']              ?? null;
+                $tacosByCompany[$c->id]  = $v['tacos']             ?? null;
+                $marginByCompany[$c->id] = $v['percentage_margin'] ?? null;
             }
         }
 
@@ -253,38 +268,38 @@ class DashboardController extends Controller
 
         // Card 'Faturamento' = soma do que foi escolhido acima (cache Adman OU
         // SUM DB, tudo-ou-nada). Determinístico por request.
-        $totalRevenue = array_sum($revenue30dByCompany);
+        $totalRevenue = array_sum($revenueByCompany);
 
-        // Card 'Invest. Ads 30d' e 'TACOS médio': mesma política tudo-ou-nada
+        // Card 'Invest. Ads' e 'TACOS médio': mesma política tudo-ou-nada
         // do account cache. Quando cache incompleto, ambos caem para o DB
         // local — total_ad_spend somado em 1 query e TACOS recalculado como
         // (total_ad_spend / total_revenue) * 100. Antes do fix esses dois
         // cards excluíam silenciosamente empresas em cache cold, oscilando
         // o denominador e gerando totais aleatórios.
         if ($accountCacheCompleto) {
-            $tacosValues = array_filter($tacos30dByCompany, fn($v) => $v !== null);
+            $tacosValues = array_filter($tacosByCompany, fn($v) => $v !== null);
             $avgTacos    = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
 
-            $totalAdInvestment30d = 0.0;
+            $totalAdInvestment = 0.0;
             foreach ($companies as $c) {
                 $custId = $c->cust_id;
                 if (!$custId) continue;
-                $accEntry = $accountBatch30d[$custId] ?? null;
+                $accEntry = $accountBatch[$custId] ?? null;
                 if ($accEntry && $accEntry['value'] !== null) {
-                    $totalAdInvestment30d += (float) ($accEntry['value']['investment'] ?? 0);
+                    $totalAdInvestment += (float) ($accEntry['value']['investment'] ?? 0);
                 }
             }
         } else {
             // Fallback DB agregado: SUM(ad_spend) e TACOS = ad_spend/revenue * 100.
             // Usa o mesmo range do cache para coerência entre os dois modos.
-            $totalAdInvestment30d = (float) AdmanMetric::query()
+            $totalAdInvestment = (float) AdmanMetric::query()
                 ->whereIn('company_id', $companies->pluck('id'))
-                ->whereBetween('reference_date', [$dateFrom30d, $dateTo30d])
+                ->whereBetween('reference_date', [$dateFromN, $dateToN])
                 ->sum('ad_spend');
             $avgTacos = $totalRevenue > 0
-                ? ($totalAdInvestment30d / $totalRevenue) * 100
+                ? ($totalAdInvestment / $totalRevenue) * 100
                 : 0;
-            Log::info('[Dashboard] avg_tacos + total_ad_investment_30d em fallback DB (cache Adman incompleto)');
+            Log::info('[Dashboard] avg_tacos + total_ad_investment em fallback DB (period=' . $period . ')');
         }
 
         $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
@@ -316,7 +331,7 @@ class DashboardController extends Controller
 
         $ranking = $this->buildRanking($users, $since);
 
-        $userPortfolios = $users->map(function ($u) use ($metrics, $companies, $revenue30dByCompany) {
+        $userPortfolios = $users->map(function ($u) use ($metrics, $companies, $revenueByCompany) {
             $uCompanies = $companies->filter(function ($c) use ($u) {
                 return $u->isMentor()
                     ? $c->estrategista->contains('id', $u->id)
@@ -326,12 +341,12 @@ class DashboardController extends Controller
             $uCompanyIds = $uCompanies->pluck('id')->toArray();
             $uMetrics = $metrics->whereIn('company_id', $uCompanyIds);
 
-            // Carteira do user = soma do revenue30dByCompany já decidido pelo
+            // Carteira do user = soma do revenueByCompany já decidido pelo
             // critério tudo-ou-nada (cache Adman OU SUM DB) — herda o mesmo
             // modo do total global, sem mistura.
             $uTotalRevenue = 0.0;
             foreach ($uCompanyIds as $cid) {
-                $uTotalRevenue += $revenue30dByCompany[$cid] ?? 0;
+                $uTotalRevenue += $revenueByCompany[$cid] ?? 0;
             }
 
             return [
@@ -380,6 +395,14 @@ class DashboardController extends Controller
                 'total'        => (int) $row->total,
             ]);
 
+        // Phase 18 (W2-T3) — Flag de exatidão dos cards Adman-dependentes.
+        // True somente quando cache /performance está completo E o período é
+        // o range padrão de 30d (alinhado com RefreshGrossBillingCacheJob).
+        // Para demais ranges, mesmo com cache hot, marcamos como aproximado
+        // porque o cache só pré-aquece 30d. Frontend (W5-T1) consome essa
+        // prop para mostrar "≈ aproximado" nos cards.
+        $cardsExatos = $grossCacheCompleto && $period === '30';
+
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
                 'total_companies'          => $companies->count(),
@@ -387,7 +410,9 @@ class DashboardController extends Controller
                 'avg_nps'                  => round($avgNps, 1),
                 'absenteeism_rate'         => round($absenteeismRate, 2),
                 'total_revenue'            => $totalRevenue,
-                'total_ad_investment_30d'  => $totalAdInvestment30d,
+                // Phase 18 (W2-T2) — sufixo `_30d` na chave da prop é legacy
+                // (back-compat com Admin.jsx); o valor agora reflete $period.
+                'total_ad_investment_30d'  => $totalAdInvestment,
                 'total_net_billing'        => $totalNetBilling,
                 'total_sold_quantity'      => (int) $totalSoldQuantity,
                 'total_ad_spend'           => $totalAdSpend,
@@ -428,12 +453,13 @@ class DashboardController extends Controller
             'companies_performance' => $companies->map(fn($c) => [
                 'id'       => $c->id,
                 'name'     => $c->name,
-                // ACOS/TACOS/margem do cache /accounts/metrics (30d, exato da
-                // Adman); fallback latestMetrics (1 dia) só se cache cold.
-                'acos'     => $acos30dByCompany[$c->id]   ?? null,
-                'tacos'    => $tacos30dByCompany[$c->id]  ?? $c->latestMetrics?->tacos,
-                'revenue'  => (float) ($revenue30dByCompany[$c->id] ?? 0),
-                'margin'   => $margin30dByCompany[$c->id] ?? $c->latestMetrics?->contribution_margin_pct,
+                // ACOS/TACOS/margem do cache /accounts/metrics (range do
+                // $period, exato da Adman quando cache hot); fallback
+                // latestMetrics (1 dia) só se cache cold.
+                'acos'     => $acosByCompany[$c->id]   ?? null,
+                'tacos'    => $tacosByCompany[$c->id]  ?? $c->latestMetrics?->tacos,
+                'revenue'  => (float) ($revenueByCompany[$c->id] ?? 0),
+                'margin'   => $marginByCompany[$c->id] ?? $c->latestMetrics?->contribution_margin_pct,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
             ]),
@@ -442,6 +468,10 @@ class DashboardController extends Controller
                 'top_empresas'    => $sugadoresTopEmpresas,
             ],
             'adman_last_sync' => $admanLastSync,
+            // Phase 18 (W2-T3) — true quando cards Adman-dependentes refletem
+            // valores exatos do cache /performance (period=30 + cache hot).
+            // Frontend consome em W5-T1 para indicador "≈ aproximado".
+            'cards_exatos'    => $cardsExatos,
         ]);
     }
 
@@ -499,6 +529,9 @@ class DashboardController extends Controller
 
         // 30d cache com política tudo-ou-nada (mesma estratégia do
         // adminDashboard, agora via cust_id = ml_store_id ?: adman_account_id).
+        // TODO Phase 18+ — userDashboard não foi tocado nesta fase; mantém o
+        // range 30d hardcoded até decisão sobre escopo de extensão para
+        // dashboards de consultor/mentor.
         $dateFrom30d = now()->subDays(30)->toDateString();
         $dateTo30d   = now()->toDateString();
 
