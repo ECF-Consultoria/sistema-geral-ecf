@@ -249,19 +249,19 @@ export default function AdminDashboard({
                         options={PERIOD_OPTIONS}
                     />
                     <ECFSelect
-                        value={filters.companyFilter || ''}
+                        value={filters.company_id || ''}
                         onChange={v => applyFilter('company_id', v)}
                         placeholder="Todas as empresas"
                         options={(companies_list || []).map(c => ({ value: String(c.id), label: c.name }))}
                     />
                     <ECFSelect
-                        value={filters.consultorFilter || ''}
+                        value={filters.consultor_id || ''}
                         onChange={v => applyFilter('consultor_id', v)}
                         placeholder="Todos analistas"
                         options={consultores.map(u => ({ value: String(u.id), label: u.name }))}
                     />
                     <ECFSelect
-                        value={filters.estrategistaFilter || ''}
+                        value={filters.estrategista_id || ''}
                         onChange={v => applyFilter('estrategista_id', v)}
                         placeholder="Todos estrategistas"
                         options={mentores.map(u => ({ value: String(u.id), label: u.name }))}
