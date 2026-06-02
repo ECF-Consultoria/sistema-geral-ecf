@@ -52,7 +52,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v4.2 — Adequação à Cadência D-1 da Adman
 
-- [ ] **Phase 16: Adequação à cadência D-1 da API Adman** - Reduz chamadas de ~2k/h para ~168/dia alinhando schedule, caches e UX ao fato de que a API é D-1 (atualiza 1× às 10h BRT). Cascata de jobs reorganizada para 11h-12h30. Botão "Sincronizar agora" removido. Botão "Reanalisar" do card Sugadores bloqueia quando já houve sync no dia. Throttle ≥6s para respeitar limite de 10 req/min documentado pela Adman.
+- [x] **Phase 16: Adequação à cadência D-1 da API Adman** - Reduz chamadas de ~2k/h para ~168/dia alinhando schedule, caches e UX ao fato de que a API é D-1 (atualiza 1× às 10h BRT). Cascata de jobs reorganizada para 11h-12h30. Botão "Sincronizar agora" removido. Botão "Reanalisar" do card Sugadores bloqueia quando já houve sync no dia. Throttle ≥6s para respeitar limite de 10 req/min documentado pela Adman. (completed 2026-05-27, deployed; **redução de 429 confirmada em 98%**: ~7.500/dia → ~140/dia em 6 dias de produção)
 
 ### Milestone v5.0 — Inteligência de Anúncios ML
 
@@ -434,7 +434,7 @@ v4.0 phases execute in order: 13 → 14
 | 13. Reestruturação do Cadastro de Empresas | 4/4 | Complete   | 2026-05-25 |
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
-| 16. Adequação à cadência D-1 da Adman | 0/? | Planning | - |
+| 16. Adequação à cadência D-1 da Adman | 4/4 (waves) | Complete | 2026-05-27 |
 | 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete    | 2026-06-02 |
 
 ### Phase 17: Coleta de Dados ML (Fase 1 — sem IA)

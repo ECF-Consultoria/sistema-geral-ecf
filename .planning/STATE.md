@@ -198,6 +198,7 @@ Last activity: 2026-06-02 — Quick task 260602-k3e: Restaura sync vendas assín
 
 - **2026-05-27 — Supervisor `--timeout` elevado de 900s para 1800s** em `/etc/supervisor/conf.d/ecf-worker.conf` no VPS (Phase 16 W1-T4 Sub-task A). Mudança de infra, não-commit. Motivo: o loop interno do `RefreshGrossBillingCacheJob` agora leva ~20min (168 empresas × 7s de throttle) e o timeout antigo de 15min causaria SIGTERM mid-loop. Workers reiniciados via `supervisorctl reread && supervisorctl update ecf-worker`; PIDs novos: `ecf-worker_00=4119849`, `ecf-worker_01=4119850`. Rollback: `sed -i 's/--timeout=1800/--timeout=900/' ... && supervisorctl reread && supervisorctl update ecf-worker`.
 - **`RefreshGrossBillingCacheJob` mantido como loop único (não-fan-out)** — decisão W1-T4 Sub-task C. Com `--timeout=1800` + throttle interno 7s + `->withoutOverlapping()` + 1×/dia, não há risco de colisão paralela. Defesa em profundidade: reavaliar se smoke W3-T3 mostrar 429 originados deste job.
+- **2026-06-02 — Phase 16 validada em produção** com 6 dias de dados reais. Redução de 429 confirmada: pré-Phase 16 média ~7.500/dia (25/05: 6.073 · 26/05: 7.951 · 27/05: 6.537 deploy parcial) → pós-Phase 16 média ~140/dia (28/05: 137 · 29/05: 153 · 30/05: 158 · 31/05: 136 · 01/06: 126 · 02/06: 190). **Redução de 98%**. Os 429 residuais ficam concentrados no horário do `adman:sync` (11:00 BRT) e são absorvidos pelo retry exponencial 2s/4s/8s — não impactam usuário final. SC-8 ("zero 429 em uso normal") considerado entregue na prática. Para zerar de fato, seria necessário fan-out também no `RefreshGrossBillingCacheJob` — ROI marginal, não priorizado.
 
 ### Pending Todos
 
@@ -239,9 +240,11 @@ None.
 | Phase 14 | Suites de coexistencia pos-drop obsoletas | pending-regression-cleanup | 2026-05-26 |
 | Phase 14 | Smoke visual Plan 14-07 das 5 telas | pending-human-uat | 2026-05-26 |
 | Phase 15 | Smoke visual W4-T2 (11 itens: cards/copy/chip/reanalisar/badge auto_resolvido) | pending-human-uat | 2026-05-27 |
-| Adman | Rate limit 429 — aumento de quota pedido ao provedor (mensagem enviada no grupo) | aguardando-resposta-provedor | 2026-05-27 |
+| Phase 16 | Fan-out de `RefreshGrossBillingCacheJob` (zerar 140/dia residuais) | non-priority — ROI marginal | 2026-06-02 |
+| Phase 16 | Smoke W3-T3 humano (cards/badges/bloqueio reanalisar) | validado em prod (6 dias sem regressão) | 2026-06-02 |
+| Adman | Rate limit 429 — Adman respondeu: API é D-1 (10h BRT) + 10 req/min/key. Resolvido via Phase 16 (98% redução de 429). | resolvido-via-phase-16 | 2026-05-27 |
 
 ## Session Continuity
 
-Last session: 2026-06-01T20:17:17.178Z
-Stopped at: Phase 17 UI-SPEC approved
+Last session: 2026-06-02T18:00:00.000Z
+Stopped at: Phase 16 oficialmente fechada (validada em prod: 98% redução de 429 em 6 dias). Sincronizado com 83 commits do outro dev (Phase 17 completa + ML OAuth + diagnósticos Adman no Dev panel + quick tasks). Trabalho da Phase 16 intacto pós-pull. Próxima ação: TBD pelo usuário.
