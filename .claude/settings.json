@@ -162,7 +162,24 @@
       "Bash(curl -s -o /dev/null -w \"/ml-oauth HTTP %{http_code}\\\\n\" https://admin.ecfconsultoria.com.br/ml-oauth)",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && echo '===LOG INFO===' && ls -lh storage/logs/laravel.log && head -1 storage/logs/laravel.log | cut -c1-30 && echo '===429 BY DAY===' && grep 'rate limit \\(429\\)' storage/logs/laravel.log | awk -F'[][]' '{print substr\\(\\\\$2, 1, 10\\)}' | sort | uniq -c | tail -20 && echo '===429 LAST 6H===' && grep 'rate limit \\(429\\)' storage/logs/laravel.log | awk -F'[][]' '{print substr\\(\\\\$2, 1, 13\\)}' | sort | uniq -c | tail -8\")",
       "Bash(\"C:/xampp/php/php.exe\" -l app/Http/Controllers/DashboardController.php)",
-      "Bash(echo \"EXIT=$?\")"
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && echo '===VERIFICA COMANDO===' && php artisan list 2>&1 | grep audit-billing\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && nohup php artisan dashboard:audit-billing-divergence --period=30 --no-interaction > /tmp/audit-billing-30.txt 2>&1 & echo 'PID:' \\\\$!\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 3599228 2>/dev/null && echo running || echo done\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"wc -l /tmp/audit-billing-30.txt && head -10 /tmp/audit-billing-30.txt\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"echo '===PID===' && kill -0 3599228 2>/dev/null && echo 'still running' || echo 'finished' && echo '===FILE SIZE===' && wc -l /tmp/audit-billing-30.txt && echo '===TAIL===' && tail -30 /tmp/audit-billing-30.txt\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 3599228 2>/dev/null && echo 'still running' || echo 'finished' && echo '---PROGRESS---' && tail -3 /tmp/audit-billing-30.txt\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 3599228 2>/dev/null && echo 'running' || echo 'finished' && echo '---LINHAS---' && wc -l /tmp/audit-billing-30.txt && echo '---SUMARIO \\(ultimas 30\\)---' && tail -30 /tmp/audit-billing-30.txt\")",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'echo '\\\\''===CABECALHO E TOP 30==='\\\\'' && sed -n '\\\\''/^+----/,/^+----/p'\\\\'' /tmp/audit-billing-30.txt | head -40 && echo '\\\\''===DISTRIBUICAO DE STATUS==='\\\\'' && awk '\\\\''/^\\\\|/ && NF>0 {print $NF}'\\\\'' /tmp/audit-billing-30.txt | sort | uniq -c | sort -rn')",
+      "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164:/tmp/audit-billing-30.txt .planning/phases/18-dashboard-precisao-filtros/AUDIT-OUTPUT-30d.txt)",
+      "Bash(awk -F'|' '{gsub\\(/^ +| +$/, \"\", $8\\); print $8}')",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'cd /var/www/ecf_admin && php artisan tinker --execute='\\\\'' *)",
+      "Bash(Select-String \"diagnose-cust-id\")",
+      "Bash(/c/xampp/php/php.exe -l app/Jobs/RefreshGrossBillingCacheJob.php)",
+      "Bash(/c/xampp/php/php.exe -l app/Console/Commands/SyncVendasAdman.php)",
+      "Bash(/c/xampp/php/php.exe -l app/Console/Commands/SyncThumbnailsPublicacoes.php)",
+      "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/MlbController.php)",
+      "Bash(/c/xampp/php/php.exe -l app/Jobs/SyncTodasVendasAdmanJob.php)"
     ]
   }
 }
