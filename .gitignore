@@ -47,3 +47,6 @@ composer.phar
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Worktrees temporários de agentes (Claude Code)
+.claude/worktrees/
