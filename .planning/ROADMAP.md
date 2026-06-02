@@ -435,7 +435,7 @@ v4.0 phases execute in order: 13 → 14
 | 14. Consolidação do Modelo de Serviços | 7/7 | Complete    | 2026-05-26 |
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
 | 16. Adequação à cadência D-1 da Adman | 0/? | Planning | - |
-| 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete   | 2026-06-02 |
+| 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete    | 2026-06-02 |
 
 ### Phase 17: Coleta de Dados ML (Fase 1 — sem IA)
 

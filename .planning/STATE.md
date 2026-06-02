@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v4.1
 milestone_name: Eficiência Operacional Sugadores
-status: executing
-stopped_at: Phase 17 UI-SPEC approved
-last_updated: "2026-06-01T20:42:53.946Z"
+status: milestone_complete
+stopped_at: Milestone complete (Phase 17 was final phase)
+last_updated: 2026-06-02T13:16:57.086Z
 last_activity: 2026-06-01 -- Phase 17 execution started
 progress:
   total_phases: 17
   completed_phases: 7
   total_plans: 24
-  completed_plans: 19
+  completed_plans: 24
   percent: 41
 ---
 
@@ -21,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 17 — coleta-de-dados-ml-intelig-ncia-de-an-ncios-do-mercado-livre
+**Current focus:** Milestone complete
 
 ## Current Position
 
-Phase: 17 (coleta-de-dados-ml-intelig-ncia-de-an-ncios-do-mercado-livre) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 17
-Last activity: 2026-06-02 -- Completed quick task 260602-d8i: botão "Sincronizar todas as conectadas" no painel ML OAuth
+Phase: 17
+Plan: Not started
+Status: Milestone complete
+Last activity: 2026-06-02
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 13
+- Total plans completed: 18
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -52,6 +52,7 @@ Last activity: 2026-06-02 -- Completed quick task 260602-d8i: botão "Sincroniza
 | 11. Disparos Automáticos de Metas | 0/? | - | - |
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 0/? | - | - |
 | 14 | 7 | - | - |
+| 17 | 5 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
