@@ -231,7 +231,10 @@ export default function Coleta({ coletas = [], coleta = null }) {
                                     <td className="px-5 py-3.5 text-right">
                                         <button
                                             type="button"
-                                            onClick={() => router.get(route('mlb.coleta.show', c.id))}
+                                            onClick={() => router.get(route('mlb.coleta.show', c.id), {}, {
+                                                preserveScroll: true, // não pula pro topo
+                                                preserveState: true,  // mantém o estado do polling — não "reinicia" a UI
+                                            })}
                                             className="text-ecf-yellow text-[13px] hover:underline"
                                         >
                                             Ver relatório
