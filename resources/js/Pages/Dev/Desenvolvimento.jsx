@@ -1,6 +1,8 @@
 import AppLayout from '@/Layouts/AppLayout';
+import { cn } from '@/lib/utils';
+import { router } from '@inertiajs/react';
+import { Activity, AlertTriangle, Check, Code2, Copy, ExternalLink, FileText, ListChecks, Puzzle, RefreshCw } from 'lucide-react';
 import { useState } from 'react';
-import { Code2, ExternalLink, Copy, Check, FileText, Puzzle } from 'lucide-react';
 
 function CopyBtn({ text }) {
     const [copied, setCopied] = useState(false);
@@ -63,7 +65,72 @@ function LinkRow({ label, url }) {
     );
 }
 
-export default function Desenvolvimento() {
+// Retorna as classes de cor do badge conforme a severidade do alerta
+function sevBadge(sev) {
+    return cn(
+        'inline-flex items-center px-1.5 py-0.5 rounded text-[11px] font-medium border',
+        sev === 'alta'
+            ? 'text-red-400 bg-red-400/10 border-red-400/20'
+            : sev === 'media'
+                ? 'text-amber-400 bg-amber-400/10 border-amber-400/20'
+                : 'text-white/40 bg-white/[0.04] border-white/[0.08]',
+    );
+}
+
+// Linha de alerta com badge de severidade, descrição e botão de re-sync
+function AlertRow({ item, resyncing, onResync }) {
+    const emEnvio = resyncing === item.company_id;
+    return (
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg bg-black/30 border border-white/[0.04] px-3 py-2.5">
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-white/80 text-[13px] font-medium truncate">{item.empresa}</span>
+                    <span className={sevBadge(item.severidade)}>
+                        {item.severidade}
+                    </span>
+                </div>
+                <p className="text-white/60 text-[12px] leading-relaxed">{item.descricao}</p>
+            </div>
+            <div className="shrink-0">
+                <button
+                    onClick={() => onResync(item.company_id)}
+                    disabled={emEnvio}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow transition-colors text-[12px] disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Re-disparar sync para esta empresa"
+                >
+                    <RefreshCw size={12} className={emEnvio ? 'animate-spin' : ''} />
+                    {emEnvio ? 'Disparando…' : 'Re-disparar sync'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+export default function Desenvolvimento({ diagnostico }) {
+    // Defaults seguros caso a prop chegue undefined (ex.: erros de bootstrap)
+    const diag = diagnostico ?? {
+        sem_sync: [],
+        erros: [],
+        fila: { pendentes: 0, falhos: 0 },
+        anomalias: [],
+        total: 0,
+    };
+
+    // Guarda o company_id do botão de re-sync que está em envio
+    const [resyncing, setResyncing] = useState(null);
+
+    function resync(companyId) {
+        setResyncing(companyId);
+        router.post(
+            route('dev.resync'),
+            { company_id: companyId },
+            {
+                preserveScroll: true,
+                onFinish: () => setResyncing(null),
+            },
+        );
+    }
+
     return (
         <AppLayout title="Desenvolvimento">
             <div className="max-w-4xl mx-auto space-y-6">
@@ -91,6 +158,108 @@ export default function Desenvolvimento() {
                         label="Política de Privacidade (pública)"
                         url="/privacidade/painel-ecf"
                     />
+                </DevCard>
+
+                {/* ─── Diagnóstico Adman ──────────────────────────────────── */}
+                {diag.total === 0 ? (
+                    // Estado vazio: nenhum alerta, mas fila ainda é exibida abaixo
+                    <DevCard
+                        icon={Activity}
+                        title="Diagnóstico Adman"
+                        subtitle="Heurística sobre dados locais — sem chamada externa"
+                    >
+                        <p className="text-white/40 text-[13px]">
+                            Tudo certo — nenhum alerta no momento.
+                        </p>
+                    </DevCard>
+                ) : (
+                    <>
+                        {/* Card: empresas sem sync recente */}
+                        {diag.sem_sync.length > 0 && (
+                            <DevCard
+                                icon={AlertTriangle}
+                                title="Empresas sem sync recente"
+                                subtitle={`${diag.sem_sync.length} empresa${diag.sem_sync.length > 1 ? 's' : ''} com alerta`}
+                            >
+                                <div className="space-y-2">
+                                    {diag.sem_sync.map((item) => (
+                                        <AlertRow
+                                            key={`semSync-${item.company_id}`}
+                                            item={item}
+                                            resyncing={resyncing}
+                                            onResync={resync}
+                                        />
+                                    ))}
+                                </div>
+                            </DevCard>
+                        )}
+
+                        {/* Card: syncs com erro */}
+                        {diag.erros.length > 0 && (
+                            <DevCard
+                                icon={AlertTriangle}
+                                title="Syncs com erro"
+                                subtitle={`${diag.erros.length} erro${diag.erros.length > 1 ? 's' : ''} nas últimas 48h`}
+                            >
+                                <div className="space-y-2">
+                                    {diag.erros.map((item, idx) => (
+                                        <AlertRow
+                                            key={`erro-${item.company_id}-${idx}`}
+                                            item={item}
+                                            resyncing={resyncing}
+                                            onResync={resync}
+                                        />
+                                    ))}
+                                </div>
+                            </DevCard>
+                        )}
+
+                        {/* Card: anomalias de métrica */}
+                        {diag.anomalias.length > 0 && (
+                            <DevCard
+                                icon={Activity}
+                                title="Anomalias de métrica"
+                                subtitle={`${diag.anomalias.length} anomalia${diag.anomalias.length > 1 ? 's' : ''} detectada${diag.anomalias.length > 1 ? 's' : ''}`}
+                            >
+                                <div className="space-y-2">
+                                    {diag.anomalias.map((item, idx) => (
+                                        <AlertRow
+                                            key={`anomalia-${item.company_id}-${idx}`}
+                                            item={item}
+                                            resyncing={resyncing}
+                                            onResync={resync}
+                                        />
+                                    ))}
+                                </div>
+                            </DevCard>
+                        )}
+                    </>
+                )}
+
+                {/* Card: fila & jobs — sempre visível independente do estado vazio */}
+                <DevCard
+                    icon={ListChecks}
+                    title="Fila & jobs"
+                    subtitle="Contadores atuais das tabelas jobs e failed_jobs"
+                >
+                    <div className="flex gap-4">
+                        <div className="flex-1 rounded-lg bg-black/30 border border-white/[0.04] px-3 py-3 text-center">
+                            <p className="text-white/40 text-[11px] uppercase tracking-wider mb-1">Pendentes</p>
+                            <p className="text-white font-semibold text-[22px] leading-tight">
+                                {diag.fila.pendentes}
+                            </p>
+                        </div>
+                        <div className="flex-1 rounded-lg bg-black/30 border border-white/[0.04] px-3 py-3 text-center">
+                            <p className="text-white/40 text-[11px] uppercase tracking-wider mb-1">Falhos</p>
+                            {/* Destacar em vermelho quando há jobs falhos */}
+                            <p className={cn(
+                                'font-semibold text-[22px] leading-tight',
+                                diag.fila.falhos > 0 ? 'text-red-400' : 'text-white',
+                            )}>
+                                {diag.fila.falhos}
+                            </p>
+                        </div>
+                    </div>
                 </DevCard>
 
                 <div className="rounded-xl border border-dashed border-white/[0.08] p-5 text-center">
