@@ -27,6 +27,7 @@ class Company extends Model
 
     protected $fillable = [
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
+        'cust_id_status',
         'segment', 'active', 'status', 'notes',
         'parent_company_id', 'ml_link_generated_at', 'ml_link_url',
     ];
@@ -34,6 +35,7 @@ class Company extends Model
     protected $casts = [
         'active'               => 'boolean',
         'status'               => 'string',
+        'cust_id_status'       => 'string',
         'ml_link_generated_at' => 'datetime',
     ];
 
