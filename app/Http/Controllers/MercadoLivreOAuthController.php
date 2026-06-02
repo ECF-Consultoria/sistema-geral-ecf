@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncMlCompanyJob;
 use App\Models\Company;
 use App\Services\MercadoLivreService;
 use Illuminate\Http\Request;
@@ -180,6 +181,47 @@ class MercadoLivreOAuthController extends Controller
             Log::error("[MercadoLivre] Erro sync manual empresa {$company->id}: {$e->getMessage()}");
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    // ── Sync global (fan-out) ─────────────────────────────────────────────────
+
+    /**
+     * Dispara o sync D-1 de TODAS as empresas com token OAuth ML ativo (admin only).
+     * Replica o fan-out assíncrono do comando `ml:sync` sem travar o request.
+     * Aceita ?date=YYYY-MM-DD; padrão: ontem (D-1).
+     *
+     * @return JsonResponse { enfileiradas: int, date: string }
+     */
+    public function syncAll(Request $request): JsonResponse
+    {
+        // Data alvo: D-1 por padrão (ML é D-1), mas aceita override manual
+        $date = $request->input('date', now()->subDay()->toDateString());
+
+        // Busca apenas empresas ativas com token ML ativo (mesmo critério do ml:sync)
+        $companies = Company::query()
+            ->where('active', true)
+            ->whereHas('mlToken', fn($q) => $q->where('status', 'active'))
+            ->with('mlToken')
+            ->get();
+
+        $total = $companies->count();
+
+        if ($total === 0) {
+            Log::info('[MercadoLivre] Sync global solicitado mas nenhuma empresa com token ativo encontrada.', ['date' => $date]);
+            return response()->json(['enfileiradas' => 0, 'date' => $date]);
+        }
+
+        // Delay escalonado de 2s entre jobs — respeita rate limit ML (1.500 req/min)
+        foreach ($companies as $i => $company) {
+            SyncMlCompanyJob::dispatch($company, $date)->delay(now()->addSeconds($i * 2));
+        }
+
+        Log::info("[MercadoLivre] Sync global enfileirado por " . auth()->user()?->name, [
+            'enfileiradas' => $total,
+            'date'         => $date,
+        ]);
+
+        return response()->json(['enfileiradas' => $total, 'date' => $date]);
     }
 
     // ── Desconectar ───────────────────────────────────────────────────────────

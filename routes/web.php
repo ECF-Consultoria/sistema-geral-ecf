@@ -223,6 +223,8 @@ Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::post('/companies/{company}/ml/initiate',    [MercadoLivreOAuthController::class, 'initiate'])->name('ml.oauth.initiate');
         Route::delete('/companies/{company}/ml/disconnect',[MercadoLivreOAuthController::class, 'disconnect'])->name('ml.oauth.disconnect');
         Route::post('/companies/{company}/ml/sync-now',   [MercadoLivreOAuthController::class, 'syncNow'])->name('ml.sync.now');
+        // Sync global: dispara fan-out D-1 de todas as empresas com token ML ativo
+        Route::post('/ml-oauth/sync-all',                  [MercadoLivreOAuthController::class, 'syncAll'])->name('ml.oauth.sync-all');
 
         // ─── Módulo Serviços (Frente A) ──────────────────────────────────
         // Catálogo de serviços + contratos por empresa. Acesso admin-only
