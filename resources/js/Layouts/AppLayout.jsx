@@ -116,12 +116,14 @@ export default function AppLayout({ children, title }) {
                 collapsed && !mobile ? 'justify-center' : 'gap-3'
             )}>
                 {(!collapsed || mobile) ? (
-                    <img
-                        src={logoSrc}
-                        alt="ECF Consultoria"
-                        className="h-7 w-auto object-contain"
-                        onError={e => { e.currentTarget.style.display = 'none'; }}
-                    />
+                    <Link href={route('dashboard')} className="inline-flex items-center" aria-label="Ir para a página principal">
+                        <img
+                            src={logoSrc}
+                            alt="ECF Consultoria"
+                            className="h-7 w-auto object-contain"
+                            onError={e => { e.currentTarget.style.display = 'none'; }}
+                        />
+                    </Link>
                 ) : (
                     <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-ecf-yellow shrink-0">
                         <span className="text-[#252525] font-display font-bold text-sm">E</span>
