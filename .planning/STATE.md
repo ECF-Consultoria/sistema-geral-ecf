@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 17
 Plan: Not started
 Status: Milestone complete
-Last activity: 2026-06-02 — Quick task 260602-fn3: Diagnóstico Adman no painel /dev/desenvolvimento
+Last activity: 2026-06-02 — Quick task 260602-k3e: Restaura sync vendas assíncrono (fix 504 nginx)
 
 ## Performance Metrics
 
@@ -219,6 +219,7 @@ None.
 | 260601-ml3 | Cutover Adman → ML por empresa (token ML ativo assume); fim do conflito de sync; sugadores usa ID Adman | 2026-06-01 | c85b86f | [260601-ml3-cutover-adman-ml](.planning/quick/260601-ml3-cutover-adman-ml/) |
 | 260602-d8i | Botão "Sincronizar todas as conectadas" no painel ML OAuth — fan-out D-1 das empresas com token ML ativo (mesmo critério do ml:sync) | 2026-06-02 | b2b72b9 | [260602-d8i-btn-sync-todas-ml-oauth](.planning/quick/260602-d8i-btn-sync-todas-ml-oauth/) |
 | 260602-fn3 | Bloco "Diagnóstico Adman" em /dev/desenvolvimento — alertas heurísticos (sem sync / erros / fila & jobs falhos / anomalias de métrica) + ação re-disparar sync | 2026-06-02 | e967136 | [260602-fn3-diagnostico-adman-painel-dev](.planning/quick/260602-fn3-diagnostico-adman-painel-dev/) |
+| 260602-k3e | Restaura despacho assíncrono em syncTodasVendasAdman (regressão de 7b7a2a9) — elimina 504 do nginx no botão "Sync Vendas + Preços" | 2026-06-02 | 04435a2 | [260602-k3e-restaurar-despacho-assincrono-synctodasv](.planning/quick/260602-k3e-restaurar-despacho-assincrono-synctodasv/) |
 
 ## Deferred Items
 
