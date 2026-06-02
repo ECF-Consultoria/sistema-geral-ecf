@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\MlbColetaJob;
+use App\Jobs\SyncTodasVendasAdmanJob;
 use App\Models\Company;
 use App\Models\MlbColeta;
 use App\Models\MlbConfiguracao;
@@ -1884,7 +1885,8 @@ class MlbController extends Controller
 
     /**
      * Sincroniza vendas de TODAS as empresas com cust_id. Apenas gestor.
-     * Executa de forma síncrona — o modal permanece aberto até a conclusão.
+     * Despacha SyncTodasVendasAdmanJob para o queue worker e retorna imediatamente —
+     * evita o timeout 504 do nginx no loop síncrono sobre ~17 empresas.
      */
     public function syncTodasVendasAdman(Request $request)
     {
@@ -1896,45 +1898,16 @@ class MlbController extends Controller
             'date_to'   => 'required|date|before_or_equal:today|after_or_equal:date_from',
         ]);
 
-        // Operação longa — remove o limite de 120s do PHP para este request
-        set_time_limit(0);
+        // Contagem leve para enriquecer a flash message sem rodar o loop
+        $totalEmpresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->count();
 
-        $adman    = new AdmanService();
-        $empresas = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '')->get();
-        $totais   = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
-
-        foreach ($empresas as $empresa) {
-            try {
-                $performance  = $adman->fetchPerformance($empresa->cust_id, $request->date_from, $request->date_to);
-                $items        = $performance['items'] ?? [];
-                $mlbsComVenda = $this->extrairMlbsVendidos($items);
-
-                $totais['itens']     += count($items);
-                $totais['com_venda'] += count($mlbsComVenda);
-
-                foreach ($mlbsComVenda as $mlbCode => $data) {
-                    $intQty = (int) $data['qty'];
-                    $affected = Publicacao::where('mlb_code', $mlbCode)->update([
-                        'vendido'        => true,
-                        'vendas_qty'     => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
-                        'preco_unitario' => $data['preco'],
-                        'net_billing'    => $data['net_billing'] > 0 ? $data['net_billing'] : null,
-                    ]);
-                    $totais['encontradas'] += $affected;
-                }
-
-                usleep(600_000);
-            } catch (\Throwable $e) {
-                Log::error("[MLB SyncTodasVendas] {$empresa->nome}: " . $e->getMessage());
-                $totais['erros']++;
-            }
-        }
+        // pt-BR: Despacha o loop síncrono para queue worker — evita 504 do nginx em ~17 empresas * 120s.
+        // O job SyncTodasVendasAdmanJob registra o progresso em mlb_sync_vendas_logs (visível em /dev/desenvolvimento).
+        SyncTodasVendasAdmanJob::dispatch($request->date_from, $request->date_to, $request->user()?->id);
 
         return back()->with('success', sprintf(
-            '%d empresa(s) sincronizadas. %d item(ns) com venda, %d publicação(ões) atualizada(s).',
-            $empresas->count() - $totais['erros'],
-            $totais['com_venda'],
-            $totais['encontradas']
+            'Sync de vendas iniciado em background para %d empresa(s). Acompanhe o progresso em /dev/desenvolvimento.',
+            $totalEmpresas
         ));
     }
 
