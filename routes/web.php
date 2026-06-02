@@ -187,6 +187,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Dev — area interna de projetos em desenvolvimento
         Route::get('/dev/desenvolvimento', [DevController::class, 'index'])
             ->name('dev.desenvolvimento');
+        // Re-sync manual de empresa Adman via diagnóstico (admin only)
+        Route::post('/dev/resync', [DevController::class, 'resyncCompany'])
+            ->name('dev.resync');
 Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
