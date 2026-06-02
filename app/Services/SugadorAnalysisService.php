@@ -100,6 +100,9 @@ class SugadorAnalysisService
         // follow-up separado.
         $custId        = $company->adman_account_id ?: $company->ml_store_id;
 
+        // Phase 18.5: marketplace dinamico por empresa (default 'meli').
+        $marketplace = $company->marketplace ?? 'meli';
+
         $skip = function (string $reason) {
             return ['skipped' => true, 'reason' => $reason, 'campanhas' => 0, 'adgroups' => 0, 'detalhes' => []];
         };
@@ -118,7 +121,7 @@ class SugadorAnalysisService
         // Lookup campaignId → {name, status} pra descartar adgroups que o analista
         // já moveu pra campanha de quarentena (SGI/Sugador/Sugadores) ou cuja
         // campanha está pausada/encerrada — esses já foram tratados.
-        $campaignsInfo = $this->loadCampaignsInfo($custId);
+        $campaignsInfo = $this->loadCampaignsInfo($custId, $marketplace);
 
         // Pré-fetch dos sugadores já existentes para esta empresa+data → evita SELECT por item
         $existingMap = $dryRun ? collect() : Sugador::where('company_id', $company->id)
@@ -137,7 +140,8 @@ class SugadorAnalysisService
         // ─── Análise de anúncios (adgroup-level) ────────────────────────────
         if ($config->incluir_anuncios) {
             try {
-                $ads = $this->adman->fetchAdsMetrics($custId, $dateFrom, $dateTo);
+                // Phase 18.5: marketplace dinamico (default 'meli').
+                $ads = $this->adman->fetchAdsMetrics($custId, $dateFrom, $dateTo, 50, $marketplace);
 
                 foreach ($ads as $ad) {
                     $cId = $ad['campaign_id'];
@@ -210,7 +214,8 @@ class SugadorAnalysisService
         // ─── Análise de campanhas ────────────────────────────────────────────
         if ($config->incluir_campanhas) {
             try {
-                $campaigns = $this->adman->fetchCampaignsRange($custId, $dateFrom, $dateTo);
+                // Phase 18.5: marketplace dinamico.
+                $campaigns = $this->adman->fetchCampaignsRange($custId, $dateFrom, $dateTo, $marketplace);
 
                 foreach ($campaigns as $camp) {
                     $cId    = $camp['campaign_id'];
@@ -522,10 +527,13 @@ class SugadorAnalysisService
      *
      * Público pra reuso pelo CleanupSugadoresQuarentena.
      */
-    public function loadCampaignsInfo(string $custId): array
+    public function loadCampaignsInfo(string $custId, string $marketplace = 'meli'): array
     {
         try {
-            $campaigns = $this->adman->fetchAllCampaigns($custId);
+            // Phase 18.5: marketplace dinamico (default 'meli' preserva
+            // compat com callers nao migrados — ex.: CleanupSugadoresQuarentena
+            // command line passa custId puro e usa default).
+            $campaigns = $this->adman->fetchAllCampaigns($custId, $marketplace);
         } catch (\Throwable $e) {
             Log::warning("[Sugadores] Não conseguiu listar campanhas {$custId} pro filtro de quarentena: " . $e->getMessage());
             return [];

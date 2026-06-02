@@ -101,8 +101,11 @@ class AuditBillingDivergence extends Command
             }
 
             // Faturamento autoritativo via Adman.
+            // Phase 18.5: marketplace dinamico — sem isso, empresas Shopee/
+            // Amazon continuam dando false positive (path /meli/... batendo 500).
+            $marketplace = $company->marketplace ?? 'meli';
             try {
-                $resposta = $this->adman->fetchPerformance($custId, $dateFrom, $dateTo);
+                $resposta = $this->adman->fetchPerformance($custId, $dateFrom, $dateTo, 3, $marketplace);
                 $admanRevenue = (float) ($resposta['summarizedData']['grossBilling']['value'] ?? 0.0);
             } catch (\Throwable $e) {
                 $falhasAdman++;

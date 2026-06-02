@@ -110,7 +110,8 @@ class DiagnoseCustIdTest extends TestCase
         $mock = Mockery::mock(AdmanService::class);
         $mock->shouldReceive('fetchPerformance')
             ->once()
-            ->with($custIdAmbiguo, Mockery::type('string'), Mockery::type('string'))
+            // Phase 18.5: assinatura passou a aceitar (..., maxRetries, marketplace).
+            ->with($custIdAmbiguo, Mockery::type('string'), Mockery::type('string'), 3, 'meli')
             ->andThrow(new \RuntimeException('Erro HTTP 500 - cliente nao encontrado'));
         $this->app->instance(AdmanService::class, $mock);
 
@@ -212,7 +213,8 @@ class DiagnoseCustIdTest extends TestCase
         $mock = Mockery::mock(AdmanService::class);
         $mock->shouldReceive('fetchPerformance')
             ->once()
-            ->with($custIdFormatoMl, Mockery::type('string'), Mockery::type('string'))
+            // Phase 18.5: assinatura passou a aceitar (..., maxRetries, marketplace).
+            ->with($custIdFormatoMl, Mockery::type('string'), Mockery::type('string'), 3, 'meli')
             ->andReturn([
                 'summarizedData' => [
                     'grossBilling' => ['value' => 1000.0],

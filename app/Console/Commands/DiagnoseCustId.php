@@ -139,7 +139,9 @@ class DiagnoseCustId extends Command
 
             // 3) SUSPEITOS sem upgrade → validacao via Adman.
             if (in_array($categoria, [self::CAT_SUSPEITO_IGUAIS, self::CAT_SUSPEITO_FORMATO], true)) {
-                $categoria = $this->validarViaAdman($company->cust_id, $ontem);
+                // Phase 18.5: marketplace dinamico — empresas Shopee/Amazon
+                // deixam de bater /meli/... e ficar marcadas como INVALIDO.
+                $categoria = $this->validarViaAdman($company->cust_id, $ontem, $company->marketplace ?? 'meli');
                 $callsAdmanFeitas++;
             }
 
@@ -281,7 +283,7 @@ class DiagnoseCustId extends Command
      *
      * Throttle 7s aplicado SEMPRE (mesmo em erro) — protege ADMAN_RATE_LIMIT_RPM = 10.
      */
-    private function validarViaAdman(?string $custId, string $data): string
+    private function validarViaAdman(?string $custId, string $data, string $marketplace = 'meli'): string
     {
         if (!$custId) {
             // Nao deveria acontecer (filtramos por adman_account_id !== ''),
@@ -290,7 +292,9 @@ class DiagnoseCustId extends Command
         }
 
         try {
-            $this->adman->fetchPerformance($custId, $data, $data);
+            // Phase 18.5: passa marketplace dinamico — empresas Shopee/Amazon
+            // batem em /shopee/... e /amazon/... respectivamente.
+            $this->adman->fetchPerformance($custId, $data, $data, 3, $marketplace);
             $categoria = self::CAT_VALIDADO_API;
         } catch (\Throwable $e) {
             $msg = $e->getMessage();

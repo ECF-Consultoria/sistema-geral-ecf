@@ -98,7 +98,7 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 $q->where(function ($q2) { $q2->whereNotNull('ml_store_id')->where('ml_store_id', '!=', ''); })
                   ->orWhere(function ($q2) { $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', ''); });
             })
-            ->get(['id', 'name', 'adman_account_id', 'ml_store_id']);
+            ->get(['id', 'name', 'adman_account_id', 'ml_store_id', 'marketplace']);
 
         if ($companies->isEmpty()) {
             Log::info('[RefreshGrossBilling] nenhuma empresa para processar');
@@ -124,6 +124,11 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 continue;
             }
 
+            // Phase 18.5: marketplace por empresa — empresas Shopee/Amazon
+            // batem em paths diferentes. Default 'meli' preserva comportamento
+            // anterior para empresas sem marketplace classificado.
+            $marketplace = $c->marketplace ?? 'meli';
+
             // Re-tenta sempre que NÃO tem VALOR REAL cacheado:
             //  - Cache miss (sem entrada) → fetch
             //  - ERROR_SENTINEL (Adman falhou na última) → fetch de novo
@@ -134,8 +139,8 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
             // MPozenato ficaram sem dados por várias execuções consecutivas
             // porque ERROR_SENTINEL (TTL 10min) sempre estava válido quando o
             // job de 30min rodava.
-            $needGross   = $adman->getCachedGrossBilling($custId, $dateFrom, $dateTo) === null;
-            $needAccount = $adman->getCachedAccountMetrics($custId, $dateFrom, $dateTo) === null;
+            $needGross   = $adman->getCachedGrossBilling($custId, $dateFrom, $dateTo, $marketplace) === null;
+            $needAccount = $adman->getCachedAccountMetrics($custId, $dateFrom, $dateTo, $marketplace) === null;
 
             if (!$needGross && !$needAccount) {
                 $skipped++;
@@ -151,7 +156,7 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 if ($callsMade > 0) usleep(7_000_000);
                 try {
                     // TTL = 1440min (24h) — alinhado com cadência D-1 do Adman (Phase 16 W1-T3)
-                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 1440, forceRefresh: true);
+                    $value = $adman->fetchGrossBilling($custId, $dateFrom, $dateTo, 1440, forceRefresh: true, marketplace: $marketplace);
                     $callsMade++;
                     if ($value === null) $fail++;
                     else                 $okGross++;
@@ -168,7 +173,7 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
                 if ($callsMade > 0) usleep(7_000_000);
                 try {
                     // TTL = 1440min (24h) — alinhado com cadência D-1 do Adman (Phase 16 W1-T3)
-                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 1440, forceRefresh: true);
+                    $metrics = $adman->fetchAccountMetricsCached($custId, $dateFrom, $dateTo, 1440, forceRefresh: true, marketplace: $marketplace);
                     $callsMade++;
                     if ($metrics === null) $fail++;
                     else                   $okAccount++;

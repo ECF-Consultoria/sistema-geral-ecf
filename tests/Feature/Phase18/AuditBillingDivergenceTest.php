@@ -61,10 +61,11 @@ class AuditBillingDivergenceTest extends TestCase
         }
 
         // Mock AdmanService::fetchPerformance retornando R$ 1.500 (gap de R$ 500).
+        // Phase 18.5: assinatura agora aceita (custId, from, to, maxRetries, marketplace).
         $mock = Mockery::mock(AdmanService::class);
         $mock->shouldReceive('fetchPerformance')
             ->once()
-            ->with('CUST_A', Mockery::type('string'), Mockery::type('string'))
+            ->with('CUST_A', Mockery::type('string'), Mockery::type('string'), 3, 'meli')
             ->andReturn([
                 'summarizedData' => [
                     'grossBilling' => ['value' => 1500.00],

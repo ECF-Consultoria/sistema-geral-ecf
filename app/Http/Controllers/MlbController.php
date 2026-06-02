@@ -809,6 +809,12 @@ class MlbController extends Controller
         $adman  = new AdmanService();
         $totais = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
 
+        // Phase 18.5 — DECISAO LEAN: este e modulo MLB-only por desenho. O
+        // foco do sistema sao empresas no Mercado Livre (135/169) e o catalogo
+        // /mlb-empresas so opera sobre empresas Meli. As 34 contas Shopee/
+        // Amazon nao chegam neste fluxo. Mantemos default 'meli' implicito no
+        // fetchPerformance — refatorar para passar $empresa->company->marketplace
+        // exigiria carregar a relacao em todos os call-sites sem ganho funcional.
         foreach ($empresas as $empresa) {
             try {
                 $performance  = $adman->fetchPerformance($empresa->cust_id, $request->date_from, $request->date_to);

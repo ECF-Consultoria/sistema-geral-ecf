@@ -164,7 +164,8 @@ class MarkCustIdStatus extends Command
 
             // SUSPEITOS sem upgrade → valida via Adman.
             if (in_array($categoria, [self::CAT_SUSPEITO_IGUAIS, self::CAT_SUSPEITO_FORMATO], true)) {
-                $categoria = $this->validarViaAdman($company->cust_id, $ontem);
+                // Phase 18.5: passa marketplace dinamico.
+                $categoria = $this->validarViaAdman($company->cust_id, $ontem, $company->marketplace ?? 'meli');
                 $callsAdman++;
             }
 
@@ -320,14 +321,16 @@ class MarkCustIdStatus extends Command
      *
      * Throttle 7s aplicado SEMPRE (mesmo em erro) — protege ADMAN_RATE_LIMIT_RPM=10.
      */
-    private function validarViaAdman(?string $custId, string $data): string
+    private function validarViaAdman(?string $custId, string $data, string $marketplace = 'meli'): string
     {
         if (!$custId) {
             return self::CAT_OK;
         }
 
         try {
-            $this->adman->fetchPerformance($custId, $data, $data);
+            // Phase 18.5: marketplace dinamico — sem isso, empresas Shopee/
+            // Amazon continuariam erroneamente sendo marcadas como invalido.
+            $this->adman->fetchPerformance($custId, $data, $data, 3, $marketplace);
             $categoria = self::CAT_VALIDADO_API;
         } catch (\Throwable $e) {
             $msg = $e->getMessage();
