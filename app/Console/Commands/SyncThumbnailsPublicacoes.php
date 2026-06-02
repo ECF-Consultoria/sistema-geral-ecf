@@ -58,7 +58,9 @@ class SyncThumbnailsPublicacoes extends Command
                     $totalAtualizado += $affected;
                 }
 
-                usleep(500_000);
+                // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
+                // Phase 18 W4-T2: 500ms (120 rpm) violava o throttle global. Alinhado com Job de refresh.
+                usleep(7_000_000);
             } catch (\Throwable $e) {
                 $this->warn("    Erro: " . $e->getMessage());
             }

@@ -838,7 +838,10 @@ class MlbController extends Controller
                 }
 
                 Log::info("[MLB SyncPub] {$empresa->nome} | itens={$totais['itens']} | com_venda=" . count($mlbsComVenda));
-                usleep(600_000);
+                // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
+                // Phase 18 W4-T2: 600ms (100 rpm) violava o throttle global e contribuiu para os 741 erros 429
+                // medidos na auditoria 30d. Alinhado com RefreshGrossBillingCacheJob e SyncTodasVendasAdmanJob.
+                usleep(7_000_000);
 
             } catch (\Throwable $e) {
                 Log::error("[MLB SyncPub] {$empresa->nome}: " . $e->getMessage());

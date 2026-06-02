@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -54,6 +55,37 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
     }
 
     public function handle(AdmanService $adman): void
+    {
+        // Phase 18 W4-T2: Defesa em profundidade contra concorrencia interna.
+        // ShouldBeUnique ja serializa via cache lock no dispatch, mas em cenarios
+        // de borda (multiplos workers, queue connections distintas, restart de
+        // supervisor durante execucao) o lock pode liberar antes do handle() ter
+        // terminado. Lock explicito com TTL = $this->timeout + folga garante
+        // que apenas 1 instancia roda — segunda chamada simplesmente retorna
+        // sem fazer nada (nao bloqueia o worker).
+        //
+        // 741 erros HTTP 429 medidos na auditoria 30d (AUDIT-OUTPUT-30d.txt)
+        // sao consistentes com 2 instancias rodando em paralelo (cada uma a 7s
+        // → combinadas viram ~3.5s → ~17 rpm → 7 rpm acima do limite).
+        $lock = Cache::lock('refresh-gross-billing-cache:handle', 720); // 12min — alinhado com uniqueFor()
+
+        if (!$lock->get()) {
+            Log::info('[RefreshGrossBilling] outra instancia ja esta rodando — pulando esta execucao');
+            return;
+        }
+
+        try {
+            $this->processar($adman);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * Logica original do handle, isolada para que o lock no handle() possa
+     * envolver a execucao inteira em try/finally sem indentar tudo.
+     */
+    private function processar(AdmanService $adman): void
     {
         $started = microtime(true);
 

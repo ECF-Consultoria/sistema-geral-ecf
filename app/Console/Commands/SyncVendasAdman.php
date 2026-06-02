@@ -58,7 +58,9 @@ class SyncVendasAdman extends Command
                     $totais['atualizadas'] += $affected;
                 }
 
-                usleep(400_000); // 400ms entre chamadas
+                // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
+                // Phase 18 W4-T2: 400ms (150 rpm) violava o throttle global. Alinhado com Job de refresh.
+                usleep(7_000_000);
             } catch (\Throwable $e) {
                 Log::error("[SyncVendas CMD] {$empresa->nome}: " . $e->getMessage());
                 $totais['erros']++;

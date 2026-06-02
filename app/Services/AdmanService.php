@@ -570,9 +570,11 @@ class AdmanService
         if (empty($toFetch)) return $result;
 
         foreach ($toFetch as $i => $custId) {
-            // Throttle 1.5s entre chamadas — abaixo dos 50/min do upstream
-            // Adman. Sem isso, 50 empresas em <2s = rate limit instantâneo.
-            if ($i > 0) usleep(1_500_000);
+            // Throttle conforme ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
+            // Phase 18 W4-T2: 1.5s (40 rpm) violava o throttle global; embora chamado em cache
+            // miss apenas (TTL 24h), em manhas pos-D-1 com cache frio empurrava o pool inteiro
+            // para 429. Alinhado com RefreshGrossBillingCacheJob.
+            if ($i > 0) usleep(7_000_000);
 
             $value = $this->fetchGrossBilling($custId, $dateFrom, $dateTo, $cacheMinutes);
             $result[$custId] = $value;

@@ -97,7 +97,10 @@ class SyncTodasVendasAdmanJob implements ShouldQueue
                     }
                 }
 
-                usleep(600_000); // 600ms entre chamadas para não sobrecarregar a API
+                // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
+                // Phase 18 W4-T2: 600ms (100 rpm) violava o throttle global e contribuiu para os 741 erros
+                // HTTP 429 medidos na auditoria 30d (AUDIT-OUTPUT-30d.txt). Alinhado com RefreshGrossBillingCacheJob.
+                usleep(7_000_000);
             } catch (\Throwable $e) {
                 Log::error("[MLB SyncTodasVendas] {$empresa->nome}: " . $e->getMessage());
                 $totais['erros']++;
