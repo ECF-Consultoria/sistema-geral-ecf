@@ -200,6 +200,37 @@ export default function MlOAuthIndex({ companies: initial }) {
     const [companies, setCompanies] = useState(initial);
     const [search, setSearch] = useState('');
 
+    // Estados do botão de sync global
+    const [syncing, setSyncing] = useState(false);
+    const [syncMsg, setSyncMsg] = useState(null);
+
+    // Dispara sync D-1 de todas as empresas com token ML ativo (fan-out assíncrono)
+    const sincronizarTodas = async () => {
+        setSyncing(true);
+        setSyncMsg(null);
+        try {
+            const res = await fetch(route('ml.oauth.sync-all'), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    'Accept': 'application/json',
+                },
+            });
+            const data = await res.json();
+            if (res.ok) {
+                setSyncMsg(`${data.enfileiradas} empresa(s) enfileirada(s) para sync (${data.date})`);
+            } else {
+                setSyncMsg('Erro ao disparar sync. Tente novamente.');
+            }
+        } catch {
+            setSyncMsg('Erro de rede ao disparar sync.');
+        } finally {
+            setSyncing(false);
+            // Limpa a mensagem de feedback após 5s
+            setTimeout(() => setSyncMsg(null), 5000);
+        }
+    };
+
     const handleDisconnect = (id) => {
         setCompanies(prev => prev.map(c =>
             c.id === id ? { ...c, ml_token: null, ml_link_generated_at: null } : c
@@ -236,14 +267,29 @@ export default function MlOAuthIndex({ companies: initial }) {
                         <p className="text-white/30 text-[12px] mt-0.5">
                             {connected.length} conectada{connected.length !== 1 ? 's' : ''} · {pending.length} aguardando autorização
                         </p>
+                        {/* Feedback do sync global */}
+                        {syncMsg && (
+                            <p className="text-emerald-400 text-[11px] mt-1">{syncMsg}</p>
+                        )}
                     </div>
-                    <input
-                        type="text"
-                        placeholder="Buscar empresa…"
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="w-56 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-[13px] text-white placeholder-white/25 outline-none focus:border-white/20"
-                    />
+                    <div className="flex items-center gap-2 shrink-0">
+                        {/* Botão de sync global — dispara D-1 de todas as conectadas */}
+                        <button
+                            onClick={sincronizarTodas}
+                            disabled={syncing || connected.length === 0}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#ffe116]/10 border border-[#ffe116]/20 text-[#ffe116] hover:bg-[#ffe116]/15 text-[11px] font-medium transition-colors disabled:opacity-40"
+                        >
+                            <RefreshCw size={11} className={syncing ? 'animate-spin' : ''} />
+                            {syncing ? 'Sincronizando…' : 'Sincronizar todas as conectadas'}
+                        </button>
+                        <input
+                            type="text"
+                            placeholder="Buscar empresa…"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="w-56 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-1.5 text-[13px] text-white placeholder-white/25 outline-none focus:border-white/20"
+                        />
+                    </div>
                 </div>
 
                 {/* Busca */}
