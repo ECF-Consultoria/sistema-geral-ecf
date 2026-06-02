@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 17
 Plan: Not started
 Status: Milestone complete
-Last activity: 2026-06-02
+Last activity: 2026-06-02 — Quick task 260602-fn3: Diagnóstico Adman no painel /dev/desenvolvimento
 
 ## Performance Metrics
 
@@ -218,6 +218,7 @@ None.
 | 260601-ml2 | Mercado Ads: advertiser_id correto + aggregation_type CAMPAIGN + trata advertiser sem campanhas (404) — destrava ACOS/TACOS/Invest.Ads | 2026-06-01 | fe83661 | [260601-ml2-ads-advertiser-id](.planning/quick/260601-ml2-ads-advertiser-id/) |
 | 260601-ml3 | Cutover Adman → ML por empresa (token ML ativo assume); fim do conflito de sync; sugadores usa ID Adman | 2026-06-01 | c85b86f | [260601-ml3-cutover-adman-ml](.planning/quick/260601-ml3-cutover-adman-ml/) |
 | 260602-d8i | Botão "Sincronizar todas as conectadas" no painel ML OAuth — fan-out D-1 das empresas com token ML ativo (mesmo critério do ml:sync) | 2026-06-02 | b2b72b9 | [260602-d8i-btn-sync-todas-ml-oauth](.planning/quick/260602-d8i-btn-sync-todas-ml-oauth/) |
+| 260602-fn3 | Bloco "Diagnóstico Adman" em /dev/desenvolvimento — alertas heurísticos (sem sync / erros / fila & jobs falhos / anomalias de métrica) + ação re-disparar sync | 2026-06-02 | e967136 | [260602-fn3-diagnostico-adman-painel-dev](.planning/quick/260602-fn3-diagnostico-adman-painel-dev/) |
 
 ## Deferred Items
 
