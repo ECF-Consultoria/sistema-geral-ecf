@@ -113,38 +113,46 @@ class DashboardController extends Controller
 
         // ─── Cards do período (Faturamento, Invest. Ads, TACOS médio) ────────
         //
-        // Política tudo-ou-nada: se TODAS as empresas com cust_id (ml_store_id
-        // ?: adman_account_id) têm cache /performance + /accounts/metrics
-        // quente, usa valores EXATOS da Adman. Se QUALQUER empresa está em
-        // cache miss/erro, descarta o cache do conjunto inteiro e cai para
-        // SUM(adman_metrics) no DB local para TODAS as empresas.
+        // Política HIBRIDA per-empresa (Phase 18 W4-T3) — substitui a antiga
+        // política tudo-ou-nada (revogada).
         //
-        // Por que tudo-ou-nada: mesclar "Adman exato" para algumas empresas com
-        // "SUM DB" para outras (estado anterior) produzia totais oscilantes em
-        // ±R$ 20M entre requests, conforme a composição cache-hit muda. Agora
-        // a leitura é determinística por request: ou tudo cache, ou tudo DB.
+        // Comportamento atual: para CADA empresa, decisão individual:
+        //  - cache hit → usa valor EXATO da Adman (vindo de getCachedGrossBillingsMany)
+        //  - cache miss → cai em SUM(adman_metrics.revenue) APENAS para essa empresa
+        // O total da Dashboard mistura as duas fontes; empresas com cust_id
+        // corrompido (que W4-T1 ainda não limpou) ainda contribuem com o valor
+        // DB em vez de zero. cards_exatos vira granular: true sse TODAS as
+        // empresas com cust_id válido tiveram cache hit E period === '30'.
         //
-        // Por que cust_id (não só adman_account_id): empresas com apenas
-        // ml_store_id (cadastradas via Comercial pós-Phase 13) eram silenciosamente
-        // excluídas com a lookup antiga (if !$c->adman_account_id continue) →
-        // apareciam zeradas no dashboard. cust_id casa com a chave usada por
-        // RefreshGrossBillingCacheJob (writer) e AdmanService::syncCompany.
+        // ─── Por que abandonar o tudo-ou-nada? ───────────────────────────────
+        // O comentário antigo argumentava "totais oscilantes em ±R$ 20M entre
+        // requests, conforme a composição cache-hit muda". Esse problema foi
+        // ESTABILIZADO pela Phase 16, que padronizou cache TTL 24h e job de
+        // refresh diário (RefreshGrossBillingCacheJob). Com cache estável
+        // dentro do mesmo dia, hits e misses tendem a permanecer constantes —
+        // a oscilação intra-dia é mínima. Já o custo do tudo-ou-nada ficou
+        // visível na auditoria W3-T2 (AUDIT-OUTPUT-30d.txt): 1 empresa sem
+        // cache zerava o pool inteiro → 168 empresas iam para SUM DB, mas só
+        // 4/172 têm 30 dias completos em adman_metrics → diff de R$ 39,3M
+        // (71,79%) vs Adman. O usuário rejeitou backfill (custo 5h+ Adman),
+        // então a precisão tem que vir do cache híbrido.
         //
-        // ─── Cache strategy (Phase 18 W2-T3) ─────────────────────────────────
+        // ─── Por que cust_id (não só adman_account_id) ──────────────────────
+        // Empresas com apenas ml_store_id (cadastradas via Comercial pós-
+        // Phase 13) eram silenciosamente excluídas com a lookup antiga
+        // (if !$c->adman_account_id continue) → apareciam zeradas no dashboard.
+        // cust_id casa com a chave usada por RefreshGrossBillingCacheJob
+        // (writer) e AdmanService::syncCompany. Accessor Company::cust_id
+        // prioriza ml_store_id ?? adman_account_id (commit f9d0547).
+        //
+        // ─── Cache strategy por range (Phase 18 W2-T3 — preservada) ─────────
         // RefreshGrossBillingCacheJob (Phase 16) pré-aquece o cache APENAS
-        // para range 30d (alinhado com cadência D-1 da Adman). Quando $period
-        // é 1d/7d/180d, o cache não tem hit e os cards caem no fallback DB
-        // (SUM adman_metrics). A UI sinaliza "≈ aproximado" via SC-5 (Phase 18
-        // W5) através da prop `cards_exatos` exportada abaixo.
-        //
-        // Trade-off intencional: respeita Phase 16 sem custo extra de chamadas
-        // Adman (pre-warm de 4 ranges × 168 empresas × 7s throttle ≈ 80min/dia).
-        // Para ranges ≠ 30d aceitamos fallback DB → herda o problema de gaps
-        // em adman_metrics até W3/W4 fecharem a divergência.
-        //
-        // Range agora é derivado de $period via getPeriodRange() (W2-T1/T2);
-        // cache key continua consistente com RefreshGrossBillingCacheJob
-        // quando $period === '30'.
+        // para range 30d. Quando $period é 1d/7d/180d, o cache híbrido NÃO
+        // se aplica — cai no fallback DB completo (decisão intacta) porque
+        // a única coisa que muda em ranges curtos é que TODAS as empresas
+        // têm cache miss, e o overhead de consultar cache antes de cair em
+        // DB seria desperdício. Na prática: $period === '30' → híbrido;
+        // demais → fallback DB tudo-ou-nada.
         [$dateFromN, $dateToN] = array_values($this->getPeriodRange($period));
 
         // Batch read: gross + account metrics em 2 round-trips Redis.
@@ -152,18 +160,29 @@ class DashboardController extends Controller
         $grossBatch   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFromN, $dateToN);
         $accountBatch = $this->adman->getCachedAccountMetricsMany($custIds, $dateFromN, $dateToN);
 
-        // Detecta cache completo: TODA empresa com cust_id precisa ter VALOR
-        // REAL no cache (não null, não ERROR_SENTINEL). Empresas sem cust_id
-        // são ignoradas no critério — contribuem 0 em ambos os modos.
-        $grossCacheCompleto   = true;
+        // Detecta cache /accounts/metrics completo (account ainda usa tudo-ou-
+        // nada porque alimenta avg_tacos + total_ad_investment que dependem
+        // de denominador estável; mistura cache+DB faria TACOS oscilar entre
+        // requests). Empresas sem cust_id são ignoradas — contribuem 0 nos
+        // dois modos.
         $accountCacheCompleto = true;
         foreach ($companies as $c) {
             $custId = $c->cust_id;
             if (!$custId) continue;
-            $g = $grossBatch[$custId]   ?? ['value' => null];
             $a = $accountBatch[$custId] ?? ['value' => null];
-            if ($g['value'] === null) $grossCacheCompleto   = false;
             if ($a['value'] === null) $accountCacheCompleto = false;
+        }
+
+        // Para o gross billing (faturamento) seguimos a política híbrida —
+        // não decidimos cache completo antes do loop; cada empresa é avaliada
+        // individualmente abaixo. Mas mantemos a flag $grossCacheCompleto
+        // INFORMATIVA (usada pra disparar warm-up e log abaixo).
+        $grossCacheCompleto = true;
+        foreach ($companies as $c) {
+            $custId = $c->cust_id;
+            if (!$custId) continue;
+            $g = $grossBatch[$custId] ?? ['value' => null];
+            if ($g['value'] === null) $grossCacheCompleto = false;
         }
 
         // Se algo está faltando, dispara warm-up do cache em background — não
@@ -174,28 +193,64 @@ class DashboardController extends Controller
             \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
         }
 
-        // Revenue por empresa no $period — SEM mistura: ou todas pelo cache
-        // Adman, ou todas pelo SUM DB. tacos/acos/margem por empresa seguem o
-        // mesmo critério separado (cache /accounts/metrics).
+        // Revenue por empresa no $period:
+        //  - $period === '30' → HÍBRIDO per-empresa (cache hit = Adman exato;
+        //    cache miss = SUM DB só dessa empresa)
+        //  - $period !== '30' → fallback DB completo (cache não cobre esses
+        //    ranges; consultar cache empresa-a-empresa seria custo zero
+        //    em ganho — preserva decisão W2-T3)
         $revenueByCompany = [];
         $acosByCompany    = [];
         $tacosByCompany   = [];
         $marginByCompany  = [];
 
-        if ($grossCacheCompleto) {
+        // cacheHitsCount e custIdsValidos alimentam cards_exatos granular
+        // (refinamento W4-T3 da flag introduzida em W2-T3).
+        $cacheHitsCount  = 0;
+        $custIdsValidos  = 0; // empresas com cust_id não-nulo
+
+        if ($period === '30') {
+            // Híbrido per-empresa. Pré-buscamos SUM(adman_metrics) só uma vez
+            // (única query agregada) para evitar N queries em cache miss.
+            $sumDbPorEmpresa = AdmanMetric::query()
+                ->whereIn('company_id', $companies->pluck('id'))
+                ->whereBetween('reference_date', [$dateFromN, $dateToN])
+                ->whereNotNull('revenue')
+                ->selectRaw('company_id, SUM(revenue) as total')
+                ->groupBy('company_id')
+                ->pluck('total', 'company_id');
+
+            $missesNoHibrido = 0;
             foreach ($companies as $c) {
                 $custId = $c->cust_id;
                 if (!$custId) {
-                    $revenueByCompany[$c->id] = 0.0;
+                    // Empresa sem cust_id: usa SUM DB (não conta no
+                    // denominador de cards_exatos — fica fora da medida).
+                    $revenueByCompany[$c->id] = (float) ($sumDbPorEmpresa[$c->id] ?? 0);
                     continue;
                 }
-                $revenueByCompany[$c->id] = (float) $grossBatch[$custId]['value'];
+
+                $custIdsValidos++;
+                $entry = $grossBatch[$custId] ?? ['value' => null];
+
+                if ($entry['value'] !== null) {
+                    // Cache hit → Adman exato
+                    $revenueByCompany[$c->id] = (float) $entry['value'];
+                    $cacheHitsCount++;
+                } else {
+                    // Cache miss para essa empresa → SUM DB apenas dela
+                    $revenueByCompany[$c->id] = (float) ($sumDbPorEmpresa[$c->id] ?? 0);
+                    $missesNoHibrido++;
+                }
+            }
+
+            if ($missesNoHibrido > 0) {
+                Log::info('[Dashboard] revenue hibrido per-empresa: ' . $cacheHitsCount
+                    . ' cache hits, ' . $missesNoHibrido . ' cache misses (period=30)');
             }
         } else {
-            // Cache incompleto → SUM(adman_metrics.revenue) no $period para
-            // TODAS as empresas. Usa o MESMO range do cache (BETWEEN
-            // $dateFromN AND $dateToN) pra os dois modos baterem o máximo
-            // possível.
+            // Period ≠ 30 → fallback DB tudo-ou-nada (decisão W2-T3 intacta:
+            // cache só cobre 30d via RefreshGrossBillingCacheJob).
             $sumDb = AdmanMetric::query()
                 ->whereIn('company_id', $companies->pluck('id'))
                 ->whereBetween('reference_date', [$dateFromN, $dateToN])
@@ -206,8 +261,10 @@ class DashboardController extends Controller
 
             foreach ($companies as $c) {
                 $revenueByCompany[$c->id] = (float) ($sumDb[$c->id] ?? 0);
+                if ($c->cust_id) $custIdsValidos++;
             }
-            Log::info('[Dashboard] revenue em fallback DB (period=' . $period . ')');
+            // cacheHitsCount fica em 0 → cards_exatos será false (fallback DB)
+            Log::info('[Dashboard] revenue em fallback DB tudo-ou-nada (period=' . $period . ')');
         }
 
         // ACOS / TACOS / margem por empresa — só ficam preenchidos quando cache
@@ -395,13 +452,27 @@ class DashboardController extends Controller
                 'total'        => (int) $row->total,
             ]);
 
-        // Phase 18 (W2-T3) — Flag de exatidão dos cards Adman-dependentes.
-        // True somente quando cache /performance está completo E o período é
-        // o range padrão de 30d (alinhado com RefreshGrossBillingCacheJob).
-        // Para demais ranges, mesmo com cache hot, marcamos como aproximado
-        // porque o cache só pré-aquece 30d. Frontend (W5-T1) consome essa
-        // prop para mostrar "≈ aproximado" nos cards.
-        $cardsExatos = $grossCacheCompleto && $period === '30';
+        // Phase 18 (W2-T3 + refinado em W4-T3) — Flag de exatidão dos cards
+        // Adman-dependentes. Critério granular: TODAS as empresas com cust_id
+        // válido tiveram cache hit no gross billing E o período é 30d
+        // (alinhado com RefreshGrossBillingCacheJob). Empresas sem cust_id
+        // não contam no denominador (são intrinsecamente fallback DB).
+        //
+        // Diferença vs W2-T3: a flag antiga era "grossCacheCompleto" (true
+        // sse 100% das empresas com cust_id tiveram cache REAL). Continua a
+        // mesma exigência conceitual, mas agora o cálculo é explícito pela
+        // contagem de hits no loop híbrido acima. Permite que o cache híbrido
+        // per-empresa (W4-T3) gere `cards_exatos = false` honestamente
+        // quando alguma empresa caiu em fallback DB, sem zerar o total
+        // global como o tudo-ou-nada fazia.
+        //
+        // Para demais ranges (1/7/180d), mesmo com cache hot, marcamos como
+        // aproximado porque o cache só pré-aquece 30d. Frontend (W5-T1)
+        // consome essa prop para mostrar "≈ aproximado" nos cards.
+        $cardsExatos = ($period === '30')
+            && ($custIdsValidos > 0)
+            && ($cacheHitsCount === $custIdsValidos)
+            && $accountCacheCompleto;
 
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
