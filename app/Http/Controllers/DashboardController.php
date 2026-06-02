@@ -63,6 +63,35 @@ class DashboardController extends Controller
         };
     }
 
+    /**
+     * Phase 18 (W2-T1) — Range derivado do filtro de período.
+     *
+     * Retorna `from`/`to` em formato YYYY-MM-DD (BRT do servidor). Mantém o
+     * mesmo conjunto de períodos suportados por `getSince()` para consistência.
+     *
+     * Substitui o range 30d hardcoded (linhas 106-107 originais); chamado uma
+     * vez no topo de `adminDashboard` e propagado pra todas as queries de
+     * cards/totais. `getSince()` continua sendo usado para chart de série
+     * temporal e demais queries que aceitam Carbon — os dois coexistem.
+     *
+     * @return array{from: string, to: string}
+     */
+    private function getPeriodRange(string $period): array
+    {
+        $days = match ($period) {
+            '1'   => 1,
+            '7'   => 7,
+            '30'  => 30,
+            '180' => 180,
+            default => 30,
+        };
+
+        return [
+            'from' => now()->subDays($days)->toDateString(),
+            'to'   => now()->toDateString(),
+        ];
+    }
+
     private function adminDashboard(Request $request, Carbon $since, string $period)
     {
         $companyFilter = $request->get('company_id');
