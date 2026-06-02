@@ -5,6 +5,7 @@ namespace Tests\Feature\Phase18;
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -118,6 +119,58 @@ class DashboardFiltersTest extends TestCase
             ->where('filters.company_id', (string) $empresa->id)
             ->where('filters.consultor_id', (string) $consultor->id)
             ->where('filters.estrategista_id', null)
+        );
+    }
+
+    /**
+     * TEST 4 (Phase 18 W5-T6) — `cards_exatos === false` quando cache esta
+     * vazio para period=30. Mesmo no range "ideal" (30d), sem cache hit a
+     * politica hibrida cai em fallback DB → flag indica aproximacao.
+     *
+     * Cobre o guard contra os cards mostrarem valores "exatos" enganosamente
+     * quando a fonte real foi SUM DB (nao Adman cache).
+     */
+    public function test_cards_exatos_false_quando_cache_vazio_em_period_30(): void
+    {
+        Cache::flush();
+
+        $admin = $this->criarAdmin();
+        // Empresa com cust_id valido — entra no denominador de cards_exatos.
+        // Sem registros em adman_metrics + sem cache → cache miss obrigatorio.
+        $this->criarEmpresa('Empresa Cache Cold', '55555555000055');
+
+        $response = $this->actingAs($admin)
+            ->get('/dashboard?period=30');
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Dashboard/Admin')
+            ->where('period', '30')
+            ->where('cards_exatos', false)
+        );
+    }
+
+    /**
+     * TEST 5 (Phase 18 W5-T6) — `cards_exatos === false` para period=7
+     * INDEPENDENTE de cache. RefreshGrossBillingCacheJob so pre-aquece
+     * range 30d; demais ranges sempre caem em fallback DB tudo-ou-nada.
+     *
+     * Cobre o guard contra flag virar `true` em ranges nao-30 que pareceriam
+     * "exatos" via cache hot (cache nao cobre esses ranges).
+     */
+    public function test_cards_exatos_false_para_period_diferente_de_30(): void
+    {
+        $admin = $this->criarAdmin();
+        $this->criarEmpresa('Empresa Period 7', '66666666000066');
+
+        $response = $this->actingAs($admin)
+            ->get('/dashboard?period=7');
+
+        $response->assertOk();
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Dashboard/Admin')
+            ->where('period', '7')
+            ->where('cards_exatos', false)
         );
     }
 }
