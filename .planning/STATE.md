@@ -4,8 +4,8 @@ milestone: v4.1
 milestone_name: Eficiência Operacional Sugadores
 status: executing
 stopped_at: Phase 17 UI-SPEC approved
-last_updated: "2026-06-01T20:38:35.820Z"
-last_activity: 2026-06-01 -- Phase 17 planning complete
+last_updated: "2026-06-01T20:42:53.946Z"
+last_activity: 2026-06-01 -- Phase 17 execution started
 progress:
   total_phases: 17
   completed_phases: 7
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Milestone complete
+**Current focus:** Phase 17 — coleta-de-dados-ml-intelig-ncia-de-an-ncios-do-mercado-livre
 
 ## Current Position
 
-Phase: 15
-Plan: All complete (4 waves, 7 commits)
-Status: Ready to execute
-Last activity: 2026-06-01 -- Phase 17 planning complete
+Phase: 17 (coleta-de-dados-ml-intelig-ncia-de-an-ncios-do-mercado-livre) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 17
+Last activity: 2026-06-01 -- Phase 17 execution started
 
 ## Performance Metrics
 
