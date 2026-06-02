@@ -253,18 +253,21 @@ class DiagnoseCustId extends Command
     }
 
     /**
-     * True se houver pelo menos 1 metric em adman_metrics nos ultimos 60d
-     * COM `error_message IS NULL` (sync funcionou recentemente).
+     * True se houver pelo menos 1 metric em adman_metrics nos ultimos 60d.
      *
      * Curto-circuito que evita chamar a Adman para empresas com mapeamento
      * inicialmente "suspeito" mas que estao funcionando na pratica.
+     *
+     * Nota: `AdmanMetric` so e criado em syncs com sucesso (revenue/tacos/etc
+     * vem do payload Adman; em erro o sync nem chega a inserir linha em
+     * `adman_metrics`). Por isso EXISTS aqui ja prova sync OK — o filtro
+     * de erro deve ser feito em `adman_sync_logs` (outro contexto).
      */
     private function teveSyncRecenteOk(int $companyId): bool
     {
         return AdmanMetric::query()
             ->where('company_id', $companyId)
             ->where('reference_date', '>=', now()->subDays(60)->toDateString())
-            ->whereNull('error_message')
             ->exists();
     }
 
