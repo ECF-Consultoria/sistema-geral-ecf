@@ -58,6 +58,22 @@ function ServicoBadges({ contratos }) {
     );
 }
 
+// ─── Badge "Cust ID Inválido" (Phase 18 W5-T4) ──────────────────────────────
+// Renderiza apenas quando cust_id_status === 'invalido'. 'desconhecido', 'ok'
+// e 'nao_aplicavel' não mostram badge (neutros). Sem emoji por convenção do
+// projeto. Tooltip via title nativo HTML.
+function CustIdInvalidoBadge({ status }) {
+    if (status !== 'invalido') return null;
+    return (
+        <span
+            title="Cust ID corrompido — Adman não reconhece. Conectar OAuth ML ou ajustar cadastro."
+            className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 tracking-wide"
+        >
+            Cust ID Inválido
+        </span>
+    );
+}
+
 // ─── Badge de status ML ──────────────────────────────────────────────────────
 function MlStatusBadge({ status }) {
     if (status === 'active') {
@@ -79,8 +95,17 @@ function MlStatusBadge({ status }) {
     return null;
 }
 
-export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [] }) {
+export default function Companies({ companies, users, estrategistas = [], empresas_pendentes = [], filters = {} }) {
     const [search, setSearch] = useRemember('', 'companies-index-search');
+    // Phase 18 W5-T4 — Filtro "Apenas Cust ID Inválido" via query param;
+    // null/'' = sem filtro, 'invalido' = filtra. ECFSelect-style abaixo.
+    const custIdStatusFilter = filters.cust_id_status || '';
+
+    const aplicarCustIdFilter = (valor) => {
+        router.get(route('companies.index'),
+            valor ? { cust_id_status: valor } : {},
+            { preserveState: true, preserveScroll: true });
+    };
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
 
@@ -175,12 +200,24 @@ export default function Companies({ companies, users, estrategistas = [], empres
         <AppLayout title="Empresas">
             <div className="space-y-4">
                 <div className="flex items-center justify-between gap-3">
-                    <Input
-                        placeholder="Buscar empresa..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="max-w-sm"
-                    />
+                    <div className="flex items-center gap-2 flex-1">
+                        <Input
+                            placeholder="Buscar empresa..."
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            className="max-w-sm"
+                        />
+                        {/* Phase 18 W5-T4 — Filtro "Apenas Cust ID Inválido" */}
+                        <select
+                            value={custIdStatusFilter}
+                            onChange={e => aplicarCustIdFilter(e.target.value)}
+                            className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                            title="Filtrar por status do cust_id"
+                        >
+                            <option value="">Todas as empresas</option>
+                            <option value="invalido">Apenas Cust ID Inválido</option>
+                        </select>
+                    </div>
                     <Button onClick={openCreate}>
                         <Plus className="h-4 w-4 mr-1" /> Nova Empresa
                     </Button>
@@ -241,9 +278,10 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                 {filtered.map(c => (
                                     <TableRow key={c.id}>
                                         <TableCell className="font-medium">
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-wrap">
                                                 {c.name}
                                                 <MlStatusBadge status={c.ml_token_status} />
+                                                <CustIdInvalidoBadge status={c.cust_id_status} />
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{c.segment || '-'}</TableCell>

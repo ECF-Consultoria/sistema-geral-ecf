@@ -106,6 +106,20 @@ const fmtHHMM = (date) => {
 
 // ─── Card por empresa ──────────────────────────────────────────────────────
 // Componente local — segue convenção de StatusBadge/MotivoBadge no mesmo arquivo.
+// Phase 18 W5-T4 — Badge "Cust ID Inválido" inline. Renderiza apenas
+// quando status === 'invalido'; sem emoji; tooltip pt-BR via title nativo.
+function CustIdInvalidoBadge({ status }) {
+    if (status !== 'invalido') return null;
+    return (
+        <span
+            title="Cust ID corrompido — Adman não reconhece. Conectar OAuth ML ou ajustar cadastro."
+            className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 tracking-wide"
+        >
+            Cust ID Inválido
+        </span>
+    );
+}
+
 function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
     const hasHoje = (card.count_hoje ?? 0) > 0;
     return (
@@ -115,6 +129,8 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
                 <h3 className="text-white font-display font-semibold text-[14px] truncate flex-1" title={card.name}>
                     {card.name}
                 </h3>
+                {/* Phase 18 W5-T4 — Badge "Cust ID Inválido" no header do card */}
+                <CustIdInvalidoBadge status={card.cust_id_status} />
             </div>
 
             <div>

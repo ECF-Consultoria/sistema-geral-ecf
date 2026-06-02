@@ -35,7 +35,22 @@ function ECFSelect({ value, onChange, placeholder, options }) {
     );
 }
 
-function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = false }) {
+// Phase 18 W5-T4 — Badge "Cust ID Inválido" inline. Renderiza apenas
+// quando status === 'invalido' (demais valores ficam neutros). Sem emoji
+// por convenção do projeto; tooltip pt-BR via title nativo HTML.
+function CustIdInvalidoBadge({ status }) {
+    if (status !== 'invalido') return null;
+    return (
+        <span
+            title="Cust ID corrompido — Adman não reconhece. Conectar OAuth ML ou ajustar cadastro."
+            className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 tracking-wide"
+        >
+            Cust ID Inválido
+        </span>
+    );
+}
+
+function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = false, approx = false }) {
     const colors = {
         yellow: { text: 'text-ecf-yellow', bg: 'bg-ecf-yellow/10', border: 'border-ecf-yellow/20', dot: 'bg-ecf-yellow' },
         green:  { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', dot: 'bg-emerald-400' },
@@ -45,8 +60,18 @@ function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = fals
     };
     const c = colors[color];
 
+    // Phase 18 W5-T4 — Quando `approx`, prepende "≈" sutilmente antes do
+    // valor + tooltip pt-BR. Sinaliza que o card caiu em fallback (cache
+    // parcial ou period != 30d) sem mascarar dados.
+    const tooltipApprox = approx
+        ? 'Dados aproximados — algumas empresas estão em cache parcial ou range não-30d. Use os últimos 30 dias para valores exatos.'
+        : undefined;
+
     return (
-        <div className="card-ecf rounded-2xl p-5 flex flex-col gap-4">
+        <div
+            className="card-ecf rounded-2xl p-5 flex flex-col gap-4"
+            title={tooltipApprox}
+        >
             <div className="flex items-center justify-between">
                 <p className="text-white/50 text-[12px] font-semibold tracking-wide uppercase">{title}</p>
                 <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center', c.bg, 'border', c.border)}>
@@ -55,7 +80,11 @@ function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = fals
             </div>
             <div>
                 <p className={cn('font-display font-extrabold text-3xl tracking-tight', empty ? 'text-white/20' : c.text)}>
-                    {empty ? '—' : value}
+                    {empty
+                        ? '—'
+                        : approx
+                            ? <><span className="text-white/40 font-normal mr-0.5" title={tooltipApprox}>≈</span>{value}</>
+                            : value}
                 </p>
                 {sub && <p className="text-white/30 text-xs mt-1">{sub}</p>}
             </div>
@@ -87,6 +116,9 @@ export default function AdminDashboard({
     user_portfolios = [],
     sugadores_stats = { total_pendentes: 0, top_empresas: [] },
     adman_last_sync = null,
+    // Phase 18 W5-T4 — Flag de exatidao dos cards Adman-dependentes (W4-T3
+    // granular). Default true para nao mostrar "≈" se a prop estiver ausente.
+    cards_exatos = true,
 }) {
     const [tvMode, setTvMode] = useState(false);
 
@@ -300,12 +332,15 @@ export default function AdminDashboard({
                 )}
 
                 {/* KPI Cards — visão geral */}
+                {/* Phase 18 W5-T4 — `approx={!cards_exatos}` apenas nos cards
+                    Adman-dependentes (TACOS, Invest. Ads, Faturamento). Empresas
+                    e NPS são determinísticos e não consomem cache /performance. */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                     <KpiCard title="Empresas" value={s.total_companies} icon={Users} color="blue" empty={noData} />
-                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} icon={BarChart2} color="yellow" empty={noData} />
+                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} icon={BarChart2} color="yellow" empty={noData} approx={!cards_exatos} />
                     <KpiCard title="NPS Médio" value={s.avg_nps} sub={`Score: ${npsScore}`} icon={Star} color="green" empty={noData} />
-                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} icon={TrendingUp} color="red" empty={noData} />
-                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} icon={DollarSign} color="purple" empty={noData} />
+                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} icon={TrendingUp} color="red" empty={noData} approx={!cards_exatos} />
+                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} icon={DollarSign} color="purple" empty={noData} approx={!cards_exatos} />
                 </div>
 
                 {/* Charts row 1 */}
@@ -392,7 +427,11 @@ export default function AdminDashboard({
                                 companies_performance.map(c => (
                                     <div key={c.id} className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
                                         <div>
-                                            <p className="text-white/80 text-[13px] font-semibold">{c.name}</p>
+                                            {/* Phase 18 W5-T4 — Badge "Cust ID Inválido" inline ao lado do nome */}
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                                <p className="text-white/80 text-[13px] font-semibold">{c.name}</p>
+                                                <CustIdInvalidoBadge status={c.cust_id_status} />
+                                            </div>
                                             <p className="text-white/30 text-xs mt-0.5">{c.consultor ?? '—'} / {c.estrategista ?? '—'}</p>
                                         </div>
                                         <div className="text-right space-y-0.5">
