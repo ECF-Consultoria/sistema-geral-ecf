@@ -110,9 +110,7 @@ export default function Desenvolvimento({ diagnostico }) {
     // Defaults seguros caso a prop chegue undefined (ex.: erros de bootstrap)
     const diag = diagnostico ?? {
         sem_sync: [],
-        erros: [],
         fila: { pendentes: 0, falhos: 0 },
-        anomalias: [],
         total: 0,
     };
 
@@ -194,45 +192,6 @@ export default function Desenvolvimento({ diagnostico }) {
                             </DevCard>
                         )}
 
-                        {/* Card: syncs com erro */}
-                        {diag.erros.length > 0 && (
-                            <DevCard
-                                icon={AlertTriangle}
-                                title="Syncs com erro"
-                                subtitle={`${diag.erros.length} erro${diag.erros.length > 1 ? 's' : ''} nas últimas 48h`}
-                            >
-                                <div className="space-y-2">
-                                    {diag.erros.map((item, idx) => (
-                                        <AlertRow
-                                            key={`erro-${item.company_id}-${idx}`}
-                                            item={item}
-                                            resyncing={resyncing}
-                                            onResync={resync}
-                                        />
-                                    ))}
-                                </div>
-                            </DevCard>
-                        )}
-
-                        {/* Card: anomalias de métrica */}
-                        {diag.anomalias.length > 0 && (
-                            <DevCard
-                                icon={Activity}
-                                title="Anomalias de métrica"
-                                subtitle={`${diag.anomalias.length} anomalia${diag.anomalias.length > 1 ? 's' : ''} detectada${diag.anomalias.length > 1 ? 's' : ''}`}
-                            >
-                                <div className="space-y-2">
-                                    {diag.anomalias.map((item, idx) => (
-                                        <AlertRow
-                                            key={`anomalia-${item.company_id}-${idx}`}
-                                            item={item}
-                                            resyncing={resyncing}
-                                            onResync={resync}
-                                        />
-                                    ))}
-                                </div>
-                            </DevCard>
-                        )}
                     </>
                 )}
 
