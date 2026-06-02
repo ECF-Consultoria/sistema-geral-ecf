@@ -58,6 +58,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)** - Dada uma keyword, minera keywords de concorrentes via API oficial do ML (app token), agrupa dúvidas das perguntas dos clientes e gera recomendação heurística de título/descrição — assíncrono, com feedback de progresso e persistência para histórico. (completed 2026-06-02)
 
+### Milestone v6.0 — Precisão e Praticidade na Dashboard
+
+- [ ] **Phase 18: Dashboard precisa e com filtros empilháveis** - Corrige 3 bugs reportados pelo usuário em 2026-06-02: (1) trocar o filtro de tempo não muda os dados dos cards principais (range 30d hardcoded ignora `$period`); (2) selecionar empresa + período perde a empresa (inconsistência camelCase/snake_case entre `filters` retornado pelo controller e query params lidos pelo controller); (3) soma de faturamento da Dashboard não bate com a Adman para o mesmo período. Aplica diretamente as duas regras-mestras: **acertividade** (números batem com a fonte) e **praticidade** (filtros combinam de verdade).
+
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
@@ -436,6 +440,39 @@ v4.0 phases execute in order: 13 → 14
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
 | 16. Adequação à cadência D-1 da Adman | 4/4 (waves) | Complete | 2026-05-27 |
 | 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete    | 2026-06-02 |
+| 18. Dashboard precisa e com filtros empilháveis | 0/? | Planning | - |
+
+### Phase 18: Dashboard precisa e com filtros empilháveis
+**Goal**: Aplicar diretamente as duas regras-mestras do projeto (**acertividade** + **praticidade**) na Dashboard, eliminando 3 bugs reportados pelo usuário em 2026-06-02. Os dados mostrados ao admin precisam (a) refletir o período selecionado, (b) preservar todos os filtros simultaneamente, e (c) bater com a Adman para o mesmo range.
+**Mode:** mvp (slice por bug)
+**Depends on**: Phase 16 (cache D-1 + `RefreshGrossBillingCacheJob` em produção). Phase 18 NÃO requer mudança de schema.
+**Requirements**: DASH-01 a DASH-06 *(novos — registrar durante o plan)*
+**Success Criteria** (what must be TRUE):
+  1. **Filtros empilháveis**: o usuário pode selecionar empresa + período + analista + estrategista em qualquer ordem; nenhum se perde ao alterar outro. Fix da inconsistência camelCase (`companyFilter`) ↔ snake_case (`company_id`) em [DashboardController:386](app/Http/Controllers/DashboardController.php) ↔ [Admin.jsx:95](resources/js/Pages/Dashboard/Admin.jsx). Frontend e backend usam exclusivamente snake_case (`company_id`, `consultor_id`, `estrategista_id`, `period`).
+  2. **Período afeta TODOS os cards**: trocar o seletor de período (1d/7d/30d/180d) recalcula `total_revenue`, `total_ad_investment`, `avg_tacos`, `avg_margin`, `total_net_billing` e demais cards. Não há mais range `$dateFrom30d` hardcoded; tudo deriva de `$period` via helper `getPeriodRange(string $period): array{from: string, to: string}`.
+  3. **Auditoria de divergência executada**: comando Artisan `dashboard:audit-billing-divergence [--period=N]` que, para cada empresa ativa com `cust_id`, compara `AdmanService::fetchPerformance` (fonte autoritativa) com `SUM(adman_metrics.revenue)` no mesmo range e imprime tabela de discrepâncias. Output: empresas sem `cust_id` mapeado, empresas com sync faltando dias, magnitude do gap por empresa, soma total da divergência absoluta e em %. Roda em produção via SSH sem efeito colateral (read-only).
+  4. **Fix do Bug 3 baseado nos achados de SC-3**: depois da auditoria, aplicar a estratégia adequada ao tipo de gap encontrado. Pode incluir: (a) preencher `cust_id` faltante via `php artisan adman:identify-missing-cust`, (b) backfill de dias com sync falhado via `php artisan adman:backfill-missing-days --since=YYYY-MM-DD`, (c) revisar a política tudo-ou-nada de cache (linhas 117-133 do controller), (d) criar snapshot diário `dashboard_daily_totals` se gap for sistemático. **Estratégia escolhida em deviation explícito após W3**, não pré-decidida agora.
+  5. **UI sinaliza incerteza**: quando o controller cai no fallback DB (cache Adman incompleto), os cards mostram um indicador sutil "≈ valor aproximado" ou tooltip "Cache parcial — recarregue em alguns minutos". Quando cache está completo, sem indicador (modo padrão). Critério baseado em regra de acertividade: o usuário NUNCA vê dado errado mascarado.
+  6. **Testes** cobrem: (a) `applyFilter('period', '7')` preserva `company_id` na URL, (b) `applyFilter('company_id', '5')` preserva `period` na URL, (c) range derivado de `$period` é aplicado em TODAS as queries do controller (não só série temporal), (d) auditoria detecta empresa propositalmente sem `cust_id` e sem `adman_metrics` no range.
+
+**Plans**: TBD (sugestão pelo planner — 4 a 5 plans):
+  - W1: alinhamento naming (SC-1) — backend `compact` em snake_case + frontend `applyFilter` consistente
+  - W2: helper `getPeriodRange` + propagação em todas as queries (SC-2)
+  - W3: comando de auditoria + execução em produção via SSH (SC-3)
+  - W4: estratégia de fix do Bug 3 (SC-4) — escopo definido após W3
+  - W5: UI feedback (SC-5) + testes consolidados (SC-6)
+
+Cross-cutting constraints:
+- pt-BR em comentários, mensagens flash e activity log
+- `npm run build` obrigatório após cada edição JSX
+- **NÃO mexer** em `RefreshGrossBillingCacheJob` (Phase 16) salvo se a auditoria identificar gap originado lá
+- **NÃO criar** multi-select de empresas (decisão do usuário: 1 por vez basta)
+- **NÃO criar** range custom de datas nesta fase (1d/7d/30d/180d bastam)
+- Comando de auditoria é read-only — NUNCA executa UPDATE/INSERT
+- Fix de Bug 3 (W4) é definido por deviation explícito; planner registra como "TBD a partir de SC-3"
+- Cache key do `RefreshGrossBillingCacheJob` segue range 30d (não mudar) — mas o controller pode ter caches secundários por período se SC-2 exigir
+
+**UI hint**: yes
 
 ### Phase 17: Coleta de Dados ML (Fase 1 — sem IA)
 
