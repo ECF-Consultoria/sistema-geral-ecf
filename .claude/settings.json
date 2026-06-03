@@ -217,7 +217,8 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 4016548 2>/dev/null && echo running || echo done && wc -l /tmp/audit-pos-fix.txt && tail -5 /tmp/audit-pos-fix.txt\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"kill -0 4016548 2>/dev/null && echo running || echo done && tail -20 /tmp/audit-pos-fix.txt\")",
       "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164:/tmp/audit-pos-fix.txt .planning/phases/18.5-marketplace-dinamico/AUDIT-OUTPUT-POS-FIX.txt)",
-      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test --filter=Dashboard 2>&1)"
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan test --filter=Dashboard 2>&1)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan schedule:list 2>&1 | grep -E 'adman:sync|sugadores|goals|refresh|ml:' | head -10\")"
     ]
   }
 }
