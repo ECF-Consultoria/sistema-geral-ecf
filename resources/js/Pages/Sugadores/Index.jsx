@@ -66,6 +66,30 @@ const isHoje = (d) => {
     return refDay === today;
 };
 
+// ─── Helper de clipboard ──────────────────────────────────────────────────
+// Duplicado de Show.jsx para não criar acoplamento entre páginas.
+// Futuro: extrair para resources/js/lib/utils.js quando houver 3+ consumers.
+const copyToClipboard = async (text) => {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        // Fallback necessário para intranet sem HTTPS — navigator.clipboard exige secure context.
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+    } catch {
+        return false;
+    }
+};
+
 // ─── Componentes locais ────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
@@ -577,6 +601,61 @@ export default function SugadoresIndex({
     // Map company_id → "HH:mm" do momento do enfileiramento; expira após 10s.
     const [enqueuedAt, setEnqueuedAt] = useState({});
 
+    // ─── Estado de cópia inline por sugador (W2-T3) ────────────────────────
+    // 1 clique do operador — sem entrar no drilldown, sem perder contexto da lista.
+    const [copyingId, setCopyingId] = useState(null);                // sugador_id em loading
+    const [copiedFeedback, setCopiedFeedback] = useState({});        // sugador_id → { count, ok, error }
+
+    async function copyMlbsLinha(sugadorId) {
+        setCopyingId(sugadorId);
+        try {
+            const r = await fetch(route('sugadores.mlbs', sugadorId), { headers: { Accept: 'application/json' } });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const j = await r.json();
+            const mlbs = (j.mlbs || []).map(m => m.listing_id).filter(Boolean);
+            if (!mlbs.length) {
+                setCopiedFeedback(p => ({ ...p, [sugadorId]: { count: 0, error: 'Sem MLBs' } }));
+            } else {
+                const ok = await copyToClipboard(mlbs.join(','));
+                setCopiedFeedback(p => ({ ...p, [sugadorId]: { count: mlbs.length, ok } }));
+            }
+        } catch {
+            setCopiedFeedback(p => ({ ...p, [sugadorId]: { error: 'Tente novamente' } }));
+        } finally {
+            setCopyingId(null);
+            // Limpa feedback após 2s
+            setTimeout(() => setCopiedFeedback(p => { const n = { ...p }; delete n[sugadorId]; return n; }), 2000);
+        }
+    }
+
+    // ─── Estado de cópia por empresa no CompanyCard (W2-T4) ────────────────
+    const [copyingEmpresaId, setCopyingEmpresaId] = useState(null);
+    const [copiedEmpresaFeedback, setCopiedEmpresaFeedback] = useState({});
+
+    async function copyMlbsEmpresa(companyId) {
+        setCopyingEmpresaId(companyId);
+        try {
+            const r = await fetch(route('sugadores.mlbs-by-company', companyId), { headers: { Accept: 'application/json' } });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const j = await r.json();
+            const mlbs = j.mlbs || [];
+            if (!mlbs.length) {
+                setCopiedEmpresaFeedback(p => ({ ...p, [companyId]: { total: 0, error: 'Sem MLBs' } }));
+                return;
+            }
+            const ok = await copyToClipboard(mlbs.join(','));
+            setCopiedEmpresaFeedback(p => ({
+                ...p,
+                [companyId]: { total: j.total_mlbs, processados: j.sugadores_processados, truncated: j.truncated, ok },
+            }));
+        } catch {
+            setCopiedEmpresaFeedback(p => ({ ...p, [companyId]: { error: 'Falhou — tente em alguns segundos.' } }));
+        } finally {
+            setCopyingEmpresaId(null);
+            setTimeout(() => setCopiedEmpresaFeedback(p => { const n = { ...p }; delete n[companyId]; return n; }), 4000);
+        }
+    }
+
     // ─── Chip "Continuar com [Empresa]" via localStorage ──────────────────────
     // SSR-safe: leitura/escrita SEMPRE em useEffect ou handler, nunca no body.
     const [lastCompanyId, setLastCompanyId] = useState(null);
@@ -905,6 +984,9 @@ export default function SugadoresIndex({
                                     enqueuedAt={enqueuedAt[card.company_id]}
                                     onReanalisar={reanalisarEmpresa}
                                     onVer={abrirDrilldown}
+                                    onCopyMlbs={copyMlbsEmpresa}
+                                    copyingEmpresaId={copyingEmpresaId}
+                                    copiedEmpresaFeedback={copiedEmpresaFeedback}
                                 />
                             ))}
                         </div>
@@ -1220,6 +1302,26 @@ export default function SugadoresIndex({
                                             </td>
                                             <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                                                 <div className="inline-flex items-center gap-1">
+                                                    {/* Phase 19 W2-T3 — Botão Copiar MLBs inline.
+                                                        Só aparece para adgroups (campanhas não têm drilldown de MLBs).
+                                                        1 clique: fetch /sugadores/{id}/mlbs → clipboard → feedback 2s. */}
+                                                    {s.tipo === 'adgroup' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => copyMlbsLinha(s.id)}
+                                                            disabled={copyingId === s.id}
+                                                            title="Copia todos os MLBs deste sugador para o clipboard"
+                                                            className="inline-flex items-center gap-1 h-7 px-2 rounded border border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-white hover:bg-white/[0.05] text-[11px]"
+                                                        >
+                                                            {copyingId === s.id
+                                                                ? <><Loader2 size={11} className="animate-spin" /> ...</>
+                                                                : copiedFeedback[s.id]?.ok
+                                                                    ? <><Check size={11} className="text-emerald-300" /> Copiado {copiedFeedback[s.id].count}</>
+                                                                    : copiedFeedback[s.id]?.error
+                                                                        ? copiedFeedback[s.id].error
+                                                                        : <><Copy size={11} /> Copiar MLBs</>}
+                                                        </button>
+                                                    )}
                                                     {isPendente && (
                                                         <button
                                                             onClick={() => setActionTarget(s)}
