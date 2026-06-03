@@ -565,6 +565,9 @@ export default function SugadoresIndex({
         date_from:        filters?.date_from || '',
         date_to:          filters?.date_to || '',
         include_resolved: filters?.include_resolved ? '1' : '',
+        // Phase 19 W2-T2 — preservar include_old quando o operador clica "Ver dias anteriores"
+        // e depois aplica outros filtros sem perder o contexto "fora do modo default".
+        include_old:      filters?.include_old ? '1' : '',
     });
     const [showFilters, setShowFilters] = useState(false);
     const [actionTarget, setActionTarget] = useState(null);
@@ -623,7 +626,8 @@ export default function SugadoresIndex({
     }
 
     function clearFilters() {
-        setF({ company_id: '', user_id: '', status: '', tipo: '', date_from: '', date_to: '', include_resolved: '' });
+        // Phase 19 W2-T2: limpar filtros reseta também o include_old — volta ao modo default (HOJE).
+        setF({ company_id: '', user_id: '', status: '', tipo: '', date_from: '', date_to: '', include_resolved: '', include_old: '' });
         router.get(route('sugadores.index'), { view: view_mode }, { preserveState: true });
     }
 
@@ -911,6 +915,40 @@ export default function SugadoresIndex({
             {/* ─── Modo Lista (paradigma antigo) ─── */}
             {view_mode === 'list' && (
                 <>
+
+            {/* Phase 19 W2-T2 — Header de foco no dia atual.
+                default_view='hoje': operador vê só os sugadores de hoje (praticidade — 478 em vez de 1885).
+                default_view='custom': operador optou por "Ver dias anteriores" ou aplicou filtros manuais. */}
+            {default_view === 'hoje' ? (
+                <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                        <span className="text-ecf-yellow font-display font-bold text-3xl tabular-nums">{fmtInt(meta.total)}</span>
+                        <span className="text-white/60 text-sm ml-2">sugadores HOJE</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => router.get(route('sugadores.index'), { view: 'list', include_old: 1 }, { preserveScroll: true })}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/60 hover:text-white hover:bg-white/[0.05] text-[12px]"
+                    >
+                        Ver dias anteriores
+                    </button>
+                </div>
+            ) : f.include_old ? (
+                <div className="mb-4 flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                        <span className="text-white/70 text-sm">Inclui dias anteriores: </span>
+                        <span className="text-white font-display font-bold text-2xl tabular-nums ml-1">{fmtInt(meta.total)}</span>
+                        <span className="text-white/60 text-sm ml-1">total</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => router.get(route('sugadores.index'), { view: 'list' }, { preserveScroll: true })}
+                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.08] text-ecf-yellow hover:bg-ecf-yellow/[0.14] text-[12px]"
+                    >
+                        Voltar para HOJE
+                    </button>
+                </div>
+            ) : null}
 
             {/* Filtros */}
             {showFilters && (
