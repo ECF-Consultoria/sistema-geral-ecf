@@ -65,7 +65,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v7.0 — Eficiência Operacional Sugadores (Foco no dia)
 
-- [ ] **Phase 19: Sugadores — Foco no dia + Atalhos + Fix MCP** - Reforça as duas regras-mestras (acertividade + praticidade) no módulo Sugadores. (1) Banner explícito de cadência D-1 ("Análise diária às 12h BRT") + estado por empresa. (2) Vista default filtra `reference_date=hoje + status=pendente` para focar o operador no que importa hoje (esconde 1407 acumulados que confundem). (3) Botão "Copiar MLBs" inline em cada linha de sugador + no card de empresa (modo cards) — ação em 1 clique sem abrir drilldown. (4) Mitigação do 429 do MCP no drilldown (throttle por custId + Cache::lock). (5) Comando one-shot `sugadores:limpar-orfaos` para marcar como `auto_resolvido` os 1407 pendentes antigos acumulados.
+- [x] **Phase 19: Sugadores — Foco no dia + Atalhos + Fix MCP** - Reforça as duas regras-mestras (acertividade + praticidade) no módulo Sugadores. (1) Banner explícito de cadência D-1 ("Análise diária às 12h BRT") + estado por empresa. (2) Vista default filtra `reference_date=hoje + status=pendente` para focar o operador no que importa hoje (esconde 1407 acumulados que confundem). (3) Botão "Copiar MLBs" inline em cada linha de sugador + no card de empresa (modo cards) — ação em 1 clique sem abrir drilldown. (4) Mitigação do 429 do MCP no drilldown (throttle por custId + Cache::lock). (5) Comando one-shot `sugadores:limpar-orfaos` para marcar como `auto_resolvido` os 1407 pendentes antigos acumulados. (completed 2026-06-03)
 
 ## Phase Details
 
@@ -447,7 +447,7 @@ v4.0 phases execute in order: 13 → 14
 | 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete    | 2026-06-02 |
 | 18. Dashboard precisa e com filtros empilháveis | 5/5 (waves) | Complete | 2026-06-03 |
 | 18.5. Marketplace dinâmico no AdmanService | 3/3 (waves) | Complete | 2026-06-03 |
-| 19. Sugadores — Foco no dia + Atalhos + Fix MCP | 0/? | Planning | - |
+| 19. Sugadores — Foco no dia + Atalhos + Fix MCP | 1/1 | Complete   | 2026-06-03 |
 
 ### Phase 18: Dashboard precisa e com filtros empilháveis
 **Goal**: Aplicar diretamente as duas regras-mestras do projeto (**acertividade** + **praticidade**) na Dashboard, eliminando 3 bugs reportados pelo usuário em 2026-06-02. Os dados mostrados ao admin precisam (a) refletir o período selecionado, (b) preservar todos os filtros simultaneamente, e (c) bater com a Adman para o mesmo range.
