@@ -50,7 +50,7 @@ function CustIdInvalidoBadge({ status }) {
     );
 }
 
-function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = false, approx = false }) {
+function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = false }) {
     const colors = {
         yellow: { text: 'text-ecf-yellow', bg: 'bg-ecf-yellow/10', border: 'border-ecf-yellow/20', dot: 'bg-ecf-yellow' },
         green:  { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', dot: 'bg-emerald-400' },
@@ -60,18 +60,8 @@ function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = fals
     };
     const c = colors[color];
 
-    // Phase 18 W5-T4 — Quando `approx`, prepende "≈" sutilmente antes do
-    // valor + tooltip pt-BR. Sinaliza que o card caiu em fallback (cache
-    // parcial ou period != 30d) sem mascarar dados.
-    const tooltipApprox = approx
-        ? 'Dados aproximados — algumas empresas estão em cache parcial ou range não-30d. Use os últimos 30 dias para valores exatos.'
-        : undefined;
-
     return (
-        <div
-            className="card-ecf rounded-2xl p-5 flex flex-col gap-4"
-            title={tooltipApprox}
-        >
+        <div className="card-ecf rounded-2xl p-5 flex flex-col gap-4">
             <div className="flex items-center justify-between">
                 <p className="text-white/50 text-[12px] font-semibold tracking-wide uppercase">{title}</p>
                 <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center', c.bg, 'border', c.border)}>
@@ -80,11 +70,7 @@ function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = fals
             </div>
             <div>
                 <p className={cn('font-display font-extrabold text-3xl tracking-tight', empty ? 'text-white/20' : c.text)}>
-                    {empty
-                        ? '—'
-                        : approx
-                            ? <><span className="text-white/40 font-normal mr-0.5" title={tooltipApprox}>≈</span>{value}</>
-                            : value}
+                    {empty ? '—' : value}
                 </p>
                 {sub && <p className="text-white/30 text-xs mt-1">{sub}</p>}
             </div>
@@ -116,9 +102,6 @@ export default function AdminDashboard({
     user_portfolios = [],
     sugadores_stats = { total_pendentes: 0, top_empresas: [] },
     adman_last_sync = null,
-    // Phase 18 W5-T4 — Flag de exatidao dos cards Adman-dependentes (W4-T3
-    // granular). Default true para nao mostrar "≈" se a prop estiver ausente.
-    cards_exatos = true,
 }) {
     const [tvMode, setTvMode] = useState(false);
 
@@ -332,15 +315,12 @@ export default function AdminDashboard({
                 )}
 
                 {/* KPI Cards — visão geral */}
-                {/* Phase 18 W5-T4 — `approx={!cards_exatos}` apenas nos cards
-                    Adman-dependentes (TACOS, Invest. Ads, Faturamento). Empresas
-                    e NPS são determinísticos e não consomem cache /performance. */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                     <KpiCard title="Empresas" value={s.total_companies} icon={Users} color="blue" empty={noData} />
-                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} icon={BarChart2} color="yellow" empty={noData} approx={!cards_exatos} />
+                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} icon={BarChart2} color="yellow" empty={noData} />
                     <KpiCard title="NPS Médio" value={s.avg_nps} sub={`Score: ${npsScore}`} icon={Star} color="green" empty={noData} />
-                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} icon={TrendingUp} color="red" empty={noData} approx={!cards_exatos} />
-                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} icon={DollarSign} color="purple" empty={noData} approx={!cards_exatos} />
+                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} icon={TrendingUp} color="red" empty={noData} />
+                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} icon={DollarSign} color="purple" empty={noData} />
                 </div>
 
                 {/* Charts row 1 */}
