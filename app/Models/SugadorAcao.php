@@ -31,6 +31,8 @@ class SugadorAcao extends Model
     public const ACAO_MOVEU              = 'moveu';
     // Phase 15: baixa automática pelo serviço (user_id NULL).
     public const ACAO_AUTO_RESOLVIDO     = 'auto_resolvido';
+    // Phase 19: limpeza one-shot de sugadores pendentes antigos (user_id NULL, dry-run por default).
+    public const ACAO_LIMPEZA_ORFAOS     = 'limpeza_orfaos';
 
     public function sugador(): BelongsTo
     {
