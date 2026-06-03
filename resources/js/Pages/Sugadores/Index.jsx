@@ -5,6 +5,7 @@ import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
     PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
     Settings, Search, LayoutGrid, List, RotateCw, ArrowRight,
+    Copy, Check, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import MoveToSgiModal from '@/Components/MoveToSgiModal';
@@ -120,7 +121,34 @@ function CustIdInvalidoBadge({ status }) {
     );
 }
 
-function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
+// Phase 19 W2-T1 — Badge de estado de análise por empresa.
+// "sincronizou_hoje" reflete AdmanSyncLog (cron ~11h Adman). Se o sync falhou,
+// sugadores também não rodam — operador entende por que count_hoje pode estar zerado.
+function AnaliseBadge({ sincronizouHoje, custIdStatus }) {
+    if (sincronizouHoje === true) {
+        return (
+            <span
+                title="Sync Adman e análise de sugadores já rodaram hoje"
+                className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tracking-wide"
+            >
+                Análise OK hoje
+            </span>
+        );
+    }
+    // cust_id_status invalido é causa raiz — badge vermelho mais específico.
+    // Quando inválido, o CustIdInvalidoBadge já aparece; não duplicar badge.
+    if (custIdStatus === 'invalido') return null;
+    return (
+        <span
+            title="Sync Adman não rodou hoje — sugadores podem estar desatualizados"
+            className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 tracking-wide"
+        >
+            Sem análise hoje
+        </span>
+    );
+}
+
+function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer, copyingEmpresaId, copiedEmpresaFeedback, onCopyMlbs }) {
     const hasHoje = (card.count_hoje ?? 0) > 0;
     return (
         <div className="card-ecf rounded-xl p-4 flex flex-col gap-3 hover:border-white/[0.12] transition-colors">
@@ -131,6 +159,8 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
                 </h3>
                 {/* Phase 18 W5-T4 — Badge "Cust ID Inválido" no header do card */}
                 <CustIdInvalidoBadge status={card.cust_id_status} />
+                {/* Phase 19 W2-T1 — Badge estado análise (OK hoje / sem análise hoje) */}
+                <AnaliseBadge sincronizouHoje={card.sincronizou_hoje} custIdStatus={card.cust_id_status} />
             </div>
 
             <div>
@@ -150,7 +180,7 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
                 <span title={card.ultima_analise || ''}>{fmtRelative(card.ultima_analise)}</span>
             </div>
 
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
                 <button
                     type="button"
                     onClick={() => onVer(card.company_id)}
@@ -159,6 +189,28 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
                     Ver sugadores
                     <ArrowRight size={11} />
                 </button>
+
+                {/* Phase 19 W2-T4 — Botão Copiar MLBs da empresa.
+                    Reutiliza endpoint mlbs-by-company que serializa MCP via Cache::lock por custId.
+                    1º adgroup paga o custo (~15s TLS); demais leem do cache compartilhado. */}
+                {hasHoje && onCopyMlbs && (
+                    <button
+                        type="button"
+                        onClick={() => onCopyMlbs(card.company_id)}
+                        disabled={copyingEmpresaId === card.company_id}
+                        className="inline-flex items-center justify-center gap-1.5 h-8 px-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px]"
+                        title={`Copia MLBs de todos os ${card.count_hoje} sugadores adgroup desta empresa (HOJE)`}
+                    >
+                        {copyingEmpresaId === card.company_id
+                            ? <><Loader2 size={11} className="animate-spin" /> Processando...</>
+                            : copiedEmpresaFeedback?.[card.company_id]?.ok
+                                ? <><Check size={11} className="text-emerald-300" /> Copiado {copiedEmpresaFeedback[card.company_id].total}</>
+                                : copiedEmpresaFeedback?.[card.company_id]?.error
+                                    ? copiedEmpresaFeedback[card.company_id].error
+                                    : <><Copy size={11} /> Copiar MLBs</>}
+                    </button>
+                )}
+
                 {canAnalyze && card.can_analyze && (
                     // Phase 16 SC-6: quando o sync diário Adman já rodou hoje
                     // ('analisado_hoje'=true), desabilita o botão — reanalisar
@@ -182,6 +234,13 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer }) {
                     </button>
                 )}
             </div>
+
+            {/* Aviso truncado: mais de 20 adgroups, só os 20 primeiros foram copiados */}
+            {copiedEmpresaFeedback?.[card.company_id]?.truncated && (
+                <p className="text-white/40 text-[11px] -mt-1">
+                    (20 de {card.count_hoje} — copie em partes se necessário)
+                </p>
+            )}
 
             {card.analisado_hoje && (
                 <p className="text-white/40 text-[11px] -mt-1">
@@ -494,6 +553,9 @@ export default function SugadoresIndex({
     can_analyze,
     companies_summary = [],
     view_mode = 'cards',
+    // Phase 19 — novas props: default_view e analise_diaria
+    default_view = 'hoje',
+    analise_diaria = null,
 }) {
     const [f, setF] = useState({
         company_id:       filters?.company_id || '',
@@ -700,13 +762,14 @@ export default function SugadoresIndex({
                         )}
                     </div>
                     <p className="text-white/40 text-sm mt-1">Adgroups (e opcionalmente campanhas) drenando investimento sem retorno</p>
-                    {/* Disclaimer D-1 da Adman (Phase 16 SC-7): análise lê métricas
-                        da API Adman, que publica D-1; análise diária roda 12h BRT. */}
+                    {/* Banner D-1 da Adman (Phase 19 W2-T1): ampliado com horário real da última execução.
+                        analise_diaria.ultima_execucao_global é o MAX(created_at) dos sugadores,
+                        proxy confiável para "quando a análise rodou pela última vez". */}
                     <span
                         className="inline-flex items-center text-white/40 text-xs mt-1"
                         title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. Análise diária roda às 12h BRT."
                     >
-                        Dados D-1 da Adman · próxima análise: amanhã 12h
+                        Análise diária roda às {analise_diaria?.horario_cron ?? '12:00 BRT'} · Última execução: {fmtRelative(analise_diaria?.ultima_execucao_global)}
                     </span>
                 </div>
 
