@@ -60,8 +60,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 ### Milestone v6.0 — Precisão e Praticidade na Dashboard
 
-- [ ] **Phase 18: Dashboard precisa e com filtros empilháveis** - Corrige 3 bugs reportados pelo usuário em 2026-06-02: (1) trocar o filtro de tempo não muda os dados dos cards principais (range 30d hardcoded ignora `$period`); (2) selecionar empresa + período perde a empresa (inconsistência camelCase/snake_case entre `filters` retornado pelo controller e query params lidos pelo controller); (3) soma de faturamento da Dashboard não bate com a Adman para o mesmo período. Aplica diretamente as duas regras-mestras: **acertividade** (números batem com a fonte) e **praticidade** (filtros combinam de verdade).
-- [ ] **Phase 18.5: Marketplace dinâmico no AdmanService + import CSV oficial** - Investigação da Phase 18 revelou que o `AdmanService::$marketplace` está hardcoded em `'meli'` e quebra para 34 contas Shopee/Amazon (foram classificadas como INVALIDO_CONFIRMADO incorretamente). Solução: coluna `companies.marketplace`, comando que importa do CSV oficial da Adman cruzando por `cust_id`, refator do `AdmanService` para receber marketplace dinâmico, atualização dos callers. Pré-requisito para deploy correto da W5 da Phase 18 (badges "Cust ID Inválido" só fazem sentido depois que essas 34 voltam a sincronizar).
+- [x] **Phase 18: Dashboard precisa e com filtros empilháveis** - Corrige 3 bugs reportados pelo usuário em 2026-06-02: (1) trocar o filtro de tempo não muda os dados dos cards principais (range 30d hardcoded ignora `$period`); (2) selecionar empresa + período perde a empresa (inconsistência camelCase/snake_case entre `filters` retornado pelo controller e query params lidos pelo controller); (3) soma de faturamento da Dashboard não bate com a Adman para o mesmo período. Aplica diretamente as duas regras-mestras: **acertividade** (números batem com a fonte) e **praticidade** (filtros combinam de verdade). (completed 2026-06-03, deployed; 25 testes verdes; auditoria revelou causa raiz da divergência → Phase 18.5)
+- [x] **Phase 18.5: Marketplace dinâmico no AdmanService + import CSV oficial** - Investigação da Phase 18 revelou que o `AdmanService::$marketplace` estava hardcoded em `'meli'` e quebrava para 34 contas Shopee/Amazon. Implementação: coluna `companies.marketplace`, comando `dashboard:import-marketplace-from-csv` (33 atualizadas: 32 Shopee + 1 Amazon), refator do `AdmanService` (8 endpoints aceitam `$marketplace`), 6 callers críticos atualizados. **Resultado validado em prod**: `cust_id_status='invalido'` caiu de 32 para 2 (94% de redução); soma DB cresceu de R$ 15,4M → R$ 16,1M com 1 dia de sync das Shopee. Gap histórico de 29 dias se preenche naturalmente com cache D-1 da Phase 16. (completed 2026-06-03, deployed; 7 testes verdes)
 
 ## Phase Details
 
@@ -441,7 +441,8 @@ v4.0 phases execute in order: 13 → 14
 | 15. Sugadores — UI por Empresa + Auto-resolução + Atalhos | 4/4 (waves) | Complete | 2026-05-27 |
 | 16. Adequação à cadência D-1 da Adman | 4/4 (waves) | Complete | 2026-05-27 |
 | 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete    | 2026-06-02 |
-| 18. Dashboard precisa e com filtros empilháveis | 0/? | Planning | - |
+| 18. Dashboard precisa e com filtros empilháveis | 5/5 (waves) | Complete | 2026-06-03 |
+| 18.5. Marketplace dinâmico no AdmanService | 3/3 (waves) | Complete | 2026-06-03 |
 
 ### Phase 18: Dashboard precisa e com filtros empilháveis
 **Goal**: Aplicar diretamente as duas regras-mestras do projeto (**acertividade** + **praticidade**) na Dashboard, eliminando 3 bugs reportados pelo usuário em 2026-06-02. Os dados mostrados ao admin precisam (a) refletir o período selecionado, (b) preservar todos os filtros simultaneamente, e (c) bater com a Adman para o mesmo range.

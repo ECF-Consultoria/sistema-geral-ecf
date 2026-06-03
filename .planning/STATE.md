@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v4.1
-milestone_name: Eficiência Operacional Sugadores
+milestone: v6.0
+milestone_name: Precisão e Praticidade na Dashboard
 status: milestone_complete
-stopped_at: Milestone complete (Phase 17 was final phase)
-last_updated: 2026-06-02T13:16:57.086Z
-last_activity: 2026-06-01 -- Phase 17 execution started
+stopped_at: Phase 18 + 18.5 deployadas e validadas em prod (2026-06-03)
+last_updated: 2026-06-03T13:30:00.000Z
+last_activity: 2026-06-03 -- Phase 18.5 deployed (marketplace dinâmico; 32 Shopee + 1 Amazon ativadas; cust_id_status invalido caiu 32→2)
 progress:
-  total_phases: 17
-  completed_phases: 7
-  total_plans: 24
-  completed_plans: 24
-  percent: 41
+  total_phases: 18
+  completed_phases: 9
+  total_plans: 32
+  completed_plans: 32
+  percent: 50
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 17
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-06-02 — Quick task 260602-k3e: Restaura sync vendas assíncrono (fix 504 nginx)
+Phase: 18.5
+Plan: All complete (5 waves Phase 18 + 3 waves Phase 18.5)
+Status: Milestone v6.0 complete — deployed em prod
+Last activity: 2026-06-03 — Phase 18.5 deployada + import CSV + sync + mark-custid + auditoria
 
 ## Performance Metrics
 
@@ -200,6 +200,28 @@ Last activity: 2026-06-02 — Quick task 260602-k3e: Restaura sync vendas assín
 - **`RefreshGrossBillingCacheJob` mantido como loop único (não-fan-out)** — decisão W1-T4 Sub-task C. Com `--timeout=1800` + throttle interno 7s + `->withoutOverlapping()` + 1×/dia, não há risco de colisão paralela. Defesa em profundidade: reavaliar se smoke W3-T3 mostrar 429 originados deste job.
 - **2026-06-02 — Phase 16 validada em produção** com 6 dias de dados reais. Redução de 429 confirmada: pré-Phase 16 média ~7.500/dia (25/05: 6.073 · 26/05: 7.951 · 27/05: 6.537 deploy parcial) → pós-Phase 16 média ~140/dia (28/05: 137 · 29/05: 153 · 30/05: 158 · 31/05: 136 · 01/06: 126 · 02/06: 190). **Redução de 98%**. Os 429 residuais ficam concentrados no horário do `adman:sync` (11:00 BRT) e são absorvidos pelo retry exponencial 2s/4s/8s — não impactam usuário final. SC-8 ("zero 429 em uso normal") considerado entregue na prática. Para zerar de fato, seria necessário fan-out também no `RefreshGrossBillingCacheJob` — ROI marginal, não priorizado.
 
+### Decisões da Phase 18 (registradas)
+
+- **Regras-mestras estabelecidas em 2026-06-02**: acertividade dos dados + praticidade operacional. Salvas em [feedback_project_priorities.md](MEMORY.md). Aplicáveis a todo planejamento futuro.
+- **Bug 1 (período não muda dados)**: range fixo `$dateFrom30d`/`$dateTo30d` em 6 sites do controller foi substituído por helper `getPeriodRange($period)` retornando `from`/`to` derivados (W2-T1, W2-T2).
+- **Bug 2 (filtros perdem-se)**: inconsistência camelCase (`companyFilter`) vs snake_case (`company_id`). Backend agora exporta `filters` em snake_case via array literal (W1-T1); frontend lê `filters.company_id` etc (W1-T2).
+- **Cache key strategy (W2-T3)**: ranges ≠ 30d caem em fallback DB intencionalmente — `RefreshGrossBillingCacheJob` (Phase 16) só preenche range 30d. Trade-off: respeita Phase 16, evita pre-warm de ranges raros, indicador "≈" no card sinaliza ao operador.
+- **Bug 3 (faturamento divergente)**: auditoria revelou diff total 71,79% (R$ 39M); 32 empresas INVALIDO_CONFIRMADO; causa raiz NÃO era cust_id corrompido — era marketplace hardcoded `'meli'` (descoberto via planilha oficial Adman cruzada com diagnose).
+- **Estratégia A do refator do controller**: política "tudo-ou-nada" virou "híbrido per-empresa" — cache hit usa Adman exato; cache miss cai em SUM(adman_metrics) só pra essa empresa. SUM em 1 query agregada para evitar N+1. (W4-T3)
+- **W4-T2 caça ao 429**: 5 callers ajustados para throttle 7s consistente (SyncTodasVendasAdmanJob, SyncVendasAdman, SyncThumbnailsPublicacoes, MlbController::syncVendasPublicador, AdmanService::fetchGrossBillingsBatch) + `Cache::lock` defensivo no `RefreshGrossBillingCacheJob`. Não havia caller único violando — concorrência distribuída era a causa.
+- **W5 UI**: coluna `companies.cust_id_status` enum (ok/invalido/desconhecido/nao_aplicavel); comando `dashboard:mark-custid-status` popula a flag (UPDATE só dela, NUNCA cust_id); badges "Cust ID Inválido" em 3 sites (Companies/Index, Dashboard, Sugadores cards); filtro `?cust_id_status=invalido` em Companies; indicador "≈" nos cards do Dashboard quando `cards_exatos === false`.
+
+### Decisões da Phase 18.5 (registradas)
+
+- **2026-06-03 — Planilha CSV oficial Adman recebida do usuário** (`.planning/phases/18.5-marketplace-dinamico/accounts-adman.csv`, 169 contas). Cruzamento via cust_id revelou que **TODOS os cust_ids estavam corretos** — o problema era marketplace hardcoded em `'meli'` ([AdmanService.php:35](app/Services/AdmanService.php#L35)) batendo `/meli/performance/...` para 33 contas Shopee + 1 conta Amazon que retornavam HTTP 500.
+- **Coluna `companies.marketplace`** ENUM `('meli', 'shopee', 'amazon')` default `'meli'` (W1-T1) — preserva comportamento atual para empresas não importadas.
+- **Comando `dashboard:import-marketplace-from-csv {arquivo} [--dry-run]`** lê CSV oficial via `str_getcsv` (sem dep extra), cruza por `cust_id`, UPDATE só de `companies.marketplace`, activity log por mudança (W1-T2).
+- **Estratégia A — refator AdmanService**: 8 endpoints aceitam `string $marketplace = 'meli'` como parâmetro; cache keys incluem `{marketplace}` (entradas órfãs expiram naturalmente em 24h); `syncCompany` lê `$company->marketplace` (W2-T1).
+- **Lean callers (W2-T2)**: SOMENTE 6 callers críticos atualizados (RefreshGrossBilling, SugadorAnalysisService 3 sites, AuditBillingDivergence, DiagnoseCustId, MarkCustIdStatus) — callers MLB-only (MlbController, SyncVendas, SyncThumbnails, etc) MANTÊM default `'meli'` porque são módulo MLB e funcionam corretamente. Decisão lean alinhada com prioridade do projeto (foco MercadoLibre).
+- **Operacional W4**: import aplicado em prod (33 atualizadas — 32 Shopee + 1 Amazon); sync disparado (169 jobs com delay 7s); mark-custid re-rodou em 15.6s via curto-circuito (172 UPDATEs, 169 OK + 2 invalido + 1 nao_aplicavel — queda de 32→2 em invalido = 94%); auditoria pós-fix reportou 71,23% diff (vs 71,79% antes) — divergência continua porque é HISTÓRICA (adman_metrics tem só 1 dia das Shopee preenchido; faltam 29 dias). Dashboard real usa cache híbrido (Phase 18 W4-T3) e mostra valores precisos quando cache OK; gap histórico se preenche naturalmente ao longo de 30 dias com cadência D-1 da Phase 16.
+- **Erros 500 residuais na auditoria pós-fix**: 32 Shopee + 1 Amazon + 9 meli = 42 FAILs (vs 43 antes). Causa: rate limit cumulativo do dia + 500 intermitente Adman; transitório, não bug arquitetural. Phase 16 retry exponencial absorve no caminho de runtime; auditoria não tem retry.
+- **Construtor `AdmanService::$this->marketplace = 'meli'`** mantido como dívida transicional (código morto pós-refator) — pode ser removido em fase futura.
+
 ### Pending Todos
 
 None.
@@ -243,8 +265,13 @@ None.
 | Phase 16 | Fan-out de `RefreshGrossBillingCacheJob` (zerar 140/dia residuais) | non-priority — ROI marginal | 2026-06-02 |
 | Phase 16 | Smoke W3-T3 humano (cards/badges/bloqueio reanalisar) | validado em prod (6 dias sem regressão) | 2026-06-02 |
 | Adman | Rate limit 429 — Adman respondeu: API é D-1 (10h BRT) + 10 req/min/key. Resolvido via Phase 16 (98% redução de 429). | resolvido-via-phase-16 | 2026-05-27 |
+| Phase 18 | Smoke W5-T8 humano (cards/badges/filtros/períodos) | pending-human-uat | 2026-06-03 |
+| Phase 18 | Backfill histórico (preenche 29 dias faltantes Shopee em adman_metrics) | non-priority — cache D-1 preenche em 30d | 2026-06-03 |
+| Phase 18.5 | 2 empresas ainda `cust_id_status='invalido'` mesmo pós-import | pending-revisão-humana | 2026-06-03 |
+| Phase 16 | ~305 erros 429/dia residuais pós-Phase 16 (concorrência interna?) | non-priority — não impactam usuário (retry absorve) | 2026-06-03 |
+| Adman | 1 conta extra na planilha (CustId 1081500407) sem empresa no DB | investigar se é nova empresa pra cadastrar | 2026-06-03 |
 
 ## Session Continuity
 
-Last session: 2026-06-02T18:00:00.000Z
-Stopped at: Phase 16 oficialmente fechada (validada em prod: 98% redução de 429 em 6 dias). Sincronizado com 83 commits do outro dev (Phase 17 completa + ML OAuth + diagnósticos Adman no Dev panel + quick tasks). Trabalho da Phase 16 intacto pós-pull. Próxima ação: TBD pelo usuário.
+Last session: 2026-06-03T13:30:00.000Z
+Stopped at: Milestone v6.0 (Phase 18 + 18.5) deployadas e validadas em prod. Resultados: bugs 1+2 corrigidos (período afeta cards + filtros empilháveis); 32 contas Shopee + 1 Amazon ativadas via marketplace dinâmico (import de planilha oficial Adman); cust_id_status=invalido caiu de 32 → 2; soma DB cresceu R$ 700k em 1 dia (gap histórico restante de 29 dias preenche naturalmente via cache D-1 da Phase 16). Próxima ação: TBD pelo usuário. Smoke humano W5-T8 pendente (UI cards/badges/filtros).
