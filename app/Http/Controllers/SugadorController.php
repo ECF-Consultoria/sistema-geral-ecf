@@ -663,6 +663,105 @@ class SugadorController extends Controller
         ]);
     }
 
+    /**
+     * Retorna lista consolidada de MLBs (productAds) de todos os sugadores do tipo
+     * adgroup pendentes HOJE de uma empresa específica.
+     *
+     * Reusa o Cache::lock por custId introduzido no W1-T3: os N adgroups da mesma
+     * conta rodam serialmente DENTRO de um único lock. O 1º adgroup paga o custo
+     * MCP (~15s TLS + paginação); os demais leem do cache compartilhado de 30min
+     * (mesmo dateFrom/dateTo = mesmo cache key) — custo amortizado.
+     *
+     * Limite: 20 adgroups por request para evitar HTTP timeout. Se count > 20,
+     * processa os 20 mais recentes e retorna truncated=true — UI mostra aviso.
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function mlbsByCompany(Request $request, Company $company)
+    {
+        // Autorização: mesma regra do drilldown — admin/gestor/lider veem tudo;
+        // demais só carteira. Replica padrão de sgiCampaigns().
+        $user     = $request->user();
+        $isGlobal = $user->isAdmin()
+            || (method_exists($user, 'isGestor') && $user->isGestor())
+            || (method_exists($user, 'isLiderPub') && $user->isLiderPub());
+
+        if (!$isGlobal && !$user->companies()->where('companies.id', $company->id)->exists()) {
+            abort(403, 'Sem acesso a esta empresa.');
+        }
+
+        if (!$company->adman_account_id) {
+            return response()->json([
+                'mlbs'                  => [],
+                'total_mlbs'            => 0,
+                'sugadores_processados' => 0,
+                'sugadores_solicitados' => 0,
+                'truncated'             => false,
+                'reason'                => 'Empresa sem adman_account_id.',
+            ], 422);
+        }
+
+        if (!$this->mcp->isConfigured()) {
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'MCP da Adman não configurada.',
+            ], 503);
+        }
+
+        $hoje     = now()->toDateString();
+        $adgroups = Sugador::where('company_id', $company->id)
+            ->where('tipo', Sugador::TIPO_ADGROUP)
+            ->where('status', Sugador::STATUS_PENDENTE)
+            ->whereDate('reference_date', $hoje)
+            ->orderByDesc('created_at')
+            ->get(['id', 'campaign_id', 'periodo_inicio', 'periodo_fim']);
+
+        $solicitados = $adgroups->count();
+        $LIMITE      = 20; // evita request gigante; UI mostra "20 de 47 sugadores"
+        $alvos       = $adgroups->take($LIMITE);
+        $truncated   = $solicitados > $LIMITE;
+
+        // MCP da Adman tem TLS handshake lento (~15s/chamada) — sem isso atinge
+        // max_execution_time antes de completar. Mesmo justificativa do mlbs().
+        @set_time_limit(0);
+
+        $mlbsSet    = [];
+        $processados = 0;
+
+        foreach ($alvos as $s) {
+            $dateFrom = optional($s->periodo_inicio)->toDateString() ?? now()->subDays(7)->toDateString();
+            $dateTo   = optional($s->periodo_fim)->toDateString()    ?? now()->subDay()->toDateString();
+
+            try {
+                $res = $this->mcp->fetchMlbsByCampaign(
+                    $company->adman_account_id,
+                    (string) $s->campaign_id,
+                    $dateFrom,
+                    $dateTo,
+                );
+                foreach ($res['mlbs'] ?? [] as $m) {
+                    $id = $m['listing_id'] ?? null;
+                    if ($id) $mlbsSet[$id] = true;
+                }
+                $processados++;
+            } catch (\Throwable $e) {
+                Log::warning("[Sugadores/MlbsByCompany] sugador {$s->id} falhou: " . $e->getMessage());
+                // Continua com os outros — falha de 1 não interrompe o lote.
+            }
+        }
+
+        $mlbs = array_keys($mlbsSet);
+        sort($mlbs);
+
+        return response()->json([
+            'mlbs'                  => $mlbs,
+            'total_mlbs'            => count($mlbs),
+            'sugadores_processados' => $processados,
+            'sugadores_solicitados' => $solicitados,
+            'truncated'             => $truncated,
+        ]);
+    }
+
     private function normalizeForMatch(string $s): string
     {
         $s = mb_strtolower($s);

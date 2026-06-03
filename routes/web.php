@@ -171,6 +171,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/sugadores/analyze',               [SugadorController::class, 'analyzeAll'])->name('sugadores.analyze-all');
     Route::post('/sugadores/companies/{company}/analyze', [SugadorController::class, 'analyzeCompany'])->name('sugadores.analyze-company');
     Route::get('/sugadores/companies/{company}/sgi-campaigns', [SugadorController::class, 'sgiCampaigns'])->name('sugadores.sgi-campaigns');
+    // Phase 19 W1-T4 — endpoint agregado de MLBs por empresa (modo cards, botão "Copiar MLBs").
+    // Reusa Cache::lock por custId do W1-T3; 1º adgroup paga o custo MCP, demais leem cache.
+    Route::get('/sugadores/companies/{company}/mlbs-todos', [SugadorController::class, 'mlbsByCompany'])->name('sugadores.mlbs-by-company');
 
     // Config de detecção por empresa (admin/gestor/lider via Policy::manage).
     // Rota antiga /companies/.../sugador-config mantida (compat); rota nova
