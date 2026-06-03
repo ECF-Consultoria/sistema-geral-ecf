@@ -63,6 +63,10 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 18: Dashboard precisa e com filtros empilháveis** - Corrige 3 bugs reportados pelo usuário em 2026-06-02: (1) trocar o filtro de tempo não muda os dados dos cards principais (range 30d hardcoded ignora `$period`); (2) selecionar empresa + período perde a empresa (inconsistência camelCase/snake_case entre `filters` retornado pelo controller e query params lidos pelo controller); (3) soma de faturamento da Dashboard não bate com a Adman para o mesmo período. Aplica diretamente as duas regras-mestras: **acertividade** (números batem com a fonte) e **praticidade** (filtros combinam de verdade). (completed 2026-06-03, deployed; 25 testes verdes; auditoria revelou causa raiz da divergência → Phase 18.5)
 - [x] **Phase 18.5: Marketplace dinâmico no AdmanService + import CSV oficial** - Investigação da Phase 18 revelou que o `AdmanService::$marketplace` estava hardcoded em `'meli'` e quebrava para 34 contas Shopee/Amazon. Implementação: coluna `companies.marketplace`, comando `dashboard:import-marketplace-from-csv` (33 atualizadas: 32 Shopee + 1 Amazon), refator do `AdmanService` (8 endpoints aceitam `$marketplace`), 6 callers críticos atualizados. **Resultado validado em prod**: `cust_id_status='invalido'` caiu de 32 para 2 (94% de redução); soma DB cresceu de R$ 15,4M → R$ 16,1M com 1 dia de sync das Shopee. Gap histórico de 29 dias se preenche naturalmente com cache D-1 da Phase 16. (completed 2026-06-03, deployed; 7 testes verdes)
 
+### Milestone v7.0 — Eficiência Operacional Sugadores (Foco no dia)
+
+- [ ] **Phase 19: Sugadores — Foco no dia + Atalhos + Fix MCP** - Reforça as duas regras-mestras (acertividade + praticidade) no módulo Sugadores. (1) Banner explícito de cadência D-1 ("Análise diária às 12h BRT") + estado por empresa. (2) Vista default filtra `reference_date=hoje + status=pendente` para focar o operador no que importa hoje (esconde 1407 acumulados que confundem). (3) Botão "Copiar MLBs" inline em cada linha de sugador + no card de empresa (modo cards) — ação em 1 clique sem abrir drilldown. (4) Mitigação do 429 do MCP no drilldown (throttle por custId + Cache::lock). (5) Comando one-shot `sugadores:limpar-orfaos` para marcar como `auto_resolvido` os 1407 pendentes antigos acumulados.
+
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
@@ -443,6 +447,7 @@ v4.0 phases execute in order: 13 → 14
 | 17. Coleta de Dados ML (Fase 1 — sem IA) | 5/5 | Complete    | 2026-06-02 |
 | 18. Dashboard precisa e com filtros empilháveis | 5/5 (waves) | Complete | 2026-06-03 |
 | 18.5. Marketplace dinâmico no AdmanService | 3/3 (waves) | Complete | 2026-06-03 |
+| 19. Sugadores — Foco no dia + Atalhos + Fix MCP | 0/? | Planning | - |
 
 ### Phase 18: Dashboard precisa e com filtros empilháveis
 **Goal**: Aplicar diretamente as duas regras-mestras do projeto (**acertividade** + **praticidade**) na Dashboard, eliminando 3 bugs reportados pelo usuário em 2026-06-02. Os dados mostrados ao admin precisam (a) refletir o período selecionado, (b) preservar todos os filtros simultaneamente, e (c) bater com a Adman para o mesmo range.

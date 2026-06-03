@@ -273,5 +273,14 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-03T13:30:00.000Z
-Stopped at: Milestone v6.0 (Phase 18 + 18.5) deployadas e validadas em prod. Resultados: bugs 1+2 corrigidos (período afeta cards + filtros empilháveis); 32 contas Shopee + 1 Amazon ativadas via marketplace dinâmico (import de planilha oficial Adman); cust_id_status=invalido caiu de 32 → 2; soma DB cresceu R$ 700k em 1 dia (gap histórico restante de 29 dias preenche naturalmente via cache D-1 da Phase 16). Próxima ação: TBD pelo usuário. Smoke humano W5-T8 pendente (UI cards/badges/filtros).
+Last session: 2026-06-03T14:00:00.000Z
+Stopped at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
+
+**Estado para próxima sessão retomar:**
+- CONTEXT.md: `.planning/phases/19-sugadores-foco-dia/CONTEXT.md`
+- PLAN.md: `.planning/phases/19-sugadores-foco-dia/PLAN.md` (973 linhas, 4 waves, 12 tasks)
+- Decisão: executar W1 + W2 + W3 (parar antes do W4 operacional)
+- Bug que motivou: 429 do MCP no drilldown de MLBs (`getMarketplaceadsCustIdproductAdsmetrics`)
+- Melhorias: banner D-1 explícito + vista default só HOJE + botão "Copiar MLBs" em 2 lugares + comando one-shot para limpar 1407 sugadores antigos
+- Estado prod confirmado: 478 sugadores HOJE + 1407 antigos pendentes + 2981 auto-resolvidos
+- Phase 18 + 18.5 já deployadas (HEAD `783de85`); cards_exatos no controller foi mantido após remoção do `≈`
