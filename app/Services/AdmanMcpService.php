@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -148,59 +149,88 @@ class AdmanMcpService
     {
         $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, $dateFrom, $dateTo, $maxPages);
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
-            $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
-            $all        = [];
-            $page       = 1;
-            $totalPages = 1;
-            $startedAt  = microtime(true);
+        // MCP da Adman tem rate limit 50 req/min global por API key. Múltiplas
+        // chamadas concorrentes para o mesmo custId (drilldown de N adgroups da
+        // mesma empresa ao mesmo tempo) estouram em getMarketplaceadsCustIdproductAdsmetrics.
+        // Lock por custId serializa — a paginação interna já tem throttle de 1.5s/página.
+        //
+        // Por que lock por custId (não global): permite paralelismo entre contas distintas,
+        // onde o rate limit é independente.
+        //
+        // Por que 30s: cobre paginação típica de 16 páginas × 1.5s = 24s + folga TLS.
+        // Se travar (conta muito grande), próxima chamada cai com RuntimeException e o
+        // usuário retenta — risco baixo (T-19-06 accepted no threat model).
+        //
+        // Por que NÃO envolve listCampaigns: cache de 1h cobre o caso comum e a
+        // chamada é leve (1 endpoint, sem paginação pesada).
+        //
+        // Driver compatível: database (Laravel 12 DatabaseLock — CACHE_STORE=database em prod).
+        $lockKey = "adman_mcp:custid:{$custId}";
+        $lock    = Cache::lock($lockKey, 30);
 
-            do {
-                $result = $this->call('getMarketplaceadsCustIdproductAdsmetrics', [
-                    'marketplace'  => $this->marketplace,
-                    'custId'       => $custId,
-                    'dateFrom'     => $dateFrom,
-                    'dateTo'       => $dateTo,
-                    'page'         => $page,
-                    'itemsPerPage' => $itemsPerPage,
-                ]);
+        try {
+            return $lock->block(30, function () use ($cacheKey, $custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
+                return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
+                    $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
+                    $all        = [];
+                    $page       = 1;
+                    $totalPages = 1;
+                    $startedAt  = microtime(true);
 
-                $sc          = $result['structuredContent'] ?? [];
-                $productAds  = $sc['productAds'] ?? [];
-                $totalPages  = (int) ($sc['totalPages'] ?? 1);
+                    do {
+                        $result = $this->call('getMarketplaceadsCustIdproductAdsmetrics', [
+                            'marketplace'  => $this->marketplace,
+                            'custId'       => $custId,
+                            'dateFrom'     => $dateFrom,
+                            'dateTo'       => $dateTo,
+                            'page'         => $page,
+                            'itemsPerPage' => $itemsPerPage,
+                        ]);
 
-                foreach ($productAds as $ad) {
-                    $all[] = $ad;
-                }
+                        $sc          = $result['structuredContent'] ?? [];
+                        $productAds  = $sc['productAds'] ?? [];
+                        $totalPages  = (int) ($sc['totalPages'] ?? 1);
 
-                // Progresso opcional: o caller (FetchAdmanMlbsByCampaignJob) passa
-                // a chave de status pra UI poder mostrar "X/Y páginas lidas". Sem
-                // isso, durante scans de 30min a UI ficava silenciosa.
-                if ($progressCacheKey !== null) {
-                    Cache::put($progressCacheKey, [
-                        'status'      => 'running',
-                        'pages_read'  => $page,
+                        foreach ($productAds as $ad) {
+                            $all[] = $ad;
+                        }
+
+                        // Progresso opcional: o caller (FetchAdmanMlbsByCampaignJob) passa
+                        // a chave de status pra UI poder mostrar "X/Y páginas lidas". Sem
+                        // isso, durante scans de 30min a UI ficava silenciosa.
+                        if ($progressCacheKey !== null) {
+                            Cache::put($progressCacheKey, [
+                                'status'      => 'running',
+                                'pages_read'  => $page,
+                                'total_pages' => $totalPages,
+                                'items_count' => count($all),
+                                'started_at'  => date('c', (int) $startedAt),
+                                'updated_at'  => now()->toIso8601String(),
+                            ], now()->addMinutes(35));
+                        }
+
+                        $page++;
+                        // Throttle: 1.5s entre páginas mantém ~40 req/min, abaixo do
+                        // limite de 50/min da Adman. Sem isso, 16 páginas burst em <3s
+                        // estouram o rate limit do upstream que a MCP repassa.
+                        if ($page <= $totalPages && $page <= $maxPages) usleep(1_500_000);
+                    } while ($page <= $totalPages && $page <= $maxPages);
+
+                    return [
+                        'items'       => $all,
+                        'truncated'   => $totalPages > $maxPages,
+                        'pages_read'  => $page - 1,
                         'total_pages' => $totalPages,
-                        'items_count' => count($all),
-                        'started_at'  => date('c', (int) $startedAt),
-                        'updated_at'  => now()->toIso8601String(),
-                    ], now()->addMinutes(35));
-                }
-
-                $page++;
-                // Throttle: 1.5s entre páginas mantém ~40 req/min, abaixo do
-                // limite de 50/min da Adman. Sem isso, 16 páginas burst em <3s
-                // estouram o rate limit do upstream que a MCP repassa.
-                if ($page <= $totalPages && $page <= $maxPages) usleep(1_500_000);
-            } while ($page <= $totalPages && $page <= $maxPages);
-
-            return [
-                'items'      => $all,
-                'truncated'  => $totalPages > $maxPages,
-                'pages_read' => $page - 1,
-                'total_pages'=> $totalPages,
-            ];
-        });
+                    ];
+                });
+            });
+        } catch (LockTimeoutException $e) {
+            // Timeout de 30s: paginação típica 16 págs × 1.5s = 24s + folga TLS.
+            // Se chegar aqui, conta muito grande ou MCP lento — caller exibe erro ao usuário.
+            throw new \RuntimeException(
+                "Adman MCP ocupado para a conta {$custId} — tente novamente em alguns segundos."
+            );
+        }
     }
 
     /**
