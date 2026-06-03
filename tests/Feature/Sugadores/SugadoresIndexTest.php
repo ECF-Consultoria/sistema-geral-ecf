@@ -318,8 +318,9 @@ class SugadoresIndexTest extends TestCase
 
         $response->assertOk();
         // Limite folgado pra absorver sessão, paginação, agregação, etc.
+        // Phase 19: +1 query para MAX(created_at) de analise_diaria — total esperado = 16.
         $this->assertLessThanOrEqual(
-            15,
+            16,
             count($queries),
             'Index dispara mais queries do que o esperado — possível N+1.'
         );

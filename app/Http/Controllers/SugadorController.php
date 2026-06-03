@@ -51,6 +51,19 @@ class SugadorController extends Controller
             $query->daCarteira($user);
         }
 
+        // Phase 19 — Foco no dia atual: detecta se a request está em "modo default"
+        // (sem nenhum filtro de data ou status explícito). Quando sim, aplica
+        // automaticamente reference_date=hoje + status=pendente para que o operador
+        // veja os 478 sugadores de hoje em vez dos 1407 acumulados.
+        $temFiltroData   = $request->filled('reference_date')
+            || $request->filled('date_from')
+            || $request->filled('date_to')
+            || $request->boolean('include_old');
+        $temFiltroStatus = $request->filled('status')
+            || $request->boolean('include_resolved');
+
+        $defaultView = (!$temFiltroData && !$temFiltroStatus) ? 'hoje' : 'custom';
+
         // Filtros
         if ($request->filled('company_id')) {
             $query->where('company_id', (int) $request->company_id);
@@ -64,6 +77,9 @@ class SugadorController extends Controller
         }
         if ($request->filled('tipo')) {
             $query->where('tipo', $request->tipo);
+        }
+        if ($request->filled('reference_date')) {
+            $query->whereDate('reference_date', $request->reference_date);
         }
         if ($request->filled('date_from')) {
             $query->where('reference_date', '>=', $request->date_from);
@@ -80,6 +96,16 @@ class SugadorController extends Controller
                     ->from('company_users')
                     ->where('user_id', $userId);
             });
+        }
+
+        // Phase 19 — Aplica filtros default (vista "hoje") quando não há filtros explícitos.
+        // IMPORTANTE: aplicado APÓS os filtros existentes para não sobrescrever filtros
+        // explícitos do usuário (ex: ?status=resolvido já adicionou a cláusula acima).
+        if ($defaultView === 'hoje') {
+            // Foco no dia atual — D-1 da Adman publicado às ~10h BRT; análise roda às 12h.
+            // Sem este filtro, 1407 acumulados escondiam os 478 sugadores do dia.
+            $query->whereDate('reference_date', today());
+            $query->where('status', Sugador::STATUS_PENDENTE);
         }
 
         $sugadores = $query->paginate(50)->withQueryString();
@@ -177,6 +203,10 @@ class SugadorController extends Controller
                 'ultima_analise'  => $ultima,
                 'can_analyze'     => $canAnalyze,
                 'analisado_hoje'  => $companiesAnalisadasHoje->has($c->id),
+                // Phase 19 — alias semântico de `analisado_hoje` (vem de AdmanSyncLog).
+                // "sincronizou_hoje" deixa claro no frontend que o dado reflete sync Adman
+                // (cron ~11h), não a análise de sugadores em si. Manter compat via alias.
+                'sincronizou_hoje' => $companiesAnalisadasHoje->has($c->id),
                 // Phase 18 W5-T3 — flag preloaded em $companies->get(['id','name','cust_id_status']);
                 // sem N+1 porque ja vem na query unica acima.
                 'cust_id_status'  => (string) ($c->cust_id_status ?? 'desconhecido'),
@@ -201,6 +231,18 @@ class SugadorController extends Controller
             $viewMode = 'cards';
         }
 
+        // Phase 19 — Metadado global para o banner D-1 no topo da página.
+        // `ultima_execucao_global`: usa MAX(created_at) dos sugadores como proxy —
+        // cada rodada da análise cria novos sugadores com created_at do momento.
+        // Null quando nenhum sugador existe ainda no ambiente.
+        $ultimaExecucaoRaw = Sugador::query()->max('created_at');
+        $analiseDiaria = [
+            'horario_cron'            => '12:00 BRT',
+            'ultima_execucao_global'  => $ultimaExecucaoRaw
+                ? \Carbon\Carbon::parse($ultimaExecucaoRaw)->toIso8601String()
+                : null,
+        ];
+
         return Inertia::render('Sugadores/Index', [
             'sugadores'         => $sugadores,
             'companies'         => $companies,
@@ -212,6 +254,9 @@ class SugadorController extends Controller
             'total_pendentes'   => $totalPendentes,
             'can_manage'        => Gate::allows('manage', Sugador::class),
             'can_analyze'       => $canAnalyze,
+            // Phase 19 — Vista default e metadado da análise diária.
+            'default_view'      => $defaultView,
+            'analise_diaria'    => $analiseDiaria,
         ]);
     }
 
