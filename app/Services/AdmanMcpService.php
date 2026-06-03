@@ -56,10 +56,11 @@ class AdmanMcpService
             ],
         ];
 
-        // Retry em 429/5xx — a MCP tem rate limit de 50 req/min (devolvido em
-        // 429 HTTP ou empacotado no payload como isError). Pra 429 dormimos a
-        // janela inteira (60s) — backoff curto não ajuda já que outras chamadas
-        // nesta mesma janela continuam batendo no mesmo limite.
+        // Retry em 429/5xx — a MCP tem rate limit real de 10 req/min/key
+        // (confirmado pela Adman na Phase 16, não 50/min como o comentário antigo
+        // dizia). Devolvido em 429 HTTP ou empacotado no payload como isError.
+        // Pra 429 dormimos a janela inteira (60s) — backoff curto não ajuda já
+        // que outras chamadas nesta mesma janela continuam batendo no mesmo limite.
         $maxAttempts = 6;
         $lastBody    = null;
 
@@ -145,19 +146,21 @@ class AdmanMcpService
      * paginação completa demora vários minutos. Limite default de 16 páginas
      * (800 MLBs) cabe em ~4 min, dentro do fastcgi_read_timeout=300s do nginx.
      */
-    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 16, ?string $progressCacheKey = null): array
+    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 8, ?string $progressCacheKey = null): array
     {
         $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, $dateFrom, $dateTo, $maxPages);
 
-        // MCP da Adman tem rate limit 50 req/min global por API key. Múltiplas
-        // chamadas concorrentes para o mesmo custId (drilldown de N adgroups da
-        // mesma empresa ao mesmo tempo) estouram em getMarketplaceadsCustIdproductAdsmetrics.
-        // Lock por custId serializa — a paginação interna já tem throttle de 1.5s/página.
+        // MCP da Adman tem rate limit real 10 req/min/key (confirmado Phase 16 —
+        // comentário antigo dizia 50/min e estava errado). Múltiplas chamadas
+        // concorrentes para o mesmo custId (drilldown de N adgroups da mesma
+        // empresa ao mesmo tempo) estouram em getMarketplaceadsCustIdproductAdsmetrics.
+        // Lock por custId serializa — a paginação interna agora tem throttle
+        // de 6.5s/página (= ~9 req/min, dentro do limite de 10/min).
         //
         // Por que lock por custId (não global): permite paralelismo entre contas distintas,
         // onde o rate limit é independente.
         //
-        // Por que 30s: cobre paginação típica de 16 páginas × 1.5s = 24s + folga TLS.
+        // Por que 90s no block: paginação típica 8 páginas × 6.5s = 52s + folga TLS.
         // Se travar (conta muito grande), próxima chamada cai com RuntimeException e o
         // usuário retenta — risco baixo (T-19-06 accepted no threat model).
         //
@@ -166,10 +169,10 @@ class AdmanMcpService
         //
         // Driver compatível: database (Laravel 12 DatabaseLock — CACHE_STORE=database em prod).
         $lockKey = "adman_mcp:custid:{$custId}";
-        $lock    = Cache::lock($lockKey, 30);
+        $lock    = Cache::lock($lockKey, 90);
 
         try {
-            return $lock->block(30, function () use ($cacheKey, $custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
+            return $lock->block(90, function () use ($cacheKey, $custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
                 return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
                     $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
                     $all        = [];
@@ -210,10 +213,12 @@ class AdmanMcpService
                         }
 
                         $page++;
-                        // Throttle: 1.5s entre páginas mantém ~40 req/min, abaixo do
-                        // limite de 50/min da Adman. Sem isso, 16 páginas burst em <3s
-                        // estouram o rate limit do upstream que a MCP repassa.
-                        if ($page <= $totalPages && $page <= $maxPages) usleep(1_500_000);
+                        // Throttle: 6.5s entre páginas mantém ~9 req/min, dentro
+                        // do limite real de 10/min/key da Adman (confirmado Phase 16).
+                        // O comentário antigo (1.5s para 40 req/min) estava calibrado
+                        // pelo limite errado documentado em 2025; com 1.5s a paginação
+                        // sozinha estourava o limite real e gerava 429 no drilldown.
+                        if ($page <= $totalPages && $page <= $maxPages) usleep(6_500_000);
                     } while ($page <= $totalPages && $page <= $maxPages);
 
                     return [
@@ -266,7 +271,8 @@ class AdmanMcpService
                 }
 
                 $page++;
-                if ($page <= $totalPages) usleep(1_500_000);
+                // Throttle 6.5s/página = ~9 req/min (limite real Adman é 10/min/key).
+                if ($page <= $totalPages) usleep(6_500_000);
             } while ($page <= $totalPages);
 
             return $all;

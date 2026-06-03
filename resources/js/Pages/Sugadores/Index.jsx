@@ -610,8 +610,15 @@ export default function SugadoresIndex({
         setCopyingId(sugadorId);
         try {
             const r = await fetch(route('sugadores.mlbs', sugadorId), { headers: { Accept: 'application/json' } });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const j = await r.json();
+            // Backend responde 502/503/422 com payload { reason } pra falhas conhecidas
+            // (429 da Adman, MCP desconfigurada, etc). Lemos o reason e exibimos
+            // mensagem útil em vez de "Tente novamente" genérico.
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                const reason = j.reason ?? `Erro ${r.status} — tente novamente`;
+                setCopiedFeedback(p => ({ ...p, [sugadorId]: { error: reason } }));
+                return;
+            }
             const mlbs = (j.mlbs || []).map(m => m.listing_id).filter(Boolean);
             if (!mlbs.length) {
                 setCopiedFeedback(p => ({ ...p, [sugadorId]: { count: 0, error: 'Sem MLBs' } }));
@@ -620,11 +627,12 @@ export default function SugadoresIndex({
                 setCopiedFeedback(p => ({ ...p, [sugadorId]: { count: mlbs.length, ok } }));
             }
         } catch {
-            setCopiedFeedback(p => ({ ...p, [sugadorId]: { error: 'Tente novamente' } }));
+            setCopiedFeedback(p => ({ ...p, [sugadorId]: { error: 'Falha de rede — tente novamente' } }));
         } finally {
             setCopyingId(null);
-            // Limpa feedback após 2s
-            setTimeout(() => setCopiedFeedback(p => { const n = { ...p }; delete n[sugadorId]; return n; }), 2000);
+            // Mensagens de erro ficam mais tempo na tela (4s) pra usuário ler;
+            // sucesso some em 2s.
+            setTimeout(() => setCopiedFeedback(p => { const n = { ...p }; delete n[sugadorId]; return n; }), 4000);
         }
     }
 
@@ -636,8 +644,16 @@ export default function SugadoresIndex({
         setCopyingEmpresaId(companyId);
         try {
             const r = await fetch(route('sugadores.mlbs-by-company', companyId), { headers: { Accept: 'application/json' } });
-            if (!r.ok) throw new Error(`HTTP ${r.status}`);
-            const j = await r.json();
+            // Backend agora retorna 502 com { reason } quando TODOS os sugadores
+            // falham (típico em rate limit 429 da Adman). Antes, ele silenciava
+            // erros e devolvia mlbs:[] que o frontend exibia como "Sem MLBs" —
+            // confundindo falha temporária com lista realmente vazia.
+            const j = await r.json().catch(() => ({}));
+            if (!r.ok) {
+                const reason = j.reason ?? `Erro ${r.status} — tente novamente`;
+                setCopiedEmpresaFeedback(p => ({ ...p, [companyId]: { error: reason } }));
+                return;
+            }
             const mlbs = j.mlbs || [];
             if (!mlbs.length) {
                 setCopiedEmpresaFeedback(p => ({ ...p, [companyId]: { total: 0, error: 'Sem MLBs' } }));
@@ -649,10 +665,11 @@ export default function SugadoresIndex({
                 [companyId]: { total: j.total_mlbs, processados: j.sugadores_processados, truncated: j.truncated, ok },
             }));
         } catch {
-            setCopiedEmpresaFeedback(p => ({ ...p, [companyId]: { error: 'Falhou — tente em alguns segundos.' } }));
+            setCopiedEmpresaFeedback(p => ({ ...p, [companyId]: { error: 'Falha de rede — tente novamente' } }));
         } finally {
             setCopyingEmpresaId(null);
-            setTimeout(() => setCopiedEmpresaFeedback(p => { const n = { ...p }; delete n[companyId]; return n; }), 4000);
+            // Mensagens de erro/aviso ficam 6s pra usuário ler frase longa (rate limit etc).
+            setTimeout(() => setCopiedEmpresaFeedback(p => { const n = { ...p }; delete n[companyId]; return n; }), 6000);
         }
     }
 

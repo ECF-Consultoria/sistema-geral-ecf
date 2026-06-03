@@ -725,8 +725,10 @@ class SugadorController extends Controller
         // max_execution_time antes de completar. Mesmo justificativa do mlbs().
         @set_time_limit(0);
 
-        $mlbsSet    = [];
+        $mlbsSet     = [];
         $processados = 0;
+        $falhas      = 0;
+        $ultimoErro  = null;
 
         foreach ($alvos as $s) {
             $dateFrom = optional($s->periodo_inicio)->toDateString() ?? now()->subDays(7)->toDateString();
@@ -745,9 +747,32 @@ class SugadorController extends Controller
                 }
                 $processados++;
             } catch (\Throwable $e) {
+                $falhas++;
+                $ultimoErro = $e->getMessage();
                 Log::warning("[Sugadores/MlbsByCompany] sugador {$s->id} falhou: " . $e->getMessage());
                 // Continua com os outros — falha de 1 não interrompe o lote.
             }
+        }
+
+        // Se TODOS os sugadores falharam, propaga 502 com mensagem clara em vez
+        // de retornar mlbs:[] que o frontend interpretaria como "Sem MLBs" (bug
+        // de UX reportado pelo usuário 2026-06-03: 429 silenciado mostrava
+        // "Sem MLBs" quando na verdade era falha temporária da Adman).
+        if ($processados === 0 && $solicitados > 0) {
+            $rateLimit = $ultimoErro !== null && str_contains($ultimoErro, '429');
+            $msg = $rateLimit
+                ? 'Falha temporária da Adman (rate limit). Tente em ~1 minuto.'
+                : 'Falha ao consultar MCP: ' . ($ultimoErro ?? 'erro desconhecido');
+
+            return response()->json([
+                'mlbs'                  => [],
+                'total_mlbs'            => 0,
+                'sugadores_processados' => 0,
+                'sugadores_solicitados' => $solicitados,
+                'falhas'                => $falhas,
+                'truncated'             => $truncated,
+                'reason'                => $msg,
+            ], 502);
         }
 
         $mlbs = array_keys($mlbsSet);
@@ -758,6 +783,7 @@ class SugadorController extends Controller
             'total_mlbs'            => count($mlbs),
             'sugadores_processados' => $processados,
             'sugadores_solicitados' => $solicitados,
+            'falhas'                => $falhas,
             'truncated'             => $truncated,
         ]);
     }

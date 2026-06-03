@@ -184,8 +184,9 @@ class CopiarMlbsTest extends TestCase
         $this->assertArrayHasKey('truncated', $result);
         $this->assertCount(1, $result['items']);
 
-        // Cache armazenado com a chave correta — evidência que o bloco do lock executou
-        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, '2026-06-01', '2026-06-02', 16);
+        // Cache armazenado com a chave correta — evidência que o bloco do lock executou.
+        // Default de maxPages = 8 (reduzido de 16 no Plano 02 para caber no rate limit 10 req/min/key).
+        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, '2026-06-01', '2026-06-02', 8);
         $this->assertNotNull(\Cache::get($cacheKey), 'Cache::remember deve armazenar resultado após o lock.');
 
         // O lock key "adman_mcp:custid:{custId}" não deve existir mais (foi liberado)
@@ -195,5 +196,38 @@ class CopiarMlbsTest extends TestCase
         $acquired = $lock->get();
         $this->assertTrue($acquired, 'Lock deveria estar disponível após a chamada (foi liberado corretamente).');
         if ($acquired) $lock->release();
+    }
+
+    /**
+     * Plano 02 fix — Quando TODOS os sugadores falham (típico em rate limit 429
+     * cumulativo da Adman), o endpoint deve retornar 502 com `reason` explícito
+     * em vez de retornar mlbs:[] com status 200 (que o frontend interpretava
+     * como "Sem MLBs"). Bug reportado pelo usuário no smoke W4 2026-06-03.
+     */
+    public function test_mlbs_by_company_retorna_502_quando_todos_falham(): void
+    {
+        $admin   = $this->admin();
+        $empresa = $this->company('CUST-FAIL');
+
+        $this->seedAdgroup($empresa, 'CAMP1', 'AG1');
+        $this->seedAdgroup($empresa, 'CAMP2', 'AG2');
+
+        $this->mock(AdmanMcpService::class, function ($mock) {
+            $mock->shouldReceive('isConfigured')->andReturn(true);
+
+            // Simula 429 da Adman em TODAS as chamadas
+            $mock->shouldReceive('fetchMlbsByCampaign')
+                ->andThrow(new \RuntimeException('Adman MCP tool getMarketplaceadsCustIdproductAdsmetrics erro: Request to adman-api failed with status 429'));
+        });
+
+        $response = $this->actingAs($admin)->getJson(route('sugadores.mlbs-by-company', $empresa->id));
+
+        $response->assertStatus(502);
+        $response->assertJsonPath('sugadores_processados', 0);
+        $response->assertJsonPath('sugadores_solicitados', 2);
+        $response->assertJsonPath('falhas', 2);
+        $response->assertJsonPath('mlbs', []);
+        // Mensagem específica de rate limit (detecta 429 no erro)
+        $response->assertJsonPath('reason', 'Falha temporária da Adman (rate limit). Tente em ~1 minuto.');
     }
 }
