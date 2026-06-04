@@ -58,13 +58,18 @@ function KpiCard({ title, value, sub, icon: Icon, color = 'yellow' }) {
 
 /* ── Modal de Sync Total ── */
 function SyncModal({ empresasSync, mesRef, onClose }) {
-    const hoje     = new Date().toISOString().slice(0, 10);
-    const anoAtual = new Date().getFullYear();
-    const mesAtual = String(new Date().getMonth() + 1).padStart(2, '0');
+    const hoje = new Date().toISOString().slice(0, 10);
+    // Sync travado ao mês exibido — janelas largas (ano/histórico) inflavam o
+    // vendas_qty com totais cumulativos. O período é sempre o mês selecionado.
+    const [anoMes, mesNum] = mesRef.split('-');
+    const ultimoDiaMes     = new Date(Number(anoMes), Number(mesNum), 0).getDate();
+    const ehMesAtual       = mesRef === hoje.slice(0, 7);
+    const dateFrom         = `${mesRef}-01`;
+    const dateTo           = ehMesAtual ? hoje : `${mesRef}-${String(ultimoDiaMes).padStart(2, '0')}`;
 
-    const { data, setData, post, processing, errors } = useForm({
-        date_from: `${anoAtual}-01-01`,
-        date_to:   hoje,
+    const { post, processing } = useForm({
+        date_from: dateFrom,
+        date_to:   dateTo,
     });
 
     const empresasList = Object.entries(empresasSync ?? {});
@@ -111,40 +116,14 @@ function SyncModal({ empresasSync, mesRef, onClose }) {
                         </div>
 
                         <form onSubmit={submit} className="space-y-4">
-                            {/* Atalhos de período */}
-                            <div className="flex flex-wrap gap-1.5">
-                                {[
-                                    { label: 'Este mês',    from: `${anoAtual}-${mesAtual}-01`, to: hoje },
-                                    { label: `${anoAtual}`, from: `${anoAtual}-01-01`,          to: hoje },
-                                    { label: 'Histórico',   from: '2022-01-01',                 to: hoje },
-                                ].map(p => (
-                                    <button key={p.label} type="button"
-                                        onClick={() => { setData('date_from', p.from); setData('date_to', p.to); }}
-                                        className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
-                                            data.date_from === p.from && data.date_to === p.to
-                                                ? 'bg-ecf-yellow/20 border-ecf-yellow/40 text-ecf-yellow'
-                                                : 'border-white/[0.08] text-white/50 hover:text-white/80'
-                                        }`}>
-                                        {p.label}
-                                    </button>
-                                ))}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">De</label>
-                                    <input type="date" value={data.date_from} max={hoje}
-                                        onChange={e => setData('date_from', e.target.value)}
-                                        className="w-full h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40" />
-                                    {errors.date_from && <p className="text-red-400 text-xs mt-1">{errors.date_from}</p>}
-                                </div>
-                                <div>
-                                    <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">Até</label>
-                                    <input type="date" value={data.date_to} max={hoje}
-                                        onChange={e => setData('date_to', e.target.value)}
-                                        className="w-full h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40" />
-                                    {errors.date_to && <p className="text-red-400 text-xs mt-1">{errors.date_to}</p>}
-                                </div>
+                            {/* Período travado ao mês exibido */}
+                            <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-1">Período</p>
+                                <p className="text-white text-[13px] font-semibold">{nomeMes(mesRef)}</p>
+                                <p className="text-white/30 text-[11px] mt-0.5">
+                                    {dateFrom.split('-').reverse().join('/')} a {dateTo.split('-').reverse().join('/')}
+                                    {' · '}sincroniza só as vendas deste mês
+                                </p>
                             </div>
 
                             <div className="flex gap-3">

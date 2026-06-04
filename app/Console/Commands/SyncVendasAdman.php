@@ -3,10 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\MlbEmpresa;
-use App\Models\Publicacao;
-use App\Services\AdmanService;
+use App\Services\VendasSyncService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SyncVendasAdman extends Command
@@ -34,29 +32,15 @@ class SyncVendasAdman extends Command
         $bar = $this->output->createProgressBar($empresas->count());
         $bar->start();
 
-        $adman  = new AdmanService();
-        $totais = ['itens' => 0, 'com_venda' => 0, 'atualizadas' => 0, 'erros' => 0];
+        $vendasSync = new VendasSyncService();
+        $totais     = ['itens' => 0, 'com_venda' => 0, 'atualizadas' => 0, 'erros' => 0];
 
         foreach ($empresas as $empresa) {
             try {
-                $performance  = $adman->fetchPerformance($empresa->cust_id, $dateFrom, $dateTo);
-                $items        = $performance['items'] ?? [];
-                $mlbsComVenda = $this->extrairMlbsVendidos($items);
-
-                $totais['itens']     += count($items);
-                $totais['com_venda'] += count($mlbsComVenda);
-
-                foreach ($mlbsComVenda as $mlbCode => $data) {
-                    $intQty   = (int) $data['qty'];
-                    $affected = Publicacao::where('mlb_code', $mlbCode)
-                        ->update([
-                            'vendido'        => true,
-                            'vendas_qty'     => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
-                            'preco_unitario' => $data['preco'],
-                            'net_billing'    => $data['net_billing'] > 0 ? $data['net_billing'] : null,
-                        ]);
-                    $totais['atualizadas'] += $affected;
-                }
+                $r = $vendasSync->syncEmpresa($empresa->cust_id, $dateFrom, $dateTo);
+                $totais['itens']       += $r['itens'];
+                $totais['com_venda']   += $r['com_venda'];
+                $totais['atualizadas'] += $r['atualizadas'];
 
                 // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
                 // Phase 18 W4-T2: 400ms (150 rpm) violava o throttle global. Alinhado com Job de refresh.
@@ -81,46 +65,5 @@ class SyncVendasAdman extends Command
 
         $this->info('✓ Sync concluído!');
         return 0;
-    }
-
-    private function extrairMlbsVendidos(array $items): array
-    {
-        $result = [];
-
-        foreach ($items as $item) {
-            $soldRaw = $item['soldQuantity']   ?? $item['sold_quantity']  ??
-                       $item['quantityVended'] ?? $item['quantity']       ?? 0;
-
-            $qty = is_array($soldRaw)
-                ? (float) ($soldRaw['value'] ?? $soldRaw['quantity'] ?? $soldRaw['total'] ?? array_values($soldRaw)[0] ?? 0)
-                : (float) $soldRaw;
-
-            if ($qty <= 0) continue;
-
-            $rawId = $item['itemId']    ?? $item['mlbId']     ?? $item['item_id']   ??
-                     $item['id']        ?? $item['itemCode']   ?? $item['productId'] ??
-                     $item['sku']       ?? $item['code']       ?? '';
-
-            $raw = strtoupper(trim((string) $rawId));
-            if ($raw === '') continue;
-
-            $raw = preg_replace('/^MLB[\s\-_]+/', 'MLB', $raw);
-            $mlb = str_starts_with($raw, 'MLB') ? $raw : 'MLB' . $raw;
-
-            if (!preg_match('/^MLB\d{7,}$/', $mlb)) continue;
-
-            $preco  = isset($item['price']) ? (float) $item['price'] : null;
-            $netRaw = $item['netBilling'] ?? null;
-            $net    = is_array($netRaw) ? (float) ($netRaw['value'] ?? 0) : (float) ($netRaw ?? 0);
-
-            if (!isset($result[$mlb])) {
-                $result[$mlb] = ['qty' => 0, 'preco' => $preco, 'net_billing' => 0];
-            }
-            $result[$mlb]['qty']         += $qty;
-            $result[$mlb]['net_billing'] += $net;
-            if ($preco !== null) $result[$mlb]['preco'] = $preco;
-        }
-
-        return $result;
     }
 }

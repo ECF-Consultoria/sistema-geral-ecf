@@ -13,6 +13,7 @@ use App\Models\MlbTreinamento;
 use App\Models\Publicacao;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\VendasSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -832,8 +833,8 @@ class MlbController extends Controller
             return back()->with('error', 'Nenhuma empresa com Cust ID atribuída a você.');
         }
 
-        $adman  = new AdmanService();
-        $totais = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
+        $vendasSync = new VendasSyncService();
+        $totais     = ['itens' => 0, 'com_venda' => 0, 'encontradas' => 0, 'erros' => 0];
 
         // Phase 18.5 — DECISAO LEAN: este e modulo MLB-only por desenho. O
         // foco do sistema sao empresas no Mercado Livre (135/169) e o catalogo
@@ -843,33 +844,13 @@ class MlbController extends Controller
         // exigiria carregar a relacao em todos os call-sites sem ganho funcional.
         foreach ($empresas as $empresa) {
             try {
-                $performance  = $adman->fetchPerformance($empresa->cust_id, $request->date_from, $request->date_to);
-                $items        = $performance['items'] ?? [];
-                $mlbsComVenda = $this->extrairMlbsVendidos($items);
+                // Escopo por user_id: o publicador só sincroniza as próprias publicações.
+                $r = $vendasSync->syncEmpresa($empresa->cust_id, $request->date_from, $request->date_to, $user->id);
+                $totais['itens']       += $r['itens'];
+                $totais['com_venda']   += $r['com_venda'];
+                $totais['encontradas'] += $r['atualizadas'];
 
-                $totais['itens']     += count($items);
-                $totais['com_venda'] += count($mlbsComVenda);
-
-                if (!empty($mlbsComVenda)) {
-                    $mlbCodes = array_keys($mlbsComVenda);
-                    $totais['encontradas'] += Publicacao::whereIn('mlb_code', $mlbCodes)
-                        ->where('user_id', $user->id)
-                        ->count();
-
-                    foreach ($mlbsComVenda as $mlbCode => $data) {
-                        $intQty = (int) $data['qty'];
-                        Publicacao::where('mlb_code', $mlbCode)
-                            ->where('user_id', $user->id)
-                            ->update([
-                                'vendido'         => true,
-                                'vendas_qty'      => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
-                                'preco_unitario'  => $data['preco'],
-                                'net_billing'     => $data['net_billing'] > 0 ? $data['net_billing'] : null,
-                            ]);
-                    }
-                }
-
-                Log::info("[MLB SyncPub] {$empresa->nome} | itens={$totais['itens']} | com_venda=" . count($mlbsComVenda));
+                Log::info("[MLB SyncPub] {$empresa->nome} | itens={$r['itens']} | com_venda={$r['com_venda']}");
                 // Throttle conforme AdmanService::ADMAN_RATE_LIMIT_RPM = 10 (60s/10 = 6s teorico, 7s com folga).
                 // Phase 18 W4-T2: 600ms (100 rpm) violava o throttle global e contribuiu para os 741 erros 429
                 // medidos na auditoria 30d. Alinhado com RefreshGrossBillingCacheJob e SyncTodasVendasAdmanJob.
@@ -1883,7 +1864,7 @@ class MlbController extends Controller
         }
 
         try {
-            $performance = (new AdmanService())->fetchPerformance(
+            $r = (new VendasSyncService())->syncEmpresa(
                 $empresa->cust_id,
                 $request->date_from,
                 $request->date_to
@@ -1893,28 +1874,11 @@ class MlbController extends Controller
             return back()->withErrors(['api' => 'Erro Adman: ' . $e->getMessage()]);
         }
 
-        $items        = $performance['items'] ?? [];
-        $mlbsComVenda = $this->extrairMlbsVendidos($items); // [mlb_code => qty]
-
-        $totalItens = $performance['totalItems'] ?? count($items);
-        Log::info("[MLB SyncVendas] {$empresa->nome} | itens={$totalItens} | com_venda=" . count($mlbsComVenda) . " | MLBs=" . implode(',', array_keys($mlbsComVenda)));
-
-        $updated = 0;
-        foreach ($mlbsComVenda as $mlbCode => $data) {
-            $intQty   = (int) $data['qty'];
-            $affected = Publicacao::where('mlb_code', $mlbCode)
-                ->update([
-                    'vendido'        => true,
-                    'vendas_qty'     => DB::raw("GREATEST(COALESCE(vendas_qty, 0), {$intQty})"),
-                    'preco_unitario' => $data['preco'],
-                    'net_billing'    => $data['net_billing'] > 0 ? $data['net_billing'] : null,
-                ]);
-            $updated += $affected;
-        }
+        Log::info("[MLB SyncVendas] {$empresa->nome} | itens={$r['itens']} | com_venda={$r['com_venda']} | atualizadas={$r['atualizadas']}");
 
         return back()->with('success', sprintf(
             '%d de %d item(ns) com venda. %d publicação(ões) atualizada(s).',
-            count($mlbsComVenda), count($items), $updated
+            $r['com_venda'], $r['itens'], $r['atualizadas']
         ));
     }
 
