@@ -91,6 +91,13 @@ Schedule::command('notifications:cleanup')
     ->name('notifications-cleanup')
     ->withoutOverlapping();
 
+// Encerra logs de sync de vendas travados em "running" (worker reiniciado no meio)
+// e poda logs encerrados com >30 dias — evita lista infinita no /dev/desenvolvimento.
+Schedule::command('mlb:sync-vendas-logs-cleanup')
+    ->dailyAt('03:20')
+    ->name('cleanup-sync-vendas-logs')
+    ->withoutOverlapping();
+
 // Envio automático mensal do relatório de fechamento.
 // Roda a cada minuto para respeitar o dia e hora configurados dinamicamente pelo admin.
 // Só dispara quando ativo=1, hoje == dia configurado, hora:minuto == hora configurada.
