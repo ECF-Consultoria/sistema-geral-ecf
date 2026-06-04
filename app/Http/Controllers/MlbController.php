@@ -610,9 +610,26 @@ class MlbController extends Controller
         $primeiro = $ref->copy()->startOfMonth()->toDateString();
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
 
+        // ── Filtro por publicador (só no modo geral admin/gestor) ──────────────
+        // Sem filtro → consolidado de todos; com filtro → visão individual.
+        $publicadoresCol = $verTodos ? $this->publicadores() : collect();
+        $pubFiltro = null;
+        if ($verTodos) {
+            $candidato = $request->integer('pub') ?: null;
+            if ($candidato && $publicadoresCol->contains('id', $candidato)) {
+                $pubFiltro = $candidato;
+            }
+        }
+
         $pubsQuery = Publicacao::whereBetween('data', [$primeiro, $ultimo]);
-        if (!$verTodos) $pubsQuery->where('user_id', $user->id);
-        $pubs = $pubsQuery->get(['id', 'mlb_code', 'empresa', 'data', 'vendido', 'vendas_qty', 'tipo']);
+        if (!$verTodos) {
+            $pubsQuery->where('user_id', $user->id);
+        } elseif ($pubFiltro) {
+            $pubsQuery->where('user_id', $pubFiltro);
+        }
+        // net_billing/preco_unitario precisam estar no select — sem eles a soma de
+        // faturamento (e o ticket médio derivado) retornava 0 e os cards mostravam "—".
+        $pubs = $pubsQuery->get(['id', 'user_id', 'cust_id', 'mlb_code', 'empresa', 'data', 'vendido', 'vendas_qty', 'tipo', 'preco_unitario', 'net_billing']);
 
         // Stats contam apenas anúncios (excluem variações)
         $pubsAnuncios  = $pubs->where('tipo', '!=', 'variacao');
@@ -665,7 +682,11 @@ class MlbController extends Controller
 
         // ── Lojas com/sem venda ─────────────────────────────────────────────
         $lojasQuery = MlbEmpresa::whereNotNull('cust_id')->where('cust_id', '!=', '');
-        if (!$verTodos) $lojasQuery->where('responsavel_id', $user->id);
+        if (!$verTodos) {
+            $lojasQuery->where('responsavel_id', $user->id);
+        } elseif ($pubFiltro) {
+            $lojasQuery->where('responsavel_id', $pubFiltro);
+        }
         $todasLojas = $lojasQuery->get(['id', 'nome', 'cust_id', 'responsavel_id']);
 
         $vendasPorCust = Publicacao::whereIn('cust_id', $todasLojas->pluck('cust_id'))
@@ -711,7 +732,10 @@ class MlbController extends Controller
             ->toArray();
 
         // ── Ticket Médio ────────────────────────────────────────────────────
-        if ($verTodos) {
+        // Visão "geral" (ranking entre publicadores) só quando sem filtro;
+        // com publicador selecionado, mostra a evolução individual dele.
+        $ticketUserId = $verTodos ? $pubFiltro : $user->id;
+        if ($verTodos && !$pubFiltro) {
             // Admin/Gestor: ticket por publicador no mês selecionado
             $ticketPorPub = Publicacao::whereNotNull('net_billing')
                 ->where('vendido', true)->where('vendas_qty', '>', 0)
@@ -741,8 +765,8 @@ class MlbController extends Controller
                 'evolucao'   => [],
             ];
         } else {
-            // Publicador: evolução mensal do próprio ticket nos últimos 12 meses
-            $evolucao = Publicacao::where('user_id', $user->id)
+            // Publicador (ou publicador filtrado): evolução mensal do ticket nos últimos 12 meses
+            $evolucao = Publicacao::where('user_id', $ticketUserId)
                 ->whereNotNull('net_billing')
                 ->where('vendido', true)->where('vendas_qty', '>', 0)
                 ->selectRaw("DATE_FORMAT(data, '%Y-%m') as mes, SUM(net_billing) as bill, SUM(vendas_qty) as qty")
@@ -777,6 +801,8 @@ class MlbController extends Controller
             'isGeral'     => $verTodos,
             'empresasSync'=> $empresasSync,
             'ticketData'  => $ticketData,
+            'publicadores'=> $publicadoresCol->map(fn($p) => ['id' => $p->id, 'nome' => $p->name])->values(),
+            'pubFiltro'   => $pubFiltro,
         ]);
     }
 

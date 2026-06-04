@@ -305,7 +305,7 @@ function TicketChart({ ticketData, nomeMes, mesRef }) {
     );
 }
 
-export default function Vendas({ kpis, porEmpresa, topMlbs, lista, mesRef, meses, empresasSync, isGeral = false, ticketData = null, lojasVenderam = [], lojasNaoVenderam = [] }) {
+export default function Vendas({ kpis, porEmpresa, topMlbs, lista, mesRef, meses, empresasSync, isGeral = false, ticketData = null, lojasVenderam = [], lojasNaoVenderam = [], publicadores = [], pubFiltro = null }) {
     const k = kpis ?? {};
     const [syncModal, setSyncModal] = useState(false);
     const [busca, setBusca] = useState('');
@@ -315,9 +315,16 @@ export default function Vendas({ kpis, porEmpresa, topMlbs, lista, mesRef, meses
 
     const { props } = typeof window !== 'undefined' ? { props: {} } : { props: {} };
 
-    function handleMes(e) {
-        router.get(route('mlb.vendas'), { mes: e.target.value }, { preserveState: true });
+    // Publicador selecionado (modo geral): permite alternar entre consolidado e individual.
+    const pubSelecionado = publicadores.find(p => String(p.id) === String(pubFiltro)) ?? null;
+
+    function navegar(params) {
+        router.get(route('mlb.vendas'),
+            { mes: mesRef, pub: pubFiltro || undefined, ...params },
+            { preserveState: true, preserveScroll: true });
     }
+    function handleMes(e) { navegar({ mes: e.target.value }); }
+    function handlePub(e) { navegar({ pub: e.target.value || undefined }); }
 
     const pieData = [
         { name: 'Vendidos',      value: k.vendidos  ?? 0, fill: '#22c55e' },
@@ -340,15 +347,28 @@ export default function Vendas({ kpis, porEmpresa, topMlbs, lista, mesRef, meses
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-white font-display font-bold text-2xl">
-                        {isGeral ? 'Vendas · Geral' : 'Vendas'}
+                        {isGeral
+                            ? (pubSelecionado ? `Vendas · ${pubSelecionado.nome}` : 'Vendas · Geral')
+                            : 'Vendas'}
                     </h1>
                     <p className="text-white/40 text-sm mt-0.5">
                         {isGeral
-                            ? 'Visão consolidada de todos os publicadores'
+                            ? (pubSelecionado
+                                ? `Visão individual de ${pubSelecionado.nome}`
+                                : 'Visão consolidada de todos os publicadores')
                             : 'Acompanhe quais anúncios venderam e as quantidades'}
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
+                    {isGeral && (
+                        <select value={pubFiltro ?? ''} onChange={handlePub}
+                            className="h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer max-w-[200px]">
+                            <option value="">Todos os publicadores</option>
+                            {publicadores.map(p => (
+                                <option key={p.id} value={p.id}>{p.nome}</option>
+                            ))}
+                        </select>
+                    )}
                     <select value={mesRef} onChange={handleMes}
                         className="h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer">
                         {(meses ?? []).map(m => (
