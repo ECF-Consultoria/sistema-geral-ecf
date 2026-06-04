@@ -43,6 +43,14 @@ class VendasSyncService
      */
     public function syncEmpresa(string $custId, string $dateFrom, string $dateTo, ?int $userId = null): array
     {
+        // Guarda defensiva: trava a janela a no máximo o mês de $dateTo. Janelas
+        // largas (ano/histórico) em 176 empresas ficavam lentíssimas e gravavam
+        // totais cumulativos. Vale para TODOS os call-sites (UI, job, comando).
+        $inicioMes = \Carbon\Carbon::parse($dateTo)->startOfMonth()->toDateString();
+        if ($dateFrom < $inicioMes) {
+            $dateFrom = $inicioMes;
+        }
+
         $performance  = $this->adman->fetchPerformance($custId, $dateFrom, $dateTo);
         $items        = $performance['items'] ?? [];
         $mlbsComVenda = $this->extrairMlbsVendidos($items);

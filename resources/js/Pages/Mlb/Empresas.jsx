@@ -54,19 +54,30 @@ function SkuRow({ sku, idx, stage, onChange, onRemove }) {
 
 function SyncVendasModal({ empresa, onClose }) {
     const today    = new Date().toISOString().slice(0, 10);
-    const anoAtual = new Date().getFullYear();
-    const { data, setData, post, processing, errors } = useForm({
-        date_from: `${anoAtual}-01-01`,
-        date_to:   today,
-    });
+    const mesAtual = today.slice(0, 7); // YYYY-MM
+
+    // Período travado a UM mês — sync de janelas largas (ano/histórico) em 176
+    // empresas ficava lentíssimo e gravava totais cumulativos (vendas_qty inflado).
+    const periodoDoMes = (m) => {
+        const [y, mm] = m.split('-');
+        const ultimo  = new Date(Number(y), Number(mm), 0).getDate();
+        return {
+            date_from: `${m}-01`,
+            date_to:   m === mesAtual ? today : `${m}-${String(ultimo).padStart(2, '0')}`,
+        };
+    };
+
+    const { data, setData, post, processing, errors, transform } = useForm({ mes: mesAtual });
+    transform((d) => periodoDoMes(d.mes));
+
+    const periodo = periodoDoMes(data.mes);
 
     function submit(e) {
         e.preventDefault();
-        if (empresa) {
-            post(route('mlb.empresas.sync-vendas', empresa.id), { onSuccess: onClose });
-        } else {
-            post(route('mlb.sync-vendas'), { onSuccess: onClose });
-        }
+        const url = empresa
+            ? route('mlb.empresas.sync-vendas', empresa.id)
+            : route('mlb.sync-vendas');
+        post(url, { onSuccess: onClose });
     }
 
     return (
@@ -89,41 +100,15 @@ function SyncVendasModal({ empresa, onClose }) {
                 </p>
 
                 <form onSubmit={submit} className="space-y-4">
-                    {/* Atalhos de período */}
-                    <div className="flex flex-wrap gap-1.5">
-                        {[
-                            { label: 'Hoje',       from: today,                    to: today },
-                            { label: 'Este mês',   from: `${anoAtual}-${String(new Date().getMonth()+1).padStart(2,'0')}-01`, to: today },
-                            { label: `${anoAtual}`, from: `${anoAtual}-01-01`,    to: today },
-                            { label: 'Histórico',  from: '2022-01-01',            to: today },
-                        ].map(p => (
-                            <button key={p.label} type="button"
-                                onClick={() => { setData('date_from', p.from); setData('date_to', p.to); }}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors ${
-                                    data.date_from === p.from && data.date_to === p.to
-                                        ? 'bg-ecf-yellow/20 border-ecf-yellow/40 text-ecf-yellow'
-                                        : 'border-white/[0.08] text-white/50 hover:text-white/80'
-                                }`}>
-                                {p.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <div>
-                            <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">De</label>
-                            <input type="date" value={data.date_from} max={today}
-                                onChange={e => setData('date_from', e.target.value)}
-                                className="w-full h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40" />
-                            {errors.date_from && <p className="text-red-400 text-xs mt-1">{errors.date_from}</p>}
-                        </div>
-                        <div>
-                            <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">Até</label>
-                            <input type="date" value={data.date_to} max={today}
-                                onChange={e => setData('date_to', e.target.value)}
-                                className="w-full h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40" />
-                            {errors.date_to && <p className="text-red-400 text-xs mt-1">{errors.date_to}</p>}
-                        </div>
+                    {/* Mês a sincronizar — janela travada a 1 mês */}
+                    <div>
+                        <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">Mês</label>
+                        <input type="month" value={data.mes} max={mesAtual}
+                            onChange={e => setData('mes', e.target.value)}
+                            className="w-full h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40" />
+                        <p className="text-white/30 text-[11px] mt-1">
+                            Período: {periodo.date_from.split('-').reverse().join('/')} a {periodo.date_to.split('-').reverse().join('/')} · sincroniza só este mês
+                        </p>
                     </div>
 
                     {errors.api && (
