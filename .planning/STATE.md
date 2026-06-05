@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v7.0
 milestone_name: Eficiência Operacional Sugadores (Foco no dia)
-status: verifying
+status: executing
 stopped_at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
-last_updated: "2026-06-05T19:56:06.435Z"
-last_activity: 2026-06-05
+last_updated: "2026-06-05T22:30:00.000Z"
+last_activity: 2026-06-05 -- Phase 22 W1+W2+W3 concluídas — checkpoint W4 (smoke prod) pendente
 progress:
-  total_phases: 20
+  total_phases: 27
   completed_phases: 10
-  total_plans: 26
+  total_plans: 27
   completed_plans: 26
-  percent: 50
+  percent: 37
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 21 — manual-do-sistema-aba-com-artigos-explicativos-para-usuarios
+**Current focus:** Phase 22 — wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files
 
 ## Current Position
 
-Phase: 21 (manual-do-sistema-aba-com-artigos-explicativos-para-usuarios) — EXECUTING
+Phase: 22 (wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files) — EXECUTING
 Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-06-05
+Status: Executing Phase 22
+Last activity: 2026-06-05 -- Phase 22 execution started
 
 ## Performance Metrics
 
@@ -278,15 +278,13 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-05T19:56:06.423Z
-Stopped at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
+Last session: 2026-06-05T22:30:00.000Z
+Stopped at: Phase 22 W4 checkpoint humano — smoke contra API real via tinker em produção.
 
 **Estado para próxima sessão retomar:**
 
-- CONTEXT.md: `.planning/phases/19-sugadores-foco-dia/CONTEXT.md`
-- PLAN.md: `.planning/phases/19-sugadores-foco-dia/PLAN.md` (973 linhas, 4 waves, 12 tasks)
-- Decisão: executar W1 + W2 + W3 (parar antes do W4 operacional)
-- Bug que motivou: 429 do MCP no drilldown de MLBs (`getMarketplaceadsCustIdproductAdsmetrics`)
-- Melhorias: banner D-1 explícito + vista default só HOJE + botão "Copiar MLBs" em 2 lugares + comando one-shot para limpar 1407 sugadores antigos
-- Estado prod confirmado: 478 sugadores HOJE + 1407 antigos pendentes + 2981 auto-resolvidos
-- Phase 18 + 18.5 já deployadas (HEAD `783de85`); cards_exatos no controller foi mantido após remoção do `≈`
+- SUMMARY parcial: `.planning/phases/22-wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files/22-01-SUMMARY.md`
+- W1+W2+W3 completos: 6 commits, 47/47 testes verdes (Phase 20 sem regressão)
+- W4: checkpoint humano blocking — executar smoke via tinker em prod (5 chamadas: ping, carteiraResumo, ranking, listSignals, relatorioMensal)
+- Após smoke aprovado: declarar Phase 22 completa + iniciar Phase 23 (`/gsd-plan-phase 23`)
+- HEAD: `7c5c9e9` feat(phase-22): metodo relatorioMensal + validacao final sem regressao
