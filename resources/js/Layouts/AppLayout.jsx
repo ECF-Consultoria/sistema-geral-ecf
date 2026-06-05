@@ -57,6 +57,8 @@ const NAV_ITEMS = [
     { label: 'Relatório',  routeName: 'admin.relatorio',  page: 'Admin/Relatorio',  icon: FileBarChart, permission: 'admin.relatorio' },
     { label: 'Fechamento', routeName: 'admin.financeiro', page: 'Admin/Financeiro', icon: Banknote,     permission: 'admin.financeiro' },
     { label: 'Inventário', routeName: 'admin.inventario', page: 'Admin/Inventario', icon: Package2,     permission: 'admin.inventario' },
+    // ── Manual do Sistema (todos autenticados, sem permission) ──────────────
+    { label: 'Manual do Sistema', routeName: 'manual.index', page: 'Manual', icon: BookOpen, footerSeparatorBefore: true },
 ];
 
 const roleLabel = { admin: 'Admin', consultor: 'Consultor', mentor: 'Mentor' };
@@ -169,6 +171,13 @@ export default function AppLayout({ children, title }) {
                                 <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
                                     <div className="h-px flex-1 bg-white/[0.06]" />
                                     <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Dev</span>
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                </div>
+                            )}
+                            {item.footerSeparatorBefore && (!collapsed || mobile) && (
+                                <div className="flex items-center gap-2 px-3 pt-4 pb-1.5">
+                                    <div className="h-px flex-1 bg-white/[0.06]" />
+                                    <span className="text-white/20 text-[10px] font-semibold uppercase tracking-wider">Documentação</span>
                                     <div className="h-px flex-1 bg-white/[0.06]" />
                                 </div>
                             )}
