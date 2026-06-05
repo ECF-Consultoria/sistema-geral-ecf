@@ -119,7 +119,7 @@ class EcfDriveService
             'X-Api-Key' => $this->key,
             'Accept'    => 'application/json',
         ])
-        ->retry(2, 500)
+        ->retry(2, 500, null, false)  // false = não lança automaticamente em erro; tratamos manualmente
         ->timeout(15)
         ->baseUrl($this->base);
     }
