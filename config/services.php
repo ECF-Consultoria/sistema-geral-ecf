@@ -61,4 +61,11 @@ return [
         'grants_file' => env('ML_SFTP_GRANTS_FILE', 'grants.csv'),
     ],
 
+    // Phase 20 — integração com API HTTP do ECF Drive (substitui sync SFTP do ML)
+    'ecf' => [
+        'base'           => env('ECF_API_BASE', 'https://files.ecfconsultoria.com.br/api/v1'),
+        'key'            => env('ECF_API_KEY', ''),
+        'webhook_secret' => env('ECF_WEBHOOK_SECRET', ''),
+    ],
+
 ];

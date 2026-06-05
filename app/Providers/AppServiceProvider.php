@@ -10,7 +10,16 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    public function register(): void {}
+    public function register(): void
+    {
+        // Phase 20 — registra EcfDriveService como singleton resolvendo de config/services.php
+        $this->app->singleton(\App\Services\EcfDriveService::class, function ($app) {
+            return new \App\Services\EcfDriveService(
+                config('services.ecf.base'),
+                config('services.ecf.key'),
+            );
+        });
+    }
 
     public function boot(): void
     {
