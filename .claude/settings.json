@@ -222,7 +222,11 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan sugadores:limpar-orfaos\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan sugadores:limpar-orfaos --apply\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan tinker --execute=\\\\\"echo 'PENDENTES HOJE: ' . App\\\\\\\\Models\\\\\\\\Sugador::where\\('status','pendente'\\)->whereDate\\('reference_date',today\\(\\)\\)->count\\(\\) . PHP_EOL; echo 'PENDENTES ANTIGOS: ' . App\\\\\\\\Models\\\\\\\\Sugador::where\\('status','pendente'\\)->where\\('reference_date','<',today\\(\\)->toDateString\\(\\)\\)->count\\(\\) . PHP_EOL; echo 'AUTO_RESOLVIDO TOTAL: ' . App\\\\\\\\Models\\\\\\\\Sugador::where\\('status','auto_resolvido'\\)->count\\(\\) . PHP_EOL; echo 'AUDIT LIMPEZA HOJE: ' . App\\\\\\\\Models\\\\\\\\SugadorAcao::where\\('acao','limpeza_orfaos'\\)->whereDate\\('created_at',today\\(\\)\\)->count\\(\\) . PHP_EOL;\\\\\"\")",
-      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && tail -200 storage/logs/laravel.log | grep -iE '429|MlbsByCompany|AdmanMcp|Cache.*lock|adman.*mcp|sugadores.mlbs' | tail -50\")"
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && tail -200 storage/logs/laravel.log | grep -iE '429|MlbsByCompany|AdmanMcp|Cache.*lock|adman.*mcp|sugadores.mlbs' | tail -50\")",
+      "Skill(gsd-phase)",
+      "Skill(gsd-phase:*)",
+      "Skill(gsd-plan-phase)",
+      "Skill(gsd-plan-phase:*)"
     ]
   }
 }
