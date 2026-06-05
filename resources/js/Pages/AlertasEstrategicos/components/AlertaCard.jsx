@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
  *
  * Props:
  *   signal        — objeto Signal da API (id, custId, eventType, severity, payload, detectedAt, ackedAt)
- *   company       — objeto { id, name, slug } do lookup batch, ou null se externo
+ *   company       — objeto { id, name } do lookup batch, ou null se externo
  *   typeLabels    — mapa eventType → label pt-BR (espelho do PHP TYPE_LABELS)
  *   severityLabels — mapa severity → label pt-BR
  *   severityColors — mapa severity → 'red' | 'yellow' | 'blue'

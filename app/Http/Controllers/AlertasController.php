@@ -90,10 +90,10 @@ class AlertasController extends Controller
                         $q->whereIn('adman_account_id', $custIds)
                           ->orWhereIn('ml_store_id', $custIds);
                     })
-                    ->get(['id', 'name', 'slug', 'adman_account_id', 'ml_store_id']);
+                    ->get(['id', 'name', 'adman_account_id', 'ml_store_id']);
 
                 foreach ($companies as $c) {
-                    $entry = ['id' => $c->id, 'name' => $c->name, 'slug' => $c->slug];
+                    $entry = ['id' => $c->id, 'name' => $c->name];
                     if ($c->adman_account_id) {
                         $companiesMap[(string) $c->adman_account_id] = $entry;
                     }

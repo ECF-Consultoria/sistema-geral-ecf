@@ -230,7 +230,6 @@ class AlertasControllerTest extends TestCase
         // Empresa A identificada via adman_account_id
         Company::create([
             'name'             => 'EMPRESA A',
-            'slug'             => 'empresa-a',
             'active'           => true,
             'adman_account_id' => 'CUST_A',
             'ml_store_id'      => null,
@@ -239,7 +238,6 @@ class AlertasControllerTest extends TestCase
         // Empresa B identificada via ml_store_id
         Company::create([
             'name'             => 'EMPRESA B',
-            'slug'             => 'empresa-b',
             'active'           => true,
             'adman_account_id' => null,
             'ml_store_id'      => 'CUST_B',
