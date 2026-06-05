@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\Admin\CargoController;
 use App\Http\Controllers\Admin\SetorController;
@@ -251,6 +252,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/empresas/{company}/contratos-servico/{contrato}',     [CompanyController::class, 'destroyContrato'])->name('empresas.contratos.destroy');
     });
 });
+
+// ─── Alertas Estratégicos (Phase 23) ────────────────────────────────────────
+// Consome /signals da API ECF Drive (Phase 22 wrapper). Caixa de entrada
+// do comercial — acessível a admin, consultor e mentor (CONTEXT D-04).
+// EnsureUserHasRole aceita varargs via separador '|' (D-01 do PLAN).
+Route::middleware(['auth', 'verified', 'role:admin|consultor|mentor'])
+     ->prefix('alertas-estrategicos')
+     ->name('alertas.')
+     ->group(function () {
+         Route::get('/',           [AlertasController::class, 'index'])->name('index');
+         Route::post('/{id}/ack',  [AlertasController::class, 'ack'])->name('ack');
+     });
 
 // ─── Módulo MLB — Controle de Publicações ────────────────────────────────────
 Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(function () {
