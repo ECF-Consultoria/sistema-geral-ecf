@@ -18,6 +18,7 @@ use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\MercadoLivreOAuthController;
 use App\Http\Controllers\GrantController;
+use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
@@ -82,6 +83,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+
+    // Phase 21 — Manual do Sistema (artigos para usuários não-técnicos).
+    // Acesso liberado a TODOS os autenticados — admin, consultor, mentor, gestor MLB,
+    // publicador, líder, analista. NÃO inclui tokens públicos /implementacao/*.
+    Route::get('/manual',        [ManualController::class, 'index'])->name('manual.index');
+    Route::get('/manual/{slug}', [ManualController::class, 'show'])->name('manual.show');
 
     // Notificações — leitura/contador/marcação (Phase 9 + recentes/abas da Phase 10)
     Route::get('/api/notificacoes/contador',           [NotificacaoController::class, 'contador'])->name('notificacoes.contador');
