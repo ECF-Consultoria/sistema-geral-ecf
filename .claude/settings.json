@@ -290,7 +290,8 @@
       "Bash(powershell -Command \"cd 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin'; C:\\\\xampp\\\\php\\\\php.exe artisan test 2>&1 | Select-String 'FAILED' | Select-Object -First 15\")",
       "Bash(powershell -Command \"cd 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin'; git stash list 2>&1\")",
       "Bash(powershell -Command \"cd 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin'; git stash 2>&1; C:\\\\xampp\\\\php\\\\php.exe artisan test 2>&1 | Select-Object -Last 3; git stash pop 2>&1\")",
-      "Bash(powershell -Command 'cd '\\\\''C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin'\\\\''; git add '\\\\''.planning/phases/23-alertas-estrategicos-signals-aba-dedicada-com-caixa-de-entra/23-01-SUMMARY.md'\\\\'' '\\\\''.planning/STATE.md'\\\\'' '\\\\''.planning/ROADMAP.md'\\\\''; git commit -m '\\\\''docs\\(23-01\\): SUMMARY + STATE + ROADMAP fechamento Phase 23 *)"
+      "Bash(powershell -Command 'cd '\\\\''C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin'\\\\''; git add '\\\\''.planning/phases/23-alertas-estrategicos-signals-aba-dedicada-com-caixa-de-entra/23-01-SUMMARY.md'\\\\'' '\\\\''.planning/STATE.md'\\\\'' '\\\\''.planning/ROADMAP.md'\\\\''; git commit -m '\\\\''docs\\(23-01\\): SUMMARY + STATE + ROADMAP fechamento Phase 23 *)",
+      "Bash(grep -nB1 -A1 \"'slug'\" tests/Feature/Phase23/AlertasControllerTest.php)"
     ]
   }
 }
