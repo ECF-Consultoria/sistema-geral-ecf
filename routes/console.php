@@ -30,10 +30,12 @@ Schedule::call(function () {
         ->delete();
 })->daily()->name('prune-pending-nps-surveys');
 
-// Sincroniza lista de grants do Mercado Livre via SFTP
-Schedule::command('grants:sync-sftp')
+// Phase 20 — Sincroniza grants via API HTTP do ECF Drive (substitui pipeline SFTP).
+// O comando grants:sync-sftp permanece no repo como rollback safety por +1 fase
+// mas não é mais invocado pelo schedule.
+Schedule::command('grants:sync-ecf')
     ->dailyAt('03:00')
-    ->name('sync-ml-grants-sftp')
+    ->name('sync-ml-grants-ecf')
     ->withoutOverlapping();
 
 // Detecta sugadores (campanhas/anúncios drenando investimento) — depois do adman:sync D-1

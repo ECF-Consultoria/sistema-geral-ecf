@@ -44,6 +44,7 @@ class GrantController extends Controller
                 'ml_email'       => $g->ml_email,
                 'ml_phone'       => $g->ml_phone,
                 'ml_cust_id'     => $g->ml_cust_id,
+                'segmento'       => $g->segmento,    // Phase 20 — campo vindo da API ECF Drive
                 'status'         => $g->status,
                 'granted_at'     => $g->granted_at?->toDateString(),
                 'expires_at'     => $g->expires_at?->toDateString(),
@@ -147,7 +148,7 @@ class GrantController extends Controller
             $php     = PHP_BINARY ?: 'php';
             $artisan = escapeshellarg(base_path('artisan'));
             $log     = escapeshellarg($logFile);
-            @exec("nohup $php $artisan grants:sync-sftp >> $log 2>&1 &");
+            @exec("nohup $php $artisan grants:sync-ecf >> $log 2>&1 &"); // Phase 20
         }
 
         // Tentativa 2: curl fire-and-forget — sempre tentado (não depende do exec)
@@ -175,7 +176,7 @@ class GrantController extends Controller
                 if (function_exists('fastcgi_finish_request')) fastcgi_finish_request();
                 set_time_limit(300);
                 ignore_user_abort(true);
-                Artisan::call('grants:sync-sftp');
+                Artisan::call('grants:sync-ecf'); // Phase 20
             });
         }
 
@@ -214,7 +215,7 @@ class GrantController extends Controller
 
         ignore_user_abort(true);
         set_time_limit(300);
-        Artisan::call('grants:sync-sftp');
+        Artisan::call('grants:sync-ecf'); // Phase 20
 
         return response()->noContent();
     }
