@@ -226,7 +226,9 @@
       "Skill(gsd-phase)",
       "Skill(gsd-phase:*)",
       "Skill(gsd-plan-phase)",
-      "Skill(gsd-plan-phase:*)"
+      "Skill(gsd-plan-phase:*)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && grep -E '^\\(ECF_|ML_SFTP_|ADMAN_API_KEY\\)' .env 2>&1 | sed 's/=.*/=<REDACTED>/' \")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && cp .env .env.bak.phase20 && printf '\\\\n# Phase 20 - Integracao ECF Drive \\(2026-06-05\\)\\\\nECF_API_BASE=https://files.ecfconsultoria.com.br/api/v1\\\\nECF_API_KEY=ecf_c7b9d4fe59f08465e8fe53d740be8704e98edcaa96726956776da7a61ccfeb9e\\\\nECF_WEBHOOK_SECRET=\\\\n' >> .env && grep -E '^ECF_' .env | sed 's/=.*/=<REDACTED>/'\")"
     ]
   }
 }
