@@ -99,6 +99,12 @@ function SyncVendasModal({ empresa, onClose }) {
                     Consulta a API Adman e atualiza as publicações: marca como <strong className="text-white/80">vendido</strong>, salva a <strong className="text-white/80">quantidade</strong> e o <strong className="text-white/80">preço de venda</strong> de cada anúncio no período.
                 </p>
 
+                {/* Aviso D-1 da Adman — dados têm 1 dia de defasagem; aqui o sync é manual (não roda sozinho como o dashboard). */}
+                <div className="flex items-start gap-2 mb-4 px-3 py-2 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/40 text-[11px] leading-relaxed">
+                    <Clock size={13} className="mt-0.5 shrink-0" />
+                    <span>Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. A sincronização aqui é manual, por mês.</span>
+                </div>
+
                 <form onSubmit={submit} className="space-y-4">
                     {/* Mês a sincronizar — janela travada a 1 mês */}
                     <div>
