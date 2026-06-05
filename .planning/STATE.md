@@ -72,6 +72,7 @@ Last activity: 2026-06-03
 ### Roadmap Evolution
 
 - 2026-06-01 — Novo **Milestone v5.0 — Inteligência de Anúncios ML**; adicionada **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)**. Decisões travadas via probe ML (busca `/sites/MLB/search` = 403; usar `/products/search` + `/highlights` + `/trends` via app token). Não depende da Phase 16. Próximo: `/gsd-plan-phase 17`.
+- 2026-06-05 — **Phase 20: Integração ECF Drive** adicionada à v7.0. Substitui pipeline `grants:sync-sftp` por wrapper `EcfDriveService` que consome a API HTTP do sistema externo desenvolvido pelo usuário (`files.ecfconsultoria.com.br/api/v1`). Decisões travadas no CONTEXT.md: substituir SFTP direto, adicionar coluna `segmento`, match cust_id→CNPJ com log órfãos, webhook deferido para fase futura. Phase 19 segue em aberto aguardando smoke W4.
 
 ### Decisões herdadas do v1.0
 

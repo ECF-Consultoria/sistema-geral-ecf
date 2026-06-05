@@ -66,6 +66,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v7.0 — Eficiência Operacional Sugadores (Foco no dia)
 
 - [x] **Phase 19: Sugadores — Foco no dia + Atalhos + Fix MCP** - Reforça as duas regras-mestras (acertividade + praticidade) no módulo Sugadores. (1) Banner explícito de cadência D-1 ("Análise diária às 12h BRT") + estado por empresa. (2) Vista default filtra `reference_date=hoje + status=pendente` para focar o operador no que importa hoje (esconde 1407 acumulados que confundem). (3) Botão "Copiar MLBs" inline em cada linha de sugador + no card de empresa (modo cards) — ação em 1 clique sem abrir drilldown. (4) Mitigação do 429 do MCP no drilldown (throttle por custId + Cache::lock). (5) Comando one-shot `sugadores:limpar-orfaos` para marcar como `auto_resolvido` os 1407 pendentes antigos acumulados. (completed 2026-06-03)
+- [ ] **Phase 20: Integração ECF Drive (substitui sync SFTP por API HTTP)** - Troca a fonte de dados do módulo `/grants`: atual pipeline `grants:sync-sftp` (lê XLSX do SFTP ML via PhpSpreadsheet) é substituído por wrapper `EcfDriveService` que consome a API do sistema externo ECF Drive (`files.ecfconsultoria.com.br/api/v1`). Mantém model `CompanyGrant`, página `/grants`, permissão `core.grants`. Adiciona migration `segmento`, comando novo `grants:sync-ecf`, schedule diário, match company_id via cust_id com fallback CNPJ + log de órfãos. Webhook real-time fica para fase futura.
 
 ## Phase Details
 
@@ -513,3 +514,14 @@ Plans:
 
 **Wave 3** *(bloqueado na Wave 2)*
 - [x] 17-05-PLAN.md — Página Mlb/Coleta.jsx (formulário + polling + relatório) + nav AppLayout + npm run build + checkpoint humano (D-06, D-07)
+
+### Phase 20: Integração ECF Drive (substitui sync SFTP por API HTTP)
+
+**Goal:** Trocar a fonte de dados do módulo `/grants` do XLSX-via-SFTP para a API HTTP do ECF Drive, mantendo model/UI/permissões existentes. Adicionar coluna `segmento`, novo comando `grants:sync-ecf`, schedule diário, match `company_id` por `cust_id` com fallback CNPJ.
+**Mode:** mvp
+**Requirements:** GRT-API-01 (wrapper EcfDriveService), GRT-SYNC-02 (comando substitui SFTP), GRT-MATCH-03 (match cust_id→cnpj), GRT-SEGMENTO-04 (migration coluna segmento), GRT-UI-05 (UI mostra status sync ECF), GRT-SECRETS-06 (.env + config/services.php)
+**Depends on:** Phase 19
+**Plans:** 1 plan
+
+Plans:
+- [ ] 20-01-PLAN.md — Backend EcfDriveService + comando grants:sync-ecf + migration segmento + schedule + UI coluna+label + 18 testes Feature + checkpoint humano deploy/smoke (todas as 6 REQ-IDs)
