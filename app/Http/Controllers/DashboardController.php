@@ -267,21 +267,69 @@ class DashboardController extends Controller
             Log::info('[Dashboard] revenue em fallback DB tudo-ou-nada (period=' . $period . ')');
         }
 
-        // ACOS / TACOS / margem por empresa — só ficam preenchidos quando cache
-        // /accounts/metrics está completo. No fallback DB esses campos por
-        // empresa ficam null (a tabela de performance no front exibe latestMetrics
-        // como fallback secundário; ver companies_performance abaixo). O TOTAL
-        // (avg_tacos, total_ad_investment_30d) sim tem fallback DB agregado
-        // logo abaixo.
-        if ($accountCacheCompleto) {
-            foreach ($companies as $c) {
-                $custId = $c->cust_id;
-                if (!$custId) continue;
-                $v = $accountBatch[$custId]['value'];
-                $acosByCompany[$c->id]   = $v['acos']              ?? null;
-                $tacosByCompany[$c->id]  = $v['tacos']             ?? null;
-                $marginByCompany[$c->id] = $v['percentage_margin'] ?? null;
+        // ACOS / TACOS / margem / investimento POR EMPRESA — agora HÍBRIDO
+        // per-empresa (Plano 03 Phase 19, 2026-06-05). Antes era tudo-ou-nada
+        // do account cache: 1 empresa sem cache cold zerava ACOS/TACOS/margem
+        // de TODAS — o que distorcia "Invest. Ads 30d" e "TACOS médio" porque
+        // o fallback agregado lia SUM(ad_spend) da base inteira, e a base tem
+        // 33 empresas Shopee/Amazon com sync histórico incompleto (Phase 18.5).
+        //
+        // Cada empresa decide individualmente:
+        //  - cache hit → valores Adman exatos (investment + acos + tacos + margem)
+        //  - cache miss → SUM(ad_spend) só dessa empresa + TACOS recalculado
+        //    como (ad_spend / revenue) * 100. ACOS/margem ficam null (não há
+        //    fórmula confiável só com adman_metrics; o front cai em
+        //    latestMetrics da empresa como fallback secundário).
+        //
+        // Pré-fetch SUM(ad_spend) per-empresa em 1 query agregada — evita N
+        // queries em cache miss e mantém o pattern do bloco de revenue acima.
+        $adSpendDbPorEmpresa = AdmanMetric::query()
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->whereBetween('reference_date', [$dateFromN, $dateToN])
+            ->whereNotNull('ad_spend')
+            ->selectRaw('company_id, SUM(ad_spend) as total')
+            ->groupBy('company_id')
+            ->pluck('total', 'company_id');
+
+        $investmentByCompany = [];
+        $investHitsCount     = 0;  // empresas com cache hit no account
+        $investMissesCount   = 0;  // empresas com cust_id mas cache miss no account
+
+        foreach ($companies as $c) {
+            $custId   = $c->cust_id;
+            $accEntry = $custId ? ($accountBatch[$custId] ?? null) : null;
+
+            if ($custId && $accEntry && $accEntry['value'] !== null) {
+                // Cache hit → Adman exato
+                $v = $accEntry['value'];
+                $investmentByCompany[$c->id] = (float) ($v['investment'] ?? 0);
+                $acosByCompany[$c->id]       = $v['acos']              ?? null;
+                $tacosByCompany[$c->id]      = $v['tacos']             ?? null;
+                $marginByCompany[$c->id]     = $v['percentage_margin'] ?? null;
+                $investHitsCount++;
+            } else {
+                // Cache miss → SUM(ad_spend) só dessa empresa
+                $adSpendEmpresa = (float) ($adSpendDbPorEmpresa[$c->id] ?? 0);
+                $revenueEmpresa = (float) ($revenueByCompany[$c->id] ?? 0);
+
+                $investmentByCompany[$c->id] = $adSpendEmpresa;
+                // TACOS dela: (ad_spend / revenue) × 100. Sem revenue → null
+                // para não poluir o avg final com 0% artificial.
+                $tacosByCompany[$c->id] = $revenueEmpresa > 0
+                    ? ($adSpendEmpresa / $revenueEmpresa) * 100
+                    : null;
+                // ACOS exige ads_revenue (não temos em adman_metrics); fica null.
+                $acosByCompany[$c->id]   = null;
+                // Margem: idem — depende de cost que não está agregado por dia.
+                $marginByCompany[$c->id] = null;
+
+                if ($custId) $investMissesCount++;
             }
+        }
+
+        if ($investMissesCount > 0) {
+            Log::info('[Dashboard] invest hibrido per-empresa: ' . $investHitsCount
+                . ' cache hits, ' . $investMissesCount . ' cache misses (period=' . $period . ')');
         }
 
         // Gera série temporal CONTÍNUA: todas as datas do período no eixo X,
@@ -327,37 +375,16 @@ class DashboardController extends Controller
         // SUM DB, tudo-ou-nada). Determinístico por request.
         $totalRevenue = array_sum($revenueByCompany);
 
-        // Card 'Invest. Ads' e 'TACOS médio': mesma política tudo-ou-nada
-        // do account cache. Quando cache incompleto, ambos caem para o DB
-        // local — total_ad_spend somado em 1 query e TACOS recalculado como
-        // (total_ad_spend / total_revenue) * 100. Antes do fix esses dois
-        // cards excluíam silenciosamente empresas em cache cold, oscilando
-        // o denominador e gerando totais aleatórios.
-        if ($accountCacheCompleto) {
-            $tacosValues = array_filter($tacosByCompany, fn($v) => $v !== null);
-            $avgTacos    = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
+        // Card 'Invest. Ads' = soma per-empresa do híbrido acima (cache hit usa
+        // Adman exato; cache miss usa SUM(ad_spend) só da empresa). Determinístico
+        // por request — não depende mais do estado tudo-ou-nada do account cache.
+        $totalAdInvestment = array_sum($investmentByCompany);
 
-            $totalAdInvestment = 0.0;
-            foreach ($companies as $c) {
-                $custId = $c->cust_id;
-                if (!$custId) continue;
-                $accEntry = $accountBatch[$custId] ?? null;
-                if ($accEntry && $accEntry['value'] !== null) {
-                    $totalAdInvestment += (float) ($accEntry['value']['investment'] ?? 0);
-                }
-            }
-        } else {
-            // Fallback DB agregado: SUM(ad_spend) e TACOS = ad_spend/revenue * 100.
-            // Usa o mesmo range do cache para coerência entre os dois modos.
-            $totalAdInvestment = (float) AdmanMetric::query()
-                ->whereIn('company_id', $companies->pluck('id'))
-                ->whereBetween('reference_date', [$dateFromN, $dateToN])
-                ->sum('ad_spend');
-            $avgTacos = $totalRevenue > 0
-                ? ($totalAdInvestment / $totalRevenue) * 100
-                : 0;
-            Log::info('[Dashboard] avg_tacos + total_ad_investment em fallback DB (period=' . $period . ')');
-        }
+        // Card 'TACOS médio' = média simples dos TACOS per-empresa (consistência
+        // com o cálculo anterior). Empresas sem revenue (TACOS null) ficam fora
+        // do denominador para não poluir com 0% artificial.
+        $tacosValues = array_filter($tacosByCompany, fn($v) => $v !== null);
+        $avgTacos    = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
 
         $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
         $productsWithoutCost = $metrics->avg(fn($m) => $m->products_without_cost_pct) ?? 0;
@@ -469,10 +496,15 @@ class DashboardController extends Controller
         // Para demais ranges (1/7/180d), mesmo com cache hot, marcamos como
         // aproximado porque o cache só pré-aquece 30d. Frontend (W5-T1)
         // consome essa prop para mostrar "≈ aproximado" nos cards.
+        // Plano 03 Phase 19: cards_exatos agora exige cache hit per-empresa em
+        // AMBAS as fontes (gross E account), via cacheHitsCount + investHitsCount
+        // (alimentados nos loops híbridos acima). $accountCacheCompleto ainda
+        // existe para a métrica do warm-up dispatch, mas a flag de exatidão
+        // usa a contagem granular per-empresa.
         $cardsExatos = ($period === '30')
             && ($custIdsValidos > 0)
             && ($cacheHitsCount === $custIdsValidos)
-            && $accountCacheCompleto;
+            && ($investHitsCount === $custIdsValidos);
 
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
