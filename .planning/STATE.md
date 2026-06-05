@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Integração Estratégica ECF Drive
 status: verifying
-stopped_at: Phase 22 W4 checkpoint humano — smoke contra API real via tinker em produção.
-last_updated: "2026-06-05T22:30:17.266Z"
+stopped_at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
+last_updated: "2026-06-05T00:00:00.000Z"
 last_activity: 2026-06-05
 progress:
   total_phases: 27
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 22 (wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files) — EXECUTING
+Phase: 24 (painel-executivo-carteira-ecf) — W1+W2+W3 complete, W4 checkpoint humano
 Plan: 1 of 1
-Status: Phase complete — ready for verification
+Status: Aguardando smoke visual em prod (W4 — checkpoint humano blocking)
 Last activity: 2026-06-05
 
 ## Performance Metrics
@@ -278,13 +278,17 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-05T22:30:17.251Z
-Stopped at: Phase 22 W4 checkpoint humano — smoke contra API real via tinker em produção.
+Last session: 2026-06-05
+Stopped at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY parcial: `.planning/phases/22-wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files/22-01-SUMMARY.md`
-- W1+W2+W3 completos: 6 commits, 47/47 testes verdes (Phase 20 sem regressão)
-- W4: checkpoint humano blocking — executar smoke via tinker em prod (5 chamadas: ping, carteiraResumo, ranking, listSignals, relatorioMensal)
-- Após smoke aprovado: declarar Phase 22 completa + iniciar Phase 23 (`/gsd-plan-phase 23`)
-- HEAD: `7c5c9e9` feat(phase-22): metodo relatorioMensal + validacao final sem regressao
+- SUMMARY: `.planning/phases/24-painel-executivo-carteira-ecf-carteira-resumo-gmv-vendas-ads/24-01-SUMMARY.md`
+- W1+W2+W3 completos: 6 commits, 8 testes verdes (71 assertions)
+- W4: checkpoint humano blocking — deploy + smoke visual em prod:
+  - Sidebar: item "Painel Executivo" entre Dashboard e Carteira, ícone LineChart
+  - 8 KPI cards: verificar valores vs smoke Phase 22 (GMV ~R$ 42,8M, Sellers ~1238)
+  - Gráfico: duplo eixo Y funciona (GMV amarelo esq, Sellers branco dir)
+  - Tabs: trocar Programa/Frete/Cluster/Localidade sem loading
+  - Role: consultor/mentor NÃO vê o item + recebe 403 em /painel-executivo direto
+- HEAD: `8d8e6f6` test(24-01): PainelExecutivoControllerTest 8 testes verdes
