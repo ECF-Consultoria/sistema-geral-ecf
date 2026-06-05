@@ -4,7 +4,7 @@ import {
     LayoutDashboard, Building2, Users, CalendarCheck,
     Star, Target, FileText, ChevronLeft, ChevronRight,
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
-    BarChart2, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
+    BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
     Code2, Crown, Shield, Send, Link2
 } from 'lucide-react';
@@ -19,6 +19,9 @@ import NotificationBell from '@/Components/NotificationBell';
 const NAV_ITEMS = [
     // ── ECF Consultoria ─────────────────────────────────────────────────────
     { label: 'Dashboard',  routeName: 'dashboard',         page: 'Dashboard',   icon: LayoutDashboard, permission: 'core.dashboard' },
+    // Phase 24 — Painel Executivo Carteira ECF (visão estratégica da carteira inteira ML).
+    // Complementar ao /dashboard (operacional, só carteira ativa). Apenas admin (CONTEXT D-02).
+    { label: 'Painel Executivo', routeName: 'painel-executivo.index', page: 'PainelExecutivo', icon: LineChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
     { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio',   icon: Briefcase,       permission: 'core.carteira' },
     { label: 'Empresas',   routeName: 'companies.index',   page: 'Companies',   icon: Building2,       permission: 'core.empresas' },
     { label: 'Serviços',   routeName: 'servicos.index',    page: 'Servicos',    icon: Briefcase,       permission: 'sistema.servicos' },
