@@ -2,13 +2,23 @@ import { useState } from 'react';
 import {
     ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend,
 } from 'recharts';
+import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
  * BreakdownTabs — 4 tabs de decomposição da carteira ECF.
  * Phase 24 — Programa / Frete / Cluster / Localidade.
- * Tab default: 'programa' (D-07 do PLAN).
- * 4 datasets vêm do controller de uma vez — troca de tab sem refetch (D-06).
+ *
+ * Plano 03 (2026-06-05): refator para resolver 3 problemas reportados pelo
+ * usuário no smoke da Phase 24:
+ *   1. % era ambígua (em "Programa" significava % de lojistas mas usuário
+ *      pensava que era % de faturamento — confusão grave: POLOS aparece com
+ *      maior % mas menor faturamento). Agora a tabela mostra DUAS colunas
+ *      separadas: Lojistas (count + %) e Faturamento (R$ + %).
+ *   2. Cluster usa termos do ML em inglês (Core, MeliPro, NKOB, etc) — agora
+ *      tradução pt-BR via CLUSTER_LABELS.
+ *   3. Localidade vinha zerada (API só tem SEM_LOCALIDADE) — mostra mensagem
+ *      em vez de gráfico vazio.
  *
  * Props:
  *   breakdowns — { programa, frete, cluster, localidade }
@@ -16,42 +26,110 @@ import { cn } from '@/lib/utils';
  */
 
 // ─── Configuração das 4 tabs ──────────────────────────────────────────────────
-// itemKey mapeia a chave do item dentro de distribuicao[] conforme shape da API (R-03).
+// Cada tab tem:
+//   itemKey      — chave do nome do item no payload da API
+//   colunaItem   — título da coluna do nome (Tab usa termo do contexto)
+//   helpText     — explicação completa do que a aba mede
 const TABS = [
-    { key: 'programa',   label: 'Programa',   itemKey: 'programa'   },
-    { key: 'frete',      label: 'Frete',      itemKey: 'canal'      }, // API usa 'canal' para frete
-    { key: 'cluster',    label: 'Cluster',    itemKey: 'cluster'    },
-    { key: 'localidade', label: 'Localidade', itemKey: 'localidade' },
+    {
+        key:        'programa',
+        label:      'Programa',
+        itemKey:    'programa',
+        colunaItem: 'Programa',
+        helpText:   'Como os lojistas se distribuem entre os 2 programas que o Mercado Livre opera junto com o ECF: CPP (Comercial Pessoa Privada — clientes da consultoria) e POLOS (Polos regionais — sellers da rede de polos).',
+    },
+    {
+        key:        'frete',
+        label:      'Tipo de Envio',
+        itemKey:    'canal',
+        colunaItem: 'Modalidade',
+        helpText:   'Qual modalidade de envio os lojistas usam: ME2 (Mercado Envios padrão), FULL (estoque no centro do ML) e FLEX (entrega no mesmo dia pelo próprio seller). Mostra onde está concentrado o faturamento.',
+    },
+    {
+        key:        'cluster',
+        label:      'Perfil do Lojista',
+        itemKey:    'cluster',
+        colunaItem: 'Perfil',
+        helpText:   'Como o Mercado Livre classifica cada lojista internamente: Core/Maduro (núcleo estabelecido), MeliPro (programa premium), Em desenvolvimento (em crescimento), Iniciante (novato), Joia da coroa (top performer), etc. Termos traduzidos do classificador interno do ML.',
+    },
+    {
+        key:        'localidade',
+        label:      'Localidade',
+        itemKey:    'localidade',
+        colunaItem: 'Cidade/UF',
+        helpText:   'Distribuição geográfica dos lojistas. Esta informação ainda está sendo coletada pelo parceiro ECF Drive — quando estiver disponível, mostrará concentração por cidade/estado.',
+    },
 ];
 
 // Paleta compatível com tema dark — 8 cores distintas
 const CORES = ['#ffe600', '#60a5fa', '#34d399', '#f472b6', '#fb923c', '#a78bfa', '#facc15', '#22d3ee'];
 
-// ─── Helpers locais ───────────────────────────────────────────────────────────
+// ─── Tradução dos termos do classificador interno do ML ──────────────────────
+// Mantém termo original entre parênteses pra quem usa a nomenclatura oficial.
+const CLUSTER_LABELS = {
+    'Core':            'Núcleo maduro (Core)',
+    'MeliPro':         'Premium (MeliPro)',
+    'Emerging':        'Em desenvolvimento (Emerging)',
+    'Newbie':          'Iniciante (Newbie)',
+    'CrownJewels':     'Joia da coroa (CrownJewels)',
+    'NKOB':            'Conta nova em profissionalização (NKOB)',
+    'Seasonal':        'Sazonal (Seasonal)',
+    'Stall':           'Estagnado (Stall)',
+    'Churn':           'Saindo da plataforma (Churn)',
+    'Starter/Newbie':  'Começando (Starter/Newbie)',
+    'HobbySeller':     'Hobbysta (HobbySeller)',
+    'SEM_CLUSTER':     'Não classificado',
+};
 
-/** Formata BRL completo (sem abreviação — tabela tem espaço). */
+const FRETE_LABELS = {
+    'ME2':  'Mercado Envios padrão (ME2)',
+    'FULL': 'Mercado Envios Full',
+    'FLEX': 'Mercado Envios Flex',
+};
+
+const PROGRAMA_LABELS = {
+    'CPP':   'CPP — Comercial Pessoa Privada',
+    'POLOS': 'POLOS — Polos Regionais',
+};
+
+/** Aplica o dicionário pt-BR correto conforme a tab ativa. */
+const traduzirItem = (tabKey, valor) => {
+    if (!valor) return '—';
+    if (tabKey === 'cluster')  return CLUSTER_LABELS[valor]  || valor;
+    if (tabKey === 'frete')    return FRETE_LABELS[valor]    || valor;
+    if (tabKey === 'programa') return PROGRAMA_LABELS[valor] || valor;
+    return valor;
+};
+
+// ─── Helpers de formatação ────────────────────────────────────────────────────
+
 const fmtMoney = (v) =>
     new Intl.NumberFormat('pt-BR', {
-        style:            'currency',
-        currency:         'BRL',
-        maximumFractionDigits: 0,
+        style: 'currency', currency: 'BRL', maximumFractionDigits: 0,
     }).format(v ?? 0);
 
-/** Formata percentual com 2 casas e vírgula pt-BR. */
-const fmtPct = (v) => (v ?? 0).toFixed(2).replace('.', ',') + '%';
+const fmtCount = (v) =>
+    new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(v ?? 0);
+
+const fmtPct = (v) => {
+    if (v === null || v === undefined || isNaN(v)) return '—';
+    return v.toFixed(1).replace('.', ',') + '%';
+};
 
 // ─── Tooltip customizado da pizza ─────────────────────────────────────────────
 
-function PizzaTooltip({ active, payload }) {
+function PizzaTooltip({ active, payload, tabKey }) {
     if (!active || !payload?.length) return null;
     const item = payload[0];
     return (
         <div className="bg-[#0b0c10] border border-white/[0.1] rounded-md p-3 text-xs space-y-1">
             <div className="font-semibold" style={{ color: item.payload.fill }}>
-                {item.name}
+                {traduzirItem(tabKey, item.payload[item.payload.itemKey])}
             </div>
-            <div className="text-white/70">GMV: {fmtMoney(item.value)}</div>
-            <div className="text-white/50">Participação: {fmtPct(item.payload.pct)}</div>
+            <div className="text-white/70">Faturamento: {fmtMoney(item.payload.gmv)}</div>
+            {item.payload.lojistas != null && (
+                <div className="text-white/70">Lojistas: {fmtCount(item.payload.lojistas)}</div>
+            )}
         </div>
     );
 }
@@ -62,35 +140,69 @@ export default function BreakdownTabs({ breakdowns }) {
     const [activeTab, setActiveTab] = useState('programa');
 
     const activeConfig = TABS.find((t) => t.key === activeTab);
-    const { itemKey } = activeConfig;
+    const { itemKey, colunaItem, helpText } = activeConfig;
 
-    // Dados brutos da tab ativa
+    // Dados brutos da API
     const activeData = breakdowns?.[activeTab]?.distribuicao ?? [];
 
-    // ─── Pizza: top 10 + "Outros" para Localidade (evita mosaico ilegível) ───
+    // Caso especial: Localidade só vem com SEM_LOCALIDADE — informa em vez de gráfico vazio
+    const localidadeIndisponivel =
+        activeTab === 'localidade'
+        && activeData.length <= 1
+        && (activeData[0]?.localidade === 'SEM_LOCALIDADE' || activeData.length === 0);
+
+    // Totais para calcular % corretamente (preferir API quando ela fornece)
+    const totaisCalculados = (() => {
+        const totalGmv      = activeData.reduce((acc, i) => acc + (i.gmv ?? 0), 0);
+        const totalLojistas = activeData.reduce((acc, i) => acc + (i.sellers ?? i.count ?? 0), 0);
+        return { totalGmv, totalLojistas };
+    })();
+
+    // Enriquece cada linha com lojistas (count|sellers) e % calculadas
+    const dadosEnriquecidos = activeData.map((item) => {
+        const lojistas = item.sellers ?? item.count ?? null;
+        return {
+            ...item,
+            itemKey, // pra usar no PizzaTooltip
+            lojistas,
+            pctLojistas:    lojistas != null && totaisCalculados.totalLojistas > 0
+                ? (lojistas / totaisCalculados.totalLojistas) * 100
+                : null,
+            pctFaturamento: totaisCalculados.totalGmv > 0
+                ? ((item.gmv ?? 0) / totaisCalculados.totalGmv) * 100
+                : null,
+        };
+    });
+
+    // Para a pizza: ordena por faturamento (gmv) desc; em Localidade limita top 10 + Outros
     const dadosPizza = (() => {
-        if (activeTab !== 'localidade' || activeData.length <= 10) {
-            return activeData;
-        }
-        // Ordena por gmv desc, pega top 10, agrega o resto
-        const sorted   = [...activeData].sort((a, b) => (b.gmv ?? 0) - (a.gmv ?? 0));
+        const sorted = [...dadosEnriquecidos].sort((a, b) => (b.gmv ?? 0) - (a.gmv ?? 0));
+        if (activeTab !== 'localidade' || sorted.length <= 10) return sorted;
         const top10    = sorted.slice(0, 10);
         const restante = sorted.slice(10);
         if (!restante.length) return top10;
-        const gmvOutros = restante.reduce((acc, i) => acc + (i.gmv ?? 0), 0);
-        const pctOutros = restante.reduce((acc, i) => acc + (i.pct ?? 0), 0);
-        return [...top10, { [itemKey]: 'Outros', gmv: gmvOutros, pct: pctOutros }];
+        const gmvOutros      = restante.reduce((acc, i) => acc + (i.gmv ?? 0), 0);
+        const lojistasOutros = restante.reduce((acc, i) => acc + (i.lojistas ?? 0), 0);
+        return [...top10, {
+            [itemKey]:    'Outros',
+            itemKey,
+            gmv:          gmvOutros,
+            lojistas:     lojistasOutros,
+            pctLojistas:  null,
+            pctFaturamento: null,
+        }];
     })();
 
-    // ─── Tabela: top 20 para Localidade (D-08 do PLAN) ───────────────────────
-    const dadosTabela = activeTab === 'localidade'
-        ? activeData.slice(0, 20)
-        : activeData;
+    // Para a tabela: ordena por faturamento desc; em Localidade limita top 20
+    const dadosTabela = (() => {
+        const sorted = [...dadosEnriquecidos].sort((a, b) => (b.gmv ?? 0) - (a.gmv ?? 0));
+        return activeTab === 'localidade' ? sorted.slice(0, 20) : sorted;
+    })();
 
     return (
         <div>
             {/* ─── Botões das 4 tabs ──────────────────────────────────────── */}
-            <div className="flex gap-1 border-b border-white/[0.06] mb-5">
+            <div className="flex gap-1 border-b border-white/[0.06] mb-5 flex-wrap">
                 {TABS.map((tab) => (
                     <button
                         key={tab.key}
@@ -107,19 +219,41 @@ export default function BreakdownTabs({ breakdowns }) {
                 ))}
             </div>
 
-            {/* ─── Empty state ─────────────────────────────────────────────── */}
-            {activeData.length === 0 && (
+            {/* ─── Cabeçalho da tab com tooltip explicativo ───────────────── */}
+            <div className="flex items-start gap-2 mb-4 text-xs text-white/50">
+                <Info size={12} className="shrink-0 mt-0.5 text-white/40" />
+                <p className="leading-relaxed">{helpText}</p>
+            </div>
+
+            {/* ─── Estado especial: Localidade ainda não disponível ─────── */}
+            {localidadeIndisponivel && (
+                <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-6 text-center">
+                    <Info size={24} className="text-white/30 mx-auto mb-2" />
+                    <p className="text-white/60 text-sm">
+                        A categorização por localidade ainda não está disponível no parceiro ECF Drive.
+                    </p>
+                    <p className="text-white/40 text-xs mt-1">
+                        {activeData.length === 1 ? `${activeData[0]?.sellers ?? 0} lojistas sem localidade informada.` : 'Aguardando dados.'}
+                    </p>
+                </div>
+            )}
+
+            {/* ─── Empty state geral ───────────────────────────────────────── */}
+            {!localidadeIndisponivel && activeData.length === 0 && (
                 <div className="h-72 flex items-center justify-center text-white/30 text-sm">
-                    Sem dados de breakdown para esta dimensão.
+                    Sem dados disponíveis no momento.
                 </div>
             )}
 
             {/* ─── Conteúdo: pizza + tabela lado a lado ────────────────────── */}
-            {activeData.length > 0 && (
+            {!localidadeIndisponivel && activeData.length > 0 && (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-                    {/* Esquerda — gráfico de pizza */}
+                    {/* Esquerda — gráfico de pizza (por faturamento) */}
                     <div>
+                        <div className="text-xs text-white/40 mb-2 text-center">
+                            Distribuição por faturamento bruto
+                        </div>
                         <ResponsiveContainer width="100%" height={300}>
                             <PieChart>
                                 <Pie
@@ -137,30 +271,30 @@ export default function BreakdownTabs({ breakdowns }) {
                                         />
                                     ))}
                                 </Pie>
-                                <Tooltip content={<PizzaTooltip />} />
+                                <Tooltip content={<PizzaTooltip tabKey={activeTab} />} />
                                 <Legend
                                     wrapperStyle={{ fontSize: 11 }}
                                     formatter={(value) => (
-                                        <span className="text-white/60">{value}</span>
+                                        <span className="text-white/60">{traduzirItem(activeTab, value)}</span>
                                     )}
                                 />
                             </PieChart>
                         </ResponsiveContainer>
                     </div>
 
-                    {/* Direita — tabela detalhada */}
+                    {/* Direita — tabela com 2 medidas separadas (lojistas e faturamento) */}
                     <div>
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b border-white/[0.06]">
-                                    <th className="text-left py-2 pr-3 text-white/40 font-medium text-xs uppercase tracking-wider">
-                                        Item
+                                    <th className="text-left py-2 pr-3 text-white/40 font-medium text-[10px] uppercase tracking-wider">
+                                        {colunaItem}
                                     </th>
-                                    <th className="text-right py-2 pr-3 text-white/40 font-medium text-xs uppercase tracking-wider">
-                                        GMV
+                                    <th className="text-right py-2 pr-3 text-white/40 font-medium text-[10px] uppercase tracking-wider whitespace-nowrap">
+                                        Lojistas
                                     </th>
-                                    <th className="text-right py-2 text-white/40 font-medium text-xs uppercase tracking-wider">
-                                        %
+                                    <th className="text-right py-2 text-white/40 font-medium text-[10px] uppercase tracking-wider whitespace-nowrap">
+                                        Faturamento
                                     </th>
                                 </tr>
                             </thead>
@@ -171,28 +305,34 @@ export default function BreakdownTabs({ breakdowns }) {
                                         className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors"
                                     >
                                         <td className="py-2 pr-3">
-                                            {/* Bolinha colorida + label */}
                                             <div className="flex items-center gap-2">
                                                 <span
                                                     className="inline-block w-2 h-2 rounded-full shrink-0"
                                                     style={{ backgroundColor: CORES[idx % CORES.length] }}
                                                 />
-                                                <span className="text-white/80 text-xs truncate">
-                                                    {item[itemKey] ?? '—'}
+                                                <span className="text-white/80 text-xs">
+                                                    {traduzirItem(activeTab, item[itemKey])}
                                                 </span>
                                             </div>
                                         </td>
-                                        <td className="py-2 pr-3 text-right text-white/60 text-xs">
-                                            {fmtMoney(item.gmv)}
+                                        <td className="py-2 pr-3 text-right text-xs whitespace-nowrap">
+                                            {item.lojistas != null ? (
+                                                <>
+                                                    <div className="text-white/70">{fmtCount(item.lojistas)}</div>
+                                                    <div className="text-white/40 text-[10px]">{fmtPct(item.pctLojistas)}</div>
+                                                </>
+                                            ) : (
+                                                <span className="text-white/30">—</span>
+                                            )}
                                         </td>
-                                        <td className="py-2 text-right text-white/50 text-xs">
-                                            {fmtPct(item.pct)}
+                                        <td className="py-2 text-right text-xs whitespace-nowrap">
+                                            <div className="text-white/70">{fmtMoney(item.gmv)}</div>
+                                            <div className="text-white/40 text-[10px]">{fmtPct(item.pctFaturamento)}</div>
                                         </td>
                                     </tr>
                                 ))}
                             </tbody>
                         </table>
-                        {/* Aviso quando localidade foi truncada a top 20 */}
                         {activeTab === 'localidade' && activeData.length > 20 && (
                             <p className="text-white/30 text-xs mt-2">
                                 Exibindo top 20 de {activeData.length} localidades.
