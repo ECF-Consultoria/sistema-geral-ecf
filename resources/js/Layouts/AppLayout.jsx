@@ -32,6 +32,10 @@ const NAV_ITEMS = [
     { label: 'Desempenho', routeName: 'performance.index', page: 'Performance', icon: Trophy,          permission: 'core.performance' },
     { label: 'Grants',     routeName: 'grants.index',      page: 'Grants',      icon: ShieldCheck,     permission: 'core.grants' },
     { label: 'Sugadores',  routeName: 'sugadores.index',   page: 'Sugadores',   icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
+    // Phase 23 — Alertas Estratégicos (caixa de entrada do comercial).
+    // Acesso por role (admin/consultor/mentor) — não por permission key.
+    // excludeRoles esconde publicador/analista/gestor/lider; admin/consultor/mentor veem.
+    { label: 'Alertas Estratégicos', routeName: 'alertas.index', page: 'AlertasEstrategicos', icon: AlertTriangle, showBadge: 'alertas_criticos_count', excludeRoles: ['publicador', 'analista', 'gestor', 'lider'] },
     // ── Meu Setor (líder, oculto pra admin que já tem visão global) ─────────
     { label: 'Meu Setor',  routeName: 'lideranca.index',   page: 'Lideranca',   icon: Crown,           permission: 'lideranca.dashboard_setor', leadSeparatorBefore: true, excludeRoles: ['admin'] },
     // ── Dev (interno) ───────────────────────────────────────────────────────
@@ -64,8 +68,11 @@ const NAV_ITEMS = [
 const roleLabel = { admin: 'Admin', consultor: 'Consultor', mentor: 'Mentor' };
 
 export default function AppLayout({ children, title }) {
-    const { auth, flash, asset_url, sugadores_pendentes } = usePage().props;
-    const badgeCounters = { sugadores_pendentes: sugadores_pendentes ?? 0 };
+    const { auth, flash, asset_url, sugadores_pendentes, alertas_criticos_count } = usePage().props;
+    const badgeCounters = {
+        sugadores_pendentes:    sugadores_pendentes    ?? 0,
+        alertas_criticos_count: alertas_criticos_count ?? 0,  // null vira 0 → badge some
+    };
     const { component: pageComponent } = usePage();
     const logoSrc = `${asset_url}/images/logo.png`;
     const user = auth?.user;
