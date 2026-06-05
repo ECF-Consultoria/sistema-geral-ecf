@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v6.0
-milestone_name: Precisão e Praticidade na Dashboard
-status: verifying
-stopped_at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
-last_updated: "2026-06-05T16:13:46.419Z"
+milestone: v7.0
+milestone_name: Eficiência Operacional Sugadores (Foco no dia)
+status: phase_complete
+stopped_at: Phase 19 + 20 concluídas e validadas em prod (2026-06-05). Próximo: planejar Phase 21 (Manual do Sistema).
+last_updated: "2026-06-05T17:00:00.000Z"
 last_activity: 2026-06-05
 progress:
-  total_phases: 19
-  completed_phases: 9
-  total_plans: 25
-  completed_plans: 25
-  percent: 47
+  total_phases: 20
+  completed_phases: 11
+  total_plans: 28
+  completed_plans: 28
+  percent: 55
 ---
 
 # Project State
@@ -73,6 +73,8 @@ Last activity: 2026-06-05
 
 - 2026-06-01 — Novo **Milestone v5.0 — Inteligência de Anúncios ML**; adicionada **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)**. Decisões travadas via probe ML (busca `/sites/MLB/search` = 403; usar `/products/search` + `/highlights` + `/trends` via app token). Não depende da Phase 16. Próximo: `/gsd-plan-phase 17`.
 - 2026-06-05 — **Phase 20: Integração ECF Drive** adicionada à v7.0. Substitui pipeline `grants:sync-sftp` por wrapper `EcfDriveService` que consome a API HTTP do sistema externo desenvolvido pelo usuário (`files.ecfconsultoria.com.br/api/v1`). Decisões travadas no CONTEXT.md: substituir SFTP direto, adicionar coluna `segmento`, match cust_id→CNPJ com log órfãos, webhook deferido para fase futura. Phase 19 segue em aberto aguardando smoke W4.
+- 2026-06-05 — Phase 20 **completed e deployed**. Match estrito por cust_id (Plano 02 do mesmo dia removeu fallback CNPJ por risco com alunos de cursos). 80 grants em prod, segmento preenchido, 20 testes Phase 20 verdes. API foi ajustada pelo usuário pra corrigir inversão `granted_at > expires_at` (era responsável por 13 falsos "Pending"). Risco aceito pelo usuário: API key `ecf_c7b9d4fe...` foi exposta no chat e o usuário optou por NÃO revogar — decisão registrada.
+- 2026-06-05 — **Phase 21: Manual do Sistema** adicionada à v7.0. Hardcode JSX, tabela ordenada para o cronograma, link no rodapé da sidebar, acesso a todos autenticados. Primeiro artigo: "Cronograma de horários" em linguagem simples sem termos técnicos. Próximo: `/gsd-plan-phase 21`.
 
 ### Decisões herdadas do v1.0
 

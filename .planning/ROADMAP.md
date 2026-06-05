@@ -66,7 +66,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 ### Milestone v7.0 — Eficiência Operacional Sugadores (Foco no dia)
 
 - [x] **Phase 19: Sugadores — Foco no dia + Atalhos + Fix MCP** - Reforça as duas regras-mestras (acertividade + praticidade) no módulo Sugadores. (1) Banner explícito de cadência D-1 ("Análise diária às 12h BRT") + estado por empresa. (2) Vista default filtra `reference_date=hoje + status=pendente` para focar o operador no que importa hoje (esconde 1407 acumulados que confundem). (3) Botão "Copiar MLBs" inline em cada linha de sugador + no card de empresa (modo cards) — ação em 1 clique sem abrir drilldown. (4) Mitigação do 429 do MCP no drilldown (throttle por custId + Cache::lock). (5) Comando one-shot `sugadores:limpar-orfaos` para marcar como `auto_resolvido` os 1407 pendentes antigos acumulados. (completed 2026-06-03)
-- [x] **Phase 20: Integração ECF Drive (substitui sync SFTP por API HTTP)** - Troca a fonte de dados do módulo `/grants`: atual pipeline `grants:sync-sftp` (lê XLSX do SFTP ML via PhpSpreadsheet) é substituído por wrapper `EcfDriveService` que consome a API do sistema externo ECF Drive (`files.ecfconsultoria.com.br/api/v1`). Mantém model `CompanyGrant`, página `/grants`, permissão `core.grants`. Adiciona migration `segmento`, comando novo `grants:sync-ecf`, schedule diário, match company_id via cust_id com fallback CNPJ + log de órfãos. Webhook real-time fica para fase futura. (completed 2026-06-05)
+- [x] **Phase 20: Integração ECF Drive (substitui sync SFTP por API HTTP)** - Troca a fonte de dados do módulo `/grants`: pipeline `grants:sync-sftp` substituído por wrapper `EcfDriveService` que consome a API do sistema externo ECF Drive (`files.ecfconsultoria.com.br/api/v1`). Mantém model `CompanyGrant`, página `/grants`, permissão `core.grants`. Adiciona migration `segmento`, comando `grants:sync-ecf`, schedule diário. **Plano 02 (mesmo dia)**: match ESTRITO por cust_id (`adman_account_id` ou `ml_store_id`) — removido fallback CNPJ por risco de associar grants de alunos de cursos a empresas com mesmo CNPJ. **Validado em prod**: 475 grants recebidos, 80 matched, 395 órfãos (alunos/contas pessoais ML — comportamento esperado). API foi ajustada pelo usuário pra corrigir inversão `granted_at > expires_at` (13 falsos "Pending" → Active). Webhook real-time fica para fase futura. (completed 2026-06-05, deployed; 20 testes Phase 20 verdes)
+- [ ] **Phase 21: Manual do Sistema (artigos para usuários não-técnicos)** - Cria aba "Manual do Sistema" no rodapé da sidebar, acessível a TODOS os usuários autenticados. Artigos hardcoded em JSX, sem CMS no banco. Primeiro artigo: "Cronograma de horários" — tabela ordenada explicando em linguagem simples (sem termos técnicos) o que cada rotina automática do sistema faz e quando roda (sync diário da Adman, análise de Sugadores, sincronização do ECF Drive, etc). Arquitetura extensível para artigos futuros via componentes JSX em `resources/js/Pages/Manual/Artigos/`.
 
 ## Phase Details
 
@@ -525,3 +526,14 @@ Plans:
 
 Plans:
 - [x] 20-01-PLAN.md — Backend EcfDriveService + comando grants:sync-ecf + migration segmento + schedule + UI coluna+label + 18 testes Feature + checkpoint humano deploy/smoke (todas as 6 REQ-IDs)
+
+### Phase 21: Manual do Sistema (artigos explicativos para usuários não-técnicos)
+
+**Goal:** Criar aba "Manual do Sistema" no rodapé da sidebar, acessível a TODOS os usuários autenticados, contendo artigos hardcoded em JSX que explicam aspectos do sistema em linguagem simples. Primeiro artigo: "Cronograma de horários" — tabela ordenada explicando o que acontece em cada horário do dia (Adman D-1 11h, Sugadores 12h BRT, ECF Drive grants diário, etc) sem nomes técnicos.
+**Mode:** mvp
+**Requirements:** MAN-NAV-01 (item no rodapé da sidebar), MAN-INDEX-02 (página `/manual` lista artigos), MAN-SHOW-03 (página `/manual/{slug}` renderiza artigo JSX), MAN-CRONO-04 (artigo Cronograma como tabela ordenada por horário), MAN-ACESSO-05 (acesso a todos autenticados, sem permission check), MAN-PT-BR-06 (linguagem simples, sem termos técnicos)
+**Depends on:** Phase 20
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 21 to break down)
