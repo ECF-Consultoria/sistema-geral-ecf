@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Integração Estratégica ECF Drive
-status: phase_complete
-stopped_at: Phase 22 (wrapper EcfDriveService expandido) deployed e validada em prod (4/5 smoke OK). Próximo: Phase 23 — Alertas Estratégicos (primeira aba visível da v8.0).
-last_updated: "2026-06-05T22:45:00.000Z"
-last_activity: 2026-06-05 -- Phase 22 completed; iniciando Phase 23
+status: verifying
+stopped_at: Phase 22 W4 checkpoint humano — smoke contra API real via tinker em produção.
+last_updated: "2026-06-05T22:30:17.266Z"
+last_activity: 2026-06-05
 progress:
   total_phases: 27
   completed_phases: 12
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 Phase: 22 (wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files) — EXECUTING
 Plan: 1 of 1
-Status: Executing Phase 22
-Last activity: 2026-06-05 -- Phase 22 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-06-05
 
 ## Performance Metrics
 
@@ -278,7 +278,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-05T22:30:00.000Z
+Last session: 2026-06-05T22:30:17.251Z
 Stopped at: Phase 22 W4 checkpoint humano — smoke contra API real via tinker em produção.
 
 **Estado para próxima sessão retomar:**
