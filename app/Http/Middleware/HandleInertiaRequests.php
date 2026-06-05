@@ -3,8 +3,10 @@
 namespace App\Http\Middleware;
 
 use App\Models\Sugador;
+use App\Services\EcfDriveService;
 use App\Support\Permissions;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -52,6 +54,9 @@ class HandleInertiaRequests extends Middleware
             'sugadores_pendentes' => fn() => $this->countSugadoresPendentes($request),
             // Contador de notifications não lidas — closure garante recálculo em toda navegação Inertia (POLL-01 + POLL-03).
             'notificacoes_nao_lidas' => fn() => $request->user()?->unreadNotifications()->count() ?? 0,
+            // Phase 23 — Contador de alertas críticos não-ackeados para badge da sidebar.
+            // Lazy closure + cache 5min + try/catch retorna null em erro (falha silenciosa).
+            'alertas_criticos_count' => fn() => $this->countAlertasCriticos(),
         ];
     }
 
@@ -128,5 +133,32 @@ class HandleInertiaRequests extends Middleware
             $query->daCarteira($user);
         }
         return $query->count();
+    }
+
+    /**
+     * Conta signals com severity='critical' e acked=false via ECF Drive.
+     *
+     * Cache: 5min (chave global compartilhada entre todos os usuários — o número
+     * é o mesmo para qualquer um que tenha acesso à aba). Falha silenciosa: em
+     * qualquer erro retorna null e o badge da sidebar simplesmente some.
+     *
+     * Phase 23 — D-05 do PLAN.
+     */
+    private function countAlertasCriticos(): ?int
+    {
+        try {
+            return Cache::remember('alertas.criticos_nao_ackeados.count', 300, function () {
+                $ecf = app(EcfDriveService::class);
+                $res = $ecf->listSignals([
+                    'severity' => 'critical',
+                    'acked'    => false,
+                    'limit'    => 1,
+                ]);
+                return (int) ($res['total'] ?? 0);
+            });
+        } catch (\Throwable) {
+            // Falha silenciosa — badge desaparece da sidebar
+            return null;
+        }
     }
 }
