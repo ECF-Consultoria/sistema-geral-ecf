@@ -552,13 +552,14 @@ Plans:
 
 ### Phase 22: Wrapper expandido EcfDriveService (todos os endpoints + cache estratégico)
 
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 21
-**Plans:** 0 plans
+**Goal:** Expandir o EcfDriveService da Phase 20 para cobrir todos os domínios estratégicos da API ECF Drive (/clientes, /sellers, /carteira, /signals, /relatorios) com 18 métodos públicos novos, helpers privados de HTTP e cache, validações defensivas e cache TTL por endpoint conforme tabela do API-GUIDE.md §12. Infra reutilizável pelas Phases 23-28 — sem UI, sem migration, sem command novo nesta fase.
+**Mode:** mvp
+**Requirements**: ECF-CORE-01, ECF-CLIENTES-02, ECF-SELLERS-03, ECF-CARTEIRA-04, ECF-SIGNALS-05, ECF-RELATORIOS-06, ECF-CACHE-07, ECF-VALIDA-08
+**Depends on:** Phase 20 (EcfDriveService base)
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 22 to break down)
+- [ ] 22-01-PLAN.md — Helpers get/cacheKey + refactor Phase 20 + 18 metodos novos (/clientes, /sellers, /carteira, /signals, /relatorios) + 5 suites de testes Http::fake + smoke prod via tinker
 
 ### Phase 23: Alertas Estratégicos (signals — caixa de entrada do comercial)
 
