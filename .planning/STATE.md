@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v7.0
 milestone_name: Eficiência Operacional Sugadores (Foco no dia)
-status: phase_complete
-stopped_at: Phase 19 + 20 concluídas e validadas em prod (2026-06-05). Próximo: planejar Phase 21 (Manual do Sistema).
-last_updated: "2026-06-05T17:00:00.000Z"
+status: verifying
+stopped_at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
+last_updated: "2026-06-05T19:56:06.435Z"
 last_activity: 2026-06-05
 progress:
   total_phases: 20
-  completed_phases: 11
-  total_plans: 28
-  completed_plans: 28
-  percent: 55
+  completed_phases: 10
+  total_plans: 26
+  completed_plans: 26
+  percent: 50
 ---
 
 # Project State
@@ -21,11 +21,11 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 20 — integra-o-ecf-drive-substitui-sync-sftp-do-ml-por-api-http-d
+**Current focus:** Phase 21 — manual-do-sistema-aba-com-artigos-explicativos-para-usuarios
 
 ## Current Position
 
-Phase: 20 (integra-o-ecf-drive-substitui-sync-sftp-do-ml-por-api-http-d) — EXECUTING
+Phase: 21 (manual-do-sistema-aba-com-artigos-explicativos-para-usuarios) — EXECUTING
 Plan: 1 of 1
 Status: Phase complete — ready for verification
 Last activity: 2026-06-05
@@ -277,7 +277,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-05T16:13:46.404Z
+Last session: 2026-06-05T19:56:06.423Z
 Stopped at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
 
 **Estado para próxima sessão retomar:**
