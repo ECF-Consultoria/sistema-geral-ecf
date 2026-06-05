@@ -257,7 +257,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 // Consome /signals da API ECF Drive (Phase 22 wrapper). Caixa de entrada
 // do comercial — acessível a admin, consultor e mentor (CONTEXT D-04).
 // EnsureUserHasRole aceita varargs via separador '|' (D-01 do PLAN).
-Route::middleware(['auth', 'verified', 'role:admin|consultor|mentor'])
+Route::middleware(['auth', 'verified', 'role:admin,consultor,mentor'])
      ->prefix('alertas-estrategicos')
      ->name('alertas.')
      ->group(function () {
