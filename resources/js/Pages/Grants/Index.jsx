@@ -179,7 +179,7 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                 <div className="flex items-center justify-between gap-2 text-white/40 text-[12px] px-1">
                     <div className="flex items-center gap-1.5">
                         <Info size={13} />
-                        Lista importada do Mercado Livre via SFTP automaticamente às 03:00.
+                        Lista importada do ECF Drive (API HTTP) automaticamente às 03:00.
                     </div>
                     <button
                         onClick={syncNow}
@@ -236,17 +236,18 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
 
                     <div className="divide-y divide-white/[0.04]">
                         {/* Header */}
-                        <div className="grid grid-cols-[1fr_7rem_8rem_8rem_7rem_7rem_5rem] gap-3 px-5 py-2.5 text-white/30 text-[11px] font-semibold uppercase tracking-wide">
+                        <div className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_5rem] gap-3 px-5 py-2.5 text-white/30 text-[11px] font-semibold uppercase tracking-wide">
                             <span>Empresa</span>
                             <span>Status</span>
                             <span>E-mail</span>
                             <span>Telefone</span>
+                            <span>Segmento</span>     {/* Phase 20 — via ECF Drive */}
                             <span>Concedido</span>
                             <span>Expira</span>
                             <span className="text-right">Ações</span>
                         </div>
                         {filtered.map(g => (
-                            <div key={g.id} className="grid grid-cols-[1fr_7rem_8rem_8rem_7rem_7rem_5rem] gap-3 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors">
+                            <div key={g.id} className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_5rem] gap-3 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors">
                                 <div>
                                     <span className="text-white font-medium text-[13px]">{g.company_name}</span>
                                     {g.days_remaining !== null && (
@@ -260,6 +261,12 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                                 <span><Badge variant={statusColor[g.status]}>{statusLabel[g.status]}</Badge></span>
                                 <span className="text-white/50 text-[12px] truncate">{g.ml_email || '—'}</span>
                                 <span className="text-white/50 text-[12px]">{g.ml_phone || '—'}</span>
+                                <span
+                                    className="text-white/50 text-[12px] truncate"
+                                    title={g.segmento || ''}
+                                >
+                                    {g.segmento || '—'}
+                                </span>
                                 <span className="text-white/50 text-[12px]">{g.granted_at || '—'}</span>
                                 <span className="text-white/50 text-[12px]">{g.expires_at || '—'}</span>
                                 <div className="flex justify-end gap-1">
