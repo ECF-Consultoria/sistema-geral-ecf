@@ -4,14 +4,14 @@ milestone: v6.0
 milestone_name: Precisão e Praticidade na Dashboard
 status: verifying
 stopped_at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
-last_updated: "2026-06-03T18:27:21.513Z"
-last_activity: 2026-06-03
+last_updated: "2026-06-05T16:13:46.419Z"
+last_activity: 2026-06-05
 progress:
-  total_phases: 18
-  completed_phases: 8
-  total_plans: 24
-  completed_plans: 24
-  percent: 44
+  total_phases: 19
+  completed_phases: 9
+  total_plans: 25
+  completed_plans: 25
+  percent: 47
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 19 — sugadores-foco-dia
+**Current focus:** Phase 20 — integra-o-ecf-drive-substitui-sync-sftp-do-ml-por-api-http-d
 
 ## Current Position
 
-Phase: 19 (sugadores-foco-dia) — EXECUTING
+Phase: 20 (integra-o-ecf-drive-substitui-sync-sftp-do-ml-por-api-http-d) — EXECUTING
 Plan: 1 of 1
 Status: Phase complete — ready for verification
-Last activity: 2026-06-03
+Last activity: 2026-06-05
 
 ## Performance Metrics
 
@@ -275,7 +275,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-03T18:27:21.496Z
+Last session: 2026-06-05T16:13:46.404Z
 Stopped at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
 
 **Estado para próxima sessão retomar:**
