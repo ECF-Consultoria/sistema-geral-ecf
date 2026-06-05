@@ -33,7 +33,7 @@ class GrantController extends Controller
             ]);
 
         $grants = CompanyGrant::with('company')
-            ->orderByRaw("FIELD(status,'active','pending','expired')")
+            ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
             ->orderBy('expires_at', 'asc')
             ->get()
             ->map(fn($g) => [
