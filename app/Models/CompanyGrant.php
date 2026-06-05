@@ -27,6 +27,7 @@ class CompanyGrant extends Model
 
     protected $fillable = [
         'company_id', 'ml_grant_token', 'ml_email', 'ml_phone', 'ml_cust_id',
+        'segmento',  // Phase 20 — campo vindo da API ECF Drive
         'status', 'granted_at', 'expires_at', 'regranted_at', 'notes',
     ];
 
