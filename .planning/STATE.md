@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v7.0
-milestone_name: Eficiência Operacional Sugadores (Foco no dia)
-status: executing
-stopped_at: Phase 19 (Sugadores — Foco no dia + Atalhos + Fix MCP) **planejada e pronta para executar**. Conversa limpa pelo usuário a pedido.
-last_updated: "2026-06-05T22:30:00.000Z"
-last_activity: 2026-06-05 -- Phase 22 W1+W2+W3 concluídas — checkpoint W4 (smoke prod) pendente
+milestone: v8.0
+milestone_name: Integração Estratégica ECF Drive
+status: phase_complete
+stopped_at: Phase 22 (wrapper EcfDriveService expandido) deployed e validada em prod (4/5 smoke OK). Próximo: Phase 23 — Alertas Estratégicos (primeira aba visível da v8.0).
+last_updated: "2026-06-05T22:45:00.000Z"
+last_activity: 2026-06-05 -- Phase 22 completed; iniciando Phase 23
 progress:
   total_phases: 27
-  completed_phases: 10
-  total_plans: 27
-  completed_plans: 26
-  percent: 37
+  completed_phases: 12
+  total_plans: 28
+  completed_plans: 28
+  percent: 44
 ---
 
 # Project State
