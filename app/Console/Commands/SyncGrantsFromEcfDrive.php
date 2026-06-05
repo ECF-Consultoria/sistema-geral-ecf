@@ -10,7 +10,6 @@ use App\Models\CompanyGrant;
 use App\Services\EcfDriveService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class SyncGrantsFromEcfDrive extends Command
 {
@@ -118,51 +117,46 @@ class SyncGrantsFromEcfDrive extends Command
     /**
      * Resolve a Company correspondente ao grant da API ECF Drive.
      *
-     * Estratégia (autoritativa — D-03):
-     *  1º Match por companies.adman_account_id == grant.custId (string exata)
-     *  2º Fallback CNPJ normalizado (só dígitos) via REGEXP_REPLACE (MySQL) ou PHP (SQLite)
-     *  3º Múltiplos matches por CNPJ → log MULTIMATCH + return null
-     *  4º Nenhum match → return null
+     * Estratégia (autoritativa — Plano 02 Phase 20, 2026-06-05):
+     *  Match ESTRITO por cust_id ML. A API ECF Drive vem do SFTP do Mercado
+     *  Livre e traz grants de TODA conta ML que deu grant (incluindo alunos
+     *  de cursos / pessoas físicas) — não filtra por carteira ECF. Logo, o
+     *  match precisa ser exato em cust_id; fallback por CNPJ foi descartado
+     *  pelo usuário em 2026-06-05 porque introduz risco de associar grants
+     *  de não-clientes (mesma pessoa física pode ter CNPJ que casa).
+     *
+     *  1º Match por companies.adman_account_id == grant.custId
+     *  2º Match por companies.ml_store_id == grant.custId
+     *     (ambos representam o MESMO cust_id ML em campos diferentes;
+     *     2 companies em prod têm valores divergentes, justificando o segundo passo)
+     *  3º Nenhum match → órfão (sem fallback CNPJ — risco de cliente errado)
+     *
+     *  Comparação como string com trim() defensivo — adman_account_id e
+     *  ml_store_id são strings no DB; trim cobre zeros à esquerda ou espaços
+     *  improváveis.
      */
     private function resolveCompany(array $grant): ?Company
     {
-        $custId = $grant['custId'] ?? null;
-
-        // 1º match por adman_account_id (cust_id da conta Adman/marketplace)
-        if ($custId) {
-            $c = Company::where('adman_account_id', $custId)->where('active', true)->first();
-            if ($c) {
-                return $c;
-            }
-        }
-
-        // 2º fallback CNPJ (só dígitos)
-        $cnpj = preg_replace('/\D/', '', $grant['cnpj'] ?? '') ?: null;
-        if (! $cnpj) {
+        $custId = trim((string) ($grant['custId'] ?? ''));
+        if ($custId === '') {
             return null;
         }
 
-        // SQLite nos testes não suporta REGEXP_REPLACE — usar filtro PHP
-        $driver = DB::connection()->getDriverName();
-
-        if ($driver === 'sqlite') {
-            $matches = Company::where('active', true)->get()
-                ->filter(fn($c) => preg_replace('/\D/', '', (string) ($c->cnpj ?? '')) === $cnpj);
-        } else {
-            // MySQL 8+ / MariaDB 10.0+ suportam REGEXP_REPLACE
-            $matches = Company::where('active', true)
-                ->whereRaw("REGEXP_REPLACE(COALESCE(cnpj, ''), '[^0-9]', '') = ?", [$cnpj])
-                ->get();
+        // 1º match por adman_account_id (campo primário, alimentado pela planilha Adman)
+        $c = Company::where('active', true)
+            ->where('adman_account_id', $custId)
+            ->first();
+        if ($c) {
+            return $c;
         }
 
-        if ($matches->count() === 1) {
-            return $matches->first();
-        }
-
-        if ($matches->count() > 1) {
-            $ids = $matches->pluck('id')->implode(',');
-            $this->logOrfao($grant, "MULTIMATCH ids=[{$ids}]");
-            return null;
+        // 2º match por ml_store_id (alimentado pelo cadastro Comercial; em ~2 companies
+        // este valor diverge de adman_account_id — ambos representam cust_id ML).
+        $c = Company::where('active', true)
+            ->where('ml_store_id', $custId)
+            ->first();
+        if ($c) {
+            return $c;
         }
 
         return null;

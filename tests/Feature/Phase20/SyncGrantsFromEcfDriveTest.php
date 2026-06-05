@@ -112,16 +112,58 @@ class SyncGrantsFromEcfDriveTest extends TestCase
         $this->assertSame(0, CompanyGrant::where('company_id', $c2->id)->count());
     }
 
-    public function test_fallback_cnpj_quando_cust_id_nao_bate(): void
+    /**
+     * Plano 02 (2026-06-05): match secundário por ml_store_id.
+     * Algumas companies têm o cust_id ML em ml_store_id (cadastro Comercial)
+     * em vez de adman_account_id (planilha Adman). Ambos representam o
+     * mesmo cust_id ML — fonte autoritativa do ECF Drive.
+     */
+    public function test_match_por_ml_store_id_quando_adman_account_id_diferente(): void
     {
         $c = $this->makeCompany([
-            'adman_account_id' => null,
+            'adman_account_id' => 'OUTRO',
+            'ml_store_id'      => '999',
+        ]);
+        $this->fakeGrants([$this->grantPayload(['custId' => '999'])]);
+
+        Artisan::call('grants:sync-ecf');
+
+        $this->assertSame(1, CompanyGrant::where('company_id', $c->id)->count());
+        $this->assertSame('999', CompanyGrant::where('company_id', $c->id)->first()->ml_cust_id);
+    }
+
+    /**
+     * Plano 02 (2026-06-05): match ESTRITO — fallback CNPJ foi removido para
+     * evitar associar grants de alunos de cursos (mesma pessoa física pode
+     * casar com CNPJ de empresa cliente). Grant cujo cust_id não bate vai
+     * pra órfão MESMO se o CNPJ casa com alguma company.
+     */
+    public function test_match_estrito_cnpj_only_nao_associa_a_company(): void
+    {
+        $c = $this->makeCompany([
+            'adman_account_id' => 'COMPANY_CUST',
             'cnpj'             => '12.345.678/0001-90',
         ]);
+        // Grant vem com cust_id diferente mas CNPJ que casa — não deve associar
         $this->fakeGrants([$this->grantPayload([
-            'custId' => 'nao-existe',
+            'custId' => 'GRANT_CUST_DIFERENTE',
             'cnpj'   => '12345678000190',
         ])]);
+
+        Artisan::call('grants:sync-ecf');
+
+        $this->assertSame(0, CompanyGrant::where('company_id', $c->id)->count());
+        $this->assertSame(0, CompanyGrant::count(), 'Grant deve ir para órfão, não criar registro.');
+    }
+
+    /**
+     * Plano 02 (2026-06-05): trim defensivo no cust_id da API
+     * — espaços improváveis mas custo zero de cobrir.
+     */
+    public function test_match_aplica_trim_no_cust_id(): void
+    {
+        $c = $this->makeCompany(['adman_account_id' => '12345']);
+        $this->fakeGrants([$this->grantPayload(['custId' => '  12345  '])]);
 
         Artisan::call('grants:sync-ecf');
 
