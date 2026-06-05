@@ -243,6 +243,7 @@ None.
 | 260602-d8i | Botão "Sincronizar todas as conectadas" no painel ML OAuth — fan-out D-1 das empresas com token ML ativo (mesmo critério do ml:sync) | 2026-06-02 | b2b72b9 | [260602-d8i-btn-sync-todas-ml-oauth](.planning/quick/260602-d8i-btn-sync-todas-ml-oauth/) |
 | 260602-fn3 | Bloco "Diagnóstico Adman" em /dev/desenvolvimento — alertas heurísticos (sem sync / erros / fila & jobs falhos / anomalias de métrica) + ação re-disparar sync | 2026-06-02 | e967136 | [260602-fn3-diagnostico-adman-painel-dev](.planning/quick/260602-fn3-diagnostico-adman-painel-dev/) |
 | 260602-k3e | Restaura despacho assíncrono em syncTodasVendasAdman (regressão de 7b7a2a9) — elimina 504 do nginx no botão "Sync Vendas + Preços" | 2026-06-02 | 04435a2 | [260602-k3e-restaurar-despacho-assincrono-synctodasv](.planning/quick/260602-k3e-restaurar-despacho-assincrono-synctodasv/) |
+| 260605-gb3 | Aviso D-1 da Adman no modal Sync Vendas + Preços (Mlb/Empresas.jsx) — texto adaptado: sync aqui é manual, não automático como o dashboard | 2026-06-05 | 16f0f79 | [260605-gb3-aviso-d1-modal-sync-vendas](.planning/quick/260605-gb3-aviso-d1-modal-sync-vendas/) |
 
 ## Deferred Items
 
