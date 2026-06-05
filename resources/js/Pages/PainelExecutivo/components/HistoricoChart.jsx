@@ -8,7 +8,12 @@ import {
  * Phase 24 — recharts LineChart; GMV (eixo esquerdo, amarelo) + Sellers Ativos (eixo direito, branco).
  *
  * Props:
- *   data — array de { timMonthId, gmv, sellersAtivos, ... } (default [])
+ *   data — array de { periodo, gmv, gmvFechado, sellers, ... } (default [])
+ *
+ * Nota sobre a fonte (API ECF Drive /carteira/historico):
+ *   - Meses fechados (passados): valor está em `gmvFechado`; `gmv` vem 0
+ *   - Mês corrente: valor está em `gmv`; `gmvFechado` é projeção
+ *   Mapping pega o que faz sentido: `gmv > 0 ? gmv : gmvFechado`.
  */
 
 // ─── Helpers locais ──────────────────────────────────────────────────────────
@@ -73,7 +78,7 @@ function CustomTooltip({ active, payload, label }) {
                     <span style={{ color: entry.color }}>■</span>
                     <span className="text-white/60">{entry.name}:</span>
                     <span style={{ color: entry.color }} className="font-semibold">
-                        {entry.name === 'GMV'
+                        {entry.dataKey === 'faturamento'
                             ? fmtTooltipMoney(entry.value)
                             : fmtTooltipCount(entry.value)
                         }
@@ -96,8 +101,15 @@ export default function HistoricoChart({ data = [] }) {
         );
     }
 
-    // Mapeia para adicionar o campo 'mes' legível no eixo X
-    const dataMapeada = data.map((d) => ({ ...d, mes: fmtMesAno(d.timMonthId) }));
+    // Mapeia para adicionar o campo 'mes' legível no eixo X + resolve
+    // faturamento real (gmv tem prioridade quando > 0, senão usa gmvFechado).
+    // Campo `periodo` vem do /carteira/historico; fallback timMonthId por compat.
+    const dataMapeada = data.map((d) => ({
+        ...d,
+        mes: fmtMesAno(d.periodo || d.timMonthId),
+        faturamento: (typeof d.gmv === 'number' && d.gmv > 0) ? d.gmv : (d.gmvFechado || 0),
+        lojistas: d.sellers ?? d.sellersAtivos ?? 0,
+    }));
 
     return (
         <ResponsiveContainer width="100%" height={300}>
@@ -143,24 +155,24 @@ export default function HistoricoChart({ data = [] }) {
                     wrapperStyle={{ fontSize: 12, paddingBottom: 4 }}
                 />
 
-                {/* Linha GMV — eixo esquerdo, amarelo ecf */}
+                {/* Linha Faturamento bruto — eixo esquerdo, amarelo ECF */}
                 <Line
                     yAxisId="left"
                     type="monotone"
-                    dataKey="gmv"
-                    name="GMV"
+                    dataKey="faturamento"
+                    name="Faturamento bruto"
                     stroke="#ffe600"
                     strokeWidth={2}
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 0 }}
                 />
 
-                {/* Linha Sellers Ativos — eixo direito, branco */}
+                {/* Linha Lojistas ativos — eixo direito, branco */}
                 <Line
                     yAxisId="right"
                     type="monotone"
-                    dataKey="sellersAtivos"
-                    name="Sellers Ativos"
+                    dataKey="lojistas"
+                    name="Lojistas ativos"
                     stroke="#ffffff80"
                     strokeWidth={2}
                     dot={false}

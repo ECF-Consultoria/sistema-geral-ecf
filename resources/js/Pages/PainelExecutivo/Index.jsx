@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { LineChart } from 'lucide-react';
+import { LineChart, Info } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import KpiCard from './components/KpiCard';
 import HistoricoChart from './components/HistoricoChart';
@@ -17,15 +17,61 @@ import BreakdownTabs from './components/BreakdownTabs';
  */
 
 // ─── Configuração dos 8 KPI cards ──────────────────────────────────────────
+// Plano 02 (2026-06-05): labels em pt-BR sem jargão GMV + helpText explicando
+// fonte e cálculo de cada indicador (transparência pedida pelo usuário).
+// Todos os valores vêm do endpoint /carteira/resumo do parceiro ECF Drive,
+// que consolida dados oficiais do Mercado Livre da CARTEIRA INTEIRA (~1.238
+// sellers ativos em maio/26), diferente do Dashboard operacional que mostra
+// apenas as ~172 empresas da nossa carteira ativa (via Adman).
 const KPI_CARDS = [
-    { label: 'GMV Total',         key: 'gmv',             isCount: false },
-    { label: 'Vendas',            key: 'vendas',          isCount: true  },
-    { label: 'Sellers Ativos',    key: 'sellersAtivos',   isCount: true  },
-    { label: 'Investimento ADS',  key: 'investimentoAds', isCount: false },
-    { label: 'GMV ADS',           key: 'gmvAds',          isCount: false },
-    { label: 'GMV Full',          key: 'gmvFull',         isCount: false },
-    { label: 'GMV Flex',          key: 'gmvFlex',         isCount: false },
-    { label: 'Visitas',           key: 'visitas',         isCount: true  },
+    {
+        label:    'Faturamento bruto',
+        key:      'gmv',
+        isCount:  false,
+        helpText: 'Soma do faturamento bruto de TODOS os lojistas da carteira ECF no Mercado Livre (~1.238 sellers). Fonte: parceiro ECF Drive (/carteira/resumo). Diferente do Dashboard que mostra apenas a nossa carteira ativa.',
+    },
+    {
+        label:    'Vendas (unidades)',
+        key:      'vendas',
+        isCount:  true,
+        helpText: 'Total de unidades vendidas no mês pelos lojistas da carteira ECF. Fonte: parceiro ECF Drive.',
+    },
+    {
+        label:    'Lojistas ativos',
+        key:      'sellersAtivos',
+        isCount:  true,
+        helpText: 'Quantos lojistas tiveram movimento no mês. Fonte: parceiro ECF Drive — todos os sellers do ML, não só os da nossa operação.',
+    },
+    {
+        label:    'Investimento em Ads',
+        key:      'investimentoAds',
+        isCount:  false,
+        helpText: 'Quanto a carteira INTEIRA do ECF Drive investiu em Mercado Ads (PADS) no mês. Diferente do Dashboard, que mostra apenas o investimento das nossas empresas ativas (via Adman).',
+    },
+    {
+        label:    'Faturamento por Ads',
+        key:      'gmvAds',
+        isCount:  false,
+        helpText: 'Receita gerada especificamente através de anúncios pagos (Mercado Ads / PADS). Fonte: parceiro ECF Drive.',
+    },
+    {
+        label:    'Faturamento Envio Full',
+        key:      'gmvFull',
+        isCount:  false,
+        helpText: 'Receita das vendas com modalidade Mercado Envios Full (estoque no centro do ML). Fonte: parceiro ECF Drive.',
+    },
+    {
+        label:    'Faturamento Envio Flex',
+        key:      'gmvFlex',
+        isCount:  false,
+        helpText: 'Receita das vendas com modalidade Mercado Envios Flex (entrega no mesmo dia pelo seller). Fonte: parceiro ECF Drive.',
+    },
+    {
+        label:    'Visitas',
+        key:      'visitas',
+        isCount:  true,
+        helpText: 'Total de visitas nos anúncios da carteira no mês. Fonte: parceiro ECF Drive.',
+    },
 ];
 
 export default function Index() {
@@ -47,7 +93,25 @@ export default function Index() {
                             Painel Executivo
                         </h1>
                         <p className="text-white/40 text-sm mt-0.5">
-                            Visão estratégica consolidada da carteira ECF — todos os sellers do ML, ~1238 ativos em maio/26
+                            Visão estratégica da carteira inteira do ECF Drive
+                        </p>
+                    </div>
+                </div>
+
+                {/* ─── Banner explicativo: distingue Painel Executivo vs Dashboard ─ */}
+                <div className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-4 flex gap-3">
+                    <Info size={16} className="text-ecf-yellow shrink-0 mt-0.5" />
+                    <div className="text-sm text-white/70 leading-relaxed">
+                        <p>
+                            Os números desta página representam <span className="text-white font-semibold">a carteira inteira do parceiro ECF Drive</span> —
+                            todos os lojistas do Mercado Livre que ele acompanha (~1.238 sellers ativos em maio/26).
+                            Os valores vêm direto do ML via ECF Drive, sem passar pela Adman.
+                        </p>
+                        <p className="mt-1.5">
+                            É diferente do <a href={route('dashboard')} className="text-ecf-yellow hover:underline">Dashboard</a>,
+                            que mostra apenas <span className="text-white font-semibold">as empresas da nossa carteira ativa</span> (~172 empresas via Adman).
+                            Por isso números como "Investimento em Ads" não batem entre as duas telas: universos diferentes, fontes diferentes.
+                            Passe o mouse sobre o <Info size={11} className="inline -mt-0.5 text-white/50" /> de cada indicador para ver a fonte e o cálculo.
                         </p>
                     </div>
                 </div>
@@ -65,13 +129,14 @@ export default function Index() {
                         Indicadores do mês
                     </h2>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                        {KPI_CARDS.map(({ label, key, isCount }) => (
+                        {KPI_CARDS.map(({ label, key, isCount, helpText }) => (
                             <KpiCard
                                 key={key}
                                 label={label}
                                 valor={resumo?.[key]?.atual ?? null}
                                 deltaPct={resumo?.[key]?.deltaPct ?? null}
                                 isCount={isCount}
+                                helpText={helpText}
                             />
                         ))}
                     </div>
@@ -79,8 +144,14 @@ export default function Index() {
 
                 {/* ─── Seção 2: Gráfico histórico 12 meses ────────────────── */}
                 <div className="rounded-lg bg-[#0f1116] border border-white/[0.06] p-5">
-                    <h2 className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-4">
-                        Evolução 12 meses · GMV e Sellers Ativos
+                    <h2 className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-4 flex items-center gap-1.5">
+                        <span>Evolução 12 meses · Faturamento bruto e Lojistas ativos</span>
+                        <span
+                            title="Para meses já fechados o sistema usa o faturamento consolidado (gmvFechado da API). Para o mês corrente, usa o valor parcial em tempo real (gmv da API). Fonte: parceiro ECF Drive (/carteira/historico)."
+                            className="cursor-help text-white/40 hover:text-white/70 transition-colors"
+                        >
+                            <Info size={11} />
+                        </span>
                     </h2>
                     <HistoricoChart data={historico} />
                 </div>

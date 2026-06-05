@@ -1,15 +1,19 @@
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Info } from 'lucide-react';
 
 /**
  * KpiCard — card reutilizável para indicadores do Painel Executivo.
  * Phase 24 — helpers de formatação locais (D-04 do PLAN: sem tocar lib/utils.js).
+ * Plano 02 (2026-06-05): prop `helpText` adiciona ícone Info ao lado do label
+ * com tooltip nativo (title HTML) explicando fonte/cálculo — pedido do usuário
+ * para dar transparência sobre de onde vem cada número.
  *
  * Props:
  *   label     — string  — título do indicador (obrigatório)
  *   valor     — number|null — valor atual do indicador
  *   deltaPct  — number|null — variação MoM em % (positivo = subiu, negativo = caiu)
  *   isCount   — bool (default false) — quando true, formata como contagem (não BRL)
- *   sublabel  — string|null — texto extra abaixo do valor (opcional, não usado na Phase 24)
+ *   sublabel  — string|null — texto extra abaixo do valor (opcional)
+ *   helpText  — string|null — texto explicativo do tooltip (origem dos dados)
  */
 
 // ─── Helpers locais de formatação ─────────────────────────────────────────────
@@ -61,7 +65,7 @@ const fmtPercentSigned = (v) => {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export default function KpiCard({ label, valor, deltaPct, isCount = false, sublabel = null }) {
+export default function KpiCard({ label, valor, deltaPct, isCount = false, sublabel = null, helpText = null }) {
     // Formata o valor conforme o tipo (BRL abreviado ou contagem abreviada)
     const valorFormatado = isCount ? fmtCountShort(valor) : fmtMoneyShort(valor);
 
@@ -74,9 +78,18 @@ export default function KpiCard({ label, valor, deltaPct, isCount = false, subla
     return (
         <div className="rounded-lg bg-ecf-card border border-white/[0.06] p-4 flex flex-col gap-2">
 
-            {/* Label do indicador */}
-            <div className="text-[11px] uppercase tracking-wider text-white/40">
-                {label}
+            {/* Label do indicador + ícone Info ao hover (Plano 02) */}
+            <div className="text-[11px] uppercase tracking-wider text-white/40 flex items-center gap-1.5">
+                <span>{label}</span>
+                {helpText && (
+                    <span
+                        title={helpText}
+                        className="inline-flex items-center cursor-help text-white/30 hover:text-white/60 transition-colors"
+                        aria-label={helpText}
+                    >
+                        <Info size={11} />
+                    </span>
+                )}
             </div>
 
             {/* Valor principal */}
