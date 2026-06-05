@@ -69,6 +69,18 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 20: Integração ECF Drive (substitui sync SFTP por API HTTP)** - Troca a fonte de dados do módulo `/grants`: pipeline `grants:sync-sftp` substituído por wrapper `EcfDriveService` que consome a API do sistema externo ECF Drive (`files.ecfconsultoria.com.br/api/v1`). Mantém model `CompanyGrant`, página `/grants`, permissão `core.grants`. Adiciona migration `segmento`, comando `grants:sync-ecf`, schedule diário. **Plano 02 (mesmo dia)**: match ESTRITO por cust_id (`adman_account_id` ou `ml_store_id`) — removido fallback CNPJ por risco de associar grants de alunos de cursos a empresas com mesmo CNPJ. **Validado em prod**: 475 grants recebidos, 80 matched, 395 órfãos (alunos/contas pessoais ML — comportamento esperado). API foi ajustada pelo usuário pra corrigir inversão `granted_at > expires_at` (13 falsos "Pending" → Active). Webhook real-time fica para fase futura. (completed 2026-06-05, deployed; 20 testes Phase 20 verdes)
 - [x] **Phase 21: Manual do Sistema (artigos para usuários não-técnicos)** - Cria aba "Manual do Sistema" no rodapé da sidebar, acessível a TODOS os usuários autenticados. Artigos hardcoded em JSX, sem CMS no banco. Primeiro artigo: "Cronograma de horários" — tabela ordenada explicando em linguagem simples (sem termos técnicos) o que cada rotina automática do sistema faz e quando roda (sync diário da Adman, análise de Sugadores, sincronização do ECF Drive, etc). Arquitetura extensível para artigos futuros via componentes JSX em `resources/js/Pages/Manual/Artigos/`. (completed 2026-06-05)
 
+### Milestone v8.0 — Integração Estratégica ECF Drive
+
+Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grants) para destravar **decisão estratégica** + **detecção precoce de churn** + **automação executiva**. ECF Drive abstrai o SFTP do ML e expõe REST com endpoints de Sellers (métricas operacionais), Carteira (agregados), Signals (alertas automáticos), Relatórios e Webhooks. Cada phase é independente após Phase 22 (base wrapper) — pode ser executada e deployada isolada.
+
+- [ ] **Phase 22: Wrapper expandido EcfDriveService** - Base técnica obrigatória pra v8.0. Expande `EcfDriveService` da Phase 20 com TODOS os domínios da API ECF Drive (clientes/sellers/carteira/signals/relatorios/files/sync/etl/admin). Adiciona cache estratégico por endpoint (Padrão 1 do guide: pull+cache local 24h; Padrão 2: webhook+cache; Padrão 3: proxy on-demand), retry policy 120/min, métodos helper pra cada categoria. Sem UI, sem command novo — só infra reutilizada pelas phases 23-28.
+- [ ] **Phase 23: Alertas Estratégicos (signals)** - Aba `/alertas-estrategicos` consumindo `/signals` em polling diário (MVP — webhook em Phase 26). Caixa de entrada do comercial com filtros por severidade e tipo (queda GMV, queda visitas, medalha rebaixada, score crítico, oportunidade PADS). Ação "marcar como visto" via `POST /signals/:id/ack`. **778 signals já detectados em prod** (61 críticos), destravando ação comercial imediata. Convive com Sugadores (operacional, adgroup-level) sem substituí-lo.
+- [ ] **Phase 24: Painel Executivo Carteira ECF** - Aba `/painel-executivo` com visão estratégica consolidada da carteira inteira: `/carteira/resumo` (GMV + vendas + sellers ativos + ADS + visitas com MoM), `/carteira/historico` (gráfico 12 meses), `/carteira/breakdown` por dimensão (programa, frete, cluster, localidade). Dashboard de gestão complementar ao Dashboard operacional atual (que mostra apenas empresas da nossa carteira ativa).
+- [ ] **Phase 25: Análise por Empresa (Sellers)** - Página `/empresas/{custId}/analise` com ficha 360° do seller usando `/sellers/{custId}`, métricas mensal/diário, histórico de medalhas, signals daquele seller, ranking. Destrava a substituição parcial do drilldown Adman MCP (frágil — Phase 19 lutou contra 429) para campos que ECF Drive cobre.
+- [ ] **Phase 26: Webhooks completos ECF Drive** - Receiver HMAC SHA256 (`X-ECF-Signature`) para 6 eventos: `sync.completed`, `sync.failed`, `etl.completed`, `grant.expirando`, `signal.detected`, `relatorio.gerado`. Dispatch async via Jobs (notificar comercial, criar tarefa de renovação, gerar PDF mensal). Multiplica ROI das phases 23/24/25 com push real-time.
+- [ ] **Phase 27: Concentração de Receita e Forecast** - Aba `/concentracao` com matriz programa × cluster (`/carteira/segmentacao`) identificando concentração de receita ("20 MeliPro CPP = 28% do GMV — perder 1 derruba R$ 600k/mês"). Forecast 90 dias combinando `/carteira/historico` (regressão linear simples) + `/clientes/grants?expirando_em_dias=90` (renovações esperadas). Identifica "vacas leiteiras silenciosas" (alta receita + baixa variância).
+- [ ] **Phase 28: Relatório Mensal Executivo automatizado** - Job mensal (dia 6 às 10h BRT, após webhook `relatorio.gerado` dia 5 09:00 UTC) consome `/relatorios/mensal/{timMonthId}` e gera PDF executivo via Dompdf, enviado por email à liderança. Onboarding rápido (mostra estado completo da carteira para novos gestores). Depende de Phase 26 para receber o webhook.
+
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
@@ -537,3 +549,73 @@ Plans:
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 21 to break down)
+
+### Phase 22: Wrapper expandido EcfDriveService (todos os endpoints + cache estratégico)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 21
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 22 to break down)
+
+### Phase 23: Alertas Estratégicos (signals — caixa de entrada do comercial)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 22
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 23 to break down)
+
+### Phase 24: Painel Executivo Carteira ECF (resumo + histórico + breakdowns)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 23
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 24 to break down)
+
+### Phase 25: Análise por Empresa (ficha 360° via Sellers)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 24
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 25 to break down)
+
+### Phase 26: Webhooks completos ECF Drive (receiver HMAC, 6 eventos)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 25
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 26 to break down)
+
+### Phase 27: Concentração de Receita e Forecast 90d
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 26
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 27 to break down)
+
+### Phase 28: Relatório Mensal Executivo automatizado (PDF + email)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 27
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 28 to break down)
