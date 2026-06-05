@@ -23,6 +23,7 @@ use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
+use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PpaController;
@@ -263,6 +264,17 @@ Route::middleware(['auth', 'verified', 'role:admin,consultor,mentor'])
      ->group(function () {
          Route::get('/',           [AlertasController::class, 'index'])->name('index');
          Route::post('/{id}/ack',  [AlertasController::class, 'ack'])->name('ack');
+     });
+
+// ─── Painel Executivo Carteira ECF (Phase 24) ─────────────────────────────────
+// Consome /carteira/* da API ECF Drive (Phase 22 wrapper). Dashboard
+// estratégico complementar ao /dashboard operacional. Apenas admin
+// (CONTEXT D-02).
+Route::middleware(['auth', 'verified', 'role:admin'])
+     ->prefix('painel-executivo')
+     ->name('painel-executivo.')
+     ->group(function () {
+         Route::get('/', [PainelExecutivoController::class, 'index'])->name('index');
      });
 
 // ─── Módulo MLB — Controle de Publicações ────────────────────────────────────
