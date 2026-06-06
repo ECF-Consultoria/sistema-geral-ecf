@@ -303,7 +303,10 @@
       "Read(//usr/**)",
       "Read(//usr/local/**)",
       "Bash(\"C:/xampp/php/php.exe\" vendor/bin/phpunit tests/Feature/Phase24/ --stop-on-failure)",
-      "Bash(\"C:/xampp/php/php.exe\" vendor/bin/phpunit tests/Feature/Phase25/ --stop-on-failure)"
+      "Bash(\"C:/xampp/php/php.exe\" vendor/bin/phpunit tests/Feature/Phase25/ --stop-on-failure)",
+      "Bash(grep -nA10 \"carteira\\\\|isAdmin\\\\|abort\" app/Http/Controllers/EmpresaAnaliseEcfController.php)",
+      "Bash(grep -nA3 \"medalhaAtual\\\\|nivelSolucion\\\\|programa\" resources/js/Pages/EmpresaAnaliseEcf/components/EmpresaHeader.jsx)",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'cd /var/www/ecf_admin && php artisan tinker --execute=\"\\\\$s = app\\(App\\\\\\\\Services\\\\\\\\EcfDriveService::class\\); echo json_encode\\(\\\\$s->seller\\(\\\\\"267873368\\\\\"\\)[\\\\\"medalhaAtual\\\\\"], JSON_PRETTY_PRINT\\) . PHP_EOL;\"')"
     ],
     "additionalDirectories": [
       "\\tmp"
