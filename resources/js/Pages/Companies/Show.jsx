@@ -6,10 +6,15 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw, Info, CheckCircle2 } from 'lucide-react';
+import { ArrowLeft, Building2, Star, CalendarCheck, Target, FileText, TrendingUp, AlertTriangle, Briefcase, Plus, Pencil, PowerOff, ShoppingCart, Copy, Check, Unplug, RefreshCw, Info, CheckCircle2, Award } from 'lucide-react';
 import { formatCurrency, formatPercent, formatDate, formatDateTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { useState, useMemo } from 'react';
+import EvolucaoEmpresaChart from '@/Pages/EmpresaAnaliseEcf/components/EvolucaoEmpresaChart';
+import HistoricoMedalhas from '@/Pages/EmpresaAnaliseEcf/components/HistoricoMedalhas';
+import AlertasDoSeller from '@/Pages/EmpresaAnaliseEcf/components/AlertasDoSeller';
+import KpiCard from '@/Pages/PainelExecutivo/components/KpiCard';
+import { PROGRAMA_LABELS, CLUSTER_LABELS } from '@/lib/ecfDriveLabels';
 
 const statusColor = { pending: 'secondary', completed: 'success', cancelled: 'destructive', scheduled: 'outline' };
 const statusLabel = { pending: 'Pendente', completed: 'Realizada', cancelled: 'Cancelada', scheduled: 'Agendada' };
@@ -341,7 +346,16 @@ function MlConnectionCard({ company }) {
     );
 }
 
-export default function CompanyShow({ company, servicos_disponiveis = [] }) {
+// ─── Phase 25 Plano 04: helpers locais para o bloco ECF Drive ────────────────
+// Valores da API ECF Drive vêm como STRING (ex: "2733708.08") — parseFloat
+// defensivo. Retorna null quando inválido para KpiCard mostrar "—".
+const ecfNumOuNull = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(v);
+    return isNaN(n) ? null : n;
+};
+
+export default function CompanyShow({ company, servicos_disponiveis = [], ecf_drive = null }) {
     const consultor = company.consultor?.[0];
     const estrategista = company.estrategista?.[0];
     const latestMetric = company.adman_metrics?.[0];
@@ -538,6 +552,116 @@ export default function CompanyShow({ company, servicos_disponiveis = [] }) {
                         </div>
                     ))}
                 </div>
+
+                {/* ─── Phase 25 Plano 04 — Análise ECF Drive (2026-06-05) ───────
+                    Bloco com dados oficiais do parceiro ECF Drive (vem direto do
+                    Mercado Livre). Os KPIs de Faturamento e Invest. Ads acima já
+                    foram SUBSTITUÍDOS pelo backend quando ECF Drive tem cobertura
+                    — esta seção adiciona o que a Adman não tem: vendas, visitas,
+                    scores, medalha, gráfico 12 meses, histórico de medalhas e
+                    alertas estratégicos específicos do seller. */}
+                {ecf_drive?.seller && (() => {
+                    const seller = ecf_drive.seller;
+                    const metricaAtual = seller.metricaMensalAtual ?? null;
+                    const medalha = seller.medalhaAtual ?? null;
+                    const nivelMedalha = medalha?.nivelSolucion ?? metricaAtual?.nivelSolucion ?? null;
+                    const programaKey = medalha?.programa ?? metricaAtual?.programa ?? seller.programa ?? null;
+                    const programaLabel = programaKey ? (PROGRAMA_LABELS[programaKey] || programaKey) : null;
+                    const clusterRaw = seller.cluster ?? metricaAtual?.cluster ?? null;
+                    const clusterLabel = clusterRaw ? (CLUSTER_LABELS[clusterRaw] || clusterRaw) : null;
+                    const segmento = seller.segmento ?? null;
+
+                    return (
+                        <Section icon={TrendingUp} title="Análise ECF Drive (dados oficiais do Mercado Livre)">
+                            {/* Sub-header: badge de medalha + programa + cluster + segmento */}
+                            <div className="flex flex-wrap items-center gap-2 mb-4">
+                                {nivelMedalha && (
+                                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border bg-cyan-500/15 text-cyan-300 border-cyan-500/30">
+                                        <Award size={12} />
+                                        Medalha: {nivelMedalha}
+                                    </span>
+                                )}
+                                {programaLabel && (
+                                    <span className="text-xs text-white/60">
+                                        Programa: <span className="text-white/90">{programaLabel}</span>
+                                    </span>
+                                )}
+                                {clusterLabel && (
+                                    <span className="text-xs text-white/60">
+                                        Perfil: <span className="text-white/90">{clusterLabel}</span>
+                                    </span>
+                                )}
+                                {segmento && (
+                                    <span className="text-xs text-white/60">
+                                        Segmento: <span className="text-white/90">{segmento}</span>
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* KPI cards exclusivos do ECF Drive — Adman não tem esses */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                                <KpiCard
+                                    label="Vendas (unidades)"
+                                    valor={ecfNumOuNull(metricaAtual?.tsi)}
+                                    deltaPct={null}
+                                    isCount
+                                    helpText="Total de itens vendidos no mês corrente. Fonte: parceiro ECF Drive (dados oficiais ML)."
+                                />
+                                <KpiCard
+                                    label="Visitas"
+                                    valor={ecfNumOuNull(metricaAtual?.visitas)}
+                                    deltaPct={null}
+                                    isCount
+                                    helpText="Total de visitas nos anúncios do lojista no mês. Fonte: parceiro ECF Drive."
+                                />
+                                <KpiCard
+                                    label="Score de qualidade"
+                                    valor={ecfNumOuNull(metricaAtual?.scoreFinalFull)}
+                                    deltaPct={null}
+                                    isCount
+                                    helpText="Score geral de qualidade do lojista, de 0 a 100. Quanto maior melhor a saúde da loja. Fonte: parceiro ECF Drive."
+                                />
+                                <KpiCard
+                                    label="Score Ads"
+                                    valor={ecfNumOuNull(metricaAtual?.scoreFinalPads)}
+                                    deltaPct={null}
+                                    isCount
+                                    helpText="Score de qualidade das campanhas de anúncios, de 0 a 100. Fonte: parceiro ECF Drive."
+                                />
+                            </div>
+
+                            {/* Gráfico evolução 12 meses */}
+                            {(ecf_drive.metricas?.length ?? 0) > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">
+                                        Evolução dos últimos 12 meses
+                                    </h4>
+                                    <EvolucaoEmpresaChart data={ecf_drive.metricas} />
+                                </div>
+                            )}
+
+                            {/* Histórico de medalhas */}
+                            {(ecf_drive.medalhas?.length ?? 0) > 0 && (
+                                <div className="mb-4">
+                                    <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">
+                                        Histórico de medalhas
+                                    </h4>
+                                    <HistoricoMedalhas medalhas={ecf_drive.medalhas} />
+                                </div>
+                            )}
+
+                            {/* Alertas estratégicos do seller */}
+                            {(ecf_drive.signals?.length ?? 0) > 0 && (
+                                <div>
+                                    <h4 className="text-xs font-semibold text-white/60 uppercase tracking-wide mb-2">
+                                        Alertas estratégicos
+                                    </h4>
+                                    <AlertasDoSeller signals={ecf_drive.signals} />
+                                </div>
+                            )}
+                        </Section>
+                    );
+                })()}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     {/* Dados cadastrais */}
