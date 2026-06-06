@@ -29,13 +29,27 @@ const MEDALHA_BADGE = {
 };
 
 export default function EmpresaHeader({ empresa, seller }) {
-    // Traduz programa via dicionário compartilhado (Phase 25 D-07)
-    const programaLabel = PROGRAMA_LABELS[seller?.programa] || seller?.programa || '—';
+    // Plano 02 Phase 25 (2026-06-05):
+    // A API ECF Drive retorna 2 shapes possíveis para medalha:
+    //   1. `seller.medalhaAtual` populado: nivelSolucion + programa + timMonthId (CAMILLO PARTS)
+    //   2. `seller.medalhaAtual = null` mas dados estão em `metricaMensalAtual` (RELOJOARIA WENUS)
+    // O nome correto do campo é `nivelSolucion` (não `nivel` como o código antigo lia).
+    // Fazemos fallback explícito pra cobrir os 2 shapes.
+    const medalha = seller?.medalhaAtual ?? null;
+    const metrica = seller?.metricaMensalAtual ?? null;
 
-    // Configuração da badge de medalha atual (null quando seller sem medalha)
-    const medalhaConfig = seller?.medalhaAtual?.nivel
-        ? (MEDALHA_BADGE[seller.medalhaAtual.nivel] ?? null)
-        : null;
+    // Nivel: prioriza medalhaAtual; fallback metricaMensalAtual.nivelSolucion
+    const nivel = medalha?.nivelSolucion ?? metrica?.nivelSolucion ?? null;
+
+    // Programa: prioriza medalhaAtual; fallback metricaMensalAtual; fallback seller.programa
+    const programaKey   = medalha?.programa ?? metrica?.programa ?? seller?.programa ?? null;
+    const programaLabel = programaKey ? (PROGRAMA_LABELS[programaKey] || programaKey) : '—';
+
+    // Período da medalha (timMonthId): preferir medalhaAtual; fallback metricaMensalAtual
+    const periodoMedalha = medalha?.timMonthId ?? metrica?.timMonthId ?? null;
+
+    // Configuração visual da badge (null quando não conseguimos identificar nivel)
+    const medalhaConfig = nivel ? (MEDALHA_BADGE[nivel] ?? null) : null;
 
     return (
         <div className="rounded-lg bg-ecf-card border border-white/[0.06] p-5 space-y-3">
@@ -89,9 +103,9 @@ export default function EmpresaHeader({ empresa, seller }) {
                         )}>
                             <Award size={12} />
                             Medalha atual: {medalhaConfig.label}
-                            {seller.medalhaAtual?.timMonthId && (
+                            {periodoMedalha && (
                                 <span className="opacity-70">
-                                    {' '}· {seller.medalhaAtual.timMonthId}
+                                    {' '}· {periodoMedalha}
                                 </span>
                             )}
                         </span>
