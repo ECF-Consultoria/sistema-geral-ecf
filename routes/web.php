@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
 use App\Http\Controllers\ComercialController;
+use App\Http\Controllers\ConcentracaoController;
 use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
 use App\Http\Controllers\Admin\SetorController;
@@ -287,6 +288,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])
      ->name('painel-executivo.')
      ->group(function () {
          Route::get('/', [PainelExecutivoController::class, 'index'])->name('index');
+     });
+
+// ─── Concentração de Receita e Forecast 90d (Phase 27) ──────────────────────
+// Análise estratégica complementar ao Painel Executivo (Phase 24).
+// Matriz programa × cluster + forecast 90d + vacas leiteiras silenciosas.
+// Apenas admin — visão estratégica restrita (CONTEXT D-01).
+Route::middleware(['auth', 'verified', 'role:admin'])
+     ->group(function () {
+         Route::get('/concentracao', [ConcentracaoController::class, 'show'])->name('concentracao.index');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
