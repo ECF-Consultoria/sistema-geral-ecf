@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
+use App\Http\Controllers\EcfWebhookController;
 use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
@@ -43,6 +44,16 @@ Route::get('/', fn() => redirect()->route('dashboard'));
 Route::post('/internal/grants/sync/run', [GrantController::class, 'syncRun'])
     ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
     ->name('grants.sync.run');
+
+// ─── Receiver de webhooks ECF Drive (Phase 26) ───────────────────────────────
+// URL configurada no painel ECF Drive: https://admin.ecfconsultoria.com.br/api/webhooks/ecf
+// Sem autenticação de sessão — autenticação via HMAC SHA256 (X-ECF-Signature).
+// Dupla proteção CSRF: bootstrap/app.php (except 'api/webhooks/*') + withoutMiddleware (D-A do PLAN).
+// Rate limit: throttle:ecf-webhook (600 req/min por IP, registrado em AppServiceProvider).
+Route::post('/api/webhooks/ecf', [EcfWebhookController::class, 'handle'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
+    ->middleware('throttle:ecf-webhook')
+    ->name('ecf-webhook.receive');
 
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');

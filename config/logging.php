@@ -127,6 +127,19 @@ return [
             'path' => storage_path('logs/laravel.log'),
         ],
 
+        // ─── Phase 26 — Webhooks ECF Drive ───────────────────────────────────
+        // Canal dedicado para auditoria de webhooks recebidos do ECF Drive.
+        // Rotação diária, retenção de 14 dias (D-G do PLAN).
+        // Conteúdo: event_type, event_id, signature_valid, processing_ms, ip.
+        // NUNCA inclui o secret HMAC nem o rawBody completo (D-10 do PLAN).
+        'ecf-webhooks' => [
+            'driver' => 'daily',
+            'path'   => storage_path('logs/ecf-webhooks.log'),
+            'level'  => 'debug',
+            'days'   => 14,
+            'replace_placeholders' => true,
+        ],
+
     ],
 
 ];
