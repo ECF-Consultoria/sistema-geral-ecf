@@ -134,7 +134,8 @@ class ConcentracaoController extends Controller
 
                 $sellersCalculados[$custId] = [
                     'cust_id'       => $custId,                                              // mantém snake_case no shape interno (output Inertia)
-                    'razao_social'  => $sellerRank['razaoSocial']    ?? null,                // API: razaoSocial (camelCase)
+                    'razao_social'  => $sellerRank['razaoSocial']    ?? null,                // API agora retorna razão social real (parceiro corrigiu 2026-06-06)
+                    'cnpj'          => $sellerRank['cnpj']             ?? null,                // fallback final pro JSX
                     'cluster'       => $sellerRank['cluster']         ?? null,
                     'programa'      => $sellerRank['programa']        ?? null,
                     'tgmv_lc_total' => (float) ($sellerRank['valor']  ?? $sellerRank['gmv'] ?? 0), // ranking usa 'valor'/'gmv'
@@ -191,13 +192,11 @@ class ConcentracaoController extends Controller
             // API ECF Drive grants retorna CAMELCASE: custId, razaoSocial, grantFim,
             // diasParaExpirar. Mantemos snake_case no shape interno (output Inertia)
             // mas LEMOS camelCase da API.
-            // API ECF Drive grants retorna CAMELCASE: custId, razaoSocial, grantFim,
-            // diasParaExpirar. Mantemos snake_case no shape interno (output Inertia)
-            // mas LEMOS camelCase da API.
-            // Plano 03 (2026-06-06): IGNORAR razaoSocial da API (vem sempre como
-            // "ECF CONSULTORIA & ASSESSORIA" — campo do parceiro, não do lojista).
-            // Adicionar company_name + company_id via lookup local pra JSX render
-            // mostrar o nome correto. Fallback: CNPJ formatado ou cust_id.
+            // Plano 04 (2026-06-06): parceiro ECF Drive corrigiu o bug de
+            // razaoSocial que retornava sempre "ECF CONSULTORIA & ASSESSORIA"
+            // (campo NOMBRE_SOLUCION do parceiro, não do lojista). Agora vem
+            // razão social real via BrasilAPI quando o CNPJ resolve.
+            // Fallback chain no JSX: company_name (local) → razao_social (API) → CNPJ.
             foreach ($grants as $g) {
                 $custId = $g['custId'] ?? null;
                 $mediaM = ($custId && isset($sellersCalculados[$custId]))
@@ -214,6 +213,7 @@ class ConcentracaoController extends Controller
                     'cust_id'           => $custId,
                     'company_id'        => $match['id']                  ?? null,
                     'company_name'      => $match['name']                ?? null,
+                    'razao_social'      => $g['razaoSocial']             ?? null, // ← API agora confiável
                     'cnpj'              => $g['cnpj']                    ?? null,
                     'grant_fim'         => $g['grantFim']                ?? null,
                     'dias_para_expirar' => (int) ($g['diasParaExpirar']  ?? 0),

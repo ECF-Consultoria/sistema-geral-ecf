@@ -77,25 +77,31 @@ export default function VacasLeiteirasTabela({ vacas }) {
                             {/* Rank */}
                             <td className="py-2 px-3 text-ecf-yellow font-bold">{i + 1}</td>
 
-                            {/* Nome empresa — link quando company_id existe.
-                                2026-06-06: NÃO usar v.razao_social — a API
-                                ECF Drive retorna o nome do parceiro
-                                "ECF CONSULTORIA & ASSESSORIA" para todos,
-                                inutilizável. Sem match local → "Lojista externo". */}
+                            {/* Nome empresa — fallback chain (2026-06-06 Plano 04):
+                                1) company_id local → link pra ficha 360°
+                                2) razao_social da API (agora confiável após parceiro corrigir)
+                                3) CNPJ formatado como fallback final */}
                             <td className="py-2 px-3 text-white/80">
                                 {v.company_id ? (
                                     <Link
                                         href={route('empresas.analise-ecf', v.company_id)}
                                         className="hover:text-ecf-yellow hover:underline"
                                     >
-                                        {v.company_name || `cust_id ${v.cust_id}`}
+                                        {v.company_name}
                                     </Link>
+                                ) : v.razao_social ? (
+                                    <span
+                                        className="text-white/70"
+                                        title={`Lojista externo · CNPJ ${v.cnpj || '-'} · cust_id: ${v.cust_id}`}
+                                    >
+                                        {v.razao_social}
+                                    </span>
                                 ) : (
                                     <span
                                         className="text-white/50 italic"
-                                        title={`Lojista fora da nossa carteira · cust_id: ${v.cust_id}`}
+                                        title={`Lojista externo · cust_id: ${v.cust_id}`}
                                     >
-                                        Lojista externo
+                                        {v.cnpj ? `CNPJ ${v.cnpj}` : `cust_id ${v.cust_id}`}
                                     </span>
                                 )}
                             </td>

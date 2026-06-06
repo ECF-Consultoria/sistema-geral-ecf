@@ -258,10 +258,10 @@ export default function ForecastChart({ forecast }) {
                             >
                                 <div className="flex items-center gap-3 min-w-0">
                                     <span className="text-white/40 text-xs font-mono">#{i + 1}</span>
-                                    {/* 2026-06-06: prioriza company_name local
-                                        (lookup do nosso DB). A API retorna sempre
-                                        razaoSocial="ECF CONSULTORIA & ASSESSORIA"
-                                        — campo do parceiro, inutilizável. */}
+                                    {/* 2026-06-06 Plano 04: fallback chain
+                                        1) company_id local → link pra ficha 360°
+                                        2) razao_social da API (agora confiável após parceiro corrigir BrasilAPI)
+                                        3) CNPJ formatado como fallback final */}
                                     {g.company_id ? (
                                         <a
                                             href={`/empresas/${g.company_id}/analise-ecf`}
@@ -269,8 +269,12 @@ export default function ForecastChart({ forecast }) {
                                         >
                                             {g.company_name}
                                         </a>
+                                    ) : g.razao_social ? (
+                                        <span className="text-white/70 text-sm truncate" title={`Lojista externo · CNPJ ${g.cnpj || '-'} · cust_id ${g.cust_id}`}>
+                                            {g.razao_social}
+                                        </span>
                                     ) : (
-                                        <span className="text-white/60 text-sm truncate" title="Não cadastrado na nossa carteira">
+                                        <span className="text-white/50 italic text-sm truncate" title={`cust_id ${g.cust_id}`}>
                                             CNPJ {g.cnpj || `cust_id ${g.cust_id}`}
                                         </span>
                                     )}
