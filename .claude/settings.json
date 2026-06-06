@@ -296,7 +296,17 @@
       "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('C:/xampp/htdocs/ecf_admin/ecf_admin/resources/js/Pages/PainelExecutivo/components/KpiCard.jsx','utf8'\\); if\\(!c.includes\\('TrendingUp'\\)||!c.includes\\('TrendingDown'\\)||!c.includes\\('Minus'\\)||!c.includes\\('fmtMoneyShort'\\)||!c.includes\\('signDisplay'\\)\\) throw new Error\\('KpiCard.jsx incompleto'\\); console.log\\('OK - KpiCard.jsx validado'\\);\")",
       "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('C:/xampp/htdocs/ecf_admin/ecf_admin/resources/js/Pages/PainelExecutivo/components/HistoricoChart.jsx','utf8'\\); if\\(!c.includes\\('yAxisId=\\\\\"left\\\\\"'\\)||!c.includes\\('yAxisId=\\\\\"right\\\\\"'\\)||!c.includes\\('fmtMesAno'\\)||!c.includes\\('recharts'\\)\\) throw new Error\\('HistoricoChart.jsx incompleto'\\); console.log\\('OK - HistoricoChart.jsx validado'\\);\")",
       "Bash(node -e \"const fs=require\\('fs'\\); const c=fs.readFileSync\\('C:/xampp/htdocs/ecf_admin/ecf_admin/resources/js/Pages/PainelExecutivo/components/BreakdownTabs.jsx','utf8'\\); if\\(!c.includes\\('useState'\\)||!c.includes\\('PieChart'\\)||!c.includes\\('programa'\\)||!c.includes\\('localidade'\\)||\\(!c.includes\\('slice\\(0, 20\\)'\\)&&!c.includes\\('slice\\(0,20\\)'\\)\\)\\) throw new Error\\('BreakdownTabs.jsx incompleto'\\); const l=fs.readFileSync\\('C:/xampp/htdocs/ecf_admin/ecf_admin/resources/js/Layouts/AppLayout.jsx','utf8'\\); if\\(!l.includes\\('painel-executivo.index'\\)||!l.includes\\('LineChart'\\)||!l.includes\\('PainelExecutivo'\\)\\) throw new Error\\('AppLayout.jsx sem item Painel Executivo'\\); console.log\\('OK - BreakdownTabs.jsx e AppLayout.jsx validados'\\);\")",
-      "Bash(New-Item -ItemType Directory -Path \"C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\tests\\\\Feature\\\\Phase24\" -Force)"
+      "Bash(New-Item -ItemType Directory -Path \"C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\tests\\\\Feature\\\\Phase24\" -Force)",
+      "Bash(awk 'END{print NR}' \"c:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\.planning\\\\phases\\\\25-analise-por-empresa-sellers-pagina-detail-360-graus-com-sell\\\\25-01-PLAN.md\")",
+      "Bash(cat > *)",
+      "Bash(php vendor/bin/phpunit tests/Feature/Phase24/ --stop-on-failure)",
+      "Read(//usr/**)",
+      "Read(//usr/local/**)",
+      "Bash(\"C:/xampp/php/php.exe\" vendor/bin/phpunit tests/Feature/Phase24/ --stop-on-failure)",
+      "Bash(\"C:/xampp/php/php.exe\" vendor/bin/phpunit tests/Feature/Phase25/ --stop-on-failure)"
+    ],
+    "additionalDirectories": [
+      "\\tmp"
     ]
   }
 }
