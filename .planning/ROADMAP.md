@@ -79,7 +79,7 @@ Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grant
 - [x] **Phase 25: Análise por Empresa (Sellers)** - Página `/empresas/{custId}/analise` com ficha 360° do seller usando `/sellers/{custId}`, métricas mensal/diário, histórico de medalhas, signals daquele seller, ranking. Destrava a substituição parcial do drilldown Adman MCP (frágil — Phase 19 lutou contra 429) para campos que ECF Drive cobre. (completed 2026-06-06)
 - [ ] **Phase 26: Webhooks completos ECF Drive** - Receiver HMAC SHA256 (`X-ECF-Signature`) para 6 eventos: `sync.completed`, `sync.failed`, `etl.completed`, `grant.expirando`, `signal.detected`, `relatorio.gerado`. Dispatch async via Jobs (notificar comercial, criar tarefa de renovação, gerar PDF mensal). Multiplica ROI das phases 23/24/25 com push real-time.
 - [ ] **Phase 27: Concentração de Receita e Forecast** - Aba `/concentracao` com matriz programa × cluster (`/carteira/segmentacao`) identificando concentração de receita ("20 MeliPro CPP = 28% do GMV — perder 1 derruba R$ 600k/mês"). Forecast 90 dias combinando `/carteira/historico` (regressão linear simples) + `/clientes/grants?expirando_em_dias=90` (renovações esperadas). Identifica "vacas leiteiras silenciosas" (alta receita + baixa variância).
-- [ ] **Phase 28: Relatório Mensal Executivo automatizado** - Job mensal (dia 6 às 10h BRT, após webhook `relatorio.gerado` dia 5 09:00 UTC) consome `/relatorios/mensal/{timMonthId}` e gera PDF executivo via Dompdf, enviado por email à liderança. Onboarding rápido (mostra estado completo da carteira para novos gestores). Depende de Phase 26 para receber o webhook.
+- [x] **Phase 28: Relatório Mensal Executivo automatizado** - Job mensal (dia 6 às 10h BRT, após webhook `relatorio.gerado` dia 5 09:00 UTC) consome `/relatorios/mensal/{timMonthId}` e gera PDF executivo via Dompdf, enviado por email à liderança. Onboarding rápido (mostra estado completo da carteira para novos gestores). Depende de Phase 26 para receber o webhook. (completed 2026-06-06)
 
 ## Phase Details
 
@@ -616,7 +616,7 @@ Plans:
 **Goal:** [To be planned]
 **Requirements**: TBD
 **Depends on:** Phase 27
-**Plans:** 0 plans
+**Plans:** 1/1 plans complete
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 28 to break down)
