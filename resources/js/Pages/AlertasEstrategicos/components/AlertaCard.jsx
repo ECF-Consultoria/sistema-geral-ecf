@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import { CheckCircle2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -106,9 +106,15 @@ export default function AlertaCard({ signal, company, typeLabels, severityLabels
                     <span className="text-sm font-semibold text-white">{tipoLabel}</span>
                     <span className="text-white/20 text-xs">·</span>
                     {company ? (
-                        <span className="text-sm font-medium text-ecf-yellow truncate">
+                        /* Phase 25: link direto para ficha 360° da empresa (D-07 do CONTEXT).
+                           preserveScroll mantém posição da lista de alertas ao voltar. */
+                        <Link
+                            href={route('empresas.analise-ecf', company.id)}
+                            preserveScroll
+                            className="text-sm font-medium text-ecf-yellow truncate hover:underline"
+                        >
                             {company.name}
-                        </span>
+                        </Link>
                     ) : (
                         <span className="text-sm text-white/40 italic">
                             Cliente externo: {signal.custId}
