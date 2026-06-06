@@ -6,7 +6,7 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send, Link2
+    Code2, Crown, Shield, Send, Link2, TrendingUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -22,6 +22,9 @@ const NAV_ITEMS = [
     // Phase 24 — Painel Executivo Carteira ECF (visão estratégica da carteira inteira ML).
     // Complementar ao /dashboard (operacional, só carteira ativa). Apenas admin (CONTEXT D-02).
     { label: 'Painel Executivo', routeName: 'painel-executivo.index', page: 'PainelExecutivo', icon: LineChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+    // Phase 27 — Concentração e Forecast 90d (análise estratégica 2D + temporal).
+    // Complementar ao Painel Executivo. Apenas admin (CONTEXT D-01).
+    { label: 'Concentração e Previsão', routeName: 'concentracao.index', page: 'Concentracao', icon: TrendingUp, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
     { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio',   icon: Briefcase,       permission: 'core.carteira' },
     { label: 'Empresas',   routeName: 'companies.index',   page: 'Companies',   icon: Building2,       permission: 'core.empresas' },
     { label: 'Serviços',   routeName: 'servicos.index',    page: 'Servicos',    icon: Briefcase,       permission: 'sistema.servicos' },
