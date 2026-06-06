@@ -4,6 +4,7 @@ import {
 } from 'recharts';
 import { Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CLUSTER_LABELS, FRETE_LABELS, PROGRAMA_LABELS, traduzirItem } from '@/lib/ecfDriveLabels';
 
 /**
  * BreakdownTabs — 4 tabs de decomposição da carteira ECF.
@@ -63,43 +64,6 @@ const TABS = [
 
 // Paleta compatível com tema dark — 8 cores distintas
 const CORES = ['#ffe600', '#60a5fa', '#34d399', '#f472b6', '#fb923c', '#a78bfa', '#facc15', '#22d3ee'];
-
-// ─── Tradução dos termos do classificador interno do ML ──────────────────────
-// Mantém termo original entre parênteses pra quem usa a nomenclatura oficial.
-const CLUSTER_LABELS = {
-    'Core':            'Núcleo maduro (Core)',
-    'MeliPro':         'Premium (MeliPro)',
-    'Emerging':        'Em desenvolvimento (Emerging)',
-    'Newbie':          'Iniciante (Newbie)',
-    'CrownJewels':     'Joia da coroa (CrownJewels)',
-    'NKOB':            'Conta nova em profissionalização (NKOB)',
-    'Seasonal':        'Sazonal (Seasonal)',
-    'Stall':           'Estagnado (Stall)',
-    'Churn':           'Saindo da plataforma (Churn)',
-    'Starter/Newbie':  'Começando (Starter/Newbie)',
-    'HobbySeller':     'Hobbysta (HobbySeller)',
-    'SEM_CLUSTER':     'Não classificado',
-};
-
-const FRETE_LABELS = {
-    'ME2':  'Mercado Envios padrão (ME2)',
-    'FULL': 'Mercado Envios Full',
-    'FLEX': 'Mercado Envios Flex',
-};
-
-const PROGRAMA_LABELS = {
-    'CPP':   'CPP — Comercial Pessoa Privada',
-    'POLOS': 'POLOS — Polos Regionais',
-};
-
-/** Aplica o dicionário pt-BR correto conforme a tab ativa. */
-const traduzirItem = (tabKey, valor) => {
-    if (!valor) return '—';
-    if (tabKey === 'cluster')  return CLUSTER_LABELS[valor]  || valor;
-    if (tabKey === 'frete')    return FRETE_LABELS[valor]    || valor;
-    if (tabKey === 'programa') return PROGRAMA_LABELS[valor] || valor;
-    return valor;
-};
 
 // ─── Helpers de formatação ────────────────────────────────────────────────────
 
