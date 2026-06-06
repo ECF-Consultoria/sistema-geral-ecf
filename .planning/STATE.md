@@ -4,14 +4,14 @@ milestone: v8.0
 milestone_name: Integração Estratégica ECF Drive
 status: verifying
 stopped_at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
-last_updated: "2026-06-05T00:00:00.000Z"
-last_activity: 2026-06-05
+last_updated: "2026-06-06T00:30:38.029Z"
+last_activity: 2026-06-06
 progress:
   total_phases: 27
-  completed_phases: 12
-  total_plans: 28
-  completed_plans: 28
-  percent: 44
+  completed_phases: 14
+  total_plans: 30
+  completed_plans: 30
+  percent: 52
 ---
 
 # Project State
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 Phase: 24 (painel-executivo-carteira-ecf) — W1+W2+W3 complete, W4 checkpoint humano
 Plan: 1 of 1
-Status: Aguardando smoke visual em prod (W4 — checkpoint humano blocking)
-Last activity: 2026-06-05
+Status: Phase complete — ready for verification
+Last activity: 2026-06-06
 
 ## Performance Metrics
 
@@ -278,7 +278,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-05
+Last session: 2026-06-06T00:30:38.013Z
 Stopped at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
 
 **Estado para próxima sessão retomar:**
