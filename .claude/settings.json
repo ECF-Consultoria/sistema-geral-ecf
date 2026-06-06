@@ -347,7 +347,8 @@
       "Bash(powershell.exe -Command \"cd C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin; C:\\\\xampp\\\\php\\\\php.exe artisan test --filter=Phase27 --testdox 2>&1\" -timeout 120000)",
       "Bash(powershell.exe -Command \"cd C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin; C:\\\\xampp\\\\php\\\\php.exe artisan test --filter=Phase27 2>&1\")",
       "Bash(powershell.exe -Command \"cd C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin; git log --oneline -10 2>&1\")",
-      "Bash(powershell.exe -Command 'cd C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin; git add .planning/phases/27-concentracao-de-receita-e-forecast-carteira-segmentacao-matr/27-01-SUMMARY.md; git commit -m '\\\\''docs\\(27-01\\): SUMMARY parcial W1-W3 + aguardando checkpoint W4 *)"
+      "Bash(powershell.exe -Command 'cd C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin; git add .planning/phases/27-concentracao-de-receita-e-forecast-carteira-segmentacao-matr/27-01-SUMMARY.md; git commit -m '\\\\''docs\\(27-01\\): SUMMARY parcial W1-W3 + aguardando checkpoint W4 *)",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'cd /var/www/ecf_admin && php artisan cache:clear > /dev/null && php artisan tinker --execute=\" *)"
     ],
     "additionalDirectories": [
       "\\tmp"
