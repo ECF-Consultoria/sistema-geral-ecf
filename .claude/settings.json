@@ -309,7 +309,8 @@
       "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'cd /var/www/ecf_admin && php artisan tinker --execute=\"\\\\$s = app\\(App\\\\\\\\Services\\\\\\\\EcfDriveService::class\\); echo json_encode\\(\\\\$s->seller\\(\\\\\"267873368\\\\\"\\)[\\\\\"medalhaAtual\\\\\"], JSON_PRETTY_PRINT\\) . PHP_EOL;\"')",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && tail -100 storage/logs/laravel.log | grep -iE \"Companies/Show|EcfDrive|ECF|seller|429|timeout|RuntimeException\" | tail -25')",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && grep -E \"production\\\\.\\(ERROR|WARNING\\)\" storage/logs/laravel.log | tail -20')",
-      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && grep -E \"Companies/Show\" storage/logs/laravel.log | tail -15')"
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && grep -E \"Companies/Show\" storage/logs/laravel.log | tail -15')",
+      "Bash(grep -nA5 \"ecf-webhook\" app/Providers/AppServiceProvider.php)"
     ],
     "additionalDirectories": [
       "\\tmp"
