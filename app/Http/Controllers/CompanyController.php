@@ -210,29 +210,42 @@ class CompanyController extends Controller
         }
 
         // ─── Phase 25 Plano 04 (2026-06-05) — Integração ECF Drive ────────────
-        // Substitui dados concorrentes da Adman quando o ECF Drive tem cobertura
-        // (faturamento + investimento em Ads) e adiciona dados exclusivos do ECF
-        // Drive (vendas/visitas/scores/medalha/histórico 12m/alertas) numa nova
-        // seção "Análise ECF Drive" no Show.jsx. Try/catch silencioso — falha
-        // de ECF NUNCA quebra a página de empresa (que tem outras 10 seções).
+        // Bloco PURAMENTE ADITIVO no Show.jsx (widget novo "Análise ECF Drive")
+        // com dados que a Adman não cobre: vendas, visitas, scores, medalha,
+        // histórico 12 meses, alertas estratégicos.
+        //
+        // Plano 05 do mesmo dia (revisão): a substituição de revenue_30d e
+        // ad_investment_30d foi REVERTIDA porque `metricaMensalAtual.tgmvLc` é
+        // o GMV do MÊS CORRENTE PARCIAL (hoje dia 5 → só 5 dias de dados),
+        // enquanto `revenue_30d` da Adman é janela móvel de 30 dias. Semânticas
+        // diferentes; substituir confundia o usuário com valores 100× menores
+        // dando impressão de "zerado". Adman intacta nos KPIs financeiros.
+        //
+        // Try/catch silencioso — falha de ECF NUNCA quebra a página.
         $ecfDrive = null;
         if ($custId) {
             try {
                 $sellerData = $this->ecf->seller((string) $custId);
 
-                // Métricas 12 meses + medalhas + signals — try individual,
-                // não derruba o snapshot se 1 endpoint específico falhar.
+                // Endpoints sellerMetricasMensal/sellerMedalhas/sellerSignals
+                // retornam SHAPE PAGINADO `{data, total, page, limit}` — extrair
+                // .data antes do slice. Mesmo padrão do EmpresaAnaliseEcfController
+                // (linha 102). Bug do Plano 04: slice ia no top-level.
                 $metricas = [];
                 $medalhas = [];
                 $signals  = [];
-                try { $metricas = $this->ecf->sellerMetricasMensal((string) $custId); } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF metricasMensal falhou cust={$custId}: " . $e->getMessage()); }
-                try { $medalhas = $this->ecf->sellerMedalhas((string) $custId); }       catch (\Throwable $e) { Log::warning("[Companies/Show] ECF medalhas falhou cust={$custId}: " . $e->getMessage()); }
-                try { $signals  = $this->ecf->sellerSignals((string) $custId); }        catch (\Throwable $e) { Log::warning("[Companies/Show] ECF signals falhou cust={$custId}: " . $e->getMessage()); }
-
-                // Slice defensiva (mesmo padrão Phase 25)
-                $metricas = is_array($metricas) ? array_slice($metricas, -12) : [];
-                $medalhas = is_array($medalhas) ? array_slice($medalhas, -12) : [];
-                $signals  = is_array($signals) ? array_slice($signals, 0, 20) : [];
+                try {
+                    $r = $this->ecf->sellerMetricasMensal((string) $custId);
+                    $metricas = array_slice($r['data'] ?? [], -12);
+                } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF metricasMensal falhou cust={$custId}: " . $e->getMessage()); }
+                try {
+                    $r = $this->ecf->sellerMedalhas((string) $custId);
+                    $medalhas = array_slice($r['data'] ?? [], -12);
+                } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF medalhas falhou cust={$custId}: " . $e->getMessage()); }
+                try {
+                    $r = $this->ecf->sellerSignals((string) $custId);
+                    $signals = array_slice($r['data'] ?? [], 0, 20);
+                } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF signals falhou cust={$custId}: " . $e->getMessage()); }
 
                 $ecfDrive = [
                     'seller'   => $sellerData,
@@ -240,25 +253,9 @@ class CompanyController extends Controller
                     'medalhas' => $medalhas,
                     'signals'  => $signals,
                 ];
-
-                // SUBSTITUIR dados concorrentes Adman pelos do ECF Drive — preferência
-                // do usuário (2026-06-05): "use a nossa, os dados que nossa API não
-                // tiver mantenha a da Adman". metricaMensalAtual.tgmvLc vem como
-                // string da API; parseFloat defensivo.
-                $metrica = $sellerData['metricaMensalAtual'] ?? null;
-                if ($metrica) {
-                    $tgmvLc = isset($metrica['tgmvLc']) ? (float) $metrica['tgmvLc'] : null;
-                    $invPads = isset($metrica['invPads']) ? (float) $metrica['invPads'] : null;
-                    if ($tgmvLc !== null && $tgmvLc > 0) {
-                        $revenue30d = $tgmvLc; // mês corrente ECF Drive > 30d Adman (mais atual + oficial ML)
-                    }
-                    if ($invPads !== null && $invPads > 0) {
-                        $adInvestment30d = $invPads;
-                    }
-                }
             } catch (\Throwable $e) {
-                // Não encontrada (404) ou erro genérico: silencia, mantém Adman.
-                // Página /companies/{id} tem 10+ seções; ECF Drive é bônus.
+                // Não encontrada (404) ou erro genérico: silencia, KPIs Adman
+                // continuam funcionando normalmente.
                 Log::warning("[Companies/Show] ECF Drive indisponível cust={$custId}: " . $e->getMessage());
                 $ecfDrive = null;
             }
