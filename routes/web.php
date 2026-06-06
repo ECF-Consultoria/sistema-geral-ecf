@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\ComercialController;
+use App\Http\Controllers\EmpresaAnaliseEcfController;
 use App\Http\Controllers\Admin\CargoController;
 use App\Http\Controllers\Admin\SetorController;
 use App\Http\Controllers\Admin\SetorGoalController;
@@ -275,6 +276,17 @@ Route::middleware(['auth', 'verified', 'role:admin'])
      ->name('painel-executivo.')
      ->group(function () {
          Route::get('/', [PainelExecutivoController::class, 'index'])->name('index');
+     });
+
+// ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
+// Ficha 360° de 1 empresa. Consome /sellers/{custId}/* da API ECF Drive
+// (Phase 22 wrapper). Acessível a admin, consultor e mentor (CONTEXT D-03).
+// Auth fina por carteira é feita inline no controller (abort 403).
+Route::middleware(['auth', 'verified', 'role:admin,consultor,mentor'])
+     ->group(function () {
+         Route::get('/empresas/{company}/analise-ecf',
+             [EmpresaAnaliseEcfController::class, 'show'])
+             ->name('empresas.analise-ecf');
      });
 
 // ─── Módulo MLB — Controle de Publicações ────────────────────────────────────
