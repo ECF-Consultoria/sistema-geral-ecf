@@ -228,15 +228,14 @@ export default function ForecastChart({ forecast }) {
                     isCount={true}
                     helpText="Total de grants que expiram nos próximos 90 dias na carteira inteira do ECF Drive."
                 />
+                {/* 2026-06-06: KpiCard mostra "—" quando valor=null. Passar
+                    o número real do R² (em %, 0-100) como valor numérico isCount
+                    para o card exibir grande. */}
                 <KpiCard
-                    label="Coeficiente de ajuste (R²)"
-                    valor={null}
-                    sublabel={
-                        forecast.coef?.r2 != null
-                            ? `R² = ${(forecast.coef.r2 * 100).toFixed(1)}%`
-                            : '—'
-                    }
-                    helpText="Qualidade da regressão linear sobre o histórico. R² próximo de 100% = linha ajusta bem; baixo = série volátil, projeção menos confiável."
+                    label="Qualidade da projeção (R²)"
+                    valor={forecast.coef?.r2 != null ? Math.round(forecast.coef.r2 * 100) : null}
+                    isCount={true}
+                    helpText="Qualidade do ajuste da regressão linear sobre o histórico, em uma escala de 0 a 100. Quanto mais perto de 100, melhor a linha se ajusta aos dados — projeção mais confiável. Valores baixos indicam série volátil."
                 />
             </div>
 
@@ -257,12 +256,25 @@ export default function ForecastChart({ forecast }) {
                                 key={i}
                                 className="flex items-center justify-between rounded-md bg-white/[0.03] border border-white/[0.06] px-3 py-2"
                             >
-                                <div className="flex items-center gap-3">
+                                <div className="flex items-center gap-3 min-w-0">
                                     <span className="text-white/40 text-xs font-mono">#{i + 1}</span>
-                                    <span className="text-white/80 text-sm">
-                                        {g.razao_social || g.cnpj || `Lojista #${g.cust_id}`}
-                                    </span>
-                                    <span className="text-white/40 text-xs">
+                                    {/* 2026-06-06: prioriza company_name local
+                                        (lookup do nosso DB). A API retorna sempre
+                                        razaoSocial="ECF CONSULTORIA & ASSESSORIA"
+                                        — campo do parceiro, inutilizável. */}
+                                    {g.company_id ? (
+                                        <a
+                                            href={`/empresas/${g.company_id}/analise-ecf`}
+                                            className="text-ecf-yellow hover:underline text-sm truncate"
+                                        >
+                                            {g.company_name}
+                                        </a>
+                                    ) : (
+                                        <span className="text-white/60 text-sm truncate" title="Não cadastrado na nossa carteira">
+                                            CNPJ {g.cnpj || `cust_id ${g.cust_id}`}
+                                        </span>
+                                    )}
+                                    <span className="text-white/40 text-xs whitespace-nowrap">
                                         vence em {g.dias_para_expirar}d
                                     </span>
                                 </div>

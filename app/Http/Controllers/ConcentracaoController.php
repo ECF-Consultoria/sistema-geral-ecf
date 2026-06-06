@@ -145,7 +145,14 @@ class ConcentracaoController extends Controller
 
             // ─── 6) Lookup batch company por cust_id (SEM N+1) ─────────────
             // 1 única query — NÃO loop. Pattern validado Phase 23/25.
-            $custIds   = array_keys($sellersCalculados);
+            // Plano 03 (2026-06-06): inclui cust_ids dos GRANTS também — a API
+            // ECF Drive retorna razaoSocial="ECF CONSULTORIA & ASSESSORIA" para
+            // todos os grants (campo do parceiro, não do lojista). Lookup local
+            // é a única forma de exibir o nome correto da empresa.
+            $custIdsVacas  = array_keys($sellersCalculados);
+            $custIdsGrants = collect($grants)->pluck('custId')->filter()->all();
+            $custIds       = array_unique(array_merge($custIdsVacas, $custIdsGrants));
+
             $companies = Company::where('active', true)
                 ->where(fn ($q) => $q
                     ->whereIn('adman_account_id', $custIds)
@@ -184,6 +191,13 @@ class ConcentracaoController extends Controller
             // API ECF Drive grants retorna CAMELCASE: custId, razaoSocial, grantFim,
             // diasParaExpirar. Mantemos snake_case no shape interno (output Inertia)
             // mas LEMOS camelCase da API.
+            // API ECF Drive grants retorna CAMELCASE: custId, razaoSocial, grantFim,
+            // diasParaExpirar. Mantemos snake_case no shape interno (output Inertia)
+            // mas LEMOS camelCase da API.
+            // Plano 03 (2026-06-06): IGNORAR razaoSocial da API (vem sempre como
+            // "ECF CONSULTORIA & ASSESSORIA" — campo do parceiro, não do lojista).
+            // Adicionar company_name + company_id via lookup local pra JSX render
+            // mostrar o nome correto. Fallback: CNPJ formatado ou cust_id.
             foreach ($grants as $g) {
                 $custId = $g['custId'] ?? null;
                 $mediaM = ($custId && isset($sellersCalculados[$custId]))
@@ -194,9 +208,12 @@ class ConcentracaoController extends Controller
                 $gmvRiscoSeller  = $mediaM * 3;
                 $gmvRiscoTotal  += $gmvRiscoSeller;
 
+                $match = $custId ? ($companyByCustId[$custId] ?? null) : null;
+
                 $grantsEnriquecidos[] = [
                     'cust_id'           => $custId,
-                    'razao_social'      => $g['razaoSocial']             ?? null,
+                    'company_id'        => $match['id']                  ?? null,
+                    'company_name'      => $match['name']                ?? null,
                     'cnpj'              => $g['cnpj']                    ?? null,
                     'grant_fim'         => $g['grantFim']                ?? null,
                     'dias_para_expirar' => (int) ($g['diasParaExpirar']  ?? 0),

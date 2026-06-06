@@ -77,22 +77,25 @@ export default function VacasLeiteirasTabela({ vacas }) {
                             {/* Rank */}
                             <td className="py-2 px-3 text-ecf-yellow font-bold">{i + 1}</td>
 
-                            {/* Nome empresa — link quando company_id existe */}
+                            {/* Nome empresa — link quando company_id existe.
+                                2026-06-06: NÃO usar v.razao_social — a API
+                                ECF Drive retorna o nome do parceiro
+                                "ECF CONSULTORIA & ASSESSORIA" para todos,
+                                inutilizável. Sem match local → "Lojista externo". */}
                             <td className="py-2 px-3 text-white/80">
                                 {v.company_id ? (
                                     <Link
                                         href={route('empresas.analise-ecf', v.company_id)}
                                         className="hover:text-ecf-yellow hover:underline"
                                     >
-                                        {v.company_name || v.razao_social || `Lojista #${v.cust_id}`}
+                                        {v.company_name || `cust_id ${v.cust_id}`}
                                     </Link>
                                 ) : (
-                                    // cust_id sem match local — exibe sem link (D-H do PLAN)
                                     <span
-                                        className="text-white/60"
-                                        title={`cust_id: ${v.cust_id}`}
+                                        className="text-white/50 italic"
+                                        title={`Lojista fora da nossa carteira · cust_id: ${v.cust_id}`}
                                     >
-                                        {v.razao_social || `Lojista #${v.cust_id}`}
+                                        Lojista externo
                                     </span>
                                 )}
                             </td>

@@ -32,9 +32,12 @@ export const FRETE_LABELS = {
 };
 
 // ─── Programas ECF (CPP e POLOS) ─────────────────────────────────────────────
+// 2026-06-06: removida a expansão "Comercial Pessoa Privada" — o significado
+// real do acrônimo CPP é desconhecido (não é "Comercial Pessoa Privada").
+// Manter apenas a sigla original até descobrirmos o nome real.
 export const PROGRAMA_LABELS = {
-    'CPP':   'CPP — Comercial Pessoa Privada',
-    'POLOS': 'POLOS — Polos Regionais',
+    'CPP':   'CPP',
+    'POLOS': 'POLOS',
 };
 
 /**
