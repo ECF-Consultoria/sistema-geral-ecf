@@ -105,9 +105,14 @@ class ConcentracaoController extends Controller
             // ─── 5) sellerMetricasMensal × 50 sellers + cálculo CV ──────────
             // 50 chamadas em cold cache (~30s primeira vez); wrapper cacheia 1h.
             // 1 falha por seller não derruba o lote — mesmo padrão Phase 25.
+            // Plano 02 (2026-06-06): API ECF Drive retorna CAMELCASE em todas as
+            // chaves (custId, razaoSocial, valor, etc) — bug recorrente nas Phases
+            // 24/25. Controller lia snake_case (cust_id, razao_social, tgmv_lc) e
+            // sempre dava null → todas as 50 chamadas de seller eram puladas e
+            // vacas_leiteiras voltava vazia. Fix: camelCase em todas as leituras.
             $sellersCalculados = [];
             foreach ($ranking as $sellerRank) {
-                $custId = $sellerRank['cust_id'] ?? null;
+                $custId = $sellerRank['custId'] ?? null;
                 if (!$custId) continue;
 
                 try {
@@ -128,11 +133,11 @@ class ConcentracaoController extends Controller
                     : 0;
 
                 $sellersCalculados[$custId] = [
-                    'cust_id'       => $custId,
-                    'razao_social'  => $sellerRank['razao_social'] ?? null,
-                    'cluster'       => $sellerRank['cluster']      ?? null,
-                    'programa'      => $sellerRank['programa']     ?? null,
-                    'tgmv_lc_total' => (float) ($sellerRank['tgmv_lc'] ?? 0),
+                    'cust_id'       => $custId,                                              // mantém snake_case no shape interno (output Inertia)
+                    'razao_social'  => $sellerRank['razaoSocial']    ?? null,                // API: razaoSocial (camelCase)
+                    'cluster'       => $sellerRank['cluster']         ?? null,
+                    'programa'      => $sellerRank['programa']        ?? null,
+                    'tgmv_lc_total' => (float) ($sellerRank['valor']  ?? $sellerRank['gmv'] ?? 0), // ranking usa 'valor'/'gmv'
                     'media_mensal'  => $mediaM,
                     'cv'            => $cv,
                 ];
@@ -176,8 +181,11 @@ class ConcentracaoController extends Controller
             // Sellers fora do top 50 ranking não têm dados → contribuem com 0 (degradação aceita, R-04)
             $gmvRiscoTotal       = 0;
             $grantsEnriquecidos  = [];
+            // API ECF Drive grants retorna CAMELCASE: custId, razaoSocial, grantFim,
+            // diasParaExpirar. Mantemos snake_case no shape interno (output Inertia)
+            // mas LEMOS camelCase da API.
             foreach ($grants as $g) {
-                $custId = $g['cust_id'] ?? null;
+                $custId = $g['custId'] ?? null;
                 $mediaM = ($custId && isset($sellersCalculados[$custId]))
                     ? $sellersCalculados[$custId]['media_mensal']
                     : 0;
@@ -188,10 +196,10 @@ class ConcentracaoController extends Controller
 
                 $grantsEnriquecidos[] = [
                     'cust_id'           => $custId,
-                    'razao_social'      => $g['razao_social']      ?? null,
-                    'cnpj'              => $g['cnpj']              ?? null,
-                    'grant_fim'         => $g['grant_fim']         ?? null,
-                    'dias_para_expirar' => (int) ($g['dias_para_expirar'] ?? 0),
+                    'razao_social'      => $g['razaoSocial']             ?? null,
+                    'cnpj'              => $g['cnpj']                    ?? null,
+                    'grant_fim'         => $g['grantFim']                ?? null,
+                    'dias_para_expirar' => (int) ($g['diasParaExpirar']  ?? 0),
                     'media_mensal'      => $mediaM,
                     'gmv_risco'         => $gmvRiscoSeller,
                 ];
