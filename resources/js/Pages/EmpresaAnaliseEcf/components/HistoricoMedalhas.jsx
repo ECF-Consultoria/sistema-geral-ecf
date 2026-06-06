@@ -63,9 +63,12 @@ export default function HistoricoMedalhas({ medalhas = [] }) {
         <div className="overflow-x-auto">
             <div className="flex gap-3 min-w-min pb-2">
                 {medalhas.map((item, idx) => {
-                    const nivel   = item.nivel;
+                    // Plano 03 Phase 25 (2026-06-05): API retorna `nivelSolucion`
+                    // (não `nivel`). Bug do smoke: histórico aparecia vazio.
+                    const nivel   = item.nivelSolucion ?? item.nivel;
                     const config  = MEDALHA_BADGE[nivel] ?? null;
-                    const mudanca = compararNiveis(medalhas[idx - 1]?.nivel, nivel);
+                    const nivelAnterior = medalhas[idx - 1]?.nivelSolucion ?? medalhas[idx - 1]?.nivel;
+                    const mudanca = compararNiveis(nivelAnterior, nivel);
 
                     return (
                         <div

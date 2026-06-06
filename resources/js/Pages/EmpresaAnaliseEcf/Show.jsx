@@ -56,8 +56,16 @@ const fmtCountShort = (v) => {
 export default function Show() {
     const { empresa, seller, metricas, medalhas, signals, semCustId, naoEncontrada, erro } = usePage().props;
 
-    // Extrai métricas do snapshot atual (seller.metricaAtual) para os KPI cards
-    const m = seller?.metricaAtual ?? null;
+    // Plano 03 Phase 25 (2026-06-05): API retorna `metricaMensalAtual` em camelCase
+    // (não `metricaAtual` snake_case). Valores numéricos vêm como STRING — usar
+    // parseFloat senão Intl.NumberFormat exibe NaN/zero. Bug do smoke do usuário:
+    // todos os KPI cards apareciam vazios pois `m` era null.
+    const m = seller?.metricaMensalAtual ?? null;
+    const numOuNull = (v) => {
+        if (v === null || v === undefined || v === '') return null;
+        const n = parseFloat(v);
+        return isNaN(n) ? null : n;
+    };
 
     return (
         <AppLayout title={`Análise ECF — ${empresa?.name ?? ''}`}>
@@ -128,50 +136,50 @@ export default function Show() {
                             </h2>
                             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                                 <KpiCard
-                                    label="GMV"
-                                    valor={m?.tgmv_lc ?? null}
+                                    label="Faturamento bruto"
+                                    valor={numOuNull(m?.tgmvLc)}
                                     deltaPct={null}
-                                    helpText="Faturamento bruto total do lojista no mês (tgmv_lc). Fonte: ECF Drive /sellers/{custId}."
+                                    helpText="Faturamento bruto total do lojista no mês. Fonte: parceiro ECF Drive."
                                 />
                                 <KpiCard
-                                    label="Transações (TSI)"
-                                    valor={m?.tsi ?? null}
+                                    label="Vendas (unidades)"
+                                    valor={numOuNull(m?.tsi)}
                                     deltaPct={null}
                                     isCount
-                                    helpText="Total de transações concluídas no mês (tsi). Fonte: ECF Drive."
+                                    helpText="Total de itens vendidos no mês (TSI — total sold items). Fonte: parceiro ECF Drive."
                                 />
                                 <KpiCard
                                     label="Visitas"
-                                    valor={m?.visitas ?? null}
+                                    valor={numOuNull(m?.visitas)}
                                     deltaPct={null}
                                     isCount
-                                    helpText="Total de visitas às listagens do lojista no mês. Fonte: ECF Drive."
+                                    helpText="Total de visitas nos anúncios do lojista no mês. Fonte: parceiro ECF Drive."
                                 />
                                 <KpiCard
-                                    label="Investimento ADS"
-                                    valor={m?.inv_pads ?? null}
+                                    label="Investimento em Ads"
+                                    valor={numOuNull(m?.invPads)}
                                     deltaPct={null}
-                                    helpText="Investimento em Product Ads (PADS) no mês. Fonte: ECF Drive."
+                                    helpText="Quanto a empresa investiu em Mercado Ads (PADS) no mês. Fonte: parceiro ECF Drive."
                                 />
                                 <KpiCard
-                                    label="GMV via ADS"
-                                    valor={m?.tgmv_lc_pads ?? null}
+                                    label="Faturamento por Ads"
+                                    valor={numOuNull(m?.tgmvLcPads)}
                                     deltaPct={null}
-                                    helpText="Faturamento atribuído aos Product Ads no mês (tgmv_lc_pads). Fonte: ECF Drive."
+                                    helpText="Faturamento gerado especificamente por anúncios pagos no mês. Fonte: parceiro ECF Drive."
                                 />
                                 <KpiCard
-                                    label="Score Full"
-                                    valor={m?.score_final_full ?? null}
-                                    deltaPct={null}
-                                    isCount
-                                    helpText="Score de saúde geral do lojista no mês (score_final_full, 0–100). Fonte: ECF Drive."
-                                />
-                                <KpiCard
-                                    label="Score PADS"
-                                    valor={m?.score_final_pads ?? null}
+                                    label="Score de qualidade"
+                                    valor={numOuNull(m?.scoreFinalFull)}
                                     deltaPct={null}
                                     isCount
-                                    helpText="Score de saúde do lojista em PADS no mês (score_final_pads, 0–100). Fonte: ECF Drive."
+                                    helpText="Score geral de qualidade do lojista, de 0 a 100. Quanto maior melhor a saúde da loja. Fonte: parceiro ECF Drive."
+                                />
+                                <KpiCard
+                                    label="Score Ads"
+                                    valor={numOuNull(m?.scoreFinalPads)}
+                                    deltaPct={null}
+                                    isCount
+                                    helpText="Score de qualidade das campanhas de anúncios, de 0 a 100. Fonte: parceiro ECF Drive."
                                 />
                             </div>
                         </section>

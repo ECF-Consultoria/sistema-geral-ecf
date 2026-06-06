@@ -90,11 +90,19 @@ export default function EvolucaoEmpresaChart({ data = [] }) {
         );
     }
 
-    // Mapeia os dados da API para formato do recharts
+    // Plano 03 Phase 25 (2026-06-05): API retorna campos em camelCase
+    // (tgmvLc + invPads, não tgmv_lc + inv_pads) e valores como STRING.
+    // Bug do smoke do usuário: gráfico zerado pois leitura snake_case era undefined.
+    const numOuZero = (v) => {
+        if (v === null || v === undefined || v === '') return 0;
+        const n = parseFloat(v);
+        return isNaN(n) ? 0 : n;
+    };
+
     const dataMapeada = data.map((d) => ({
-        mes:         fmtMesAno(d.timMonthId),
-        gmv:         d.tgmv_lc  ?? 0,
-        investimento: d.inv_pads ?? 0,
+        mes:          fmtMesAno(d.timMonthId),
+        gmv:          numOuZero(d.tgmvLc),
+        investimento: numOuZero(d.invPads),
     }));
 
     return (
