@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v8.0
 milestone_name: Integração Estratégica ECF Drive
-status: verifying
-stopped_at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
-last_updated: "2026-06-06T04:35:43.744Z"
-last_activity: 2026-06-06
+status: milestone_complete
+stopped_at: Milestone v8.0 (Integração Estratégica ECF Drive) completa em 2026-06-08. 7 phases entregues (22-28). Phase 28 fechou com PDF mensal 871KB validado por email para matheusbarretop14@gmail.com.
+last_updated: "2026-06-08T12:00:00.000Z"
+last_activity: 2026-06-08 -- Milestone v8.0 fechada
 progress:
   total_phases: 27
-  completed_phases: 16
-  total_plans: 33
-  completed_plans: 32
-  percent: 59
+  completed_phases: 19
+  total_plans: 36
+  completed_plans: 36
+  percent: 70
 ---
 
 # Project State
@@ -76,6 +76,7 @@ Last activity: 2026-06-06
 - 2026-06-05 — Phase 20 **completed e deployed**. Match estrito por cust_id (Plano 02 do mesmo dia removeu fallback CNPJ por risco com alunos de cursos). 80 grants em prod, segmento preenchido, 20 testes Phase 20 verdes. API foi ajustada pelo usuário pra corrigir inversão `granted_at > expires_at` (era responsável por 13 falsos "Pending"). Risco aceito pelo usuário: API key `ecf_c7b9d4fe...` foi exposta no chat e o usuário optou por NÃO revogar — decisão registrada.
 - 2026-06-05 — **Phase 21: Manual do Sistema** adicionada à v7.0. Hardcode JSX, tabela ordenada para o cronograma, link no rodapé da sidebar, acesso a todos autenticados. Primeiro artigo: "Cronograma de horários" em linguagem simples sem termos técnicos. Próximo: `/gsd-plan-phase 21`.
 - 2026-06-05 — **Milestone v8.0: Integração Estratégica ECF Drive** criada com 7 phases (22-28). Base: usuário forneceu API-GUIDE.md completo do ECF Drive revelando 10 domínios de API (clientes/sellers/carteira/signals/relatorios/etc), do qual hoje só consumimos `/clientes/grants` (Phase 20). Análise estratégica identificou 7 oportunidades de alto ROI ordenadas por dependência: Phase 22 (wrapper base) → 23 (alertas signals) → 24 (painel executivo) → 25 (ficha 360 sellers) → 26 (webhooks HMAC) → 27 (concentração+forecast) → 28 (relatório mensal). Decisões: Sugadores convive com Signals (escopos distintos), nova milestone v8.0 (não continuar v7.0), ordem por valor de negócio × dependência. Phase 21 segue em aberto aguardando smoke W4 visual.
+- 2026-06-08 — **Milestone v8.0 FECHADA**. Todas 7 phases (22-28) deployed em prod e validadas. Entregas: wrapper expandido (22 métodos cobrindo 5 domínios ECF Drive), aba `/alertas-estrategicos` (778 signals reais, 172 críticos), `/painel-executivo` (carteira inteira ECF R$ 42,8M GMV), `/empresas/{id}/analise-ecf` (ficha 360° com gráfico/medalhas/alertas), integração ECF Drive em `/companies/{id}` (Plano 04 Phase 25), receiver HMAC em `/api/webhooks/ecf` para 6 eventos (6,56ms latência real), `/concentracao` (matriz programa×cluster + forecast 90d + top 20 vacas leiteiras), Relatório Mensal automatizado (PDF 871KB enviado por SMTP Gmail validado por email). Bug bônus identificado e reportado ao parceiro ECF Drive: `razaoSocial` retornava sempre nome do parceiro consultor — parceiro corrigiu BrasilAPI mesmo dia (diversidade subiu de 1 para 235 razões únicas). API key `ecf_c7b9...` segue exposta no chat (risco aceito pelo usuário desde Phase 20). Phase 21 ainda em aberto aguardando smoke W4 visual. Próximo: definir milestone v9.0.
 
 ### Decisões herdadas do v1.0
 
