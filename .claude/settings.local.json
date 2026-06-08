@@ -57,7 +57,10 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"date && echo --- && redis-cli -n 2 --scan --pattern '*adman_mcp*' | wc -l && echo --- && redis-cli -n 2 --scan --pattern '*scan_status*' | head -5\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*adman_mcp*'\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*adman_mcp*' | xargs -r redis-cli -n 2 DEL && echo '---verify---' && redis-cli -n 2 --scan --pattern '*adman_mcp*' | wc -l\")",
-      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='ThrottledAdmanQueueTest|Sugador' --testdox 2>&1\")"
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='ThrottledAdmanQueueTest|Sugador' --testdox 2>&1\")",
+      "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch /tmp/cleanup_queue.php root@177.7.53.164:/var/www/ecf_admin/public/cq.php)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php public/cq.php\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*scan_status*' | xargs -r redis-cli -n 2 DEL && echo '---verify---' && redis-cli -n 2 --scan --pattern '*scan_status*' | wc -l && rm -f /var/www/ecf_admin/public/cq.php\")"
     ]
   }
 }
