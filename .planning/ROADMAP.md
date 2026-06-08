@@ -88,7 +88,7 @@ Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grant
 
 A v8.0 entregou a infraestrutura de webhooks (Phase 26) que recebe 6 eventos do ECF Drive em tempo real, mas os handlers só fazem `Log::channel('ecf-webhooks')` — o sino do header (Phase 10) NÃO acende quando algo chega. A v9.0 costura essa lacuna: webhooks viram notificações reais no banco usando a infra `BaseNotification` da Phase 8/12 que já entrega via `database` channel + polling do sino.
 
-- [ ] **Phase 29: signal.detected vira notificação no sino** - Integra `HandleSignalDetectedJob` (Phase 26) com `BaseNotification` (Phase 8). Quando ECF Drive envia push de `signal.detected` severity=critical para empresas da NOSSA carteira (lookup local `Company` por cust_id), cria notificação na tabela `notifications` da Phase 8 destinada a admin + consultor + mentor. Sino do header automaticamente acende via polling do shared prop existente. Categoria nova `ALERTA_ECF` na enum, título descritivo pt-BR (ex: "Queda crítica de faturamento em RELOJOARIA WENUS"), link direto para `/alertas-estrategicos`. Filtros: apenas carteira local + apenas critical para evitar ruído. Outros eventos ficam para fases futuras.
+- [x] **Phase 29: signal.detected vira notificação no sino** (completed 2026-06-08) - Integra `HandleSignalDetectedJob` (Phase 26) com `BaseNotification` (Phase 8). Quando ECF Drive envia push de `signal.detected` severity=critical para empresas da NOSSA carteira (lookup local `Company` por cust_id), cria notificação na tabela `notifications` da Phase 8 destinada a admin + consultor + mentor. Sino do header automaticamente acende via polling do shared prop existente. Categoria nova `ALERTA_ECF` na enum, título descritivo pt-BR (ex: "Queda crítica de faturamento em RELOJOARIA WENUS"), link direto para `/alertas-estrategicos`. Filtros: apenas carteira local + apenas critical para evitar ruído. Outros eventos ficam para fases futuras. **Smoke prod validado**: 13 notifications criadas (1 admin + 2 mentors + 10 consultores) para signal cust_id 570267839 (RELOJOARIA WENUS), idempotência confirmada (2º webhook com mesmo signal_id 9101 não duplicou). 21 testes verdes.
 
 ## Phase Details
 
@@ -630,12 +630,21 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd-plan-phase 28 to break down)
 
-### Phase 29: signal.detected vira notificacao no sino (Phase 12 BaseNotification) para admin+consultor+mentor com filtro de carteira local apenas severity=critical
+### Phase 29: signal.detected vira notificação no sino
 
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 28
-**Plans:** 0 plans
+**Status:** Completed (2026-06-08)
+**Goal:** Quando webhook `signal.detected` severity=critical chega no receiver da Phase 26 para empresa da NOSSA carteira, criar notificação na tabela `notifications` (Phase 8) para admin + consultor + mentor — sino do header acende via polling existente.
+**Depends on:** Phase 8 (BaseNotification), Phase 10 (sino+polling), Phase 12 (dispatch pattern), Phase 23 (lookup company por cust_id), Phase 26 (HandleSignalDetectedJob recebendo push)
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 29 to break down)
+- [x] **29-01** — `Categoria::ALERTA_ECF` + `AlertaEcfNotification extends BaseNotification` + reescrita `HandleSignalDetectedJob` (severity guard → carteira guard → idempotência via `data->meta->signal_id` → `Notification::send` admin+consultor+mentor active) + 21 testes Feature
+
+**Resultado:**
+- 1 Notification subclass nova (`AlertaEcfNotification`)
+- 1 case enum nova (`Categoria::ALERTA_ECF`)
+- 1 Job reescrito (`HandleSignalDetectedJob.handle()`)
+- 21 testes Feature verdes (8 Job + 13 Notification)
+- **Smoke prod**: 13 notifications criadas para signal `seller.gmv_queda_mom` cust_id 570267839 (RELOJOARIA WENUS), idempotência confirmada (2º webhook com mesmo `signal_id=9101` retornou 13 — sem dup)
+- **Zero mudança no frontend** — sino do header (Phase 10) lê automaticamente via polling do shared prop
+- Webhook payload da Phase 26 agora dispara notif real (antes só `Log::channel('ecf-webhooks')`)

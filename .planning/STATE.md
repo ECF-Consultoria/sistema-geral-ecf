@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v8.0
-milestone_name: Integração Estratégica ECF Drive
-status: milestone_complete
-stopped_at: Milestone v8.0 (Integração Estratégica ECF Drive) completa em 2026-06-08. 7 phases entregues (22-28). Phase 28 fechou com PDF mensal 871KB validado por email para matheusbarretop14@gmail.com.
-last_updated: "2026-06-08T12:00:00.000Z"
-last_activity: 2026-06-08 -- Milestone v8.0 fechada
+milestone: v9.0
+milestone_name: Sistema de Notificações 2.0
+status: phase_complete
+stopped_at: Phase 29 (signal.detected vira notificacao no sino) fechada em 2026-06-08. Smoke prod validado — 13 notifications criadas para signal RELOJOARIA WENUS, idempotência confirmada. Sino do header acende automaticamente via polling existente. 21 testes verdes.
+last_updated: "2026-06-08T18:00:00.000Z"
+last_activity: 2026-06-08 -- Phase 29 fechada (v9.0 P1/3)
 progress:
-  total_phases: 27
-  completed_phases: 19
-  total_plans: 36
-  completed_plans: 36
-  percent: 70
+  total_phases: 28
+  completed_phases: 20
+  total_plans: 37
+  completed_plans: 37
+  percent: 71
 ---
 
 # Project State
@@ -77,6 +77,7 @@ Last activity: 2026-06-06
 - 2026-06-05 — **Phase 21: Manual do Sistema** adicionada à v7.0. Hardcode JSX, tabela ordenada para o cronograma, link no rodapé da sidebar, acesso a todos autenticados. Primeiro artigo: "Cronograma de horários" em linguagem simples sem termos técnicos. Próximo: `/gsd-plan-phase 21`.
 - 2026-06-05 — **Milestone v8.0: Integração Estratégica ECF Drive** criada com 7 phases (22-28). Base: usuário forneceu API-GUIDE.md completo do ECF Drive revelando 10 domínios de API (clientes/sellers/carteira/signals/relatorios/etc), do qual hoje só consumimos `/clientes/grants` (Phase 20). Análise estratégica identificou 7 oportunidades de alto ROI ordenadas por dependência: Phase 22 (wrapper base) → 23 (alertas signals) → 24 (painel executivo) → 25 (ficha 360 sellers) → 26 (webhooks HMAC) → 27 (concentração+forecast) → 28 (relatório mensal). Decisões: Sugadores convive com Signals (escopos distintos), nova milestone v8.0 (não continuar v7.0), ordem por valor de negócio × dependência. Phase 21 segue em aberto aguardando smoke W4 visual.
 - 2026-06-08 — **Milestone v8.0 FECHADA**. Todas 7 phases (22-28) deployed em prod e validadas. Entregas: wrapper expandido (22 métodos cobrindo 5 domínios ECF Drive), aba `/alertas-estrategicos` (778 signals reais, 172 críticos), `/painel-executivo` (carteira inteira ECF R$ 42,8M GMV), `/empresas/{id}/analise-ecf` (ficha 360° com gráfico/medalhas/alertas), integração ECF Drive em `/companies/{id}` (Plano 04 Phase 25), receiver HMAC em `/api/webhooks/ecf` para 6 eventos (6,56ms latência real), `/concentracao` (matriz programa×cluster + forecast 90d + top 20 vacas leiteiras), Relatório Mensal automatizado (PDF 871KB enviado por SMTP Gmail validado por email). Bug bônus identificado e reportado ao parceiro ECF Drive: `razaoSocial` retornava sempre nome do parceiro consultor — parceiro corrigiu BrasilAPI mesmo dia (diversidade subiu de 1 para 235 razões únicas). API key `ecf_c7b9...` segue exposta no chat (risco aceito pelo usuário desde Phase 20). Phase 21 ainda em aberto aguardando smoke W4 visual. Próximo: definir milestone v9.0.
+- 2026-06-08 — **Phase 29 FECHADA** (v9.0 P1/3 — Sistema de Notificações 2.0). Costurou a lacuna entre o receiver de webhooks (Phase 26 só logava) e o sino do header (Phase 10): handlers de `signal.detected` severity=critical agora criam `AlertaEcfNotification` (subclasse `BaseNotification` Phase 8) para empresas da NOSSA carteira (match `cust_id` contra `adman_account_id` OR `ml_store_id`). Destinatários: admin + consultor + mentor active (mesma audiência da Phase 23 `/alertas-estrategicos`). **Smoke prod confirmado**: 13 notifications criadas para signal `seller.gmv_queda_mom` de RELOJOARIA WENUS (cust_id 570267839) com título "Queda crítica de faturamento em RELOJOARIA WENUS" e link `/alertas-estrategicos`. Idempotência: 2º curl com mesmo `signal_id=9101` mas event_id diferente retornou 200 sem duplicar (guard via `data->meta->signal_id` exists check). **Zero mudança no frontend** — sino lê automaticamente via polling do shared prop existente. 21 testes Feature verdes (8 Job + 13 Notification). Próximo: Phase 30 (`grant.expirando`) ou Phase 31 (`sync.failed`).
 
 ### Decisões herdadas do v1.0
 
