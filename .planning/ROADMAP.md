@@ -89,6 +89,13 @@ Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grant
 A v8.0 entregou a infraestrutura de webhooks (Phase 26) que recebe 6 eventos do ECF Drive em tempo real, mas os handlers só fazem `Log::channel('ecf-webhooks')` — o sino do header (Phase 10) NÃO acende quando algo chega. A v9.0 costura essa lacuna: webhooks viram notificações reais no banco usando a infra `BaseNotification` da Phase 8/12 que já entrega via `database` channel + polling do sino.
 
 - [x] **Phase 29: signal.detected vira notificação no sino** (completed 2026-06-08) - Integra `HandleSignalDetectedJob` (Phase 26) com `BaseNotification` (Phase 8). Quando ECF Drive envia push de `signal.detected` severity=critical para empresas da NOSSA carteira (lookup local `Company` por cust_id), cria notificação na tabela `notifications` da Phase 8 destinada a admin + consultor + mentor. Sino do header automaticamente acende via polling do shared prop existente. Categoria nova `ALERTA_ECF` na enum, título descritivo pt-BR (ex: "Queda crítica de faturamento em RELOJOARIA WENUS"), link direto para `/alertas-estrategicos`. Filtros: apenas carteira local + apenas critical para evitar ruído. Outros eventos ficam para fases futuras. **Smoke prod validado**: 13 notifications criadas (1 admin + 2 mentors + 10 consultores) para signal cust_id 570267839 (RELOJOARIA WENUS), idempotência confirmada (2º webhook com mesmo signal_id 9101 não duplicou). 21 testes verdes.
+- [ ] **Phase 30: grant.expirando vira notificação pra time comercial** - Integra `HandleGrantExpirandoJob` (Phase 26) com `BaseNotification`. Quando ECF Drive envia push de grant vencendo em 30/15/7 dias para empresa da carteira, cria notificação destinada ao consultor + admin pra renovação preventiva. Reusa pattern Phase 29 (filtro carteira, idempotência por grant_id, link direto pra `/grants` ou `/companies/{id}`). Diferencial: 3 disparos por grant (30d/15d/7d antes do vencimento) sem duplicar.
+
+### Milestone v10.0 — Fontes Unificadas (placeholder)
+
+Sistema hoje tem 3 fontes de dados (ECF Drive, Adman API, ML API direta) usadas inconsistentemente: Dashboard puxa Adman 30d, Painel Executivo puxa ECF Drive mês corrente, Sugadores puxa Adman MCP, ECF Drive duplica algumas métricas. v10.0 estabelece **precedência por empresa**: se empresa tem `ml_store_id` → fonte oficial é ML API direta; se só tem `adman_account_id` → Adman; ECF Drive vira fonte de signals/grants/relatórios apenas. Sugadores migra de Adman MCP pra ML API. Definição de "Faturamento Bruto único" com janela unificada. Trabalho grande (estimado 3-5 phases).
+
+- [ ] **Phase 32+ TBD** — escopo final a definir após v9.0 fechar
 
 ## Phase Details
 

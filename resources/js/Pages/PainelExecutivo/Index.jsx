@@ -113,6 +113,13 @@ export default function Index() {
                             Por isso números como "Investimento em Ads" não batem entre as duas telas: universos diferentes, fontes diferentes.
                             Passe o mouse sobre o <Info size={11} className="inline -mt-0.5 text-white/50" /> de cada indicador para ver a fonte e o cálculo.
                         </p>
+                        <p className="mt-1.5 text-white/55">
+                            <span className="text-white/80 font-semibold">Janela temporal:</span> os indicadores mostram o
+                            <span className="text-white"> mês corrente parcial</span> (do dia 1º até hoje). O ECF Drive consolida
+                            dados D-1 ao longo do dia conforme processa as APIs do Mercado Livre — por isso o valor
+                            <span className="text-white"> tende a subir conforme o dia avança</span>, especialmente pela manhã.
+                            Esperado, não é erro.
+                        </p>
                     </div>
                 </div>
 
@@ -125,9 +132,18 @@ export default function Index() {
 
                 {/* ─── Seção 1: KPI cards (grid responsivo 4 colunas) ─────── */}
                 <div className="rounded-lg bg-[#0f1116] border border-white/[0.06] p-5">
-                    <h2 className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-4">
-                        Indicadores do mês
+                    <h2 className="text-white/60 text-xs font-semibold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                        <span>Indicadores do mês corrente parcial</span>
+                        <span
+                            title="Período: do dia 1º do mês atual até hoje. Não é mês fechado. Fonte: parceiro ECF Drive (/carteira/resumo) com cache de 5min."
+                            className="cursor-help text-white/40 hover:text-white/70 transition-colors"
+                        >
+                            <Info size={11} />
+                        </span>
                     </h2>
+                    <p className="text-white/35 text-[11px] mb-4">
+                        Mês corrente parcial · valor sobe ao longo do dia conforme ECF Drive consolida D-1
+                    </p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         {KPI_CARDS.map(({ label, key, isCount, helpText }) => (
                             <KpiCard

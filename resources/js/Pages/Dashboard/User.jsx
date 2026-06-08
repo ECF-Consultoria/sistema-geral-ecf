@@ -30,18 +30,19 @@ export default function UserDashboard({ stats, period, companies, my_surveys, my
 
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     {[
-                        { label: 'Empresas', value: stats.total_companies, icon: Users, color: 'text-blue-400' },
-                        { label: 'TACOS Médio', value: formatPercent(stats.avg_tacos), icon: BarChart2, color: 'text-yellow-400' },
-                        { label: 'NPS Médio', value: stats.avg_nps, icon: Star, color: 'text-emerald-400' },
-                        { label: 'Absenteísmo', value: formatPercent(stats.absenteeism_rate), icon: AlertTriangle, color: 'text-red-400' },
-                        { label: 'Faturamento', value: formatCurrency(stats.total_revenue), icon: DollarSign, color: 'text-purple-400' },
-                    ].map(({ label, value, icon: Icon, color }) => (
+                        { label: 'Empresas', value: stats.total_companies, icon: Users, color: 'text-blue-400', sub: 'Sua carteira' },
+                        { label: 'TACOS Médio', value: formatPercent(stats.avg_tacos), icon: BarChart2, color: 'text-yellow-400', sub: 'Últimos 30 dias · Adman' },
+                        { label: 'NPS Médio', value: stats.avg_nps, icon: Star, color: 'text-emerald-400', sub: null },
+                        { label: 'Absenteísmo', value: formatPercent(stats.absenteeism_rate), icon: AlertTriangle, color: 'text-red-400', sub: null },
+                        { label: 'Faturamento', value: formatCurrency(stats.total_revenue), icon: DollarSign, color: 'text-purple-400', sub: 'Últimos 30 dias · Adman' },
+                    ].map(({ label, value, icon: Icon, color, sub }) => (
                         <Card key={label}>
                             <CardContent className="p-5 flex items-center gap-3">
                                 <Icon className={`h-8 w-8 ${color} shrink-0`} />
                                 <div>
                                     <p className="text-muted-foreground text-xs">{label}</p>
                                     <p className={`text-xl font-bold ${color}`}>{value}</p>
+                                    {sub && <p className="text-muted-foreground/60 text-[10px] mt-0.5">{sub}</p>}
                                 </div>
                             </CardContent>
                         </Card>

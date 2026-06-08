@@ -180,11 +180,11 @@ export default function AdminDashboard({
                 {/* KPIs */}
                 <div className="grid grid-cols-5 gap-3 shrink-0">
                     {[
-                        { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue' },
-                        { title: 'TACOS Médio', value: formatPercent(s.avg_tacos), icon: BarChart2, color: 'yellow' },
+                        { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue', sub: 'Carteira ativa Adman' },
+                        { title: 'TACOS Médio', value: formatPercent(s.avg_tacos), icon: BarChart2, color: 'yellow', sub: 'Últimos 30 dias · Adman' },
                         { title: 'NPS Score', value: s.avg_nps, icon: Star, color: 'green', sub: `Score: ${npsScore}` },
-                        { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red' },
-                        { title: 'Faturamento', value: formatCurrency(s.total_revenue), icon: DollarSign, color: 'purple' },
+                        { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red', sub: 'Últimos 30 dias · Adman' },
+                        { title: 'Faturamento', value: formatCurrency(s.total_revenue), icon: DollarSign, color: 'purple', sub: 'Últimos 30 dias · Adman' },
                     ].map(k => <KpiCard key={k.title} {...k} empty={noData} />)}
                 </div>
 
@@ -316,11 +316,11 @@ export default function AdminDashboard({
 
                 {/* KPI Cards — visão geral */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <KpiCard title="Empresas" value={s.total_companies} icon={Users} color="blue" empty={noData} />
-                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} icon={BarChart2} color="yellow" empty={noData} />
+                    <KpiCard title="Empresas" value={s.total_companies} sub="Carteira ativa Adman" icon={Users} color="blue" empty={noData} />
+                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} sub="Últimos 30 dias · Adman" icon={BarChart2} color="yellow" empty={noData} />
                     <KpiCard title="NPS Médio" value={s.avg_nps} sub={`Score: ${npsScore}`} icon={Star} color="green" empty={noData} />
-                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} icon={TrendingUp} color="red" empty={noData} />
-                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} icon={DollarSign} color="purple" empty={noData} />
+                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} sub="Últimos 30 dias · Adman" icon={TrendingUp} color="red" empty={noData} />
+                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} sub="Últimos 30 dias · Adman" icon={DollarSign} color="purple" empty={noData} />
                 </div>
 
                 {/* Charts row 1 */}

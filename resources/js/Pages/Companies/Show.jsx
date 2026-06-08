@@ -513,6 +513,16 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
 
                 {/* KPIs financeiros — mesma grade para Adman e ML (ML-only é
                     agregado no backend a partir da API do Mercado Livre). */}
+                <div className="flex items-center gap-2 text-[11px] text-white/40">
+                    <Info size={11} className="shrink-0" />
+                    <span>
+                        Indicadores abaixo: <span className="text-white/70">últimos 30 dias</span> · fonte
+                        <span className="text-white/70"> {isMlDriven ? 'API Mercado Livre direta' : 'Adman'}</span>.
+                        O bloco <span className="text-white/70">Análise ECF Drive</span> mais abaixo usa o
+                        <span className="text-white/70"> mês corrente parcial</span> (ECF Drive D-1) — janelas
+                        diferentes, números podem não bater entre os dois blocos.
+                    </span>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                         { label: 'Faturamento (30d)', value: company.revenue_30d ? formatCurrency(company.revenue_30d) : '—', color: 'text-blue-400' },
