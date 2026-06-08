@@ -199,7 +199,7 @@ class AdmanMcpService
 
         try {
             return $lock->block(90, function () use ($cacheKey, $custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey, $startPage) {
-                return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey, $startPage) {
+                $result = Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey, $startPage) {
                     $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
                     $all        = [];
                     // Phase 30 D-03 — $page inicializado com $startPage. Default=1
@@ -209,15 +209,38 @@ class AdmanMcpService
                     $totalPages = 1;
                     $startedAt  = microtime(true);
 
+                    // Phase 30 fix W1 (revisão pós-smoke C) — Quando o RateLimiter
+                    // local barra no MEIO da paginação (typically Job grande
+                    // consumindo o bucket inteiro), capturamos o RuntimeException
+                    // específico e retornamos PARCIAL com truncated=true.
+                    // O Job (FetchAdmanMlbsByCampaignJob) detecta pages_read<total_pages
+                    // e ativa o checkpoint que re-dispatcha a continuação na próxima
+                    // página. Sem isso, Job falhava + esperava backoff 10min antes
+                    // de retry, perdendo todos os items coletados na execução atual.
+                    $rateLimitParado = false;
                     do {
-                        $result = $this->call('getMarketplaceadsCustIdproductAdsmetrics', [
-                            'marketplace'  => $this->marketplace,
-                            'custId'       => $custId,
-                            'dateFrom'     => $dateFrom,
-                            'dateTo'       => $dateTo,
-                            'page'         => $page,
-                            'itemsPerPage' => $itemsPerPage,
-                        ]);
+                        try {
+                            $result = $this->call('getMarketplaceadsCustIdproductAdsmetrics', [
+                                'marketplace'  => $this->marketplace,
+                                'custId'       => $custId,
+                                'dateFrom'     => $dateFrom,
+                                'dateTo'       => $dateTo,
+                                'page'         => $page,
+                                'itemsPerPage' => $itemsPerPage,
+                            ]);
+                        } catch (\RuntimeException $e) {
+                            // Só captura o nosso rate-limit local — qualquer outro
+                            // RuntimeException (TLS, erro upstream, etc) sobe.
+                            if (!str_contains($e->getMessage(), 'Limite Adman MCP atingido')) {
+                                throw $e;
+                            }
+                            \Illuminate\Support\Facades\Log::info(sprintf(
+                                '[AdmanMcp] Rate limit local em fetchAllProductAds custId=%s page=%d/%d — retorna parcial pra checkpoint',
+                                $custId, $page, $totalPages,
+                            ));
+                            $rateLimitParado = true;
+                            break;
+                        }
 
                         $sc          = $result['structuredContent'] ?? [];
                         $productAds  = $sc['productAds'] ?? [];
@@ -251,13 +274,27 @@ class AdmanMcpService
                         // Retry em 429 do call() (linhas 64-126) segue como safety net.
                     } while ($page <= $totalPages && $page <= $maxPages);
 
+                    // Phase 30 fix W1 (revisão pós-smoke C) — truncated=true também
+                    // quando o RateLimiter local barrou no meio. Job vê isso e ativa
+                    // checkpoint pra continuar de pages_read+1 na próxima execução.
+                    // rate_limited é sinal interno pra invalidar cache abaixo (evita
+                    // cachear parcial por 30min — próxima chamada precisa retomar).
                     return [
-                        'items'       => $all,
-                        'truncated'   => $totalPages > $maxPages,
-                        'pages_read'  => $page - 1,
-                        'total_pages' => $totalPages,
+                        'items'        => $all,
+                        'truncated'    => $rateLimitParado || $totalPages > $maxPages,
+                        'rate_limited' => $rateLimitParado,
+                        'pages_read'   => $page - 1,
+                        'total_pages'  => $totalPages,
                     ];
                 });
+
+                // Phase 30 fix W1 C — se o resultado foi parcial por rate limit local,
+                // invalida o cache imediatamente. Senão próximas chamadas leem parcial
+                // do cache durante 30min sem nunca completar a varredura.
+                if ($result['rate_limited'] ?? false) {
+                    Cache::forget($cacheKey);
+                }
+                return $result;
             });
         } catch (LockTimeoutException $e) {
             // Timeout de 30s: paginação típica 16 págs × 1.5s = 24s + folga TLS.

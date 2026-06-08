@@ -229,4 +229,32 @@ class ThrottledAdmanQueueTest extends TestCase
             'AdmanMcpService::call() deve checar bucket adman-api antes do HTTP.'
         );
     }
+
+    /** Test 14 — fetchAllProductAds captura rate-limit local e retorna parcial (Fix C) */
+    public function test_fetch_all_product_ads_retorna_parcial_quando_rate_limit_local(): void
+    {
+        $source = file_get_contents(app_path('Services/AdmanMcpService.php'));
+
+        // Confirma que a captura do RuntimeException 'Limite Adman MCP atingido' está dentro do loop
+        $this->assertMatchesRegularExpression(
+            '/catch\s*\(\s*\\\\RuntimeException\s+\$e\s*\)/',
+            $source,
+            'fetchAllProductAds deve capturar RuntimeException pra distinguir rate-limit local de erros upstream.'
+        );
+        $this->assertStringContainsString(
+            "str_contains(\$e->getMessage(), 'Limite Adman MCP atingido')",
+            $source,
+            'Captura deve filtrar SÓ a mensagem "Limite Adman MCP atingido" — outros RuntimeException sobem.'
+        );
+        $this->assertStringContainsString(
+            'rate_limited',
+            $source,
+            'Retorno deve incluir flag rate_limited pra invalidar cache.'
+        );
+        $this->assertStringContainsString(
+            "Cache::forget(\$cacheKey)",
+            $source,
+            'Cache invalidado quando rate_limited=true pra não persistir parcial por 30min.'
+        );
+    }
 }
