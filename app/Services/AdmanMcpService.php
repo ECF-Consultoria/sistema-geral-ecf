@@ -146,8 +146,13 @@ class AdmanMcpService
      * paginação completa demora vários minutos. Limite default de 16 páginas
      * (800 MLBs) cabe em ~4 min, dentro do fastcgi_read_timeout=300s do nginx.
      */
-    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 8, ?string $progressCacheKey = null): array
+    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 8, ?string $progressCacheKey = null, int $startPage = 1): array
     {
+        // Phase 30 D-03 — cacheKey AGNÓSTICA ao startPage: o cache representa
+        // "varredura completa conhecida" e quem consome (SugadorController::mlbs
+        // via cachedFullScanIfReady) sempre busca pelo (custId, dateFrom, dateTo,
+        // maxPages). Se incluíssemos startPage na key, continuações nunca
+        // encontrariam o cache do snapshot final.
         $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, $dateFrom, $dateTo, $maxPages);
 
         // MCP da Adman tem rate limit real 10 req/min/key (confirmado Phase 16 —
@@ -172,11 +177,14 @@ class AdmanMcpService
         $lock    = Cache::lock($lockKey, 90);
 
         try {
-            return $lock->block(90, function () use ($cacheKey, $custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
-                return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey) {
+            return $lock->block(90, function () use ($cacheKey, $custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey, $startPage) {
+                return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($custId, $dateFrom, $dateTo, $itemsPerPage, $maxPages, $progressCacheKey, $startPage) {
                     $itemsPerPage = min($itemsPerPage, 50); // cap da Adman
                     $all        = [];
-                    $page       = 1;
+                    // Phase 30 D-03 — $page inicializado com $startPage. Default=1
+                    // preserva comportamento original; continuações via Job passam
+                    // startPage = pages_read+1 do checkpoint anterior.
+                    $page       = $startPage;
                     $totalPages = 1;
                     $startedAt  = microtime(true);
 
@@ -213,12 +221,13 @@ class AdmanMcpService
                         }
 
                         $page++;
-                        // Throttle: 6.5s entre páginas mantém ~9 req/min, dentro
-                        // do limite real de 10/min/key da Adman (confirmado Phase 16).
-                        // O comentário antigo (1.5s para 40 req/min) estava calibrado
-                        // pelo limite errado documentado em 2025; com 1.5s a paginação
-                        // sozinha estourava o limite real e gerava 429 no drilldown.
-                        if ($page <= $totalPages && $page <= $maxPages) usleep(6_500_000);
+                        // Phase 30 D-02 — throttle interno removido. O RateLimited
+                        // middleware do FetchAdmanMlbsByCampaignJob (RateLimiter
+                        // 'adman-api' = 8/min global via Redis) é dono do controle
+                        // de taxa. Workers concorrentes agora compartilham bucket
+                        // — antes cada um respeitava 9/min isoladamente e juntos
+                        // estouravam 18/min, gerando 429 com o hard limit 10/min/key.
+                        // Retry em 429 do call() (linhas 64-126) segue como safety net.
                     } while ($page <= $totalPages && $page <= $maxPages);
 
                     return [
@@ -271,8 +280,10 @@ class AdmanMcpService
                 }
 
                 $page++;
-                // Throttle 6.5s/página = ~9 req/min (limite real Adman é 10/min/key).
-                if ($page <= $totalPages) usleep(6_500_000);
+                // Phase 30 D-02 — throttle interno removido. RateLimited middleware
+                // global ('adman-api' 8/min via Redis) controla a taxa nos Jobs que
+                // chamam listCampaigns indiretamente. Chamadas síncronas continuam
+                // protegidas pelo cache de 1h (linha 249) que evita re-busca.
             } while ($page <= $totalPages);
 
             return $all;

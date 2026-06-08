@@ -8,6 +8,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -43,8 +44,19 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    /** Sem cap efetivo — caps de uso real ficam em 100-500 páginas. */
-    public const MAX_PAGES_FULL_SCAN = 1000;
+    /**
+     * Phase 30 D-04 — cap reduzido de 1000 → 500. Com rate limiter global
+     * 8/min, varredura completa de 500 páginas distribui em ~62min worst-case;
+     * checkpoint cuida do resto via re-dispatch (D-03).
+     */
+    public const MAX_PAGES_FULL_SCAN = 500;
+
+    /**
+     * Phase 30 D-03 Pitfall 2 — previne loop infinito de re-dispatch quando
+     * Job sempre estoura timeout (conta gigante / MCP degradada). Ao atingir,
+     * gravamos status 'failed' com mensagem amigável.
+     */
+    public const MAX_DISPATCH_COUNT = 10;
 
     public int $tries = 5;
 
@@ -55,6 +67,21 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         public readonly string $custId,
         public readonly string $dateFrom,
         public readonly string $dateTo,
+        /**
+         * Phase 30 D-03 — Página inicial da varredura. Default 1 = primeira
+         * execução. Continuações passam pages_read+1 do checkpoint anterior.
+         */
+        public readonly int $startPage = 1,
+        /**
+         * Phase 30 D-03 — Items já coletados em execuções anteriores.
+         * Default [] = primeira execução. Continuações passam o array mesclado.
+         */
+        public readonly array $mlbsAcumulados = [],
+        /**
+         * Phase 30 D-03 — Contador de re-dispatches (anti-loop). Default 0
+         * = primeira execução. Cap em MAX_DISPATCH_COUNT.
+         */
+        public readonly int $dispatchCount = 0,
     ) {}
 
     /**
@@ -87,32 +114,68 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         return 1800;
     }
 
+    /**
+     * Phase 30 D-01 — Aplica throttle global Adman 'adman-api' (8/min).
+     * Workers concorrentes compartilham o bucket via Redis. Quando o limite
+     * estoura, Laravel reagenda em delayed sem marcar falha.
+     */
+    public function middleware(): array
+    {
+        return [new RateLimited('adman-api')];
+    }
+
     public function handle(AdmanMcpService $mcp): void
     {
         $started = microtime(true);
         $statusKey = $this->statusCacheKey();
 
+        // Phase 30 D-03 Pitfall 2 — Guard de cap de re-dispatch.
+        // Se uma cadeia de continuações já alcançou MAX_DISPATCH_COUNT sem
+        // terminar, sinaliza falha definitiva. Evita loop infinito quando
+        // a conta é grande demais ou a MCP está degradada.
+        if ($this->dispatchCount >= self::MAX_DISPATCH_COUNT) {
+            $cap = self::MAX_DISPATCH_COUNT;
+            Cache::put($statusKey, [
+                'status'         => 'failed',
+                'error'          => "Cap de {$cap} re-dispatches atingido. Conta muito grande ou MCP degradada — investigar.",
+                'dispatch_count' => $this->dispatchCount,
+                'mlbs_acumulados' => count($this->mlbsAcumulados),
+                'completed_at'   => now()->toIso8601String(),
+            ], now()->addMinutes(30));
+
+            Log::error(sprintf(
+                '[FetchAdmanMlbs] cap de %d re-dispatches atingido custId=%s — abortando',
+                $cap, $this->custId,
+            ));
+            return;
+        }
+
         // Marca "running" imediatamente — sem isso a UI mostra "em andamento"
         // por inércia (não tem nada no cache) até a 1ª página chegar (~15s).
+        // Phase 30 D-03 — anotar startPage + dispatch_count + mlbs já coletados
+        // (continuação preserva contexto, UI mostra "continuando varredura...").
         Cache::put($statusKey, [
-            'status'       => 'running',
-            'pages_read'   => 0,
-            'total_pages'  => null,
-            'items_count'  => 0,
-            'started_at'   => now()->toIso8601String(),
-            'updated_at'   => now()->toIso8601String(),
-            'attempt'      => $this->attempts(),
+            'status'          => 'running',
+            'pages_read'      => max(0, $this->startPage - 1),
+            'total_pages'     => null,
+            'items_count'     => count($this->mlbsAcumulados),
+            'start_page'      => $this->startPage,
+            'dispatch_count'  => $this->dispatchCount,
+            'mlbs_acumulados' => count($this->mlbsAcumulados),
+            'started_at'      => now()->toIso8601String(),
+            'updated_at'      => now()->toIso8601String(),
+            'attempt'         => $this->attempts(),
         ], now()->addMinutes(35));
 
         Log::info(sprintf(
-            '[FetchAdmanMlbs] iniciando full-scan custId=%s range=%s..%s attempt=%d',
+            '[FetchAdmanMlbs] iniciando custId=%s range=%s..%s attempt=%d startPage=%d dispatch=%d mlbs_acumulados=%d',
             $this->custId, $this->dateFrom, $this->dateTo, $this->attempts(),
+            $this->startPage, $this->dispatchCount, count($this->mlbsAcumulados),
         ));
 
         try {
             // Passa statusKey pro service gravar progresso a cada página.
-            // A próxima chamada síncrona com o mesmo maxPages pega o cache do
-            // resultado final automaticamente.
+            // Phase 30 D-03 — startPage permite retomar de onde parou (checkpoint).
             $result = $mcp->fetchAllProductAds(
                 custId:           $this->custId,
                 dateFrom:         $this->dateFrom,
@@ -120,6 +183,7 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
                 itemsPerPage:     50,
                 maxPages:         self::MAX_PAGES_FULL_SCAN,
                 progressCacheKey: $statusKey,
+                startPage:        $this->startPage,
             );
         } catch (\Throwable $e) {
             // Log com stack trace pra investigar causa-raiz (rate limit? TLS?
@@ -143,26 +207,71 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
             throw $e;
         }
 
+        // Phase 30 D-03 — Decisão de checkpoint:
+        // Se varredura não terminou (pages_read < total_pages) E consumimos
+        // >= 80% do timeout, persistir progresso + re-dispatchar continuação.
+        $pagesRead   = (int) ($result['pages_read'] ?? 0);
+        $totalPages  = (int) ($result['total_pages'] ?? 0);
+        $itemsResult = $result['items'] ?? [];
+        $elapsedRatio = (microtime(true) - $started) / max(1, $this->timeout);
+        $incompleto   = $totalPages > 0 && $pagesRead < $totalPages;
+        $podeContinuar = $this->dispatchCount < self::MAX_DISPATCH_COUNT - 1;
+
+        // Sempre mesclamos os items coletados ATÉ AGORA com o acumulado anterior.
+        // Em continuações, isso evita que a UI veja só os últimos batch de páginas.
+        $mlbsAcumulados = array_merge($this->mlbsAcumulados, $itemsResult);
+
+        if ($incompleto && $elapsedRatio >= 0.80 && $podeContinuar) {
+            // Re-dispatch da continuação a partir da próxima página
+            $proximaPagina = $pagesRead + 1;
+            $proximoDispatch = $this->dispatchCount + 1;
+
+            self::dispatch(
+                custId:         $this->custId,
+                dateFrom:       $this->dateFrom,
+                dateTo:         $this->dateTo,
+                startPage:      $proximaPagina,
+                mlbsAcumulados: $mlbsAcumulados,
+                dispatchCount:  $proximoDispatch,
+            );
+
+            Cache::put($statusKey, [
+                'status'          => 'continuando',
+                'pages_read'      => $pagesRead,
+                'total_pages'     => $totalPages,
+                'items_count'     => count($mlbsAcumulados),
+                'start_page'      => $proximaPagina,
+                'dispatch_count'  => $proximoDispatch,
+                'mlbs_acumulados' => count($mlbsAcumulados),
+                'updated_at'      => now()->toIso8601String(),
+            ], now()->addMinutes(35));
+
+            Log::info(sprintf(
+                '[FetchAdmanMlbs] checkpoint custId=%s pages_read=%d/%d dispatch=%d mlbs_acumulados=%d — re-dispatchando continuação',
+                $this->custId, $pagesRead, $totalPages, $proximoDispatch, count($mlbsAcumulados),
+            ));
+            return;
+        }
+
+        // Varredura concluiu (ou maxPages atingido sem mais tempo de continuação).
+        // Estado final = mlbs_acumulados (preserva tudo coletado em re-dispatches anteriores).
         Cache::put(
             $statusKey,
             [
-                'status'        => 'ready',
-                'pages_read'    => $result['pages_read']  ?? null,
-                'total_pages'   => $result['total_pages'] ?? null,
-                'items_count'   => count($result['items'] ?? []),
-                'completed_at'  => now()->toIso8601String(),
+                'status'         => 'ready',
+                'pages_read'     => $pagesRead,
+                'total_pages'    => $totalPages,
+                'items_count'    => count($mlbsAcumulados),
+                'dispatch_count' => $this->dispatchCount,
+                'completed_at'   => now()->toIso8601String(),
             ],
             now()->addMinutes(30),
         );
 
         $elapsed = round(microtime(true) - $started, 1);
         Log::info(sprintf(
-            '[FetchAdmanMlbs] concluído custId=%s pages=%d/%d items=%d elapsed=%ss',
-            $this->custId,
-            $result['pages_read']  ?? 0,
-            $result['total_pages'] ?? 0,
-            count($result['items'] ?? []),
-            $elapsed,
+            '[FetchAdmanMlbs] concluído custId=%s pages=%d/%d items=%d dispatch=%d elapsed=%ss',
+            $this->custId, $pagesRead, $totalPages, count($mlbsAcumulados), $this->dispatchCount, $elapsed,
         ));
     }
 

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Queue\Middleware\RateLimited;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
@@ -60,6 +61,16 @@ class AnalyzeCompanySugadoresJob implements ShouldQueue, ShouldBeUnique
     public function uniqueId(): string
     {
         return (string) $this->company->id;
+    }
+
+    /**
+     * Phase 30 D-01 — Aplica throttle global Adman 'adman-api' (8/min).
+     * Bucket compartilhado entre todos os workers via cache Redis. Quando o
+     * limite estoura, Laravel reagenda o Job em delayed sem marcar falha.
+     */
+    public function middleware(): array
+    {
+        return [new RateLimited('adman-api')];
     }
 
     public function handle(SugadorAnalysisService $service): void

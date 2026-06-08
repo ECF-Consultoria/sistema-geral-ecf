@@ -35,6 +35,17 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(600)->by($request->ip());
         });
 
+        // Phase 30 D-01 — Rate limiter GLOBAL para chamadas à Adman MCP.
+        // 8/min deixa folga de 2 req sobre o hard limit 10/min/key da Adman.
+        // 'global' faz workers concorrentes (ecf-worker_00/01) caírem no MESMO
+        // bucket via cache Redis (atomic SETNX), evitando que cada worker
+        // respeite 8/min isoladamente e juntos estourem 16/min.
+        // Jobs com middleware RateLimited('adman-api') ficam em delayed quando
+        // o limite estoura — NÃO falham, só atrasam até a janela liberar.
+        RateLimiter::for('adman-api', function () {
+            return Limit::perMinute(8)->by('global');
+        });
+
         Event::listen(Login::class, function (Login $event) {
             activity('auth')
                 ->causedBy($event->user)
