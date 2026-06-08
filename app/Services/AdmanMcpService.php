@@ -6,6 +6,7 @@ use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Cliente da API MCP do Adman (https://mcp.ad-man.io/v1/mcp) — separada da REST
@@ -45,6 +46,23 @@ class AdmanMcpService
         if (!$this->isConfigured()) {
             throw new \RuntimeException('Adman MCP não configurada (services.adman_mcp.url/api_key).');
         }
+
+        // Phase 30 fix W1 — Rate limiter LOCAL global aplicado a TODA chamada à
+        // Adman MCP (caminho síncrono via SugadorController + caminho async via
+        // FetchAdmanMlbsByCampaignJob). Antes só Jobs tinham proteção via middleware
+        // RateLimited; caminho síncrono estourava 429 facilmente — o middleware do
+        // Plan 30-01 não cobria controller. Bucket 'adman-api' (8/min global) está
+        // registrado em AppServiceProvider e compartilhado entre workers via Redis.
+        // Se estourar, throw RuntimeException com retry-after — controller mostra
+        // mensagem amigável ao usuário em vez de "status 429" cru.
+        if (RateLimiter::tooManyAttempts('adman-api', 8)) {
+            $availableIn = RateLimiter::availableIn('adman-api');
+            throw new \RuntimeException(
+                "Limite Adman MCP atingido (8 req/min globais). Tente novamente em {$availableIn}s. "
+                . "Workers em paralelo podem estar consumindo a janela."
+            );
+        }
+        RateLimiter::hit('adman-api', 60);
 
         $payload = [
             'jsonrpc' => '2.0',

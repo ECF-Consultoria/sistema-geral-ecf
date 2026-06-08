@@ -192,4 +192,41 @@ class ThrottledAdmanQueueTest extends TestCase
         $startPageParam = $params[6];
         $this->assertSame(1, $startPageParam->getDefaultValue());
     }
+
+    // ─────────── Fix W1: RateLimiter dentro de AdmanMcpService::call() ───────────
+
+    /** Test 12 — call() throw quando bucket adman-api estourado (protege controller síncrono) */
+    public function test_call_lanca_excecao_quando_bucket_adman_api_estourado(): void
+    {
+        \Illuminate\Support\Facades\RateLimiter::clear('adman-api');
+        for ($i = 0; $i < 8; $i++) {
+            \Illuminate\Support\Facades\RateLimiter::hit('adman-api', 60);
+        }
+
+        $service = $this->app->make(AdmanMcpService::class);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessageMatches('/Limite Adman MCP atingido/');
+
+        // qualquer chamada deveria explodir pq o bucket está cheio
+        $service->call('any-tool', ['custId' => '123']);
+
+        \Illuminate\Support\Facades\RateLimiter::clear('adman-api');
+    }
+
+    /** Test 13 — Service tem import correto do RateLimiter facade (smoke source) */
+    public function test_adman_mcp_service_importa_rate_limiter(): void
+    {
+        $source = file_get_contents(app_path('Services/AdmanMcpService.php'));
+        $this->assertStringContainsString(
+            'use Illuminate\\Support\\Facades\\RateLimiter;',
+            $source,
+            'AdmanMcpService deve importar RateLimiter facade.'
+        );
+        $this->assertStringContainsString(
+            "RateLimiter::tooManyAttempts('adman-api'",
+            $source,
+            'AdmanMcpService::call() deve checar bucket adman-api antes do HTTP.'
+        );
+    }
 }

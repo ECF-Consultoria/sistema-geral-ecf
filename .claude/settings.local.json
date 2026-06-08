@@ -47,7 +47,12 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php public/audit_temp_seller.php\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"rm -f /var/www/ecf_admin/public/audit_temp_carteira.php /var/www/ecf_admin/public/audit_temp_seller.php && ls /var/www/ecf_admin/public/audit* 2>/dev/null | wc -l\")",
       "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=Phase27 --testdox 2>&1\")",
-      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=Forecast --testdox 2>&1\")"
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=Forecast --testdox 2>&1\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"tail -F /var/www/ecf_admin/storage/logs/laravel.log 2>/dev/null\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"curl -sS -o /dev/null -w 'http=%{http_code} time=%{time_total}s\\\\n' --max-time 30 https://mcp.ad-man.io/v1/mcp 2>&1 || echo 'TIMEOUT or ERROR'\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"tail -200 /var/www/ecf_admin/storage/logs/laravel.log | grep -E '\\(\\\\[AdmanMcp\\\\]|cURL error|tentativa|FetchAdmanMlbs|productAdsmetrics\\)' | tail -30\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"rm -f /var/www/ecf_admin/public/audit_q.php && echo cleaned\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=ThrottledAdmanQueueTest --testdox 2>&1\")"
     ]
   }
 }
