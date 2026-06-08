@@ -74,12 +74,21 @@ Decimal phases appear between their surrounding integers in numeric order.
 Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grants) para destravar **decisão estratégica** + **detecção precoce de churn** + **automação executiva**. ECF Drive abstrai o SFTP do ML e expõe REST com endpoints de Sellers (métricas operacionais), Carteira (agregados), Signals (alertas automáticos), Relatórios e Webhooks. Cada phase é independente após Phase 22 (base wrapper) — pode ser executada e deployada isolada.
 
 - [x] **Phase 22: Wrapper expandido EcfDriveService** - Expande `EcfDriveService` da Phase 20 com 18 métodos novos cobrindo `/clientes/*`, `/sellers/*`, `/carteira/*`, `/signals/*`, `/relatorios/*`. Cache estratégico por endpoint (5min listas, 1h ranking, 24h relatórios). Validações defensivas (`MET_VALIDAS` no ranking, ≤20 cust_ids em comparar, `dimensoes` não-vazio). **47 testes verdes** (27 Phase 22 + 20 Phase 20 regressão). Smoke W4 validou 4/5 chamadas em prod: `carteiraResumo` R$ 42,8M GMV maio/2026, `ranking` top1 RELOJOARIA WENUS R$ 2,7M, `listSignals` 778 alertas, `relatorioMensal` 202605. `ping()` retorna false (cosmético — `/auth/me` exige user session; follow-up: substituir endpoint). Sem UI por design — habilita Phases 23-28. (completed 2026-06-05, deployed)
-- [x] **Phase 23: Alertas Estratégicos (signals)** - Aba `/alertas-estrategicos` consumindo `/signals` em polling diário (MVP — webhook em Phase 26). Caixa de entrada do comercial com filtros por severidade e tipo (queda GMV, queda visitas, medalha rebaixada, score crítico, oportunidade PADS). Ação "marcar como visto" via `POST /signals/:id/ack`. **778 signals já detectados em prod** (61 críticos), destravando ação comercial imediata. Convive com Sugadores (operacional, adgroup-level) sem substituí-lo. (completed 2026-06-05)
+- [x] **Phase 23: Alertas Estratégicos (signals)** - Aba `/alertas-estrategicos` consumindo `/signals` em polling diário (MVP — webhook em Phase 26). Caixa de entrada do comercial com filtros por severidade e tipo (queda GMV, queda visitas, medalha rebaixada, score crítico, oportunidade PADS). Ação "marcar como visto" via `POST /signals/:id/ack`. **778 signals já detectados em prod** (61 críticos), destravando ação comercial imediata. Convive com Sugadores (operacional, adgroup-level) sem substituí-lo.
+ (completed 2026-06-05)
 - [x] **Phase 24: Painel Executivo Carteira ECF** - Aba `/painel-executivo` com visão estratégica consolidada da carteira inteira ECF (~1238 sellers, R$ 42,8M GMV maio/26). 8 KPI cards com delta MoM colorido (TrendingUp/Down/Minus), gráfico histórico 12 meses com duplo eixo Y (GMV + Sellers), 4 tabs de breakdown (Programa/Frete/Cluster/Localidade) com PieChart + tabela. Try/catch global (ECF Drive offline não quebra pageload). Item "Painel Executivo" no topo da sidebar (só admin). 8 testes Feature verdes (71 assertions). (W1+W2+W3 completed 2026-06-05 — aguardando smoke visual W4)
-- [x] **Phase 25: Análise por Empresa (Sellers)** - Página `/empresas/{custId}/analise` com ficha 360° do seller usando `/sellers/{custId}`, métricas mensal/diário, histórico de medalhas, signals daquele seller, ranking. Destrava a substituição parcial do drilldown Adman MCP (frágil — Phase 19 lutou contra 429) para campos que ECF Drive cobre. (completed 2026-06-06)
+- [x] **Phase 25: Análise por Empresa (Sellers)** - Página `/empresas/{custId}/analise` com ficha 360° do seller usando `/sellers/{custId}`, métricas mensal/diário, histórico de medalhas, signals daquele seller, ranking. Destrava a substituição parcial do drilldown Adman MCP (frágil — Phase 19 lutou contra 429) para campos que ECF Drive cobre.
+ (completed 2026-06-06)
 - [x] **Phase 26: Webhooks completos ECF Drive** - Receiver `POST /api/webhooks/ecf` validando HMAC SHA256 timing-safe (`X-ECF-Signature`) para 6 eventos: `sync.completed`, `sync.failed`, `etl.completed`, `grant.expirando`, `signal.detected`, `relatorio.gerado`. Idempotência via tabela `webhook_deliveries` (UNIQUE event_id), dispatch async via 6 Jobs em `app/Jobs/EcfWebhook/`, rate limit 600/min/IP, canal log dedicado `ecf-webhooks`. **Smoke real em prod**: 6,56ms latência (alvo <100ms), HMAC válido aceito, inválido rejeitado, idempotência confirmada. Webhook configurado no painel ECF Drive com todos os 6 eventos. (completed 2026-06-05, deployed; 6 testes Phase 26 verdes)
 - [x] **Phase 27: Concentração de Receita e Forecast** - Aba `/concentracao` (só admin) com 3 seções: (1) matriz heatmap programa × cluster via `/carteira/segmentacao`; (2) forecast 90 dias com regressão linear sobre `/carteira/historico` (3 cenários otimista/base/pessimista, R² na UI); (3) top 20 "vacas leiteiras silenciosas" (top 50 do ranking cruzado com coeficiente de variação das métricas mensais). `ForecastService` com 3 funções puras. 17 testes verdes (10 Unit + 7 Feature). **Insights reais em prod**: top vaca IMPERIALECOMMERCEOFICIAL (CV 4,3%, R$ 394k médio); top grant em risco RELOJOARIA WENUS (R$ 5,5M, 4d). 4 Planos de fix no mesmo dia (camelCase API, labels pt-BR sem expansão, lookup company nos grants, revert workaround após parceiro corrigir BrasilAPI — diversidade de razões sociais subiu de 1 para 235). (completed 2026-06-06, deployed)
-- [x] **Phase 28: Relatório Mensal Executivo automatizado** - Job mensal (dia 6 às 10h BRT, após webhook `relatorio.gerado` dia 5 09:00 UTC) consome `/relatorios/mensal/{timMonthId}` e gera PDF executivo via Dompdf, enviado por email à liderança. Onboarding rápido (mostra estado completo da carteira para novos gestores). Depende de Phase 26 para receber o webhook. (completed 2026-06-06)
+- [x] **Phase 28: Relatório Mensal Executivo automatizado** - Job mensal (dia 6 às 10h BRT, após webhook `relatorio.gerado` dia 5 09:00 UTC) consome `/relatorios/mensal/{timMonthId}` e gera PDF executivo via Dompdf, enviado por email à liderança. Onboarding rápido (mostra estado completo da carteira para novos gestores). Depende de Phase 26 para receber o webhook.
+ (completed 2026-06-06)
+
+### Milestone v9.0 — Sistema de Notificações 2.0
+
+A v8.0 entregou a infraestrutura de webhooks (Phase 26) que recebe 6 eventos do ECF Drive em tempo real, mas os handlers só fazem `Log::channel('ecf-webhooks')` — o sino do header (Phase 10) NÃO acende quando algo chega. A v9.0 costura essa lacuna: webhooks viram notificações reais no banco usando a infra `BaseNotification` da Phase 8/12 que já entrega via `database` channel + polling do sino.
+
+- [ ] **Phase 29: signal.detected vira notificação no sino** - Integra `HandleSignalDetectedJob` (Phase 26) com `BaseNotification` (Phase 8). Quando ECF Drive envia push de `signal.detected` severity=critical para empresas da NOSSA carteira (lookup local `Company` por cust_id), cria notificação na tabela `notifications` da Phase 8 destinada a admin + consultor + mentor. Sino do header automaticamente acende via polling do shared prop existente. Categoria nova `ALERTA_ECF` na enum, título descritivo pt-BR (ex: "Queda crítica de faturamento em RELOJOARIA WENUS"), link direto para `/alertas-estrategicos`. Filtros: apenas carteira local + apenas critical para evitar ruído. Outros eventos ficam para fases futuras.
 
 ## Phase Details
 
@@ -620,3 +629,13 @@ Plans:
 
 Plans:
 - [ ] TBD (run /gsd-plan-phase 28 to break down)
+
+### Phase 29: signal.detected vira notificacao no sino (Phase 12 BaseNotification) para admin+consultor+mentor com filtro de carteira local apenas severity=critical
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 28
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 29 to break down)
