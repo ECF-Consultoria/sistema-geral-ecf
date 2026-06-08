@@ -30,7 +30,9 @@
       "Bash(C:/xampp/php/php.exe artisan *)",
       "Bash(C:/xampp/php/php.exe -r ' *)",
       "Bash(powershell -command \"Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::OpenRead\\('ecf_admin_vps.zip'\\).Entries | Select-Object -ExpandProperty FullName | head -100\")",
-      "Bash(powershell -command ' *)"
+      "Bash(powershell -command ' *)",
+      "Bash(perl -i -pe 's/^- \\\\[x\\\\] \\\\*\\\\*Phase 28: Relatório Mensal Executivo automatizado\\\\*\\\\* - Job mensal \\\\\\(dia 6 às 10h BRT.*?\\\\\\(completed 2026-06-06\\\\\\)$/- [x] **Phase 28: Relatório Mensal Executivo automatizado** - Pipeline ponta-a-ponta: webhook `relatorio.gerado` da Phase 26 → HandleRelatorioGeradoJob → EcfDriveService::relatorioMensal\\(\\) → RelatorioMensalPdfService::gerar\\(\\) \\(Dompdf\\) → grava em storage\\\\/app\\\\/private\\\\/relatorios\\\\/ → envia anexo para User::where\\(role,admin\\)->where\\(active, true\\). Mailable RelatorioMensalMail com assunto pt-BR + corpo HTML + PDF anexado via Attachment::fromStorage. Comando php artisan relatorios:disparar-mensal {periodo?} para teste manual sem esperar webhook. 8 testes verdes. **Smoke W4 em prod**: PDF de **871,6 KB** gerado para período 202605, salvo em disco e enviado via SMTP Gmail para matheusbarretop14\\\\@gmail.com, validado visualmente pelo usuário. **Fecha a Milestone v8.0**. \\(completed 2026-06-08, deployed\\)/' .planning/ROADMAP.md)",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=Phase29 --testdox 2>&1\")"
     ]
   }
 }

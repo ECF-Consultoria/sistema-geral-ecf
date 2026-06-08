@@ -356,7 +356,11 @@
       "Bash(C:/xampp/php/php C:/ProgramData/ComposerSetup/latest.phar install --no-interaction)",
       "Bash(ls /c/ProgramData/ComposerSetup/ 2>/dev/null || ls /mnt/c/ProgramData/ComposerSetup/ 2>/dev/null || find /c/Users -name \"composer\" -type f 2>/dev/null | head -5)",
       "Read(//mnt/c/ProgramData/**)",
-      "Bash(C:/xampp/php/php \"C:/Users/User/AppData/Roaming/Composer/latest.phar\" install --no-interaction)"
+      "Bash(C:/xampp/php/php \"C:/Users/User/AppData/Roaming/Composer/latest.phar\" install --no-interaction)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && grep -E \"^MAIL_\" .env | sed \"s/=.*/=<REDACTED>/\" && echo \"---\" && php artisan tinker --execute=\"echo \\\\\"MAIL_MAILER: \\\\\" . config\\(\\\\\"mail.default\\\\\"\\) . PHP_EOL; echo \\\\\"FROM: \\\\\" . config\\(\\\\\"mail.from.address\\\\\"\\) . PHP_EOL; echo \\\\\"HOST: \\\\\" . config\\(\\\\\"mail.mailers.\\\\\" . config\\(\\\\\"mail.default\\\\\"\\) . \\\\\".host\\\\\"\\) . PHP_EOL;\"')",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && echo \"=== PDF arquivado ===\" && ls -lh storage/app/relatorios/ && echo \"\" && echo \"=== Logs recentes \\(mail/relatorios\\) ===\" && tail -50 storage/logs/laravel.log | grep -iE \"mail|relatorio|swift|matheus\" | tail -10')",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && find storage -name \"relatorio-*.pdf\" 2>/dev/null && echo \"---\" && php artisan tinker --execute=\"echo \\\\\"local path: \\\\\" . config\\(\\\\\"filesystems.disks.local.root\\\\\"\\) . PHP_EOL;\"')",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && tail -50 storage/logs/laravel.log | grep -iE \"matheus|RelatorioMensal|smtp|swiftmailer|exception\" | tail -10')"
     ],
     "additionalDirectories": [
       "\\tmp"
