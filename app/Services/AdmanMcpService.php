@@ -47,23 +47,6 @@ class AdmanMcpService
             throw new \RuntimeException('Adman MCP não configurada (services.adman_mcp.url/api_key).');
         }
 
-        // Phase 30 fix W1 — Rate limiter LOCAL global aplicado a TODA chamada à
-        // Adman MCP (caminho síncrono via SugadorController + caminho async via
-        // FetchAdmanMlbsByCampaignJob). Antes só Jobs tinham proteção via middleware
-        // RateLimited; caminho síncrono estourava 429 facilmente — o middleware do
-        // Plan 30-01 não cobria controller. Bucket 'adman-api' (8/min global) está
-        // registrado em AppServiceProvider e compartilhado entre workers via Redis.
-        // Se estourar, throw RuntimeException com retry-after — controller mostra
-        // mensagem amigável ao usuário em vez de "status 429" cru.
-        if (RateLimiter::tooManyAttempts('adman-api', 8)) {
-            $availableIn = RateLimiter::availableIn('adman-api');
-            throw new \RuntimeException(
-                "Limite Adman MCP atingido (8 req/min globais). Tente novamente em {$availableIn}s. "
-                . "Workers em paralelo podem estar consumindo a janela."
-            );
-        }
-        RateLimiter::hit('adman-api', 60);
-
         $payload = [
             'jsonrpc' => '2.0',
             'id'      => random_int(1, 1_000_000),
@@ -74,15 +57,29 @@ class AdmanMcpService
             ],
         ];
 
-        // Retry em 429/5xx — a MCP tem rate limit real de 10 req/min/key
-        // (confirmado pela Adman na Phase 16, não 50/min como o comentário antigo
-        // dizia). Devolvido em 429 HTTP ou empacotado no payload como isError.
-        // Pra 429 dormimos a janela inteira (60s) — backoff curto não ajuda já
-        // que outras chamadas nesta mesma janela continuam batendo no mesmo limite.
-        $maxAttempts = 6;
+        // Phase 30 fix W1 (revisão pós-smoke) — Reduzido de 6 → 2 attempts.
+        // Antes: 1 call() podia consumir até 6 chamadas reais à Adman mas
+        // contábamos só 1 hit no bucket — subestimávamos consumo brutalmente.
+        // Agora: hit é feito ANTES de cada attempt (loop abaixo), refletindo
+        // consumo real. 2 attempts cobrem 429 transitório sem explodir o cap.
+        $maxAttempts = 2;
         $lastBody    = null;
 
         for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            // Phase 30 fix W1 (revisão pós-smoke) — Check + hit DENTRO do loop.
+            // Cada tentativa real à Adman consome 1 slot do bucket 'adman-api'
+            // (8/min global via Redis). Se o bucket esgotar entre attempts,
+            // throw mensagem amigável em vez de bater no upstream e tomar 429
+            // cru. Bucket é compartilhado entre workers concorrentes (D-01).
+            if (RateLimiter::tooManyAttempts('adman-api', 8)) {
+                $availableIn = RateLimiter::availableIn('adman-api');
+                throw new \RuntimeException(
+                    "Limite Adman MCP atingido (8 req/min globais). Tente novamente em {$availableIn}s. "
+                    . "Workers em paralelo podem estar consumindo a janela."
+                );
+            }
+            RateLimiter::hit('adman-api', 60);
+
             // O servidor MCP da Adman tem TLS handshake lentíssimo (medido 4–26s
             // do nosso VPS, vs <0.1s pra api.ad-man.io/google). Desligar ALPN
             // corta o tempo pela metade (38s→15s nos testes). Keep-alive
@@ -164,7 +161,13 @@ class AdmanMcpService
      * paginação completa demora vários minutos. Limite default de 16 páginas
      * (800 MLBs) cabe em ~4 min, dentro do fastcgi_read_timeout=300s do nginx.
      */
-    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 8, ?string $progressCacheKey = null, int $startPage = 1): array
+    /**
+     * Phase 30 fix W1 (revisão pós-smoke): default maxPages reduzido de 8 → 4.
+     * Caminho síncrono (controller drilldown) lê 4 páginas = 200 anúncios,
+     * cabe na janela 8/min com folga (4 pages + ~2 listCampaigns = ~6 hits).
+     * Jobs continuam passando explicit maxPages=500 via MAX_PAGES_FULL_SCAN.
+     */
+    public function fetchAllProductAds(string $custId, string $dateFrom, string $dateTo, int $itemsPerPage = 50, int $maxPages = 4, ?string $progressCacheKey = null, int $startPage = 1): array
     {
         // Phase 30 D-03 — cacheKey AGNÓSTICA ao startPage: o cache representa
         // "varredura completa conhecida" e quem consome (SugadorController::mlbs
