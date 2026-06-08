@@ -129,17 +129,27 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         $started = microtime(true);
         $statusKey = $this->statusCacheKey();
 
+        // Phase 30 fix W1 (revisão pós-smoke D) — leitura defensiva das
+        // properties novas (startPage, mlbsAcumulados, dispatchCount).
+        // Jobs enfileirados ANTES do Plan 30-01 Task 2 não têm essas no
+        // payload serializado. Sem `?? default`, typed readonly property
+        // uninitialized throw Error e o Job nunca termina (vimos isso em
+        // prod: ::dispatchCount must not be accessed before initialization).
+        $startPage      = $this->startPage      ?? 1;
+        $mlbsAcumulados = $this->mlbsAcumulados ?? [];
+        $dispatchCount  = $this->dispatchCount  ?? 0;
+
         // Phase 30 D-03 Pitfall 2 — Guard de cap de re-dispatch.
         // Se uma cadeia de continuações já alcançou MAX_DISPATCH_COUNT sem
         // terminar, sinaliza falha definitiva. Evita loop infinito quando
         // a conta é grande demais ou a MCP está degradada.
-        if ($this->dispatchCount >= self::MAX_DISPATCH_COUNT) {
+        if ($dispatchCount >= self::MAX_DISPATCH_COUNT) {
             $cap = self::MAX_DISPATCH_COUNT;
             Cache::put($statusKey, [
                 'status'         => 'failed',
                 'error'          => "Cap de {$cap} re-dispatches atingido. Conta muito grande ou MCP degradada — investigar.",
-                'dispatch_count' => $this->dispatchCount,
-                'mlbs_acumulados' => count($this->mlbsAcumulados),
+                'dispatch_count' => $dispatchCount,
+                'mlbs_acumulados' => count($mlbsAcumulados),
                 'completed_at'   => now()->toIso8601String(),
             ], now()->addMinutes(30));
 
@@ -156,12 +166,12 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         // (continuação preserva contexto, UI mostra "continuando varredura...").
         Cache::put($statusKey, [
             'status'          => 'running',
-            'pages_read'      => max(0, $this->startPage - 1),
+            'pages_read'      => max(0, $startPage - 1),
             'total_pages'     => null,
-            'items_count'     => count($this->mlbsAcumulados),
-            'start_page'      => $this->startPage,
-            'dispatch_count'  => $this->dispatchCount,
-            'mlbs_acumulados' => count($this->mlbsAcumulados),
+            'items_count'     => count($mlbsAcumulados),
+            'start_page'      => $startPage,
+            'dispatch_count'  => $dispatchCount,
+            'mlbs_acumulados' => count($mlbsAcumulados),
             'started_at'      => now()->toIso8601String(),
             'updated_at'      => now()->toIso8601String(),
             'attempt'         => $this->attempts(),
@@ -170,7 +180,7 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         Log::info(sprintf(
             '[FetchAdmanMlbs] iniciando custId=%s range=%s..%s attempt=%d startPage=%d dispatch=%d mlbs_acumulados=%d',
             $this->custId, $this->dateFrom, $this->dateTo, $this->attempts(),
-            $this->startPage, $this->dispatchCount, count($this->mlbsAcumulados),
+            $startPage, $dispatchCount, count($mlbsAcumulados),
         ));
 
         try {
@@ -183,7 +193,7 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
                 itemsPerPage:     50,
                 maxPages:         self::MAX_PAGES_FULL_SCAN,
                 progressCacheKey: $statusKey,
-                startPage:        $this->startPage,
+                startPage:        $startPage,
             );
         } catch (\Throwable $e) {
             // Log com stack trace pra investigar causa-raiz (rate limit? TLS?
@@ -213,18 +223,25 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         $pagesRead   = (int) ($result['pages_read'] ?? 0);
         $totalPages  = (int) ($result['total_pages'] ?? 0);
         $itemsResult = $result['items'] ?? [];
+        // Phase 30 fix W1 (revisão D) — também aciona checkpoint quando o
+        // Service retorna rate_limited=true (rate-limit local ou 429 upstream
+        // capturado em fetchAllProductAds). Sem isso, Job termina como 'ready'
+        // com apenas as poucas páginas que conseguiu antes de bater o limit.
+        $rateLimitedNoService = (bool) ($result['rate_limited'] ?? false);
         $elapsedRatio = (microtime(true) - $started) / max(1, $this->timeout);
         $incompleto   = $totalPages > 0 && $pagesRead < $totalPages;
-        $podeContinuar = $this->dispatchCount < self::MAX_DISPATCH_COUNT - 1;
+        $podeContinuar = $dispatchCount < self::MAX_DISPATCH_COUNT - 1;
+        $deveFazerCheckpoint = $incompleto && $podeContinuar
+            && ($rateLimitedNoService || $elapsedRatio >= 0.80);
 
         // Sempre mesclamos os items coletados ATÉ AGORA com o acumulado anterior.
         // Em continuações, isso evita que a UI veja só os últimos batch de páginas.
-        $mlbsAcumulados = array_merge($this->mlbsAcumulados, $itemsResult);
+        $mlbsAcumulados = array_merge($mlbsAcumulados, $itemsResult);
 
-        if ($incompleto && $elapsedRatio >= 0.80 && $podeContinuar) {
+        if ($deveFazerCheckpoint) {
             // Re-dispatch da continuação a partir da próxima página
             $proximaPagina = $pagesRead + 1;
-            $proximoDispatch = $this->dispatchCount + 1;
+            $proximoDispatch = $dispatchCount + 1;
 
             self::dispatch(
                 custId:         $this->custId,
@@ -243,12 +260,14 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
                 'start_page'      => $proximaPagina,
                 'dispatch_count'  => $proximoDispatch,
                 'mlbs_acumulados' => count($mlbsAcumulados),
+                'rate_limited'    => $rateLimitedNoService,
                 'updated_at'      => now()->toIso8601String(),
             ], now()->addMinutes(35));
 
             Log::info(sprintf(
-                '[FetchAdmanMlbs] checkpoint custId=%s pages_read=%d/%d dispatch=%d mlbs_acumulados=%d — re-dispatchando continuação',
+                '[FetchAdmanMlbs] checkpoint custId=%s pages_read=%d/%d dispatch=%d mlbs_acumulados=%d rate_limited=%s — re-dispatchando continuação',
                 $this->custId, $pagesRead, $totalPages, $proximoDispatch, count($mlbsAcumulados),
+                $rateLimitedNoService ? 'sim' : 'nao',
             ));
             return;
         }
@@ -262,7 +281,7 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
                 'pages_read'     => $pagesRead,
                 'total_pages'    => $totalPages,
                 'items_count'    => count($mlbsAcumulados),
-                'dispatch_count' => $this->dispatchCount,
+                'dispatch_count' => $dispatchCount,
                 'completed_at'   => now()->toIso8601String(),
             ],
             now()->addMinutes(30),
@@ -271,7 +290,7 @@ class FetchAdmanMlbsByCampaignJob implements ShouldQueue, ShouldBeUnique
         $elapsed = round(microtime(true) - $started, 1);
         Log::info(sprintf(
             '[FetchAdmanMlbs] concluído custId=%s pages=%d/%d items=%d dispatch=%d elapsed=%ss',
-            $this->custId, $pagesRead, $totalPages, count($mlbsAcumulados), $this->dispatchCount, $elapsed,
+            $this->custId, $pagesRead, $totalPages, count($mlbsAcumulados), $dispatchCount, $elapsed,
         ));
     }
 

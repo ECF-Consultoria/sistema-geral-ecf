@@ -115,13 +115,19 @@ class AdmanMcpService
                 if (!empty($result['isError'])) {
                     $msg = $result['content'][0]['text'] ?? 'erro desconhecido';
                     $lastBody = $msg;
-                    // 5xx e 429 (rate limit) reportados dentro do payload do MCP
-                    // são transitórios — vale tentar de novo.
+                    // Phase 30 fix W1 (revisão pós-smoke D) — 429 upstream NÃO retenta
+                    // mais. Antes: cada call() com 429 fazia 2 tentativas (consumindo
+                    // 2 hits locais E batendo na Adman 2x). A 2ª tentativa em janela
+                    // de 60s SEMPRE recebia 429 também (Adman não esquece). Resultado:
+                    // dobrava o consumo e travava o Job. Agora 429 throw imediato —
+                    // fetchAllProductAds captura, retorna parcial, Job ativa checkpoint
+                    // que enfileira continuação na fila (workers respeitam middleware
+                    // RateLimited e só rodam quando bucket livre).
                     $isRateLimit = str_contains($msg, 'status code 429');
                     $isServer    = str_contains($msg, 'status code 5');
-                    if ($attempt < $maxAttempts && ($isServer || $isRateLimit)) {
+                    if (!$isRateLimit && $isServer && $attempt < $maxAttempts) {
                         Log::info("[AdmanMcp] {$toolName} {$msg} — retry {$attempt}/{$maxAttempts}");
-                        $this->sleepBackoff($attempt, $isRateLimit ? 65 : 0);
+                        $this->sleepBackoff($attempt, 0);
                         continue;
                     }
                     throw new \RuntimeException("Adman MCP tool {$toolName} erro: {$msg}");
@@ -229,13 +235,23 @@ class AdmanMcpService
                                 'itemsPerPage' => $itemsPerPage,
                             ]);
                         } catch (\RuntimeException $e) {
-                            // Só captura o nosso rate-limit local — qualquer outro
-                            // RuntimeException (TLS, erro upstream, etc) sobe.
-                            if (!str_contains($e->getMessage(), 'Limite Adman MCP atingido')) {
+                            // Phase 30 fix W1 (revisão D) — Captura 2 tipos de rate-limit:
+                            //   1) Local "Limite Adman MCP atingido" (nosso RateLimiter
+                            //      barrou ANTES da chamada HTTP)
+                            //   2) Upstream "failed with status 429" (Adman retornou 429
+                            //      após nossa chamada — bucket nosso ainda tinha slot mas
+                            //      janela da Adman é mais agressiva ou outra app consumiu)
+                            // Em AMBOS casos, retornamos parcial e Job ativa checkpoint
+                            // (preserva items coletados, re-dispatcha continuação).
+                            // Qualquer outro RuntimeException (TLS, erro JSON-RPC, etc) sobe.
+                            $isRateLimitLocal    = str_contains($e->getMessage(), 'Limite Adman MCP atingido');
+                            $isRateLimitUpstream = str_contains($e->getMessage(), 'failed with status 429');
+                            if (!$isRateLimitLocal && !$isRateLimitUpstream) {
                                 throw $e;
                             }
                             \Illuminate\Support\Facades\Log::info(sprintf(
-                                '[AdmanMcp] Rate limit local em fetchAllProductAds custId=%s page=%d/%d — retorna parcial pra checkpoint',
+                                '[AdmanMcp] Rate limit %s em fetchAllProductAds custId=%s page=%d/%d — retorna parcial pra checkpoint',
+                                $isRateLimitLocal ? 'local' : 'upstream-Adman',
                                 $custId, $page, $totalPages,
                             ));
                             $rateLimitParado = true;
