@@ -30,4 +30,7 @@ enum Categoria: string
 
     /** Notificação criada manualmente por um usuário com permissão `notificacoes.criar` (Phase 12). */
     case MANUAL         = 'manual';
+
+    /** Signal crítico do ECF Drive para empresa da nossa carteira — `signal.detected` com severity=critical (Phase 29). */
+    case ALERTA_ECF     = 'alerta_ecf';
 }
