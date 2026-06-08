@@ -89,7 +89,19 @@ Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grant
 A v8.0 entregou a infraestrutura de webhooks (Phase 26) que recebe 6 eventos do ECF Drive em tempo real, mas os handlers só fazem `Log::channel('ecf-webhooks')` — o sino do header (Phase 10) NÃO acende quando algo chega. A v9.0 costura essa lacuna: webhooks viram notificações reais no banco usando a infra `BaseNotification` da Phase 8/12 que já entrega via `database` channel + polling do sino.
 
 - [x] **Phase 29: signal.detected vira notificação no sino** (completed 2026-06-08) - Integra `HandleSignalDetectedJob` (Phase 26) com `BaseNotification` (Phase 8). Quando ECF Drive envia push de `signal.detected` severity=critical para empresas da NOSSA carteira (lookup local `Company` por cust_id), cria notificação na tabela `notifications` da Phase 8 destinada a admin + consultor + mentor. Sino do header automaticamente acende via polling do shared prop existente. Categoria nova `ALERTA_ECF` na enum, título descritivo pt-BR (ex: "Queda crítica de faturamento em RELOJOARIA WENUS"), link direto para `/alertas-estrategicos`. Filtros: apenas carteira local + apenas critical para evitar ruído. Outros eventos ficam para fases futuras. **Smoke prod validado**: 13 notifications criadas (1 admin + 2 mentors + 10 consultores) para signal cust_id 570267839 (RELOJOARIA WENUS), idempotência confirmada (2º webhook com mesmo signal_id 9101 não duplicou). 21 testes verdes.
-- [ ] **Phase 30: grant.expirando vira notificação pra time comercial** - Integra `HandleGrantExpirandoJob` (Phase 26) com `BaseNotification`. Quando ECF Drive envia push de grant vencendo em 30/15/7 dias para empresa da carteira, cria notificação destinada ao consultor + admin pra renovação preventiva. Reusa pattern Phase 29 (filtro carteira, idempotência por grant_id, link direto pra `/grants` ou `/companies/{id}`). Diferencial: 3 disparos por grant (30d/15d/7d antes do vencimento) sem duplicar.
+- [ ] **Phase 31: grant.expirando vira notificação pra time comercial** - Integra `HandleGrantExpirandoJob` (Phase 26) com `BaseNotification`. Quando ECF Drive envia push de grant vencendo em 30/15/7 dias para empresa da carteira, cria notificação destinada ao consultor + admin pra renovação preventiva. Reusa pattern Phase 29 (filtro carteira, idempotência por grant_id, link direto pra `/grants` ou `/companies/{id}`). Diferencial: 3 disparos por grant (30d/15d/7d antes do vencimento) sem duplicar.
+
+### Milestone v9.5 — Sugadores Robustos
+
+Módulo de Sugadores (detecção de adgroups que consomem orçamento sem retorno) tem 3 problemas em prod que precisam de solução conjunta:
+
+1. **Rate limit 429 Adman** (10 req/min hard limit) — contas grandes batem o limite, queue marca falha, retry só em ~10min. Mensagem "Tentativa 1/5 falhou" é frequente.
+2. **Paginação truncada** — "8 de 189 páginas lidas" porque o job estoura timeout antes de varrer tudo. Adgroups dos finais da paginação somem do resultado.
+3. **Empresas ML-only não funcionam** — Bymobile teste (e futura maioria) sem `adman_account_id` vê "Empresa sem adman_account_id" ao clicar em "Carregar MLBs". Sugadores não consegue rodar.
+
+v9.5 é uma costura cirúrgica que prepara o terreno pro v10.0 (Fontes Unificadas) sem esperar o redesign completo. Resolve dor de prod hoje + valida pattern de "Sugadores via ML API direta" com Bymobile como piloto.
+
+- [ ] **Phase 30: Sugadores Robustos — throttled queue Adman + Sugadores via ML API direta + UX adgroup sem MLB** - W1: Job throttled (10 req/min, distribui chamadas dentro da janela, evita 429 zero-cost) com retry inteligente preservando progresso da paginação parcial. W2: `SugadorAnalysisServiceMl` espelhando a lógica do Adman mas consumindo `/items/search` + `/insights/orders` da API ML direta — destrava Bymobile imediatamente e vira base de aprendizado pro v10.0. W3: UI permite analista pausar adgroup mesmo sem MLBs no período (botão "marcar como sugador" não condicionado a MLB encontrado). Mantém compatibilidade total com Sugadores Adman existente.
 
 ### Milestone v10.0 — Fontes Unificadas (placeholder)
 
@@ -655,3 +667,16 @@ Plans:
 - **Smoke prod**: 13 notifications criadas para signal `seller.gmv_queda_mom` cust_id 570267839 (RELOJOARIA WENUS), idempotência confirmada (2º webhook com mesmo `signal_id=9101` retornou 13 — sem dup)
 - **Zero mudança no frontend** — sino do header (Phase 10) lê automaticamente via polling do shared prop
 - Webhook payload da Phase 26 agora dispara notif real (antes só `Log::channel('ecf-webhooks')`)
+
+### Phase 30: Sugadores Robustos — throttled queue Adman + Sugadores via ML API direta + UX adgroup sem MLB
+
+**Milestone:** v9.5 — Sugadores Robustos
+**Status:** Planning
+**Goal:** Eliminar as 3 dores em prod do módulo Sugadores: (1) rate limit 429 da Adman travando análise de contas grandes, (2) paginação truncada por timeout deixando adgroups de fora, (3) empresas ML-only ("sem adman_account_id") sem nenhuma análise. Resolve dor hoje + valida pattern Sugadores-via-ML que vira base do v10.0.
+**Depends on:** Phase 4/19 (`SugadorAnalysisService` Adman + UI `/sugadores`), Phase 18 (cache híbrido Adman), Phase 20 (ml_token integração)
+**Plans:** 0/3 plans
+
+Plans:
+- [ ] 30-01 — W1 throttled queue Adman + paginação completa (resolve 429 + 8/189 páginas)
+- [ ] 30-02 — W2 `SugadorAnalysisServiceMl` espelhando lógica em cima da API ML direta (destrava Bymobile)
+- [ ] 30-03 — W3 UX adgroup sem MLB no período (analista pausa mesmo assim)
