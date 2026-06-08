@@ -106,12 +106,21 @@ export default function VacasLeiteirasTabela({ vacas }) {
                                 )}
                             </td>
 
-                            {/* GMV médio mensal */}
-                            <td className="py-2 px-3 text-white/80 text-right font-mono">
+                            {/* GMV médio mensal — tooltip mostra base de cálculo (meses ativos) */}
+                            <td
+                                className="py-2 px-3 text-white/80 text-right font-mono"
+                                title={v.meses_ativos != null ? `Média sobre ${v.meses_ativos} ${v.meses_ativos === 1 ? 'mês ativo' : 'meses ativos'} (exclui meses sem operação e mês corrente parcial)` : undefined}
+                            >
                                 {fmtMoney(v.media_mensal)}
+                                {v.meses_ativos != null && v.meses_ativos < 11 && (
+                                    <span className="text-white/30 text-[10px] ml-1">
+                                        · {v.meses_ativos}m
+                                    </span>
+                                )}
                             </td>
 
-                            {/* Coeficiente de variação — código de cor por faixa */}
+                            {/* Coeficiente de variação — código de cor por faixa.
+                                CV < 15% = verde (muito previsível) · < 30% = branco (estável) · ≥ 30% = âmbar (volátil) */}
                             <td className="py-2 px-3 text-right">
                                 <span
                                     className={
@@ -121,6 +130,7 @@ export default function VacasLeiteirasTabela({ vacas }) {
                                             ? 'text-white/80'
                                             : 'text-amber-400'
                                     }
+                                    title="Baixo CV (verde) = receita previsível. Calculado só sobre meses com operação confirmada."
                                 >
                                     {fmtPct(v.cv)}
                                 </span>

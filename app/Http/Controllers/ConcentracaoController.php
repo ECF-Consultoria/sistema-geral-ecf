@@ -83,13 +83,29 @@ class ConcentracaoController extends Controller
             // Shape PAGINADO: ['data' => [...]] — EXTRAIR antes de processar (pitfall recorrente Phase 25)
             $historico = $histResp['data'] ?? [];
 
-            // Extrai série Y (usa gmvFechado quando gmv=0 — mesma estratégia HistoricoChart Phase 24)
-            $serieY = array_map(function ($mes) {
-                $gmv = (float) ($mes['gmv'] ?? 0);
-                return $gmv > 0 ? $gmv : (float) ($mes['gmvFechado'] ?? 0);
-            }, $historico);
+            // Série Y pra regressão: só pontos confiáveis.
+            //   1) Mantém shape original em $historico (chart visual usa)
+            //   2) Pra regressão: usa SEMPRE gmv (consistente com carteiraResumo do Painel Exec).
+            //   3) Exclui zeros (mês sem dado consolidado — distorce a linha)
+            //   4) Exclui mês corrente parcial (em construção pelo ETL D-1 ao longo do dia,
+            //      puxa regressão pra baixo artificialmente)
+            $mesAtual = now()->format('Ym');
+            $serieY = [];
+            foreach ($historico as $mes) {
+                $periodo = (string) ($mes['periodo'] ?? $mes['timMonthId'] ?? '');
+                $gmv     = (float) ($mes['gmv'] ?? 0);
+
+                // Exclui mês corrente parcial — só vira ponto de regressão depois de fechado
+                if ($periodo === $mesAtual) continue;
+
+                // Exclui zeros (sem dado — não é "zero faturou", é "ainda não populado")
+                if ($gmv <= 0) continue;
+
+                $serieY[] = $gmv;
+            }
 
             $coef     = $this->forecast->regressaoLinear($serieY);
+            // startX = quantos meses fechados temos. Projeção começa NO PRÓXIMO ponto.
             $projecao = $this->forecast->projetar($coef, 3, count($serieY));
 
             // ─── 3) Grants expirando em 90d ────────────────────────────────
@@ -124,8 +140,19 @@ class ConcentracaoController extends Controller
                     $met = [];
                 }
 
-                // Extrai série tgmvLc com cast string→float defensivo (pitfall CONTEXT)
-                $serieMetricas = array_map(fn ($m) => (float) ($m['tgmvLc'] ?? 0), $met);
+                // Extrai série tgmvLc com cast string→float defensivo (pitfall CONTEXT).
+                // FILTRA zeros e mês corrente parcial — zero geralmente é "sem dado consolidado",
+                // não "vendeu zero". E o mês corrente ainda está em construção pelo ETL.
+                // Manter zeros distorce CV (variância inflada) e média mensal (puxada pra baixo),
+                // derrubando sellers legitimamente previsíveis no ranking de vacas leiteiras.
+                $serieMetricas = [];
+                foreach ($met as $m) {
+                    $periodo = (string) ($m['periodo'] ?? $m['timMonthId'] ?? '');
+                    $valor   = (float) ($m['tgmvLc'] ?? 0);
+                    if ($periodo === $mesAtual) continue;
+                    if ($valor <= 0) continue;
+                    $serieMetricas[] = $valor;
+                }
 
                 $cv     = $this->forecast->coeficienteVariacao($serieMetricas);
                 $mediaM = count($serieMetricas) > 0
@@ -141,6 +168,7 @@ class ConcentracaoController extends Controller
                     'tgmv_lc_total' => (float) ($sellerRank['valor']  ?? $sellerRank['gmv'] ?? 0), // ranking usa 'valor'/'gmv'
                     'media_mensal'  => $mediaM,
                     'cv'            => $cv,
+                    'meses_ativos'  => count($serieMetricas),                                // pra UI mostrar "média sobre N meses ativos"
                 ];
             }
 
@@ -203,8 +231,14 @@ class ConcentracaoController extends Controller
                     ? $sellersCalculados[$custId]['media_mensal']
                     : 0;
 
-                // 90 dias ≈ 3 meses → GMV em risco do seller = média_mensal × 3
-                $gmvRiscoSeller  = $mediaM * 3;
+                $diasParaExpirar = (int) ($g['diasParaExpirar'] ?? 0);
+
+                // GMV em risco do seller = média_mensal × meses até o grant expirar
+                // (cap em 3 meses pra alinhar com horizonte do forecast 90d).
+                // Antes: assumia sempre 3 meses, superestimando grants que expiram cedo
+                // (ex: grant que expira em 10 dias contribuía com media×3 em vez de media×0,33).
+                $mesesAteFim     = min(3.0, max(0.0, $diasParaExpirar / 30.0));
+                $gmvRiscoSeller  = $mediaM * $mesesAteFim;
                 $gmvRiscoTotal  += $gmvRiscoSeller;
 
                 $match = $custId ? ($companyByCustId[$custId] ?? null) : null;
@@ -216,7 +250,7 @@ class ConcentracaoController extends Controller
                     'razao_social'      => $g['razaoSocial']             ?? null, // ← API agora confiável
                     'cnpj'              => $g['cnpj']                    ?? null,
                     'grant_fim'         => $g['grantFim']                ?? null,
-                    'dias_para_expirar' => (int) ($g['diasParaExpirar']  ?? 0),
+                    'dias_para_expirar' => $diasParaExpirar,
                     'media_mensal'      => $mediaM,
                     'gmv_risco'         => $gmvRiscoSeller,
                 ];

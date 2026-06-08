@@ -107,13 +107,14 @@ export default function ForecastChart({ forecast }) {
 
     // ─── Preparação dos dados ─────────────────────────────────────────────────
 
-    // Histórico: mapeia para shape do recharts
+    // Histórico: mapeia para shape do recharts.
+    // Usa gmv (consistente com cards do Painel Executivo + carteiraResumo) — antes usava
+    // fallback gmvFechado que tinha semântica diferente e distorcia visualmente o gráfico.
     const hist = forecast.historico.map((d, i) => ({
-        mes:        fmtMesAno(d.periodo || d.timMonthId),
-        // Usa gmvFechado quando gmv=0 (mês fechado) — mesma estratégia HistoricoChart Phase 24
-        faturamento: (typeof d.gmv === 'number' && d.gmv > 0) ? d.gmv : (d.gmvFechado || 0),
-        x:          i,
-        tipo:       'historico',
+        mes:         fmtMesAno(d.periodo || d.timMonthId),
+        faturamento: (typeof d.gmv === 'number' && d.gmv > 0) ? d.gmv : 0,
+        x:           i,
+        tipo:        'historico',
     }));
 
     // Projeção: 3 cenários a partir do índice N
@@ -126,12 +127,27 @@ export default function ForecastChart({ forecast }) {
         tipo:       'projecao',
     }));
 
-    // Concatena histórico + projeção
-    // recharts aceita campos undefined → renderiza só onde há dado
-    const data = [...hist, ...proj];
+    // Fix F-02 — ponto de transição: duplica último ponto histórico no array de projeção
+    // pra a linha tracejada (base) começar EXATAMENTE onde a linha histórica termina,
+    // sem gap visual. recharts conecta pontos consecutivos do mesmo dataKey só se houver
+    // valor em ambos.
+    const ultimoHist = hist.length > 0 ? hist[hist.length - 1] : null;
+    const transicao  = ultimoHist ? [{
+        mes:         ultimoHist.mes,
+        faturamento: ultimoHist.faturamento,
+        otimista:    ultimoHist.faturamento,
+        base:        ultimoHist.faturamento,
+        pessimista:  ultimoHist.faturamento,
+        x:           ultimoHist.x,
+        tipo:        'transicao',
+    }] : [];
 
-    // ReferenceLine no último mês histórico (separação histórico/projeção)
-    const refX = hist.length > 0 ? hist[hist.length - 1].mes : null;
+    // Concatena histórico + transição + projeção
+    // recharts aceita campos undefined → renderiza só onde há dado
+    const data = [...hist.slice(0, -1), ...transicao, ...proj];
+
+    // ReferenceLine no ponto de transição (último mês histórico / início projeção)
+    const refX = ultimoHist?.mes ?? null;
 
     return (
         <div className="space-y-6">
@@ -197,14 +213,16 @@ export default function ForecastChart({ forecast }) {
                         connectNulls
                     />
 
-                    {/* ReferenceLine vertical: separação histórico / projeção */}
+                    {/* ReferenceLine vertical: separação histórico / projeção.
+                        Linha cai sobre o último ponto histórico (mês corrente parcial),
+                        que é a fronteira efetiva entre dado real e projeção. */}
                     {refX && (
                         <ReferenceLine
                             x={refX}
                             stroke="#ffffff30"
                             strokeDasharray="2 2"
                             label={{
-                                value:    'hoje',
+                                value:    'mês corrente',
                                 fill:     '#ffffff60',
                                 fontSize: 10,
                                 position: 'top',

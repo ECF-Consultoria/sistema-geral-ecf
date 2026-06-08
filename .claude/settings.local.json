@@ -39,7 +39,15 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && grep -E '^REDIS_\\(CACHE_DB|PREFIX|DB\\)' .env\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 KEYS '*ecf*' | head -20 && echo '---total---' && redis-cli -n 2 KEYS '*ecf*' | wc -l\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*cache-ecf.*' | wc -l && echo '---amostra---' && redis-cli -n 2 --scan --pattern '*cache-ecf.*' | head -10\")",
-      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*cache-ecf.*' | xargs -r redis-cli -n 2 DEL | tail -5 && echo '---verificacao---' && redis-cli -n 2 --scan --pattern '*cache-ecf.*' | wc -l\")"
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*cache-ecf.*' | xargs -r redis-cli -n 2 DEL | tail -5 && echo '---verificacao---' && redis-cli -n 2 --scan --pattern '*cache-ecf.*' | wc -l\")",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 'cd /var/www/ecf_admin && php artisan tinker --execute=\" *)",
+      "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch /tmp/audit_carteira.php root@177.7.53.164:/var/www/ecf_admin/public/audit_temp_carteira.php)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php public/audit_temp_carteira.php\")",
+      "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch /tmp/audit_seller.php root@177.7.53.164:/var/www/ecf_admin/public/audit_temp_seller.php)",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php public/audit_temp_seller.php\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"rm -f /var/www/ecf_admin/public/audit_temp_carteira.php /var/www/ecf_admin/public/audit_temp_seller.php && ls /var/www/ecf_admin/public/audit* 2>/dev/null | wc -l\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=Phase27 --testdox 2>&1\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=Forecast --testdox 2>&1\")"
     ]
   }
 }

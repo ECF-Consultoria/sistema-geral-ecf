@@ -155,7 +155,7 @@ export default function MatrizHeatmap({ matriz }) {
                                 <div className="flex items-center gap-3">
                                     <span className="text-ecf-yellow font-bold text-sm">#{i + 1}</span>
                                     <span className="text-white/80 text-sm">
-                                        {traduzirItem('cluster', c.cluster)} × {traduzirItem('programa', c.programa)}
+                                        {traduzirItem('programa', c.programa)} × {traduzirItem('cluster', c.cluster)}
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-4 text-xs">
