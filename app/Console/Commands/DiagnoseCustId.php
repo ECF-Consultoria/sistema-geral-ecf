@@ -30,12 +30,14 @@ use Illuminate\Support\Facades\Log;
  *     empresas com Status === INVALIDO_CONFIRMADO E mlToken ativo, preservando
  *     `ml_store_id` como cust_id valido via accessor `Company::cust_id`.
  *
- * Verificacao do accessor `Company::cust_id` (commit f9d0547):
- *  `getCustIdAttribute()` retorna `$this->ml_store_id ?: $this->adman_account_id`.
- *  Logo, limpar `adman_account_id` quando `ml_store_id` existe preserva
- *  `cust_id` (cai no fallback). Quando `ml_store_id` NAO existe e
- *  `adman_account_id` e INVALIDO, limpar zeraria a empresa — por isso o filtro
- *  do --fix exige mlToken ativo (que implica `ml_store_id` valido).
+ * Verificacao do accessor `Company::cust_id` (atualizado em 2026-06-09 — quick 260609-mom):
+ *  `getCustIdAttribute()` agora retorna `$this->adman_account_id ?: $this->ml_store_id`.
+ *  ATENCAO: a inversao mudou o invariante do --fix. Antes, limpar
+ *  `adman_account_id` quando `ml_store_id` existe preservava `cust_id` (fallback).
+ *  Agora, limpar `adman_account_id` derruba `cust_id` para `ml_store_id` — que e
+ *  exatamente o ID que a Adman API rejeita em ADHARA/AVF_2K. O filtro --fix
+ *  precisa ser revisitado antes do proximo uso (seguir o tradeoff com cuidado:
+ *  limpar adman_account_id INVALIDO_CONFIRMADO vs. expor empresa a HTTP 500).
  *
  * NOTA: nao existe coluna `ml_oauth_ativo` no schema. O criterio de "ML como
  * fallback ativo" e o accessor `Company::is_ml_driven` (mlToken->status ===

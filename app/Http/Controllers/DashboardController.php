@@ -634,7 +634,7 @@ class DashboardController extends Controller
             ->get();
 
         // 30d cache com política tudo-ou-nada (mesma estratégia do
-        // adminDashboard, agora via cust_id = ml_store_id ?: adman_account_id).
+        // adminDashboard, agora via cust_id = adman_account_id ?: ml_store_id).
         // TODO Phase 18+ — userDashboard não foi tocado nesta fase; mantém o
         // range 30d hardcoded até decisão sobre escopo de extensão para
         // dashboards de consultor/mentor.

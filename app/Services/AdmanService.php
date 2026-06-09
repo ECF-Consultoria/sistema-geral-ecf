@@ -84,7 +84,8 @@ class AdmanService
     {
         // Padrão: ontem — dados do dia corrente ficam incompletos até o processamento noturno da Adman
         $date   = $date ?? now()->subDay()->toDateString();
-        $custId = $company->ml_store_id ?: $company->adman_account_id;
+        // Prioriza adman_account_id (alinhado com Company::cust_id desde 2026-06-09).
+        $custId = $company->adman_account_id ?: $company->ml_store_id;
 
         // Phase 18.5: marketplace dinamico por empresa. Empresas Shopee/Amazon
         // batem em endpoints diferentes (path /shopee/... e /amazon/...).
@@ -694,7 +695,8 @@ class AdmanService
      */
     public function syncMonthRevenue(Company $company, string $yearMonth): CompanyMonthlyRevenue
     {
-        $custId = $company->ml_store_id ?: $company->adman_account_id;
+        // Prioriza adman_account_id (alinhado com Company::cust_id desde 2026-06-09).
+        $custId = $company->adman_account_id ?: $company->ml_store_id;
         if (!$custId) {
             throw new \RuntimeException("Empresa {$company->id} sem ID Loja ML/Adman.");
         }
