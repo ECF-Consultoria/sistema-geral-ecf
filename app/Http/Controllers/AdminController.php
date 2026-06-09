@@ -184,7 +184,7 @@ class AdminController extends Controller
         // cache; mês passado sempre vem do DB (histórico). Batch read pra
         // todas custIds em 1 round-trip Redis.
         //
-        // Importante: o cache key é Company::cust_id (ml_store_id ?: adman_account_id) —
+        // Importante: o cache key é Company::cust_id (adman_account_id ?: ml_store_id) —
         // mesma resolução usada por RefreshGrossBillingCacheJob (writer) e
         // AdmanService::syncCompany. Antes plucávamos 'adman_account_id' aqui mas o
         // lookup linha 200 usava ml_store_id ?: adman_account_id, causando cache
@@ -479,7 +479,7 @@ class AdminController extends Controller
         ]);
 
         // Mês atual = Adman direto; mês passado = DB agregado.
-        // Resolução de custId via accessor cust_id (ml_store_id ?: adman_account_id) —
+        // Resolução de custId via accessor cust_id (adman_account_id ?: ml_store_id) —
         // coerente com cache e sync.
         $todasEmpresas = collect([$company])->merge($company->filhas);
 
@@ -645,7 +645,7 @@ class AdminController extends Controller
         $missingCache = false;
 
         // Batch read do cache pra todas as empresas do relatório de uma vez.
-        // cust_id (ml_store_id ?: adman_account_id) bate com a chave do writer.
+        // cust_id (adman_account_id ?: ml_store_id) bate com a chave do writer.
         $cacheBatch = [];
         if ($isMesAtual) {
             $custIdsAll = $todasEmpresas->pluck('cust_id')->filter()->unique()->values()->all();

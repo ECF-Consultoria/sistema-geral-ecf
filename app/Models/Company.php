@@ -42,20 +42,26 @@ class Company extends Model
     /**
      * ID canônico de cliente para chamadas Adman e chave de cache de faturamento.
      *
-     * Por que existir: o codebase usava `ml_store_id ?: adman_account_id` em alguns
-     * call-sites (AdmanService::syncCompany, AdminController::fechamento) e apenas
-     * `adman_account_id` em outros (DashboardController, RefreshGrossBillingCacheJob,
-     * CompanyController::show). Esse desalinhamento produzia:
-     *  - empresas com apenas `ml_store_id` saindo zeradas do dashboard;
-     *  - cache miss perpétuo no Fechamento (job warm-a por adman_account_id,
-     *    controller lê por ml_store_id) → mistura cache hit + DB SUM → oscilação.
+     * Prioriza `adman_account_id` sobre `ml_store_id` porque a Adman API espera
+     * o ID Adman da conta. Para 99% das empresas (167/170 em 2026-06-09) os dois
+     * IDs são iguais — a Adman trata o seller_id do ML como ID interno para
+     * contas meli. Mas onde divergem (ex: ADHARAPRINTSHOP id=189, AVF_2K id=243),
+     * passar o ml_store_id retorna HTTP 500 enquanto o adman_account_id devolve
+     * os dados corretamente. O fallback para `ml_store_id` continua atendendo
+     * as poucas empresas cadastradas só com ID ML.
      *
-     * Acessor único `$company->cust_id` para todos os call-sites. Retorna null
-     * quando a empresa não tem integração Adman/ML configurada.
+     * Histórico: a ordem original era `ml_store_id ?: adman_account_id`, criada
+     * para cobrir 3 empresas que só tinham ml_store_id setado. Invertida em
+     * 2026-06-09 (quick task 260609-mom) após bug em ADHARA / AVF_2K mostrar
+     * que a prioridade correta é a Adman.
+     *
+     * Acessor único `$company->cust_id` para todos os call-sites (sync, cache
+     * key, dashboards e análise de sugadores). Retorna null quando a empresa
+     * não tem integração Adman/ML configurada.
      */
     public function getCustIdAttribute(): ?string
     {
-        $custId = $this->ml_store_id ?: $this->adman_account_id;
+        $custId = $this->adman_account_id ?: $this->ml_store_id;
         return $custId !== '' ? $custId : null;
     }
 

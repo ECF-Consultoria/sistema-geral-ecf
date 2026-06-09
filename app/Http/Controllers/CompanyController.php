@@ -152,8 +152,8 @@ class CompanyController extends Controller
         // chamadas diretas à Adman (1 empresa, ~2 chamadas, sem risco de
         // memória). Cache 60min embutido nos métodos.
         //
-        // Usa o accessor cust_id (ml_store_id ?: adman_account_id) — empresas
-        // cadastradas via Comercial só com ml_store_id também passam.
+        // Usa o accessor cust_id (adman_account_id ?: ml_store_id) — empresas
+        // cadastradas via Comercial só com ml_store_id também passam pelo fallback.
         $dateFrom = now()->subDays(30)->toDateString();
         $dateTo   = now()->toDateString();
 

@@ -90,7 +90,7 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
         $started = microtime(true);
 
         // Aceita empresas com ml_store_id OU adman_account_id — o cache key
-        // canônico é Company::cust_id (ml_store_id ?: adman_account_id), mesma
+        // canônico é Company::cust_id (adman_account_id ?: ml_store_id), mesma
         // resolução usada por AdmanService::syncCompany. Antes filtrava só
         // adman_account_id e empresas só-ml_store_id ficavam sem warm-up.
         $companies = Company::where('active', true)
