@@ -69,7 +69,11 @@
       "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=repository_find_by_adgroup_filtra 2>&1\")",
       "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='ThrottledAdmanQueueTest|Phase19' 2>&1\")",
       "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='CopiarMlbsTest' --testdox 2>&1\")",
-      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='SyncAdgroupMlbsTest|ThrottledAdmanQueueTest|CopiarMlbsTest' 2>&1\")"
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='SyncAdgroupMlbsTest|ThrottledAdmanQueueTest|CopiarMlbsTest' 2>&1\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan migrate:status 2>&1 | grep -E 'adgroup_mlbs|Pending' | tail -5 && echo '---' && php artisan schedule:list 2>&1 | grep -E 'sync-adgroup-mlbs|03:00' | head -5\")",
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan sugadores:sync-adgroup-mlbs --all 2>&1\")",
+      "Skill(gsd-quick)",
+      "Skill(gsd-quick:*)"
     ]
   }
 }

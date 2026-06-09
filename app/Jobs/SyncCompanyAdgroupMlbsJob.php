@@ -30,7 +30,24 @@ class SyncCompanyAdgroupMlbsJob implements ShouldQueue, ShouldBeUnique
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public int $tries = 3;
+    /**
+     * Phase 30 Plan 30-04 fix smoke W4 — usar retryUntil() em vez de tries.
+     *
+     * Motivo: o middleware RateLimited('adman-api') reagenda (release) Jobs
+     * quando o bucket de 8/min está cheio. Cada release INCREMENTA attempts(),
+     * então com 168 Jobs concorrentes competindo por 8 slots/min, a maioria
+     * esgota tries=3 antes de conseguir rodar de fato → MaxAttemptsExceededException
+     * em massa. Sem nenhuma chamada real à Adman.
+     *
+     * Com retryUntil, Laravel ignora tries e retenta até a data. Releases por
+     * rate-limit deixam de ser falha. 2h cobre o pior caso da carteira inteira.
+     */
+    public int $tries = 0;
+
+    public function retryUntil(): \DateTime
+    {
+        return now()->addHours(2);
+    }
 
     /** 30min — varredura full de 500 páginas com throttle 8/min dá ~62min worst-case, mas a maioria das contas <500 páginas */
     public int $timeout = 1800;
@@ -42,9 +59,8 @@ class SyncCompanyAdgroupMlbsJob implements ShouldQueue, ShouldBeUnique
     ) {}
 
     /**
-     * Backoff escalonado: 5min, 15min, 30min.
-     * Mais agressivo que o FetchAdmanMlbsByCampaignJob (10min, 30min, 1h)
-     * porque o sync agendado nunca está urgente — pode esperar próximo 03h.
+     * Backoff entre tentativas REAIS (não release de rate-limit) — 5min, 15min, 30min.
+     * Aplicado quando o handle() lança exception genuína (ex: HTTP 500 upstream).
      */
     public function backoff(): array
     {
