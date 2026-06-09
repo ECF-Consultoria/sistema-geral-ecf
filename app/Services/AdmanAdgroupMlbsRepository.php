@@ -48,6 +48,26 @@ class AdmanAdgroupMlbsRepository
     }
 
     /**
+     * Phase 30 Plan 30-04 fix smoke W4 — busca por campaign_name.
+     *
+     * Adman MCP getMarketplaceadsCustIdproductAdsmetrics NÃO retorna adgroupName
+     * nem adgroupId — só campaignName. Por isso adgroup_name/adgroup_id ficam
+     * NULL no banco. A única chave de correlação real é campaign_name.
+     *
+     * Filtro `last_synced_at >= now-40h` pega apenas o snapshot mais recente
+     * — evita misturar com syncs antigos quando a tabela acumula history.
+     */
+    public function findByCampaign(string $custId, string $campaignName): Collection
+    {
+        return AdmanAdgroupMlb::query()
+            ->where('cust_id', $custId)
+            ->where('campaign_name', $campaignName)
+            ->where('last_synced_at', '>=', now()->subHours(40))
+            ->orderBy('mlb_id')
+            ->get();
+    }
+
+    /**
      * Upsert em batch — usado pelo SyncCompanyAdgroupMlbsJob.
      *
      * Cada $row deve ter: cust_id, adgroup_id, adgroup_name, campaign_id, campaign_name,

@@ -581,66 +581,105 @@ class SugadorController extends Controller
         $custId = $sugador->company?->adman_account_id;
 
         if (!$custId) {
-            // Phase 30 Plan 30-02 (W2) vai cobrir empresas ML-only — por enquanto retorna 422
             return response()->json([
                 'mlbs'   => [],
                 'reason' => 'Empresa sem adman_account_id. Path ML direto será implementado no Plan 30-02.',
             ], 422);
         }
 
-        // O sugador guarda o range analisado em periodo_inicio/periodo_fim — usar
-        // o mesmo range mantém os números comparáveis com o card do sugador.
-        $dateFrom = optional($sugador->periodo_inicio)->toDateString() ?? now()->subDays(30)->toDateString();
-        $dateTo   = optional($sugador->periodo_fim)->toDateString()    ?? now()->toDateString();
+        // Status do sync mais recente — UI exibe "Atualizado em HH:MM" + is_fresh
+        $lastSync = $repo->lastSyncForCompany($custId);
+        $isFresh  = $lastSync !== null && $lastSync->gt(now()->subHours(30));
 
-        // Lookup principal: por adgroup_name no banco local.
-        // Sugadores são detectados pelo nome do adgroup, então é a chave do match.
-        $adgroupName = (string) ($sugador->adgroup_name ?? '');
-        $rows        = $repo->findByAdgroup($custId, $adgroupName, $dateFrom, $dateTo);
-
-        // Status do sync mais recente desta empresa pra UI exibir "Atualizado em HH:MM"
-        $lastSync       = $repo->lastSyncForCompany($custId);
-        $isFresh        = $lastSync !== null && $lastSync->gt(now()->subHours(30));
-        $mlbsCountTotal = $repo->mlbsCountForCompany($custId, $dateFrom, $dateTo);
-
-        // Empty state semântico — UI escolhe a mensagem adequada
-        $emptyState = null;
         if ($lastSync === null) {
-            $emptyState = 'never_synced';
-        } elseif ($rows->isEmpty()) {
-            $emptyState = 'synced_no_mlbs';
+            return response()->json([
+                'mlbs'           => [],
+                'adgroup_name'   => $sugador->adgroup_name,
+                'campaign_id'    => $sugador->campaign_id,
+                'total'          => 0,
+                'last_synced_at' => null,
+                'is_fresh'       => false,
+                'empty_state'    => 'never_synced',
+            ]);
         }
 
-        // Normaliza pro formato esperado pelo frontend
-        $mlbs = $rows->map(function ($row) use ($sugador) {
+        // Phase 30 Plan 30-04 fix smoke W4 — Adman MCP getMarketplaceadsCustIdproductAdsmetrics
+        // NÃO retorna adgroupName nem campaignId, só campaignName. Pra correlacionar
+        // sugador (que tem campaign_id hash) com MLBs no banco (que têm só campaign_name),
+        // resolvemos via listCampaigns(custId) — cached 1h, custo baixo após 1ª chamada.
+        try {
+            $campaigns    = $this->mcp->listCampaigns($custId);
+            $campaign     = collect($campaigns)->firstWhere('campaign_id', (string) $sugador->campaign_id);
+            $campaignName = $campaign['campaign_name'] ?? null;
+        } catch (\Throwable $e) {
+            Log::warning("[Sugadores/MLBs] listCampaigns falhou cust={$custId}: " . $e->getMessage());
+            $campaignName = null;
+        }
+
+        if (!$campaignName) {
+            return response()->json([
+                'mlbs'           => [],
+                'adgroup_name'   => $sugador->adgroup_name,
+                'campaign_id'    => $sugador->campaign_id,
+                'total'          => 0,
+                'last_synced_at' => $lastSync->toIso8601String(),
+                'is_fresh'       => $isFresh,
+                'empty_state'    => 'campaign_not_found',
+                'reason'         => 'Não foi possível resolver o nome da campanha desta sugador.',
+            ]);
+        }
+
+        // Busca TODOS os MLBs da campanha no banco local
+        $rows = $repo->findByCampaign($custId, $campaignName);
+
+        if ($rows->isEmpty()) {
+            return response()->json([
+                'mlbs'           => [],
+                'adgroup_name'   => $sugador->adgroup_name,
+                'campaign_id'    => $sugador->campaign_id,
+                'campaign_name'  => $campaignName,
+                'total'          => 0,
+                'last_synced_at' => $lastSync->toIso8601String(),
+                'is_fresh'       => $isFresh,
+                'empty_state'    => 'synced_no_mlbs',
+            ]);
+        }
+
+        // Aplica heurística matches_adgroup pelo title (replica pattern legacy):
+        // adgroup_name no ML quase sempre é o título do produto base. Pra ITEM
+        // bate exato; pra FAMILY bate por prefixo entre as variações.
+        $adgroupName = (string) ($sugador->adgroup_name ?? '');
+        $needle      = $this->normalizeForMatch($adgroupName);
+
+        $mlbs = $rows->map(function ($row) use ($needle) {
             $metrics = is_array($row->metrics) ? $row->metrics : [];
+            $title   = $this->normalizeForMatch((string) ($row->title ?? ''));
+            $matches = $needle !== '' && $title !== '' && $this->similarPrefix($needle, $title);
+
             return [
-                'mlb_id'            => $row->mlb_id,
-                'title'             => $row->title,
-                'status'            => $row->status,
-                'campaign_name'     => $row->campaign_name,
-                'adgroup_name'      => $row->adgroup_name,
-                'impressions'       => $metrics['impressions']  ?? null,
-                'clicks'            => $metrics['clicks']       ?? null,
-                'conversions'       => $metrics['conversions']  ?? null,
-                'total_amount'      => $metrics['totalAmount']  ?? null,
-                'ads_revenue'       => $metrics['adsRevenue']   ?? $metrics['ads_revenue'] ?? null,
-                'acos'              => $metrics['acos']         ?? null,
-                'matches_adgroup'   => true,  // banco local já filtrou pelo adgroup_name exato
+                'mlb_id'          => $row->mlb_id,
+                'title'           => $row->title,
+                'status'          => $row->status,
+                'campaign_name'   => $row->campaign_name,
+                'impressions'     => $metrics['impressions']  ?? null,
+                'clicks'          => $metrics['clicks']       ?? null,
+                'conversions'     => $metrics['conversions']  ?? null,
+                'total_amount'    => $metrics['totalAmount']  ?? null,
+                'ads_revenue'     => $metrics['adsRevenue']   ?? null,
+                'acos'            => $metrics['acos']         ?? null,
+                'matches_adgroup' => $matches,
             ];
         })->all();
 
         return response()->json([
             'mlbs'           => $mlbs,
-            'periodo_inicio' => $dateFrom,
-            'periodo_fim'    => $dateTo,
             'adgroup_name'   => $sugador->adgroup_name,
             'campaign_id'    => $sugador->campaign_id,
+            'campaign_name'  => $campaignName,
             'total'          => count($mlbs),
-            'last_synced_at' => $lastSync?->toIso8601String(),
+            'last_synced_at' => $lastSync->toIso8601String(),
             'is_fresh'       => $isFresh,
-            'mlbs_in_cache'  => $mlbsCountTotal,
-            'empty_state'    => $emptyState,
+            'empty_state'    => null,
         ]);
     }
 
