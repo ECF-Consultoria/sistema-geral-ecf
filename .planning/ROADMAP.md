@@ -671,12 +671,13 @@ Plans:
 ### Phase 30: Sugadores Robustos — throttled queue Adman + Sugadores via ML API direta + UX adgroup sem MLB
 
 **Milestone:** v9.5 — Sugadores Robustos
-**Status:** Planning
-**Goal:** Eliminar as 3 dores em prod do módulo Sugadores: (1) rate limit 429 da Adman travando análise de contas grandes, (2) paginação truncada por timeout deixando adgroups de fora, (3) empresas ML-only ("sem adman_account_id") sem nenhuma análise. Resolve dor hoje + valida pattern Sugadores-via-ML que vira base do v10.0.
+**Status:** In Progress
+**Goal:** Eliminar as 4 dores em prod do módulo Sugadores: (1) rate limit 429 da Adman, (2) paginação truncada, (3) empresas ML-only sem análise, (4) drilldown "MLBs do adgroup" inviável (varre 198 pages pra filtrar local). Resolve dor hoje + valida pattern Sugadores-via-ML que vira base do v10.0.
 **Depends on:** Phase 4/19 (`SugadorAnalysisService` Adman + UI `/sugadores`), Phase 18 (cache híbrido Adman), Phase 20 (ml_token integração)
-**Plans:** 0/3 plans
+**Plans:** 1/4 plans complete
 
 Plans:
-- [ ] 30-01 — W1 throttled queue Adman + paginação completa (resolve 429 + 8/189 páginas)
+- [x] 30-01 — W1 throttled queue Adman + checkpoint paginação (RateLimiter global 8/min + Fix D catch 429 upstream) **deployed 2026-06-08**
 - [ ] 30-02 — W2 `SugadorAnalysisServiceMl` espelhando lógica em cima da API ML direta (destrava Bymobile)
 - [ ] 30-03 — W3 UX adgroup sem MLB no período (analista pausa mesmo assim)
+- [ ] 30-04 — W4 Sync agendado 03h BRT + tabela local `adman_adgroup_mlbs` + drilldown instantâneo + botão "Forçar atualização" (resolve dor 4: drilldown inviável em contas grandes)
