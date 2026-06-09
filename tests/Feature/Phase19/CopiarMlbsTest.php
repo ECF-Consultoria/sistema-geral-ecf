@@ -185,8 +185,9 @@ class CopiarMlbsTest extends TestCase
         $this->assertCount(1, $result['items']);
 
         // Cache armazenado com a chave correta — evidência que o bloco do lock executou.
-        // Default de maxPages = 8 (reduzido de 16 no Plano 02 para caber no rate limit 10 req/min/key).
-        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, '2026-06-01', '2026-06-02', 8);
+        // Phase 30 fix W1 B: default maxPages reduzido de 8 → 4 pra reduzir pressão na
+        // janela 8/min global do RateLimiter('adman-api'). Cache key reflete o cap atual.
+        $cacheKey = sprintf('adman_mcp:productads:%s:%s:%s:%d', $custId, '2026-06-01', '2026-06-02', 4);
         $this->assertNotNull(\Cache::get($cacheKey), 'Cache::remember deve armazenar resultado após o lock.');
 
         // O lock key "adman_mcp:custid:{custId}" não deve existir mais (foi liberado)

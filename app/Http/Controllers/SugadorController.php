@@ -557,7 +557,16 @@ class SugadorController extends Controller
      * sugador e, quando dá, marcamos os "provavelmente neste adgroup" via
      * matching de título (nome do adgroup costuma ser o título do produto-base).
      */
-    public function mlbs(Sugador $sugador)
+    /**
+     * Phase 30 Plan 30-04 — Lê MLBs do adgroup INSTANTANEAMENTE do banco local
+     * (`adman_adgroup_mlbs`), populado pelo sync agendado 03h BRT ou pelo botão
+     * "Forçar atualização".
+     *
+     * Substitui o pattern legacy que varria a Adman MCP em tempo de request
+     * (5-25min em contas grandes). Caminho legacy fica em mlbs_legacy() pra
+     * rollback caso necessário.
+     */
+    public function mlbs(Sugador $sugador, \App\Services\AdmanAdgroupMlbsRepository $repo)
     {
         Gate::authorize('view', $sugador);
 
@@ -568,98 +577,111 @@ class SugadorController extends Controller
             ], 422);
         }
 
-        if (!$this->mcp->isConfigured()) {
-            return response()->json([
-                'mlbs'   => [],
-                'reason' => 'API MCP da Adman não está configurada no servidor.',
-            ], 503);
-        }
-
-        // MCP da Adman tem TLS handshake lento (~15s/chamada) e contas grandes
-        // chegam a 50+ páginas — sem isso atinge max_execution_time (default 30s)
-        // antes do cache persistir. Resultado fica cacheado 30min depois.
-        @set_time_limit(0);
-
         $sugador->loadMissing('company:id,adman_account_id,name');
         $custId = $sugador->company?->adman_account_id;
 
         if (!$custId) {
+            // Phase 30 Plan 30-02 (W2) vai cobrir empresas ML-only — por enquanto retorna 422
             return response()->json([
                 'mlbs'   => [],
-                'reason' => 'Empresa sem adman_account_id.',
+                'reason' => 'Empresa sem adman_account_id. Path ML direto será implementado no Plan 30-02.',
             ], 422);
         }
 
         // O sugador guarda o range analisado em periodo_inicio/periodo_fim — usar
         // o mesmo range mantém os números comparáveis com o card do sugador.
-        $dateFrom = optional($sugador->periodo_inicio)->toDateString() ?? now()->subDays(7)->toDateString();
-        $dateTo   = optional($sugador->periodo_fim)->toDateString()    ?? now()->subDay()->toDateString();
+        $dateFrom = optional($sugador->periodo_inicio)->toDateString() ?? now()->subDays(30)->toDateString();
+        $dateTo   = optional($sugador->periodo_fim)->toDateString()    ?? now()->toDateString();
 
-        // Tenta 1º o cache do FULL-SCAN (1000 páginas). Se ele estiver pronto,
-        // retorna resultado completo. Se não, cai pra varredura síncrona de
-        // 16 páginas e dispara Job em background pra preencher o full-scan.
-        $fullScanResult = $this->mcp->cachedFullScanIfReady($custId, $dateFrom, $dateTo);
-
-        try {
-            if ($fullScanResult !== null) {
-                $result = $this->mcp->filterMlbsByCampaignFromItems(
-                    $fullScanResult['items'],
-                    (string) $sugador->campaign_id,
-                    $custId,
-                );
-                $result['scan_full_ready'] = true;
-            } else {
-                $result = $this->mcp->fetchMlbsByCampaign($custId, (string) $sugador->campaign_id, $dateFrom, $dateTo);
-                $result['scan_full_ready'] = false;
-
-                // Resultado síncrono é truncado pra contas grandes — dispara
-                // varredura completa em background. O Job é ShouldBeUnique e
-                // não enfileira duplicata. Próximo clique em "Recarregar" após
-                // ~5min pega o cache full.
-                if (!empty($result['truncated'])) {
-                    FetchAdmanMlbsByCampaignJob::dispatch($custId, $dateFrom, $dateTo);
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::error("[Sugadores/MLBs] Erro MCP sugador {$sugador->id} (company {$sugador->company_id}): " . $e->getMessage());
-            return response()->json([
-                'mlbs'   => [],
-                'reason' => 'Falha ao consultar a API MCP da Adman: ' . $e->getMessage(),
-            ], 502);
-        }
-
-        $mlbs = $result['mlbs'];
-
-        // Heurística "provavelmente neste adgroup": adgroup name no ML quase sempre
-        // é o título do produto base. Pra ITEM bate exato; pra FAMILY bate por
-        // prefixo entre as variações. Marca como dica, não como filtro hard.
+        // Lookup principal: por adgroup_name no banco local.
+        // Sugadores são detectados pelo nome do adgroup, então é a chave do match.
         $adgroupName = (string) ($sugador->adgroup_name ?? '');
-        $needle      = $this->normalizeForMatch($adgroupName);
+        $rows        = $repo->findByAdgroup($custId, $adgroupName, $dateFrom, $dateTo);
 
-        foreach ($mlbs as &$m) {
-            $title = $this->normalizeForMatch((string) ($m['title'] ?? ''));
-            $m['matches_adgroup'] = $needle !== '' && $title !== '' && $this->similarPrefix($needle, $title);
+        // Status do sync mais recente desta empresa pra UI exibir "Atualizado em HH:MM"
+        $lastSync       = $repo->lastSyncForCompany($custId);
+        $isFresh        = $lastSync !== null && $lastSync->gt(now()->subHours(30));
+        $mlbsCountTotal = $repo->mlbsCountForCompany($custId, $dateFrom, $dateTo);
+
+        // Empty state semântico — UI escolhe a mensagem adequada
+        $emptyState = null;
+        if ($lastSync === null) {
+            $emptyState = 'never_synced';
+        } elseif ($rows->isEmpty()) {
+            $emptyState = 'synced_no_mlbs';
         }
-        unset($m);
 
-        // Status do scan em background (se houver) — frontend usa pra mostrar
-        // banner "varredura completa em andamento".
-        $scanStatus = Cache::get(
-            FetchAdmanMlbsByCampaignJob::statusCacheKeyFor($custId, $dateFrom, $dateTo)
-        );
+        // Normaliza pro formato esperado pelo frontend
+        $mlbs = $rows->map(function ($row) use ($sugador) {
+            $metrics = is_array($row->metrics) ? $row->metrics : [];
+            return [
+                'mlb_id'            => $row->mlb_id,
+                'title'             => $row->title,
+                'status'            => $row->status,
+                'campaign_name'     => $row->campaign_name,
+                'adgroup_name'      => $row->adgroup_name,
+                'impressions'       => $metrics['impressions']  ?? null,
+                'clicks'            => $metrics['clicks']       ?? null,
+                'conversions'       => $metrics['conversions']  ?? null,
+                'total_amount'      => $metrics['totalAmount']  ?? null,
+                'ads_revenue'       => $metrics['adsRevenue']   ?? $metrics['ads_revenue'] ?? null,
+                'acos'              => $metrics['acos']         ?? null,
+                'matches_adgroup'   => true,  // banco local já filtrou pelo adgroup_name exato
+            ];
+        })->all();
 
         return response()->json([
-            'mlbs'            => $mlbs,
-            'periodo_inicio'  => $dateFrom,
-            'periodo_fim'     => $dateTo,
-            'adgroup_name'    => $sugador->adgroup_name,
-            'campaign_id'     => $sugador->campaign_id,
-            'total'           => count($mlbs),
-            'truncated'       => $result['truncated']        ?? false,
-            'pages_read'      => $result['pages_read']       ?? null,
-            'total_pages'     => $result['total_pages']      ?? null,
-            'scan_full_ready' => $result['scan_full_ready']  ?? false,
-            'scan_status'     => $scanStatus,
+            'mlbs'           => $mlbs,
+            'periodo_inicio' => $dateFrom,
+            'periodo_fim'    => $dateTo,
+            'adgroup_name'   => $sugador->adgroup_name,
+            'campaign_id'    => $sugador->campaign_id,
+            'total'          => count($mlbs),
+            'last_synced_at' => $lastSync?->toIso8601String(),
+            'is_fresh'       => $isFresh,
+            'mlbs_in_cache'  => $mlbsCountTotal,
+            'empty_state'    => $emptyState,
+        ]);
+    }
+
+    /**
+     * Phase 30 Plan 30-04 — Endpoint do botão "Forçar atualização".
+     * Dispara SyncCompanyAdgroupMlbsJob pra UMA empresa, retorna imediatamente.
+     * UI polla o status via mesma rota mlbs() (last_synced_at vai atualizar).
+     */
+    public function refreshAdgroupMlbs(Request $request)
+    {
+        $request->validate([
+            'company_id' => 'required|integer|exists:companies,id',
+        ]);
+
+        $company = Company::findOrFail($request->integer('company_id'));
+
+        // Autorização: admin/consultor global vê tudo; demais só carteira
+        $user     = $request->user();
+        $isGlobal = $user->isAdmin()
+            || (method_exists($user, 'isGestor') && $user->isGestor())
+            || (method_exists($user, 'isLiderPub') && $user->isLiderPub());
+
+        if (!$isGlobal && !$user->companies()->where('companies.id', $company->id)->exists()) {
+            return response()->json(['message' => 'Sem acesso a esta empresa.'], 403);
+        }
+
+        if (empty($company->adman_account_id)) {
+            return response()->json([
+                'message' => 'Empresa sem adman_account_id. Refresh disponível apenas para empresas Adman.',
+            ], 422);
+        }
+
+        $periodTo   = now()->toDateString();
+        $periodFrom = now()->subDays(30)->toDateString();
+
+        \App\Jobs\SyncCompanyAdgroupMlbsJob::dispatch($company, $periodFrom, $periodTo);
+
+        return response()->json([
+            'status'  => 'enqueued',
+            'message' => 'Sincronização iniciada em background. Recarregue o drilldown em ~5min.',
+            'company_id' => $company->id,
         ]);
     }
 

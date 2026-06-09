@@ -426,7 +426,7 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
 
             {/* Drilldown MLBs — via API MCP do Adman (productAds da mesma campanha) */}
             {sugador.tipo === 'adgroup' && (
-                <MlbsDoAdgroup sugadorId={sugador.id} adgroupName={sugador.adgroup_name} />
+                <MlbsDoAdgroup sugadorId={sugador.id} adgroupName={sugador.adgroup_name} companyId={sugador.company?.id} />
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -559,10 +559,13 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
  * O backend marca `matches_adgroup` por heurística de título; mostramos esses
  * em destaque pra ajudar o analista a focar.
  */
-function MlbsDoAdgroup({ sugadorId, adgroupName }) {
+function MlbsDoAdgroup({ sugadorId, adgroupName, companyId }) {
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
     // 'all' | 'provaveis' | null — botão que mostrou o feedback "Copiado!" há <2s.
     const [copiedTag, setCopiedTag] = useState(null);
+    // Phase 30 Plan 30-04 — Estado do botão "Forçar atualização"
+    const [refreshing, setRefreshing] = useState(false);
+    const [refreshMsg, setRefreshMsg] = useState(null);
 
     const load = async () => {
         setState(s => ({ ...s, loading: true, error: null }));
@@ -581,11 +584,39 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
         }
     };
 
-    // Sempre mostra só os MLBs prováveis do adgroup (heurística matches_adgroup
-    // via título). User decisão: drilldown "toda a campanha" foi removido pra
-    // não confundir o analista — ele quer só os do adgroup específico.
+    // Phase 30 Plan 30-04 — Dispara sync sob demanda pra empresa específica.
+    // Job roda em background; analista recarrega o drilldown em ~5min pra ver fresh data.
+    const handleRefresh = async () => {
+        if (!companyId) return;
+        setRefreshing(true);
+        setRefreshMsg(null);
+        try {
+            const res = await fetch(route('sugadores.refresh-adgroup-mlbs'), {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ company_id: companyId }),
+            });
+            const body = await res.json().catch(() => null);
+            if (!res.ok) {
+                throw new Error(body?.message || `HTTP ${res.status}`);
+            }
+            setRefreshMsg({ kind: 'ok', text: body?.message || 'Sincronização iniciada.' });
+        } catch (e) {
+            setRefreshMsg({ kind: 'err', text: e.message || 'Falha ao iniciar sync.' });
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    // Phase 30 Plan 30-04 — backend já retorna apenas MLBs do adgroup (filtro
+    // exato por adgroup_name na tabela local). matches_adgroup vem sempre true.
     const allMlbs = state.data?.mlbs ?? [];
-    const shown   = allMlbs.filter(m => m.matches_adgroup);
+    const shown   = allMlbs;
 
     // Copia lista de MLBs separados por vírgula. tag identifica o botão pra feedback visual.
     const handleCopy = async (tag, ids) => {
@@ -597,10 +628,23 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
         }
     };
 
-    // Identificador do MLB no payload da Adman MCP é `listing_id` (ex: MLB1234567).
-    const allIds       = allMlbs.map(m => m.listing_id).filter(Boolean);
-    const provaveisIds = allMlbs.filter(m => m.matches_adgroup).map(m => m.listing_id).filter(Boolean);
+    // Identificador do MLB no payload do backend (Plan 30-04) é `mlb_id`.
+    const allIds       = allMlbs.map(m => m.mlb_id).filter(Boolean);
+    const provaveisIds = allIds;
     const hasProvaveis = provaveisIds.length > 0;
+
+    // Phase 30 Plan 30-04 — formata "Atualizado em ..." pra UI
+    const fmtSyncTime = (iso) => {
+        if (!iso) return null;
+        try {
+            const d = new Date(iso);
+            return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        } catch {
+            return iso;
+        }
+    };
+    const syncedAt = fmtSyncTime(state.data?.last_synced_at);
+    const isFresh  = !!state.data?.is_fresh;
 
     return (
         <div className="card-ecf rounded-xl p-5 mb-4">
@@ -651,59 +695,54 @@ function MlbsDoAdgroup({ sugadorId, adgroupName }) {
 
             {!state.loaded && !state.loading && (
                 <p className="text-white/40 text-xs leading-relaxed">
-                    Clique em <b className="text-white/70">Carregar MLBs</b> pra buscar os anúncios desta campanha via API MCP da Adman.
-                    A primeira carga pode demorar até ~4 min (TLS handshake do MCP é lento); cargas seguintes da mesma empresa/período são instantâneas (cache 30 min).
+                    Clique em <b className="text-white/70">Carregar MLBs</b> pra ver os anúncios deste adgroup.
+                    Dado lido do banco local (Plan 30-04) — instantâneo. Sincronização automática 1× ao dia às 03h BRT.
                 </p>
             )}
 
             {state.loading && (
                 <div className="flex items-center gap-2 text-white/50 text-sm py-4">
                     <Loader2 size={14} className="animate-spin" />
-                    Buscando MLBs da Adman... (pode demorar vários minutos em contas grandes)
+                    Carregando MLBs...
                 </div>
             )}
 
-            {/* Resultado já é da varredura completa (cache full-scan) — bom estado, sem warning. */}
-            {state.data?.scan_full_ready && (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.05] mb-3">
-                    <span className="text-emerald-400 text-[11px] mt-0.5">✓</span>
-                    <p className="text-emerald-300 text-[11px] leading-relaxed">
-                        Resultado da varredura completa da conta (cache válido por 30min).
-                    </p>
-                </div>
-            )}
-
-            {/* Partial result + varredura em background em andamento ou falhou. */}
-            {state.data?.truncated && !state.data?.scan_full_ready && (
-                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-amber-500/20 bg-amber-500/[0.05] mb-3">
-                    <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                        <p className="text-amber-300 text-[11px] leading-relaxed">
-                            Apenas as primeiras {state.data.pages_read} de {state.data.total_pages} páginas foram lidas. Conta com muitos anúncios — alguns MLBs do adgroup podem não aparecer.
-                        </p>
-                        {state.data?.scan_status?.status === 'ready' ? (
-                            <p className="text-emerald-300 text-[11px] mt-1">
-                                ✓ Varredura completa pronta — clique <b>Recarregar</b> pra ver o resultado completo.
+            {/* Phase 30 Plan 30-04 — Header de freshness + botão "Forçar atualização". */}
+            {state.loaded && companyId && (
+                <div className="flex items-start gap-2 p-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] mb-3 flex-wrap">
+                    <div className="flex-1 min-w-0 text-[11px] leading-relaxed">
+                        {state.data?.empty_state === 'never_synced' ? (
+                            <p className="text-amber-300">
+                                ⓘ Esta empresa ainda não foi sincronizada. Próximo sync automático: 03h BRT. Ou clique em <b>Forçar atualização</b>.
                             </p>
-                        ) : state.data?.scan_status?.status === 'running' ? (
-                            <p className="text-amber-300 text-[11px] mt-1">
-                                ⟳ Varredura em andamento: <b>{state.data.scan_status.pages_read ?? 0}{state.data.scan_status.total_pages ? `/${state.data.scan_status.total_pages}` : ''} páginas</b> lidas
-                                {typeof state.data.scan_status.items_count === 'number' && ` · ${state.data.scan_status.items_count} MLBs até agora`}.
-                            </p>
-                        ) : state.data?.scan_status?.status === 'retrying' ? (
-                            <p className="text-amber-300 text-[11px] mt-1">
-                                ⚠ Tentativa {state.data.scan_status.attempt}/{state.data.scan_status.tries_total} falhou. Próxima retry em ~{Math.round((state.data.scan_status.next_retry_in ?? 0) / 60)}min.
-                            </p>
-                        ) : state.data?.scan_status?.status === 'failed' ? (
-                            <p className="text-red-300 text-[11px] mt-1">
-                                {state.data.scan_status.error || 'Varredura completa falhou. Tente recarregar em alguns minutos.'}
+                        ) : state.data?.empty_state === 'synced_no_mlbs' ? (
+                            <p className="text-white/60">
+                                Nenhum MLB encontrado neste adgroup no período. Talvez o adgroup esteja pausado ou sem anúncios ativos. Última sincronização: <b className="text-white/80">{syncedAt}</b>.
                             </p>
                         ) : (
-                            <p className="text-amber-300/80 text-[11px] mt-1 italic">
-                                Varredura completa em andamento em background (~5-25 min). Recarregue novamente depois.
+                            <p className={isFresh ? 'text-emerald-300' : 'text-amber-300'}>
+                                {isFresh ? '✓ Dado atualizado' : '⚠ Dado defasado'} · última sincronização em <b className="text-white/90">{syncedAt}</b>
+                                {state.data?.mlbs_in_cache > 0 && (
+                                    <span className="text-white/40"> · {state.data.mlbs_in_cache} MLB{state.data.mlbs_in_cache !== 1 ? 's' : ''} totais cacheados nesta empresa</span>
+                                )}
+                            </p>
+                        )}
+                        {refreshMsg && (
+                            <p className={refreshMsg.kind === 'ok' ? 'text-emerald-300 mt-1' : 'text-red-300 mt-1'}>
+                                {refreshMsg.text}
                             </p>
                         )}
                     </div>
+                    <button
+                        type="button"
+                        onClick={handleRefresh}
+                        disabled={refreshing}
+                        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12] text-[11px] disabled:opacity-50 shrink-0"
+                        title="Dispara sync sob demanda pra esta empresa (Plan 30-04)"
+                    >
+                        {refreshing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+                        {refreshing ? 'Iniciando...' : 'Forçar atualização'}
+                    </button>
                 </div>
             )}
 

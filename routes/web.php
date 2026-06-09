@@ -187,6 +187,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/sugadores',                        [SugadorController::class, 'index'])->name('sugadores.index');
     Route::get('/sugadores/{sugador}',              [SugadorController::class, 'show'])->name('sugadores.show');
     Route::get('/sugadores/{sugador}/mlbs',         [SugadorController::class, 'mlbs'])->name('sugadores.mlbs');
+    // Phase 30 Plan 30-04 — Botão "Forçar atualização" do drilldown.
+    Route::post('/sugadores/refresh-adgroup-mlbs',  [SugadorController::class, 'refreshAdgroupMlbs'])->name('sugadores.refresh-adgroup-mlbs');
     Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');
     Route::post('/sugadores/{sugador}/move',        [SugadorController::class, 'move'])->name('sugadores.move');
     Route::post('/sugadores/bulk-move',             [SugadorController::class, 'bulkMove'])->name('sugadores.bulk-move');

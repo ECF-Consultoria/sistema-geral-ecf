@@ -100,6 +100,16 @@ Schedule::command('mlb:sync-vendas-logs-cleanup')
     ->name('cleanup-sync-vendas-logs')
     ->withoutOverlapping();
 
+// Phase 30 Plan 30-04 — Sync de MLBs por adgroup pra tabela local (off-peak).
+// Roda às 03:00 BRT: horário sem analistas trabalhando + Adman MCP descongestionada.
+// Range default 30 dias (alinhado com revenue_30d do resto do sistema).
+// Drilldown do Sugadores lê instantâneo do banco a partir desta tabela.
+Schedule::command('sugadores:sync-adgroup-mlbs --all')
+    ->dailyAt('03:00')
+    ->timezone('America/Sao_Paulo')
+    ->name('sync-adgroup-mlbs')
+    ->withoutOverlapping();
+
 // Envio automático mensal do relatório de fechamento.
 // Roda a cada minuto para respeitar o dia e hora configurados dinamicamente pelo admin.
 // Só dispara quando ativo=1, hoje == dia configurado, hora:minuto == hora configurada.

@@ -60,7 +60,16 @@
       "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='ThrottledAdmanQueueTest|Sugador' --testdox 2>&1\")",
       "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch /tmp/cleanup_queue.php root@177.7.53.164:/var/www/ecf_admin/public/cq.php)",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php public/cq.php\")",
-      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*scan_status*' | xargs -r redis-cli -n 2 DEL && echo '---verify---' && redis-cli -n 2 --scan --pattern '*scan_status*' | wc -l && rm -f /var/www/ecf_admin/public/cq.php\")"
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"redis-cli -n 2 --scan --pattern '*scan_status*' | xargs -r redis-cli -n 2 DEL && echo '---verify---' && redis-cli -n 2 --scan --pattern '*scan_status*' | wc -l && rm -f /var/www/ecf_admin/public/cq.php\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' migrate 2>&1\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=SyncAdgroupMlbsTest --testdox 2>&1\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=SyncAdgroupMlbsTest 2>&1\")",
+      "Bash(powershell.exe -Command '& '\\\\''C:\\\\xampp\\\\php\\\\php.exe'\\\\'' '\\\\''C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan'\\\\'' tinker --execute='\\\\''try { App\\\\Models\\\\AdmanAdgroupMlb::truncate\\(\\); $x = App\\\\Models\\\\AdmanAdgroupMlb::create\\([\"cust_id\"=>\"123\", \"adgroup_id\"=>\"AG-1\", \"adgroup_name\"=>\"Promo\", \"mlb_id\"=>\"MLB001\", \"period_from\"=>\"2026-05-10\", \"period_to\"=>\"2026-06-09\", \"last_synced_at\"=>now\\(\\)]\\); echo \"id=\" . $x->id . PHP_EOL; echo \"count=\" . App\\\\Models\\\\AdmanAdgroupMlb::count\\(\\) . PHP_EOL; } catch \\(\\\\Throwable $e\\) { echo \"erro: \" . $e->getMessage\\(\\) . PHP_EOL; }'\\\\'' 2>&1')",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\_debug.php'\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter=repository_find_by_adgroup_filtra 2>&1\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='ThrottledAdmanQueueTest|Phase19' 2>&1\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='CopiarMlbsTest' --testdox 2>&1\")",
+      "Bash(powershell.exe -Command \"& 'C:\\\\xampp\\\\php\\\\php.exe' 'C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\\\\artisan' test --filter='SyncAdgroupMlbsTest|ThrottledAdmanQueueTest|CopiarMlbsTest' 2>&1\")"
     ]
   }
 }
