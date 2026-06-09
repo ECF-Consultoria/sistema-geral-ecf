@@ -5,7 +5,7 @@ milestone_name: Sistema de Notificações 2.0
 status: phase_complete
 stopped_at: Phase 29 (signal.detected vira notificacao no sino) fechada em 2026-06-08. Smoke prod validado — 13 notifications criadas para signal RELOJOARIA WENUS, idempotência confirmada. Sino do header acende automaticamente via polling existente. 21 testes verdes.
 last_updated: "2026-06-08T18:00:00.000Z"
-last_activity: 2026-06-09 -- Quick task 260609-gr4 fix users form errors source
+last_activity: 2026-06-09 -- Quick task 260609-j3m fix mlb treinamentos errors source (follow-up do 260609-gr4)
 progress:
   total_phases: 28
   completed_phases: 20
@@ -251,6 +251,7 @@ None.
 | 260602-k3e | Restaura despacho assíncrono em syncTodasVendasAdman (regressão de 7b7a2a9) — elimina 504 do nginx no botão "Sync Vendas + Preços" | 2026-06-02 | 04435a2 | [260602-k3e-restaurar-despacho-assincrono-synctodasv](.planning/quick/260602-k3e-restaurar-despacho-assincrono-synctodasv/) |
 | 260605-gb3 | Aviso D-1 da Adman no modal Sync Vendas + Preços (Mlb/Empresas.jsx) — texto adaptado: sync aqui é manual, não automático como o dashboard | 2026-06-05 | 16f0f79 | [260605-gb3-aviso-d1-modal-sync-vendas](.planning/quick/260605-gb3-aviso-d1-modal-sync-vendas/) |
 | 260609-gr4 | Fix cadastro de usuários sem feedback: troca fonte de `errors` em Users/Index.jsx do `useForm()` para `usePage().props.errors` (compatível com submit via router global) + audit em Pages/ (1 bug confirmado em Mlb/Treinamentos.jsx) | 2026-06-09 | f616b10 | [260609-gr4-users-form-errors-source](.planning/quick/260609-gr4-users-form-errors-source/) |
+| 260609-j3m | Follow-up do 260609-gr4: aplica o mesmo fix em Mlb/Treinamentos.jsx (form de treinamento — `configForm` intocado) | 2026-06-09 | ad63983 | [260609-j3m-mlb-treinamentos-errors-source](.planning/quick/260609-j3m-mlb-treinamentos-errors-source/) |
 
 ## Deferred Items
 
