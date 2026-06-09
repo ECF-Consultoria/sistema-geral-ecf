@@ -6,7 +6,7 @@ import { Label } from '@/Components/ui/label';
 import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
-import { useForm, router } from '@inertiajs/react';
+import { useForm, router, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -36,7 +36,11 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
         u.email.toLowerCase().includes(search.toLowerCase())
     );
 
-    const { data, setData, processing, reset, errors } = useForm(initialForm());
+    const { data, setData, processing, reset } = useForm(initialForm());
+    // errors vem da shared prop do Inertia (não do useForm) porque o submit
+    // abaixo usa router.* (global). O errors do useForm local só populava
+    // quando o próprio form submete via form.post/put.
+    const { errors } = usePage().props;
 
     const openCreate = () => {
         reset();
