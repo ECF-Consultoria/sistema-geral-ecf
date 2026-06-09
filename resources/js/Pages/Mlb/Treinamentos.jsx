@@ -5,7 +5,7 @@ import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { router, useForm } from '@inertiajs/react';
+import { router, useForm, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { BookOpen, Plus, Pencil, Trash2, ExternalLink, LogIn, Save } from 'lucide-react';
 
@@ -15,9 +15,13 @@ export default function Treinamentos({ treinamentos, canManage, linkAcesso }) {
     const [deleteId, setDeleteId] = useState(null);
     const [editingConfig, setEditingConfig] = useState(false);
 
-    const { data, setData, processing, reset, errors } = useForm({
+    const { data, setData, processing, reset } = useForm({
         titulo: '', descricao: '', url_video: '', ordem: 0, ativo: true,
     });
+    // errors vem da shared prop do Inertia (não do useForm) porque o submit
+    // do form de treinamento abaixo usa router.put/router.post (global).
+    // useForm.errors só popula quando o próprio form submete via form.post/put.
+    const { errors } = usePage().props;
 
     const configForm = useForm({ link_acesso: linkAcesso ?? '' });
 
