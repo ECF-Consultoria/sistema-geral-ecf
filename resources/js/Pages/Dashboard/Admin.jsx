@@ -139,10 +139,14 @@ export default function AdminDashboard({
         ? Math.round(((nps_distribution.promotores - nps_distribution.detratores) / npsTotal) * 100)
         : 0;
 
+    // Phase 31 (Plan 05 — D-09): escala 1-5 substituiu 0-10. O Pie do widget
+    // continua consumindo o shape {promotores, neutros, detratores} (mapeado no
+    // DashboardController para 5=promotor, 4=neutro, 1-3=detrator) mas os rotulos
+    // visuais agora refletem a nova escala: Excelente (5) / Bom (4) / Ruim (1-3).
     const npsData = [
-        { name: 'Promotores', value: nps_distribution.promotores ?? 0, color: '#19e06a' },
-        { name: 'Neutros', value: nps_distribution.neutros ?? 0, color: '#ffe600' },
-        { name: 'Detratores', value: nps_distribution.detratores ?? 0, color: '#ff4d4d' },
+        { name: 'Excelente (5)', value: nps_distribution.promotores ?? 0, color: '#19e06a' },
+        { name: 'Bom (4)',       value: nps_distribution.neutros ?? 0,    color: '#ffe600' },
+        { name: 'Ruim (1-3)',    value: nps_distribution.detratores ?? 0, color: '#ff4d4d' },
     ];
     const npsDataFilled = npsTotal === 0 ? [{ name: 'Sem dados', value: 1, color: 'rgba(255,255,255,0.06)' }] : npsData;
 
@@ -202,7 +206,7 @@ export default function AdminDashboard({
                     {[
                         { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue', sub: 'Carteira ativa Adman' },
                         { title: 'TACOS Médio', value: formatPercent(s.avg_tacos), icon: BarChart2, color: 'yellow', sub: 'Últimos 30 dias · Adman' },
-                        { title: 'NPS Score', value: s.avg_nps, icon: Star, color: 'green', sub: `Score: ${npsScore}` },
+                        { title: 'NPS Score', value: (s.avg_nps ?? 0).toFixed(2), icon: Star, color: 'green', sub: `Média ${(s.avg_nps ?? 0).toFixed(2)}/5` },
                         { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red', sub: 'Últimos 30 dias · Adman' },
                         { title: 'Faturamento', value: formatCurrency(s.total_revenue), icon: DollarSign, color: 'purple', sub: 'Últimos 30 dias · Adman' },
                     ].map(k => <KpiCard key={k.title} {...k} empty={noData} />)}
@@ -346,7 +350,7 @@ export default function AdminDashboard({
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                     <KpiCard title="Empresas" value={s.total_companies} sub="Carteira ativa Adman" icon={Users} color="blue" empty={noData} />
                     <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} sub="Últimos 30 dias · Adman" icon={BarChart2} color="yellow" empty={noData} />
-                    <KpiCard title="NPS Médio" value={s.avg_nps} sub={`Score: ${npsScore}`} icon={Star} color="green" empty={noData} />
+                    <KpiCard title="NPS Médio" value={(s.avg_nps ?? 0).toFixed(2)} sub={`Média ${(s.avg_nps ?? 0).toFixed(2)}/5`} icon={Star} color="green" empty={noData} />
                     <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} sub="Últimos 30 dias · Adman" icon={TrendingUp} color="red" empty={noData} />
                     <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} sub="Últimos 30 dias · Adman" icon={DollarSign} color="purple" empty={noData} />
                 </div>
