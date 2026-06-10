@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 24 (painel-executivo-carteira-ecf) — W1+W2+W3 complete, W4 checkpoint humano
 Plan: 1 of 1
 Status: Phase complete — ready for verification
-Last activity: 2026-06-06
+Last activity: 2026-06-10 - Completed quick task 260610-lzi: fix aba frete (decomposição sobreposta) no Painel Executivo
 
 ## Performance Metrics
 
@@ -255,6 +255,7 @@ None.
 | 260609-mom | Fix empresas zeradas com `adman_account_id ≠ ml_store_id` (ADHARA #189, AVF_2K #243 desde 01/jun): inverte prioridade do accessor `Company::cust_id` para `adman_account_id ?: ml_store_id` + dois call-sites diretos no `AdmanService` (syncCompany/syncMonthRevenue) que bypassavam o accessor. Adman API rejeita ml_store_id com 500 quando IDs divergem | 2026-06-09 | 4f3cf3d | [260609-mom-cust-id-accessor-priority](.planning/quick/260609-mom-cust-id-accessor-priority/) |
 | 260610-f69 | Fix consolidado Dashboard Admin: filtros Analista/Estrategista por cargo (não mais por `users.role`) + cross-filter via `combinacoes` extraídas de `company_users` + widget Carteira Portfólio com TODOS profissionais e TACOS recalculado como SUM(ad_spend)/SUM(revenue)*100 | 2026-06-10 | 2d29c6d | [260610-f69-dashboard-filtros-cargo](.planning/quick/260610-f69-dashboard-filtros-cargo/) |
 | 260610-lj6 | Aba "Carteira" passa a bifurcar: admin → visão consolidada de TODOS profissionais (cards `Portfolio/Carteiras`); não-admin → carteira pessoal (`Portfolio/Show` como antes). Widget consolidado removido do Dashboard Admin. Lógica migrada de DashboardController para PortfolioController. | 2026-06-10 | 6a089f2 | [260610-lj6-carteira-aba-admin](.planning/quick/260610-lj6-carteira-aba-admin/) |
+| 260610-lzi | Fix aba "Tipo de Envio" (frete) da Decomposição da carteira (Painel Executivo): frete é dimensão SOBREPOSTA (ME2/COLETAS/FULL/OUTROS/FLEX/PLACES somam >100% do GMV). Passa a usar o `pct` da API + barras horizontais (em vez de pizza que forçava 100% e recalculava errado — ME2 aparecia ~49% vs 91,8% real), aviso de sobreposição, oculta coluna Lojistas e traduz COLETAS/PLACES/OUTROS. Inclui verificação ao vivo da API (CPP voltou) e revisão da página Concentração. | 2026-06-10 | 46714ab | [260610-lzi-frete-breakdown-sobreposto](.planning/quick/260610-lzi-frete-breakdown-sobreposto/) |
 
 ## Deferred Items
 
