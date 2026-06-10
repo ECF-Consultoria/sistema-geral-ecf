@@ -366,7 +366,10 @@ class DashboardController extends Controller
             ->where('completed_at', '>=', $since)
             ->get();
 
-        $avgNps = $npsResponses->avg(fn($s) => $s->response?->score_overall) ?? 0;
+        // Phase 31 (Plan 05 — D-09): escala 1-5 substituiu 0-10. O card
+        // 'NPS Médio' agora mostra a média de score_empresa (dimensao geral
+        // "A ECF esta atendendo suas expectativas?" — D-07).
+        $avgNps = $npsResponses->avg(fn($s) => $s->response?->score_empresa) ?? 0;
 
         $meetings = Meeting::whereIn('company_id', $companies->pluck('id'))
             ->where('scheduled_at', '>=', $since)
@@ -397,10 +400,18 @@ class DashboardController extends Controller
 
         $lastSyncDate = $metrics->max('reference_date');
 
+        // Phase 31 (Plan 05 — D-09): mapeamento 1-5 → categorias do widget:
+        //   score_empresa == 5    → promotor   (Excelente)
+        //   score_empresa == 4    → neutro     (Bom)
+        //   score_empresa 1-3     → detrator   (Ruim)
+        // As chaves promotores/neutros/detratores são preservadas porque o
+        // Pie de Dashboard/Admin.jsx ainda consome esse shape — labels
+        // visuais são re-rotulados no JSX para "Excelente/Bom/Ruim".
         $npsDistribution = [
-            'promotores' => $npsResponses->filter(fn($s) => ($s->response?->score_overall ?? 0) >= 9)->count(),
-            'neutros'    => $npsResponses->filter(fn($s) => ($s->response?->score_overall ?? 0) >= 7 && ($s->response?->score_overall ?? 0) < 9)->count(),
-            'detratores' => $npsResponses->filter(fn($s) => ($s->response?->score_overall ?? 0) < 7)->count(),
+            'promotores' => $npsResponses->filter(fn($s) => (int) ($s->response?->score_empresa ?? 0) === 5)->count(),
+            'neutros'    => $npsResponses->filter(fn($s) => (int) ($s->response?->score_empresa ?? 0) === 4)->count(),
+            'detratores' => $npsResponses->filter(fn($s) => (int) ($s->response?->score_empresa ?? 0) >= 1
+                                                        && (int) ($s->response?->score_empresa ?? 0) <= 3)->count(),
         ];
 
         // Ranking "Analistas e Mentores" + filtros: só time de consultoria.
@@ -617,7 +628,11 @@ class DashboardController extends Controller
                 ->where('completed_at', '>=', $since)
                 ->get();
 
-            $scoreField = $u->isMentor() ? 'score_mentor' : 'score_consultant';
+            // Phase 31 (Plan 05) — taxonomia nova:
+            //   isMentor() == true  → user é Estrategista → score_estrategista
+            //   else                → user é Analista (consultor) → score_analista
+            // Escala agora é 1-5 (era 0-10). round(1) preserva a precisao.
+            $scoreField = $u->isMentor() ? 'score_estrategista' : 'score_analista';
             $avgNps = $surveys->count() > 0
                 ? round($surveys->avg(fn($s) => $s->response?->$scoreField ?? 0), 1)
                 : null;
@@ -739,7 +754,9 @@ class DashboardController extends Controller
             ? Ppa::with('company')->where('mentor_id', $user->id)->orderBy('created_at', 'desc')->take(5)->get()
             : collect();
 
-        $scoreField = $user->isMentor() ? 'score_mentor' : 'score_consultant';
+        // Phase 31 (Plan 05) — taxonomia nova (idem buildRanking acima):
+        //   Estrategista (isMentor) → score_estrategista; Analista → score_analista.
+        $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
 
         return Inertia::render('Dashboard/User', [
             'stats' => [

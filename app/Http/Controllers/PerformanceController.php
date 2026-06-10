@@ -55,8 +55,11 @@ class PerformanceController extends Controller
                 ->where('completed_at', '>=', $since)
                 ->get();
 
-            // Usa o score específico do papel: mentor → score_mentor, consultor → score_consultant
-            $scoreField = $u->isMentor() ? 'score_mentor' : 'score_consultant';
+            // Phase 31 (Plan 05) — taxonomia nova:
+            //   Estrategista (isMentor) → score_estrategista (era score_mentor)
+            //   Analista (consultor)    → score_analista     (era score_consultant)
+            // Escala agora é 1-5 (era 0-10).
+            $scoreField = $u->isMentor() ? 'score_estrategista' : 'score_analista';
             $avgNps = $surveys->count() > 0
                 ? round($surveys->avg(fn($s) => $s->response?->$scoreField ?? 0), 1)
                 : null;
@@ -261,7 +264,8 @@ class PerformanceController extends Controller
             $companyIds = $user->companies()->pluck('companies.id');
         }
 
-        $scoreField = $user->isMentor() ? 'score_mentor' : 'score_consultant';
+        // Phase 31 (Plan 05) — taxonomia nova (idem ranking acima).
+        $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
 
         $companies = Company::whereIn('id', $companyIds)
             ->where('active', true)

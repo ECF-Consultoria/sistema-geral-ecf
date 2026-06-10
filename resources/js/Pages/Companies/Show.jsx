@@ -372,9 +372,11 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
     const absences = completedMeetings.filter(m => !m.consultant_present || !m.mentor_present).length;
     const absenteeism = completedMeetings.length > 0 ? (absences / completedMeetings.length * 100).toFixed(1) : 0;
 
+    // Phase 31 (Plan 05) — escala 1-5 substituiu 0-10. avgNps agora reflete
+    // a media de score_empresa ("A ECF esta atendendo suas expectativas?" — D-07).
     const completedNps = (company.nps_surveys || []).filter(s => s.status === 'completed' && s.response);
     const avgNps = completedNps.length > 0
-        ? (completedNps.reduce((acc, s) => acc + (s.response?.score_overall ?? 0), 0) / completedNps.length).toFixed(1)
+        ? (completedNps.reduce((acc, s) => acc + (s.response?.score_empresa ?? 0), 0) / completedNps.length).toFixed(1)
         : null;
 
     // ─── Contratos de serviço (Módulo Serviços — Frente A) ─────────────────
@@ -845,8 +847,10 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                         ) : (
                             <div className="space-y-2">
                                 {completedNps.slice(0, 8).map(s => {
-                                    const score = s.response?.score_overall;
-                                    const scoreColor = score >= 9 ? 'text-emerald-400' : score >= 7 ? 'text-ecf-yellow' : 'text-red-400';
+                                    // Phase 31 (Plan 05) — score_empresa (1-5) substitui score_overall (0-10).
+                                    // Mapeamento de cor para a nova escala: 5=emerald, 4=ecf-yellow, 1-3=red.
+                                    const score = s.response?.score_empresa;
+                                    const scoreColor = score >= 5 ? 'text-emerald-400' : score >= 4 ? 'text-ecf-yellow' : 'text-red-400';
                                     return (
                                         <div key={s.id} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
                                             <div>
