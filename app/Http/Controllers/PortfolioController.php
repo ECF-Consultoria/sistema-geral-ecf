@@ -22,10 +22,101 @@ class PortfolioController extends Controller
         return $this->renderPortfolio($request, $user);
     }
 
-    // Profissional vê sua própria carteira
+    // Aba "Carteira" no sidebar — bifurca por papel (quick 260610-lj6):
+    //  - admin → visão consolidada de TODOS analistas/estrategistas (cards)
+    //  - profissional → carteira pessoal (Portfolio/Show)
     public function own(Request $request)
     {
-        return $this->renderPortfolio($request, $request->user());
+        $user = $request->user();
+        if ($user->isAdmin()) {
+            return $this->renderCarteirasConsolidadas($request);
+        }
+        return $this->renderPortfolio($request, $user);
+    }
+
+    /**
+     * Visão consolidada de carteiras: cards de TODOS analistas e estrategistas
+     * com métricas agregadas (TACOS, faturamento, margem, ad spend) da carteira
+     * de cada um. Usado pela aba Carteira quando o user logado é admin.
+     *
+     * Fonte da verdade pra Analista vs Estrategista: cargo (slug) no pivot
+     * user_setores → cargos, NÃO users.role (legacy). Lógica originalmente
+     * implementada no DashboardController (quick 260610-f69) e migrada pra cá
+     * no quick 260610-lj6 — bifurcação admin/não-admin na aba Carteira.
+     */
+    private function renderCarteirasConsolidadas(Request $request): \Inertia\Response
+    {
+        $period = $request->get('period', '30');
+        $days   = match ($period) {
+            '1'   => 1,
+            '7'   => 7,
+            '180' => 180,
+            default => 30,
+        };
+        $since = now()->subDays($days);
+
+        $analistas = User::where('active', 1)
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->where('c.slug', 'analista');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'role']);
+
+        $estrategistas = User::where('active', 1)
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->where('c.slug', 'estrategista');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name', 'role']);
+
+        $todos = $analistas->map(fn($u) => ['user' => $u, 'tipo' => 'analista'])
+            ->concat($estrategistas->map(fn($u) => ['user' => $u, 'tipo' => 'estrategista']));
+
+        $portfolios = $todos->map(function ($item) use ($since) {
+            $u    = $item['user'];
+            $tipo = $item['tipo'];
+
+            $companyIds = ($tipo === 'estrategista')
+                ? $u->estrategistaCompanies()->where('active', true)->pluck('companies.id')
+                : $u->consultorCompanies()->where('active', true)->pluck('companies.id');
+
+            if ($companyIds->isEmpty()) return null;
+
+            $uMetrics = AdmanMetric::whereIn('company_id', $companyIds)
+                ->where('reference_date', '>=', $since->toDateString())
+                ->get();
+
+            $totalRevenue  = (float) $uMetrics->sum('revenue');
+            $totalAdSpend  = (float) $uMetrics->sum('ad_spend');
+            // TACOS REAL da carteira: razão dos totais. Null sem revenue
+            // pra não exibir 0% artificial em quem só vende fora dos ads.
+            $tacosCarteira = $totalRevenue > 0
+                ? round(($totalAdSpend / $totalRevenue) * 100, 2)
+                : null;
+
+            return [
+                'id'              => $u->id,
+                'name'            => $u->name,
+                'tipo'            => $tipo,
+                'role'            => $u->role,
+                'companies_count' => $companyIds->count(),
+                'avg_tacos'       => $tacosCarteira,
+                'total_revenue'   => $totalRevenue,
+                'avg_margin'      => $uMetrics->count() > 0 ? round($uMetrics->avg('contribution_margin_pct'), 2) : null,
+                'total_ad_spend'  => $totalAdSpend,
+            ];
+        })->filter()->sortBy('name')->values();
+
+        return Inertia::render('Portfolio/Carteiras', [
+            'user_portfolios' => $portfolios,
+            'period'          => $period,
+        ]);
     }
 
     private function renderPortfolio(Request $request, User $user): \Inertia\Response

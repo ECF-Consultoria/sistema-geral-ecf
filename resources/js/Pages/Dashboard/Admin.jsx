@@ -7,7 +7,7 @@ import {
 } from 'recharts';
 import {
     Star, Users, AlertTriangle,
-    DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, Briefcase, TrendingUp
+    DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, TrendingUp
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 
@@ -86,10 +86,10 @@ const chartStyle = {
 
 /* ─── main ─────────────────────────────────────────────── */
 // roleLabel: legacy — usado APENAS no card de ranking (que ainda recebe
-// `u.role` do backend via buildRanking). Para o widget de carteiras
-// usamos tipoLabel[u.tipo] (taxonomia nova via cargo no setor Performance).
+// `u.role` do backend via buildRanking). O mapeamento `tipoLabel` para a
+// taxonomia nova (cargo no setor Performance) foi movido para
+// resources/js/Pages/Portfolio/Carteiras.jsx (quick 260610-lj6).
 const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
-const tipoLabel = { analista: 'Analista', estrategista: 'Estrategista' };
 
 export default function AdminDashboard({
     stats = {},
@@ -105,7 +105,6 @@ export default function AdminDashboard({
     companies_list = [],
     companies_performance = [],
     ranking = [],
-    user_portfolios = [],
     sugadores_stats = { total_pendentes: 0, top_empresas: [] },
     adman_last_sync = null,
 }) {
@@ -449,67 +448,6 @@ export default function AdminDashboard({
                         </div>
                     </div>
                 </div>
-
-                {/* Carteiras por profissional */}
-                {user_portfolios.length > 0 && (
-                    <div className="card-ecf rounded-2xl overflow-hidden">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
-                            <div className="flex items-center gap-2.5">
-                                <Briefcase size={15} className="text-ecf-yellow/70" />
-                                <div>
-                                    <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">Carteiras</p>
-                                    <p className="text-white font-display font-extrabold text-base tracking-tight">Portfólio por Profissional</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                            {user_portfolios.map(u => (
-                                <div key={`${u.tipo}-${u.id}`} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 flex flex-col gap-3 hover:border-ecf-yellow/20 transition-colors">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-white font-semibold text-[13px] truncate">{u.name}</p>
-                                            <p className="text-white/30 text-[11px] mt-0.5">
-                                                {tipoLabel[u.tipo]} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''}
-                                            </p>
-                                        </div>
-                                        <button
-                                            onClick={() => router.visit(route('portfolio.show', u.id))}
-                                            className="flex items-center gap-1 text-ecf-yellow/60 hover:text-ecf-yellow text-[11px] font-semibold transition-colors"
-                                        >
-                                            Ver <ChevronRight size={12} />
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">TACOS Médio</p>
-                                            <p className="text-ecf-yellow font-display font-bold text-base">
-                                                {u.avg_tacos != null ? formatPercent(u.avg_tacos) : '—'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Faturamento</p>
-                                            <p className="text-blue-400 font-display font-bold text-base">
-                                                {u.total_revenue > 0 ? formatCurrency(u.total_revenue) : '—'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Margem Méd.</p>
-                                            <p className="text-emerald-400 font-display font-bold text-base">
-                                                {u.avg_margin != null ? formatPercent(u.avg_margin) : '—'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Gasto Ads</p>
-                                            <p className="text-orange-400 font-display font-bold text-base">
-                                                {u.total_ad_spend > 0 ? formatCurrency(u.total_ad_spend) : '—'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
 
                 {/* Ranking individual */}
                 {ranking.length > 0 && (
