@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -413,37 +414,120 @@ class DashboardController extends Controller
             ->get();
         $allCompanies = Company::where('active', true)->get(['id', 'name']);
 
+        // ─── Fonte da verdade: cargo no setor Performance via pivot ──────────
+        //
+        // (Quick task 260610-f69) Os filtros "Analistas" e "Estrategistas" do
+        // dashboard precisam refletir a TAXONOMIA NOVA — quem é o quê depende
+        // do cargo guardado em `user_setores.cargo_id` → `cargos.slug`
+        // (∈ {`analista`, `estrategista`} no setor Performance). O campo
+        // `users.role` é legacy (admin/consultor/mentor) e divergiu da
+        // realidade: Nathalia, Rubens, Débora e Douglas têm `role=consultor`
+        // mesmo sendo Estrategistas reais — caíam no select errado.
+        //
+        // Usamos `whereExists` no pivot (não `whereHas('setores')->whereHas('cargos')`)
+        // porque queremos filtrar pelo cargo GUARDADO no pivot deste user,
+        // não por qualquer cargo do setor. O whereHas aninhado matchearia
+        // "users em setor que contém o cargo X", o que retornaria todos os
+        // membros de Performance (já que Performance tem ambos os cargos).
+        $analistas = User::where('active', true)
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->where('c.slug', 'analista');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $estrategistas = User::where('active', true)
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->where('c.slug', 'estrategista');
+            })
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        // ─── Cross-filter: combinações analista↔estrategista que coabitam ────
+        //
+        // Lista de pares (analista_id, estrategista_id) que dividem ao menos
+        // uma empresa na pivot `company_users`. O frontend filtra dinamicamente
+        // o select oposto quando um já está selecionado — selecionar um
+        // analista mostra apenas estrategistas que trabalham com ele (e vice-
+        // versa). `cu_a.role='consultor'` aqui é o slot do Analista na pivot
+        // (legacy enum value — ver migração 2026_05_07 que adicionou 'analista'
+        // pra outro uso no módulo Sugadores; o vínculo Empresa↔Analista do
+        // setor Performance continua usando 'consultor').
+        $combinacoes = DB::table('company_users as cu_a')
+            ->join('company_users as cu_e', function ($j) {
+                $j->on('cu_e.company_id', '=', 'cu_a.company_id')
+                  ->where('cu_e.role', '=', 'estrategista');
+            })
+            ->where('cu_a.role', '=', 'consultor')
+            ->select('cu_a.user_id as analista_id', 'cu_e.user_id as estrategista_id')
+            ->distinct()
+            ->get();
+
         $ranking = $this->buildRanking($users, $since);
 
-        $userPortfolios = $users->map(function ($u) use ($metrics, $companies, $revenueByCompany) {
-            $uCompanies = $companies->filter(function ($c) use ($u) {
-                return $u->isMentor()
-                    ? $c->estrategista->contains('id', $u->id)
-                    : $c->consultor->contains('id', $u->id);
-            });
-            if ($uCompanies->isEmpty()) return null;
-            $uCompanyIds = $uCompanies->pluck('id')->toArray();
-            $uMetrics = $metrics->whereIn('company_id', $uCompanyIds);
+        // ─── Carteira por profissional (visão completa) ──────────────────────
+        //
+        // Antes o widget usava `$users` (filtrado por `role` legacy) e iterava
+        // sobre `$companies` (lista FILTRADA pelos filtros principais), o que
+        // (1) zerava a carteira de Estrategistas com `role=consultor` no banco
+        // (Nathalia, Rubens, Débora, Douglas) — caíam no branch do
+        // `$c->consultor->contains(...)` errado e quase nunca achavam empresas,
+        // e (2) sumia carteiras inteiras quando o user filtrava por uma empresa.
+        //
+        // Agora o widget é uma VISÃO COMPLETA: enumera todos analistas +
+        // estrategistas pela taxonomia nova (cargo no pivot) e busca a
+        // carteira de cada um direto em `consultorCompanies()` /
+        // `estrategistaCompanies()` (independente dos filtros do topo).
+        //
+        // TACOS da carteira agora é SUM(ad_spend) / SUM(revenue) * 100 — não
+        // mais avg(tacos) por dia, que diluía com 0% de empresas sem ads.
+        // Null se revenue=0 (não há denominador para a fórmula).
+        $todosProfissionais = $analistas->map(fn($u) => ['user' => $u, 'tipo' => 'analista'])
+            ->concat($estrategistas->map(fn($u) => ['user' => $u, 'tipo' => 'estrategista']));
 
-            // Carteira do user = soma do revenueByCompany já decidido pelo
-            // critério tudo-ou-nada (cache Adman OU SUM DB) — herda o mesmo
-            // modo do total global, sem mistura.
-            $uTotalRevenue = 0.0;
-            foreach ($uCompanyIds as $cid) {
-                $uTotalRevenue += $revenueByCompany[$cid] ?? 0;
-            }
+        $userPortfolios = $todosProfissionais->map(function ($item) use ($since) {
+            $u    = $item['user'];
+            $tipo = $item['tipo'];
+
+            // Carteira via pivot company_users — não depende de $companies
+            // filtrado, então o widget continua completo mesmo com filtros
+            // ativos no topo do dashboard.
+            $companyIds = ($tipo === 'estrategista')
+                ? $u->estrategistaCompanies()->where('active', true)->pluck('companies.id')
+                : $u->consultorCompanies()->where('active', true)->pluck('companies.id');
+
+            if ($companyIds->isEmpty()) return null;
+
+            $uMetrics = AdmanMetric::whereIn('company_id', $companyIds)
+                ->where('reference_date', '>=', $since->toDateString())
+                ->get();
+
+            $totalRevenue = (float) $uMetrics->sum('revenue');
+            $totalAdSpend = (float) $uMetrics->sum('ad_spend');
+            // TACOS REAL da carteira: razão dos totais. Null sem revenue
+            // pra não exibir 0% artificial em quem só vende fora dos ads.
+            $tacosCarteira = $totalRevenue > 0
+                ? round(($totalAdSpend / $totalRevenue) * 100, 2)
+                : null;
 
             return [
                 'id'              => $u->id,
                 'name'            => $u->name,
-                'role'            => $u->role,
-                'companies_count' => $uCompanies->count(),
-                'avg_tacos'       => $uMetrics->count() > 0 ? round($uMetrics->avg('tacos'), 2) : null,
-                'total_revenue'   => $uTotalRevenue,
+                'tipo'            => $tipo,         // 'analista' | 'estrategista' (taxonomia nova)
+                'role'            => $u->role,      // legacy back-compat (caso algum consumer use)
+                'companies_count' => $companyIds->count(),
+                'avg_tacos'       => $tacosCarteira,
+                'total_revenue'   => $totalRevenue,
                 'avg_margin'      => $uMetrics->count() > 0 ? round($uMetrics->avg('contribution_margin_pct'), 2) : null,
-                'total_ad_spend'  => $uMetrics->sum('ad_spend'),
+                'total_ad_spend'  => $totalAdSpend,
             ];
-        })->filter()->values();
+        })->filter()->sortBy('name')->values();
 
         $totalNetBilling    = $metrics->sum('net_billing');
         $totalSoldQuantity  = $metrics->sum('sold_quantity');
@@ -550,6 +634,13 @@ class DashboardController extends Controller
                 'estrategista_id' => $estrategistaFilter,
             ],
             'users'          => $users->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'role' => $u->role]),
+            // (Quick task 260610-f69) Fonte da verdade nova pros filtros do
+            // dashboard: vem do cargo no setor Performance via pivot, não do
+            // legacy users.role. `analistas` e `estrategistas` alimentam os
+            // selects; `combinacoes` habilita o cross-filter no frontend.
+            'analistas'      => $analistas,
+            'estrategistas'  => $estrategistas,
+            'combinacoes'    => $combinacoes,
             'companies_list' => $allCompanies,
             'ranking'         => $ranking->take(5)->values(),
             'user_portfolios' => $userPortfolios,
