@@ -95,7 +95,10 @@
       "Bash(where php *)",
       "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/PortfolioController.php)",
       "Bash(node --check resources/js/Pages/Portfolio/Carteiras.jsx)",
-      "Bash(node --check resources/js/Pages/Dashboard/Admin.jsx)"
+      "Bash(node --check resources/js/Pages/Dashboard/Admin.jsx)",
+      "PowerShell(npm run build 2>&1)",
+      "PowerShell(if \\(Test-Path \".\\\\node_modules\"\\) { \"node_modules exists, dirs=\" + \\(Get-ChildItem .\\\\node_modules -Directory | Measure-Object\\).Count } else { \"NO node_modules\" })",
+      "PowerShell(npm install 2>&1)"
     ]
   }
 }
