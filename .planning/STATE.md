@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 31 Plan 03 completed — UI Nps/Respond.jsx reescrita escala 1-5 + 3 dimensões; Plan 31-04 em paralelo, 31-05 pendente
-last_updated: "2026-06-10T21:55:30Z"
-last_activity: 2026-06-10 -- Phase 31 Plan 03: UI Nps/Respond.jsx escala 1-5 + 3 dimensões (RatingPicker local + bloco analista condicional + textarea livre + nome opcional)
+stopped_at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
+last_updated: "2026-06-10T22:03:18.108Z"
+last_activity: 2026-06-10
 progress:
   total_phases: 30
   completed_phases: 17
   total_plans: 43
-  completed_plans: 36
+  completed_plans: 37
   percent: 57
 ---
 
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 31 (nps-mensal-automatizado) — Wave 2 of 3 em andamento (Plans 31-01 + 31-02 + 31-03 done)
-Plan: 3 of 5 (Plans 31-01/31-02/31-03 done; 31-04 em paralelo, 31-05 pendente — agrupar deploy)
-Status: in_progress — UI publica de resposta NPS pronta; aguardando Plan 31-04 (companies.email_cliente UI) e Plan 31-05 (admin /nps + dashboard widget)
-Last activity: 2026-06-10 - Plan 31-03 completed: UI Nps/Respond.jsx escala 1-5 + 3 dimensões (1 commit: 101dc7a) — build verde 18.86s
+Plan: 4 of 5 (Plans 31-01/31-02/31-03 done; 31-04 em paralelo, 31-05 pendente — agrupar deploy)
+Status: Ready to execute
+Last activity: 2026-06-10
 
 ## Performance Metrics
 
@@ -70,6 +70,7 @@ Last activity: 2026-06-10 - Plan 31-03 completed: UI Nps/Respond.jsx escala 1-5 
 | Phase 31-nps-mensal-automatizado P02 | 9 | 3 tasks | 9 files |
 | Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
 | Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
+| Phase 31 P04 | 4 | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -322,7 +323,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-10T21:55:01.308Z
+Last session: 2026-06-10T22:03:13.831Z
 Stopped at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
 
 **Estado para próxima sessão retomar:**
