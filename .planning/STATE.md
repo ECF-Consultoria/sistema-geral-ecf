@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v9.0
-milestone_name: Sistema de Notificações 2.0
-status: phase_complete
-stopped_at: Phase 29 (signal.detected vira notificacao no sino) fechada em 2026-06-08. Smoke prod validado — 13 notifications criadas para signal RELOJOARIA WENUS, idempotência confirmada. Sino do header acende automaticamente via polling existente. 21 testes verdes.
-last_updated: "2026-06-08T18:00:00.000Z"
-last_activity: 2026-06-10 -- Quick task 260610-lj6 aba Carteira admin (consolidada) / nao-admin (pessoal)
+milestone: v10.0
+milestone_name: Pesquisa de Satisfação 2.0
+status: in_progress
+stopped_at: Phase 31 Plan 01 completed — schema NPS 1-5 (3 migrations + 3 models); Plan 31-02 pode começar
+last_updated: "2026-06-10T21:33:43.012Z"
+last_activity: 2026-06-10 -- Phase 31 Plan 01: schema NPS escala 1-5 + email_cliente + month_reference/auto_generated
 progress:
-  total_phases: 28
-  completed_phases: 20
-  total_plans: 37
-  completed_plans: 37
-  percent: 71
+  total_phases: 30
+  completed_phases: 17
+  total_plans: 43
+  completed_plans: 34
+  percent: 57
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 24 (painel-executivo-carteira-ecf) — W1+W2+W3 complete, W4 checkpoint humano
-Plan: 1 of 1
-Status: Phase complete — ready for verification
-Last activity: 2026-06-10 - Completed quick task 260610-lzi: fix aba frete (decomposição sobreposta) no Painel Executivo
+Phase: 31 (nps-mensal-automatizado) — Wave 1 of 3 complete (Plan 31-01 done)
+Plan: 1 of 5 (Plan 31-01 done; 31-02/03/04/05 pendentes)
+Status: in_progress — fundação de dados pronta, próximo é Plan 31-02 (backend automação)
+Last activity: 2026-06-10 - Plan 31-01 completed: schema NPS 1-5 + email_cliente + month_reference (3 commits: 3fd9f27, 18acd0e, 752de7c)
 
 ## Performance Metrics
 
@@ -66,6 +66,7 @@ Last activity: 2026-06-10 - Completed quick task 260610-lzi: fix aba frete (deco
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P05 | 17 | 4 tasks | 7 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P06 | 35 | 4 tasks | 13 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P07 | 45 | 4 tasks | 9 files |
+| Phase 31-nps-mensal-automatizado P01 | 4 | 3 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -228,6 +229,16 @@ Last activity: 2026-06-10 - Completed quick task 260610-lzi: fix aba frete (deco
 - **Operacional W4**: import aplicado em prod (33 atualizadas — 32 Shopee + 1 Amazon); sync disparado (169 jobs com delay 7s); mark-custid re-rodou em 15.6s via curto-circuito (172 UPDATEs, 169 OK + 2 invalido + 1 nao_aplicavel — queda de 32→2 em invalido = 94%); auditoria pós-fix reportou 71,23% diff (vs 71,79% antes) — divergência continua porque é HISTÓRICA (adman_metrics tem só 1 dia das Shopee preenchido; faltam 29 dias). Dashboard real usa cache híbrido (Phase 18 W4-T3) e mostra valores precisos quando cache OK; gap histórico se preenche naturalmente ao longo de 30 dias com cadência D-1 da Phase 16.
 - **Erros 500 residuais na auditoria pós-fix**: 32 Shopee + 1 Amazon + 9 meli = 42 FAILs (vs 43 antes). Causa: rate limit cumulativo do dia + 500 intermitente Adman; transitório, não bug arquitetural. Phase 16 retry exponencial absorve no caminho de runtime; auditoria não tem retry.
 - **Construtor `AdmanService::$this->marketplace = 'meli'`** mantido como dívida transicional (código morto pós-refator) — pode ser removido em fase futura.
+
+### Decisões do Plan 31-01 (registradas)
+
+- **`down()` no-op informativo em `2026_06_10_100002_recreate_nps_responses_table.php`** — Adotei o padrão Phase 14 (Plan 14-02): reverter drop+recreate exigiria backup externo + recriar o schema antigo manualmente. Comentário no `down()` aponta a migration original como referência.
+- **`Schema::disableForeignKeyConstraints()` no truncate de `nps_surveys`** — Decisão tomada inline durante Task 3. MySQL rejeita `TRUNCATE` em tabelas com FK inbound mesmo quando a tabela filha está vazia. Como `nps_responses.survey_id` referencia `nps_surveys.id` (cascadeOnDelete), o truncate falharia sem o disable temporário. Pareado com `enableForeignKeyConstraints()` imediatamente depois.
+- **`email_cliente` NÃO entra em `logOnly()` do ActivityLog** — campo editável livremente via UI poluiria o feed; histórico de mudança não é interessante operacionalmente.
+- **`month_reference` / `auto_generated` NÃO entram em `logOnly()`** — mudam em batches mensais (1× por mês × ~170 empresas) e gerariam ruído proporcional no activity log.
+- **Método `getNpsCategory()` removido** do model `NpsResponse` em vez de adaptado pra escala 1-5 — semântica promotor/neutro/detrator (0-10) não tem equivalente direto em 1-5. Plan 31-05 (D-09) decide se o widget Dashboard será adaptado (mapeando `score_empresa`) ou substituído por "média + total respostas".
+- **Verificação end-to-end por instância em memória** — DB local não tem rows em `companies`/`users`, então o teste `NpsSurvey::create(...)` da verification block falharia por FK. Substituí por `new NpsSurvey([...])` direto, validando os casts (Carbon + boolean) sem precisar gravar.
+- **Call-sites legacy (Dashboard/Performance/Company/NpsController) ficam quebrados até Plan 31-05** — SCOPE BOUNDARY do executor: não é correção desta plan. Documentado nos "Gotchas" do 31-01-SUMMARY.md com mapa de qual plan corrige cada arquivo. **CRÍTICO**: NÃO fazer deploy do schema sozinho — agrupar com Plans 31-03/04/05.
 
 ### Pending Todos
 
