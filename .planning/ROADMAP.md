@@ -701,7 +701,11 @@ NPS automatizado mensal por email. Substitui o fluxo manual "por reunião" por u
 - REQ-31-07 — Admin section dentro de `/nps` com filtro por mês, 3 cards de média (Estrategista/Analista/Empresa), gráfico Recharts de linha (3 séries × 12 meses), lista paginada de respostas do mês
 - REQ-31-08 — Endpoint `nps.generate` (link manual) preservado, cria survey `auto_generated=false` (zero break do fluxo atual)
 **Depends on:** Phase 28 (SMTP Gmail validado), Phase 8 (BaseNotification — opcional pra notificar admin sobre respostas recebidas), fix accessor `Company::cust_id` (quick 260609-mom — não é dependência mas evita confusão de match)
-**Plans:** 0 plans
+**Plans:** 5 plans
 
 Plans:
-- [ ] TBD (run `/gsd-plan-phase 31` to break down)
+- [ ] 31-01-PLAN.md — Schema NPS 1-5: migrations companies.email_cliente + drop+recreate nps_responses + month_reference/auto_generated em nps_surveys
+- [ ] 31-02-PLAN.md — Backend automação: NpsMonthlyMail + comando nps:disparar-mensal (idempotente, edge dia 31) + schedule 09:00 BRT + NpsController submitResponse 1-5 + generate auto_generated=false
+- [ ] 31-03-PLAN.md — UI cliente: Nps/Respond.jsx reescrita com 3 sliders 1-5 (analista condicional) + textarea livre + nome opcional
+- [ ] 31-04-PLAN.md — UI empresa: campo email_cliente em Companies/Index.jsx (admin) e Comercial/Empresas.jsx + validação backend nullable|email
+- [ ] 31-05-PLAN.md — Admin /nps expandido (filtro mês + 3 cards média + LineChart 12m + lista) e Dashboard widget NPS ajustado para nova escala 1-5
