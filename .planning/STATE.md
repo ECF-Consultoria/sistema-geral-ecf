@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
-status: in_progress
-stopped_at: Phase 31 Plan 02 completed — backend NPS mensal (Mailable + comando + schedule + controller); Plan 31-03/04 podem rodar em paralelo
-last_updated: "2026-06-10T21:46:48Z"
-last_activity: 2026-06-10 -- Phase 31 Plan 02: NpsMonthlyMail + nps:disparar-mensal idempotente + Schedule 09:00 BRT + NpsController escala 1-5
+status: executing
+stopped_at: Phase 31 Plan 03 completed — UI Nps/Respond.jsx reescrita escala 1-5 + 3 dimensões; Plan 31-04 em paralelo, 31-05 pendente
+last_updated: "2026-06-10T21:55:30Z"
+last_activity: 2026-06-10 -- Phase 31 Plan 03: UI Nps/Respond.jsx escala 1-5 + 3 dimensões (RatingPicker local + bloco analista condicional + textarea livre + nome opcional)
 progress:
   total_phases: 30
   completed_phases: 17
   total_plans: 43
-  completed_plans: 35
-  percent: 59
+  completed_plans: 36
+  percent: 57
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 31 (nps-mensal-automatizado) — Wave 2 of 3 complete (Plans 31-01 + 31-02 done)
-Plan: 2 of 5 (Plans 31-01/31-02 done; 31-03/31-04/31-05 pendentes — 31-03/31-04 podem rodar em paralelo)
-Status: in_progress — backend do disparo mensal pronto, próximo é Plan 31-03 (form Respond.jsx escala 1-5) e/ou 31-04 (UI admin com email_cliente)
-Last activity: 2026-06-10 - Plan 31-02 completed: Mailable NPS + comando nps:disparar-mensal + Schedule 09:00 + NpsController escala 1-5 (3 commits: a8d3572, e5af674, a661438) — 19 testes Phase 31 verdes
+Phase: 31 (nps-mensal-automatizado) — Wave 2 of 3 em andamento (Plans 31-01 + 31-02 + 31-03 done)
+Plan: 3 of 5 (Plans 31-01/31-02/31-03 done; 31-04 em paralelo, 31-05 pendente — agrupar deploy)
+Status: in_progress — UI publica de resposta NPS pronta; aguardando Plan 31-04 (companies.email_cliente UI) e Plan 31-05 (admin /nps + dashboard widget)
+Last activity: 2026-06-10 - Plan 31-03 completed: UI Nps/Respond.jsx escala 1-5 + 3 dimensões (1 commit: 101dc7a) — build verde 18.86s
 
 ## Performance Metrics
 
@@ -68,6 +68,8 @@ Last activity: 2026-06-10 - Plan 31-02 completed: Mailable NPS + comando nps:dis
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P07 | 45 | 4 tasks | 9 files |
 | Phase 31-nps-mensal-automatizado P01 | 4 | 3 tasks | 6 files |
 | Phase 31-nps-mensal-automatizado P02 | 9 | 3 tasks | 9 files |
+| Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
+| Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -242,6 +244,16 @@ Last activity: 2026-06-10 - Plan 31-02 completed: Mailable NPS + comando nps:dis
 - **`chunkById(50)`** em vez de `chunk(50)` — chunkById é safe quando há mutações na mesma tabela do scan (não é nosso caso, mas ainda assim mais seguro contra deadlocks em prod).
 - **Call-sites legacy restantes** (CompanyController L309-311, PerformanceController L58-59 e L264, DashboardController L363/395-397/605/727, JSX Companies/Show, Nps/Index, Nps/Respond) **continuam quebrados em prod** pós-deploy desta migration. **NÃO FAZER DEPLOY** dos Plans 31-01/31-02 sozinhos — agrupar com 31-03/04/05.
 
+### Decisões do Plan 31-03 (registradas)
+
+- **`RatingPicker` local de 5 botões 1-5 com gradiente** vermelho→emerald (cores `1=red-500`, `2=orange-500`, `3=yellow-500`, `4=lime-500`, `5=emerald-500`). Níveis 3 e 4 usam `text-black` por contraste com fundo amarelo/lime mais claro; demais usam `text-white`.
+- **Tokens `ecf-bg`/`ecf-card`/`ecf-yellow` + `border-white/[0.08]`** substituíram tokens shadcn genéricos (`bg-background`/`bg-card`/`border-border`) — alinhado com CLAUDE.md dark theme.
+- **Validação client-side espelha backend** — estrategista e empresa sempre obrigatórios; analista obrigatório APENAS quando `survey.tem_analista`. Botão "Enviar avaliação" fica `disabled` até validar (UX previne 422 silencioso).
+- **Bloco do analista renderiza condicionalmente** via `{survey.tem_analista && (...)}` — mentoria pura (D-07) omite o slider; campo `score_analista` no `useForm` permanece null e passa na validação `nullable|integer|min:1|max:5` do Plan 31-02.
+- **Labels dos pickers** seguem padrão `O atendimento do {nome}` com fallback `'Estrategista'`/`'Analista'` quando nome null. Empresa: literal "A ECF está atendendo suas expectativas?" (texto exato do D-07).
+- **Botão submit usa `bg-ecf-yellow text-black`** (CTA primária padrão do projeto) em vez de `bg-primary` genérico — consistência com o resto do app.
+- **Textarea sem ícone Lucide** para preservar footprint pequeno (sem novo import — apenas `Button/Input/Label/Textarea` + `cn` reusados do arquivo legacy).
+
 ### Decisões do Plan 31-01 (registradas)
 
 - **`down()` no-op informativo em `2026_06_10_100002_recreate_nps_responses_table.php`** — Adotei o padrão Phase 14 (Plan 14-02): reverter drop+recreate exigiria backup externo + recriar o schema antigo manualmente. Comentário no `down()` aponta a migration original como referência.
@@ -310,7 +322,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-06T04:35:43.699Z
+Last session: 2026-06-10T21:55:01.308Z
 Stopped at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
 
 **Estado para próxima sessão retomar:**
