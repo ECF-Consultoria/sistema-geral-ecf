@@ -25,10 +25,16 @@ export const CLUSTER_LABELS = {
 };
 
 // ─── Tipos de frete / modalidade de envio ────────────────────────────────────
+// NOTA: estas modalidades NÃO são mutuamente exclusivas (um mesmo pedido pode
+// contar em ME2 e em COLETAS/FULL). Por isso o breakdown de frete usa o `pct`
+// da API (fatia sobre o faturamento total) e não recalcula como partição.
 export const FRETE_LABELS = {
-    'ME2':  'Mercado Envios padrão (ME2)',
-    'FULL': 'Mercado Envios Full',
-    'FLEX': 'Mercado Envios Flex',
+    'ME2':     'Mercado Envios padrão (ME2)',
+    'FULL':    'Mercado Envios Full',
+    'FLEX':    'Mercado Envios Flex',
+    'COLETAS': 'Coletas',
+    'PLACES':  'Mercado Envios Places',
+    'OUTROS':  'Outros',
 };
 
 // ─── Programas ECF (CPP e POLOS) ─────────────────────────────────────────────
