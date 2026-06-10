@@ -206,6 +206,7 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                         <div>
                             <InfoRow label="Conta Mercado Livre" value={itens.conta_ml?.feito ? 'Acesso confirmado' : 'Pendente'} />
                             <InfoRow label="Gmail Colaborador" value={linksAdmin.gmail_colaborador} />
+                            <InfoRow label="Drive com Imagens" value={linksAdmin.drive_imagens} link />
                             <InfoRow label="App ECF" value={itens.app_ecf?.link} link />
                             <InfoRow label="Certificado A1" value={itens.certificado_a1?.feito ? 'Possui' : null} />
                             <InfoRow label="Programa Decola" value={itens.programa_decola?.link} link />
