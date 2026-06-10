@@ -61,6 +61,8 @@ class CompanyController extends Controller
                 // Frontend usa para badge "Cust ID Invalido" quando === 'invalido'.
                 'cust_id_status'   => $c->cust_id_status,
                 'notes'            => $c->notes,
+                // Phase 31 D-04 — destinatario do email NPS mensal (preenche o openEdit do modal admin)
+                'email_cliente'    => $c->email_cliente,
                 'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
@@ -274,6 +276,8 @@ class CompanyController extends Controller
                 'segment'          => $company->segment,
                 'active'           => $company->active,
                 'notes'            => $company->notes,
+                // Phase 31 D-04 — destinatario do email NPS mensal
+                'email_cliente'    => $company->email_cliente,
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
@@ -304,12 +308,18 @@ class CompanyController extends Controller
                 ])->values(),
                 'nps_surveys'      => $company->npsSurveys->map(fn($s) => [
                     'id' => $s->id, 'status' => $s->status,
+                    // Phase 31 Plan 31-04 (Gotcha Plan 31-02) — colunas legacy
+                    // score_overall/score_consultant/score_mentor foram dropadas
+                    // no Plan 31-01 e recriadas como score_empresa/score_analista/
+                    // score_estrategista (escala 1-5). O JSX Companies/Show.jsx
+                    // (linhas 377, 848) ainda referencia os nomes antigos e sera
+                    // ajustado no Plan 31-05.
                     'response' => $s->response ? [
-                        'respondent_name' => $s->response->respondent_name,
-                        'score_overall'   => $s->response->score_overall,
-                        'score_consultant' => $s->response->score_consultant,
-                        'score_mentor'    => $s->response->score_mentor,
-                        'comment'         => $s->response->comment,
+                        'respondent_name'    => $s->response->respondent_name,
+                        'score_empresa'      => $s->response->score_empresa,
+                        'score_analista'     => $s->response->score_analista,
+                        'score_estrategista' => $s->response->score_estrategista,
+                        'comment'            => $s->response->comment,
                     ] : null,
                 ])->values(),
                 'ppas'             => $company->ppas->map(fn($p) => [
@@ -368,6 +378,8 @@ class CompanyController extends Controller
             'ml_store_id'      => 'nullable|string|max:100',
             'segment'          => 'nullable|string|max:100',
             'notes'            => 'nullable|string',
+            // Phase 31 D-04 — destinatario do email NPS mensal
+            'email_cliente'    => 'nullable|email|max:255',
             'consultor_id'     => 'nullable|exists:users,id',
             'estrategista_id'        => 'nullable|exists:users,id',
         ]);
@@ -393,6 +405,8 @@ class CompanyController extends Controller
             'ml_store_id'      => 'nullable|string|max:100',
             'segment'          => 'nullable|string|max:100',
             'notes'            => 'nullable|string',
+            // Phase 31 D-04 — destinatario do email NPS mensal
+            'email_cliente'    => 'nullable|email|max:255',
             'active'           => 'boolean',
             'consultor_id'     => 'nullable|exists:users,id',
             'estrategista_id'        => 'nullable|exists:users,id',

@@ -86,7 +86,8 @@ class ComercialController extends Controller
             ])
             ->orderByRaw("CASE WHEN status = 'pendente' THEN 0 ELSE 1 END")
             ->orderBy('name')
-            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes', 'parent_company_id']);
+            // Phase 31 D-04 — email_cliente carregado para pre-preencher o form de edicao do Comercial
+            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes', 'parent_company_id', 'email_cliente']);
 
         $companies->transform(function ($c) {
             $c->servicos_contratados = $c->contratosServico
@@ -324,14 +325,16 @@ class ComercialController extends Controller
             403
         );
 
-        // Validação: name/cnpj/notes + as empresas vinculadas (filha_ids) ao grupo.
+        // Validação: name/cnpj/notes/email_cliente + as empresas vinculadas (filha_ids) ao grupo.
         // O vínculo é gerenciado PELA empresa principal (marca-se as vinculadas).
         $validated = $request->validate([
-            'name'        => 'required|string|max:255',
-            'cnpj'        => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
-            'notes'       => 'nullable|string|max:2000',
-            'filha_ids'   => 'nullable|array',
-            'filha_ids.*' => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
+            'name'          => 'required|string|max:255',
+            'cnpj'          => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
+            'notes'         => 'nullable|string|max:2000',
+            // Phase 31 D-04 — destinatario do email NPS mensal
+            'email_cliente' => 'nullable|email|max:255',
+            'filha_ids'     => 'nullable|array',
+            'filha_ids.*'   => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
         ]);
 
         // filha_ids não é fillable → ignorado no update dos campos básicos.
