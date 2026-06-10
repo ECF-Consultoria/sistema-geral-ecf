@@ -248,6 +248,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
         Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
+        // Reativa empresa desativada pelo Comercial (active=false → true)
+        Route::post('/companies/{company}/ativar', [CompanyController::class, 'ativar'])->name('companies.ativar');
 
         // ML OAuth — painel dedicado + ações por empresa (admin only, herdado do grupo)
         Route::get('/ml-oauth',                            [MercadoLivreOAuthController::class, 'adminIndex'])->name('ml.oauth.index');

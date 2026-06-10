@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, Link, router, useRemember } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check } from 'lucide-react';
+import { Plus, Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -200,6 +200,13 @@ export default function Companies({ companies, users, estrategistas = [], empres
         }
     };
 
+    // Reativa empresa desativada pelo Comercial (active=false → true)
+    const ativar = (c) => {
+        if (confirm(`Reativar a empresa "${c.name}"?`)) {
+            router.post(route('companies.ativar', c.id), {}, { preserveScroll: true });
+        }
+    };
+
     return (
         <AppLayout title="Empresas">
             <div className="space-y-4">
@@ -321,14 +328,27 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                                 <Button size="icon" variant="ghost" onClick={() => openEdit(c)}>
                                                     <Pencil className="h-4 w-4" />
                                                 </Button>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                                                    onClick={() => destroy(c)}
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </Button>
+                                                {c.active ? (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        title="Excluir empresa"
+                                                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                                        onClick={() => destroy(c)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        title="Reativar empresa"
+                                                        className="text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10"
+                                                        onClick={() => ativar(c)}
+                                                    >
+                                                        <RotateCcw className="h-4 w-4" />
+                                                    </Button>
+                                                )}
                                             </div>
                                         </TableCell>
                                     </TableRow>

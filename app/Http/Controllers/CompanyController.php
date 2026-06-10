@@ -442,6 +442,26 @@ class CompanyController extends Controller
         return back()->with('success', "Empresa {$name} excluída.");
     }
 
+    /**
+     * Reativa uma empresa previamente desativada (active = false → true).
+     *
+     * A exclusão pelo Comercial (ComercialController::destroy) é um soft-delete
+     * via `active = false` — preserva mlb_empresas, sugadores e demais registros
+     * relacionados. Este método permite recuperar a empresa sem recadastrar.
+     */
+    public function ativar(Request $request, Company $company)
+    {
+        $nome = $company->name;
+        $company->update(['active' => true]);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $nome])
+            ->log('Empresa reativada: "' . $nome . '"');
+
+        return back()->with('success', 'Empresa "' . $nome . '" reativada.');
+    }
+
     // ─── Contratos de Serviço (Módulo Serviços — Frente A) ──────────────────
 
     /**
