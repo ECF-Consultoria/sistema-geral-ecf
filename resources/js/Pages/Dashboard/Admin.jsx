@@ -85,7 +85,11 @@ const chartStyle = {
 };
 
 /* ─── main ─────────────────────────────────────────────── */
+// roleLabel: legacy — usado APENAS no card de ranking (que ainda recebe
+// `u.role` do backend via buildRanking). Para o widget de carteiras
+// usamos tipoLabel[u.tipo] (taxonomia nova via cargo no setor Performance).
 const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
+const tipoLabel = { analista: 'Analista', estrategista: 'Estrategista' };
 
 export default function AdminDashboard({
     stats = {},
@@ -96,6 +100,9 @@ export default function AdminDashboard({
     period = '30',
     filters = {},
     users = [],
+    analistas = [],
+    estrategistas = [],
+    combinacoes = [],
     companies_list = [],
     companies_performance = [],
     ranking = [],
@@ -141,8 +148,23 @@ export default function AdminDashboard({
     ];
     const npsDataFilled = npsTotal === 0 ? [{ name: 'Sem dados', value: 1, color: 'rgba(255,255,255,0.06)' }] : npsData;
 
-    const consultores = (users || []).filter(u => u.role === 'consultor');
-    const mentores = (users || []).filter(u => u.role === 'mentor');
+    // (Quick task 260610-f69) Listas dos selects derivam de `analistas` /
+    // `estrategistas` vindos do backend — não mais do `users.role` legacy.
+    // Cross-filter: quando um lado está selecionado, o outro lista apenas
+    // profissionais que coabitam ao menos uma empresa via `combinacoes`.
+    const analistasFiltrados = filters.estrategista_id
+        ? analistas.filter(a => combinacoes.some(c =>
+            String(c.analista_id) === String(a.id) &&
+            String(c.estrategista_id) === String(filters.estrategista_id)
+          ))
+        : analistas;
+
+    const estrategistasFiltrados = filters.consultor_id
+        ? estrategistas.filter(e => combinacoes.some(c =>
+            String(c.estrategista_id) === String(e.id) &&
+            String(c.analista_id) === String(filters.consultor_id)
+          ))
+        : estrategistas;
 
     const periodLabel = PERIOD_OPTIONS.find(p => p.value === period)?.label ?? '';
 
@@ -273,13 +295,13 @@ export default function AdminDashboard({
                         value={filters.consultor_id || ''}
                         onChange={v => applyFilter('consultor_id', v)}
                         placeholder="Todos analistas"
-                        options={consultores.map(u => ({ value: String(u.id), label: u.name }))}
+                        options={analistasFiltrados.map(u => ({ value: String(u.id), label: u.name }))}
                     />
                     <ECFSelect
                         value={filters.estrategista_id || ''}
                         onChange={v => applyFilter('estrategista_id', v)}
                         placeholder="Todos estrategistas"
-                        options={mentores.map(u => ({ value: String(u.id), label: u.name }))}
+                        options={estrategistasFiltrados.map(u => ({ value: String(u.id), label: u.name }))}
                     />
 
                     <div className="ml-auto flex items-center gap-2">
@@ -471,12 +493,12 @@ export default function AdminDashboard({
                         </div>
                         <div className="p-5 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                             {user_portfolios.map(u => (
-                                <div key={u.id} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 flex flex-col gap-3 hover:border-ecf-yellow/20 transition-colors">
+                                <div key={`${u.tipo}-${u.id}`} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 flex flex-col gap-3 hover:border-ecf-yellow/20 transition-colors">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <p className="text-white font-semibold text-[13px] truncate">{u.name}</p>
                                             <p className="text-white/30 text-[11px] mt-0.5">
-                                                {roleLabel[u.role]} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''}
+                                                {tipoLabel[u.tipo]} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''}
                                             </p>
                                         </div>
                                         <button
