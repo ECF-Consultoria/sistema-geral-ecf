@@ -158,6 +158,8 @@ export default function Companies({ companies, users, estrategistas = [], empres
     const { data, setData, post, put, processing, reset, errors } = useForm({
         name: '', cnpj: '', adman_store_id: '',
         ml_store_id: '', segment: '', notes: '', consultor_id: '', estrategista_id: '',
+        // Phase 31 D-04 — destinatario do email NPS mensal
+        email_cliente: '',
     });
 
     const openCreate = () => {
@@ -177,6 +179,8 @@ export default function Companies({ companies, users, estrategistas = [], empres
             notes: c.notes || '',
             consultor_id: String(c.consultor?.id || ''),
             estrategista_id: String(c.estrategista?.id || ''),
+            // Phase 31 D-04 — pre-preenche email cliente vindo do payload Inertia
+            email_cliente: c.email_cliente || '',
         });
         setOpen(true);
     };
@@ -436,6 +440,18 @@ export default function Companies({ companies, users, estrategistas = [], empres
                             <div className="col-span-2 space-y-1.5">
                                 <Label>Observações</Label>
                                 <Textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={2} />
+                            </div>
+                            {/* Phase 31 D-04 — Email do cliente para NPS mensal */}
+                            <div className="col-span-2 space-y-1.5">
+                                <Label>Email do Cliente para NPS</Label>
+                                <Input
+                                    type="email"
+                                    value={data.email_cliente}
+                                    onChange={e => setData('email_cliente', e.target.value)}
+                                    placeholder="cliente@empresa.com.br"
+                                />
+                                {errors.email_cliente && <p className="text-destructive text-xs">{errors.email_cliente}</p>}
+                                <p className="text-white/30 text-[11px]">Destinatário do email mensal de NPS. Deixe em branco para pausar o envio.</p>
                             </div>
                         </div>
                         <DialogFooter>
