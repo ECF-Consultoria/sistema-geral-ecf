@@ -464,63 +464,15 @@ class DashboardController extends Controller
 
         $ranking = $this->buildRanking($users, $since);
 
-        // ─── Carteira por profissional (visão completa) ──────────────────────
+        // ─── Carteira por profissional — MOVIDA pra aba "Carteira" (quick 260610-lj6) ───
         //
-        // Antes o widget usava `$users` (filtrado por `role` legacy) e iterava
-        // sobre `$companies` (lista FILTRADA pelos filtros principais), o que
-        // (1) zerava a carteira de Estrategistas com `role=consultor` no banco
-        // (Nathalia, Rubens, Débora, Douglas) — caíam no branch do
-        // `$c->consultor->contains(...)` errado e quase nunca achavam empresas,
-        // e (2) sumia carteiras inteiras quando o user filtrava por uma empresa.
+        // O widget consolidado de carteiras (antes embutido no Dashboard Admin)
+        // agora vive em `PortfolioController::renderCarteirasConsolidadas`, sob
+        // a rota `portfolio.own` quando o usuário logado é admin. Não-admin
+        // continua vendo a própria carteira pessoal (Portfolio/Show.jsx).
         //
-        // Agora o widget é uma VISÃO COMPLETA: enumera todos analistas +
-        // estrategistas pela taxonomia nova (cargo no pivot) e busca a
-        // carteira de cada um direto em `consultorCompanies()` /
-        // `estrategistaCompanies()` (independente dos filtros do topo).
-        //
-        // TACOS da carteira agora é SUM(ad_spend) / SUM(revenue) * 100 — não
-        // mais avg(tacos) por dia, que diluía com 0% de empresas sem ads.
-        // Null se revenue=0 (não há denominador para a fórmula).
-        $todosProfissionais = $analistas->map(fn($u) => ['user' => $u, 'tipo' => 'analista'])
-            ->concat($estrategistas->map(fn($u) => ['user' => $u, 'tipo' => 'estrategista']));
-
-        $userPortfolios = $todosProfissionais->map(function ($item) use ($since) {
-            $u    = $item['user'];
-            $tipo = $item['tipo'];
-
-            // Carteira via pivot company_users — não depende de $companies
-            // filtrado, então o widget continua completo mesmo com filtros
-            // ativos no topo do dashboard.
-            $companyIds = ($tipo === 'estrategista')
-                ? $u->estrategistaCompanies()->where('active', true)->pluck('companies.id')
-                : $u->consultorCompanies()->where('active', true)->pluck('companies.id');
-
-            if ($companyIds->isEmpty()) return null;
-
-            $uMetrics = AdmanMetric::whereIn('company_id', $companyIds)
-                ->where('reference_date', '>=', $since->toDateString())
-                ->get();
-
-            $totalRevenue = (float) $uMetrics->sum('revenue');
-            $totalAdSpend = (float) $uMetrics->sum('ad_spend');
-            // TACOS REAL da carteira: razão dos totais. Null sem revenue
-            // pra não exibir 0% artificial em quem só vende fora dos ads.
-            $tacosCarteira = $totalRevenue > 0
-                ? round(($totalAdSpend / $totalRevenue) * 100, 2)
-                : null;
-
-            return [
-                'id'              => $u->id,
-                'name'            => $u->name,
-                'tipo'            => $tipo,         // 'analista' | 'estrategista' (taxonomia nova)
-                'role'            => $u->role,      // legacy back-compat (caso algum consumer use)
-                'companies_count' => $companyIds->count(),
-                'avg_tacos'       => $tacosCarteira,
-                'total_revenue'   => $totalRevenue,
-                'avg_margin'      => $uMetrics->count() > 0 ? round($uMetrics->avg('contribution_margin_pct'), 2) : null,
-                'total_ad_spend'  => $totalAdSpend,
-            ];
-        })->filter()->sortBy('name')->values();
+        // Aqui não calculamos mais `$userPortfolios` para não onerar o Dashboard
+        // com queries de portfolio que não são renderizadas nesta página.
 
         $totalNetBilling    = $metrics->sum('net_billing');
         $totalSoldQuantity  = $metrics->sum('sold_quantity');
@@ -624,7 +576,6 @@ class DashboardController extends Controller
             'combinacoes'    => $combinacoes,
             'companies_list' => $allCompanies,
             'ranking'         => $ranking->take(5)->values(),
-            'user_portfolios' => $userPortfolios,
             'companies_performance' => $companies->map(fn($c) => [
                 'id'       => $c->id,
                 'name'     => $c->name,
