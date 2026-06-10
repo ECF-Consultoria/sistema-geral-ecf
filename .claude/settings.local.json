@@ -88,7 +88,14 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php /tmp/schema_inspect.php 2>&1 && rm /tmp/schema_inspect.php\")",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php /tmp/atribuir_empresas.php --commit 2>&1 | tail -25\")",
       "Bash(./pscp.exe -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch c:/tmp/verify_post.php root@177.7.53.164:/tmp/verify_post.php)",
-      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php /tmp/verify_post.php 2>&1 && rm /tmp/verify_post.php /tmp/atribuir_empresas.php\")"
+      "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php /tmp/verify_post.php 2>&1 && rm /tmp/verify_post.php /tmp/atribuir_empresas.php\")",
+      "Bash(git symbolic-ref *)",
+      "Bash(php -l app/Http/Controllers/DashboardController.php)",
+      "Bash(php -l app/Http/Controllers/PortfolioController.php)",
+      "Bash(where php *)",
+      "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/PortfolioController.php)",
+      "Bash(node --check resources/js/Pages/Portfolio/Carteiras.jsx)",
+      "Bash(node --check resources/js/Pages/Dashboard/Admin.jsx)"
     ]
   }
 }
