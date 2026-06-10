@@ -90,13 +90,15 @@ function ContratosSection({ company, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
-function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato, vinculaveis = [], filhaIdsAtuais = [] }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
     const [excluindo, setExcluindo] = useState(false);
     const { data, setData, put, processing, errors } = useForm({
         name: company.name,
         cnpj: company.cnpj ?? '',
         notes: company.notes ?? '',
+        // Vínculo de grupo gerenciado pela principal: ids das empresas vinculadas.
+        filha_ids: filhaIdsAtuais,
     });
 
     function handleSubmit(e) {
@@ -165,6 +167,44 @@ function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContr
                     className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm resize-none placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors', errors.notes ? 'border-red-500/50' : 'border-white/[0.08]')}
                 />
                 {errors.notes && <p className="text-red-400 text-xs">{errors.notes}</p>}
+            </div>
+
+            {/* Vínculo de grupo gerenciado PELA empresa principal: marque as
+                empresas que pertencem a este grupo. Se esta empresa já está
+                vinculada a outra, ela não pode ter vinculadas (limite de 1 nível). */}
+            <div className="space-y-1.5">
+                <label className="block text-xs text-white/60 font-medium">
+                    Empresas vinculadas <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                </label>
+                {company.parent_company_id ? (
+                    <p className="text-white/40 text-xs leading-relaxed rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+                        Esta empresa está vinculada a <strong className="text-white/70">{company.nome_pai}</strong>. Para gerenciar vinculadas, abra a empresa principal.
+                    </p>
+                ) : vinculaveis.length === 0 ? (
+                    <p className="text-white/40 text-xs rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+                        Nenhuma outra empresa disponível para vincular.
+                    </p>
+                ) : (
+                    <div className="max-h-44 overflow-y-auto rounded-lg border border-white/[0.08] bg-white/[0.02] divide-y divide-white/[0.04]">
+                        {vinculaveis.map(c => (
+                            <label key={c.id} className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-white/[0.03]">
+                                <input
+                                    type="checkbox"
+                                    checked={data.filha_ids.includes(c.id)}
+                                    onChange={e => setData('filha_ids', e.target.checked
+                                        ? [...data.filha_ids, c.id]
+                                        : data.filha_ids.filter(id => id !== c.id))}
+                                    className="h-4 w-4 accent-ecf-yellow shrink-0"
+                                />
+                                <span className="text-white/80 text-sm truncate">{c.name}</span>
+                            </label>
+                        ))}
+                    </div>
+                )}
+                {errors.filha_ids && <p className="text-red-400 text-xs">{errors.filha_ids}</p>}
+                {!company.parent_company_id && vinculaveis.length > 0 && (
+                    <p className="text-white/30 text-[11px]">Marque as empresas que pertencem a este grupo.</p>
+                )}
             </div>
 
             <ContratosSection
@@ -294,8 +334,11 @@ export default function Empresas({ companies, servicos_disponiveis = [] }) {
         e.preventDefault();
         if (!contratoModal.empresa) return;
 
-        const baseUrl = `/empresas/${contratoModal.empresa.id}/contratos-servico`;
-        const url = contratoModal.contrato ? `${baseUrl}/${contratoModal.contrato.id}` : baseUrl;
+        // Ziggy route() respeita o base path do app (ex.: /ecf_admin/public);
+        // caminhos absolutos crus quebravam (404 do Apache) quando o app roda em subdiretório.
+        const url = contratoModal.contrato
+            ? route('empresas.contratos.update', [contratoModal.empresa.id, contratoModal.contrato.id])
+            : route('empresas.contratos.store', contratoModal.empresa.id);
         const method = contratoModal.contrato ? 'put' : 'post';
 
         setContratoSalvando(true);
@@ -311,7 +354,7 @@ export default function Empresas({ companies, servicos_disponiveis = [] }) {
         const nome = contrato.servico_nome ?? 'servico';
         if (!confirm(`Desativar contrato "${nome}"?`)) return;
 
-        router.delete(`/empresas/${empresa.id}/contratos-servico/${contrato.id}`, {
+        router.delete(route('empresas.contratos.destroy', [empresa.id, contrato.id]), {
             preserveScroll: true,
         });
     }
@@ -328,6 +371,12 @@ export default function Empresas({ companies, servicos_disponiveis = [] }) {
                         onAdicionarContrato={abrirAdicionarContrato}
                         onEditarContrato={abrirEditarContrato}
                         onDesativarContrato={desativarContrato}
+                        vinculaveis={companies.filter(c =>
+                            c.id !== empresaEditar.id
+                            && !c.is_principal
+                            && (c.parent_company_id == null || c.parent_company_id === empresaEditar.id)
+                        )}
+                        filhaIdsAtuais={companies.filter(c => c.parent_company_id === empresaEditar.id).map(c => c.id)}
                     />
                 )}
             </Modal>
@@ -406,7 +455,7 @@ export default function Empresas({ companies, servicos_disponiveis = [] }) {
                             <p className="text-white/40 text-[13px]">{companies.length} empresa{companies.length !== 1 ? 's' : ''} cadastrada{companies.length !== 1 ? 's' : ''}</p>
                         </div>
                     </div>
-                    <button onClick={() => router.visit('/comercial/empresas/novo')}
+                    <button onClick={() => router.visit(route('comercial.empresas.novo'))}
                         className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold bg-ecf-yellow text-black hover:bg-yellow-300 transition-all shrink-0">
                         <PlusCircle size={14} />
                         Nova Empresa
@@ -479,7 +528,18 @@ function EmpresaRow({ company: c, onEdit }) {
     return (
         <tr className="hover:bg-white/[0.02] transition-colors group">
             <td className="px-5 py-3">
-                <span className="text-white font-medium">{c.name}</span>
+                <div className="flex items-center gap-2">
+                    <span className="text-white font-medium">{c.name}</span>
+                    {c.is_principal && (
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full border text-ecf-yellow bg-ecf-yellow/10 border-ecf-yellow/20 whitespace-nowrap">
+                            Principal · {c.filhas_count} vinculada{c.filhas_count !== 1 ? 's' : ''}
+                        </span>
+                    )}
+                </div>
+                {/* ↳ espelha o indicador de vinculada do Relatório de Fechamento */}
+                {c.nome_pai && (
+                    <span className="block text-white/30 text-xs mt-0.5">↳ vinculada a {c.nome_pai}</span>
+                )}
             </td>
             <td className="px-4 py-3 hidden sm:table-cell">
                 <ServicoBadges servicos={c.servicos_contratados} />

@@ -75,11 +75,18 @@ class ComercialController extends Controller
             403
         );
 
+        // Eager load de pai/filhas para expor o vínculo de grupo (empresa
+        // principal + vinculadas) na UI. `parent_company_id` precisa estar nas
+        // colunas selecionadas para o relacionamento `pai` resolver.
         $companies = Company::where('active', true)
-            ->with(['contratosServico' => fn($q) => $q->where('ativo', true)->with('servico')])
+            ->with([
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'pai:id,name',
+                'filhas:id,name,parent_company_id',
+            ])
             ->orderByRaw("CASE WHEN status = 'pendente' THEN 0 ELSE 1 END")
             ->orderBy('name')
-            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes']);
+            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes', 'parent_company_id']);
 
         $companies->transform(function ($c) {
             $c->servicos_contratados = $c->contratosServico
@@ -97,6 +104,13 @@ class ComercialController extends Controller
                 ])
                 ->values()
                 ->toArray();
+
+            // Vínculo de grupo: nome da principal (se esta for vinculada) e
+            // contagem de filhas (se esta for principal). `is_principal` dirige
+            // o badge na listagem e trava o seletor no modal.
+            $c->nome_pai     = $c->pai?->name;
+            $c->filhas_count = $c->filhas->count();
+            $c->is_principal = $c->filhas->isNotEmpty();
 
             return $c;
         });
@@ -310,14 +324,23 @@ class ComercialController extends Controller
             403
         );
 
-        // Validação enxuta: APENAS name/cnpj/notes são persistidos.
+        // Validação: name/cnpj/notes + as empresas vinculadas (filha_ids) ao grupo.
+        // O vínculo é gerenciado PELA empresa principal (marca-se as vinculadas).
         $validated = $request->validate([
-            'name'  => 'required|string|max:255',
-            'cnpj'  => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
-            'notes' => 'nullable|string|max:2000',
+            'name'        => 'required|string|max:255',
+            'cnpj'        => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
+            'notes'       => 'nullable|string|max:2000',
+            'filha_ids'   => 'nullable|array',
+            'filha_ids.*' => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
         ]);
 
+        // filha_ids não é fillable → ignorado no update dos campos básicos.
         $company->update($validated);
+
+        // Campo AUSENTE = não alterar vínculos; presente = reatribuir as vinculadas.
+        if ($request->has('filha_ids')) {
+            $this->sincronizarFilhas($company, $validated['filha_ids'] ?? []);
+        }
 
         activity('comercial')
             ->causedBy($request->user())
@@ -351,6 +374,53 @@ class ComercialController extends Controller
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
+
+    /**
+     * Reatribui as empresas vinculadas (filhas) de uma empresa principal.
+     *
+     * O vínculo de grupo é gerenciado PELA principal: marca-se quais empresas
+     * pertencem ao grupo. Garante o limite de 1 nível (mensagens em pt-BR):
+     *  - a própria principal não pode estar vinculada a outra empresa;
+     *  - nenhuma vinculada pode ser, ela mesma, principal de outras.
+     *
+     * Empresas que saíram da lista são desvinculadas (parent_company_id = null).
+     *
+     * @param int[] $filhaIds IDs das empresas que devem pertencer ao grupo.
+     * @throws ValidationException quando o vínculo é proibido.
+     */
+    private function sincronizarFilhas(Company $principal, array $filhaIds): void
+    {
+        $filhaIds = array_values(array_unique(array_map('intval', $filhaIds)));
+
+        // 1 nível: a própria principal não pode ser uma vinculada de outra.
+        if ($principal->parent_company_id !== null && ! empty($filhaIds)) {
+            throw ValidationException::withMessages([
+                'filha_ids' => 'Esta empresa está vinculada a outra; desvincule-a antes de adicionar vinculadas.',
+            ]);
+        }
+
+        // 1 nível: nenhuma vinculada pode ser principal de outras empresas.
+        $jaPrincipais = Company::whereIn('id', $filhaIds ?: [0])
+            ->whereHas('filhas')
+            ->pluck('name');
+        if ($jaPrincipais->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'filha_ids' => 'Já são principais de outro grupo e não podem ser vinculadas: ' . $jaPrincipais->implode(', ') . '.',
+            ]);
+        }
+
+        // Desvincula as filhas atuais que saíram da lista.
+        Company::where('parent_company_id', $principal->id)
+            ->whereNotIn('id', $filhaIds ?: [0])
+            ->update(['parent_company_id' => null]);
+
+        // Vincula as selecionadas (move de outro grupo, se for o caso).
+        if (! empty($filhaIds)) {
+            Company::whereIn('id', $filhaIds)
+                ->where('id', '!=', $principal->id)
+                ->update(['parent_company_id' => $principal->id]);
+        }
+    }
 
     /**
      * Mapeia o NOME de um serviço (catálogo Frente A) para o slug do setor

@@ -97,12 +97,18 @@ class DashboardController extends Controller
         $companyFilter = $request->get('company_id');
         $consultorFilter = $request->get('consultor_id');
         $estrategistaFilter = $request->get('estrategista_id') ?? $request->get('mentor_id'); // back-compat com chamadas antigas
+        $grupoFilter = $request->get('group_id');
 
         $companiesQuery = Company::with(['latestMetrics', 'consultor', 'estrategista'])->where('active', true);
 
         if ($companyFilter) $companiesQuery->where('id', $companyFilter);
         if ($consultorFilter) $companiesQuery->whereHas('consultor', fn($q) => $q->where('users.id', $consultorFilter));
         if ($estrategistaFilter) $companiesQuery->whereHas('estrategista', fn($q) => $q->where('users.id', $estrategistaFilter));
+        // Grupo = empresa principal + suas vinculadas (parent_company_id). Filtra
+        // o dashboard para as empresas do grupo escolhido (id da principal).
+        if ($grupoFilter) {
+            $companiesQuery->where(fn($q) => $q->where('id', $grupoFilter)->orWhere('parent_company_id', $grupoFilter));
+        }
 
         $companies = $companiesQuery->get();
 
@@ -462,6 +468,13 @@ class DashboardController extends Controller
             ->distinct()
             ->get();
 
+        // Grupos (empresa principal ativa COM vinculadas) para o filtro de grupo.
+        $grupos = Company::where('active', true)
+            ->whereNull('parent_company_id')
+            ->whereHas('filhas')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         $ranking = $this->buildRanking($users, $since);
 
         // ─── Carteira por profissional — MOVIDA pra aba "Carteira" (quick 260610-lj6) ───
@@ -550,6 +563,7 @@ class DashboardController extends Controller
                 'company_id'      => $companyFilter,
                 'consultor_id'    => $consultorFilter,
                 'estrategista_id' => $estrategistaFilter,
+                'group_id'        => $grupoFilter,
             ],
             'users'          => $users->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'role' => $u->role]),
             // (Quick task 260610-f69) Fonte da verdade nova pros filtros do
@@ -560,6 +574,7 @@ class DashboardController extends Controller
             'estrategistas'  => $estrategistas,
             'combinacoes'    => $combinacoes,
             'companies_list' => $allCompanies,
+            'grupos_list'    => $grupos,
             'ranking'         => $ranking->take(5)->values(),
             'companies_performance' => $companies->map(fn($c) => [
                 'id'       => $c->id,

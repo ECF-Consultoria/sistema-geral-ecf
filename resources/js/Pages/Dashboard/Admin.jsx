@@ -103,6 +103,7 @@ export default function AdminDashboard({
     estrategistas = [],
     combinacoes = [],
     companies_list = [],
+    grupos_list = [],
     companies_performance = [],
     ranking = [],
     adman_last_sync = null,
@@ -288,6 +289,14 @@ export default function AdminDashboard({
                         placeholder="Todas as empresas"
                         options={(companies_list || []).map(c => ({ value: String(c.id), label: c.name }))}
                     />
+                    {grupos_list.length > 0 && (
+                        <ECFSelect
+                            value={filters.group_id || ''}
+                            onChange={v => applyFilter('group_id', v)}
+                            placeholder="Todos os grupos"
+                            options={grupos_list.map(g => ({ value: String(g.id), label: g.name }))}
+                        />
+                    )}
                     <ECFSelect
                         value={filters.consultor_id || ''}
                         onChange={v => applyFilter('consultor_id', v)}
