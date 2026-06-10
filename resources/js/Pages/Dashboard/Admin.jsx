@@ -6,7 +6,7 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import {
-    Star, Users, AlertTriangle,
+    Star, Users,
     DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, TrendingUp
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
@@ -105,7 +105,6 @@ export default function AdminDashboard({
     companies_list = [],
     companies_performance = [],
     ranking = [],
-    sugadores_stats = { total_pendentes: 0, top_empresas: [] },
     adman_last_sync = null,
 }) {
     const [tvMode, setTvMode] = useState(false);
@@ -504,54 +503,6 @@ export default function AdminDashboard({
                     </div>
                 )}
 
-                {/* Sugadores pendentes */}
-                {sugadores_stats.total_pendentes > 0 && (
-                    <div className="card-ecf rounded-2xl overflow-hidden">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
-                            <div className="flex items-center gap-2.5">
-                                <AlertTriangle size={15} className="text-red-400" />
-                                <div>
-                                    <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">Atenção</p>
-                                    <p className="text-white font-display font-extrabold text-base tracking-tight">
-                                        Sugadores pendentes
-                                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300 text-xs">
-                                            {sugadores_stats.total_pendentes}
-                                        </span>
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => router.visit(route('sugadores.index'))}
-                                className="flex items-center gap-1 text-white/30 hover:text-white/60 text-xs transition-colors"
-                            >
-                                Ver todos <ChevronRight size={13} />
-                            </button>
-                        </div>
-                        <div className="p-5">
-                            {sugadores_stats.top_empresas.length === 0 ? (
-                                <p className="text-white/40 text-sm">Nenhum detalhe disponível.</p>
-                            ) : (
-                                <>
-                                    <p className="text-white/40 text-xs mb-3">Top empresas com mais sugadores sem ação:</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        {sugadores_stats.top_empresas.map(e => (
-                                            <button
-                                                key={e.company_id}
-                                                onClick={() => router.visit(route('sugadores.index', { company_id: e.company_id, status: 'pendente' }))}
-                                                className="flex items-center justify-between gap-3 p-3 rounded-xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] hover:border-red-500/20 transition-colors text-left"
-                                            >
-                                                <p className="text-white/80 text-[13px] font-medium truncate">{e.company_name}</p>
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/30 text-red-300 text-xs font-bold tabular-nums shrink-0">
-                                                    {e.total}
-                                                </span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    </div>
-                )}
 
             </div>
         </AppLayout>

@@ -493,21 +493,6 @@ class DashboardController extends Controller
             ]
             : null;
 
-        // Sugadores: total pendentes + top 5 empresas
-        $sugadoresPendentes = Sugador::pendentes()->count();
-        $sugadoresTopEmpresas = Sugador::pendentes()
-            ->selectRaw('company_id, COUNT(*) as total')
-            ->groupBy('company_id')
-            ->orderByDesc('total')
-            ->limit(5)
-            ->with('company:id,name')
-            ->get()
-            ->map(fn($row) => [
-                'company_id'   => $row->company_id,
-                'company_name' => $row->company?->name ?? '—',
-                'total'        => (int) $row->total,
-            ]);
-
         // Phase 18 (W2-T3 + refinado em W4-T3) — Flag de exatidão dos cards
         // Adman-dependentes. Critério granular: TODAS as empresas com cust_id
         // válido tiveram cache hit no gross billing E o período é 30d
@@ -592,10 +577,6 @@ class DashboardController extends Controller
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
             ]),
-            'sugadores_stats' => [
-                'total_pendentes' => $sugadoresPendentes,
-                'top_empresas'    => $sugadoresTopEmpresas,
-            ],
             'adman_last_sync' => $admanLastSync,
             // Phase 18 (W2-T3) — true quando cards Adman-dependentes refletem
             // valores exatos do cache /performance (period=30 + cache hot).
