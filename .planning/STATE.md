@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: in_progress
-stopped_at: Phase 31 Plan 01 completed — schema NPS 1-5 (3 migrations + 3 models); Plan 31-02 pode começar
-last_updated: "2026-06-10T21:33:43.012Z"
-last_activity: 2026-06-10 -- Phase 31 Plan 01: schema NPS escala 1-5 + email_cliente + month_reference/auto_generated
+stopped_at: Phase 31 Plan 02 completed — backend NPS mensal (Mailable + comando + schedule + controller); Plan 31-03/04 podem rodar em paralelo
+last_updated: "2026-06-10T21:46:48Z"
+last_activity: 2026-06-10 -- Phase 31 Plan 02: NpsMonthlyMail + nps:disparar-mensal idempotente + Schedule 09:00 BRT + NpsController escala 1-5
 progress:
   total_phases: 30
   completed_phases: 17
   total_plans: 43
-  completed_plans: 34
-  percent: 57
+  completed_plans: 35
+  percent: 59
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 31 (nps-mensal-automatizado) — Wave 1 of 3 complete (Plan 31-01 done)
-Plan: 1 of 5 (Plan 31-01 done; 31-02/03/04/05 pendentes)
-Status: in_progress — fundação de dados pronta, próximo é Plan 31-02 (backend automação)
-Last activity: 2026-06-10 - Plan 31-01 completed: schema NPS 1-5 + email_cliente + month_reference (3 commits: 3fd9f27, 18acd0e, 752de7c)
+Phase: 31 (nps-mensal-automatizado) — Wave 2 of 3 complete (Plans 31-01 + 31-02 done)
+Plan: 2 of 5 (Plans 31-01/31-02 done; 31-03/31-04/31-05 pendentes — 31-03/31-04 podem rodar em paralelo)
+Status: in_progress — backend do disparo mensal pronto, próximo é Plan 31-03 (form Respond.jsx escala 1-5) e/ou 31-04 (UI admin com email_cliente)
+Last activity: 2026-06-10 - Plan 31-02 completed: Mailable NPS + comando nps:disparar-mensal + Schedule 09:00 + NpsController escala 1-5 (3 commits: a8d3572, e5af674, a661438) — 19 testes Phase 31 verdes
 
 ## Performance Metrics
 
@@ -67,6 +67,7 @@ Last activity: 2026-06-10 - Plan 31-01 completed: schema NPS 1-5 + email_cliente
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P06 | 35 | 4 tasks | 13 files |
 | Phase 14-consolida-o-do-modelo-de-servi-os-frente-b P07 | 45 | 4 tasks | 9 files |
 | Phase 31-nps-mensal-automatizado P01 | 4 | 3 tasks | 6 files |
+| Phase 31-nps-mensal-automatizado P02 | 9 | 3 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -229,6 +230,17 @@ Last activity: 2026-06-10 - Plan 31-01 completed: schema NPS 1-5 + email_cliente
 - **Operacional W4**: import aplicado em prod (33 atualizadas — 32 Shopee + 1 Amazon); sync disparado (169 jobs com delay 7s); mark-custid re-rodou em 15.6s via curto-circuito (172 UPDATEs, 169 OK + 2 invalido + 1 nao_aplicavel — queda de 32→2 em invalido = 94%); auditoria pós-fix reportou 71,23% diff (vs 71,79% antes) — divergência continua porque é HISTÓRICA (adman_metrics tem só 1 dia das Shopee preenchido; faltam 29 dias). Dashboard real usa cache híbrido (Phase 18 W4-T3) e mostra valores precisos quando cache OK; gap histórico se preenche naturalmente ao longo de 30 dias com cadência D-1 da Phase 16.
 - **Erros 500 residuais na auditoria pós-fix**: 32 Shopee + 1 Amazon + 9 meli = 42 FAILs (vs 43 antes). Causa: rate limit cumulativo do dia + 500 intermitente Adman; transitório, não bug arquitetural. Phase 16 retry exponencial absorve no caminho de runtime; auditoria não tem retry.
 - **Construtor `AdmanService::$this->marketplace = 'meli'`** mantido como dívida transicional (código morto pós-refator) — pode ser removido em fase futura.
+
+### Decisões do Plan 31-02 (registradas)
+
+- **`nps_surveys.generated_by` virou NULLABLE** (migration `2026_06_10_100004_make_generated_by_nullable_on_nps_surveys_table.php`) em vez do fallback "primeiro admin" sugerido no plan. Razões: (a) zero acoplamento a um usuário específico (que pode ser deletado/desativado), (b) audit log limpo (não polui "Quem gerou" com um admin escolhido para cada disparo mensal), (c) semanticamente correto (não há humano por trás de surveys automáticas). FK preservada com `nullOnDelete`.
+- **Schedule 09:00 BRT** (D-02) escolhido por estar fora do cluster 11:00-12:45 dos jobs existentes (adman:sync 11:00, sync-faturamento 11:30, calculate-goals 11:45, sugadores 12:00, gross billing 12:45).
+- **Empresa sem estrategista atribuído** → `Log::warning` + pula. Diferente de D-04 (sem email_cliente é silencioso pq é estado esperado de empresa nova); aqui é estado anômalo (empresa ativa+email+aniversário mas sem estrategista = bug de configuração que admin precisa saber).
+- **`NpsController::index()` permanece lendo colunas legacy** com TODO marker explícito pro Plan 31-05. Escopo limpo: Plan 02 entrega backend do disparo; Plan 05 reescreve UI admin.
+- **`Mail::fake()` + `Carbon::setTestNow()` + `Company::create()` direto** (não há CompanyFactory) — padrão estabelecido em `AdminFechamentoControllerTest`. `created_at`/`updated_at` aplicados via `forceFill+save` com `timestamps=false` temporariamente porque não estão no fillable de Company.
+- **Idempotência usa `whereDate('month_reference', $mesAtual)`** em vez de `where('month_reference', ...)` — robustez contra qualquer formato Carbon vs string que possa entrar.
+- **`chunkById(50)`** em vez de `chunk(50)` — chunkById é safe quando há mutações na mesma tabela do scan (não é nosso caso, mas ainda assim mais seguro contra deadlocks em prod).
+- **Call-sites legacy restantes** (CompanyController L309-311, PerformanceController L58-59 e L264, DashboardController L363/395-397/605/727, JSX Companies/Show, Nps/Index, Nps/Respond) **continuam quebrados em prod** pós-deploy desta migration. **NÃO FAZER DEPLOY** dos Plans 31-01/31-02 sozinhos — agrupar com 31-03/04/05.
 
 ### Decisões do Plan 31-01 (registradas)
 
