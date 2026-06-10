@@ -93,7 +93,6 @@ const tipoLabel = { analista: 'Analista', estrategista: 'Estrategista' };
 
 export default function AdminDashboard({
     stats = {},
-    ads_stats = {},
     revenue_chart = [],
     tacos_chart = [],
     nps_distribution = { promotores: 0, neutros: 0, detratores: 0 },
@@ -450,34 +449,6 @@ export default function AdminDashboard({
                         </div>
                     </div>
                 </div>
-
-                {/* Ads / Campanhas */}
-                {ads_stats.has_data && (
-                    <div className="card-ecf rounded-2xl p-6 space-y-4">
-                        <div>
-                            <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">Anúncios</p>
-                            <p className="text-white font-display font-extrabold text-lg tracking-tight">Performance de Campanhas</p>
-                        </div>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                            {[
-                                { label: 'Investimento', value: formatCurrency(ads_stats.total_investment ?? 0), color: 'text-ecf-yellow' },
-                                { label: 'Receita Ads', value: formatCurrency(ads_stats.total_revenue ?? 0), color: 'text-blue-400' },
-                                { label: 'Vendas', value: ads_stats.total_sold ?? '—', color: 'text-emerald-400' },
-                                { label: 'Clicks', value: (ads_stats.total_clicks ?? 0).toLocaleString('pt-BR'), color: 'text-purple-400' },
-                                { label: 'Impressões', value: (ads_stats.total_impressions ?? 0).toLocaleString('pt-BR'), color: 'text-white/60' },
-                                { label: 'CPC Médio', value: ads_stats.avg_cpc != null ? formatCurrency(ads_stats.avg_cpc) : '—', color: 'text-orange-400' },
-                                { label: 'ACOS Médio', value: ads_stats.avg_acos != null ? `${ads_stats.avg_acos}%` : '—', color: 'text-red-400' },
-                                { label: 'TACOS Médio', value: ads_stats.avg_tacos != null ? `${ads_stats.avg_tacos}%` : '—', color: 'text-ecf-yellow' },
-                                { label: 'ROAS Médio', value: ads_stats.avg_roas != null ? `${ads_stats.avg_roas}x` : '—', color: 'text-emerald-400' },
-                            ].map(({ label, value, color }) => (
-                                <div key={label} className="rounded-xl bg-white/[0.03] border border-white/[0.06] p-3">
-                                    <p className="text-white/40 text-[11px] mb-1">{label}</p>
-                                    <p className={`font-display font-bold text-lg ${color}`}>{value}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
 
                 {/* Carteiras por profissional */}
                 {user_portfolios.length > 0 && (

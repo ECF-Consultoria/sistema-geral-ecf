@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\AdmanSyncLog;
 use App\Models\Company;
@@ -390,12 +389,6 @@ class DashboardController extends Controller
         $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
         $productsWithoutCost = $metrics->avg(fn($m) => $m->products_without_cost_pct) ?? 0;
 
-        // Métricas de campanha (ads)
-        $companyIds = $companies->pluck('id');
-        $campaignMetrics = AdmanCampaignMetric::whereIn('company_id', $companyIds)
-            ->where('reference_date', '>=', $since->toDateString())
-            ->get();
-
         $lastSyncDate = $metrics->max('reference_date');
 
         $npsDistribution = [
@@ -607,18 +600,6 @@ class DashboardController extends Controller
                 'avg_profit_share'         => round($avgProfitShare, 2),
                 'products_without_cost_pct' => round($productsWithoutCost, 2),
                 'last_sync_date'           => $lastSyncDate?->format('d/m/Y'),
-            ],
-            'ads_stats' => [
-                'total_investment' => round($campaignMetrics->sum('investment'), 2),
-                'total_revenue'    => round($campaignMetrics->sum('revenue'), 2),
-                'total_clicks'     => $campaignMetrics->sum('clicks'),
-                'total_impressions' => $campaignMetrics->sum('impressions'),
-                'total_sold'       => $campaignMetrics->sum('sold_quantity'),
-                'avg_cpc'          => $campaignMetrics->count() > 0 ? round($campaignMetrics->avg('cpc'), 2) : null,
-                'avg_acos'         => $campaignMetrics->count() > 0 ? round($campaignMetrics->avg('acos'), 2) : null,
-                'avg_roas'         => $campaignMetrics->count() > 0 ? round($campaignMetrics->avg('roas'), 2) : null,
-                'avg_tacos'        => $campaignMetrics->count() > 0 ? round($campaignMetrics->avg('tacos'), 2) : null,
-                'has_data'         => $campaignMetrics->count() > 0,
             ],
             'revenue_chart'  => $revenueChart,
             'tacos_chart'    => $tacosChart,
