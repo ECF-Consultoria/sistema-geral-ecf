@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
-last_updated: "2026-06-10T22:03:18.108Z"
+stopped_at: Phase 31 FECHADA (5 plans completos) — pronta para deploy agrupado em prod.
+last_updated: "2026-06-10T22:35:00.000Z"
 last_activity: 2026-06-10
 progress:
   total_phases: 30
-  completed_phases: 17
+  completed_phases: 18
   total_plans: 43
-  completed_plans: 37
-  percent: 57
+  completed_plans: 38
+  percent: 60
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 31 (nps-mensal-automatizado) — Wave 2 of 3 em andamento (Plans 31-01 + 31-02 + 31-03 done)
-Plan: 4 of 5 (Plans 31-01/31-02/31-03 done; 31-04 em paralelo, 31-05 pendente — agrupar deploy)
-Status: Ready to execute
+Phase: 31 (nps-mensal-automatizado) — **PHASE COMPLETE** (Plans 31-01/02/03/04/05 done)
+Plan: 5 of 5 (Plans 31-01..31-05 completos; pronta para deploy agrupado em prod)
+Status: phase_complete
 Last activity: 2026-06-10
 
 ## Performance Metrics
@@ -71,6 +71,7 @@ Last activity: 2026-06-10
 | Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
 | Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
 | Phase 31 P04 | 4 | 3 tasks | 4 files |
+| Phase 31-nps-mensal-automatizado P05 | 14 | 4 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -234,6 +235,16 @@ Last activity: 2026-06-10
 - **Erros 500 residuais na auditoria pós-fix**: 32 Shopee + 1 Amazon + 9 meli = 42 FAILs (vs 43 antes). Causa: rate limit cumulativo do dia + 500 intermitente Adman; transitório, não bug arquitetural. Phase 16 retry exponencial absorve no caminho de runtime; auditoria não tem retry.
 - **Construtor `AdmanService::$this->marketplace = 'meli'`** mantido como dívida transicional (código morto pós-refator) — pode ser removido em fase futura.
 
+### Decisões do Plan 31-05 (registradas)
+
+- **D-09 — Opção A escolhida** (mapeamento 5=promotor / 4=neutro / 1-3=detrator) em vez de simplificar para "Média + contagem". Justificativa: preserva o shape do payload já consumido pelo Pie do Dashboard sem refactor estrutural, e os 3 segments (Excelente/Bom/Ruim) continuam servindo de sinal visual rápido. KPI Cards mostram a média 1-5 explicitamente para deixar a nova escala óbvia.
+- **Série 12 meses do LineChart usa 12 iterações × 3 avg() queries** (~36 queries por request). Trade-off consciente — aceitável no volume esperado (~150 empresas × 12 meses). Documentado no controller; se virar gargalo, agregar via 1 single query `GROUP BY DATE_FORMAT(month_reference, '%Y-%m')`.
+- **Labels visuais do LineChart usam `MMM/YY`** em pt-BR via `Carbon::locale('pt_BR')->isoFormat('MMM/YY')` (ex: 'jun./26') — alinhado com convenção de dashboards Phase 24.
+- **Audiência admin: OR explícito** entre (month_reference no mês) e (month_reference IS NULL AND created_at no mês) — surveys auto usam `month_reference` (D-specifics semântico); manuais caem por `created_at`.
+- **PerformanceController + DashboardController buildRanking refatorados em massa**: `isMentor()=true → score_estrategista` (substitui `score_mentor`); `isMentor()=false → score_analista` (substitui `score_consultant`). Escala 1-5 substitui 0-10 transparentemente, sem mudar as fórmulas de ranking.
+- **Companies/Show.jsx (linhas 377+848)** trocadas para `score_empresa`; cor adaptada à escala 1-5 (5=emerald, 4=ecf-yellow, 1-3=red) substituindo o threshold 9/7 anterior.
+- **PerformanceController.php (2 sites) entrou no escopo automaticamente (Rule 2)** — não estava listado na seção `<tasks>` do plan mas foi mencionado no prompt do usuário; sem ele a página `/performance` retornaria SQL error em prod após deploy agrupado. Mesmo refactor mecânico do `DashboardController::buildRanking`.
+
 ### Decisões do Plan 31-02 (registradas)
 
 - **`nps_surveys.generated_by` virou NULLABLE** (migration `2026_06_10_100004_make_generated_by_nullable_on_nps_surveys_table.php`) em vez do fallback "primeiro admin" sugerido no plan. Razões: (a) zero acoplamento a um usuário específico (que pode ser deletado/desativado), (b) audit log limpo (não polui "Quem gerou" com um admin escolhido para cada disparo mensal), (c) semanticamente correto (não há humano por trás de surveys automáticas). FK preservada com `nullOnDelete`.
@@ -323,17 +334,18 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-10T22:03:13.831Z
-Stopped at: Phase 24 W4 checkpoint humano — smoke visual em prod (8 KPI cards, gráfico 12m, 4 tabs breakdown).
+Last session: 2026-06-10T22:35:00.000Z
+Stopped at: Phase 31 FECHADA (5 plans completos) — pronta para deploy agrupado em prod.
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY: `.planning/phases/24-painel-executivo-carteira-ecf-carteira-resumo-gmv-vendas-ads/24-01-SUMMARY.md`
-- W1+W2+W3 completos: 6 commits, 8 testes verdes (71 assertions)
-- W4: checkpoint humano blocking — deploy + smoke visual em prod:
-  - Sidebar: item "Painel Executivo" entre Dashboard e Carteira, ícone LineChart
-  - 8 KPI cards: verificar valores vs smoke Phase 22 (GMV ~R$ 42,8M, Sellers ~1238)
-  - Gráfico: duplo eixo Y funciona (GMV amarelo esq, Sellers branco dir)
-  - Tabs: trocar Programa/Frete/Cluster/Localidade sem loading
-  - Role: consultor/mentor NÃO vê o item + recebe 403 em /painel-executivo direto
-- HEAD: `8d8e6f6` test(24-01): PainelExecutivoControllerTest 8 testes verdes
+- SUMMARY: `.planning/phases/31-nps-mensal-automatizado/31-05-SUMMARY.md`
+- Phase 31 completa (5/5 plans): schema 1-5 + comando mensal + form público + UI email_cliente + admin /nps reescrito
+- Suite Phase 31: **19/19 testes verdes** após cada commit
+- Próximo passo do usuário (operação): **deploy agrupado em prod**
+  - Plans 31-01..31-05 DEVEM subir juntos (sob risco de SQL error)
+  - Após deploy, rodar no VPS: `php artisan migrate --force && php artisan cache:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache`
+  - Preencher `email_cliente` das empresas que devem entrar no fluxo mensal (via UI `/companies/{id}` ou `/comercial/empresas`)
+  - Conferir schedule: `php artisan schedule:list | grep nps:disparar-mensal` deve mostrar `0 9 * * *`
+  - Smoke prod: `/dashboard` + `/nps` + `/companies/{id}` + `/performance` rendezirem sem erro
+- HEAD: `d33019f` feat(31-05): ajusta widget NPS no Dashboard Admin para escala 1-5
