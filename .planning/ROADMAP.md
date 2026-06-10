@@ -681,3 +681,27 @@ Plans:
 - [ ] 30-02 — W2 `SugadorAnalysisServiceMl` espelhando lógica em cima da API ML direta (destrava Bymobile)
 - [ ] 30-03 — W3 UX adgroup sem MLB no período (analista pausa mesmo assim)
 - [ ] 30-04 — W4 Sync agendado 03h BRT + tabela local `adman_adgroup_mlbs` + drilldown instantâneo + botão "Forçar atualização" (resolve dor 4: drilldown inviável em contas grandes)
+
+### Milestone v10.0 — Pesquisa de Satisfação 2.0
+
+NPS automatizado mensal por email. Substitui o fluxo manual "por reunião" por uma cadência regular sem depender de analista/estrategista gerar o link a cada ciclo. Notas separadas (Estrategista, Analista, Empresa) em escala 1-5 + feedback livre. Admin acompanha por mês com cards + gráfico de variação. Geração manual de link preservada como back-compat.
+
+### Phase 31: NPS Mensal Automatizado
+
+**Milestone:** v10.0 — Pesquisa de Satisfação 2.0
+**Status:** Not planned yet
+**Goal:** Cliente recebe email NPS automaticamente no dia do mês em que a empresa foi cadastrada (`DAY(companies.created_at) == DAY(today)`), responde 3 notas 1-5 (Estrategista, Analista quando houver, Empresa "está atendendo sua expectativa?") + comentário livre. Admin acompanha por mês em `/nps` com cards de média, gráfico de variação 12 meses (3 séries) e lista de respostas do mês. Geração manual de link preservada como back-compat.
+**Requirements:**
+- REQ-31-01 — Coluna `companies.email_cliente` nullable + UI de edição em `Companies/Show.jsx` / `Comercial/Empresas.jsx`
+- REQ-31-02 — Migration drop+recreate `nps_responses` com escala 1-5 (`score_estrategista`, `score_analista` nullable, `score_empresa`, `comment`, `respondent_name` nullable) + apagar surveys/responses existentes (são testes)
+- REQ-31-03 — Migration add `nps_surveys.month_reference` (date YYYY-MM-01) + `nps_surveys.auto_generated` (boolean)
+- REQ-31-04 — Comando `nps:disparar-mensal` rodando 1×/dia via `routes/console.php`. Por empresa active com `email_cliente`, se `DAY(created_at)=DAY(today)` AND não existe survey do mês AND não há contrato encerrado → cria survey `auto_generated=true` + envia `NpsMonthlyMail`
+- REQ-31-05 — Mailable `NpsMonthlyMail` (Markdown) usando SMTP Gmail (já validado em Phase 28) com link nominal (nome do Estrategista + nome do Analista) e CTA pro link público `/nps/{token}`
+- REQ-31-06 — Reescrita `Nps/Respond.jsx`: 3 sliders 1-5 (Estrategista, Analista condicional, Empresa) + textarea livre + nome opcional
+- REQ-31-07 — Admin section dentro de `/nps` com filtro por mês, 3 cards de média (Estrategista/Analista/Empresa), gráfico Recharts de linha (3 séries × 12 meses), lista paginada de respostas do mês
+- REQ-31-08 — Endpoint `nps.generate` (link manual) preservado, cria survey `auto_generated=false` (zero break do fluxo atual)
+**Depends on:** Phase 28 (SMTP Gmail validado), Phase 8 (BaseNotification — opcional pra notificar admin sobre respostas recebidas), fix accessor `Company::cust_id` (quick 260609-mom — não é dependência mas evita confusão de match)
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run `/gsd-plan-phase 31` to break down)
