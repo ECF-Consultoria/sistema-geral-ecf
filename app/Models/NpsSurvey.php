@@ -26,11 +26,16 @@ class NpsSurvey extends Model
 
     protected $fillable = [
         'token', 'company_id', 'generated_by', 'expires_at', 'completed_at', 'status',
+        // Phase 31 D-12 — disparo mensal automatizado
+        'month_reference', 'auto_generated',
     ];
 
     protected $casts = [
-        'expires_at' => 'datetime',
-        'completed_at' => 'datetime',
+        'expires_at'      => 'datetime',
+        'completed_at'    => 'datetime',
+        // Phase 31 D-12 — month_reference é date (YYYY-MM-01), auto_generated é bool
+        'month_reference' => 'date',
+        'auto_generated'  => 'boolean',
     ];
 
     public function company() { return $this->belongsTo(Company::class); }
