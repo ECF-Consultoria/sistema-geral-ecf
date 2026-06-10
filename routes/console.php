@@ -110,6 +110,17 @@ Schedule::command('sugadores:sync-adgroup-mlbs --all')
     ->name('sync-adgroup-mlbs')
     ->withoutOverlapping();
 
+// Phase 31 Plan 02 — Disparo mensal de pesquisa NPS no aniversário do
+// cadastro da empresa (D-01/D-03). 09:00 BRT — fora dos horários de pico:
+// adman:sync 11:00, sync-faturamento 11:30, calculate-goal-results 11:45,
+// sugadores 12:00, gross billing 12:45. Idempotência via
+// where(company_id, month_reference) — re-runs no mesmo dia são seguros.
+Schedule::command('nps:disparar-mensal')
+    ->dailyAt('09:00')
+    ->timezone('America/Sao_Paulo')
+    ->name('nps-disparar-mensal')
+    ->withoutOverlapping();
+
 // Envio automático mensal do relatório de fechamento.
 // Roda a cada minuto para respeitar o dia e hora configurados dinamicamente pelo admin.
 // Só dispara quando ativo=1, hoje == dia configurado, hora:minuto == hora configurada.

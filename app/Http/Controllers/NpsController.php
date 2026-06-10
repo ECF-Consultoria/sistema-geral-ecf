@@ -9,6 +9,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
+/**
+ * Controller das pesquisas NPS.
+ *
+ * Phase 31 (Plan 02) — Reescrito para a escala 1-5 com 3 dimensões
+ * (estrategista / analista / empresa) e payload do form público com
+ * `tem_analista` para a UI decidir mostrar/ocultar o campo de analista
+ * (caso mentoria pura). O endpoint `nps.generate` (manual) preserva
+ * `auto_generated=false` para back-compat (REQ-31-08).
+ *
+ * TODO Phase 31 Plan 05: reescrever index() para a nova taxonomia
+ * (estrategista/analista/empresa). Hoje ainda lê colunas legacy que
+ * foram removidas no Plan 01 — vai retornar erros SQL em prod até o
+ * Plan 05 ser deployado junto.
+ */
 class NpsController extends Controller
 {
     public function index(Request $request)
@@ -23,13 +37,17 @@ class NpsController extends Controller
             $query->whereIn('company_id', $companyIds);
         }
 
+        // TODO Plan 31-05 — reescrever payload com escala 1-5 (estrategista /
+        // analista / empresa). Hoje ainda aponta pras colunas legacy que
+        // foram dropadas no Plan 31-01; a UI Index.jsx também precisa ser
+        // adaptada. Mantido inalterado nesta task para escopo limpo.
         $surveys = $query->paginate(20)->through(fn($s) => [
             'id'             => $s->id,
             'token'          => $s->token,
             'company_name'   => $s->company->name,
             'company_id'     => $s->company_id,
             'status'         => $s->status,
-            'generated_by'   => $s->generatedBy->name,
+            'generated_by'   => $s->generatedBy?->name,
             'created_at'     => $s->created_at->format('d/m/Y H:i'),
             'expires_at'     => $s->expires_at?->format('d/m/Y'),
             'completed_at'   => $s->completed_at?->format('d/m/Y H:i'),
@@ -51,6 +69,14 @@ class NpsController extends Controller
         ]);
     }
 
+    /**
+     * Geração manual de link NPS (fluxo legacy preservado — REQ-31-08).
+     *
+     * Surveys criadas aqui ficam com `auto_generated=false` e
+     * `month_reference=null`, distinguindo-as das surveys mensais
+     * automatizadas (Plan 02 / Plan 04). `expires_at` continua em 7 dias
+     * para manuais (vs. 30 dias para automáticas — D-12).
+     */
     public function generate(Request $request)
     {
         $user = $request->user();
@@ -66,11 +92,16 @@ class NpsController extends Controller
         }
 
         $survey = NpsSurvey::create([
-            'token'        => Str::uuid()->toString(),
-            'company_id'   => $data['company_id'],
-            'generated_by' => $user->id,
-            'expires_at'   => now()->addDays(7),
-            'status'       => 'pending',
+            'token'          => Str::uuid()->toString(),
+            'company_id'     => $data['company_id'],
+            'generated_by'   => $user->id,
+            'expires_at'     => now()->addDays(7),
+            'status'         => 'pending',
+            // REQ-31-08: explicita auto_generated=false em surveys manuais
+            // para o admin filtrar "manual vs automatico" na UI (Plan 31-04).
+            'auto_generated' => false,
+            // month_reference fica null para manuais (D-12) — só surveys
+            // mensais automatizadas carregam o mês de referência semântico.
         ]);
 
         return back()->with([
@@ -79,6 +110,16 @@ class NpsController extends Controller
         ]);
     }
 
+    /**
+     * Form público de resposta — recebe o token e renderiza a UI Nps/Respond.jsx.
+     *
+     * Payload Inertia em Phase 31 (D-07): expõe `estrategista_name`,
+     * `analista_name` (nullable) e `tem_analista` (bool). A UI usa
+     * `tem_analista` para decidir se mostra o campo de analista (mentoria
+     * pura omite). Chaves legacy `mentor_name`/`consultant_name` foram
+     * removidas — Plan 31-03 reescreve Respond.jsx para consumir as
+     * chaves novas.
+     */
     public function respond(string $token)
     {
         $survey = NpsSurvey::with(['company', 'generatedBy'])
@@ -95,22 +136,28 @@ class NpsController extends Controller
         }
 
         $estrategista = $survey->company->users()->wherePivot('role', 'estrategista')->first();
-        $consultant   = $survey->company->users()->wherePivot('role', 'consultor')->first();
+        $analista     = $survey->company->users()->wherePivot('role', 'consultor')->first();
 
         return Inertia::render('Nps/Respond', [
             'survey' => [
                 'token'              => $survey->token,
                 'company_name'       => $survey->company->name,
-                // Mantemos a chave `mentor_name` no payload do NPS público porque
-                // a coluna `score_mentor` e a tela `/nps/{token}` ainda usam essa
-                // nomenclatura. Rename completo do score fica para outra fase.
-                'mentor_name'        => $estrategista?->name,
                 'estrategista_name'  => $estrategista?->name,
-                'consultant_name'    => $consultant?->name,
+                'analista_name'      => $analista?->name,
+                'tem_analista'       => $analista !== null,
             ],
         ]);
     }
 
+    /**
+     * Persiste a resposta NPS (escala 1-5, 3 dimensões — D-06/D-07).
+     *
+     * - `score_estrategista` 1-5 obrigatório
+     * - `score_analista` 1-5 nullable (omitido em mentoria pura)
+     * - `score_empresa` 1-5 obrigatório
+     * - `respondent_name` nullable (D-07 — cliente pode responder anônimo)
+     * - `comment` até 2000 chars
+     */
     public function submitResponse(Request $request, string $token)
     {
         $survey = NpsSurvey::where('token', $token)->where('status', 'pending')->firstOrFail();
@@ -120,11 +167,11 @@ class NpsController extends Controller
         }
 
         $data = $request->validate([
-            'respondent_name'  => 'required|string|max:255',
-            'score_consultant' => 'required|integer|min:0|max:10',
-            'score_mentor'     => 'required|integer|min:0|max:10',
-            'score_overall'    => 'required|integer|min:0|max:10',
-            'comment'          => 'nullable|string|max:1000',
+            'respondent_name'    => 'nullable|string|max:255',
+            'score_estrategista' => 'required|integer|min:1|max:5',
+            'score_analista'     => 'nullable|integer|min:1|max:5',
+            'score_empresa'      => 'required|integer|min:1|max:5',
+            'comment'            => 'nullable|string|max:2000',
         ]);
 
         NpsResponse::create([...$data, 'survey_id' => $survey->id]);
@@ -134,4 +181,3 @@ class NpsController extends Controller
         return Inertia::render('Nps/ThankYou');
     }
 }
-
