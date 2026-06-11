@@ -6,7 +6,7 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send, Link2, TrendingUp, Settings
+    Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -52,14 +52,15 @@ const NAV_TREE = [
     { label: 'Reuniões',            routeName: 'meetings.index',          page: 'Meetings',         icon: CalendarCheck, permission: 'core.reunioes' },
     // ── Grupo: NPS ───────────────────────────────────────────────────────────
     // Phase 32 — Plan 02: NPS vira grupo com sub-item "Configuração NPS" (admin only).
-    // Plan 32-04 adicionará "Emails enviados" ao mesmo grupo.
+    // Phase 32 — Plan 04: sub-item "Emails enviados" (admin only) adicionado.
     {
         group: 'NPS',
         icon: Star,
         permission: 'core.nps',
         children: [
-            { label: 'Pesquisas',        routeName: 'nps.index',               page: 'Nps/Index',          icon: Star,     permission: 'core.nps' },
-            { label: 'Configuração NPS', routeName: 'nps.configuracao.index',  page: 'Nps/Configuracao',   icon: Settings, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            { label: 'Pesquisas',        routeName: 'nps.index',                  page: 'Nps/Index',           icon: Star,     permission: 'core.nps' },
+            { label: 'Configuração NPS', routeName: 'nps.configuracao.index',     page: 'Nps/Configuracao',    icon: Settings, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            { label: 'Emails enviados',  routeName: 'nps.emails-enviados.index',  page: 'Nps/EmailsEnviados',  icon: Inbox,    excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
     { label: 'Metas',               routeName: 'goals.index',             page: 'Goals',            icon: Target,       permission: 'core.metas' },
