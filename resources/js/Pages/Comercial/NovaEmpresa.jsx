@@ -30,10 +30,13 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
     const { flash } = usePage().props;
 
     const { data, setData, post, processing, errors, reset } = useForm({
-        nome:     '',
-        cnpj:     '',
-        notes:    '',
-        servicos: [], // array de { servico_id, valor_contratado }
+        nome:          '',
+        cnpj:          '',
+        notes:         '',
+        // Quick 260611-eml — contato do cliente (NPS mensal + comercial).
+        email_cliente: '',
+        telefone:      '',
+        servicos:      [], // array de { servico_id, valor_contratado }
     });
 
     // ─── Helpers de manipulação do array servicos[] ──────────────────────────
@@ -133,6 +136,49 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
                             />
                             {errors.cnpj && (
                                 <p className="text-red-400 text-xs mt-1">{errors.cnpj}</p>
+                            )}
+                        </div>
+
+                        {/* Quick 260611-eml — Email do cliente (destinatário do NPS mensal) */}
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">
+                                Email do cliente <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                            </label>
+                            <input
+                                type="email"
+                                value={data.email_cliente}
+                                onChange={e => setData('email_cliente', e.target.value)}
+                                placeholder="cliente@empresa.com.br"
+                                className={cn(
+                                    'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                                    'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
+                                    errors.email_cliente ? 'border-red-500/50' : 'border-white/[0.08]'
+                                )}
+                            />
+                            {errors.email_cliente && (
+                                <p className="text-red-400 text-xs mt-1">{errors.email_cliente}</p>
+                            )}
+                            <p className="text-white/30 text-[11px]">Destinatário da pesquisa NPS mensal automática.</p>
+                        </div>
+
+                        {/* Quick 260611-eml — Telefone do contato comercial */}
+                        <div className="space-y-1.5">
+                            <label className="block text-xs text-white/60 font-medium">
+                                Telefone <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                            </label>
+                            <input
+                                type="tel"
+                                value={data.telefone}
+                                onChange={e => setData('telefone', e.target.value)}
+                                placeholder="(11) 99999-9999"
+                                className={cn(
+                                    'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                                    'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors',
+                                    errors.telefone ? 'border-red-500/50' : 'border-white/[0.08]'
+                                )}
+                            />
+                            {errors.telefone && (
+                                <p className="text-red-400 text-xs mt-1">{errors.telefone}</p>
                             )}
                         </div>
 

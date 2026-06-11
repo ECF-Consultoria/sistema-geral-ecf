@@ -160,6 +160,8 @@ export default function Companies({ companies, users, estrategistas = [], empres
         ml_store_id: '', segment: '', notes: '', consultor_id: '', estrategista_id: '',
         // Phase 31 D-04 — destinatario do email NPS mensal
         email_cliente: '',
+        // Quick 260611-eml — contato comercial.
+        telefone: '',
     });
 
     const openCreate = () => {
@@ -181,6 +183,8 @@ export default function Companies({ companies, users, estrategistas = [], empres
             estrategista_id: String(c.estrategista?.id || ''),
             // Phase 31 D-04 — pre-preenche email cliente vindo do payload Inertia
             email_cliente: c.email_cliente || '',
+            // Quick 260611-eml — pre-preenche telefone
+            telefone: c.telefone || '',
         });
         setOpen(true);
     };
@@ -472,6 +476,17 @@ export default function Companies({ companies, users, estrategistas = [], empres
                                 />
                                 {errors.email_cliente && <p className="text-destructive text-xs">{errors.email_cliente}</p>}
                                 <p className="text-white/30 text-[11px]">Destinatário do email mensal de NPS. Deixe em branco para pausar o envio.</p>
+                            </div>
+                            {/* Quick 260611-eml — Telefone do contato comercial */}
+                            <div className="col-span-2 space-y-1.5">
+                                <Label>Telefone</Label>
+                                <Input
+                                    type="tel"
+                                    value={data.telefone}
+                                    onChange={e => setData('telefone', e.target.value)}
+                                    placeholder="(11) 99999-9999"
+                                />
+                                {errors.telefone && <p className="text-destructive text-xs">{errors.telefone}</p>}
                             </div>
                         </div>
                         <DialogFooter>
