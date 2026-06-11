@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 31 (nps-mensal-automatizado) — **PHASE COMPLETE** (Plans 31-01/02/03/04/05 done)
 Plan: 5 of 5 (Plans 31-01..31-05 completos; pronta para deploy agrupado em prod)
 Status: phase_complete
-Last activity: 2026-06-11 - Completed quick task 260611-jha: menu lateral em grupos colapsáveis (dropdowns)
+Last activity: 2026-06-11 - Quick task 260611-pbm: aba Pendências com filtro por tag, excluir e ações em massa
 
 ## Performance Metrics
 
