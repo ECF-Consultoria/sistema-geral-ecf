@@ -111,7 +111,12 @@ function GrupoBadge({ grupo }) {
 }
 
 export default function Companies({ companies, users, estrategistas = [], grupos = [], servico_counts = [], filters = {} }) {
-    const [tab, setTab] = useState('empresas');
+    // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
+    // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
+    const [tab, setTab] = useState(() => {
+        const t = new URLSearchParams(window.location.search).get('tab');
+        return ['empresas', 'pendencias', 'grupos'].includes(t) ? t : 'empresas';
+    });
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [servicoFilter, setServicoFilter] = useState(''); // servico id (string) ou ''
     const custIdStatusFilter = filters.cust_id_status || '';
