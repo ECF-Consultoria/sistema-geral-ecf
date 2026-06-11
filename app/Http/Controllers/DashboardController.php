@@ -104,10 +104,11 @@ class DashboardController extends Controller
         if ($companyFilter) $companiesQuery->where('id', $companyFilter);
         if ($consultorFilter) $companiesQuery->whereHas('consultor', fn($q) => $q->where('users.id', $consultorFilter));
         if ($estrategistaFilter) $companiesQuery->whereHas('estrategista', fn($q) => $q->where('users.id', $estrategistaFilter));
-        // Grupo = empresa principal + suas vinculadas (parent_company_id). Filtra
-        // o dashboard para as empresas do grupo escolhido (id da principal).
+        // Grupo nomeado (company_groups) — filtra o dashboard só para as empresas
+        // daquele grupo, funcionando como uma carteira.
+        // (Antes usava a hierarquia parent_company_id da empresa principal.)
         if ($grupoFilter) {
-            $companiesQuery->where(fn($q) => $q->where('id', $grupoFilter)->orWhere('parent_company_id', $grupoFilter));
+            $companiesQuery->where('company_group_id', $grupoFilter);
         }
 
         $companies = $companiesQuery->get();
@@ -479,12 +480,9 @@ class DashboardController extends Controller
             ->distinct()
             ->get();
 
-        // Grupos (empresa principal ativa COM vinculadas) para o filtro de grupo.
-        $grupos = Company::where('active', true)
-            ->whereNull('parent_company_id')
-            ->whereHas('filhas')
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        // Grupos nomeados (company_groups) — opções do filtro de grupo do dashboard.
+        // Funciona como carteira: selecionar mostra só as empresas daquele grupo.
+        $grupos = \App\Models\CompanyGroup::orderBy('name')->get(['id', 'name']);
 
         $ranking = $this->buildRanking($users, $since);
 
