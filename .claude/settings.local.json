@@ -119,7 +119,19 @@
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l routes\\\\web.php 2>&1)",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"`$c=App\\\\Models\\\\Company::first\\(\\); `$u=App\\\\Models\\\\User::where\\('role','consultor'\\)->first\\(\\); if\\(!`$c||!`$u\\){ echo 'sem dados locais para smoke'; return; } DB::beginTransaction\\(\\); try { DB::table\\('company_users'\\)->where\\('company_id',`$c->id\\)->where\\('role','consultor'\\)->delete\\(\\); `$c->users\\(\\)->attach\\(`$u->id,['role'=>'consultor','assigned_at'=>now\\(\\)->toDateString\\(\\)]\\); `$n=DB::table\\('company_users'\\)->where\\('company_id',`$c->id\\)->where\\('role','consultor'\\)->where\\('user_id',`$u->id\\)->count\\(\\); echo 'attach_ok='.`$n; } finally { DB::rollBack\\(\\); echo ' | rolledback'; }\")",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\DashboardController.php 2>&1)",
-      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\AdminController.php 2>&1)"
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\AdminController.php 2>&1)",
+      "Bash(where.exe php *)",
+      "Bash(powershell -Command \"Get-Command php 2>&1\")",
+      "Bash(c:/xampp/php/php.exe artisan *)",
+      "Bash(findstr /C:\"linear-gradient\" /C:\"Responder\" /C:\"jun/26\")",
+      "Bash(c:/xampp/php/php.exe -l app/Console/Commands/NpsDispararMensal.php)",
+      "Bash(c:/xampp/php/php.exe -l app/Mail/NpsMonthlyMail.php)",
+      "Bash(c:/xampp/php/php.exe -l app/Support/NpsTextRenderer.php)",
+      "Bash(c:/xampp/php/php.exe -l app/Models/NpsEmailEnvio.php)",
+      "Bash(c:/xampp/php/php.exe -l tests/Feature/Phase31NpsMonthlyMailTest.php)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\CompanyGroupController.php 2>&1)",
+      "Bash(c:/xampp/php/php.exe vendor/bin/phpunit --filter=Phase31)",
+      "Bash(c:/xampp/php/php.exe vendor/bin/phpunit --filter=Phase31 --list-tests)"
     ]
   }
 }
