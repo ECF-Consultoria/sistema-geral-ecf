@@ -225,13 +225,44 @@ class NpsController extends Controller
         $estrategista = $survey->company->users()->wherePivot('role', 'estrategista')->first();
         $analista     = $survey->company->users()->wherePivot('role', 'consultor')->first();
 
+        $estrategistaNome = $estrategista?->name;
+        $analistaNome     = $analista?->name;
+        $temAnalista      = $analista !== null;
+
+        // ─── Phase 32 Plan 03: textos dinâmicos da página ────────────────────
+        // Carrega os 6 textos das perguntas/labels editáveis em /nps/configuracao
+        // e substitui os placeholders ANTES de mandar pro front (mesmo padrão do
+        // NpsDispararMensal/NpsMonthlyMail — Mailable burro, render no backend).
+        //
+        // `mes_referencia` e `bloco_analista` não fazem sentido na página de
+        // resposta (só no email), mas passamos string vazia para não deixar o
+        // placeholder cru caso o admin tenha colocado algum por engano.
+        $textosBrutos = NpsTextRenderer::getTextos();
+        $varsPagina   = [
+            'nome_estrategista' => $estrategistaNome ?? '',
+            'nome_analista'     => $analistaNome ?? '',
+            'nome_empresa'      => $survey->company->name,
+            'mes_referencia'    => '',
+            'bloco_analista'    => '',
+        ];
+
+        $textosRender = [
+            'perg_estrategista'           => NpsTextRenderer::render($textosBrutos['perg_estrategista'], $varsPagina),
+            'perg_analista'               => NpsTextRenderer::render($textosBrutos['perg_analista'], $varsPagina),
+            'perg_empresa'                => NpsTextRenderer::render($textosBrutos['perg_empresa'], $varsPagina),
+            'perg_comentario_label'       => NpsTextRenderer::render($textosBrutos['perg_comentario_label'], $varsPagina),
+            'perg_comentario_placeholder' => NpsTextRenderer::render($textosBrutos['perg_comentario_placeholder'], $varsPagina),
+            'perg_nome_label'             => NpsTextRenderer::render($textosBrutos['perg_nome_label'], $varsPagina),
+        ];
+
         return Inertia::render('Nps/Respond', [
             'survey' => [
                 'token'              => $survey->token,
                 'company_name'       => $survey->company->name,
-                'estrategista_name'  => $estrategista?->name,
-                'analista_name'      => $analista?->name,
-                'tem_analista'       => $analista !== null,
+                'estrategista_name'  => $estrategistaNome,
+                'analista_name'      => $analistaNome,
+                'tem_analista'       => $temAnalista,
+                'textos'             => $textosRender,
             ],
         ]);
     }
