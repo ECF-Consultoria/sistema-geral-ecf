@@ -239,7 +239,12 @@ export default function AppLayout({ children, title }) {
         ? user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
         : '?';
 
-    const SidebarInner = ({ mobile = false }) => (
+    // Helper de RENDER (não é um componente): precisa ser invocado como função
+    // — `renderSidebar({...})` — e NÃO como <Componente/>. Se fosse usado como
+    // elemento JSX, o React o trataria como um tipo novo a cada render do
+    // AppLayout (a função é recriada toda vez), remontando toda a sidebar e
+    // zerando o scroll do nav sempre que um grupo era aberto/fechado.
+    const renderSidebar = ({ mobile = false }) => (
         <div className={cn(
             'flex flex-col h-full transition-all duration-300',
             'bg-[#0b0c10] border-r border-white/[0.06]',
@@ -418,7 +423,7 @@ export default function AppLayout({ children, title }) {
         <div className="flex h-screen bg-[#050507] overflow-hidden">
             {/* Desktop sidebar */}
             <aside className={cn('hidden md:flex flex-col transition-all duration-300', collapsed ? 'w-16' : 'w-64')}>
-                <SidebarInner />
+                {renderSidebar({})}
             </aside>
 
             {/* Mobile sidebar overlay */}
@@ -429,7 +434,7 @@ export default function AppLayout({ children, title }) {
                         onClick={() => setMobileOpen(false)}
                     />
                     <aside className="absolute left-0 top-0 h-full w-64 z-10">
-                        <SidebarInner mobile />
+                        {renderSidebar({ mobile: true })}
                     </aside>
                 </div>
             )}
