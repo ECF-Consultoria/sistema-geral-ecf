@@ -1,3 +1,9 @@
+/* Fonte Montserrat (Phase 32 Plan 03 — D-01): usada pelo LogoEcf na pagina
+   /nps/{token}. Pesos 300 (subtitulo "Consultoria & Assessoria") e 700 ("ECF").
+   Em emails o template Blade continua caindo em fallback Helvetica — Google
+   Fonts nao carrega em clientes de email; aqui na app web temos a fonte real. */
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
