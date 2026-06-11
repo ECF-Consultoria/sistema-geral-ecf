@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 31 (nps-mensal-automatizado) — **PHASE COMPLETE** (Plans 31-01/02/03/04/05 done)
 Plan: 5 of 5 (Plans 31-01..31-05 completos; pronta para deploy agrupado em prod)
 Status: phase_complete
-Last activity: 2026-06-10
+Last activity: 2026-06-11 - Quick task 260611-cgp: melhorias /companies (abas, filtro serviço, pendências, grupos)
 
 ## Performance Metrics
 
@@ -304,6 +304,7 @@ None.
 | 260610-f69 | Fix consolidado Dashboard Admin: filtros Analista/Estrategista por cargo (não mais por `users.role`) + cross-filter via `combinacoes` extraídas de `company_users` + widget Carteira Portfólio com TODOS profissionais e TACOS recalculado como SUM(ad_spend)/SUM(revenue)*100 | 2026-06-10 | 2d29c6d | [260610-f69-dashboard-filtros-cargo](.planning/quick/260610-f69-dashboard-filtros-cargo/) |
 | 260610-lj6 | Aba "Carteira" passa a bifurcar: admin → visão consolidada de TODOS profissionais (cards `Portfolio/Carteiras`); não-admin → carteira pessoal (`Portfolio/Show` como antes). Widget consolidado removido do Dashboard Admin. Lógica migrada de DashboardController para PortfolioController. | 2026-06-10 | 6a089f2 | [260610-lj6-carteira-aba-admin](.planning/quick/260610-lj6-carteira-aba-admin/) |
 | 260610-lzi | Fix aba "Tipo de Envio" (frete) da Decomposição da carteira (Painel Executivo): frete é dimensão SOBREPOSTA (ME2/COLETAS/FULL/OUTROS/FLEX/PLACES somam >100% do GMV). Passa a usar o `pct` da API + barras horizontais (em vez de pizza que forçava 100% e recalculava errado — ME2 aparecia ~49% vs 91,8% real), aviso de sobreposição, oculta coluna Lojistas e traduz COLETAS/PLACES/OUTROS. Inclui verificação ao vivo da API (CPP voltou) e revisão da página Concentração. | 2026-06-10 | 46714ab | [260610-lzi-frete-breakdown-sobreposto](.planning/quick/260610-lzi-frete-breakdown-sobreposto/) |
+| 260611-cgp | Melhorias /companies: abas Empresas/Pendências/Grupos. Filtro por tipo de serviço + contagem total por serviço (chips). Aba Pendências dedicada com 4 pendências calculadas (sem responsável, sem cust id, sem email colaborador, sem grant ativo via company_grants). Grupos nomeados tipo carteira (nova tabela company_groups + companies.company_group_id) com aba visual (cards/membros/CRUD) e badge na linha. Remove cadastro de empresa de /companies (entrada só por /comercial/empresas). Precisa deploy + migrate. | 2026-06-11 | e055699 | [260611-cgp-melhorias-companies](.planning/quick/260611-cgp-melhorias-companies/) |
 
 ## Deferred Items
 
