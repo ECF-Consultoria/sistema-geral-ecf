@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Briefcase, Building2, ChevronDown, Pencil, Plus, PowerOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
 import { cn } from '@/lib/utils';
+import GruposManager, { GrupoBadge } from '@/Components/GruposManager';
 
 const fmtBRL = (n) => n == null ? null
     : Number(n).toLocaleString('pt-BR', {
@@ -41,8 +42,9 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
                 )}
             />
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-white font-semibold text-[13px] truncate">{empresa.name}</span>
+                    {empresa.grupo && <GrupoBadge grupo={empresa.grupo} />}
                     {!empresa.active && (
                         <span className="text-[10px] text-white/30 border border-white/[0.08] px-1.5 py-0.5 rounded-full shrink-0">
                             inativa
@@ -242,8 +244,8 @@ function EmpresaForm({ empresa, allCompanies, onClose, onAdicionarContrato, onEd
     );
 }
 
-function EmpresaList({ empresas, allCompanies, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
-    const [aberta, setAberta] = useState(null);
+function EmpresaList({ empresas, allCompanies, initialAberta = null, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+    const [aberta, setAberta] = useState(initialAberta);
 
     return (
         <div className="divide-y divide-white/[0.04]">
@@ -272,9 +274,16 @@ function EmpresaList({ empresas, allCompanies, onAdicionarContrato, onEditarCont
     );
 }
 
-export default function Empresas({ companies, servicos_disponiveis = [] }) {
+export default function Empresas({ companies, servicos_disponiveis = [], grupos = [] }) {
+    // Aba inicial + empresa em foco vindas do query param (?tab, ?empresa) —
+    // ex: link "Serviço" da aba Pendências de /companies abre a empresa aqui.
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+    const [tab, setTab] = useState(() => (params.get('tab') === 'grupos' ? 'grupos' : 'empresas'));
+    const empresaFoco = params.get('empresa') ? Number(params.get('empresa')) : null;
+
     const [busca, setBusca] = useState('');
     const [servicoFiltro, setServicoFiltro] = useState('');
+    const [semServico, setSemServico] = useState(false);
     const [contratoModal, setContratoModal] = useState({ open: false, empresa: null, contrato: null });
     const [contratoForm, setContratoForm] = useState({
         servico_id: '',
@@ -292,10 +301,15 @@ export default function Empresas({ companies, servicos_disponiveis = [] }) {
     )].sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
     const filtradas = companies.filter(e => {
-        const buscaOk = !busca.trim() || e.name.toLowerCase().includes(busca.toLowerCase());
+        const q = busca.toLowerCase();
+        const buscaOk = !busca.trim()
+            || e.name.toLowerCase().includes(q)
+            || String(e.adman_account_id || '').includes(q)
+            || String(e.ml_store_id || '').includes(q);
         const servicoOk = !servicoFiltro
             || (e.servicos_contratados || []).some(s => s.servico_nome === servicoFiltro);
-        return buscaOk && servicoOk;
+        const semServicoOk = !semServico || (e.servicos_contratados || []).length === 0;
+        return buscaOk && servicoOk && semServicoOk;
     });
 
     function abrirAdicionarContrato(empresa) {
@@ -383,45 +397,81 @@ export default function Empresas({ companies, servicos_disponiveis = [] }) {
                         </span>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3">
-                        <input
-                            type="text"
-                            value={busca}
-                            onChange={e => setBusca(e.target.value)}
-                            placeholder="Buscar empresa..."
-                            className="h-9 flex-1 min-w-[220px] px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
-                        />
-                        <select
-                            value={servicoFiltro}
-                            onChange={e => setServicoFiltro(e.target.value)}
-                            className={cn(
-                                'h-9 min-w-[180px] px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] focus:outline-none focus:border-ecf-yellow/40',
-                                servicoFiltro ? 'text-white/80' : 'text-white/30',
-                            )}
-                        >
-                            <option value="">Todos os servicos</option>
-                            {servicosNomes.map(nome => (
-                                <option key={nome} value={nome}>{nome}</option>
-                            ))}
-                        </select>
+                    {/* Abas: Empresas | Grupos (mesmos grupos nomeados de /companies) */}
+                    <div className="flex gap-1 border-b border-white/[0.08]">
+                        {[
+                            { key: 'empresas', label: `Empresas (${companies.length})` },
+                            { key: 'grupos', label: `Grupos (${grupos.length})` },
+                        ].map(t => (
+                            <button
+                                key={t.key}
+                                onClick={() => setTab(t.key)}
+                                className={cn(
+                                    'px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+                                    tab === t.key ? 'border-ecf-yellow text-white' : 'border-transparent text-white/50 hover:text-white/80',
+                                )}
+                            >
+                                {t.label}
+                            </button>
+                        ))}
                     </div>
 
-                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                        {filtradas.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center py-16 gap-2">
-                                <Building2 size={24} className="text-white/20" />
-                                <p className="text-[13px] text-white/40">Nenhuma empresa encontrada.</p>
+                    {tab === 'empresas' && (
+                        <>
+                            <div className="flex flex-wrap items-center gap-3">
+                                <input
+                                    type="text"
+                                    value={busca}
+                                    onChange={e => setBusca(e.target.value)}
+                                    placeholder="Buscar por nome ou cust id..."
+                                    className="h-9 flex-1 min-w-[220px] px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                                />
+                                <select
+                                    value={servicoFiltro}
+                                    onChange={e => setServicoFiltro(e.target.value)}
+                                    className={cn(
+                                        'h-9 min-w-[180px] px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] focus:outline-none focus:border-ecf-yellow/40',
+                                        servicoFiltro ? 'text-white/80' : 'text-white/30',
+                                    )}
+                                >
+                                    <option value="">Todos os servicos</option>
+                                    {servicosNomes.map(nome => (
+                                        <option key={nome} value={nome}>{nome}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => setSemServico(v => !v)}
+                                    className={cn('h-9 px-3 rounded-lg border text-[13px] whitespace-nowrap transition-colors',
+                                        semServico ? 'border-fuchsia-500/40 bg-fuchsia-500/10 text-fuchsia-300' : 'border-white/[0.08] bg-white/[0.03] text-white/50 hover:text-white/80')}
+                                >
+                                    Sem serviço atribuído ({companies.filter(e => (e.servicos_contratados || []).length === 0).length})
+                                </button>
                             </div>
-                        ) : (
-                            <EmpresaList
-                                empresas={filtradas}
-                                allCompanies={companies}
-                                onAdicionarContrato={abrirAdicionarContrato}
-                                onEditarContrato={abrirEditarContrato}
-                                onDesativarContrato={desativarContrato}
-                            />
-                        )}
-                    </div>
+
+                            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
+                                {filtradas.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-16 gap-2">
+                                        <Building2 size={24} className="text-white/20" />
+                                        <p className="text-[13px] text-white/40">Nenhuma empresa encontrada.</p>
+                                    </div>
+                                ) : (
+                                    <EmpresaList
+                                        empresas={filtradas}
+                                        allCompanies={companies}
+                                        initialAberta={empresaFoco}
+                                        onAdicionarContrato={abrirAdicionarContrato}
+                                        onEditarContrato={abrirEditarContrato}
+                                        onDesativarContrato={desativarContrato}
+                                    />
+                                )}
+                            </div>
+                        </>
+                    )}
+
+                    {tab === 'grupos' && (
+                        <GruposManager grupos={grupos} companies={companies} />
+                    )}
                 </div>
             </main>
 

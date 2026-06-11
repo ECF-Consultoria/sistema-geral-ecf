@@ -40,6 +40,7 @@ class AdminController extends Controller
                 'filhas:id,name,parent_company_id',
                 'pai:id,name',
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'grupo:id,name,color',
             ])
             ->get()
             ->map(fn (Company $c) => [
@@ -49,6 +50,11 @@ class AdminController extends Controller
                 'parent_company_id'        => $c->parent_company_id,
                 'nome_pai'                 => $c->pai?->name,
                 'filhas'                   => $c->filhas->map(fn($f) => ['id' => $f->id, 'name' => $f->name])->values(),
+                // cust id (para busca) + grupo nomeado (mesmo sistema de /companies)
+                'adman_account_id'         => $c->adman_account_id,
+                'ml_store_id'              => $c->ml_store_id,
+                'company_group_id'         => $c->company_group_id,
+                'grupo'                    => $c->grupo ? ['id' => $c->grupo->id, 'name' => $c->grupo->name, 'color' => $c->grupo->color] : null,
                 // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
                 // ─── Chave nova (modelo N:N de contratos) ────────────────
                 'servicos_contratados'     => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
@@ -67,9 +73,15 @@ class AdminController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
+        // Grupos nomeados (company_groups) — mesmo sistema de /companies.
+        $grupos = \App\Models\CompanyGroup::withCount('companies')
+            ->orderBy('name')
+            ->get(['id', 'name', 'color']);
+
         return Inertia::render('Admin/Empresas', [
             'companies' => $companies,
             'servicos_disponiveis' => $servicosDisponiveis,
+            'grupos' => $grupos,
         ]);
     }
 

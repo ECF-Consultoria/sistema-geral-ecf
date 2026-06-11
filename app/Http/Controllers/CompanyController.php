@@ -99,6 +99,8 @@ class CompanyController extends Controller
                     (! $c->adman_account_id && ! $c->ml_store_id)             ? 'sem_cust_id' : null,
                     (! $c->email_cliente)                                     ? 'sem_email_colaborador' : null,
                     ($c->grants_ativos_count < 1)                            ? 'sem_grant_ativo' : null,
+                    // contratosServico já vem filtrado por ativo=true no eager load
+                    ($c->contratosServico->isEmpty())                        ? 'sem_servico' : null,
                 ])),
             ]);
 
