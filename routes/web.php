@@ -261,6 +261,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/company-groups', [CompanyGroupController::class, 'store'])->name('company-groups.store');
         Route::put('/company-groups/{group}', [CompanyGroupController::class, 'update'])->name('company-groups.update');
         Route::delete('/company-groups/{group}', [CompanyGroupController::class, 'destroy'])->name('company-groups.destroy');
+        // Atribui um serviço (contrato) a todas as empresas do grupo
+        Route::post('/company-groups/{group}/atribuir-servico', [CompanyGroupController::class, 'atribuirServico'])->name('company-groups.atribuir-servico');
 
         // ML OAuth — painel dedicado + ações por empresa (admin only, herdado do grupo)
         Route::get('/ml-oauth',                            [MercadoLivreOAuthController::class, 'adminIndex'])->name('ml.oauth.index');

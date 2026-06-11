@@ -143,13 +143,19 @@ class CompanyController extends Controller
             ->selectRaw('s.id, s.nome, COUNT(DISTINCT c.id) as total')
             ->get();
 
+        // Catálogo de serviços para o "Atribuir serviço ao grupo" (GruposManager).
+        $servicosDisponiveis = \App\Models\Servico::where('ativo', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
         return Inertia::render('Companies/Index', [
-            'companies'      => $companies,
-            'users'          => $users,
-            'estrategistas'  => $estrategistas,
-            'analistas'      => $analistas,
-            'grupos'         => $grupos,
-            'servico_counts' => $servicoCounts,
+            'companies'            => $companies,
+            'users'                => $users,
+            'estrategistas'        => $estrategistas,
+            'analistas'            => $analistas,
+            'grupos'               => $grupos,
+            'servico_counts'       => $servicoCounts,
+            'servicos_disponiveis' => $servicosDisponiveis,
             // Phase 18 W5-T4 — Filtro snake_case; null se nao aplicado.
             'filters'        => [
                 'cust_id_status' => $custIdStatusFilter,

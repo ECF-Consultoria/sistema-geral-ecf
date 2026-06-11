@@ -1,6 +1,6 @@
 import { useForm, router, Link } from '@inertiajs/react';
 import { useState } from 'react';
-import { Tag, Plus, Pencil, Trash2, X } from 'lucide-react';
+import { Tag, Plus, Pencil, Trash2, X, Briefcase } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
@@ -79,10 +79,33 @@ function AddCompanyPicker({ candidatos, onAdd }) {
     );
 }
 
-export default function GruposManager({ grupos = [], companies = [] }) {
+export default function GruposManager({ grupos = [], companies = [], servicos = [] }) {
     const grupoForm = useForm({ name: '', color: '#ffe600' });
     const [grupoModalOpen, setGrupoModalOpen] = useState(false);
     const [editingGrupo, setEditingGrupo] = useState(null);
+
+    // Atribuir serviço ao grupo inteiro
+    const servicoForm = useForm({ servico_id: '', valor_contratado: '', data_contratacao: '', data_vencimento: '', observacoes: '' });
+    const [servicoModalOpen, setServicoModalOpen] = useState(false);
+    const [servicoGrupo, setServicoGrupo] = useState(null);
+
+    const openServicoModal = (g) => {
+        setServicoGrupo(g);
+        servicoForm.setData({ servico_id: '', valor_contratado: '', data_contratacao: new Date().toISOString().slice(0, 10), data_vencimento: '', observacoes: '' });
+        setServicoModalOpen(true);
+    };
+    const escolherServico = (id) => {
+        const s = servicos.find(x => String(x.id) === String(id));
+        servicoForm.setData('servico_id', id);
+        if (s) servicoForm.setData('valor_contratado', s.valor_padrao);
+    };
+    const submitServico = (e) => {
+        e.preventDefault();
+        servicoForm.post(route('company-groups.atribuir-servico', servicoGrupo.id), {
+            preserveScroll: true,
+            onSuccess: () => setServicoModalOpen(false),
+        });
+    };
 
     const openCreateGrupo = () => {
         setEditingGrupo(null);
@@ -139,6 +162,7 @@ export default function GruposManager({ grupos = [], companies = [] }) {
                                     <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-white/10 text-white/70 text-[10px] font-bold">{g.companies_count}</span>
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
+                                    <button onClick={() => openServicoModal(g)} className="p-1 text-white/40 hover:text-ecf-yellow transition-colors" title="Atribuir serviço a todas as empresas do grupo"><Briefcase size={13} /></button>
                                     <button onClick={() => openEditGrupo(g)} className="p-1 text-white/40 hover:text-white transition-colors" title="Editar grupo"><Pencil size={13} /></button>
                                     <button onClick={() => deleteGrupo(g)} className="p-1 text-white/40 hover:text-red-400 transition-colors" title="Excluir grupo"><Trash2 size={13} /></button>
                                 </div>
@@ -182,6 +206,56 @@ export default function GruposManager({ grupos = [], companies = [] }) {
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setGrupoModalOpen(false)}>Cancelar</Button>
                             <Button type="submit" disabled={grupoForm.processing}>{grupoForm.processing ? 'Salvando...' : editingGrupo ? 'Atualizar' : 'Criar'}</Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
+            {/* Modal atribuir serviço ao grupo inteiro */}
+            <Dialog open={servicoModalOpen} onOpenChange={setServicoModalOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Atribuir serviço ao grupo{servicoGrupo ? ` — ${servicoGrupo.name}` : ''}</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitServico} className="space-y-4">
+                        <div className="space-y-1.5">
+                            <Label>Serviço *</Label>
+                            <select
+                                required
+                                value={servicoForm.data.servico_id}
+                                onChange={e => escolherServico(e.target.value)}
+                                className="w-full h-9 px-3 rounded-lg border border-white/10 bg-white/[0.03] text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40"
+                            >
+                                <option value="">Selecionar...</option>
+                                {servicos.map(s => (
+                                    <option key={s.id} value={s.id} className="bg-[#0f1116]">
+                                        {s.nome} — {s.tipo_cobranca === 'mensal' ? 'Mensal' : 'Única'}
+                                    </option>
+                                ))}
+                            </select>
+                            {servicoForm.errors.servico_id && <p className="text-destructive text-xs">{servicoForm.errors.servico_id}</p>}
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Valor contratado (R$) *</Label>
+                            <Input type="number" step="0.01" min="0" value={servicoForm.data.valor_contratado} onChange={e => servicoForm.setData('valor_contratado', e.target.value)} required />
+                            {servicoForm.errors.valor_contratado && <p className="text-destructive text-xs">{servicoForm.errors.valor_contratado}</p>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Contratação *</Label>
+                                <Input type="date" value={servicoForm.data.data_contratacao} onChange={e => servicoForm.setData('data_contratacao', e.target.value)} required />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Vencimento</Label>
+                                <Input type="date" value={servicoForm.data.data_vencimento} onChange={e => servicoForm.setData('data_vencimento', e.target.value)} />
+                            </div>
+                        </div>
+                        <p className="text-white/40 text-[11px] leading-relaxed">
+                            Cria o contrato em <span className="text-white/70">todas as empresas do grupo</span>. Quem já tiver esse serviço ativo é pulado.
+                        </p>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setServicoModalOpen(false)}>Cancelar</Button>
+                            <Button type="submit" disabled={servicoForm.processing}>{servicoForm.processing ? 'Aplicando...' : 'Atribuir ao grupo'}</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>

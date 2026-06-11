@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { router, useForm } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import { Briefcase, Building2, ChevronDown, Pencil, Plus, PowerOff } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
@@ -51,14 +51,6 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
                         </span>
                     )}
                 </div>
-                {empresa.nome_pai && (
-                    <span className="text-white/30 text-[11px] mt-0.5 block">vinculada a {empresa.nome_pai}</span>
-                )}
-                {empresa.filhas?.length > 0 && (
-                    <span className="text-ecf-yellow/50 text-[11px] mt-0.5 block">
-                        Grupo: {empresa.filhas.length} vinculada{empresa.filhas.length !== 1 ? 's' : ''}
-                    </span>
-                )}
                 <span className="text-white/35 text-[12px] mt-0.5 block truncate">
                     {contratos.length === 0
                         ? 'Sem contratos ativos'
@@ -132,119 +124,20 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
-function EmpresaForm({ empresa, allCompanies, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
-    const filhasAtuais = new Set((empresa.filhas ?? []).map(f => f.id));
-    const { data, setData, patch, processing, errors } = useForm({
-        parent_company_id: empresa.parent_company_id ?? '',
-        filha_ids: [...filhasAtuais],
-    });
-
-    const candidatasFilha = allCompanies.filter(c =>
-        c.id !== empresa.id &&
-        (!c.parent_company_id || c.parent_company_id === empresa.id),
-    );
-    const opcoesPai = allCompanies.filter(c =>
-        c.id !== empresa.id && !filhasAtuais.has(c.id),
-    );
-
-    function toggleFilha(id) {
-        setData('filha_ids', data.filha_ids.includes(id)
-            ? data.filha_ids.filter(i => i !== id)
-            : [...data.filha_ids, id],
-        );
-    }
-
-    function submit(e) {
-        e.preventDefault();
-        patch(route('admin.empresas.update', empresa.id), {
-            preserveScroll: true,
-            onSuccess: () => onClose(),
-        });
-    }
-
-    const select = 'w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40';
-    const label = 'block text-[11px] uppercase tracking-wider text-white/40 mb-1';
-    const err = 'text-[11px] text-red-400 mt-1 block';
-
+// Conteúdo expandido da empresa: só os contratos de serviço.
+// (O agrupamento agora é feito pelos grupos nomeados na aba "Grupos".)
+function EmpresaForm({ empresa, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     return (
-        <form onSubmit={submit} className="space-y-4">
-            {!data.parent_company_id && (
-                <div>
-                    <label className={label}>Empresas vinculadas</label>
-                    {candidatasFilha.length === 0 ? (
-                        <p className="text-white/25 text-[12px] py-2">Nenhuma empresa disponivel para vincular.</p>
-                    ) : (
-                        <div className="rounded-lg border border-white/[0.08] divide-y divide-white/[0.04] max-h-48 overflow-y-auto">
-                            {candidatasFilha.map(c => (
-                                <label
-                                    key={c.id}
-                                    className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.03] transition-colors"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        checked={data.filha_ids.includes(c.id)}
-                                        onChange={() => toggleFilha(c.id)}
-                                        className="accent-ecf-yellow w-4 h-4 shrink-0"
-                                    />
-                                    <span className="text-white/70 text-[13px]">{c.name}</span>
-                                    {c.parent_company_id === empresa.id && (
-                                        <span className="text-[10px] text-ecf-yellow/60 ml-auto">vinculada</span>
-                                    )}
-                                </label>
-                            ))}
-                        </div>
-                    )}
-                    {data.filha_ids.length > 0 && (
-                        <p className="text-[11px] text-white/30 mt-1">
-                            {data.filha_ids.length} empresa{data.filha_ids.length !== 1 ? 's' : ''} vinculada{data.filha_ids.length !== 1 ? 's' : ''} a este grupo no Fechamento.
-                        </p>
-                    )}
-                    {errors.filha_ids && <span className={err}>{errors.filha_ids}</span>}
-                </div>
-            )}
-
-            <div>
-                <label className={label}>Esta empresa faz parte do grupo de</label>
-                <select value={data.parent_company_id} onChange={e => setData('parent_company_id', e.target.value)} className={select}>
-                    <option value="">Nenhuma (empresa independente)</option>
-                    {opcoesPai.map(c => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                </select>
-                {data.parent_company_id && (
-                    <p className="text-[11px] text-white/30 mt-1">Esta empresa sera agrupada sob a empresa selecionada.</p>
-                )}
-                {errors.parent_company_id && <span className={err}>{errors.parent_company_id}</span>}
-            </div>
-
-            <ContratosSection
-                empresa={empresa}
-                onAdicionar={onAdicionarContrato}
-                onEditar={onEditarContrato}
-                onDesativar={onDesativarContrato}
-            />
-
-            <div className="flex items-center gap-2 pt-1">
-                <button
-                    type="submit"
-                    disabled={processing}
-                    className="bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[13px] h-9 px-4 rounded-lg transition-colors font-semibold"
-                >
-                    {processing ? 'Salvando...' : 'Salvar vinculos'}
-                </button>
-                <button
-                    type="button"
-                    onClick={onClose}
-                    className="text-white/40 hover:text-white/70 text-[13px] h-9 px-3 rounded-lg transition-colors"
-                >
-                    Descartar
-                </button>
-            </div>
-        </form>
+        <ContratosSection
+            empresa={empresa}
+            onAdicionar={onAdicionarContrato}
+            onEditar={onEditarContrato}
+            onDesativar={onDesativarContrato}
+        />
     );
 }
 
-function EmpresaList({ empresas, allCompanies, initialAberta = null, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function EmpresaList({ empresas, initialAberta = null, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
     const [aberta, setAberta] = useState(initialAberta);
 
     return (
@@ -260,8 +153,6 @@ function EmpresaList({ empresas, allCompanies, initialAberta = null, onAdicionar
                         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
                             <EmpresaForm
                                 empresa={empresa}
-                                allCompanies={allCompanies}
-                                onClose={() => setAberta(null)}
                                 onAdicionarContrato={onAdicionarContrato}
                                 onEditarContrato={onEditarContrato}
                                 onDesativarContrato={onDesativarContrato}
@@ -458,7 +349,6 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
                                 ) : (
                                     <EmpresaList
                                         empresas={filtradas}
-                                        allCompanies={companies}
                                         initialAberta={empresaFoco}
                                         onAdicionarContrato={abrirAdicionarContrato}
                                         onEditarContrato={abrirEditarContrato}
@@ -470,7 +360,7 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
                     )}
 
                     {tab === 'grupos' && (
-                        <GruposManager grupos={grupos} companies={companies} />
+                        <GruposManager grupos={grupos} companies={companies} servicos={servicos_disponiveis} />
                     )}
                 </div>
             </main>

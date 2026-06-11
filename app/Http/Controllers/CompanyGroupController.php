@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\CompanyGroup;
+use App\Models\ContratoServico;
 use Illuminate\Http\Request;
 
 /**
@@ -51,5 +52,51 @@ class CompanyGroupController extends Controller
         $group->delete();
 
         return back()->with('success', "Grupo \"{$nome}\" excluído.");
+    }
+
+    /**
+     * Atribui um serviço (cria contrato ativo) a TODAS as empresas do grupo.
+     * Pula empresas que já têm aquele serviço ativo (evita duplicar).
+     */
+    public function atribuirServico(Request $request, CompanyGroup $group)
+    {
+        $data = $request->validate([
+            'servico_id'       => 'required|exists:servicos,id',
+            'valor_contratado' => 'required|numeric|min:0',
+            'data_contratacao' => 'required|date',
+            'data_vencimento'  => 'nullable|date|after_or_equal:data_contratacao',
+            'observacoes'      => 'nullable|string|max:1000',
+        ]);
+
+        $criados = 0;
+        $pulados = 0;
+        foreach ($group->companies()->get() as $company) {
+            $jaTem = ContratoServico::where('company_id', $company->id)
+                ->where('servico_id', $data['servico_id'])
+                ->where('ativo', true)
+                ->exists();
+            if ($jaTem) {
+                $pulados++;
+                continue;
+            }
+
+            ContratoServico::create([
+                'company_id'       => $company->id,
+                'servico_id'       => $data['servico_id'],
+                'valor_contratado' => $data['valor_contratado'],
+                'data_contratacao' => $data['data_contratacao'],
+                'data_vencimento'  => $data['data_vencimento'] ?? null,
+                'observacoes'      => $data['observacoes'] ?? null,
+                'ativo'            => true,
+            ]);
+            $criados++;
+        }
+
+        $msg = "Serviço atribuído a {$criados} empresa(s) do grupo \"{$group->name}\".";
+        if ($pulados > 0) {
+            $msg .= " {$pulados} já tinham o serviço (puladas).";
+        }
+
+        return back()->with('success', $msg);
     }
 }

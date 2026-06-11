@@ -112,7 +112,7 @@ function GrupoBadge({ grupo }) {
     );
 }
 
-export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], filters = {} }) {
+export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {} }) {
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
     const [tab, setTab] = useState(() => {
@@ -531,7 +531,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
                 {/* ══════════════ ABA GRUPOS ══════════════ */}
                 {tab === 'grupos' && (
-                    <GruposManager grupos={grupos} companies={companies} />
+                    <GruposManager grupos={grupos} companies={companies} servicos={servicos_disponiveis} />
                 )}
             </div>
 
