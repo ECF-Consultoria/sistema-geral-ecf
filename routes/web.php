@@ -91,6 +91,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     Route::get('/nps/configuracao',          [NpsController::class, 'configuracao'])->name('nps.configuracao.index');
     Route::put('/nps/configuracao',          [NpsController::class, 'atualizarConfiguracao'])->name('nps.configuracao.update');
     Route::post('/nps/configuracao/preview', [NpsController::class, 'previewEmail'])->name('nps.configuracao.preview');
+
+    // Phase 32 Plan 04 — Página de envios NPS (log do nps:disparar-mensal).
+    // Tem que ficar dentro deste grupo ANTES de /nps/{token} para nao colidir
+    // com o parametro dinamico da rota publica de resposta.
+    Route::get('/nps/emails-enviados', [NpsController::class, 'emailsEnviados'])->name('nps.emails-enviados.index');
 });
 
 // NPS público (sem autenticação) — token vem DEPOIS do /generate
