@@ -2,51 +2,98 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Pesquisa de Satisfação ECF — {{ $mesLabel }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pesquisa de Satisfação ECF — {{ $mesReferencia }}</title>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #050507; max-width: 600px; margin: 0 auto; padding: 20px;">
+{{--
+    Template email NPS mensal — Phase 32 Plan 01.
 
-    {{-- Cabeçalho com marca amarela ECF --}}
-    <div style="border-bottom: 3px solid #ffe600; padding-bottom: 8px; margin-bottom: 20px;">
-        <h2 style="color: #050507; font-size: 18px; margin: 0;">Pesquisa de Satisfação ECF</h2>
-        <div style="color: #666; font-size: 13px; margin-top: 2px;">{{ $mesLabel }}</div>
-    </div>
+    Arquitetura table-based (compatível com Outlook 2007+) com fundo dark do
+    ECF (#0f1116) no header + card branco com o conteúdo customizável.
 
-    {{-- Saudação --}}
-    <p>Olá!</p>
+    Variáveis recebidas do Mailable (renderizadas via NpsTextRenderer no
+    NpsDispararMensal — vars já vêm com placeholders substituídos):
 
-    <p style="margin-top: 12px;">
-        Esta é a pesquisa mensal de satisfação da
-        <strong>ECF Consultoria</strong> com a <strong>{{ $companyName }}</strong>.
-        Sua opinião nos ajuda a evoluir o atendimento todo mês.
-    </p>
+      - $saudacaoRender   (HTML safe via renderHtml — usado com {!! !!})
+      - $corpoRender      (HTML safe via renderHtml — usado com {!! !!})
+      - $ctaRender        (texto puro via render — texto do botão)
+      - $assinaturaRender (HTML safe via renderHtml — usado com {!! !!})
+      - $linkPesquisa     (URL absoluta do route('nps.respond', $token))
+      - $mesReferencia    (string pt-BR "junho/2026" para o <title>)
 
-    {{-- Quem te atende: estrategista sempre, analista apenas se houver (D-07) --}}
-    <p style="margin-top: 16px;"><strong>Quem te atende:</strong></p>
-    <ul style="line-height: 1.8; margin-top: 6px;">
-        <li>Estrategista: <strong>{{ $estrategistaName }}</strong></li>
-        @if ($analistaName)
-            <li>Analista: <strong>{{ $analistaName }}</strong></li>
-        @endif
-    </ul>
+    Fonte Montserrat com fallback Helvetica — clientes de email não baixam
+    Google Fonts; quem tem Montserrat instalado (raros) usa, demais caem
+    pra Helvetica (visualmente aceitável).
+--}}
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:'Helvetica',Arial,sans-serif;color:#050507;">
 
-    {{-- CTA principal --}}
-    <p style="margin-top: 24px; text-align: center;">
-        <a href="{{ $linkPublico }}"
-           style="display: inline-block; background: #ffe600; color: #050507; padding: 14px 28px; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 15px;">
-            Responder pesquisa
-        </a>
-    </p>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f3f4f6;">
+        <tr>
+            <td align="center" style="padding:24px 12px;">
 
-    <p style="margin-top: 20px; color: #555; font-size: 13px; text-align: center;">
-        Leva menos de 1 minuto. Suas respostas são confidenciais.
-    </p>
+                {{-- Header dark com o logo ECF --}}
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#0f1116;border-radius:8px 8px 0 0;">
+                    <tr>
+                        <td align="center" style="padding:32px 24px;">
+                            @include('partials.logo-ecf', ['theme' => 'dark'])
+                        </td>
+                    </tr>
+                </table>
 
-    {{-- Assinatura --}}
-    <div style="margin-top: 30px; padding-top: 12px; border-top: 1px solid #eaeaea; color: #666; font-size: 12px;">
-        <strong>ECF Consultoria</strong><br>
-        Pesquisa enviada automaticamente · {{ now()->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
-    </div>
+                {{-- Card branco com o conteúdo customizável --}}
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;background:#ffffff;border-radius:0 0 8px 8px;">
+                    <tr>
+                        <td style="padding:32px 28px;">
+
+                            {{-- Saudação (renderHtml — já escapada + nl2br) --}}
+                            <div style="font-size:18px;font-weight:600;color:#050507;margin:0 0 16px 0;">
+                                {!! $saudacaoRender !!}
+                            </div>
+
+                            {{-- Corpo (renderHtml — já escapado + nl2br) --}}
+                            <div style="font-size:15px;line-height:1.6;color:#1f2937;margin:0 0 28px 0;">
+                                {!! $corpoRender !!}
+                            </div>
+
+                            {{-- CTA centralizado --}}
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                <tr>
+                                    <td align="center" style="padding:8px 0 24px 0;">
+                                        <a href="{{ $linkPesquisa }}"
+                                           style="display:inline-block;background:#ffe600;color:#050507;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700;font-size:15px;font-family:'Helvetica',Arial,sans-serif;">
+                                            {{ $ctaRender }}
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            {{-- Link cru abaixo do botão (acessibilidade + clientes que removem botões) --}}
+                            <p style="font-size:12px;color:#6b7280;text-align:center;margin:0 0 24px 0;word-break:break-all;">
+                                Ou copie e cole no navegador:<br>
+                                <a href="{{ $linkPesquisa }}" style="color:#6b7280;text-decoration:underline;">{{ $linkPesquisa }}</a>
+                            </p>
+
+                            {{-- Assinatura (renderHtml — já escapada + nl2br) --}}
+                            <div style="border-top:1px solid #e5e7eb;padding-top:18px;margin-top:8px;font-size:13px;color:#4b5563;line-height:1.6;">
+                                {!! $assinaturaRender !!}
+                            </div>
+
+                        </td>
+                    </tr>
+                </table>
+
+                {{-- Rodapé legal/contextual --}}
+                <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;">
+                    <tr>
+                        <td align="center" style="padding:16px 24px;font-size:11px;color:#9ca3af;">
+                            Pesquisa enviada automaticamente pelo ECF Admin — {{ $mesReferencia }}
+                        </td>
+                    </tr>
+                </table>
+
+            </td>
+        </tr>
+    </table>
 
 </body>
 </html>

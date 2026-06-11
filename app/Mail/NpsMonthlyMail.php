@@ -9,17 +9,25 @@ use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Mailable da Pesquisa Mensal de Satisfação NPS (Phase 31, Plan 02).
+ * Mailable da Pesquisa Mensal de Satisfação NPS — Phase 32 Plan 01 (reescrita).
  *
- * Reusa SMTP Gmail já validado em produção desde a Phase 28 (RelatorioMensalMail).
- * O comando `nps:disparar-mensal` instancia este Mailable no aniversário do
- * cadastro da empresa (D-01 / D-03) com o token público da survey.
+ * Mudança em relação à Phase 31: o Mailable não recebe mais os nomes brutos
+ * (companyName, estrategistaName, etc) — ele recebe os textos JÁ renderizados
+ * via NpsTextRenderer no comando NpsDispararMensal. Isso isola a lógica de
+ * substituição de placeholders num único lugar (helper) e mantém o Mailable
+ * burro / template-puro.
  *
- * Decisões D-05 (template Markdown HTML), D-06 (escala 1-5) e D-07 (3
- * dimensões) — analista é opcional: quando $analistaName é null, a view
- * `emails.nps.mensal` omite a linha do analista (caso mentoria pura).
+ * Chaves esperadas em $vars:
+ *   - saudacaoRender    (HTML safe — string com nl2br + e())
+ *   - corpoRender       (HTML safe — string com nl2br + e())
+ *   - ctaRender         (texto puro — texto do botão CTA)
+ *   - assinaturaRender  (HTML safe — string com nl2br + e())
+ *   - linkPesquisa      (URL absoluta — route('nps.respond', $token))
+ *   - mesReferencia     (string pt-BR "junho/2026")
+ *   - assuntoRender     (texto puro — assunto do email)
  *
  * @see app/Console/Commands/NpsDispararMensal.php
+ * @see app/Support/NpsTextRenderer.php
  * @see resources/views/emails/nps/mensal.blade.php
  */
 class NpsMonthlyMail extends Mailable
@@ -27,43 +35,36 @@ class NpsMonthlyMail extends Mailable
     use Queueable, SerializesModels;
 
     /**
-     * @param string      $companyName     Nome legível da empresa que recebe a pesquisa
-     * @param string      $estrategistaName Nome do estrategista designado (obrigatório)
-     * @param string|null $analistaName    Nome do analista designado, ou null em mentoria pura
-     * @param string      $linkPublico     URL absoluta de /nps/{token}
-     * @param string      $mesLabel        Rótulo do mês de referência em pt-BR (ex: "Junho/2026")
+     * @param array<string, string> $vars Textos já renderizados pelo NpsTextRenderer
+     *                                    + linkPesquisa + mesReferencia + assuntoRender.
      */
-    public function __construct(
-        public string $companyName,
-        public string $estrategistaName,
-        public ?string $analistaName,
-        public string $linkPublico,
-        public string $mesLabel,
-    ) {}
+    public function __construct(public array $vars) {}
 
     /**
-     * Envelope com assunto pt-BR: "[ECF Admin] Pesquisa de satisfação — Junho/2026".
+     * Envelope com assunto já renderizado (placeholders substituídos pelo comando).
      */
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: "[ECF Admin] Pesquisa de satisfação — {$this->mesLabel}",
+            subject: $this->vars['assuntoRender'] ?? 'Pesquisa de satisfação ECF',
         );
     }
 
     /**
-     * Conteúdo do email — view HTML curta com saudação + CTA.
+     * Conteúdo — view plain Blade (sem Markdown component) que consome
+     * as 6 vars de render + linkPesquisa + mesReferencia.
      */
     public function content(): Content
     {
         return new Content(
             view: 'emails.nps.mensal',
             with: [
-                'companyName'      => $this->companyName,
-                'estrategistaName' => $this->estrategistaName,
-                'analistaName'     => $this->analistaName,
-                'linkPublico'      => $this->linkPublico,
-                'mesLabel'         => $this->mesLabel,
+                'saudacaoRender'   => $this->vars['saudacaoRender']   ?? '',
+                'corpoRender'      => $this->vars['corpoRender']      ?? '',
+                'ctaRender'        => $this->vars['ctaRender']        ?? 'Responder pesquisa',
+                'assinaturaRender' => $this->vars['assinaturaRender'] ?? '',
+                'linkPesquisa'     => $this->vars['linkPesquisa']     ?? '#',
+                'mesReferencia'    => $this->vars['mesReferencia']    ?? '',
             ],
         );
     }
