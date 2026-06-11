@@ -29,7 +29,7 @@ class Company extends Model
         'name', 'cnpj', 'adman_account_id', 'adman_store_id', 'ml_store_id',
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
-        'parent_company_id', 'ml_link_generated_at', 'ml_link_url',
+        'parent_company_id', 'company_group_id', 'ml_link_generated_at', 'ml_link_url',
     ];
 
     protected $casts = [
@@ -125,6 +125,15 @@ class Company extends Model
     public function pai()
     {
         return $this->belongsTo(Company::class, 'parent_company_id');
+    }
+
+    /**
+     * Grupo nomeado (tipo carteira) ao qual a empresa pertence (0 ou 1).
+     * Distinto de pai()/filhas() (hierarquia matriz/filiais).
+     */
+    public function grupo()
+    {
+        return $this->belongsTo(CompanyGroup::class, 'company_group_id');
     }
 
     public function users()

@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\SetorMembroController;
 use App\Http\Controllers\AdmanController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\GoalController;
@@ -244,12 +245,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/users/{id}/force', [UserController::class, 'forceDestroy'])->name('users.force-destroy');
 
         Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
-        Route::post('/companies', [CompanyController::class, 'store'])->name('companies.store');
+        // Cadastro de empresa removido de /companies — entrada é exclusiva por /comercial/empresas.
         Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
         Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
         // Reativa empresa desativada pelo Comercial (active=false → true)
         Route::post('/companies/{company}/ativar', [CompanyController::class, 'ativar'])->name('companies.ativar');
+        // Atribui/remove a empresa de um grupo nomeado (sem efeitos colaterais do update completo)
+        Route::put('/companies/{company}/group', [CompanyController::class, 'setGroup'])->name('companies.set-group');
+
+        // Grupos nomeados de empresas (tipo carteira) — gestão a partir de /companies
+        Route::post('/company-groups', [CompanyGroupController::class, 'store'])->name('company-groups.store');
+        Route::put('/company-groups/{group}', [CompanyGroupController::class, 'update'])->name('company-groups.update');
+        Route::delete('/company-groups/{group}', [CompanyGroupController::class, 'destroy'])->name('company-groups.destroy');
 
         // ML OAuth — painel dedicado + ações por empresa (admin only, herdado do grupo)
         Route::get('/ml-oauth',                            [MercadoLivreOAuthController::class, 'adminIndex'])->name('ml.oauth.index');

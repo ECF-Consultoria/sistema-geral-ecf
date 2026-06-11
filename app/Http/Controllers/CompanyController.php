@@ -45,7 +45,10 @@ class CompanyController extends Controller
                 // Contratos ATIVOS com servico embedado — alimenta a coluna "Serviço"
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
                 'mlToken',
+                'grupo:id,name,color',
             ])
+            // Grant ativo local (company_grants sincronizado da API ECF Drive) para a pendência "sem grant".
+            ->withCount(['grants as grants_ativos_count' => fn($q) => $q->where('status', 'active')])
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
             ->orderBy('name')
             ->get();
@@ -82,6 +85,21 @@ class CompanyController extends Controller
                     ] : null,
                 ])->values(),
                 'ml_token_status'  => $c->mlToken?->status ?? null,
+                // Grupo nomeado (tipo carteira) — null se a empresa não está em nenhum
+                'grupo'            => $c->grupo ? [
+                    'id'    => $c->grupo->id,
+                    'name'  => $c->grupo->name,
+                    'color' => $c->grupo->color,
+                ] : null,
+                'company_group_id' => $c->company_group_id,
+                // Pendências calculadas (4 tipos) — alimenta a aba "Pendências".
+                // Só fazem sentido para empresas ativas; o frontend filtra por active.
+                'pendencias'       => array_values(array_filter([
+                    ($c->consultor->isEmpty() && $c->estrategista->isEmpty()) ? 'sem_responsavel' : null,
+                    (! $c->adman_account_id && ! $c->ml_store_id)             ? 'sem_cust_id' : null,
+                    (! $c->email_cliente)                                     ? 'sem_email_colaborador' : null,
+                    ($c->grants_ativos_count < 1)                            ? 'sem_grant_ativo' : null,
+                ])),
             ]);
 
         $users = User::where('active', true)
@@ -103,35 +121,31 @@ class CompanyController extends Controller
                 ->values()
             : collect();
 
-        // Companies cadastradas pelo Comercial que aguardam complemento de dados por Publicidade/Gestão
-        // para whereHas('contratosServico') JOIN servicos.nome (D-01, RESEARCH §5).
-        // atual lê (coexistência Wave 2 — drop no Plan 14-06). A chave
-        // `servicos_contratados` é adicionada via transform para a UI nova
-        // consumir progressivamente.
-        $empresasPendentes = Company::where('status', 'pendente')
-            ->whereHas('contratosServico', fn($q) =>
-                $q->where('ativo', true)
-                  ->whereHas('servico', fn($qs) =>
-                      $qs->whereIn('nome', ['Publicidade', 'Gestão'])
-                  )
-            )
-            ->with(['contratosServico' => fn($q) => $q->where('ativo', true)->with('servico')])
-            ->orderBy('created_at', 'desc')
-            ->get(['id', 'name', 'created_at']);
+        // Grupos nomeados (tipo carteira) com contagem de empresas — aba "Grupos".
+        $grupos = \App\Models\CompanyGroup::withCount('companies')
+            ->orderBy('name')
+            ->get(['id', 'name', 'color']);
 
-        $empresasPendentes->transform(function ($e) {
-            $nomes = $e->contratosServico->where('ativo', true)->pluck('servico.nome')->filter();
-            $e->servicos_contratados = $nomes->values()->toArray();
-            return $e;
-        });
+        // Contagem de empresas ATIVAS por tipo de serviço (contrato ativo) — chips de filtro.
+        // Query direta para contar empresas distintas por serviço sem depender de relação.
+        $servicoCounts = DB::table('contratos_servico as cs')
+            ->join('servicos as s', 's.id', '=', 'cs.servico_id')
+            ->join('companies as c', 'c.id', '=', 'cs.company_id')
+            ->where('cs.ativo', true)
+            ->where('c.active', true)
+            ->groupBy('s.id', 's.nome')
+            ->orderBy('s.nome')
+            ->selectRaw('s.id, s.nome, COUNT(DISTINCT c.id) as total')
+            ->get();
 
         return Inertia::render('Companies/Index', [
-            'companies'          => $companies,
-            'users'              => $users,
-            'estrategistas'      => $estrategistas,
-            'empresas_pendentes' => $empresasPendentes,
+            'companies'      => $companies,
+            'users'          => $users,
+            'estrategistas'  => $estrategistas,
+            'grupos'         => $grupos,
+            'servico_counts' => $servicoCounts,
             // Phase 18 W5-T4 — Filtro snake_case; null se nao aplicado.
-            'filters'            => [
+            'filters'        => [
                 'cust_id_status' => $custIdStatusFilter,
             ],
         ]);
@@ -371,34 +385,8 @@ class CompanyController extends Controller
         ]);
     }
 
-    public function store(Request $request)
-    {
-        $data = $request->validate([
-            'name'             => 'required|string|max:255',
-            'cnpj'             => 'nullable|string|max:18|unique:companies',
-            'adman_store_id'   => 'nullable|string|max:100',
-            'ml_store_id'      => 'nullable|string|max:100',
-            'segment'          => 'nullable|string|max:100',
-            'notes'            => 'nullable|string',
-            // Phase 31 D-04 — destinatario do email NPS mensal
-            'email_cliente'    => 'nullable|email|max:255',
-            // Quick 260611-eml — contato comercial.
-            'telefone'         => 'nullable|string|max:20',
-            'consultor_id'     => 'nullable|exists:users,id',
-            'estrategista_id'        => 'nullable|exists:users,id',
-        ]);
-
-        $company = Company::create($data);
-
-        if (!empty($data['consultor_id'])) {
-            $company->users()->attach($data['consultor_id'], ['role' => 'consultor', 'assigned_at' => now()->toDateString()]);
-        }
-        if (!empty($data['estrategista_id'])) {
-            $company->users()->attach($data['estrategista_id'], ['role' => 'estrategista', 'assigned_at' => now()->toDateString()]);
-        }
-
-        return back()->with('success', "Empresa {$company->name} criada com sucesso.");
-    }
+    // Cadastro de empresa removido de /companies — entrada exclusiva por /comercial/empresas
+    // (ComercialController::store). Em /companies só editamos empresas existentes.
 
     public function update(Request $request, Company $company)
     {
@@ -416,6 +404,8 @@ class CompanyController extends Controller
             'active'           => 'boolean',
             'consultor_id'     => 'nullable|exists:users,id',
             'estrategista_id'        => 'nullable|exists:users,id',
+            // Grupo nomeado (tipo carteira) — null limpa o vínculo
+            'company_group_id' => 'nullable|integer|exists:company_groups,id',
         ]);
 
         $company->update($data);
@@ -446,6 +436,23 @@ class CompanyController extends Controller
         $name = $company->name;
         $company->delete();
         return back()->with('success', "Empresa {$name} excluída.");
+    }
+
+    /**
+     * Atribui (ou remove, com null) a empresa a um grupo nomeado.
+     *
+     * Endpoint dedicado para os cards da aba "Grupos" — evita os efeitos
+     * colaterais do update() completo (sync de responsáveis, pendente→ativo).
+     */
+    public function setGroup(Request $request, Company $company)
+    {
+        $data = $request->validate([
+            'company_group_id' => 'nullable|integer|exists:company_groups,id',
+        ]);
+
+        $company->update(['company_group_id' => $data['company_group_id'] ?? null]);
+
+        return back()->with('success', 'Grupo da empresa atualizado.');
     }
 
     /**
