@@ -1,5 +1,5 @@
 import { Link, usePage, router } from '@inertiajs/react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
     LayoutDashboard, Building2, Users, CalendarCheck,
     Star, Target, FileText, ChevronLeft, ChevronRight, ChevronDown,
@@ -41,16 +41,8 @@ const NAV_TREE = [
     // ── Item de topo ────────────────────────────────────────────────────────
     { label: 'Carteira', routeName: 'portfolio.own', page: 'Portfolio', icon: Briefcase, permission: 'core.carteira' },
 
-    // ── Grupo: Empresas (header é link + chevron separado) ──────────────────
-    {
-        group: 'Empresas',
-        icon: Building2,
-        permission: 'core.empresas',   // grupo some se usuário não tiver esta permission
-        headerRoute: 'companies.index', // o label do header navega para esta rota
-        children: [
-            { label: 'Pendências', routeName: 'companies.index', routeParams: { tab: 'pendencias' }, page: 'Companies', icon: ListChecks, permission: 'core.empresas' },
-        ],
-    },
+    // ── Item de topo: Empresas (link direto; "Pendências" é só uma aba, não vira sub-item) ──
+    { label: 'Empresas', routeName: 'companies.index', page: 'Companies', icon: Building2, permission: 'core.empresas' },
 
     // ── Itens de topo ───────────────────────────────────────────────────────
     { label: 'Serviços',            routeName: 'servicos.index',          page: 'Servicos',         icon: Briefcase,    permission: 'sistema.servicos' },
@@ -133,6 +125,13 @@ const NAV_TREE = [
 
 const roleLabel = { admin: 'Admin', consultor: 'Consultor', mentor: 'Mentor' };
 
+// Chaves de sessionStorage para preservar o estado da sidebar entre navegações.
+// O AppLayout NÃO é um layout persistente do Inertia (cada página o renderiza no
+// próprio JSX), então toda visita remonta o componente — o que zerava o scroll do
+// nav e recolhia os grupos abertos, fazendo a barra "pular pro topo".
+const SIDEBAR_GROUPS_KEY = 'ecf-sidebar-open-groups';
+const SIDEBAR_SCROLL_KEY = 'ecf-sidebar-scroll';
+
 export default function AppLayout({ children, title }) {
     const { auth, flash, asset_url, sugadores_pendentes, alertas_criticos_count } = usePage().props;
     const badgeCounters = {
@@ -181,24 +180,50 @@ export default function AppLayout({ children, title }) {
     }, [mainRole, permissions]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
-     * Estado de expansão dos grupos. Inicializa com os grupos cujo algum filho
-     * corresponde à rota atual (auto-expand na primeira renderização).
+     * Estado de expansão dos grupos. Restaura os grupos abertos da sessão (para
+     * sobreviver ao remount da navegação) e garante que o grupo da rota atual
+     * comece aberto (auto-expand).
      */
     const [openGroups, setOpenGroups] = useState(() => {
-        const initial = {};
+        let saved = {};
+        try {
+            const raw = sessionStorage.getItem(SIDEBAR_GROUPS_KEY);
+            if (raw) saved = JSON.parse(raw) || {};
+        } catch { /* sessionStorage indisponível — ignora */ }
         NAV_TREE.forEach(entry => {
-            if (entry.group) {
-                const temFilhoAtivo = entry.children.some(c => (pageComponent || '').startsWith(c.page));
-                if (temFilhoAtivo) initial[entry.group] = true;
+            if (entry.group && entry.children.some(c => (pageComponent || '').startsWith(c.page))) {
+                saved[entry.group] = true;
             }
         });
-        return initial;
+        return saved;
     });
+
+    // Persiste os grupos abertos a cada mudança (sobrevive ao remount da navegação).
+    useEffect(() => {
+        try { sessionStorage.setItem(SIDEBAR_GROUPS_KEY, JSON.stringify(openGroups)); } catch { /* ignora */ }
+    }, [openGroups]);
 
     /** Alterna abertura/fechamento de um grupo. */
     const toggleGroup = (groupLabel) => {
         setOpenGroups(prev => ({ ...prev, [groupLabel]: !prev[groupLabel] }));
     };
+
+    // ── Preservação da posição de scroll do nav entre navegações ─────────────
+    // Callback ref ESTÁVEL (useCallback []) para o React não redisparar a
+    // restauração a cada re-render; restaura o scrollTop salvo só uma vez por
+    // montagem (navRestoredRef). onScroll grava a posição na sessão.
+    const navRestoredRef = useRef(false);
+    const setNavEl = useCallback((el) => {
+        if (!el || navRestoredRef.current) return;
+        try {
+            const v = sessionStorage.getItem(SIDEBAR_SCROLL_KEY);
+            if (v) el.scrollTop = parseInt(v, 10) || 0;
+        } catch { /* ignora */ }
+        navRestoredRef.current = true;
+    }, []);
+    const handleNavScroll = useCallback((e) => {
+        try { sessionStorage.setItem(SIDEBAR_SCROLL_KEY, String(e.currentTarget.scrollTop)); } catch { /* ignora */ }
+    }, []);
 
     useEffect(() => {
         if (flash?.success || flash?.error) {
@@ -244,8 +269,12 @@ export default function AppLayout({ children, title }) {
                 )}
             </div>
 
-            {/* Nav */}
-            <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
+            {/* Nav — só o desktop persiste scroll (mobile é overlay efêmero) */}
+            <nav
+                ref={mobile ? undefined : setNavEl}
+                onScroll={mobile ? undefined : handleNavScroll}
+                className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto"
+            >
                 {filteredTree.map((entry, idx) => {
                     // ── Item de topo (link direto) ───────────────────────────
                     if (!entry.group) {
@@ -295,59 +324,28 @@ export default function AppLayout({ children, title }) {
 
                     return (
                         <div key={`group-${entry.group}-${idx}`}>
-                            {/* Header do grupo */}
-                            {entry.headerRoute ? (
-                                // Grupo "Empresas": label é um Link (navega) + botão chevron (toggle)
-                                <div className={cn(
-                                    'flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
+                            {/* Header do grupo (item principal): mantém o destaque "active" em caixa amarela */}
+                            <button
+                                onClick={handleGroupClick}
+                                className={cn(
+                                    'w-full flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
                                     groupActive
                                         ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
                                         : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
-                                )}>
-                                    <Link
-                                        href={route(entry.headerRoute)}
-                                        className="flex items-center gap-3 flex-1 min-w-0"
-                                    >
-                                        <entry.icon className={cn('shrink-0', groupActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
-                                        {(!collapsed || mobile) && <span className="truncate">{entry.group}</span>}
-                                    </Link>
-                                    {(!collapsed || mobile) && (
-                                        <button
-                                            onClick={(e) => { e.preventDefault(); toggleGroup(entry.group); }}
-                                            className="ml-auto shrink-0 text-inherit opacity-60 hover:opacity-100 transition-opacity"
-                                            aria-label={isOpen ? 'Recolher grupo' : 'Expandir grupo'}
-                                        >
-                                            <ChevronDown
-                                                size={14}
-                                                className={cn('transition-transform duration-200', isOpen ? 'rotate-180' : '')}
-                                            />
-                                        </button>
-                                    )}
-                                </div>
-                            ) : (
-                                // Grupos normais: o header inteiro é um botão de toggle
-                                <button
-                                    onClick={handleGroupClick}
-                                    className={cn(
-                                        'w-full flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
-                                        groupActive
-                                            ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
-                                            : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
-                                    )}
-                                >
-                                    <entry.icon className={cn('shrink-0', groupActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
-                                    {(!collapsed || mobile) && <span className="truncate flex-1 text-left">{entry.group}</span>}
-                                    {(!collapsed || mobile) && (
-                                        <ChevronDown
-                                            size={14}
-                                            className={cn(
-                                                'ml-auto shrink-0 transition-transform duration-200',
-                                                isOpen ? 'rotate-180' : ''
-                                            )}
-                                        />
-                                    )}
-                                </button>
-                            )}
+                                )}
+                            >
+                                <entry.icon className={cn('shrink-0', groupActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
+                                {(!collapsed || mobile) && <span className="truncate flex-1 text-left">{entry.group}</span>}
+                                {(!collapsed || mobile) && (
+                                    <ChevronDown
+                                        size={14}
+                                        className={cn(
+                                            'ml-auto shrink-0 transition-transform duration-200',
+                                            isOpen ? 'rotate-180' : ''
+                                        )}
+                                    />
+                                )}
+                            </button>
 
                             {/* Filhos do grupo (visíveis somente quando aberto e não collapsed) */}
                             {isOpen && (!collapsed || mobile) && (
@@ -359,10 +357,11 @@ export default function AppLayout({ children, title }) {
                                                 key={child.routeName + JSON.stringify(child.routeParams ?? {})}
                                                 href={route(child.routeName, child.routeParams ?? {})}
                                                 className={cn(
-                                                    'flex items-center gap-3 rounded-[10px] px-3 py-2.5 text-[13px] font-medium transition-all duration-150',
+                                                    'flex items-center gap-3 rounded-[10px] px-3 py-2 text-[13px] font-medium transition-all duration-150',
+                                                    // Sub-item ativo: SÓ a fonte amarela (sem caixa/borda/bg nem dot).
                                                     childActive
-                                                        ? 'bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20'
-                                                        : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
+                                                        ? 'text-ecf-yellow'
+                                                        : 'text-white/60 hover:text-white hover:bg-white/[0.05]'
                                                 )}
                                             >
                                                 <child.icon className={cn('shrink-0', childActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
@@ -371,9 +370,6 @@ export default function AppLayout({ children, title }) {
                                                     <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold shrink-0">
                                                         {badgeCounters[child.showBadge] > 99 ? '99+' : badgeCounters[child.showBadge]}
                                                     </span>
-                                                )}
-                                                {childActive && !child.showBadge && (
-                                                    <span className="ml-auto w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
                                                 )}
                                             </Link>
                                         );
