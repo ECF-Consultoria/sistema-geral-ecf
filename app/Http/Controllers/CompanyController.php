@@ -61,8 +61,9 @@ class CompanyController extends Controller
                 // Frontend usa para badge "Cust ID Invalido" quando === 'invalido'.
                 'cust_id_status'   => $c->cust_id_status,
                 'notes'            => $c->notes,
-                // Phase 31 D-04 — destinatario do email NPS mensal (preenche o openEdit do modal admin)
+                // Phase 31 D-04 + Quick 260611-eml — contato do cliente (preenche o openEdit do modal admin)
                 'email_cliente'    => $c->email_cliente,
+                'telefone'         => $c->telefone,
                 'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
@@ -276,8 +277,9 @@ class CompanyController extends Controller
                 'segment'          => $company->segment,
                 'active'           => $company->active,
                 'notes'            => $company->notes,
-                // Phase 31 D-04 — destinatario do email NPS mensal
+                // Phase 31 D-04 + Quick 260611-eml — contato do cliente
                 'email_cliente'    => $company->email_cliente,
+                'telefone'         => $company->telefone,
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
@@ -380,6 +382,8 @@ class CompanyController extends Controller
             'notes'            => 'nullable|string',
             // Phase 31 D-04 — destinatario do email NPS mensal
             'email_cliente'    => 'nullable|email|max:255',
+            // Quick 260611-eml — contato comercial.
+            'telefone'         => 'nullable|string|max:20',
             'consultor_id'     => 'nullable|exists:users,id',
             'estrategista_id'        => 'nullable|exists:users,id',
         ]);
@@ -407,6 +411,8 @@ class CompanyController extends Controller
             'notes'            => 'nullable|string',
             // Phase 31 D-04 — destinatario do email NPS mensal
             'email_cliente'    => 'nullable|email|max:255',
+            // Quick 260611-eml — contato comercial.
+            'telefone'         => 'nullable|string|max:20',
             'active'           => 'boolean',
             'consultor_id'     => 'nullable|exists:users,id',
             'estrategista_id'        => 'nullable|exists:users,id',

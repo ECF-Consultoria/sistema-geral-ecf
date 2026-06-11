@@ -86,8 +86,8 @@ class ComercialController extends Controller
             ])
             ->orderByRaw("CASE WHEN status = 'pendente' THEN 0 ELSE 1 END")
             ->orderBy('name')
-            // Phase 31 D-04 — email_cliente carregado para pre-preencher o form de edicao do Comercial
-            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes', 'parent_company_id', 'email_cliente']);
+            // Phase 31 D-04 + Quick 260611-eml — email_cliente/telefone carregados para pre-preencher o form de edicao do Comercial
+            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes', 'parent_company_id', 'email_cliente', 'telefone']);
 
         $companies->transform(function ($c) {
             $c->servicos_contratados = $c->contratosServico
@@ -182,6 +182,9 @@ class ComercialController extends Controller
             'nome'                        => 'required|string|max:255',
             'cnpj'                        => 'nullable|string|max:20|unique:companies,cnpj',
             'notes'                       => 'nullable|string|max:2000',
+            // Quick task 260611-eml — contato do cliente para NPS mensal + futuro contato comercial.
+            'email_cliente'               => 'nullable|email|max:255',
+            'telefone'                    => 'nullable|string|max:20',
             'servicos'                    => 'required|array|min:1',
             'servicos.*.servico_id'       => [
                 'required',
@@ -208,11 +211,14 @@ class ComercialController extends Controller
         DB::transaction(function () use ($validated, &$company, &$servicosCriados) {
             // (a) Cria company com status pendente
             $company = Company::create([
-                'name'   => $validated['nome'],
-                'cnpj'  => $validated['cnpj'] ?? null,
-                'notes' => $validated['notes'] ?? null,
-                'status' => 'pendente',
-                'active' => true,
+                'name'          => $validated['nome'],
+                'cnpj'          => $validated['cnpj'] ?? null,
+                'notes'         => $validated['notes'] ?? null,
+                // Quick 260611-eml — contato comercial + destinatário NPS mensal.
+                'email_cliente' => $validated['email_cliente'] ?? null,
+                'telefone'      => $validated['telefone'] ?? null,
+                'status'        => 'pendente',
+                'active'        => true,
             ]);
 
             // (b) Cria 1 contrato_servico por servico selecionado
@@ -333,6 +339,8 @@ class ComercialController extends Controller
             'notes'         => 'nullable|string|max:2000',
             // Phase 31 D-04 — destinatario do email NPS mensal
             'email_cliente' => 'nullable|email|max:255',
+            // Quick 260611-eml — contato comercial.
+            'telefone'      => 'nullable|string|max:20',
             'filha_ids'     => 'nullable|array',
             'filha_ids.*'   => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
         ]);
