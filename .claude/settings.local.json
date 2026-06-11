@@ -98,7 +98,21 @@
       "Bash(node --check resources/js/Pages/Dashboard/Admin.jsx)",
       "PowerShell(npm run build 2>&1)",
       "PowerShell(if \\(Test-Path \".\\\\node_modules\"\\) { \"node_modules exists, dirs=\" + \\(Get-ChildItem .\\\\node_modules -Directory | Measure-Object\\).Count } else { \"NO node_modules\" })",
-      "PowerShell(npm install 2>&1)"
+      "PowerShell(npm install 2>&1)",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 \"cd /var/www/ecf_admin && git log --oneline -5 && echo --- && php artisan migrate:status 2>&1 | tail -5 && echo --- && php artisan list 2>&1 | grep importar-drive\")",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 \"cd /var/www/ecf_admin && timeout 30 php artisan companies:importar-drive --dry-run 2>&1 | head -25\")",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan companies:importar-drive 2>&1 | tail -40\")",
+      "Bash(./plink.exe -ssh -P 22 -pw ECF-100376vps -hostkey SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8 -batch root@177.7.53.164 \"cd /var/www/ecf_admin && php artisan tinker --execute=\\\\\"echo 'Total empresas active: ' . App\\\\\\\\Models\\\\\\\\Company::where\\('active', true\\)->count\\(\\) . PHP_EOL; echo 'Com email_cliente: ' . App\\\\\\\\Models\\\\\\\\Company::where\\('active', true\\)->whereNotNull\\('email_cliente'\\)->where\\('email_cliente', '!=', ''\\)->count\\(\\) . PHP_EOL; echo 'Com telefone: ' . App\\\\\\\\Models\\\\\\\\Company::where\\('active', true\\)->whereNotNull\\('telefone'\\)->where\\('telefone', '!=', ''\\)->count\\(\\) . PHP_EOL;\\\\\"\")",
+      "Bash(Get-ChildItem -Path \"C:\\\\xampp\\\\htdocs\\\\ecf_admin\\\\ecf_admin\" -Force)",
+      "Bash(Select-Object Name)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\CompanyController.php)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\CompanyGroupController.php)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Models\\\\CompanyGroup.php)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l routes\\\\web.php)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan migrate --pretend --path=database/migrations/2026_06_11_120000_create_company_groups_table.php 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan migrate --path=database/migrations/2026_06_11_120000_create_company_groups_table.php --force 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"`$g = App\\\\Models\\\\CompanyGroup::create\\(['name'=>'Teste Grupo','color'=>'#60a5fa']\\); `$c = App\\\\Models\\\\Company::first\\(\\); if\\(`$c\\){ `$c->update\\(['company_group_id'=>`$g->id]\\); } `$ctrl = app\\(App\\\\Http\\\\Controllers\\\\CompanyController::class\\); `$resp = `$ctrl->index\\(new Illuminate\\\\Http\\\\Request\\(\\)\\); echo 'render_ok props=' . implode\\(',', array_keys\\(`$resp->toResponse\\(new Illuminate\\\\Http\\\\Request\\(\\)\\)->getData\\(true\\)['props'] ?? []\\)\\); App\\\\Models\\\\CompanyGroup::where\\('name','Teste Grupo'\\)->delete\\(\\);\")",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"App\\\\Models\\\\CompanyGroup::where\\('name','Teste Grupo'\\)->delete\\(\\); echo 'grupos_restantes=' . App\\\\Models\\\\CompanyGroup::count\\(\\) . ' | companies_com_grupo=' . App\\\\Models\\\\Company::whereNotNull\\('company_group_id'\\)->count\\(\\);\")"
     ]
   }
 }
