@@ -253,6 +253,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/companies/{company}/ativar', [CompanyController::class, 'ativar'])->name('companies.ativar');
         // Atribui/remove a empresa de um grupo nomeado (sem efeitos colaterais do update completo)
         Route::put('/companies/{company}/group', [CompanyController::class, 'setGroup'])->name('companies.set-group');
+        // Ações em massa da aba Pendências (excluir / atribuir analista|estrategista)
+        Route::post('/companies/bulk-destroy', [CompanyController::class, 'bulkDestroy'])->name('companies.bulk-destroy');
+        Route::post('/companies/bulk-assign', [CompanyController::class, 'bulkAssign'])->name('companies.bulk-assign');
 
         // Grupos nomeados de empresas (tipo carteira) — gestão a partir de /companies
         Route::post('/company-groups', [CompanyGroupController::class, 'store'])->name('company-groups.store');

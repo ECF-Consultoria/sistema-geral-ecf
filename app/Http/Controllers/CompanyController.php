@@ -456,6 +456,51 @@ class CompanyController extends Controller
     }
 
     /**
+     * Exclusão em massa (hard-delete) de empresas selecionadas na aba Pendências.
+     *
+     * Todas as FKs filhas de companies são cascadeOnDelete (contratos, grants,
+     * métricas, sugadores, pivô company_users, etc.) e parent_company_id/
+     * mlb_empresas são nullOnDelete — então delete() limpa tudo com segurança.
+     */
+    public function bulkDestroy(Request $request)
+    {
+        $data = $request->validate([
+            'ids'   => 'required|array|min:1',
+            'ids.*' => 'integer|exists:companies,id',
+        ]);
+
+        $companies = Company::whereIn('id', $data['ids'])->get();
+        foreach ($companies as $c) {
+            $c->delete();
+        }
+
+        return back()->with('success', $companies->count() . ' empresa(s) excluída(s).');
+    }
+
+    /**
+     * Atribuição em massa de Analista (role=consultor) ou Estrategista a várias
+     * empresas. Substitui apenas o papel informado, preservando o outro.
+     */
+    public function bulkAssign(Request $request)
+    {
+        $data = $request->validate([
+            'ids'     => 'required|array|min:1',
+            'ids.*'   => 'integer|exists:companies,id',
+            'role'    => 'required|in:consultor,estrategista',
+            'user_id' => 'required|integer|exists:users,id',
+        ]);
+
+        foreach (Company::whereIn('id', $data['ids'])->get() as $c) {
+            // Remove só o papel alvo (mantém o outro) e atribui o novo responsável.
+            DB::table('company_users')->where('company_id', $c->id)->where('role', $data['role'])->delete();
+            $c->users()->attach($data['user_id'], ['role' => $data['role'], 'assigned_at' => now()->toDateString()]);
+        }
+
+        $label = $data['role'] === 'consultor' ? 'Analista' : 'Estrategista';
+        return back()->with('success', count($data['ids']) . " empresa(s) — {$label} atribuído.");
+    }
+
+    /**
      * Reativa uma empresa previamente desativada (active = false → true).
      *
      * A exclusão pelo Comercial (ComercialController::destroy) é um soft-delete

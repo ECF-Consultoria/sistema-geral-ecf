@@ -183,6 +183,42 @@ export default function Companies({ companies, users, estrategistas = [], grupos
         (c.pendencias || []).forEach(p => { if (pendCounts[p] !== undefined) pendCounts[p]++; });
     });
 
+    // ── Filtro por tag de pendência + seleção/ações em massa ─────────────────
+    const [pendenciaFilter, setPendenciaFilter] = useState('');
+    const [selectedIds, setSelectedIds] = useState(() => new Set());
+
+    const pendentesView = pendenciaFilter
+        ? pendentes.filter(c => (c.pendencias || []).includes(pendenciaFilter))
+        : pendentes;
+
+    const togglePendenciaFilter = (key) => {
+        setPendenciaFilter(prev => (prev === key ? '' : key));
+        setSelectedIds(new Set());
+    };
+    const toggleSelect = (id) => {
+        setSelectedIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+        });
+    };
+    const allViewSelected = pendentesView.length > 0 && pendentesView.every(c => selectedIds.has(c.id));
+    const toggleSelectAll = () => setSelectedIds(allViewSelected ? new Set() : new Set(pendentesView.map(c => c.id)));
+    const clearSelection = () => setSelectedIds(new Set());
+
+    const bulkDelete = () => {
+        const ids = [...selectedIds];
+        if (!ids.length) return;
+        if (confirm(`Excluir DEFINITIVAMENTE ${ids.length} empresa(s) selecionada(s)? Esta ação não pode ser desfeita.`)) {
+            router.post(route('companies.bulk-destroy'), { ids }, { preserveScroll: true, onSuccess: clearSelection });
+        }
+    };
+    const bulkAssign = (role, userId) => {
+        const ids = [...selectedIds];
+        if (!ids.length || !userId) return;
+        router.post(route('companies.bulk-assign'), { ids, role, user_id: userId }, { preserveScroll: true, onSuccess: clearSelection });
+    };
+
     // ── Form empresa (somente edição — cadastro é via /comercial/empresas) ───
     const { data, setData, put, processing, errors } = useForm({
         name: '', cnpj: '', adman_store_id: '', ml_store_id: '', segment: '', notes: '',
@@ -397,20 +433,63 @@ export default function Companies({ companies, users, estrategistas = [], grupos
                 {/* ══════════════ ABA PENDÊNCIAS ══════════════ */}
                 {tab === 'pendencias' && (
                     <>
-                        <div className="flex flex-wrap gap-3">
+                        {/* Cards clicáveis — filtram a lista por tipo de pendência */}
+                        <div className="flex flex-wrap items-center gap-3">
                             {Object.entries(PENDENCIAS).map(([key, cfg]) => (
-                                <div key={key} className={cn('rounded-xl border px-4 py-3 flex items-center gap-3', cfg.cls)}>
+                                <button
+                                    key={key}
+                                    onClick={() => togglePendenciaFilter(key)}
+                                    className={cn('rounded-xl border px-4 py-3 flex items-center gap-3 transition-all', cfg.cls,
+                                        pendenciaFilter === key ? 'ring-2 ring-white/40' : 'opacity-90 hover:opacity-100')}
+                                    title={`Mostrar só empresas com: ${cfg.label}`}
+                                >
                                     <span className="text-2xl font-bold tabular-nums">{pendCounts[key]}</span>
-                                    <span className="text-[12px] font-medium leading-tight">{cfg.label}</span>
-                                </div>
+                                    <span className="text-[12px] font-medium leading-tight text-left">{cfg.label}</span>
+                                </button>
                             ))}
+                            {pendenciaFilter && (
+                                <button onClick={() => togglePendenciaFilter(pendenciaFilter)} className="text-[12px] text-white/50 hover:text-white underline">
+                                    limpar filtro
+                                </button>
+                            )}
                         </div>
+
+                        {/* Barra de ações em massa (aparece com seleção) */}
+                        {selectedIds.size > 0 && (
+                            <div className="flex items-center gap-3 flex-wrap rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-2.5">
+                                <span className="text-[13px] text-white/85 font-medium">{selectedIds.size} selecionada(s)</span>
+                                <div className="h-4 w-px bg-white/10" />
+                                <select
+                                    value=""
+                                    onChange={e => { if (e.target.value) bulkAssign('consultor', Number(e.target.value)); e.target.value = ''; }}
+                                    className="h-8 px-2 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[12px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
+                                >
+                                    <option value="">Atribuir Analista…</option>
+                                    {consultores.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
+                                </select>
+                                <select
+                                    value=""
+                                    onChange={e => { if (e.target.value) bulkAssign('estrategista', Number(e.target.value)); e.target.value = ''; }}
+                                    className="h-8 px-2 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[12px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
+                                >
+                                    <option value="">Atribuir Estrategista…</option>
+                                    {estrategistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
+                                </select>
+                                <Button size="sm" variant="outline" className="gap-1.5 text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300" onClick={bulkDelete}>
+                                    <Trash2 className="h-3.5 w-3.5" /> Excluir selecionadas
+                                </Button>
+                                <button onClick={clearSelection} className="text-[12px] text-white/40 hover:text-white ml-auto">limpar seleção</button>
+                            </div>
+                        )}
 
                         <Card>
                             <CardContent className="p-0">
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
+                                            <TableHead className="w-10">
+                                                <input type="checkbox" checked={allViewSelected} onChange={toggleSelectAll} className="accent-ecf-yellow w-4 h-4 cursor-pointer align-middle" title="Selecionar todas" />
+                                            </TableHead>
                                             <TableHead>Empresa</TableHead>
                                             <TableHead>Pendências</TableHead>
                                             <TableHead>Responsáveis</TableHead>
@@ -418,8 +497,11 @@ export default function Companies({ companies, users, estrategistas = [], grupos
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {pendentes.map(c => (
-                                            <TableRow key={c.id}>
+                                        {pendentesView.map(c => (
+                                            <TableRow key={c.id} className={cn(selectedIds.has(c.id) && 'bg-ecf-yellow/[0.04]')}>
+                                                <TableCell>
+                                                    <input type="checkbox" checked={selectedIds.has(c.id)} onChange={() => toggleSelect(c.id)} className="accent-ecf-yellow w-4 h-4 cursor-pointer align-middle" />
+                                                </TableCell>
                                                 <TableCell className="font-medium">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         {c.name}
@@ -433,17 +515,22 @@ export default function Companies({ companies, users, estrategistas = [], grupos
                                                         : <span className="text-white/30">ninguém</span>}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openEdit(c)}>
-                                                        <Pencil className="h-3.5 w-3.5" /> Resolver
-                                                    </Button>
+                                                    <div className="flex justify-end gap-1">
+                                                        <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openEdit(c)}>
+                                                            <Pencil className="h-3.5 w-3.5" /> Resolver
+                                                        </Button>
+                                                        <Button size="icon" variant="ghost" title="Excluir empresa" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => destroy(c)}>
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
-                                        {pendentes.length === 0 && (
+                                        {pendentesView.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={4} className="text-center text-muted-foreground py-10">
+                                                <TableCell colSpan={5} className="text-center text-muted-foreground py-10">
                                                     <Check className="h-8 w-8 mx-auto mb-2 text-emerald-400/60" />
-                                                    Nenhuma empresa com pendências. Tudo em dia!
+                                                    {pendenciaFilter ? 'Nenhuma empresa com essa pendência.' : 'Nenhuma empresa com pendências. Tudo em dia!'}
                                                 </TableCell>
                                             </TableRow>
                                         )}
