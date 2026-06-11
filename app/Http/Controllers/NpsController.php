@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Configuracao;
+use App\Models\NpsEmailEnvio;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
 use App\Support\NpsTextRenderer;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -422,6 +424,81 @@ class NpsController extends Controller
         return response()->json([
             'html'    => $html,
             'assunto' => $assuntoRender,
+        ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Página de envios (Phase 32, Plan 04) — admin only via middleware role:admin.
+    // Lista paginada dos disparos do comando `nps:disparar-mensal` (Plan 32-01
+    // grava `NpsEmailEnvio` por empresa elegível em cada execução).
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Página admin /nps/emails-enviados — lista paginada de envios NPS.
+     *
+     * Filtros (D-06 LOCKED — mínimos):
+     *  - ?mes=YYYY-MM   (default = mês corrente; formato inválido → mês atual)
+     *  - ?q=texto       (busca em company.name OR destinatario via LIKE)
+     *
+     * Paginação 25/pg + preserva query string (?mes e ?q) entre páginas.
+     *
+     * O front mostra status como badge (verde "Enviado" / vermelho "Falha"),
+     * link pro survey gerado (`/nps/{token}`) em status=enviado e expande o
+     * `erro_msg` quando status=falha.
+     */
+    public function emailsEnviados(Request $request)
+    {
+        // ─── Validação leve do parâmetro mes ─────────────────────────────────
+        // Formato esperado YYYY-MM; qualquer coisa fora disso cai no mês atual.
+        $mes = $request->input('mes') ?: now()->format('Y-m');
+        try {
+            $inicio = Carbon::createFromFormat('Y-m', $mes)->startOfMonth();
+        } catch (\Exception $e) {
+            $mes    = now()->format('Y-m');
+            $inicio = now()->startOfMonth();
+        }
+        $fim = $inicio->copy()->endOfMonth();
+
+        // ─── Query base com eager loading dos relacionamentos exibidos ──────
+        // Campos enxutos pra reduzir payload Inertia (id+name da empresa, token
+        // pro botão "Ver", status/company_id pro guard do botão).
+        $query = NpsEmailEnvio::with([
+                'company:id,name',
+                'survey:id,token,status,company_id',
+            ])
+            ->whereBetween('created_at', [$inicio, $fim])
+            ->orderByDesc('created_at');
+
+        // Filtro de busca: nome da empresa OU destinatário. Usa `whereHas` no
+        // relacionamento company para LIKE no nome, sem JOIN explícito.
+        if ($q = trim((string) $request->input('q'))) {
+            $query->where(function ($w) use ($q) {
+                $w->whereHas('company', fn($c) => $c->where('name', 'like', "%{$q}%"))
+                  ->orWhere('destinatario', 'like', "%{$q}%");
+            });
+        }
+
+        $envios = $query->paginate(25)->withQueryString();
+
+        // Total do mês (ignora filtro de busca quando contamos o "total do mês"
+        // no header — usuário quer saber quantos envios houve no mês selecionado,
+        // não apenas os que casam com a busca atual).
+        $totalMes = NpsEmailEnvio::whereBetween('created_at', [$inicio, $fim])->count();
+
+        // ─── Últimos 12 meses para popular o Select de filtro ───────────────
+        // Formato pt-BR ("Jun/26"). `translatedFormat` usa o locale do app
+        // (config/app.php => 'locale' => 'pt_BR' nesta base).
+        $mesesDisponiveis = collect(range(0, 11))->map(fn($i) => [
+            'value' => now()->subMonths($i)->format('Y-m'),
+            'label' => now()->subMonths($i)->translatedFormat('M/y'),
+        ])->values();
+
+        return Inertia::render('Nps/EmailsEnviados', [
+            'envios'            => $envios,
+            'mes'               => $mes,
+            'q'                 => $request->input('q', ''),
+            'meses_disponiveis' => $mesesDisponiveis,
+            'total_mes'         => $totalMes,
         ]);
     }
 }
