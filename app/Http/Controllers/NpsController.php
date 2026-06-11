@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
+use App\Support\NpsTextRenderer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -264,5 +266,131 @@ class NpsController extends Controller
         $survey->update(['status' => 'completed', 'completed_at' => now()]);
 
         return Inertia::render('Nps/ThankYou');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Customização de textos (Phase 32, Plan 02) — admin only via middleware
+    // role:admin nas rotas. Toda a UI de edição vive em /nps/configuracao.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Página admin de customização dos 11 textos do fluxo NPS (D-03).
+     *
+     * Carrega os textos atuais (com fallback nos defaults) + os defaults canônicos
+     * (usados pelo botão "Restaurar padrão") + a doc dos placeholders suportados
+     * para exibir no painel lateral da página.
+     *
+     * Endpoints irmãos: `atualizarConfiguracao` (PUT) salva e `previewEmail`
+     * (POST) renderiza o template Blade com vars de exemplo para o iframe srcdoc.
+     */
+    public function configuracao()
+    {
+        // Documentação dos placeholders aceitos pelos textos (D-03). Estrategista
+        // e analista são variáveis dos textos do email e das perguntas; mês de
+        // referência só faz sentido no assunto/corpo; bloco_analista é usado
+        // exclusivamente em `email_corpo` (vira string vazia em mentoria pura).
+        $placeholdersDoc = [
+            ['chave' => '{nome_estrategista}', 'descricao' => 'Nome do estrategista da empresa.'],
+            ['chave' => '{nome_analista}',     'descricao' => 'Nome do analista (omitido quando mentoria pura).'],
+            ['chave' => '{nome_empresa}',      'descricao' => 'Nome da empresa que está respondendo.'],
+            ['chave' => '{mes_referencia}',    'descricao' => 'Mês de referência em formato pt-BR — ex: "junho/2026".'],
+            ['chave' => '{bloco_analista}',    'descricao' => 'Bloco condicional " e o analista é **Igor**" no corpo do email (usar apenas em email_corpo); vira string vazia em mentoria pura.'],
+        ];
+
+        return Inertia::render('Nps/Configuracao', [
+            'textos'           => NpsTextRenderer::getTextos(),
+            'defaults'         => NpsTextRenderer::defaults(),
+            'placeholders_doc' => $placeholdersDoc,
+        ]);
+    }
+
+    /**
+     * PUT /nps/configuracao — persiste os 11 textos editados em
+     * `configuracoes.nps_textos` como JSON.
+     *
+     * Valida cada chave como string obrigatória (max 5000 chars — folga ampla
+     * para corpos de email com markdown). Não há restrição de placeholders:
+     * o admin pode optar por não usar nenhum, e os textos vão funcionar como
+     * literais. O NpsTextRenderer aplica str_replace silencioso, então
+     * placeholders desconhecidos simplesmente ficam no texto sem causar erro.
+     */
+    public function atualizarConfiguracao(Request $request)
+    {
+        $validated = $request->validate([
+            'email_assunto'              => 'required|string|max:5000',
+            'email_saudacao'             => 'required|string|max:5000',
+            'email_corpo'                => 'required|string|max:5000',
+            'email_cta'                  => 'required|string|max:5000',
+            'email_assinatura'           => 'required|string|max:5000',
+            'perg_estrategista'          => 'required|string|max:5000',
+            'perg_analista'              => 'required|string|max:5000',
+            'perg_empresa'               => 'required|string|max:5000',
+            'perg_comentario_label'      => 'required|string|max:5000',
+            'perg_comentario_placeholder'=> 'required|string|max:5000',
+            'perg_nome_label'            => 'required|string|max:5000',
+        ]);
+
+        Configuracao::set('nps_textos', json_encode($validated, JSON_UNESCAPED_UNICODE));
+
+        return back()->with('success', 'Textos NPS atualizados.');
+    }
+
+    /**
+     * POST /nps/configuracao/preview — renderiza o template Blade do email
+     * com os textos NÃO PERSISTIDOS vindos do form (permite preview sem salvar).
+     *
+     * Usa as mesmas vars de exemplo do CONTEXT D-05 para preservar consistência
+     * com o que o admin verá ao receber o disparo real. O HTML retornado é
+     * injetado num <iframe srcdoc> no frontend para isolar o CSS do email do
+     * Tailwind do app.
+     */
+    public function previewEmail(Request $request)
+    {
+        // Valida só o que vai ser usado pra renderizar — mesma whitelist do PUT,
+        // mas tudo opcional (preview funciona mesmo com campos vazios).
+        $textos = $request->validate([
+            'email_assunto'    => 'nullable|string|max:5000',
+            'email_saudacao'   => 'nullable|string|max:5000',
+            'email_corpo'      => 'nullable|string|max:5000',
+            'email_cta'        => 'nullable|string|max:5000',
+            'email_assinatura' => 'nullable|string|max:5000',
+        ]);
+
+        // Vars de exemplo fixas (D-05) — combinam com o tom usado no email real.
+        // mes_referencia em minúsculo para casar com o default "satisfação ECF — junho/2026"
+        // (decisão herdada do Plan 32-01).
+        $varsExemplo = [
+            'nome_estrategista' => 'Nathália',
+            'nome_analista'     => 'Igor',
+            'nome_empresa'      => 'Empresa Exemplo Ltda',
+            'mes_referencia'    => 'junho/2026',
+            'bloco_analista'    => ' e o analista é **Igor**',
+        ];
+
+        // Renderiza cada texto com os placeholders substituídos.
+        // - render() para campos texto-puro (assunto, CTA)
+        // - renderHtml() para campos que vão como HTML no template (saudação, corpo, assinatura)
+        $assuntoRender    = NpsTextRenderer::render($textos['email_assunto']    ?? '', $varsExemplo);
+        $saudacaoRender   = NpsTextRenderer::renderHtml($textos['email_saudacao']   ?? '', $varsExemplo);
+        $corpoRender      = NpsTextRenderer::renderHtml($textos['email_corpo']      ?? '', $varsExemplo);
+        $ctaRender        = NpsTextRenderer::render($textos['email_cta']        ?? '', $varsExemplo);
+        $assinaturaRender = NpsTextRenderer::renderHtml($textos['email_assinatura'] ?? '', $varsExemplo);
+
+        // URL falsa (não persistida) — só pra o botão CTA do preview ter um href.
+        $linkPesquisa = url('/nps/preview-token-exemplo');
+
+        $html = view('emails.nps.mensal', [
+            'saudacaoRender'   => $saudacaoRender,
+            'corpoRender'      => $corpoRender,
+            'ctaRender'        => $ctaRender,
+            'assinaturaRender' => $assinaturaRender,
+            'linkPesquisa'     => $linkPesquisa,
+            'mesReferencia'    => $varsExemplo['mes_referencia'],
+        ])->render();
+
+        return response()->json([
+            'html'    => $html,
+            'assunto' => $assuntoRender,
+        ]);
     }
 }
