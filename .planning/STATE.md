@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: "Plan 32-03 completo (logo ECF + textos dinamicos em Respond.jsx) — proximo: Plan 32-04 (pagina /nps/emails-enviados)"
-last_updated: "2026-06-11T21:03:45.047Z"
+stopped_at: "Phase 32 completa (4/4 plans): NPS visual ECF + textos custom + log envios — ready for verification"
+last_updated: "2026-06-11T21:12:44Z"
 last_activity: 2026-06-11
 progress:
   total_phases: 30
   completed_phases: 18
   total_plans: 43
-  completed_plans: 38
-  percent: 60
+  completed_plans: 39
+  percent: 61
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 32 (customizacao-nps) — **EXECUTING** (W1 done, W2/W3 ahead)
-Plan: 2 of 4 (32-01 fundacao completo: schema nps_email_envios, helper NpsTextRenderer, partial logo ECF, email reescrito com placeholders)
-Status: Ready to execute
+Phase: 32 (customizacao-nps) — **DONE** (4/4 plans completos: ready for verification)
+Plan: 4 of 4 (32-04 pagina /nps/emails-enviados completo: controller + rota + JSX 303 linhas + sub-item sidebar)
+Status: Ready for verification (`/gsd:verify-phase 32`)
 Last activity: 2026-06-11
 
 ## Performance Metrics
@@ -74,6 +74,7 @@ Last activity: 2026-06-11
 | Phase 31-nps-mensal-automatizado P05 | 14 | 4 tasks | 6 files |
 | Phase 32-customizacao-nps P01 | 45min | 8 tasks | 10 files |
 | Phase 32-customizacao-nps P03 | 8min | 3 tasks | 4 files |
+| Phase 32-customizacao-nps P04 | 6min | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -268,6 +269,16 @@ Last activity: 2026-06-11
 - **Botão submit usa `bg-ecf-yellow text-black`** (CTA primária padrão do projeto) em vez de `bg-primary` genérico — consistência com o resto do app.
 - **Textarea sem ícone Lucide** para preservar footprint pequeno (sem novo import — apenas `Button/Input/Label/Textarea` + `cn` reusados do arquivo legacy).
 
+### Decisões do Plan 32-04 (registradas)
+
+- **Total do mês ignora filtro de busca.** Header sempre mostra "N envios em jun/26" baseado em `COUNT` separado, independentemente do `?q=`. Trade-off: 1 query extra por request, mas UX clara — usuário sabe o tamanho real do mês mesmo quando a busca mostra poucos resultados.
+- **Fallback silencioso para mês inválido.** `Carbon::createFromFormat('Y-m', $mes)` em try/catch → cai pro mês atual sem 422. Coerente com o pattern de `mesFiltro` do `NpsController::index()` (Plan 31-04).
+- **Eager loading com colunas específicas.** `with(['company:id,name', 'survey:id,token,status,company_id'])` em vez de `with(['company', 'survey'])` — reduz payload Inertia (Company tem 50+ colunas).
+- **Botão Survey "Ver" guarda contra survey null.** `survey_id` é nullable (Plan 32-01 deixou onDelete set null pra preservar auditoria). Guard `envio.survey && envio.survey.token` impede link quebrado.
+- **Linhas com status=falha expandem `erro_msg`.** Chevron + React.Fragment com key (TableBody não aceita div wrapper). Optei por expand inline ao invés de Radix Tooltip porque erro pode ser stack trace longo e usuário pode querer copiar.
+- **Paginação manual prev/próximo (não usa `envios.links`).** Mantém pattern existente do `Nps/Index.jsx` por consistência visual.
+- **Sub-item sidebar usa `excludeRoles` idêntico ao "Configuração NPS"** — coerência visual no grupo NPS (Plan 32-02 estabeleceu o pattern).
+
 ### Decisões do Plan 31-01 (registradas)
 
 - **`down()` no-op informativo em `2026_06_10_100002_recreate_nps_responses_table.php`** — Adotei o padrão Phase 14 (Plan 14-02): reverter drop+recreate exigiria backup externo + recriar o schema antigo manualmente. Comentário no `down()` aponta a migration original como referência.
@@ -338,18 +349,19 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-11T21:03:16.559Z
-Stopped at: Plan 32-03 completo (logo ECF + textos dinamicos em Respond.jsx) — proximo: Plan 32-04 (pagina /nps/emails-enviados)
+Last session: 2026-06-11T21:12:44Z
+Stopped at: Phase 32 completa (4/4 plans): NPS visual ECF + textos custom + log envios — ready for verification
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY: `.planning/phases/31-nps-mensal-automatizado/31-05-SUMMARY.md`
-- Phase 31 completa (5/5 plans): schema 1-5 + comando mensal + form público + UI email_cliente + admin /nps reescrito
-- Suite Phase 31: **19/19 testes verdes** após cada commit
-- Próximo passo do usuário (operação): **deploy agrupado em prod**
-  - Plans 31-01..31-05 DEVEM subir juntos (sob risco de SQL error)
-  - Após deploy, rodar no VPS: `php artisan migrate --force && php artisan cache:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache`
-  - Preencher `email_cliente` das empresas que devem entrar no fluxo mensal (via UI `/companies/{id}` ou `/comercial/empresas`)
-  - Conferir schedule: `php artisan schedule:list | grep nps:disparar-mensal` deve mostrar `0 9 * * *`
-  - Smoke prod: `/dashboard` + `/nps` + `/companies/{id}` + `/performance` rendezirem sem erro
-- HEAD: `d33019f` feat(31-05): ajusta widget NPS no Dashboard Admin para escala 1-5
+- SUMMARY: `.planning/phases/32-customizacao-nps/32-04-SUMMARY.md`
+- Phase 32 completa (4/4 plans):
+  - 32-01: schema nps_email_envios + helper NpsTextRenderer + partial logo ECF + email reescrito
+  - 32-02: pagina /nps/configuracao com preview live + sidebar Configuracao NPS
+  - 32-03: LogoEcf + textos dinamicos em Respond.jsx
+  - 32-04: pagina /nps/emails-enviados (controller + rota + JSX 303 linhas + sidebar Emails enviados)
+- Suite Phase 31: **19/19 testes verdes** (zero regressao Phase 32)
+- `npm run build` verde
+- Próximo passo natural: `/gsd:verify-phase 32` ou deploy
+- **Deploy:** Phase 32 SOZINHA pode subir (Phase 31 ja em prod) — migrations Phase 32: `create_nps_email_envios_table` + `seed_nps_textos_configuracao`. Pos-deploy: `php artisan migrate --force && php artisan cache:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache`
+- HEAD: `37f468d` feat(32-04): adiciona sub-item 'Emails enviados' no grupo NPS do sidebar
