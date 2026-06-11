@@ -83,6 +83,16 @@ Route::post('/nps/generate', [NpsController::class, 'generate'])
     ->middleware(['auth', 'verified'])
     ->name('nps.generate');
 
+// ─── Customização NPS (Phase 32 Plan 02) ────────────────────────────────────
+// Páginas admin-only (role:admin) para editar os 11 textos do fluxo NPS +
+// endpoint de preview server-rendered do email (D-05). DEVEM ficar ANTES da
+// rota pública /nps/{token} para evitar colisão com o parâmetro dinâmico.
+Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
+    Route::get('/nps/configuracao',          [NpsController::class, 'configuracao'])->name('nps.configuracao.index');
+    Route::put('/nps/configuracao',          [NpsController::class, 'atualizarConfiguracao'])->name('nps.configuracao.update');
+    Route::post('/nps/configuracao/preview', [NpsController::class, 'previewEmail'])->name('nps.configuracao.preview');
+});
+
 // NPS público (sem autenticação) — token vem DEPOIS do /generate
 Route::get('/nps/{token}', [NpsController::class, 'respond'])->name('nps.respond');
 Route::post('/nps/{token}', [NpsController::class, 'submitResponse'])->name('nps.submit');
