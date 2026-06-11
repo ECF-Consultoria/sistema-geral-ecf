@@ -3,6 +3,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
+import LogoEcf from '@/Components/LogoEcf';
 import { cn } from '@/lib/utils';
 
 // ─── Componente local: 5 botoes grandes 1-5 com gradiente vermelho->verde ───
@@ -72,17 +73,36 @@ export default function NpsRespond({ survey }) {
         data.score_empresa !== null &&
         (!survey.tem_analista || data.score_analista !== null);
 
+    // ─── Phase 32 Plan 03: textos dinamicos vindos do backend ──────────────
+    // Backend ja substitui {nome_estrategista}, {nome_analista}, {nome_empresa}
+    // antes de enviar. Fallback defensivo pra strings legadas caso a prop nao
+    // venha (ex: survey criada antes da Phase 32 sem rerender do controller).
+    const textos = survey.textos || {};
+    const txtPergEstrategista =
+        textos.perg_estrategista ||
+        `O atendimento do ${survey.estrategista_name || 'Estrategista'}`;
+    const txtPergAnalista =
+        textos.perg_analista ||
+        `O atendimento do ${survey.analista_name || 'Analista'}`;
+    const txtPergEmpresa =
+        textos.perg_empresa || 'A ECF está atendendo suas expectativas?';
+    const txtComentarioLabel =
+        textos.perg_comentario_label || 'Comentário (opcional)';
+    const txtComentarioPlaceholder =
+        textos.perg_comentario_placeholder ||
+        'Opiniões, sugestões ou outra coisa que queira compartilhar';
+    const txtNomeLabel = textos.perg_nome_label || 'Seu nome (opcional)';
+
     return (
         <div className="min-h-screen bg-ecf-bg flex items-center justify-center p-4">
             <div className="w-full max-w-xl">
-                {/* Header com logo amarela ECF (mantem identidade visual do projeto) */}
+                {/* Header com logo ECF oficial (D-01) — Montserrat + barra gradiente */}
                 <div className="text-center mb-8">
-                    <div className="w-16 h-16 rounded-2xl bg-ecf-yellow flex items-center justify-center mx-auto mb-4">
-                        <span className="text-black font-bold text-2xl">E</span>
+                    <div className="flex justify-center mb-4">
+                        <LogoEcf theme="dark" />
                     </div>
                     <h1 className="text-2xl font-bold text-white">Avaliação de Atendimento</h1>
                     <p className="text-white/60 mt-1">{survey.company_name}</p>
-                    <p className="text-white/40 text-sm mt-1">ECF Consultoria</p>
                 </div>
 
                 {/* Card principal do form */}
@@ -90,7 +110,7 @@ export default function NpsRespond({ survey }) {
                     <form onSubmit={submit} className="space-y-6">
                         {/* Nome opcional — D-07: respondent_name nullable */}
                         <div className="space-y-1.5">
-                            <Label className="text-white/80">Seu nome (opcional)</Label>
+                            <Label className="text-white/80">{txtNomeLabel}</Label>
                             <Input
                                 value={data.respondent_name}
                                 onChange={(e) => setData('respondent_name', e.target.value)}
@@ -112,7 +132,7 @@ export default function NpsRespond({ survey }) {
                             {/* Estrategista — sempre presente (required) */}
                             <div className="space-y-1.5">
                                 <RatingPicker
-                                    label={`O atendimento do ${survey.estrategista_name || 'Estrategista'}`}
+                                    label={txtPergEstrategista}
                                     value={data.score_estrategista}
                                     onChange={(v) => setData('score_estrategista', v)}
                                 />
@@ -125,7 +145,7 @@ export default function NpsRespond({ survey }) {
                             {survey.tem_analista && (
                                 <div className="space-y-1.5">
                                     <RatingPicker
-                                        label={`O atendimento do ${survey.analista_name || 'Analista'}`}
+                                        label={txtPergAnalista}
                                         value={data.score_analista}
                                         onChange={(v) => setData('score_analista', v)}
                                     />
@@ -138,7 +158,7 @@ export default function NpsRespond({ survey }) {
                             {/* Empresa — sempre presente (required) */}
                             <div className="space-y-1.5">
                                 <RatingPicker
-                                    label="A ECF está atendendo suas expectativas?"
+                                    label={txtPergEmpresa}
                                     value={data.score_empresa}
                                     onChange={(v) => setData('score_empresa', v)}
                                 />
@@ -150,13 +170,11 @@ export default function NpsRespond({ survey }) {
 
                         {/* Comentario livre — D-08: textarea unica, max 2000, nullable */}
                         <div className="space-y-1.5">
-                            <Label className="text-white/80">
-                                Opiniões, sugestões ou outra coisa que queira compartilhar (opcional)
-                            </Label>
+                            <Label className="text-white/80">{txtComentarioLabel}</Label>
                             <Textarea
                                 value={data.comment}
                                 onChange={(e) => setData('comment', e.target.value)}
-                                placeholder="Opiniões, sugestões ou outra coisa que queira compartilhar"
+                                placeholder={txtComentarioPlaceholder}
                                 rows={4}
                                 maxLength={2000}
                                 className="bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 min-h-[100px]"
