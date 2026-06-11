@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
-status: executing
-stopped_at: Phase 31 FECHADA (5 plans completos) — pronta para deploy agrupado em prod.
-last_updated: "2026-06-10T22:35:00.000Z"
-last_activity: 2026-06-10
+status: verifying
+stopped_at: Phase 32 Plan 01 COMPLETO (fundacao customizacao NPS) — proximo: Plan 02 (pagina /nps/configuracao).
+last_updated: "2026-06-11T20:43:17.678Z"
+last_activity: 2026-06-11
 progress:
   total_phases: 30
   completed_phases: 18
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 31 (nps-mensal-automatizado) — **PHASE COMPLETE** (Plans 31-01/02/03/04/05 done)
-Plan: 5 of 5 (Plans 31-01..31-05 completos; pronta para deploy agrupado em prod)
-Status: phase_complete
-Last activity: 2026-06-11 - Quick task 260611-pbm: aba Pendências com filtro por tag, excluir e ações em massa
+Phase: 32 (customizacao-nps) — **EXECUTING** (W1 done, W2/W3 ahead)
+Plan: 1 of 4 (32-01 fundacao completo: schema nps_email_envios, helper NpsTextRenderer, partial logo ECF, email reescrito com placeholders)
+Status: in_progress
+Last activity: 2026-06-11 - Phase 32 Plan 01 (fundacao customizacao NPS) concluido — pronto pra Plan 02 (pagina /nps/configuracao)
 
 ## Performance Metrics
 
@@ -72,6 +72,7 @@ Last activity: 2026-06-11 - Quick task 260611-pbm: aba Pendências com filtro po
 | Phase 31-nps-mensal-automatizado P03 | 1 | 1 tasks | 1 files |
 | Phase 31 P04 | 4 | 3 tasks | 4 files |
 | Phase 31-nps-mensal-automatizado P05 | 14 | 4 tasks | 6 files |
+| Phase 32-customizacao-nps P01 | 45min | 8 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -336,7 +337,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-10T22:35:00.000Z
+Last session: 2026-06-11T20:42:56.281Z
 Stopped at: Phase 31 FECHADA (5 plans completos) — pronta para deploy agrupado em prod.
 
 **Estado para próxima sessão retomar:**
