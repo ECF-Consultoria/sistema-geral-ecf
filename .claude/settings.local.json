@@ -131,7 +131,13 @@
       "Bash(c:/xampp/php/php.exe -l tests/Feature/Phase31NpsMonthlyMailTest.php)",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\CompanyGroupController.php 2>&1)",
       "Bash(c:/xampp/php/php.exe vendor/bin/phpunit --filter=Phase31)",
-      "Bash(c:/xampp/php/php.exe vendor/bin/phpunit --filter=Phase31 --list-tests)"
+      "Bash(c:/xampp/php/php.exe vendor/bin/phpunit --filter=Phase31 --list-tests)",
+      "Bash(command -v gsd-sdk)",
+      "Bash(php -l app/Http/Controllers/NpsController.php)",
+      "Bash(/c/xampp/php/php.exe -l c:/xampp/htdocs/ecf_admin/ecf_admin/app/Http/Controllers/NpsController.php)",
+      "Bash(/c/xampp/php/php.exe -l c:/xampp/htdocs/ecf_admin/ecf_admin/routes/web.php)",
+      "Bash(/c/xampp/php/php.exe -l app/Http/Controllers/NpsController.php)",
+      "Bash(/c/xampp/php/php.exe vendor/bin/phpunit --filter \"Phase31\")"
     ]
   }
 }
