@@ -110,7 +110,55 @@ function GrupoBadge({ grupo }) {
     );
 }
 
-export default function Companies({ companies, users, estrategistas = [], grupos = [], servico_counts = [], filters = {} }) {
+// ─── Campo buscável para adicionar empresa a um grupo (por nome ou cust id) ──
+function AddCompanyPicker({ candidatos, onAdd }) {
+    const [q, setQ] = useState('');
+    const [aberto, setAberto] = useState(false);
+    const ql = q.trim().toLowerCase();
+    const matches = (ql
+        ? candidatos.filter(c =>
+            c.name.toLowerCase().includes(ql) ||
+            String(c.adman_account_id || '').includes(ql) ||
+            String(c.ml_store_id || '').includes(ql))
+        : candidatos
+    ).slice(0, 8);
+
+    return (
+        <div className="relative mt-1">
+            <input
+                value={q}
+                onChange={e => { setQ(e.target.value); setAberto(true); }}
+                onFocus={() => setAberto(true)}
+                onBlur={() => setTimeout(() => setAberto(false), 150)}
+                placeholder="+ Adicionar empresa (nome ou cust id)…"
+                className="w-full h-9 px-3 rounded-lg border border-dashed border-white/[0.12] bg-transparent text-[13px] text-white/70 placeholder:text-white/35 focus:outline-none focus:border-ecf-yellow/40"
+            />
+            {aberto && matches.length > 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border border-white/10 bg-[#0f1116] shadow-xl py-1">
+                    {matches.map(c => (
+                        <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={e => e.preventDefault()}
+                            onClick={() => { onAdd(c.id); setQ(''); setAberto(false); }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-white/[0.06] flex items-center justify-between gap-2"
+                        >
+                            <span className="text-white/80 text-[13px] truncate">{c.name}</span>
+                            <span className="text-white/35 text-[11px] font-mono shrink-0">{c.adman_account_id || c.ml_store_id || '—'}</span>
+                        </button>
+                    ))}
+                </div>
+            )}
+            {aberto && ql && matches.length === 0 && (
+                <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-white/10 bg-[#0f1116] px-3 py-2 text-[12px] text-white/40">
+                    Nenhuma empresa encontrada.
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], filters = {} }) {
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
     const [tab, setTab] = useState(() => {
@@ -164,7 +212,9 @@ export default function Companies({ companies, users, estrategistas = [], grupos
         });
     };
 
-    const consultores = users.filter(u => u.role === 'consultor');
+    // Listas por CARGO (vindas do backend). Fallback defensivo por role legacy
+    // caso o cargo não esteja preenchido, pra o select nunca ficar vazio.
+    const analistasOptions = analistas.length > 0 ? analistas : users.filter(u => u.role === 'consultor');
     const estrategistasOptions = estrategistas.length > 0 ? estrategistas : users.filter(u => u.role === 'mentor');
 
     // ── Filtro da aba Empresas (busca + serviço) ─────────────────────────────
@@ -462,15 +512,15 @@ export default function Companies({ companies, users, estrategistas = [], grupos
                                 <select
                                     value=""
                                     onChange={e => { if (e.target.value) bulkAssign('consultor', Number(e.target.value)); e.target.value = ''; }}
-                                    className="h-8 px-2 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[12px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
+                                    className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
                                 >
                                     <option value="">Atribuir Analista…</option>
-                                    {consultores.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
+                                    {analistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
                                 </select>
                                 <select
                                     value=""
                                     onChange={e => { if (e.target.value) bulkAssign('estrategista', Number(e.target.value)); e.target.value = ''; }}
-                                    className="h-8 px-2 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[12px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
+                                    className="h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 cursor-pointer focus:outline-none focus:border-ecf-yellow/40"
                                 >
                                     <option value="">Atribuir Estrategista…</option>
                                     {estrategistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
@@ -581,14 +631,7 @@ export default function Companies({ companies, users, estrategistas = [], grupos
                                                     <button onClick={() => setGroup(c.id, null)} className="p-0.5 text-white/30 hover:text-red-400 transition-colors shrink-0" title="Remover do grupo"><X size={13} /></button>
                                                 </div>
                                             ))}
-                                            <select
-                                                value=""
-                                                onChange={e => { if (e.target.value) setGroup(Number(e.target.value), g.id); }}
-                                                className="w-full mt-1 h-8 px-2 rounded-lg border border-dashed border-white/[0.12] bg-transparent text-[12px] text-white/50 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
-                                            >
-                                                <option value="">+ Adicionar empresa…</option>
-                                                {semGrupo.map(c => <option key={c.id} value={c.id} className="bg-[#0f1116]">{c.name}</option>)}
-                                            </select>
+                                            <AddCompanyPicker candidatos={semGrupo} onAdd={(cid) => setGroup(cid, g.id)} />
                                         </div>
                                     </div>
                                 );
@@ -657,7 +700,7 @@ export default function Companies({ companies, users, estrategistas = [], grupos
                                 <Select value={data.consultor_id} onValueChange={v => setData('consultor_id', v)}>
                                     <SelectTrigger><SelectValue placeholder="Selecionar..." /></SelectTrigger>
                                     <SelectContent>
-                                        {consultores.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
+                                        {analistasOptions.map(u => <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>)}
                                     </SelectContent>
                                 </Select>
                             </div>

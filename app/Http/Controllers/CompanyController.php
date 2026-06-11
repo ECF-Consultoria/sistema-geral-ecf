@@ -106,20 +106,23 @@ class CompanyController extends Controller
             ->where('role', '!=', 'admin')
             ->get(['id', 'name', 'role']);
 
-        // Users com o cargo "Estrategista" (slug=estrategista) atribuído no
-        // pivot user_setores. O nome de "mentor" mudou pra "Estrategista" na
-        // empresa — o select do popup usa essa lista em vez do legacy
-        // User.role='mentor'.
-        // Implementação via whereIn + subquery direta no pivot — wherePivot()
-        // dentro de whereHas('setores', ...) NÃO funciona (Eloquent gera SQL
-        // inválido tipo `pivot = cargo_id`); precisa do DB::table().
-        $cargoEstrategistaId = \App\Models\Cargo::where('slug', 'estrategista')->value('id');
-        $estrategistas = $cargoEstrategistaId
-            ? User::where('active', true)
-                ->whereIn('id', DB::table('user_setores')->where('cargo_id', $cargoEstrategistaId)->pluck('user_id'))
+        // Users por CARGO no pivot user_setores. Helper local: pluck dos ids do
+        // cargo por slug (há slugs duplicados em prod, ex: 2x "analista" — por isso
+        // pluck/whereIn em vez de value('id'), que pegaria só um e perderia users).
+        $usersPorCargo = function (string $slug) {
+            $cargoIds = \App\Models\Cargo::where('slug', $slug)->pluck('id');
+            if ($cargoIds->isEmpty()) {
+                return collect();
+            }
+            return User::where('active', true)
+                ->whereIn('id', DB::table('user_setores')->whereIn('cargo_id', $cargoIds)->pluck('user_id'))
+                ->orderBy('name')
                 ->get(['id', 'name'])
-                ->values()
-            : collect();
+                ->values();
+        };
+
+        $estrategistas = $usersPorCargo('estrategista');
+        $analistas     = $usersPorCargo('analista');
 
         // Grupos nomeados (tipo carteira) com contagem de empresas — aba "Grupos".
         $grupos = \App\Models\CompanyGroup::withCount('companies')
@@ -142,6 +145,7 @@ class CompanyController extends Controller
             'companies'      => $companies,
             'users'          => $users,
             'estrategistas'  => $estrategistas,
+            'analistas'      => $analistas,
             'grupos'         => $grupos,
             'servico_counts' => $servicoCounts,
             // Phase 18 W5-T4 — Filtro snake_case; null se nao aplicado.
