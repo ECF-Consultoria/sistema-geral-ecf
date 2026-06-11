@@ -220,7 +220,11 @@ class Phase31NpsDispararMensalTest extends TestCase
     }
 
     /**
-     * T7 — Empresa com analista atribuído: NpsMonthlyMail recebe analistaName não-nulo.
+     * T7 — Empresa com analista atribuído: NpsMonthlyMail recebe vars com
+     * `corpoRender` contendo o nome do analista (Phase 32 — assinatura mudou
+     * para array $vars com os textos JÁ renderizados, então a verificação
+     * passa a ser por substring no corpoRender em vez de propriedade
+     * estática `analistaName`).
      */
     public function test_empresa_com_analista_passa_nome_no_mailable(): void
     {
@@ -239,8 +243,8 @@ class Phase31NpsDispararMensalTest extends TestCase
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
         Mail::assertSent(NpsMonthlyMail::class, function ($mail) {
-            return $mail->estrategistaName === 'Nathalia'
-                && $mail->analistaName === 'Bruno';
+            return str_contains($mail->vars['corpoRender'], 'Nathalia')
+                && str_contains($mail->vars['corpoRender'], 'Bruno');
         });
     }
 

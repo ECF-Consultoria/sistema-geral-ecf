@@ -4,7 +4,9 @@ namespace App\Console\Commands;
 
 use App\Mail\NpsMonthlyMail;
 use App\Models\Company;
+use App\Models\NpsEmailEnvio;
 use App\Models\NpsSurvey;
+use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -12,40 +14,41 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 
 /**
- * Comando do disparo mensal automatizado da pesquisa NPS (Phase 31, Plan 02).
+ * Comando do disparo mensal automatizado da pesquisa NPS.
  *
- * Dispara 1 email por empresa ativa COM `email_cliente` preenchido, no dia
- * do mês correspondente ao aniversário do cadastro (D-01). Edge case D-03:
- * empresa criada dia 31 dispara no último dia do mês (clamp via
- * min(diaOriginal, daysInMonth)).
+ * Phase 31 (Plan 02) — criação inicial: dispara 1 email por empresa ativa
+ *   COM `email_cliente` preenchido, no dia do mês correspondente ao aniversário
+ *   do cadastro (D-01). Edge case D-03: empresa criada dia 31 dispara no último
+ *   dia do mês (clamp via min(diaOriginal, daysInMonth)).
+ *
+ * Phase 32 (Plan 01) — customização + log:
+ *   - Textos do email lidos da Configuracao::get('nps_textos') (D-03) e renderizados
+ *     via NpsTextRenderer com placeholders {nome_estrategista}, {nome_analista},
+ *     {nome_empresa}, {mes_referencia}, {bloco_analista}.
+ *   - Cada disparo grava 1 NpsEmailEnvio (status=enviado em sucesso,
+ *     status=falha + erro_msg em catch) — D-04.
  *
  * Idempotência: guard `where(company_id, month_reference)->exists()` impede
- * que re-runs no mesmo dia criem surveys duplicadas (D-12).
+ * que re-runs no mesmo dia criem surveys/logs duplicados (D-12 Phase 31).
  *
- * Empresas sem email_cliente são silenciosamente puladas (D-04 — estado
- * esperado de empresas com campo ainda não preenchido pelo admin).
+ * Empresas sem email_cliente são silenciosamente puladas (D-04 Phase 31).
  *
  * Surveys criadas têm `auto_generated=true`, `month_reference=YYYY-MM-01`,
- * `expires_at=hoje+30d` (próximo disparo do ciclo), `generated_by=NULL`
- * (não há humano por trás — a coluna virou nullable na migration
- * `2026_06_10_100004_make_generated_by_nullable_on_nps_surveys_table`).
+ * `expires_at=hoje+30d`, `generated_by=NULL`.
  *
- * Schedule registrado em routes/console.php às 09:00 BRT (D-02 — fora dos
- * horários de pico: adman 11:00, gross billing 12:45, sugadores 12:00).
- *
- * Tratamento de erro: try/catch por empresa dentro do loop, com Log::error
- * e continue — uma falha pontual não derruba o comando inteiro.
+ * Schedule registrado em routes/console.php às 09:00 BRT.
  *
  * @see app/Mail/NpsMonthlyMail.php
+ * @see app/Models/NpsEmailEnvio.php
+ * @see app/Support/NpsTextRenderer.php
  * @see routes/console.php
- * @see .planning/phases/31-nps-mensal-automatizado/31-CONTEXT.md (D-01..D-04, D-12)
  */
 class NpsDispararMensal extends Command
 {
     protected $signature = 'nps:disparar-mensal
         {--dry-run : Lista o que seria disparado sem criar survey nem enviar email}';
 
-    protected $description = 'Cria survey NPS auto_generated + envia email no aniversário do cadastro (DAY(companies.created_at) == DAY(today), com clamp pro último dia do mês). Idempotente.';
+    protected $description = 'Cria survey NPS auto_generated + envia email customizado no aniversário do cadastro (DAY(companies.created_at) == DAY(today), com clamp pro último dia do mês). Idempotente.';
 
     public function handle(): int
     {
@@ -55,6 +58,12 @@ class NpsDispararMensal extends Command
         $mesAtual = $hoje->copy()->startOfMonth()->toDateString(); // YYYY-MM-01 — chave de idempotência
 
         $dryRun = (bool) $this->option('dry-run');
+
+        // Phase 32 — carrega textos customizáveis uma única vez antes do loop.
+        // Se a chave 'nps_textos' não existir em configuracoes, o helper devolve
+        // os defaults D-03.
+        $textos = NpsTextRenderer::getTextos();
+        $mesReferencia = $this->mesLabelPt($hoje);
 
         $enviados = 0;
         $criados = 0;
@@ -69,14 +78,14 @@ class NpsDispararMensal extends Command
             ->whereNotNull('email_cliente')
             ->where('email_cliente', '!=', '')
             ->chunkById(50, function ($empresas) use (
-                $hoje, $mesAtual, $dryRun,
+                $hoje, $mesAtual, $dryRun, $textos, $mesReferencia,
                 &$enviados, &$criados, &$elegiveisHoje,
                 &$puladosSemEstrategista, &$puladosIdempotencia
             ) {
                 foreach ($empresas as $empresa) {
                     try {
-                        // D-01 + D-03 — calcula dia alvo com clamp para o último dia do mês quando
-                        // o created_at original era 29/30/31 e o mês atual tem menos dias.
+                        // D-01 + D-03 Phase 31 — calcula dia alvo com clamp para o último dia do mês
+                        // quando o created_at original era 29/30/31 e o mês atual tem menos dias.
                         $diaOriginal = $empresa->created_at->day;
                         $diaAlvo = min($diaOriginal, $hoje->daysInMonth);
 
@@ -86,7 +95,7 @@ class NpsDispararMensal extends Command
 
                         $elegiveisHoje++;
 
-                        // D-12 — Idempotência: já existe survey deste mês pra esta empresa?
+                        // D-12 Phase 31 — Idempotência: já existe survey deste mês pra esta empresa?
                         $jaExiste = NpsSurvey::where('company_id', $empresa->id)
                             ->whereDate('month_reference', $mesAtual)
                             ->exists();
@@ -96,9 +105,8 @@ class NpsDispararMensal extends Command
                             continue;
                         }
 
-                        // D-07 — Estrategista é obrigatório (sem ele o email não tem como ser
-                        // semanticamente útil — "Como você avalia o estrategista?"). Loga
-                        // warning e pula em vez de tentar enviar email genérico.
+                        // D-07 Phase 31 — Estrategista é obrigatório. Loga warning e pula em vez de
+                        // tentar enviar email genérico.
                         $estrategista = $empresa->estrategista()->first();
                         if (! $estrategista) {
                             Log::warning("[NPS Mensal] empresa {$empresa->id} ({$empresa->name}) sem estrategista atribuido, pulando disparo");
@@ -106,7 +114,7 @@ class NpsDispararMensal extends Command
                             continue;
                         }
 
-                        // D-07 — Analista é opcional (mentoria pura). Pode ser null.
+                        // D-07 Phase 31 — Analista é opcional (mentoria pura). Pode ser null.
                         $analista = $empresa->consultor()->first();
 
                         if ($dryRun) {
@@ -114,10 +122,7 @@ class NpsDispararMensal extends Command
                             continue;
                         }
 
-                        // D-12 — Cria survey: auto_generated=true, month_reference=YYYY-MM-01,
-                        // expires_at = hoje + 30d (próximo disparo do ciclo). generated_by=null
-                        // porque é disparo automatizado, sem humano por trás (migration
-                        // 2026_06_10_100004 tornou a coluna nullable).
+                        // D-12 Phase 31 — Cria survey antes de renderizar o link.
                         $survey = NpsSurvey::create([
                             'token'           => Str::uuid()->toString(),
                             'company_id'      => $empresa->id,
@@ -129,18 +134,71 @@ class NpsDispararMensal extends Command
                         ]);
                         $criados++;
 
-                        $mesLabel = $this->mesLabelPt($hoje);
+                        // Phase 32 D-03 — monta vars com placeholders. `bloco_analista` é um trecho
+                        // gerado dinamicamente: " e o analista é **Nome**" quando há analista, ou
+                        // string vazia em mentoria pura. É renderizado SOZINHO como texto puro pra
+                        // depois entrar no email_corpo já com nl2br aplicado no renderHtml.
+                        $blocoAnalista = $analista
+                            ? ' e o analista é **' . $analista->name . '**'
+                            : '';
 
-                        Mail::to($empresa->email_cliente)->send(new NpsMonthlyMail(
-                            companyName:      $empresa->name,
-                            estrategistaName: $estrategista->name,
-                            analistaName:     $analista?->name,
-                            linkPublico:      route('nps.respond', $survey->token),
-                            mesLabel:         $mesLabel,
-                        ));
-                        $enviados++;
+                        $vars = [
+                            'nome_estrategista' => $estrategista->name,
+                            'nome_analista'     => $analista?->name ?? '',
+                            'nome_empresa'      => $empresa->name,
+                            'mes_referencia'    => $mesReferencia,
+                            'bloco_analista'    => $blocoAnalista,
+                        ];
 
-                        Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) email={$empresa->email_cliente} survey_id={$survey->id}");
+                        // Renderiza cada texto editável da config:
+                        //  - texto-puro (sem escape): assunto e CTA (vão para subject e <a>texto</a>)
+                        //  - HTML-safe (e()+nl2br): saudação, corpo, assinatura (vão em {!! !!})
+                        $assuntoRender    = NpsTextRenderer::render($textos['email_assunto'],     $vars);
+                        $saudacaoRender   = NpsTextRenderer::renderHtml($textos['email_saudacao'], $vars);
+                        $corpoRender      = NpsTextRenderer::renderHtml($textos['email_corpo'],    $vars);
+                        $ctaRender        = NpsTextRenderer::render($textos['email_cta'],          $vars);
+                        $assinaturaRender = NpsTextRenderer::renderHtml($textos['email_assinatura'], $vars);
+
+                        $linkPesquisa = route('nps.respond', $survey->token);
+
+                        $mailVars = [
+                            'assuntoRender'    => $assuntoRender,
+                            'saudacaoRender'   => $saudacaoRender,
+                            'corpoRender'      => $corpoRender,
+                            'ctaRender'        => $ctaRender,
+                            'assinaturaRender' => $assinaturaRender,
+                            'linkPesquisa'     => $linkPesquisa,
+                            'mesReferencia'    => $mesReferencia,
+                        ];
+
+                        // Phase 32 D-04 — envia + grava log (sucesso ou falha) no mesmo bloco
+                        // pra garantir que o NpsEmailEnvio existe mesmo quando o Mailable lança.
+                        try {
+                            Mail::to($empresa->email_cliente)->send(new NpsMonthlyMail($mailVars));
+
+                            NpsEmailEnvio::create([
+                                'survey_id'    => $survey->id,
+                                'company_id'   => $empresa->id,
+                                'destinatario' => $empresa->email_cliente,
+                                'assunto'      => $assuntoRender,
+                                'status'       => 'enviado',
+                                'erro_msg'     => null,
+                            ]);
+                            $enviados++;
+
+                            Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) email={$empresa->email_cliente} survey_id={$survey->id}");
+                        } catch (\Throwable $mailErr) {
+                            // Grava log de falha — substring(65000) cobre TEXT MySQL sem cortar UTF-8.
+                            NpsEmailEnvio::create([
+                                'survey_id'    => $survey->id,
+                                'company_id'   => $empresa->id,
+                                'destinatario' => $empresa->email_cliente,
+                                'assunto'      => $assuntoRender,
+                                'status'       => 'falha',
+                                'erro_msg'     => substr($mailErr->getMessage(), 0, 65000),
+                            ]);
+                            Log::error("[NPS Mensal] falha no envio empresa {$empresa->id} survey_id={$survey->id}: " . $mailErr->getMessage());
+                        }
 
                     } catch (\Throwable $e) {
                         Log::error("[NPS Mensal] falha empresa {$empresa->id}: " . $e->getMessage());
@@ -166,16 +224,19 @@ class NpsDispararMensal extends Command
 
     /**
      * Converte uma data Carbon em label pt-BR legível.
-     * Duplicação consciente (helper de 5 linhas) — mesmo padrão da Phase 28
-     * (Decisão D-D).
-     * Exemplo: Carbon('2026-06-15') → 'Junho/2026'.
+     * Duplicação consciente (helper de 5 linhas) — mesmo padrão da Phase 28.
+     * Exemplo: Carbon('2026-06-15') → 'junho/2026'.
+     *
+     * Phase 32 — minúsculo para combinar com a frase "...satisfação ECF — junho/2026"
+     * do email_assunto default. Caso o admin reescreva o assunto, o mes_referencia
+     * é só uma string, ele pode integrar como quiser.
      */
     private function mesLabelPt(Carbon $data): string
     {
         $meses = [
-            'Janeiro', 'Fevereiro', 'Março', 'Abril',
-            'Maio', 'Junho', 'Julho', 'Agosto',
-            'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+            'janeiro', 'fevereiro', 'março', 'abril',
+            'maio', 'junho', 'julho', 'agosto',
+            'setembro', 'outubro', 'novembro', 'dezembro',
         ];
 
         return $meses[$data->month - 1] . '/' . $data->year;
