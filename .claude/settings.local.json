@@ -114,7 +114,10 @@
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"`$g = App\\\\Models\\\\CompanyGroup::create\\(['name'=>'Teste Grupo','color'=>'#60a5fa']\\); `$c = App\\\\Models\\\\Company::first\\(\\); if\\(`$c\\){ `$c->update\\(['company_group_id'=>`$g->id]\\); } `$ctrl = app\\(App\\\\Http\\\\Controllers\\\\CompanyController::class\\); `$resp = `$ctrl->index\\(new Illuminate\\\\Http\\\\Request\\(\\)\\); echo 'render_ok props=' . implode\\(',', array_keys\\(`$resp->toResponse\\(new Illuminate\\\\Http\\\\Request\\(\\)\\)->getData\\(true\\)['props'] ?? []\\)\\); App\\\\Models\\\\CompanyGroup::where\\('name','Teste Grupo'\\)->delete\\(\\);\")",
       "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"App\\\\Models\\\\CompanyGroup::where\\('name','Teste Grupo'\\)->delete\\(\\); echo 'grupos_restantes=' . App\\\\Models\\\\CompanyGroup::count\\(\\) . ' | companies_com_grupo=' . App\\\\Models\\\\Company::whereNotNull\\('company_group_id'\\)->count\\(\\);\")",
       "Skill(gsd-fast)",
-      "Skill(gsd-fast:*)"
+      "Skill(gsd-fast:*)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l app\\\\Http\\\\Controllers\\\\CompanyController.php 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" -l routes\\\\web.php 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" artisan tinker --execute=\"`$c=App\\\\Models\\\\Company::first\\(\\); `$u=App\\\\Models\\\\User::where\\('role','consultor'\\)->first\\(\\); if\\(!`$c||!`$u\\){ echo 'sem dados locais para smoke'; return; } DB::beginTransaction\\(\\); try { DB::table\\('company_users'\\)->where\\('company_id',`$c->id\\)->where\\('role','consultor'\\)->delete\\(\\); `$c->users\\(\\)->attach\\(`$u->id,['role'=>'consultor','assigned_at'=>now\\(\\)->toDateString\\(\\)]\\); `$n=DB::table\\('company_users'\\)->where\\('company_id',`$c->id\\)->where\\('role','consultor'\\)->where\\('user_id',`$u->id\\)->count\\(\\); echo 'attach_ok='.`$n; } finally { DB::rollBack\\(\\); echo ' | rolledback'; }\")"
     ]
   }
 }
