@@ -123,8 +123,10 @@ function AddCompanyPicker({ candidatos, onAdd }) {
         : candidatos
     ).slice(0, 8);
 
+    // Resultados renderizados INLINE (empurram o card pra baixo) — evita clipping
+    // pelo overflow-hidden do card e sobreposição de z-index entre cards.
     return (
-        <div className="relative mt-1">
+        <div className="mt-1">
             <input
                 value={q}
                 onChange={e => { setQ(e.target.value); setAberto(true); }}
@@ -134,7 +136,7 @@ function AddCompanyPicker({ candidatos, onAdd }) {
                 className="w-full h-9 px-3 rounded-lg border border-dashed border-white/[0.12] bg-transparent text-[13px] text-white/70 placeholder:text-white/35 focus:outline-none focus:border-ecf-yellow/40"
             />
             {aberto && matches.length > 0 && (
-                <div className="absolute z-20 left-0 right-0 mt-1 max-h-56 overflow-auto rounded-lg border border-white/10 bg-[#0f1116] shadow-xl py-1">
+                <div className="mt-1 max-h-56 overflow-auto rounded-lg border border-white/10 bg-[#0b0c10] py-1">
                     {matches.map(c => (
                         <button
                             key={c.id}
@@ -150,7 +152,7 @@ function AddCompanyPicker({ candidatos, onAdd }) {
                 </div>
             )}
             {aberto && ql && matches.length === 0 && (
-                <div className="absolute z-20 left-0 right-0 mt-1 rounded-lg border border-white/10 bg-[#0f1116] px-3 py-2 text-[12px] text-white/40">
+                <div className="mt-1 rounded-lg border border-white/10 bg-[#0b0c10] px-3 py-2 text-[12px] text-white/40">
                     Nenhuma empresa encontrada.
                 </div>
             )}
