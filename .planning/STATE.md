@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
-status: executing
-stopped_at: "Phase 34 Plan 01 (fundacao schema + pendencia empresa_nova + endpoint marcar-visto) completo — desbloqueia W2 paralelo (34-02 wizard, 34-03 admin UI, 34-04 HubSpot webhook)"
-last_updated: "2026-06-12T12:00:00Z"
+status: Wave 2 desbloqueada — pode rodar 34-02 (wizard), 34-03 (admin UI), 34-04 (webhook HubSpot) em paralelo
+stopped_at: Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — Wave 2 desbloqueada
+last_updated: "2026-06-12T19:15:46.231Z"
 last_activity: 2026-06-12
 progress:
-  total_phases: 32
+  total_phases: 31
   completed_phases: 18
-  total_plans: 52
-  completed_plans: 41
-  percent: 56
+  total_plans: 47
+  completed_plans: 40
+  percent: 58
 ---
 
 # Project State
@@ -77,6 +77,7 @@ Last activity: 2026-06-12
 | Phase 32-customizacao-nps P04 | 6min | 4 tasks | 4 files |
 | Phase 33-perguntas-customizadas-nps P01 | 30min | 4 commits | 7 files |
 | Phase 34-cadastro-comercial-otimizado-hubspot P01 | 12min | 4 commits | 7 files |
+| Phase 34 P02 | 22 | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -363,7 +364,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-12T00:00:00Z
+Last session: 2026-06-12T19:15:46.209Z
 Stopped at: Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — Wave 2 desbloqueada
 
 **Estado para próxima sessão retomar:**

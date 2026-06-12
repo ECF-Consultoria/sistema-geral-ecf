@@ -723,6 +723,6 @@ Plans:
 
 Plans:
 - [x] 34-01-PLAN.md — Fundação: schema (2 migrations defensivas) + Company fillable+casts + HubspotEvento model + CompanyController.index pendencia+fix+payload + endpoint marcar-visto role:admin + 8 testes (completed 2026-06-12)
-- [ ] 34-02-PLAN.md — Wizard Comercial estendido: NovaEmpresa.jsx + ComercialController::store validation dos 9 campos + máscaras CNPJ/telefone
+- [x] 34-02-PLAN.md — Wizard Comercial estendido: NovaEmpresa.jsx + ComercialController::store validation dos 9 campos + máscaras CNPJ/telefone
 - [ ] 34-03-PLAN.md — Admin UI: Companies/Index.jsx (badge "Empresa nova", botão "Marcar visto", modal admin com novos campos) + Companies/Show.jsx (seção "Informações do Close")
 - [ ] 34-04-PLAN.md — Webhook HubSpot: rota `/api/webhooks/hubspot` + HMAC v3 validation + grava `hubspot_eventos` + processamento inline (fetch deal+company HubSpot → cria Company) + idempotência por `object_id`
