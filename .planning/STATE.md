@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: "Phase 32 completa (4/4 plans): NPS visual ECF + textos custom + log envios — ready for verification"
-last_updated: "2026-06-11T21:12:44Z"
-last_activity: 2026-06-11
+stopped_at: "Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — desbloqueia W2 paralelo (33-02 admin UI, 33-03 cliente UI, 33-04 modal lista)"
+last_updated: "2026-06-12T00:00:00Z"
+last_activity: 2026-06-12
 progress:
-  total_phases: 30
+  total_phases: 31
   completed_phases: 18
-  total_plans: 43
-  completed_plans: 39
-  percent: 61
+  total_plans: 47
+  completed_plans: 40
+  percent: 59
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 32 (customizacao-nps) — **DONE** (4/4 plans completos: ready for verification)
-Plan: 4 of 4 (32-04 pagina /nps/emails-enviados completo: controller + rota + JSX 303 linhas + sub-item sidebar)
-Status: Ready for verification (`/gsd:verify-phase 32`)
-Last activity: 2026-06-11
+Phase: 33 (perguntas-customizadas-nps) — Wave 1 completa (1/4 plans)
+Plan: 33-01 fundacao backend (migrations + models + 4 endpoints CRUD + submit dinamico) **DONE**
+Status: Wave 2 desbloqueada — pode rodar 33-02, 33-03, 33-04 em paralelo
+Last activity: 2026-06-12
 
 ## Performance Metrics
 
@@ -75,6 +75,7 @@ Last activity: 2026-06-11
 | Phase 32-customizacao-nps P01 | 45min | 8 tasks | 10 files |
 | Phase 32-customizacao-nps P03 | 8min | 3 tasks | 4 files |
 | Phase 32-customizacao-nps P04 | 6min | 4 tasks | 4 files |
+| Phase 33-perguntas-customizadas-nps P01 | 30min | 4 commits | 7 files |
 
 ## Accumulated Context
 
@@ -289,6 +290,18 @@ Last activity: 2026-06-11
 - **Verificação end-to-end por instância em memória** — DB local não tem rows em `companies`/`users`, então o teste `NpsSurvey::create(...)` da verification block falharia por FK. Substituí por `new NpsSurvey([...])` direto, validando os casts (Carbon + boolean) sem precisar gravar.
 - **Call-sites legacy (Dashboard/Performance/Company/NpsController) ficam quebrados até Plan 31-05** — SCOPE BOUNDARY do executor: não é correção desta plan. Documentado nos "Gotchas" do 31-01-SUMMARY.md com mapa de qual plan corrige cada arquivo. **CRÍTICO**: NÃO fazer deploy do schema sozinho — agrupar com Plans 31-03/04/05.
 
+### Decisões do Plan 33-01 (registradas)
+
+- **`opcoes` forcadas a null fora de tipo=multipla** — backend defensivo no `criarPerguntaExtra`/`atualizarPerguntaExtra` zera o array mesmo se cliente enviar. UI nao precisa zerar.
+- **Validacao dinamica em `submitResponse()`**: itera `NpsPerguntaCustomizada::where('ativa', true)->get()` e monta `rules` por tipo conforme matriz D-02 (`escala_1_5 → integer|min:1|max:5`, `texto → string|max:2000`, `sim_nao → Rule::in(['sim','nao'])`, `multipla → Rule::in($p->opcoes)`). Perguntas inativas no momento da submissao nao sao validadas — apenas as ativas atuais contam.
+- **Snapshot `pergunta_texto_snapshot` / `tipo_snapshot`** congela o que o cliente VIU no momento da resposta. Defesa contra edicao da pergunta depois + permite hard-delete da pergunta (FK set null) sem perder display historico.
+- **Reorder via swap O(1)** (`up`/`down`) em vez de shift-all-rows. Sem concorrencia real (admin sozinho), suficiente. Tie-breaker `id` desc/asc para determinismo quando 2 perguntas tem mesma `ordem`.
+- **DELETE dual**: padrao = soft (`ativa=false`) se ha respostas; `?force=1` = hard delete (FK respostas vira null automaticamente via `nullOnDelete`).
+- **`min:2 opcoes` em multipla** (Rule 2 deviation) — pergunta de multipla escolha com 1 opcao nao faz sentido. Safeguard UX.
+- **`index()` expoe `respostas_customizadas` no payload de cada linha do paginate** — Plan 33-04 le direto sem fetch separado. Eager load `response.respostasCustomizadas` evita N+1.
+- **Suite Phase 33 com 8 cases** (Rule 2 deviation) — Plan nao pediu explicitamente, mas adicionei para garantir contratos de validacao dinamica + snapshot + CRUD + reorder. Combina com 19 Phase 31 totalizando 27 verdes.
+- **CRITICO**: NAO fazer deploy do Plan 33-01 sozinho — schema/endpoints ja funcionam mas a UI admin (Plan 33-02), UI cliente (Plan 33-03) e modal lista (Plan 33-04) ainda nao existem. Agrupar deploy dos 4 plans da Phase 33.
+
 ### Pending Todos
 
 None.
@@ -349,8 +362,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-11T21:12:44Z
-Stopped at: Phase 32 completa (4/4 plans): NPS visual ECF + textos custom + log envios — ready for verification
+Last session: 2026-06-12T00:00:00Z
+Stopped at: Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — Wave 2 desbloqueada
 
 **Estado para próxima sessão retomar:**
 
