@@ -709,3 +709,20 @@ Plans:
 - [x] 31-03-PLAN.md — UI cliente: Nps/Respond.jsx reescrita com 3 sliders 1-5 (analista condicional) + textarea livre + nome opcional (completed 2026-06-10)
 - [x] 31-04-PLAN.md — UI empresa: campo email_cliente em Companies/Index.jsx (admin) e Comercial/Empresas.jsx + validação backend nullable|email (completed 2026-06-10)
 - [x] 31-05-PLAN.md — Admin /nps expandido (filtro mês + 3 cards média + LineChart 12m + lista) + Dashboard widget NPS ajustado escala 1-5 + cleanup legacy refs em PerformanceController/Companies/Show.jsx (completed 2026-06-10)
+
+### Phase 34: Cadastro Comercial Otimizado + Integração HubSpot
+
+**Milestone:** v10.0 — Pesquisa de Satisfação 2.0 (item add-on)
+**Status:** ⏳ Em execução (Wave 1 completa 2026-06-12 — 1/4 plans)
+**Goal:** Capturar mais info no close comercial (nicho/dor/faturamento/marketplaces/vende_ml), corrigir bug semântico do `email_colaborador`, expor tag "Empresa nova" como pendência na aba `/companies`, máscaras CNPJ/telefone nos forms, e webhook HubSpot para cadastro automático quando deal vira "Fechado Ganho".
+**Requirements:**
+- REQ-34-01 — Schema: 9 novas colunas em `companies` (nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras/email_colaborador/empresa_nova/visto_em/visto_por)
+- REQ-34-02 — Tabela `hubspot_eventos` para auditoria/replay do webhook
+- REQ-34-03 — Pendência `empresa_nova` na aba Pendências + botão "Marcar como visto" (admin-only)
+- REQ-34-04 — Fix D-07: `sem_email_colaborador` checa `email_colaborador` (era `email_cliente` por bug semântico)
+
+Plans:
+- [x] 34-01-PLAN.md — Fundação: schema (2 migrations defensivas) + Company fillable+casts + HubspotEvento model + CompanyController.index pendencia+fix+payload + endpoint marcar-visto role:admin + 8 testes (completed 2026-06-12)
+- [ ] 34-02-PLAN.md — Wizard Comercial estendido: NovaEmpresa.jsx + ComercialController::store validation dos 9 campos + máscaras CNPJ/telefone
+- [ ] 34-03-PLAN.md — Admin UI: Companies/Index.jsx (badge "Empresa nova", botão "Marcar visto", modal admin com novos campos) + Companies/Show.jsx (seção "Informações do Close")
+- [ ] 34-04-PLAN.md — Webhook HubSpot: rota `/api/webhooks/hubspot` + HMAC v3 validation + grava `hubspot_eventos` + processamento inline (fetch deal+company HubSpot → cria Company) + idempotência por `object_id`

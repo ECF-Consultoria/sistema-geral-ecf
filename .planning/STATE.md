@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: "Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — desbloqueia W2 paralelo (33-02 admin UI, 33-03 cliente UI, 33-04 modal lista)"
-last_updated: "2026-06-12T00:00:00Z"
+stopped_at: "Phase 34 Plan 01 (fundacao schema + pendencia empresa_nova + endpoint marcar-visto) completo — desbloqueia W2 paralelo (34-02 wizard, 34-03 admin UI, 34-04 HubSpot webhook)"
+last_updated: "2026-06-12T12:00:00Z"
 last_activity: 2026-06-12
 progress:
-  total_phases: 31
+  total_phases: 32
   completed_phases: 18
-  total_plans: 47
-  completed_plans: 40
-  percent: 59
+  total_plans: 52
+  completed_plans: 41
+  percent: 56
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 33 (perguntas-customizadas-nps) — Wave 1 completa (1/4 plans)
-Plan: 33-01 fundacao backend (migrations + models + 4 endpoints CRUD + submit dinamico) **DONE**
-Status: Wave 2 desbloqueada — pode rodar 33-02, 33-03, 33-04 em paralelo
+Phase: 34 (cadastro-comercial-otimizado-hubspot) — Wave 1 completa (1/4 plans)
+Plan: 34-01 fundacao (2 migrations defensivas + Company fillable+casts + HubspotEvento model + CompanyController pendencia+fix D-07+payload + endpoint marcar-visto + 8 testes) **DONE**
+Status: Wave 2 desbloqueada — pode rodar 34-02 (wizard), 34-03 (admin UI), 34-04 (webhook HubSpot) em paralelo
 Last activity: 2026-06-12
 
 ## Performance Metrics
@@ -76,6 +76,7 @@ Last activity: 2026-06-12
 | Phase 32-customizacao-nps P03 | 8min | 3 tasks | 4 files |
 | Phase 32-customizacao-nps P04 | 6min | 4 tasks | 4 files |
 | Phase 33-perguntas-customizadas-nps P01 | 30min | 4 commits | 7 files |
+| Phase 34-cadastro-comercial-otimizado-hubspot P01 | 12min | 4 commits | 7 files |
 
 ## Accumulated Context
 
