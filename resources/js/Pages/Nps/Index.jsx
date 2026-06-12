@@ -9,7 +9,7 @@ import { useForm, usePage, router } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import {
     Plus, Copy, CheckCircle, Star, Link as LinkIcon,
-    Users as UsersIcon, Briefcase, Building2,
+    Users as UsersIcon, Briefcase, Building2, Eye,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -76,6 +76,70 @@ const chartStyle = {
     },
 };
 
+// ─── Helpers do modal "Abrir" (Phase 33 Plan 04) ────────────────────────────
+
+// Card de nota individual (Estrategista/Analista/Empresa) — escala 1-5 colorida.
+// Renderiza "—" quando o score é null/undefined (analista em mentoria pura, etc).
+function NotaCard({ label, valor }) {
+    if (valor === null || valor === undefined) {
+        return (
+            <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-3 text-center">
+                <p className="text-[10px] text-white/40 uppercase tracking-wide">{label}</p>
+                <p className="text-2xl font-bold text-white/30 mt-1">—</p>
+            </div>
+        );
+    }
+    const cor = valor <= 2 ? 'text-rose-400'
+              : valor === 3 ? 'text-yellow-400'
+              : 'text-emerald-400';
+    return (
+        <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-center">
+            <p className="text-[10px] text-white/40 uppercase tracking-wide">{label}</p>
+            <p className={cn('text-2xl font-bold mt-1', cor)}>
+                {valor}<span className="text-sm text-white/40">/5</span>
+            </p>
+        </div>
+    );
+}
+
+// Renderiza o valor de uma resposta extra conforme o tipo da pergunta.
+// `tipo` é o snapshot congelado no momento da resposta (defesa contra edicao
+// posterior da pergunta). Tipos suportados: escala_1_5, sim_nao, multipla, texto.
+function RespostaExtraValor({ tipo, valor }) {
+    if (tipo === 'escala_1_5') {
+        const n = parseInt(valor, 10);
+        const cor = n <= 2 ? 'text-rose-400'
+                  : n === 3 ? 'text-yellow-400'
+                  : 'text-emerald-400';
+        return <span className={cn('text-lg font-bold', cor)}>{n}/5</span>;
+    }
+    if (tipo === 'sim_nao') {
+        return (
+            <span className={cn(
+                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border',
+                valor === 'sim'
+                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
+                    : 'bg-rose-500/15 text-rose-400 border-rose-500/25'
+            )}>
+                {valor === 'sim' ? '✓ Sim' : '✗ Não'}
+            </span>
+        );
+    }
+    if (tipo === 'multipla') {
+        return (
+            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-white/[0.06] border border-white/[0.08] text-white/80">
+                {valor}
+            </span>
+        );
+    }
+    // tipo === 'texto' (ou fallback defensivo)
+    return (
+        <p className="text-sm text-white/80 whitespace-pre-wrap break-words">
+            {valor || <span className="text-white/30 italic">Não informado</span>}
+        </p>
+    );
+}
+
 export default function NpsIndex({
     surveys,
     companies,
@@ -88,6 +152,8 @@ export default function NpsIndex({
     const [linkDialog, setLinkDialog] = useState(false);
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
+    // Phase 33 Plan 04 — modal "Abrir" com a resposta completa do cliente.
+    const [modalSurvey, setModalSurvey] = useState(null);
 
     const { data, setData, post, processing, reset, errors } = useForm({ company_id: '' });
 
@@ -261,6 +327,17 @@ export default function NpsIndex({
                                                     <LinkIcon className="h-4 w-4" />
                                                 </Button>
                                             )}
+                                            {/* Phase 33 Plan 04 — abre modal com todas as respostas. */}
+                                            {s.status === 'completed' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setModalSurvey(s)}
+                                                    className="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-white/[0.06] text-white/60 hover:text-white"
+                                                    title="Ver respostas"
+                                                >
+                                                    <Eye className="h-4 w-4" />
+                                                </button>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}
@@ -347,6 +424,70 @@ export default function NpsIndex({
                     </div>
                     <DialogFooter>
                         <Button onClick={() => setLinkDialog(false)}>Fechar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ─── Dialog: modal "Abrir" — todas as respostas da survey ─────── */}
+            {/* Phase 33 Plan 04 — header (empresa + respondente + data) +    */}
+            {/* bloco Notas (3 cards 1-5) + Comentário + Respostas extras.     */}
+            <Dialog open={!!modalSurvey} onOpenChange={(o) => !o && setModalSurvey(null)}>
+                <DialogContent className="max-w-2xl bg-ecf-card border border-white/[0.08]">
+                    <DialogHeader>
+                        <DialogTitle className="text-white">
+                            {modalSurvey?.company_name ?? '—'} — Resposta NPS
+                        </DialogTitle>
+                        <p className="text-xs text-white/50">
+                            {modalSurvey?.respondent || 'Respondente não informado'}
+                            {modalSurvey?.completed_at ? ` · ${modalSurvey.completed_at}` : ''}
+                        </p>
+                    </DialogHeader>
+
+                    {modalSurvey && (
+                        <div className="space-y-5">
+                            {/* Bloco notas — 3 dimensões 1-5 */}
+                            <div>
+                                <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Notas</h3>
+                                <div className="grid grid-cols-3 gap-3">
+                                    <NotaCard label="Estrategista" valor={modalSurvey.score_estrategista} />
+                                    <NotaCard label="Analista"     valor={modalSurvey.score_analista} />
+                                    <NotaCard label="Empresa"      valor={modalSurvey.score_empresa} />
+                                </div>
+                            </div>
+
+                            {/* Bloco comentario livre */}
+                            <div>
+                                <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Comentário</h3>
+                                <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-sm text-white/80 whitespace-pre-wrap break-words">
+                                    {modalSurvey.comment || <span className="text-white/30 italic">Não informado</span>}
+                                </div>
+                            </div>
+
+                            {/* Bloco respostas extras (so renderiza se houver) */}
+                            {modalSurvey.respostas_customizadas?.length > 0 && (
+                                <div>
+                                    <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Respostas extras</h3>
+                                    <div className="space-y-3">
+                                        {modalSurvey.respostas_customizadas.map((r, idx) => (
+                                            <div key={r.id ?? idx} className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
+                                                <p className="text-xs text-white/60 mb-1.5">{r.pergunta_texto}</p>
+                                                <RespostaExtraValor tipo={r.tipo} valor={r.valor} />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <button
+                            type="button"
+                            onClick={() => setModalSurvey(null)}
+                            className="px-4 py-2 rounded-md bg-white/[0.08] hover:bg-white/[0.12] text-white text-sm"
+                        >
+                            Fechar
+                        </button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
