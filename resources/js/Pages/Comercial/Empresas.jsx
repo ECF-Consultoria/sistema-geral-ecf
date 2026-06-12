@@ -1,8 +1,23 @@
 import { useState } from 'react';
 import { Head, useForm, usePage, router } from '@inertiajs/react';
 import { AlertTriangle, Briefcase, Building2, Pencil, Plus, PlusCircle, PowerOff, Search, Trash2, X } from 'lucide-react';
+import { IMaskInput } from 'react-imask';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
+
+// Phase 34 D-09 — lista canonica de marketplaces extras (espelha Rule::in no backend).
+// Espelha a constante em Companies/Index.jsx e Comercial/NovaEmpresa.jsx (Plan 34-02).
+const MARKETPLACES_EXTRAS = [
+    { value: 'shopee',  label: 'Shopee'  },
+    { value: 'amazon',  label: 'Amazon'  },
+    { value: 'magalu',  label: 'Magalu'  },
+    { value: 'temu',    label: 'Temu'    },
+    { value: 'tiktok',  label: 'TikTok'  },
+];
+
+// Phase 34 Plan 34-03 — estilo padrao dos inputs do form de edicao (reduz duplicacao
+// e mantem consistencia com os campos pre-existentes).
+const inputBaseCls = 'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors';
 
 const fmtDate = (iso) => {
     if (!iso) return '-';
@@ -93,7 +108,9 @@ function ContratosSection({ company, onAdicionar, onEditar, onDesativar }) {
 function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato, vinculaveis = [], filhaIdsAtuais = [] }) {
     const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
     const [excluindo, setExcluindo] = useState(false);
-    const { data, setData, put, processing, errors } = useForm({
+    // Phase 34 Plan 34-03 — useForm com 6 campos novos do close (paridade com Companies/Index admin + NovaEmpresa wizard).
+    // vende_ml: bool puro do backend (true/false/null) -> string '' / 'true' / 'false' no UI (convertido no submit via transform).
+    const form = useForm({
         name: company.name,
         cnpj: company.cnpj ?? '',
         notes: company.notes ?? '',
@@ -103,7 +120,29 @@ function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContr
         telefone: company.telefone ?? '',
         // Vínculo de grupo gerenciado pela principal: ids das empresas vinculadas.
         filha_ids: filhaIdsAtuais,
+        // Phase 34 Plan 34-03 — info do close comercial
+        nicho: company.nicho ?? '',
+        dor: company.dor ?? '',
+        vende_ml: company.vende_ml === true ? 'true' : company.vende_ml === false ? 'false' : '',
+        faturamento_mensal: company.faturamento_mensal != null ? String(company.faturamento_mensal) : '',
+        marketplaces_extras: Array.isArray(company.marketplaces_extras) ? [...company.marketplaces_extras] : [],
+        email_colaborador: company.email_colaborador ?? '',
     });
+    const { data, setData, processing, errors } = form;
+    // Phase 34 Plan 34-03 — transform converte vende_ml string -> bool/null e faturamento_mensal '' -> null no submit.
+    form.transform((d) => ({
+        ...d,
+        vende_ml: d.vende_ml === 'true' ? true : d.vende_ml === 'false' ? false : null,
+        faturamento_mensal: d.faturamento_mensal === '' || d.faturamento_mensal == null ? null : d.faturamento_mensal,
+    }));
+    const put = form.put;
+
+    // Phase 34 Plan 34-03 — toggle helper pros checkboxes de marketplaces_extras
+    function toggleMpExtra(value) {
+        setData('marketplaces_extras', data.marketplaces_extras.includes(value)
+            ? data.marketplaces_extras.filter(v => v !== value)
+            : [...data.marketplaces_extras, value]);
+    }
 
     function handleSubmit(e) {
         e.preventDefault();
@@ -151,12 +190,13 @@ function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContr
 
             <div className="space-y-1.5">
                 <label className="block text-xs text-white/60 font-medium">CNPJ <span className="text-white/30 text-[11px] font-normal">(opcional)</span></label>
-                <input
-                    type="text"
+                {/* Phase 34 D-08 — mascara CNPJ com IMaskInput (so fricao UX no front; backend nao valida formato) */}
+                <IMaskInput
+                    mask="00.000.000/0000-00"
                     value={data.cnpj}
-                    onChange={e => setData('cnpj', e.target.value)}
+                    onAccept={(value) => setData('cnpj', value)}
                     placeholder="00.000.000/0001-00"
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors', errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')}
+                    className={cn(inputBaseCls, errors.cnpj ? 'border-red-500/50' : 'border-white/[0.08]')}
                 />
                 {errors.cnpj && <p className="text-red-400 text-xs">{errors.cnpj}</p>}
             </div>
@@ -190,19 +230,127 @@ function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContr
                 <p className="text-white/30 text-[11px]">Destinatário do email mensal de NPS. Deixe em branco para pausar o envio.</p>
             </div>
 
-            {/* Quick 260611-eml — Telefone do contato comercial */}
+            {/* Quick 260611-eml — Telefone do contato comercial. Phase 34 D-08 — mascara dinamica (8 ou 9 digitos) */}
             <div className="space-y-1.5">
                 <label className="block text-xs text-white/60 font-medium">
                     Telefone <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
                 </label>
-                <input
-                    type="tel"
+                <IMaskInput
+                    mask={[
+                        { mask: '(00) 0000-0000' },
+                        { mask: '(00) 00000-0000' },
+                    ]}
                     value={data.telefone}
-                    onChange={e => setData('telefone', e.target.value)}
+                    onAccept={(value) => setData('telefone', value)}
                     placeholder="(11) 99999-9999"
-                    className={cn('w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors', errors.telefone ? 'border-red-500/50' : 'border-white/[0.08]')}
+                    className={cn(inputBaseCls, errors.telefone ? 'border-red-500/50' : 'border-white/[0.08]')}
                 />
                 {errors.telefone && <p className="text-red-400 text-xs">{errors.telefone}</p>}
+            </div>
+
+            {/* ─── Phase 34 Plan 34-03 — Informacoes do close ───────────────
+                6 campos novos coletados no fechamento comercial. Mesma estrutura
+                do bloco em Companies/Index admin (D-07: email_colaborador separado de
+                email_cliente). Posicionado logo abaixo dos contatos. */}
+            <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-4">
+                <div className="flex items-center gap-2">
+                    <Briefcase size={14} className="text-ecf-yellow/70" />
+                    <h3 className="text-white/85 text-sm font-semibold">Informacoes do close</h3>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">
+                            Nicho <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                        </label>
+                        <input
+                            type="text"
+                            value={data.nicho}
+                            onChange={e => setData('nicho', e.target.value)}
+                            placeholder="Ex: Moda feminina, Auto pecas"
+                            className={cn(inputBaseCls, errors.nicho ? 'border-red-500/50' : 'border-white/[0.08]')}
+                        />
+                        {errors.nicho && <p className="text-red-400 text-xs">{errors.nicho}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">
+                            Faturamento mensal (R$) <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                        </label>
+                        <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={data.faturamento_mensal}
+                            onChange={e => setData('faturamento_mensal', e.target.value)}
+                            placeholder="50000.00"
+                            className={cn(inputBaseCls, errors.faturamento_mensal ? 'border-red-500/50' : 'border-white/[0.08]')}
+                        />
+                        {errors.faturamento_mensal && <p className="text-red-400 text-xs">{errors.faturamento_mensal}</p>}
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">
+                            Ja vende no Mercado Livre?
+                        </label>
+                        <select
+                            value={data.vende_ml}
+                            onChange={e => setData('vende_ml', e.target.value)}
+                            className={cn(inputBaseCls, 'cursor-pointer', errors.vende_ml ? 'border-red-500/50' : 'border-white/[0.08]')}
+                        >
+                            <option value="" className="bg-[#0f1116]">Nao sei</option>
+                            <option value="true" className="bg-[#0f1116]">Sim</option>
+                            <option value="false" className="bg-[#0f1116]">Nao</option>
+                        </select>
+                        {errors.vende_ml && <p className="text-red-400 text-xs">{errors.vende_ml}</p>}
+                    </div>
+
+                    {/* Phase 34 D-07 — email_colaborador SEPARADO de email_cliente acima */}
+                    <div className="space-y-1.5">
+                        <label className="block text-xs text-white/60 font-medium">
+                            Email colaborador ECF <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                        </label>
+                        <input
+                            type="email"
+                            value={data.email_colaborador}
+                            onChange={e => setData('email_colaborador', e.target.value)}
+                            placeholder="colaborador@ecfconsultoria.com.br"
+                            className={cn(inputBaseCls, errors.email_colaborador ? 'border-red-500/50' : 'border-white/[0.08]')}
+                        />
+                        {errors.email_colaborador && <p className="text-red-400 text-xs">{errors.email_colaborador}</p>}
+                        <p className="text-white/30 text-[11px]">Email que a ECF criou para acesso colaborador no ML.</p>
+                    </div>
+                </div>
+
+                <div className="space-y-1.5">
+                    <label className="block text-xs text-white/60 font-medium">Marketplaces extras <span className="text-white/30 text-[11px] font-normal">(opcional)</span></label>
+                    <div className="flex flex-wrap gap-2">
+                        {MARKETPLACES_EXTRAS.map(mp => (
+                            <label key={mp.value} className="inline-flex items-center gap-2 cursor-pointer select-none rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 hover:bg-white/[0.06]">
+                                <input
+                                    type="checkbox"
+                                    checked={data.marketplaces_extras.includes(mp.value)}
+                                    onChange={() => toggleMpExtra(mp.value)}
+                                    className="h-4 w-4 accent-ecf-yellow"
+                                />
+                                <span className="text-white/80 text-sm">{mp.label}</span>
+                            </label>
+                        ))}
+                    </div>
+                    {errors.marketplaces_extras && <p className="text-red-400 text-xs">{errors.marketplaces_extras}</p>}
+                </div>
+
+                <div className="space-y-1.5">
+                    <label className="block text-xs text-white/60 font-medium">Dor / contexto <span className="text-white/30 text-[11px] font-normal">(opcional)</span></label>
+                    <textarea
+                        value={data.dor}
+                        onChange={e => setData('dor', e.target.value)}
+                        rows={3}
+                        placeholder="Dor ou contexto do cliente capturado no fechamento."
+                        className={cn(inputBaseCls, 'resize-none', errors.dor ? 'border-red-500/50' : 'border-white/[0.08]')}
+                    />
+                    {errors.dor && <p className="text-red-400 text-xs">{errors.dor}</p>}
+                </div>
             </div>
 
             {/* Vínculo de grupo gerenciado PELA empresa principal: marque as
