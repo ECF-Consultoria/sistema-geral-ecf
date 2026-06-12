@@ -12,6 +12,7 @@ use App\Services\EcfDriveService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class CompanyController extends Controller
@@ -323,6 +324,13 @@ class CompanyController extends Controller
                 // Phase 31 D-04 + Quick 260611-eml — contato do cliente
                 'email_cliente'    => $company->email_cliente,
                 'telefone'         => $company->telefone,
+                // Phase 34 Plan 34-03 — info do close comercial (alimenta secao "Informacoes do Close" no Show.jsx).
+                'nicho'               => $company->nicho,
+                'dor'                 => $company->dor,
+                'vende_ml'            => $company->vende_ml,
+                'faturamento_mensal'  => $company->faturamento_mensal !== null ? (float) $company->faturamento_mensal : null,
+                'marketplaces_extras' => $company->marketplaces_extras ?? [],
+                'email_colaborador'   => $company->email_colaborador,
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
@@ -430,6 +438,17 @@ class CompanyController extends Controller
             'email_cliente'    => 'nullable|email|max:255',
             // Quick 260611-eml — contato comercial.
             'telefone'         => 'nullable|string|max:20',
+            // Phase 34 Plan 34-03 — info do close comercial (capturado no cadastro
+            // pelo Comercial; pode ser editada no modal admin de /companies).
+            'nicho'                  => 'nullable|string|max:255',
+            'dor'                    => 'nullable|string|max:5000',
+            'vende_ml'               => 'nullable|boolean',
+            'faturamento_mensal'     => 'nullable|numeric|min:0|max:99999999.99',
+            'marketplaces_extras'    => 'nullable|array',
+            'marketplaces_extras.*'  => [Rule::in(['shopee', 'amazon', 'magalu', 'temu', 'tiktok'])],
+            // Phase 34 D-07 — email criado pela ECF para acesso colaborador no ML
+            // (separado de email_cliente, que é o email do proprietário usado pelo NPS).
+            'email_colaborador'      => 'nullable|email|max:255',
             'active'           => 'boolean',
             'consultor_id'     => 'nullable|exists:users,id',
             'estrategista_id'        => 'nullable|exists:users,id',
