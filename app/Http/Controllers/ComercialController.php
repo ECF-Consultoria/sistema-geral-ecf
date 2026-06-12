@@ -185,6 +185,13 @@ class ComercialController extends Controller
             // Quick task 260611-eml — contato do cliente para NPS mensal + futuro contato comercial.
             'email_cliente'               => 'nullable|email|max:255',
             'telefone'                    => 'nullable|string|max:20',
+            // Wizard de cadastro (Polos) — handoff opcional. Só o gmail tem consumo
+            // hoje (passo "Acesso Colaborador" do Onboarding). Os demais são aceitos
+            // (não quebram o submit do wizard) mas ainda não exibidos nesta instância.
+            'nome_contato'                => 'nullable|string|max:255',
+            'gmail_colaborador'           => 'nullable|email|max:150',
+            'polo'                        => 'nullable|string|max:255',
+            'grupo_whatsapp'              => 'nullable|boolean',
             'servicos'                    => 'required|array|min:1',
             'servicos.*.servico_id'       => [
                 'required',
@@ -260,7 +267,7 @@ class ComercialController extends Controller
                         'projeto'    => 'POLOS',
                         'company_id' => $company->id,
                     ]);
-                    $this->criarImplementacaoPolo($mlbEmp);
+                    $this->criarImplementacaoPolo($mlbEmp, $validated);
                 } elseif ($tipo === 'assessoria') {
                     MlbEmpresa::create([
                         'nome'       => $company->name,
@@ -464,10 +471,11 @@ class ComercialController extends Controller
      * Lógica extraída de MlbImplementacaoController::criar() (linhas 192-207)
      * para reutilização no fluxo do Comercial sem duplicação de código (D-20).
      *
-     * @param MlbEmpresa $empresa Empresa POLO recém-criada.
+     * @param  MlbEmpresa  $empresa  Empresa POLO recém-criada.
+     * @param  array        $handoff  Campos do wizard (usa só gmail_colaborador aqui).
      * @return MlbImplementacao
      */
-    private function criarImplementacaoPolo(MlbEmpresa $empresa): MlbImplementacao
+    private function criarImplementacaoPolo(MlbEmpresa $empresa, array $handoff = []): MlbImplementacao
     {
         $dados = MlbImplementacao::dadosPadrao();
         $p     = MlbConfiguracao::implementacaoPadroes();
@@ -480,6 +488,13 @@ class ComercialController extends Controller
         }
         if (!empty($p['links_admin_extra'])) {
             $dados['links_admin']['programa_decola'] = $p['links_admin_extra']['programa_decola'] ?? '';
+        }
+
+        // Gmail capturado no cadastro (wizard Polos) alimenta o passo público
+        // "Acesso Colaborador" do Onboarding, que lê dados.links_admin.gmail_colaborador.
+        // Sobrescreve o padrão global da ECF quando informado por empresa.
+        if (!empty($handoff['gmail_colaborador'])) {
+            $dados['links_admin']['gmail_colaborador'] = $handoff['gmail_colaborador'];
         }
 
         return MlbImplementacao::create([
