@@ -30,6 +30,7 @@
 // E notifica líderes do setor de destino.
 import { useState } from 'react';
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { IMaskInput } from 'react-imask';
 import {
     ArrowLeft, ArrowRight, Building2, Check, CheckCircle2, FileText,
     Mail, MapPin, MessageCircle, Phone, PlusCircle, ShoppingBag,
@@ -43,6 +44,28 @@ const POLO_REGIOES = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São 
 // Campos que pertencem ao passo 1. Usado para, em caso de erro do servidor
 // (ex: nome duplicado, cnpj/email inválidos), voltar ao passo 1 e exibir o erro.
 const STEP1_FIELDS = ['nome', 'cnpj', 'email_cliente', 'telefone', 'notes'];
+
+// ─── Phase 34 Plan 02 — campos do close comercial ───────────────────────────
+// Marketplaces extras (além do ML) — D-09 fixa as 5 opções relevantes hoje
+// para evitar texto livre que vira poluição de dados (Shein/Carrefour fora
+// porque presença mínima na carteira). Backend valida o slug via Rule::in.
+const MARKETPLACES_EXTRAS = [
+    { value: 'shopee', label: 'Shopee' },
+    { value: 'amazon', label: 'Amazon' },
+    { value: 'magalu', label: 'Magalu' },
+    { value: 'temu',   label: 'Temu' },
+    { value: 'tiktok', label: 'TikTok Shop' },
+];
+
+// vende_ml é tinyint nullable (null = "não sei", 1 = sim, 0 = não). No form
+// trabalhamos com strings ('', 'true', 'false') e convertemos no submit via
+// transform() do useForm — useForm não aceita null como valor inicial coerente
+// para selects controlados.
+const VENDE_ML_OPCOES = [
+    { value: '',      label: 'Não sei' },
+    { value: 'true',  label: 'Sim' },
+    { value: 'false', label: 'Não' },
+];
 
 const STEPS = [
     { n: 1, titulo: 'Dados da empresa',     desc: 'Identificação e contato do cliente.' },
@@ -58,7 +81,7 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
     // Passo atual do wizard (1 = dados da empresa, 2 = serviços + onboarding).
     const [step, setStep] = useState(1);
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const { data, setData, post, processing, errors, reset, transform } = useForm({
         nome:              '',
         cnpj:              '',
         notes:             '',
@@ -66,12 +89,29 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
         email_cliente:     '',
         telefone:          '',
         servicos:          [], // array de { servico_id, valor_contratado }
+        // Phase 34 Plan 02 — campos do "close" comercial (todos opcionais).
+        // Capturados pelo Comercial no fechamento e usados pelo estrategista/analista
+        // depois. vende_ml usa 3 estados '/true/false → null/true/false no submit.
+        nicho:               '',
+        dor:                 '',
+        vende_ml:            '',
+        faturamento_mensal:  '',
+        marketplaces_extras: [],
+        email_colaborador:   '',
         // Campos de handoff Polos (enviados sempre; backend usa só quando tipo=Polos)
         polo:              '',
         nome_contato:      '',
         gmail_colaborador: '',
         grupo_whatsapp:    false,
     });
+
+    // Phase 34 Plan 02 — converte vende_ml string ('' / 'true' / 'false') para
+    // null/true/false antes de mandar no POST. faturamento_mensal vai como string
+    // do <input type=number> e o backend faz cast via validation `numeric`.
+    transform((d) => ({
+        ...d,
+        vende_ml: d.vende_ml === '' ? null : d.vende_ml === 'true',
+    }));
 
     // ─── Helpers de manipulação do array servicos[] ──────────────────────────
 
@@ -93,6 +133,15 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
         setData('servicos', data.servicos.map(s =>
             s.servico_id === servicoId ? { ...s, valor_contratado: valor } : s
         ));
+    }
+
+    // Phase 34 Plan 02 — toggle de checkbox para o array marketplaces_extras.
+    function handleToggleMarketplace(val) {
+        const cur = data.marketplaces_extras || [];
+        setData(
+            'marketplaces_extras',
+            cur.includes(val) ? cur.filter(x => x !== val) : [...cur, val],
+        );
     }
 
     // Detecta se o serviço Polos está entre os selecionados — controla visibilidade
@@ -202,10 +251,11 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
                                     </Field>
 
                                     <Field label="CNPJ" hint="opcional" error={errors.cnpj} icon={FileText}>
-                                        <input
-                                            type="text"
+                                        {/* Phase 34 Plan 02 — máscara CNPJ via react-imask (D-08). */}
+                                        <IMaskInput
+                                            mask="00.000.000/0000-00"
                                             value={data.cnpj}
-                                            onChange={e => setData('cnpj', e.target.value)}
+                                            onAccept={(v) => setData('cnpj', v)}
                                             placeholder="00.000.000/0001-00"
                                             className={inputCls(errors.cnpj, true)}
                                         />
@@ -230,10 +280,15 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
                                         </Field>
 
                                         <Field label="Telefone" hint="opcional" error={errors.telefone} icon={Phone}>
-                                            <input
-                                                type="tel"
+                                            {/* Phase 34 Plan 02 — máscara dinâmica 10/11 dígitos (D-08).
+                                                react-imask alterna entre os dois formatos conforme o usuário digita. */}
+                                            <IMaskInput
+                                                mask={[
+                                                    { mask: '(00) 0000-0000' },
+                                                    { mask: '(00) 00000-0000' },
+                                                ]}
                                                 value={data.telefone}
-                                                onChange={e => setData('telefone', e.target.value)}
+                                                onAccept={(v) => setData('telefone', v)}
                                                 placeholder="(11) 99999-9999"
                                                 className={inputCls(errors.telefone, true)}
                                             />
@@ -354,6 +409,120 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* ─── Phase 34 Plan 02 — Informações do close (opcional) ─── */}
+                                    {/* Bloco capturado pelo Comercial NO fechamento do contrato. Todos opcionais —
+                                        servem para que estrategista/analista entendam a empresa sem reentrevistar
+                                        o cliente. Mantido como bloco neutro (sem destaque amarelo) pra deixar claro
+                                        que NÃO é onboarding (diferente do bloco Polos acima). */}
+                                    <div className="space-y-4 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
+                                        <div>
+                                            <h3 className="text-white font-semibold text-sm flex items-center gap-2">
+                                                Informações do close
+                                                <span className="text-white/40 text-[11px] font-normal">(opcional)</span>
+                                            </h3>
+                                            <p className="text-white/45 text-[11px] mt-0.5 leading-snug">
+                                                Capturadas pelo Comercial no fechamento — ajudam o estrategista/analista a entender a empresa.
+                                            </p>
+                                        </div>
+
+                                        <Field label="Nicho" error={errors.nicho}>
+                                            <input
+                                                type="text"
+                                                value={data.nicho}
+                                                onChange={e => setData('nicho', e.target.value)}
+                                                placeholder="Ex: Moda feminina, Auto peças"
+                                                className={inputCls(errors.nicho, false)}
+                                            />
+                                        </Field>
+
+                                        <Field label="Dor principal" error={errors.dor}>
+                                            <textarea
+                                                value={data.dor}
+                                                onChange={e => setData('dor', e.target.value)}
+                                                rows={3}
+                                                placeholder="Principal dificuldade do cliente — capturada no close"
+                                                className={cn(inputCls(errors.dor, false), 'resize-y leading-relaxed')}
+                                            />
+                                        </Field>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <Field label="Vende no Mercado Livre?" error={errors.vende_ml}>
+                                                <select
+                                                    value={data.vende_ml}
+                                                    onChange={e => setData('vende_ml', e.target.value)}
+                                                    className={cn(inputCls(errors.vende_ml, false), 'cursor-pointer')}
+                                                >
+                                                    {VENDE_ML_OPCOES.map(o => (
+                                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                                    ))}
+                                                </select>
+                                            </Field>
+
+                                            <Field label="Faturamento mensal (R$)" error={errors.faturamento_mensal}>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={data.faturamento_mensal}
+                                                    onChange={e => setData('faturamento_mensal', e.target.value)}
+                                                    placeholder="0,00"
+                                                    className={inputCls(errors.faturamento_mensal, false)}
+                                                />
+                                            </Field>
+                                        </div>
+
+                                        {/* Marketplaces extras — 5 checkboxes em grid responsivo (D-09 fixa as opções). */}
+                                        <div className="space-y-2">
+                                            <label className="block text-xs text-white/60 font-medium">
+                                                Vende em outras marketplaces?
+                                            </label>
+                                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                                {MARKETPLACES_EXTRAS.map(mp => {
+                                                    const selecionado = data.marketplaces_extras.includes(mp.value);
+                                                    return (
+                                                        <label
+                                                            key={mp.value}
+                                                            className={cn(
+                                                                'flex items-center gap-2 cursor-pointer rounded-lg border px-3 py-2 text-sm transition-colors',
+                                                                selecionado
+                                                                    ? 'border-ecf-yellow/50 bg-ecf-yellow/[0.08] text-white'
+                                                                    : 'border-white/[0.08] bg-white/[0.03] text-white/70 hover:bg-white/[0.05]',
+                                                            )}
+                                                        >
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={selecionado}
+                                                                onChange={() => handleToggleMarketplace(mp.value)}
+                                                                className="h-3.5 w-3.5 accent-ecf-yellow shrink-0"
+                                                            />
+                                                            <span>{mp.label}</span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
+                                            {errors.marketplaces_extras && (
+                                                <p className="text-red-400 text-xs">{errors.marketplaces_extras}</p>
+                                            )}
+                                        </div>
+
+                                        {/* Email colaborador ECF — DIFERENTE de email_cliente (NPS).
+                                            Este é o gmail/google workspace criado pela ECF para acessar o ML do cliente. */}
+                                        <Field
+                                            label="Email colaborador ECF"
+                                            error={errors.email_colaborador}
+                                            icon={Mail}
+                                            note="Conta criada pela ECF para acesso ao ML do cliente. Diferente do email do cliente (NPS)."
+                                        >
+                                            <input
+                                                type="email"
+                                                value={data.email_colaborador}
+                                                onChange={e => setData('email_colaborador', e.target.value)}
+                                                placeholder="colab@ecfconsultoria.com.br"
+                                                className={inputCls(errors.email_colaborador, true)}
+                                            />
+                                        </Field>
+                                    </div>
 
                                     <p className="text-white/30 text-[11px] leading-snug flex items-start gap-1.5">
                                         <CheckCircle2 size={13} className="text-white/25 mt-px shrink-0" />
