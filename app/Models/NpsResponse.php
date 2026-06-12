@@ -34,4 +34,13 @@ class NpsResponse extends Model
     {
         return $this->belongsTo(NpsSurvey::class);
     }
+
+    /**
+     * Respostas das perguntas customizadas (Phase 33). 1 NpsResponse pode ter N
+     * respostas extras, conforme as perguntas ativas no momento da submissao.
+     */
+    public function respostasCustomizadas()
+    {
+        return $this->hasMany(NpsRespostaCustomizada::class, 'response_id');
+    }
 }
