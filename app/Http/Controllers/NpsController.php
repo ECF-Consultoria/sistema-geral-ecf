@@ -5,12 +5,16 @@ namespace App\Http\Controllers;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\NpsEmailEnvio;
+use App\Models\NpsPerguntaCustomizada;
+use App\Models\NpsRespostaCustomizada;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 /**
@@ -45,7 +49,9 @@ class NpsController extends Controller
         // ─── Audiência: surveys do mês selecionado ───────────────────────────
         // Surveys auto-geradas usam month_reference (semântica D-specifics).
         // Surveys manuais (month_reference=null) caem no mês via created_at.
-        $baseQuery = NpsSurvey::with(['company', 'response', 'generatedBy'])
+        // Eager load `response.respostasCustomizadas` evita N+1 quando o modal
+        // "Abrir" do Plan 33-04 expande as respostas extras de cada survey.
+        $baseQuery = NpsSurvey::with(['company', 'response.respostasCustomizadas', 'generatedBy'])
             ->where(function ($q) use ($mesInicio, $mesFim) {
                 $q->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
                   ->orWhere(function ($qq) use ($mesInicio, $mesFim) {
@@ -77,6 +83,18 @@ class NpsController extends Controller
             'respondent'         => $s->response?->respondent_name,
             'comment'            => $s->response?->comment,
             'link'               => route('nps.respond', $s->token),
+
+            // Phase 33 Plan 33-04 — payload do modal "Abrir". Usa o snapshot do
+            // texto/tipo (preservado mesmo se a pergunta foi hard-deleted depois).
+            'respostas_customizadas' => $s->response
+                ? $s->response->respostasCustomizadas->map(fn($r) => [
+                    'id'             => $r->id,
+                    'pergunta_id'    => $r->pergunta_id,
+                    'pergunta_texto' => $r->pergunta_texto_snapshot,
+                    'tipo'           => $r->tipo_snapshot,
+                    'valor'          => $r->valor,
+                ])->values()
+                : [],
         ]);
 
         // ─── 3 cards de média (somente respostas do mês filtrado) ────────────
@@ -257,6 +275,15 @@ class NpsController extends Controller
             'perg_nome_label'             => NpsTextRenderer::render($textosBrutos['perg_nome_label'], $varsPagina),
         ];
 
+        // ─── Phase 33 D-07 — perguntas customizadas ativas ───────────────────
+        // Carrega as perguntas extras ativas para o front renderizar APOS as 3
+        // perguntas fixas e ANTES do comentario (ordem D-03). Ordenacao por
+        // `ordem` ASC com fallback em `id` ASC (criadas mais cedo primeiro).
+        $perguntasExtras = NpsPerguntaCustomizada::where('ativa', true)
+            ->orderBy('ordem')
+            ->orderBy('id')
+            ->get(['id', 'texto', 'tipo', 'opcoes', 'obrigatorio']);
+
         return Inertia::render('Nps/Respond', [
             'survey' => [
                 'token'              => $survey->token,
@@ -266,6 +293,7 @@ class NpsController extends Controller
                 'tem_analista'       => $temAnalista,
                 'textos'             => $textosRender,
             ],
+            'perguntas_extras' => $perguntasExtras,
         ]);
     }
 
@@ -286,17 +314,84 @@ class NpsController extends Controller
             return response()->json(['error' => 'Pesquisa expirada.'], 422);
         }
 
-        $data = $request->validate([
+        // ─── Phase 33 D-07 — validacao dinamica de perguntas customizadas ────
+        // Carrega TODAS as perguntas ativas no momento da submissao para montar
+        // as rules dinamicamente conforme tipo (D-02). Perguntas inativas nao
+        // sao validadas (mesmo que enviadas) — apenas as ativas atuais contam.
+        $perguntas = NpsPerguntaCustomizada::where('ativa', true)->get()->keyBy('id');
+
+        $rules = [
             'respondent_name'    => 'nullable|string|max:255',
             'score_estrategista' => 'required|integer|min:1|max:5',
             'score_analista'     => 'nullable|integer|min:1|max:5',
             'score_empresa'      => 'required|integer|min:1|max:5',
             'comment'            => 'nullable|string|max:2000',
-        ]);
+            'respostas_extras'   => 'nullable|array',
+        ];
 
-        NpsResponse::create([...$data, 'survey_id' => $survey->id]);
+        foreach ($perguntas as $p) {
+            $base = "respostas_extras.{$p->id}";
+            $req  = $p->obrigatorio ? 'required' : 'nullable';
 
-        $survey->update(['status' => 'completed', 'completed_at' => now()]);
+            switch ($p->tipo) {
+                case 'escala_1_5':
+                    $rules[$base] = "{$req}|integer|min:1|max:5";
+                    break;
+
+                case 'texto':
+                    $rules[$base] = "{$req}|string|max:2000";
+                    break;
+
+                case 'sim_nao':
+                    $rules[$base] = [$req, Rule::in(['sim', 'nao'])];
+                    break;
+
+                case 'multipla':
+                    $rules[$base] = [$req, Rule::in($p->opcoes ?? [])];
+                    break;
+            }
+        }
+
+        $validated = $request->validate($rules);
+
+        // Atomicidade: NpsResponse + N respostas customizadas dentro da mesma
+        // transacao. Se qualquer insert falhar, a survey nao e marcada completa.
+        DB::transaction(function () use ($survey, $validated, $perguntas) {
+            $response = NpsResponse::create([
+                'survey_id'          => $survey->id,
+                'respondent_name'    => $validated['respondent_name'] ?? null,
+                'score_estrategista' => $validated['score_estrategista'],
+                'score_analista'     => $validated['score_analista'] ?? null,
+                'score_empresa'      => $validated['score_empresa'],
+                'comment'            => $validated['comment'] ?? null,
+            ]);
+
+            // Persiste 1 NpsRespostaCustomizada por pergunta respondida, com
+            // snapshot do texto/tipo da pergunta no momento da resposta.
+            foreach (($validated['respostas_extras'] ?? []) as $perguntaId => $valor) {
+                // Pula respostas vazias de perguntas opcionais.
+                if ($valor === null || $valor === '') {
+                    continue;
+                }
+
+                // Defensivo: ignora ids que nao casam com perguntas ativas
+                // (poderiam vir de cliente desatualizado / tampering).
+                $p = $perguntas[$perguntaId] ?? null;
+                if (!$p) {
+                    continue;
+                }
+
+                NpsRespostaCustomizada::create([
+                    'response_id'             => $response->id,
+                    'pergunta_id'             => $p->id,
+                    'pergunta_texto_snapshot' => $p->texto,
+                    'tipo_snapshot'           => $p->tipo,
+                    'valor'                   => (string) $valor,
+                ]);
+            }
+
+            $survey->update(['status' => 'completed', 'completed_at' => now()]);
+        });
 
         return Inertia::render('Nps/ThankYou');
     }
@@ -330,10 +425,19 @@ class NpsController extends Controller
             ['chave' => '{bloco_analista}',    'descricao' => 'Bloco condicional " e o analista é **Igor**" no corpo do email (usar apenas em email_corpo); vira string vazia em mentoria pura.'],
         ];
 
+        // ─── Phase 33 Plan 02 — payload da 3a tab "Perguntas extras" ─────────
+        // Carrega TODAS as perguntas (ativas + inativas) ordenadas. A UI admin
+        // decide como agrupar; aqui apenas entregamos a lista canonica para o
+        // form de edicao/listagem/reordenacao.
+        $perguntasExtras = NpsPerguntaCustomizada::orderBy('ordem')
+            ->orderBy('id')
+            ->get();
+
         return Inertia::render('Nps/Configuracao', [
             'textos'           => NpsTextRenderer::getTextos(),
             'defaults'         => NpsTextRenderer::defaults(),
             'placeholders_doc' => $placeholdersDoc,
+            'perguntas_extras' => $perguntasExtras,
         ]);
     }
 
@@ -500,5 +604,146 @@ class NpsController extends Controller
             'meses_disponiveis' => $mesesDisponiveis,
             'total_mes'         => $totalMes,
         ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Perguntas customizadas (Phase 33, Plan 33-01) — admin only via middleware
+    // role:admin nas rotas. Toda a UI vive na 3a tab de /nps/configuracao
+    // ("Perguntas extras") implementada no Plan 33-02.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * POST /nps/configuracao/perguntas — cria nova pergunta extra (D-06).
+     *
+     * Ordem inicial = max(ordem) + 1 → pergunta nova vai pro final da lista
+     * automaticamente. Admin pode reordenar depois via moverPerguntaExtra().
+     *
+     * `opcoes` so tem semantica quando tipo=multipla; em outros tipos for_a-se null
+     * mesmo se o cliente enviar algo (defesa contra payload sujo).
+     */
+    public function criarPerguntaExtra(Request $request)
+    {
+        $validated = $request->validate([
+            'texto'       => 'required|string|max:500',
+            'tipo'        => ['required', Rule::in(NpsPerguntaCustomizada::TIPOS)],
+            'opcoes'      => ['nullable', 'array', 'required_if:tipo,multipla', 'min:2'],
+            'opcoes.*'    => 'string|max:255',
+            'obrigatorio' => 'boolean',
+            'ativa'       => 'boolean',
+        ]);
+
+        // Forca opcoes=null quando tipo nao e multipla (defensivo).
+        $validated['opcoes'] = $validated['tipo'] === 'multipla'
+            ? ($validated['opcoes'] ?? null)
+            : null;
+
+        // Posiciona a nova pergunta no final da lista — admin reordena depois.
+        $validated['ordem'] = (NpsPerguntaCustomizada::max('ordem') ?? 0) + 1;
+
+        NpsPerguntaCustomizada::create($validated);
+
+        return back()->with('success', 'Pergunta extra criada.');
+    }
+
+    /**
+     * PUT /nps/configuracao/perguntas/{pergunta} — edita pergunta existente.
+     *
+     * Todos os campos sao `sometimes` — admin pode mandar parcial. Se mandou
+     * `tipo` mas o tipo novo nao e `multipla`, zera opcoes; se tipo continua
+     * `multipla` mas nao mandou opcoes, preserva as atuais.
+     */
+    public function atualizarPerguntaExtra(Request $request, NpsPerguntaCustomizada $pergunta)
+    {
+        $validated = $request->validate([
+            'texto'       => 'sometimes|required|string|max:500',
+            'tipo'        => ['sometimes', 'required', Rule::in(NpsPerguntaCustomizada::TIPOS)],
+            'opcoes'      => ['sometimes', 'nullable', 'array', 'min:2'],
+            'opcoes.*'    => 'string|max:255',
+            'obrigatorio' => 'sometimes|boolean',
+            'ativa'       => 'sometimes|boolean',
+        ]);
+
+        // Calcula tipo efetivo (novo ou atual) para decidir o que fazer com opcoes.
+        $tipoEfetivo = $validated['tipo'] ?? $pergunta->tipo;
+        if ($tipoEfetivo !== 'multipla') {
+            $validated['opcoes'] = null;
+        }
+
+        $pergunta->update($validated);
+
+        return back()->with('success', 'Pergunta atualizada.');
+    }
+
+    /**
+     * DELETE /nps/configuracao/perguntas/{pergunta} — exclui ou desativa.
+     *
+     * Comportamento padrao (D-06):
+     *  - Se a pergunta TEM respostas associadas e a query string `?force=1` NAO
+     *    foi enviada, faz SOFT delete (ativa=false) — preserva historico.
+     *  - Se `?force=1` OU a pergunta nao tem respostas, HARD delete. As respostas
+     *    historicas perdem o vinculo (FK set null), mas o snapshot do texto/tipo
+     *    sustenta o display no modal de detalhes.
+     */
+    public function excluirPerguntaExtra(Request $request, NpsPerguntaCustomizada $pergunta)
+    {
+        $temRespostas = NpsRespostaCustomizada::where('pergunta_id', $pergunta->id)->exists();
+
+        if ($temRespostas && !$request->boolean('force')) {
+            $pergunta->update(['ativa' => false]);
+
+            return back()->with(
+                'success',
+                'Pergunta desativada (tem respostas associadas — use ?force=1 para deletar definitivamente).'
+            );
+        }
+
+        $pergunta->delete();
+
+        return back()->with('success', 'Pergunta removida.');
+    }
+
+    /**
+     * POST /nps/configuracao/perguntas/{pergunta}/mover — troca ordem com vizinha.
+     *
+     * Estrategia: encontra a vizinha mais proxima na direcao desejada e SWAP de
+     * valores de `ordem`. Se ja e a primeira (up) ou ultima (down), no-op.
+     *
+     * Vantagens vs. "shift all rows": O(1) updates, sem race condition complexa
+     * em casos simples. Como nao temos concorrencia real (admin sozinho na UI),
+     * suficiente.
+     */
+    public function moverPerguntaExtra(Request $request, NpsPerguntaCustomizada $pergunta)
+    {
+        $direcao = $request->validate([
+            'direcao' => 'required|in:up,down',
+        ])['direcao'];
+
+        if ($direcao === 'up') {
+            // Vizinha = maior ordem que ainda e menor que a minha (ASC desc).
+            $vizinha = NpsPerguntaCustomizada::where('ordem', '<', $pergunta->ordem)
+                ->orderByDesc('ordem')
+                ->orderByDesc('id')
+                ->first();
+        } else {
+            // Vizinha = menor ordem que e maior que a minha.
+            $vizinha = NpsPerguntaCustomizada::where('ordem', '>', $pergunta->ordem)
+                ->orderBy('ordem')
+                ->orderBy('id')
+                ->first();
+        }
+
+        // No-op se ja esta no extremo (primeira/ultima da lista).
+        if (!$vizinha) {
+            return back();
+        }
+
+        // Swap atomico das ordens entre as duas perguntas.
+        DB::transaction(function () use ($pergunta, $vizinha) {
+            $ordemTmp = $pergunta->ordem;
+            $pergunta->update(['ordem' => $vizinha->ordem]);
+            $vizinha->update(['ordem' => $ordemTmp]);
+        });
+
+        return back();
     }
 }

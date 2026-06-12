@@ -96,6 +96,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     // Tem que ficar dentro deste grupo ANTES de /nps/{token} para nao colidir
     // com o parametro dinamico da rota publica de resposta.
     Route::get('/nps/emails-enviados', [NpsController::class, 'emailsEnviados'])->name('nps.emails-enviados.index');
+
+    // ─── Phase 33 Plan 33-01 — Perguntas customizadas (CRUD admin) ───────────
+    // Endpoints REST sob /nps/configuracao/perguntas. A UI vive na 3a tab da
+    // pagina /nps/configuracao (Plan 33-02). DEVEM ficar neste grupo para
+    // herdar middleware role:admin + ANTES da rota publica /nps/{token}.
+    Route::post  ('/nps/configuracao/perguntas',                   [NpsController::class, 'criarPerguntaExtra'])->name('nps.configuracao.perguntas.criar');
+    Route::put   ('/nps/configuracao/perguntas/{pergunta}',        [NpsController::class, 'atualizarPerguntaExtra'])->name('nps.configuracao.perguntas.atualizar');
+    Route::delete('/nps/configuracao/perguntas/{pergunta}',        [NpsController::class, 'excluirPerguntaExtra'])->name('nps.configuracao.perguntas.excluir');
+    Route::post  ('/nps/configuracao/perguntas/{pergunta}/mover',  [NpsController::class, 'moverPerguntaExtra'])->name('nps.configuracao.perguntas.mover');
 });
 
 // NPS público (sem autenticação) — token vem DEPOIS do /generate
