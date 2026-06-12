@@ -48,14 +48,119 @@ function RatingPicker({ value, onChange, label }) {
     );
 }
 
-export default function NpsRespond({ survey }) {
+// ─── Phase 33 Plan 03: render dinamico de perguntas customizadas ────────
+// Quatro tipos suportados (D-02): escala_1_5 / texto / sim_nao / multipla.
+// Reutiliza o RatingPicker existente para o tipo escala_1_5.
+function PerguntaExtra({ pergunta, valor, onChange, error }) {
+    if (pergunta.tipo === 'escala_1_5') {
+        // Sem label aqui — o label da pergunta ja e renderizado no wrapper externo
+        return <RatingPicker value={valor} onChange={onChange} />;
+    }
+
+    if (pergunta.tipo === 'texto') {
+        // Espelha a validacao backend max:2000
+        return (
+            <textarea
+                value={valor || ''}
+                onChange={(e) => onChange(e.target.value)}
+                maxLength={2000}
+                rows={3}
+                placeholder="Sua resposta"
+                aria-required={pergunta.obrigatorio || undefined}
+                className={cn(
+                    'w-full bg-white/[0.04] border rounded-lg px-3 py-2.5 text-white text-sm',
+                    'placeholder:text-white/20 focus:outline-none focus:border-ecf-yellow/40 transition-colors resize-none',
+                    error ? 'border-red-500/50' : 'border-white/[0.08]'
+                )}
+            />
+        );
+    }
+
+    if (pergunta.tipo === 'sim_nao') {
+        // 2 botoes lado a lado — verde (sim) e vermelho (nao) quando selecionado
+        return (
+            <div className="flex gap-3">
+                <button
+                    type="button"
+                    onClick={() => onChange('sim')}
+                    aria-pressed={valor === 'sim'}
+                    className={cn(
+                        'flex-1 py-3 rounded-xl border font-semibold text-sm transition-colors',
+                        valor === 'sim'
+                            ? 'bg-emerald-500/25 border-emerald-500 text-emerald-100'
+                            : 'bg-white/[0.04] border-white/[0.08] text-white/70 hover:bg-white/[0.06]'
+                    )}
+                >
+                    SIM
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onChange('nao')}
+                    aria-pressed={valor === 'nao'}
+                    className={cn(
+                        'flex-1 py-3 rounded-xl border font-semibold text-sm transition-colors',
+                        valor === 'nao'
+                            ? 'bg-rose-500/25 border-rose-500 text-rose-100'
+                            : 'bg-white/[0.04] border-white/[0.08] text-white/70 hover:bg-white/[0.06]'
+                    )}
+                >
+                    NÃO
+                </button>
+            </div>
+        );
+    }
+
+    if (pergunta.tipo === 'multipla') {
+        // Radio group vertical — valor enviado e o TEXTO da opcao (nao indice).
+        // opcoes pode vir null defensivamente em outros tipos; aqui forcamos array.
+        return (
+            <div className="space-y-2">
+                {(pergunta.opcoes || []).map((opt) => (
+                    <label
+                        key={opt}
+                        className={cn(
+                            'flex items-center gap-3 cursor-pointer rounded-lg border px-3 py-2.5 transition-colors',
+                            valor === opt
+                                ? 'border-ecf-yellow bg-ecf-yellow/10'
+                                : 'border-white/[0.08] bg-white/[0.04] hover:bg-white/[0.06]'
+                        )}
+                    >
+                        <input
+                            type="radio"
+                            name={`p${pergunta.id}`}
+                            value={opt}
+                            checked={valor === opt}
+                            onChange={() => onChange(opt)}
+                            className="accent-ecf-yellow"
+                        />
+                        <span className="text-white text-sm">{opt}</span>
+                    </label>
+                ))}
+            </div>
+        );
+    }
+
+    return null;
+}
+
+export default function NpsRespond({ survey, perguntas_extras }) {
+    // Phase 33 Plan 03: perguntas extras vem do payload Inertia ja filtradas
+    // (apenas ativas) e ordenadas (ordem ASC, fallback id ASC) pelo NpsController::respond.
+    const perguntasExtras = perguntas_extras || [];
+
     // Estado do form — chaves alinhadas com NpsController::submitResponse (Plan 31-02 Task 3c)
+    // + respostas_extras (Plan 33-01 D-07): objeto {pergunta_id: valor}
+    // Inicializa cada pergunta com null (escala_1_5, para combinar com RatingPicker)
+    // ou '' (texto / sim_nao / multipla) — backend trata vazio como ausencia.
     const { data, setData, post, processing, errors } = useForm({
         respondent_name: '',
         score_estrategista: null,
         score_analista: null,
         score_empresa: null,
         comment: '',
+        respostas_extras: Object.fromEntries(
+            perguntasExtras.map((p) => [p.id, p.tipo === 'escala_1_5' ? null : ''])
+        ),
     });
 
     const submit = (e) => {
@@ -68,10 +173,19 @@ export default function NpsRespond({ survey }) {
 
     // Validacao client-side: estrategista + empresa sempre obrigatorios; analista so quando
     // survey.tem_analista === true (D-07 mentoria pura omite o slider).
+    // Plan 33-03: + todas as perguntas extras obrigatorias precisam de valor preenchido.
+    const todasObrigatoriasExtrasOk = perguntasExtras
+        .filter((p) => p.obrigatorio)
+        .every((p) => {
+            const v = data.respostas_extras[p.id];
+            return v !== null && v !== '' && v !== undefined;
+        });
+
     const isValid =
         data.score_estrategista !== null &&
         data.score_empresa !== null &&
-        (!survey.tem_analista || data.score_analista !== null);
+        (!survey.tem_analista || data.score_analista !== null) &&
+        todasObrigatoriasExtrasOk;
 
     // ─── Phase 32 Plan 03: textos dinamicos vindos do backend ──────────────
     // Backend ja substitui {nome_estrategista}, {nome_analista}, {nome_empresa}
@@ -167,6 +281,40 @@ export default function NpsRespond({ survey }) {
                                 )}
                             </div>
                         </div>
+
+                        {/* Phase 33 Plan 03: perguntas customizadas ativas — D-03 ordem:
+                            entram apos as 3 fixas e antes do comentario livre.
+                            Cada pergunta delega o render ao componente PerguntaExtra (4 tipos). */}
+                        {perguntasExtras.length > 0 && (
+                            <div className="space-y-5">
+                                {perguntasExtras.map((p) => (
+                                    <div key={p.id} className="space-y-3">
+                                        <label className="block text-xs text-white/70 font-medium uppercase tracking-wide">
+                                            {p.texto}
+                                            {p.obrigatorio && (
+                                                <span className="text-ecf-yellow ml-1">*</span>
+                                            )}
+                                        </label>
+                                        <PerguntaExtra
+                                            pergunta={p}
+                                            valor={data.respostas_extras[p.id]}
+                                            onChange={(v) =>
+                                                setData('respostas_extras', {
+                                                    ...data.respostas_extras,
+                                                    [p.id]: v,
+                                                })
+                                            }
+                                            error={errors[`respostas_extras.${p.id}`]}
+                                        />
+                                        {errors[`respostas_extras.${p.id}`] && (
+                                            <p className="text-red-400 text-xs">
+                                                {errors[`respostas_extras.${p.id}`]}
+                                            </p>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Comentario livre — D-08: textarea unica, max 2000, nullable */}
                         <div className="space-y-1.5">
