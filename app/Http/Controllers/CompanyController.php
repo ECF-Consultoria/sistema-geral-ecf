@@ -67,6 +67,15 @@ class CompanyController extends Controller
                 // Phase 31 D-04 + Quick 260611-eml — contato do cliente (preenche o openEdit do modal admin)
                 'email_cliente'    => $c->email_cliente,
                 'telefone'         => $c->telefone,
+                // Phase 34 Plan 34-01 — info do close comercial (alimentam Companies/Show + modal admin Plan 34-03).
+                'nicho'               => $c->nicho,
+                'dor'                 => $c->dor,
+                'vende_ml'            => $c->vende_ml,
+                'faturamento_mensal'  => $c->faturamento_mensal !== null ? (float) $c->faturamento_mensal : null,
+                'marketplaces_extras' => $c->marketplaces_extras ?? [],
+                'email_colaborador'   => $c->email_colaborador,
+                // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06). Bool puro alimenta o badge na linha.
+                'empresa_nova'        => (bool) $c->empresa_nova,
                 'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
@@ -92,15 +101,23 @@ class CompanyController extends Controller
                     'color' => $c->grupo->color,
                 ] : null,
                 'company_group_id' => $c->company_group_id,
-                // Pendências calculadas (4 tipos) — alimenta a aba "Pendências".
+                // Pendências calculadas — alimenta a aba "Pendências".
                 // Só fazem sentido para empresas ativas; o frontend filtra por active.
+                //
+                // Phase 34 Plan 34-01 (D-07): a pendência "sem_email_colaborador" agora
+                // checa o campo correto `email_colaborador` (email criado pela ECF p/ acesso
+                // no ML) em vez do `email_cliente` (email do proprietário usado pelo NPS).
+                // Phase 34 Plan 34-01 (D-06): nova pendência `empresa_nova` — empresa
+                // recém-cadastrada que ainda não foi triada pelo admin. Removida via
+                // botão "Marcar como visto" (POST /companies/{company}/marcar-visto).
                 'pendencias'       => array_values(array_filter([
                     ($c->consultor->isEmpty() && $c->estrategista->isEmpty()) ? 'sem_responsavel' : null,
                     (! $c->adman_account_id && ! $c->ml_store_id)             ? 'sem_cust_id' : null,
-                    (! $c->email_cliente)                                     ? 'sem_email_colaborador' : null,
+                    (! $c->email_colaborador)                                 ? 'sem_email_colaborador' : null,
                     ($c->grants_ativos_count < 1)                            ? 'sem_grant_ativo' : null,
                     // contratosServico já vem filtrado por ativo=true no eager load
                     ($c->contratosServico->isEmpty())                        ? 'sem_servico' : null,
+                    $c->empresa_nova                                          ? 'empresa_nova' : null,
                 ])),
             ]);
 
@@ -530,6 +547,26 @@ class CompanyController extends Controller
             ->log('Empresa reativada: "' . $nome . '"');
 
         return back()->with('success', 'Empresa "' . $nome . '" reativada.');
+    }
+
+    /**
+     * Phase 34 Plan 34-01 (D-06) — "Marcar como visto" para tag "Empresa nova".
+     *
+     * Botão exibido na linha da empresa em /companies (aba Pendências) quando
+     * `empresa_nova=true`. Apenas admin pode acionar — qualquer outro role
+     * recebe 403. Não dispara activity log (mudança operacional rotineira).
+     */
+    public function marcarVisto(Request $request, Company $company)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $company->update([
+            'empresa_nova'           => false,
+            'empresa_nova_visto_em'  => now(),
+            'empresa_nova_visto_por' => $request->user()->id,
+        ]);
+
+        return back()->with('success', "Empresa {$company->name} marcada como vista.");
     }
 
     // ─── Contratos de Serviço (Módulo Serviços — Frente A) ──────────────────

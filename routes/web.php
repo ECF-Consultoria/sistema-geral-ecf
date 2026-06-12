@@ -279,6 +279,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
         // Reativa empresa desativada pelo Comercial (active=false → true)
         Route::post('/companies/{company}/ativar', [CompanyController::class, 'ativar'])->name('companies.ativar');
+        // Phase 34 Plan 34-01 (D-06) — "Marcar como visto" remove o badge "Empresa nova".
+        Route::post('/companies/{company}/marcar-visto', [CompanyController::class, 'marcarVisto'])->name('companies.marcar-visto');
         // Atribui/remove a empresa de um grupo nomeado (sem efeitos colaterais do update completo)
         Route::put('/companies/{company}/group', [CompanyController::class, 'setGroup'])->name('companies.set-group');
         // Ações em massa da aba Pendências (excluir / atribuir analista|estrategista)
