@@ -189,6 +189,33 @@ class Phase33NpsPerguntasExtrasTest extends TestCase
         $this->assertSame(8, $nova->ordem);
     }
 
+    /**
+     * Bugfix 260612 — frontend manda `opcoes: []` como default do useForm mesmo
+     * quando tipo!=multipla; sem o merge defensivo, `min:2` em `opcoes` falhava
+     * a validacao silenciosamente e o POST voltava como redirect com errors
+     * que a UI nao mostrava.
+     */
+    public function test_criar_pergunta_sim_nao_aceita_opcoes_array_vazio_do_frontend(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin']);
+
+        $response = $this->actingAs($admin)->post('/nps/configuracao/perguntas', [
+            'texto' => 'Fez grant?',
+            'tipo' => 'sim_nao',
+            'opcoes' => [],  // payload exato que o useForm envia em tipos nao-multipla
+            'obrigatorio' => false,
+            'ativa' => true,
+        ]);
+
+        $response->assertStatus(302);
+        $response->assertSessionHasNoErrors();
+        $this->assertDatabaseHas('nps_perguntas_customizadas', [
+            'texto' => 'Fez grant?',
+            'tipo' => 'sim_nao',
+            'opcoes' => null,
+        ]);
+    }
+
     public function test_excluir_pergunta_com_respostas_vira_soft_delete(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);

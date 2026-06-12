@@ -623,6 +623,14 @@ class NpsController extends Controller
      */
     public function criarPerguntaExtra(Request $request)
     {
+        // Quick fix 260612: o frontend manda `opcoes: []` mesmo quando tipo!=multipla
+        // (defaults do useForm). Sem este merge, `min:2` falhava validacao em todos
+        // os tipos que nao usam opcoes — request voltava com errors silenciosos e
+        // a UI nao mostrava nada acontecendo.
+        if ($request->input('tipo') !== 'multipla') {
+            $request->merge(['opcoes' => null]);
+        }
+
         $validated = $request->validate([
             'texto'       => 'required|string|max:500',
             'tipo'        => ['required', Rule::in(NpsPerguntaCustomizada::TIPOS)],
@@ -632,7 +640,7 @@ class NpsController extends Controller
             'ativa'       => 'boolean',
         ]);
 
-        // Forca opcoes=null quando tipo nao e multipla (defensivo).
+        // Forca opcoes=null quando tipo nao e multipla (defesa redundante apos o merge).
         $validated['opcoes'] = $validated['tipo'] === 'multipla'
             ? ($validated['opcoes'] ?? null)
             : null;
@@ -654,6 +662,13 @@ class NpsController extends Controller
      */
     public function atualizarPerguntaExtra(Request $request, NpsPerguntaCustomizada $pergunta)
     {
+        // Quick fix 260612: idem criarPerguntaExtra — neutraliza opcoes=[] quando
+        // tipo efetivo nao e multipla, pra nao tropecar no min:2.
+        $tipoEfetivoAntes = $request->input('tipo', $pergunta->tipo);
+        if ($tipoEfetivoAntes !== 'multipla' && $request->has('opcoes')) {
+            $request->merge(['opcoes' => null]);
+        }
+
         $validated = $request->validate([
             'texto'       => 'sometimes|required|string|max:500',
             'tipo'        => ['sometimes', 'required', Rule::in(NpsPerguntaCustomizada::TIPOS)],
