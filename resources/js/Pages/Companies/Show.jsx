@@ -675,6 +675,64 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                     );
                 })()}
 
+                {/* ─── Phase 34 Plan 34-03 — Informacoes do Close ────────────
+                    Renderiza os 6 campos coletados no fechamento comercial (D-01).
+                    Bloco PURAMENTE LEITURA — edicao acontece no modal de /companies
+                    (admin) ou em /comercial/empresas (Comercial). email_colaborador
+                    aparece SEPARADO de email_cliente para evitar a confusao operacional
+                    historica (D-07). */}
+                <Section icon={Briefcase} title="Informacoes do Close">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Nicho</p>
+                            <p className="text-white/80 text-sm">{company.nicho || '—'}</p>
+                        </div>
+                        <div>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Faturamento mensal</p>
+                            <p className="text-white/80 text-sm tabular-nums">
+                                {company.faturamento_mensal != null ? formatCurrency(company.faturamento_mensal) : '—'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Ja vende no Mercado Livre?</p>
+                            <p className="text-white/80 text-sm">
+                                {company.vende_ml === true ? 'Sim' : company.vende_ml === false ? 'Nao' : '—'}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Marketplaces extras</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {(company.marketplaces_extras || []).length === 0 ? (
+                                    <span className="text-white/40 text-sm">—</span>
+                                ) : (
+                                    (company.marketplaces_extras || []).map(mp => (
+                                        <span
+                                            key={mp}
+                                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] bg-white/[0.06] border border-white/[0.08] text-white/80"
+                                        >
+                                            {mp}
+                                        </span>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+                        <div>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Email cliente (NPS)</p>
+                            <p className="text-white/80 text-sm break-all">{company.email_cliente || '—'}</p>
+                        </div>
+                        <div>
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Email colaborador ECF</p>
+                            <p className="text-white/80 text-sm break-all">{company.email_colaborador || '—'}</p>
+                        </div>
+                    </div>
+                    {company.dor && (
+                        <div className="mt-4 pt-4 border-t border-white/[0.04]">
+                            <p className="text-white/40 text-[11px] uppercase tracking-wide mb-1">Dor / contexto</p>
+                            <p className="whitespace-pre-wrap text-white/80 text-sm leading-relaxed">{company.dor}</p>
+                        </div>
+                    )}
+                </Section>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     {/* Dados cadastrais */}
                     <Section icon={Building2} title="Dados da Empresa">
