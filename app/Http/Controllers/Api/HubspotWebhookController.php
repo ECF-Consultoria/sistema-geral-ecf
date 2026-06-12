@@ -118,13 +118,19 @@ class HubspotWebhookController extends Controller
      */
     private function processar(HubspotEvento $evento, HubspotApiClient $api): void
     {
-        $stageGatilho = (string) config('services.hubspot.stage_fechado_ganho_id');
+        // Phase 34 hotfix — aceita CSV de stage IDs porque a conta HubSpot tem
+        // multiplos pipelines (Polos / Infoprodutos / Sales default) e cada um
+        // tem seu proprio dealstage id de "Fechado Ganho".
+        $stagesGatilho = collect(explode(',', (string) config('services.hubspot.stage_fechado_ganho_id')))
+            ->map(fn ($s) => trim($s))
+            ->filter()
+            ->all();
 
-        // ── Filtro: so processa deal.propertyChange + dealstage=closedwon ───
+        // ── Filtro: so processa deal.propertyChange + dealstage ∈ stagesGatilho ─
         if (
             $evento->subscription_type !== 'deal.propertyChange'
             || $evento->property_name !== 'dealstage'
-            || $evento->property_value !== $stageGatilho
+            || !in_array((string) $evento->property_value, $stagesGatilho, true)
         ) {
             $evento->update(['status' => 'ignorado', 'processado_em' => now()]);
             return;

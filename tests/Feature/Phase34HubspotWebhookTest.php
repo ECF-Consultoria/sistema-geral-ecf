@@ -38,7 +38,8 @@ class Phase34HubspotWebhookTest extends TestCase
         config([
             'services.hubspot.client_secret'          => self::SECRET,
             'services.hubspot.access_token'           => 'token-fake',
-            'services.hubspot.stage_fechado_ganho_id' => 'closedwon',
+            // Hotfix multi-pipeline: aceita CSV. Testa com 1 ID custom + closedwon.
+            'services.hubspot.stage_fechado_ganho_id' => '1352209026,closedwon',
             'services.hubspot.props.deal' => [
                 'nicho'              => 'nicho',
                 'dor'                => 'dor',
