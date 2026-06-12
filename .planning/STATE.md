@@ -4,14 +4,14 @@ milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: Wave 2 desbloqueada — pode rodar 34-02 (wizard), 34-03 (admin UI), 34-04 (webhook HubSpot) em paralelo
 stopped_at: Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — Wave 2 desbloqueada
-last_updated: "2026-06-12T19:15:46.231Z"
+last_updated: "2026-06-12T19:45:00.000Z"
 last_activity: 2026-06-12
 progress:
   total_phases: 31
   completed_phases: 18
   total_plans: 47
-  completed_plans: 40
-  percent: 58
+  completed_plans: 41
+  percent: 59
 ---
 
 # Project State
@@ -78,6 +78,7 @@ Last activity: 2026-06-12
 | Phase 33-perguntas-customizadas-nps P01 | 30min | 4 commits | 7 files |
 | Phase 34-cadastro-comercial-otimizado-hubspot P01 | 12min | 4 commits | 7 files |
 | Phase 34 P02 | 22 | 2 tasks | 4 files |
+| Phase 34-cadastro-comercial-otimizado-hubspot P04 | 28min | 4 commits | 6 files |
 
 ## Accumulated Context
 
@@ -292,6 +293,20 @@ Last activity: 2026-06-12
 - **Verificação end-to-end por instância em memória** — DB local não tem rows em `companies`/`users`, então o teste `NpsSurvey::create(...)` da verification block falharia por FK. Substituí por `new NpsSurvey([...])` direto, validando os casts (Carbon + boolean) sem precisar gravar.
 - **Call-sites legacy (Dashboard/Performance/Company/NpsController) ficam quebrados até Plan 31-05** — SCOPE BOUNDARY do executor: não é correção desta plan. Documentado nos "Gotchas" do 31-01-SUMMARY.md com mapa de qual plan corrige cada arquivo. **CRÍTICO**: NÃO fazer deploy do schema sozinho — agrupar com Plans 31-03/04/05.
 
+### Decisões do Plan 34-04 (registradas)
+
+- **HMAC v3 com `(int)(microtime(true) * 1000)`** — float-multiplication ANTES de int-cast para preservar precisao em ms. Janela de 5min em constante `REPLAY_WINDOW_MS = 5 * 60 * 1000`. Algoritmo: `base64(hmac_sha256(secret, METHOD + fullUrl + rawBody + tsHdr))` com `hash_equals()` timing-safe — replica spec oficial HubSpot v3.
+- **Receiver grava `HubspotEvento(signature_valid=false)` ANTES de retornar 401** — auditoria de tentativas invalidas/ataques. Truncamento defensivo do raw body em `payload->raw` via `mb_strcut(..., 65000)` para evitar estouro de disco em payloads gigantes.
+- **HubspotApiClient: `fetchAssociatedCompanyId` resiliente (retorna null em 4xx/5xx)** — diferente de `fetchDeal`/`fetchCompany` que chamam `$res->throw()`. Justificativa: deal sem company associada eh cenario VALIDO; falha aqui geraria erro evitavel.
+- **Idempotencia D-04 exclui o proprio evento na query** — `HubspotEvento::where('object_id', $id)->where('id', '!=', $evento->id)->whereNotNull('company_id_criada')->exists()` — sem o `where id !=`, o 1o evento ja entraria como "ignorado" no proprio evento dele (porque o controller grava ANTES de processar).
+- **Throttle `60,1` na rota** (60 req/min/IP) — defesa contra spam. HubSpot legitimo manda muito menos.
+- **Canal de log reusado `ecf-webhooks`** — em vez de criar `hubspot-webhooks`, reutiliza o canal Phase 26 (rotativo diario, segregado). Eventos com prefixo `[HubSpot Webhook]` vs `[ECF Webhook]` para distincao visual.
+- **CSRF cobertura dupla**: bootstrap/app.php (`api/webhooks/*` em except) + `withoutMiddleware` defensivo na rota — mesmo padrao Phase 26.
+- **Mapeamento D-05 configuravel via env**: 12 vars `HUBSPOT_PROP_*` permitem override por cliente — defaults cobrem o cenario padrao da ECF (`nicho`, `dor`, `vende_ml`, `faturamento_mensal`, `servico_ecf` no deal; `name`, `cnpj`, `email`, `phone` no company).
+- **`vende_ml` tri-state preservado**: HubSpot prop pode vir `'true'`, `'false'`, vazia ou ausente. Controller usa `filter_var(FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE)` — vazio/ausente vira `null` (estado "Nao sei" do D-01).
+- **Suite de testes usa helper `servidor(headers)`** que converte para formato `$_SERVER` (HTTP_X_* prefix) — necessario porque `MakesHttpRequests::call()` NAO aplica `defaultHeaders` do `withHeaders()` automaticamente, so quando chamado via `->json()`/`->post()`/`->get()`.
+- **CRITICO: NAO fazer deploy do Plan 34-04 sozinho** — receiver depende do schema 34-01 (ja entregue) + UI das Plans 34-02 (wizard) e 34-03 (admin) para visualizar empresas criadas via webhook com badge "Empresa nova" + campos de close.
+
 ### Decisões do Plan 33-01 (registradas)
 
 - **`opcoes` forcadas a null fora de tipo=multipla** — backend defensivo no `criarPerguntaExtra`/`atualizarPerguntaExtra` zera o array mesmo se cliente enviar. UI nao precisa zerar.
@@ -364,8 +379,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-12T19:15:46.209Z
-Stopped at: Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — Wave 2 desbloqueada
+Last session: 2026-06-12T19:45:00.000Z
+Stopped at: Phase 34 Plan 04 (webhook HubSpot — HMAC v3 + processamento sincrono) completo — Wave 2 em andamento
 
 **Estado para próxima sessão retomar:**
 

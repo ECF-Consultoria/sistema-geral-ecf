@@ -713,7 +713,7 @@ Plans:
 ### Phase 34: Cadastro Comercial Otimizado + Integração HubSpot
 
 **Milestone:** v10.0 — Pesquisa de Satisfação 2.0 (item add-on)
-**Status:** ⏳ Em execução (Wave 1 completa 2026-06-12 — 1/4 plans)
+**Status:** ⏳ Em execução (Wave 2 em andamento 2026-06-12 — 3/4 plans entregues: 34-01, 34-02, 34-04)
 **Goal:** Capturar mais info no close comercial (nicho/dor/faturamento/marketplaces/vende_ml), corrigir bug semântico do `email_colaborador`, expor tag "Empresa nova" como pendência na aba `/companies`, máscaras CNPJ/telefone nos forms, e webhook HubSpot para cadastro automático quando deal vira "Fechado Ganho".
 **Requirements:**
 - REQ-34-01 — Schema: 9 novas colunas em `companies` (nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras/email_colaborador/empresa_nova/visto_em/visto_por)
@@ -725,4 +725,4 @@ Plans:
 - [x] 34-01-PLAN.md — Fundação: schema (2 migrations defensivas) + Company fillable+casts + HubspotEvento model + CompanyController.index pendencia+fix+payload + endpoint marcar-visto role:admin + 8 testes (completed 2026-06-12)
 - [x] 34-02-PLAN.md — Wizard Comercial estendido: NovaEmpresa.jsx + ComercialController::store validation dos 9 campos + máscaras CNPJ/telefone
 - [ ] 34-03-PLAN.md — Admin UI: Companies/Index.jsx (badge "Empresa nova", botão "Marcar visto", modal admin com novos campos) + Companies/Show.jsx (seção "Informações do Close")
-- [ ] 34-04-PLAN.md — Webhook HubSpot: rota `/api/webhooks/hubspot` + HMAC v3 validation + grava `hubspot_eventos` + processamento inline (fetch deal+company HubSpot → cria Company) + idempotência por `object_id`
+- [x] 34-04-PLAN.md — Webhook HubSpot: rota `/api/webhooks/hubspot` + HMAC v3 validation + grava `hubspot_eventos` + processamento inline (fetch deal+company HubSpot → cria Company) + idempotência por `object_id` (completed 2026-06-12)
