@@ -68,4 +68,30 @@ return [
         'webhook_secret' => env('ECF_WEBHOOK_SECRET', ''),
     ],
 
+    // Phase 34 Plan 34-04 — Webhook HubSpot (HMAC v3) + API HubSpot CRM v3.
+    // client_secret: validar X-HubSpot-Signature-v3 (App Settings → Auth no HubSpot).
+    // access_token: Private App token (Bearer) para GET /crm/v3/objects/*.
+    // stage_fechado_ganho_id: id interno do dealstage "Fechado Ganho" no pipeline.
+    // props.*: mapeamento configurável de propriedades HubSpot → colunas do ECF (D-05).
+    'hubspot' => [
+        'client_secret'          => env('HUBSPOT_CLIENT_SECRET'),
+        'access_token'           => env('HUBSPOT_ACCESS_TOKEN'),
+        'stage_fechado_ganho_id' => env('HUBSPOT_STAGE_FECHADO_GANHO_ID', 'closedwon'),
+        'props' => [
+            'deal' => [
+                'nicho'              => env('HUBSPOT_PROP_DEAL_NICHO', 'nicho'),
+                'dor'                => env('HUBSPOT_PROP_DEAL_DOR', 'dor'),
+                'vende_ml'           => env('HUBSPOT_PROP_DEAL_VENDE_ML', 'vende_ml'),
+                'faturamento_mensal' => env('HUBSPOT_PROP_DEAL_FATURAMENTO', 'faturamento_mensal'),
+                'servico'            => env('HUBSPOT_PROP_DEAL_SERVICO', 'servico_ecf'),
+            ],
+            'company' => [
+                'name'  => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
+                'cnpj'  => env('HUBSPOT_PROP_COMPANY_CNPJ', 'cnpj'),
+                'email' => env('HUBSPOT_PROP_COMPANY_EMAIL', 'email'),
+                'phone' => env('HUBSPOT_PROP_COMPANY_PHONE', 'phone'),
+            ],
+        ],
+    ],
+
 ];
