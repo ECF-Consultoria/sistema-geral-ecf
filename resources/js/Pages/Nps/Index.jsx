@@ -143,11 +143,15 @@ function RespostaExtraValor({ tipo, valor }) {
 export default function NpsIndex({
     surveys,
     companies,
+    estrategistas = [],
+    analistas = [],
     cards = {},
     serie_12m = [],
     mes_filtro = '',
+    filtros = {},
 }) {
-    const { flash } = usePage().props;
+    const { flash, auth } = usePage().props;
+    const isAdmin = auth?.user?.role === 'admin';
     const [open, setOpen] = useState(false);
     const [linkDialog, setLinkDialog] = useState(false);
     const [generatedLink, setGeneratedLink] = useState('');
@@ -170,13 +174,30 @@ export default function NpsIndex({
         [serie_12m]
     );
 
-    const handleMesChange = (mesIso) => {
-        router.get(
-            route('nps.index'),
-            { mes: mesIso },
-            { preserveState: true, preserveScroll: true }
-        );
+    // Quick task 260612-flt — handler unificado que combina mes + 3 filtros.
+    // Empty string vira undefined pra remover o param da URL ("Todas/Todos").
+    const aplicarFiltros = (overrides = {}) => {
+        const payload = {
+            mes: mes_filtro,
+            empresa_id: filtros.empresa_id || undefined,
+            estrategista_id: filtros.estrategista_id || undefined,
+            analista_id: filtros.analista_id || undefined,
+            ...overrides,
+        };
+        // Limpa valores vazios pra URL ficar enxuta.
+        Object.keys(payload).forEach(k => {
+            if (!payload[k]) delete payload[k];
+        });
+        router.get(route('nps.index'), payload, { preserveState: true, preserveScroll: true });
     };
+
+    const handleMesChange = (mesIso) => aplicarFiltros({ mes: mesIso });
+    const handleEmpresaChange = (id) => aplicarFiltros({ empresa_id: id === '__all__' ? undefined : id });
+    const handleEstrategistaChange = (id) => aplicarFiltros({ estrategista_id: id === '__all__' ? undefined : id });
+    const handleAnalistaChange = (id) => aplicarFiltros({ analista_id: id === '__all__' ? undefined : id });
+
+    const algumFiltroAtivo = !!(filtros.empresa_id || filtros.estrategista_id || filtros.analista_id);
+    const limparFiltros = () => router.get(route('nps.index'), { mes: mes_filtro }, { preserveState: true, preserveScroll: true });
 
     const submit = (e) => {
         e.preventDefault();
@@ -199,15 +220,12 @@ export default function NpsIndex({
     return (
         <AppLayout title="NPS">
             <div className="space-y-5">
-                {/* ─── Header: filtro de mes + CTA gerar link manual ─────── */}
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">
-                            Mês de referência
-                        </p>
+                {/* ─── Header: filtros + CTA gerar link manual ─────────────── */}
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
                         <Select value={mes_filtro} onValueChange={handleMesChange}>
-                            <SelectTrigger className="w-[160px] bg-ecf-card border-white/[0.08]">
-                                <SelectValue placeholder="Selecionar mês..." />
+                            <SelectTrigger className="w-[140px] bg-ecf-card border-white/[0.08]">
+                                <SelectValue placeholder="Mês..." />
                             </SelectTrigger>
                             <SelectContent>
                                 {mesOpcoes.map(m => (
@@ -215,8 +233,54 @@ export default function NpsIndex({
                                 ))}
                             </SelectContent>
                         </Select>
-                        <span className="text-white/30 text-xs hidden md:inline">
-                            · {surveys.total} pesquisa{surveys.total === 1 ? '' : 's'} no mês
+
+                        {/* Quick 260612-flt — filtro empresa */}
+                        <Select value={filtros.empresa_id ? String(filtros.empresa_id) : '__all__'} onValueChange={handleEmpresaChange}>
+                            <SelectTrigger className="w-[200px] bg-ecf-card border-white/[0.08]">
+                                <SelectValue placeholder="Empresa..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__all__">Todas as empresas</SelectItem>
+                                {companies.map(c => (
+                                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
+                        {/* Quick 260612-flt — filtro estrategista */}
+                        <Select value={filtros.estrategista_id ? String(filtros.estrategista_id) : '__all__'} onValueChange={handleEstrategistaChange}>
+                            <SelectTrigger className="w-[180px] bg-ecf-card border-white/[0.08]">
+                                <SelectValue placeholder="Estrategista..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__all__">Todos os estrategistas</SelectItem>
+                                {estrategistas.map(u => (
+                                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
+                        {/* Quick 260612-flt — filtro analista */}
+                        <Select value={filtros.analista_id ? String(filtros.analista_id) : '__all__'} onValueChange={handleAnalistaChange}>
+                            <SelectTrigger className="w-[180px] bg-ecf-card border-white/[0.08]">
+                                <SelectValue placeholder="Analista..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__all__">Todos os analistas</SelectItem>
+                                {analistas.map(u => (
+                                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+
+                        {algumFiltroAtivo && (
+                            <Button variant="ghost" size="sm" onClick={limparFiltros} className="text-white/60 hover:text-white">
+                                Limpar filtros
+                            </Button>
+                        )}
+
+                        <span className="text-white/30 text-xs ml-1">
+                            · {surveys.total} pesquisa{surveys.total === 1 ? '' : 's'}
                         </span>
                     </div>
                     <Button onClick={() => setOpen(true)}>
@@ -354,12 +418,12 @@ export default function NpsIndex({
                     </CardContent>
                 </Card>
 
-                {/* ─── Paginacao (preserva filtro de mes) ───────────────────── */}
+                {/* ─── Paginacao (preserva mes + filtros 260612-flt) ────────── */}
                 {surveys.last_page > 1 && (
                     <div className="flex justify-center gap-2">
                         {surveys.current_page > 1 && (
                             <Button variant="outline" size="sm"
-                                    onClick={() => router.get(route('nps.index'), { mes: mes_filtro, page: surveys.current_page - 1 })}>
+                                    onClick={() => aplicarFiltros({ page: surveys.current_page - 1 })}>
                                 Anterior
                             </Button>
                         )}
@@ -368,7 +432,7 @@ export default function NpsIndex({
                         </span>
                         {surveys.current_page < surveys.last_page && (
                             <Button variant="outline" size="sm"
-                                    onClick={() => router.get(route('nps.index'), { mes: mes_filtro, page: surveys.current_page + 1 })}>
+                                    onClick={() => aplicarFiltros({ page: surveys.current_page + 1 })}>
                                 Próxima
                             </Button>
                         )}
@@ -480,7 +544,23 @@ export default function NpsIndex({
                         </div>
                     )}
 
-                    <DialogFooter>
+                    <DialogFooter className="gap-2 sm:gap-0 sm:justify-between">
+                        {/* Quick 260612-flt — excluir resposta (admin only). Reverte survey pra pending. */}
+                        {isAdmin && modalSurvey && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (!confirm(`Excluir a resposta de "${modalSurvey.company_name}"? A pesquisa voltará para pendente e poderá ser respondida novamente.`)) return;
+                                    router.delete(route('nps.responses.destroy', modalSurvey.id), {
+                                        preserveScroll: true,
+                                        onSuccess: () => setModalSurvey(null),
+                                    });
+                                }}
+                                className="px-4 py-2 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-sm font-medium"
+                            >
+                                Excluir resposta
+                            </button>
+                        )}
                         <button
                             type="button"
                             onClick={() => setModalSurvey(null)}

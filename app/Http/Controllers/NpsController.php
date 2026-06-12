@@ -46,6 +46,34 @@ class NpsController extends Controller
         $mesInicio = \Carbon\Carbon::parse($mesFiltro . '-01')->startOfMonth();
         $mesFim    = $mesInicio->copy()->endOfMonth();
 
+        // ─── Quick task 260612-flt — filtros adicionais ─────────────────────
+        // Empresa: filtra por company_id direto. Estrategista/Analista: filtra
+        // por surveys cuja empresa tem o user atribuído no pivot company_users
+        // com role correspondente (estrategista | consultor para analista).
+        // Aplicam tanto na lista paginada quanto nos cards de média e na serie
+        // 12 meses — coerencia visual entre todos os blocos da pagina.
+        $empresaId      = $request->integer('empresa_id') ?: null;
+        $estrategistaId = $request->integer('estrategista_id') ?: null;
+        $analistaId     = $request->integer('analista_id') ?: null;
+
+        $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId) {
+            if ($empresaId) {
+                $query->where('company_id', $empresaId);
+            }
+            if ($estrategistaId) {
+                $query->whereHas('company.users', function ($q) use ($estrategistaId) {
+                    $q->where('users.id', $estrategistaId)
+                      ->where('company_users.role', 'estrategista');
+                });
+            }
+            if ($analistaId) {
+                $query->whereHas('company.users', function ($q) use ($analistaId) {
+                    $q->where('users.id', $analistaId)
+                      ->where('company_users.role', 'consultor');
+                });
+            }
+        };
+
         // ─── Audiência: surveys do mês selecionado ───────────────────────────
         // Surveys auto-geradas usam month_reference (semântica D-specifics).
         // Surveys manuais (month_reference=null) caem no mês via created_at.
@@ -65,6 +93,9 @@ class NpsController extends Controller
             $companyIds = $user->companies()->pluck('companies.id');
             $baseQuery->whereIn('company_id', $companyIds);
         }
+
+        // Quick task 260612-flt — filtros empresa/estrategista/analista.
+        $aplicarFiltrosSurveys($baseQuery);
 
         $surveys = $baseQuery->paginate(20)->withQueryString()->through(fn($s) => [
             'id'                 => $s->id,
@@ -100,7 +131,7 @@ class NpsController extends Controller
         // ─── 3 cards de média (somente respostas do mês filtrado) ────────────
         // Reusa a mesma lógica de pertencer-ao-mês (month_reference OR created_at)
         // via whereHas('survey', ...). Médias ignoram NULLs naturalmente (AVG SQL).
-        $responsesFilter = function ($q) use ($mesInicio, $mesFim, $user) {
+        $responsesFilter = function ($q) use ($mesInicio, $mesFim, $user, $aplicarFiltrosSurveys) {
             $q->where(function ($qq) use ($mesInicio, $mesFim) {
                 $qq->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
                    ->orWhere(function ($qqq) use ($mesInicio, $mesFim) {
@@ -111,6 +142,8 @@ class NpsController extends Controller
             if (!$user->isAdmin()) {
                 $q->whereIn('company_id', $user->companies()->pluck('companies.id'));
             }
+            // Quick task 260612-flt — propaga filtros para os cards.
+            $aplicarFiltrosSurveys($q);
         };
 
         $responsesQuery = NpsResponse::query()->whereHas('survey', $responsesFilter);
@@ -141,7 +174,7 @@ class NpsController extends Controller
             $m    = $inicio12m->copy()->addMonths($i);
             $mFim = $m->copy()->endOfMonth();
 
-            $q = NpsResponse::query()->whereHas('survey', function ($qq) use ($m, $mFim, $user) {
+            $q = NpsResponse::query()->whereHas('survey', function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys) {
                 $qq->where(function ($qqq) use ($m, $mFim) {
                     $qqq->whereBetween('month_reference', [$m->toDateString(), $mFim->toDateString()])
                         ->orWhere(function ($qqqq) use ($m, $mFim) {
@@ -152,6 +185,8 @@ class NpsController extends Controller
                 if (!$user->isAdmin()) {
                     $qq->whereIn('company_id', $user->companies()->pluck('companies.id'));
                 }
+                // Quick task 260612-flt — propaga filtros na serie 12m.
+                $aplicarFiltrosSurveys($qq);
             });
 
             $serieMeses[] = [
@@ -167,12 +202,31 @@ class NpsController extends Controller
             ? Company::where('active', true)->get(['id', 'name'])
             : $user->companies()->get(['companies.id', 'companies.name']);
 
+        // Quick task 260612-flt — listas para os Selects de filtro.
+        // Estrategistas/analistas: users active que TÊM ao menos 1 empresa atribuída
+        // pelo pivot role correspondente (não pega quem nunca foi vinculado).
+        $estrategistas = \App\Models\User::where('active', true)
+            ->whereHas('companies', fn($q) => $q->where('company_users.role', 'estrategista'))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $analistas = \App\Models\User::where('active', true)
+            ->whereHas('companies', fn($q) => $q->where('company_users.role', 'consultor'))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return Inertia::render('Nps/Index', [
-            'surveys'    => $surveys,
-            'companies'  => $companies,
-            'cards'      => $cards,
-            'serie_12m'  => $serieMeses,
-            'mes_filtro' => $mesFiltro,
+            'surveys'        => $surveys,
+            'companies'      => $companies,
+            'estrategistas'  => $estrategistas,
+            'analistas'      => $analistas,
+            'cards'          => $cards,
+            'serie_12m'      => $serieMeses,
+            'mes_filtro'     => $mesFiltro,
+            'filtros'        => [
+                'empresa_id'      => $empresaId,
+                'estrategista_id' => $estrategistaId,
+                'analista_id'     => $analistaId,
+            ],
         ]);
     }
 
@@ -550,6 +604,28 @@ class NpsController extends Controller
      * link pro survey gerado (`/nps/{token}`) em status=enviado e expande o
      * `erro_msg` quando status=falha.
      */
+    /**
+     * Quick task 260612-flt — DELETE /nps/{survey}/response.
+     *
+     * Admin exclusivo (route middleware role:admin). Apaga a resposta do cliente
+     * (NpsResponse) e reverte o survey para `pending` — cliente pode responder
+     * de novo se ainda estiver dentro do prazo. cascade onDelete em
+     * nps_respostas_customizadas apaga as respostas extras automaticamente.
+     */
+    public function excluirResposta(Request $request, NpsSurvey $survey)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        if (!$survey->response) {
+            return back()->with('error', 'Esta pesquisa ainda não foi respondida.');
+        }
+
+        $survey->response->delete();  // cascade apaga respostas_customizadas
+        $survey->update(['status' => 'pending', 'completed_at' => null]);
+
+        return back()->with('success', 'Resposta excluída. A pesquisa voltou para pendente.');
+    }
+
     public function emailsEnviados(Request $request)
     {
         // ─── Validação leve do parâmetro mes ─────────────────────────────────

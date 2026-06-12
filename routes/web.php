@@ -105,6 +105,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     Route::put   ('/nps/configuracao/perguntas/{pergunta}',        [NpsController::class, 'atualizarPerguntaExtra'])->name('nps.configuracao.perguntas.atualizar');
     Route::delete('/nps/configuracao/perguntas/{pergunta}',        [NpsController::class, 'excluirPerguntaExtra'])->name('nps.configuracao.perguntas.excluir');
     Route::post  ('/nps/configuracao/perguntas/{pergunta}/mover',  [NpsController::class, 'moverPerguntaExtra'])->name('nps.configuracao.perguntas.mover');
+
+    // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
+    // (reverte survey para pending). Antes da rota publica /nps/{token}.
+    Route::delete('/nps/{survey}/response', [NpsController::class, 'excluirResposta'])->name('nps.responses.destroy');
 });
 
 // NPS público (sem autenticação) — token vem DEPOIS do /generate
