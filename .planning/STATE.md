@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
-status: Wave 2 desbloqueada — pode rodar 34-02 (wizard), 34-03 (admin UI), 34-04 (webhook HubSpot) em paralelo
-stopped_at: Phase 33 Plan 01 (fundacao backend perguntas customizadas NPS) completo — Wave 2 desbloqueada
-last_updated: "2026-06-12T19:45:00.000Z"
+status: Phase 34 Wave 2 — 34-02 + 34-03 + 34-04 completos; falta verify+deploy agrupado
+stopped_at: Phase 34 Plan 03 (admin UI + Comercial edit + Show — campos do close + mascaras) completo
+last_updated: "2026-06-12T20:30:00.000Z"
 last_activity: 2026-06-12
 progress:
   total_phases: 31
   completed_phases: 18
   total_plans: 47
-  completed_plans: 41
-  percent: 59
+  completed_plans: 44
+  percent: 63
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 34 (cadastro-comercial-otimizado-hubspot) — Wave 1 completa (1/4 plans)
-Plan: 34-01 fundacao (2 migrations defensivas + Company fillable+casts + HubspotEvento model + CompanyController pendencia+fix D-07+payload + endpoint marcar-visto + 8 testes) **DONE**
-Status: Wave 2 desbloqueada — pode rodar 34-02 (wizard), 34-03 (admin UI), 34-04 (webhook HubSpot) em paralelo
+Phase: 34 (cadastro-comercial-otimizado-hubspot) — Wave 2 completa (4/4 plans)
+Plan: 34-03 admin UI (CompanyController validation+payload show + modal admin com 6 campos + botao marcar-visto + Companies/Show secao + Comercial/Empresas edit + mascaras IMaskInput em 2 sites) **DONE**
+Status: Phase 34 completa em codigo — falta verify+deploy AGRUPADO dos 4 plans
 Last activity: 2026-06-12
 
 ## Performance Metrics
@@ -78,6 +78,7 @@ Last activity: 2026-06-12
 | Phase 33-perguntas-customizadas-nps P01 | 30min | 4 commits | 7 files |
 | Phase 34-cadastro-comercial-otimizado-hubspot P01 | 12min | 4 commits | 7 files |
 | Phase 34 P02 | 22 | 2 tasks | 4 files |
+| Phase 34-cadastro-comercial-otimizado-hubspot P03 | 30min | 4 commits | 4 files |
 | Phase 34-cadastro-comercial-otimizado-hubspot P04 | 28min | 4 commits | 6 files |
 
 ## Accumulated Context
@@ -307,6 +308,22 @@ Last activity: 2026-06-12
 - **Suite de testes usa helper `servidor(headers)`** que converte para formato `$_SERVER` (HTTP_X_* prefix) — necessario porque `MakesHttpRequests::call()` NAO aplica `defaultHeaders` do `withHeaders()` automaticamente, so quando chamado via `->json()`/`->post()`/`->get()`.
 - **CRITICO: NAO fazer deploy do Plan 34-04 sozinho** — receiver depende do schema 34-01 (ja entregue) + UI das Plans 34-02 (wizard) e 34-03 (admin) para visualizar empresas criadas via webhook com badge "Empresa nova" + campos de close.
 
+### Decisões do Plan 34-03 (registradas)
+
+- **`ComercialController::update` ja estava com as validations** quando rodei git status — o commit `4961793` (oficialmente Plan 34-02) tambem incluiu minhas adicoes ao `update()` e ao payload de `empresas()`. Sem conflito real (co-autoria silenciosa entre 34-02 e 34-03). Adaptei o escopo da Task 1 do 34-03 (so CompanyController).
+- **`useForm.transform()` chamado uma vez fora do useEffect** — `useForm` retorna objeto onde `transform()` eh METODO mutador. Pattern aplicado: `const form = useForm({...}); form.transform(d => ...); const put = form.put;`. Funciona porque o callback eh estavel (sem deps); se virar dinamico, embrulhar em useEffect/useMemo.
+- **`vende_ml` UI '' / 'true' / 'false' -> null / true / false** via `form.transform()`. Backend valida `nullable|boolean`; Select shadcn rejeita value=""; sentinel `'unknown'` no modal admin converte de volta no onValueChange.
+- **`faturamento_mensal` '' -> null no transform** — `nullable|numeric` rejeita string vazia (passa pelo nullable mas falha no numeric).
+- **Botao "Marcar como visto" inline + icone Check (sem confirmacao)** — admin marca 5-10 empresas/dia; modal de confirmacao = atrito. `<button>` HTML nativo (nao Button shadcn) para nao herdar focus-ring/padding.
+- **Pre-population de `marketplaces_extras` faz copia defensiva** (`[...c.marketplaces_extras || []]`) — evita compartilhar referencia do array com payload subsequente.
+- **`pendCounts` ganhou `sem_servico: 0` como bonus** (Rule 1) — bug pre-existente Phase 14 onde o card "Sem servico" sempre mostrava 0 porque o forEach pulava (`pendCounts[p] !== undefined` falhava).
+- **`CompanyController::show()` agora exporta os 6 campos do close** (Rule 2) — sem isso a secao "Informacoes do Close" do Show.jsx renderizaria so '—'.
+- **`email_cliente` re-rotulado de "Email do Colaborador" para "Email do cliente (NPS)"** em Companies/Index modal (Rule 2 UX) — historicamente confuso; D-07 separa de email_colaborador com labels claras.
+- **`IMaskInput` controlado por `onAccept` (nao `onChange`)** — react-imask dispara onAccept apos aplicar mascara; onChange recebe valor RAW. Pattern correto evita perda de cursor + skip de caracteres.
+- **Mascara Telefone dinamica `[{mask:'(00) 0000-0000'},{mask:'(00) 00000-0000'}]`** — aceita 8 ou 9 digitos sem fricao pra fixo nem celular.
+- **MARKETPLACES_EXTRAS const duplicado em 3 sites** (Companies/Index, Comercial/Empresas, Comercial/NovaEmpresa do 34-02) — espelha Rule::in backend. Aceitavel; refator pra `@/lib/constants` fica para fase futura.
+- **CRITICO: NAO Deployar Sozinho** — agrupar deploy dos 4 plans da Phase 34 (schema 34-01 + wizard 34-02 + admin/comercial UI 34-03 + webhook 34-04).
+
 ### Decisões do Plan 33-01 (registradas)
 
 - **`opcoes` forcadas a null fora de tipo=multipla** — backend defensivo no `criarPerguntaExtra`/`atualizarPerguntaExtra` zera o array mesmo se cliente enviar. UI nao precisa zerar.
@@ -379,8 +396,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-12T19:45:00.000Z
-Stopped at: Phase 34 Plan 04 (webhook HubSpot — HMAC v3 + processamento sincrono) completo — Wave 2 em andamento
+Last session: 2026-06-12T20:30:00.000Z
+Stopped at: Phase 34 Plan 03 (admin UI + Comercial edit + Show — campos do close + mascaras IMaskInput) completo — Wave 2 completa (4/4)
 
 **Estado para próxima sessão retomar:**
 
