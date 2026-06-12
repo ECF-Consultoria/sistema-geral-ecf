@@ -200,11 +200,15 @@ Bearer token via `Http::withToken($token)`. Private App e' criado em **Settings 
 - [x] FOUND: `app/Http/Controllers/Api/HubspotWebhookController.php`
 - [x] FOUND: `app/Services/HubspotApiClient.php`
 - [x] FOUND: `tests/Feature/Phase34HubspotWebhookTest.php`
+- [x] FOUND: `.planning/phases/34-cadastro-comercial-otimizado-hubspot/34-04-SUMMARY.md`
 - [x] FOUND commit: `3634fd4` (config + env)
 - [x] FOUND commit: `4d0c56d` (HubspotApiClient)
 - [x] FOUND commit: `1cc56cd` (controller + route)
 - [x] FOUND commit: `39e3177` (tests)
-- [x] Rota `api/webhooks/hubspot` registrada em route:list com middleware throttle e CSRF exception
+- [x] FOUND commit: `2c83bfb` (final metadata: SUMMARY + STATE + ROADMAP)
+- [x] Rota `api/webhooks/hubspot` registrada em route:list com middleware `throttle:60,1` e CSRF exception (via withoutMiddleware + bootstrap/app.php)
+- [x] Suite Phase34HubspotWebhookTest 6/6 verdes (49 assertions)
+- [x] Suite total Phase 31+33+34 42/42 verdes (233 assertions, zero regressao)
 
 ## Gotchas para Deploy / Operacao
 
