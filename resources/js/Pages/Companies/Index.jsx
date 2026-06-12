@@ -8,12 +8,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { Textarea } from '@/Components/ui/textarea';
-import { useForm, Link, router, useRemember } from '@inertiajs/react';
+import { useForm, Link, router, useRemember, usePage } from '@inertiajs/react';
 import { useState } from 'react';
 import { Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw, Tag, Briefcase } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import GruposManager from '@/Components/GruposManager';
+import { IMaskInput } from 'react-imask';
+
+// Phase 34 D-09 — lista canonica de marketplaces extras (espelha Rule::in no backend)
+const MARKETPLACES_EXTRAS = [
+    { value: 'shopee',  label: 'Shopee'  },
+    { value: 'amazon',  label: 'Amazon'  },
+    { value: 'magalu',  label: 'Magalu'  },
+    { value: 'temu',    label: 'Temu'    },
+    { value: 'tiktok',  label: 'TikTok'  },
+];
 
 /**
  * Badges dos contratos ativos de uma empresa.
@@ -76,13 +86,16 @@ function MlStatusBadge({ status }) {
     return null;
 }
 
-// ─── Pendências (5 tipos calculados no backend) ─────────────────────────────
+// ─── Pendências (6 tipos calculados no backend) ─────────────────────────────
+// Phase 34 Plan 34-03 — empresa_nova adicionado (D-06): empresa recem-cadastrada
+// que ainda nao foi triada pelo admin; sai via botao "Marcar como visto" inline.
 const PENDENCIAS = {
     sem_responsavel:       { label: 'Sem responsável',       cls: 'bg-red-500/10 text-red-400 border-red-500/20' },
     sem_cust_id:           { label: 'Sem cust id',           cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
     sem_email_colaborador: { label: 'Sem email colaborador', cls: 'bg-amber-500/10 text-amber-300 border-amber-500/20' },
     sem_grant_ativo:       { label: 'Sem grant ativo',       cls: 'bg-sky-500/10 text-sky-400 border-sky-500/20' },
     sem_servico:           { label: 'Sem serviço',           cls: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20' },
+    empresa_nova:          { label: 'Empresa nova',          cls: 'bg-yellow-500/15 text-ecf-yellow border-ecf-yellow/30' },
 };
 
 function PendenciaBadges({ pendencias }) {
@@ -113,6 +126,10 @@ function GrupoBadge({ grupo }) {
 }
 
 export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {} }) {
+    // Phase 34 Plan 34-03 — admin check para botao "Marcar como visto" (D-06)
+    const { auth } = usePage().props;
+    const isAdmin = auth?.user?.role === 'admin';
+
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
     const [tab, setTab] = useState(() => {
@@ -185,8 +202,9 @@ export default function Companies({ companies, users, estrategistas = [], analis
     const totalAtivas = companies.filter(c => c.active).length;
 
     // ── Pendências (empresas ativas com ≥1 pendência) ────────────────────────
+    // Phase 34 Plan 34-03 — pendCounts ganhou sem_servico (5o card existente) e empresa_nova (D-06).
     const pendentes = companies.filter(c => c.active && (c.pendencias || []).length > 0);
-    const pendCounts = { sem_responsavel: 0, sem_cust_id: 0, sem_email_colaborador: 0, sem_grant_ativo: 0 };
+    const pendCounts = { sem_responsavel: 0, sem_cust_id: 0, sem_email_colaborador: 0, sem_grant_ativo: 0, sem_servico: 0, empresa_nova: 0 };
     companies.forEach(c => {
         if (!c.active) return;
         (c.pendencias || []).forEach(p => { if (pendCounts[p] !== undefined) pendCounts[p]++; });
@@ -229,10 +247,24 @@ export default function Companies({ companies, users, estrategistas = [], analis
     };
 
     // ── Form empresa (somente edição — cadastro é via /comercial/empresas) ───
-    const { data, setData, put, processing, errors } = useForm({
+    // Phase 34 Plan 34-03 — 6 campos novos do close comercial + email_colaborador SEPARADO de email_cliente.
+    // vende_ml usa '' (Nao sei) / 'true' / 'false' no UI, convertido pra null/true/false no submit via transform.
+    const form = useForm({
         name: '', cnpj: '', adman_store_id: '', ml_store_id: '', segment: '', notes: '',
         consultor_id: '', estrategista_id: '', email_cliente: '', telefone: '', company_group_id: '',
+        // Phase 34 close fields
+        nicho: '', dor: '', vende_ml: '', faturamento_mensal: '',
+        marketplaces_extras: [], email_colaborador: '',
     });
+    const { data, setData, processing, errors } = form;
+    // Phase 34 Plan 34-03 — transform converte tipos no submit (vende_ml ''/'true'/'false' -> null/bool;
+    // faturamento_mensal '' -> null pra nao quebrar `numeric` no backend).
+    form.transform((d) => ({
+        ...d,
+        vende_ml: d.vende_ml === 'true' ? true : d.vende_ml === 'false' ? false : null,
+        faturamento_mensal: d.faturamento_mensal === '' || d.faturamento_mensal == null ? null : d.faturamento_mensal,
+    }));
+    const put = form.put;
 
     const openEdit = (c) => {
         setEditing(c);
@@ -248,13 +280,38 @@ export default function Companies({ companies, users, estrategistas = [], analis
             email_cliente: c.email_cliente || '',
             telefone: c.telefone || '',
             company_group_id: c.company_group_id ? String(c.company_group_id) : '',
+            // Phase 34 Plan 34-03 — pre-popula campos do close
+            nicho: c.nicho || '',
+            dor: c.dor || '',
+            // vende_ml: bool puro do backend (true/false/null) -> string '' / 'true' / 'false' no UI
+            vende_ml: c.vende_ml === true ? 'true' : c.vende_ml === false ? 'false' : '',
+            faturamento_mensal: c.faturamento_mensal != null ? String(c.faturamento_mensal) : '',
+            marketplaces_extras: Array.isArray(c.marketplaces_extras) ? [...c.marketplaces_extras] : [],
+            email_colaborador: c.email_colaborador || '',
         });
         setOpen(true);
     };
 
+    // Phase 34 Plan 34-03 — toggle helper pros checkboxes de marketplaces_extras
+    const toggleMpExtra = (value) => {
+        setData('marketplaces_extras', data.marketplaces_extras.includes(value)
+            ? data.marketplaces_extras.filter(v => v !== value)
+            : [...data.marketplaces_extras, value]);
+    };
+
     const submit = (e) => {
         e.preventDefault();
-        put(route('companies.update', editing.id), { onSuccess: () => setOpen(false) });
+        // Phase 34 Plan 34-03 — useForm.transform converte vende_ml '' / 'true' / 'false' pra null/true/false
+        // e faturamento_mensal '' pra null (vazio nao deve mandar '' que falha numeric no backend).
+        put(route('companies.update', editing.id), {
+            preserveScroll: true,
+            onSuccess: () => setOpen(false),
+        });
+    };
+
+    // Phase 34 Plan 34-03 — handler do botao "Marcar como visto" (D-06)
+    const marcarVisto = (c) => {
+        router.post(route('companies.marcar-visto', c.id), {}, { preserveScroll: true });
     };
 
     const destroy = (c) => {
@@ -495,6 +552,20 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
+                                                        {/* Phase 34 Plan 34-03 (D-06) — botao "Marcar como visto"
+                                                            so aparece quando a empresa esta com pendencia empresa_nova
+                                                            e o user atual eh admin. Click chama POST /companies/{id}/marcar-visto
+                                                            e remove a pendencia inline (preserveScroll preserva posicao na lista). */}
+                                                        {(c.pendencias || []).includes('empresa_nova') && isAdmin && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => marcarVisto(c)}
+                                                                title="Marcar empresa como vista (sai da lista de pendencias)"
+                                                                className="inline-flex items-center justify-center h-8 w-8 rounded-md border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15"
+                                                            >
+                                                                <Check className="h-4 w-4" />
+                                                            </button>
+                                                        )}
                                                         {(c.pendencias || []).includes('sem_servico') && (
                                                             <a
                                                                 href={`${route('admin.empresas')}?empresa=${c.id}`}
@@ -579,7 +650,15 @@ export default function Companies({ companies, users, estrategistas = [], analis
                             </div>
                             <div className="space-y-1.5">
                                 <Label>CNPJ</Label>
-                                <Input value={data.cnpj} onChange={e => setData('cnpj', e.target.value)} placeholder="00.000.000/0001-00" />
+                                {/* Phase 34 D-08 — mascara CNPJ com IMaskInput (so fricao UX no front; backend nao valida formato) */}
+                                <IMaskInput
+                                    mask="00.000.000/0000-00"
+                                    value={data.cnpj}
+                                    onAccept={(value) => setData('cnpj', value)}
+                                    placeholder="00.000.000/0001-00"
+                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                />
+                                {errors.cnpj && <p className="text-destructive text-xs">{errors.cnpj}</p>}
                             </div>
                             <div className="space-y-1.5">
                                 <Label>ID Loja ML</Label>
@@ -621,18 +700,113 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                 <Label>Observações</Label>
                                 <Textarea value={data.notes} onChange={e => setData('notes', e.target.value)} rows={2} />
                             </div>
+                            {/* Phase 34 D-07 — email_cliente eh o email do PROPRIETARIO usado pelo NPS mensal.
+                                NAO confundir com email_colaborador (proximo bloco), que eh criado pela ECF p/ acesso ML. */}
                             <div className="col-span-2 space-y-1.5">
-                                <Label>Email do Colaborador (acesso ML do cliente / NPS)</Label>
-                                <Input type="email" value={data.email_cliente} onChange={e => setData('email_cliente', e.target.value)} placeholder="colaborador@empresa.com.br" />
+                                <Label>Email do cliente (NPS)</Label>
+                                <Input type="email" value={data.email_cliente} onChange={e => setData('email_cliente', e.target.value)} placeholder="proprietario@empresa.com.br" />
                                 {errors.email_cliente && <p className="text-destructive text-xs">{errors.email_cliente}</p>}
-                                <p className="text-white/30 text-[11px]">Email que criamos para o cliente acessar a conta ML como colaborador (também recebe o NPS mensal).</p>
+                                <p className="text-white/30 text-[11px]">Email do proprietario, destinatario do NPS mensal.</p>
                             </div>
                             <div className="col-span-2 space-y-1.5">
                                 <Label>Telefone</Label>
-                                <Input type="tel" value={data.telefone} onChange={e => setData('telefone', e.target.value)} placeholder="(11) 99999-9999" />
+                                {/* Phase 34 D-08 — mascara telefone dinamica (8 ou 9 digitos) */}
+                                <IMaskInput
+                                    mask={[
+                                        { mask: '(00) 0000-0000' },
+                                        { mask: '(00) 00000-0000' },
+                                    ]}
+                                    value={data.telefone}
+                                    onAccept={(value) => setData('telefone', value)}
+                                    placeholder="(11) 99999-9999"
+                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                />
                                 {errors.telefone && <p className="text-destructive text-xs">{errors.telefone}</p>}
                             </div>
                         </div>
+
+                        {/* ─── Phase 34 Plan 34-03 — Informacoes do close ──────────────
+                            6 campos novos coletados no fechamento comercial. Bloco
+                            SEPARADO do bloco de identificacao acima para deixar claro
+                            que o admin pode editar tudo o que o Comercial preencheu. */}
+                        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-4">
+                            <div className="flex items-center gap-2">
+                                <Briefcase size={14} className="text-ecf-yellow/70" />
+                                <h3 className="text-white/85 text-sm font-semibold">Informacoes do close</h3>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <Label>Nicho</Label>
+                                    <Input value={data.nicho} onChange={e => setData('nicho', e.target.value)} placeholder="Ex: Moda feminina, Auto pecas" />
+                                    {errors.nicho && <p className="text-destructive text-xs">{errors.nicho}</p>}
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Faturamento mensal (R$)</Label>
+                                    <Input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={data.faturamento_mensal}
+                                        onChange={e => setData('faturamento_mensal', e.target.value)}
+                                        placeholder="50000.00"
+                                    />
+                                    {errors.faturamento_mensal && <p className="text-destructive text-xs">{errors.faturamento_mensal}</p>}
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Ja vende no Mercado Livre?</Label>
+                                    <Select value={data.vende_ml || 'unknown'} onValueChange={v => setData('vende_ml', v === 'unknown' ? '' : v)}>
+                                        <SelectTrigger><SelectValue placeholder="Nao sei" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="unknown">Nao sei</SelectItem>
+                                            <SelectItem value="true">Sim</SelectItem>
+                                            <SelectItem value="false">Nao</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.vende_ml && <p className="text-destructive text-xs">{errors.vende_ml}</p>}
+                                </div>
+                                {/* Phase 34 D-07 — email_colaborador SEPARADO de email_cliente.
+                                    Labels claras pra evitar confusao operacional. */}
+                                <div className="space-y-1.5">
+                                    <Label>Email colaborador ECF</Label>
+                                    <Input
+                                        type="email"
+                                        value={data.email_colaborador}
+                                        onChange={e => setData('email_colaborador', e.target.value)}
+                                        placeholder="colaborador@ecfconsultoria.com.br"
+                                    />
+                                    {errors.email_colaborador && <p className="text-destructive text-xs">{errors.email_colaborador}</p>}
+                                    <p className="text-white/30 text-[11px]">Email que a ECF criou para acesso colaborador no ML.</p>
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Marketplaces extras</Label>
+                                <div className="flex flex-wrap gap-3">
+                                    {MARKETPLACES_EXTRAS.map(mp => (
+                                        <label key={mp.value} className="inline-flex items-center gap-2 cursor-pointer select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 hover:bg-white/[0.06]">
+                                            <input
+                                                type="checkbox"
+                                                checked={data.marketplaces_extras.includes(mp.value)}
+                                                onChange={() => toggleMpExtra(mp.value)}
+                                                className="h-4 w-4 accent-ecf-yellow"
+                                            />
+                                            <span className="text-white/80 text-sm">{mp.label}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                {errors.marketplaces_extras && <p className="text-destructive text-xs">{errors.marketplaces_extras}</p>}
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Dor / contexto</Label>
+                                <Textarea
+                                    value={data.dor}
+                                    onChange={e => setData('dor', e.target.value)}
+                                    rows={3}
+                                    placeholder="Dor ou contexto do cliente capturado no fechamento."
+                                />
+                                {errors.dor && <p className="text-destructive text-xs">{errors.dor}</p>}
+                            </div>
+                        </div>
+
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                             <Button type="submit" disabled={processing}>{processing ? 'Salvando...' : 'Atualizar'}</Button>
