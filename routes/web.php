@@ -57,6 +57,16 @@ Route::post('/api/webhooks/ecf', [EcfWebhookController::class, 'handle'])
     ->middleware('throttle:ecf-webhook')
     ->name('ecf-webhook.receive');
 
+// ─── Receiver de webhooks HubSpot (Phase 34 Plan 34-04) ──────────────────────
+// URL configurada no painel HubSpot: https://admin.ecfconsultoria.com.br/api/webhooks/hubspot
+// Autenticação via HMAC v3 (X-HubSpot-Signature-v3 + X-HubSpot-Request-Timestamp).
+// CSRF isento por bootstrap/app.php (api/webhooks/*) + withoutMiddleware (defensivo).
+// Rate limit: throttle:60,1 (HubSpot legitimo manda muito menos — defesa contra spam).
+Route::post('/api/webhooks/hubspot', [\App\Http\Controllers\Api\HubspotWebhookController::class, 'receive'])
+    ->withoutMiddleware([\Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class])
+    ->middleware('throttle:60,1')
+    ->name('webhooks.hubspot');
+
 // PPA Workspace público (sem autenticação) — cliente acessa pelo token
 Route::get('/ppa/workspace/{token}', [PpaController::class, 'workspace'])->name('ppa.workspace');
 Route::patch('/ppa/workspace/{token}/tasks/{task}', [PpaTaskController::class, 'clientUpdate'])->name('ppa.workspace.task.update');

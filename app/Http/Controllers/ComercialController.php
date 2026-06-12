@@ -86,8 +86,14 @@ class ComercialController extends Controller
             ])
             ->orderByRaw("CASE WHEN status = 'pendente' THEN 0 ELSE 1 END")
             ->orderBy('name')
-            // Phase 31 D-04 + Quick 260611-eml — email_cliente/telefone carregados para pre-preencher o form de edicao do Comercial
-            ->get(['id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id', 'notes', 'parent_company_id', 'email_cliente', 'telefone']);
+            // Phase 31 D-04 + Quick 260611-eml — email_cliente/telefone carregados para pre-preencher o form de edicao do Comercial.
+            // Phase 34 Plan 34-03 — 6 campos novos do close comercial (nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras/email_colaborador)
+            // tambem pre-populam o form de edicao em /comercial/empresas.
+            ->get([
+                'id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id',
+                'notes', 'parent_company_id', 'email_cliente', 'telefone',
+                'nicho', 'dor', 'vende_ml', 'faturamento_mensal', 'marketplaces_extras', 'email_colaborador',
+            ]);
 
         $companies->transform(function ($c) {
             $c->servicos_contratados = $c->contratosServico
@@ -112,6 +118,13 @@ class ComercialController extends Controller
             $c->nome_pai     = $c->pai?->name;
             $c->filhas_count = $c->filhas->count();
             $c->is_principal = $c->filhas->isNotEmpty();
+
+            // Phase 34 Plan 34-03 — normaliza tipos pro Inertia/JSX:
+            // faturamento_mensal cast decimal:2 retorna string; converter para float
+            // pra Input type=number nao quebrar. marketplaces_extras ja vem array via cast.
+            if ($c->faturamento_mensal !== null) {
+                $c->faturamento_mensal = (float) $c->faturamento_mensal;
+            }
 
             return $c;
         });
@@ -192,6 +205,16 @@ class ComercialController extends Controller
             'gmail_colaborador'           => 'nullable|email|max:150',
             'polo'                        => 'nullable|string|max:255',
             'grupo_whatsapp'              => 'nullable|boolean',
+            // Phase 34 Plan 02 — campos do "close" comercial (todos opcionais).
+            // Schema das colunas garantido pela migration do Plan 34-01.
+            // Backend NÃO valida formato CNPJ/Telefone — máscara só no front (D-08).
+            'nicho'                       => 'nullable|string|max:255',
+            'dor'                         => 'nullable|string|max:5000',
+            'vende_ml'                    => 'nullable|boolean',
+            'faturamento_mensal'          => 'nullable|numeric|min:0|max:99999999.99',
+            'marketplaces_extras'         => 'nullable|array',
+            'marketplaces_extras.*'       => [Rule::in(['shopee', 'amazon', 'magalu', 'temu', 'tiktok'])],
+            'email_colaborador'           => 'nullable|email|max:255',
             'servicos'                    => 'required|array|min:1',
             'servicos.*.servico_id'       => [
                 'required',
@@ -218,14 +241,25 @@ class ComercialController extends Controller
         DB::transaction(function () use ($validated, &$company, &$servicosCriados) {
             // (a) Cria company com status pendente
             $company = Company::create([
-                'name'          => $validated['nome'],
-                'cnpj'          => $validated['cnpj'] ?? null,
-                'notes'         => $validated['notes'] ?? null,
+                'name'                => $validated['nome'],
+                'cnpj'                => $validated['cnpj'] ?? null,
+                'notes'               => $validated['notes'] ?? null,
                 // Quick 260611-eml — contato comercial + destinatário NPS mensal.
-                'email_cliente' => $validated['email_cliente'] ?? null,
-                'telefone'      => $validated['telefone'] ?? null,
-                'status'        => 'pendente',
-                'active'        => true,
+                'email_cliente'       => $validated['email_cliente'] ?? null,
+                'telefone'            => $validated['telefone'] ?? null,
+                // Phase 34 Plan 02 — campos do "close" comercial (todos opcionais).
+                // Capturados pelo Comercial no fechamento; ajudam o estrategista/analista
+                // a entender o cliente sem precisar reentrevistar. Cast 'array' do model
+                // serializa marketplaces_extras como JSON; vende_ml é tinyint nullable
+                // (null = "não sei"). Schema garantido pelo Plan 34-01.
+                'nicho'               => $validated['nicho'] ?? null,
+                'dor'                 => $validated['dor'] ?? null,
+                'vende_ml'            => $validated['vende_ml'] ?? null,
+                'faturamento_mensal'  => $validated['faturamento_mensal'] ?? null,
+                'marketplaces_extras' => $validated['marketplaces_extras'] ?? null,
+                'email_colaborador'   => $validated['email_colaborador'] ?? null,
+                'status'              => 'pendente',
+                'active'              => true,
             ]);
 
             // (b) Cria 1 contrato_servico por servico selecionado
