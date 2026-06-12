@@ -30,6 +30,11 @@ class Company extends Model
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
         'parent_company_id', 'company_group_id', 'ml_link_generated_at', 'ml_link_url',
+        // Phase 34 Plan 34-01 — info do close comercial.
+        'nicho', 'dor', 'vende_ml', 'faturamento_mensal',
+        'marketplaces_extras', 'email_colaborador',
+        // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06).
+        'empresa_nova', 'empresa_nova_visto_em', 'empresa_nova_visto_por',
     ];
 
     protected $casts = [
@@ -37,6 +42,13 @@ class Company extends Model
         'status'               => 'string',
         'cust_id_status'       => 'string',
         'ml_link_generated_at' => 'datetime',
+        // Phase 34 Plan 34-01 — D-01 + D-09.
+        'vende_ml'              => 'boolean',
+        'empresa_nova'          => 'boolean',
+        'marketplaces_extras'   => 'array',
+        'empresa_nova_visto_em' => 'datetime',
+        'faturamento_mensal'    => 'decimal:2',
+        'empresa_nova_visto_por'=> 'integer',
     ];
 
     /**
