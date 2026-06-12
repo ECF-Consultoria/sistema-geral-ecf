@@ -374,6 +374,9 @@ class ComercialController extends Controller
 
         // Validação: name/cnpj/notes/email_cliente + as empresas vinculadas (filha_ids) ao grupo.
         // O vínculo é gerenciado PELA empresa principal (marca-se as vinculadas).
+        // Phase 34 Plan 34-03 — adiciona os 6 campos do close comercial (mesmos rules
+        // do Plan 34-02 ComercialController::store) para que a edição em /comercial/empresas
+        // mantenha esses dados sincronizados (paridade com CompanyController::update).
         $validated = $request->validate([
             'name'          => 'required|string|max:255',
             'cnpj'          => 'nullable|string|max:20|unique:companies,cnpj,' . $company->id,
@@ -382,6 +385,16 @@ class ComercialController extends Controller
             'email_cliente' => 'nullable|email|max:255',
             // Quick 260611-eml — contato comercial.
             'telefone'      => 'nullable|string|max:20',
+            // Phase 34 Plan 34-03 — info do close comercial
+            'nicho'                  => 'nullable|string|max:255',
+            'dor'                    => 'nullable|string|max:5000',
+            'vende_ml'               => 'nullable|boolean',
+            'faturamento_mensal'     => 'nullable|numeric|min:0|max:99999999.99',
+            'marketplaces_extras'    => 'nullable|array',
+            'marketplaces_extras.*'  => [Rule::in(['shopee', 'amazon', 'magalu', 'temu', 'tiktok'])],
+            // Phase 34 D-07 — email criado pela ECF para acesso colaborador no ML
+            // (separado de email_cliente, que é o email do proprietário usado pelo NPS).
+            'email_colaborador'      => 'nullable|email|max:255',
             'filha_ids'     => 'nullable|array',
             'filha_ids.*'   => ['integer', 'exists:companies,id', Rule::notIn([$company->id])],
         ]);
