@@ -312,7 +312,7 @@ function EmpresaForm({ empresa, publicadores, estagiosDb, fasesDb, polosDb, proj
                         <div>
                             <label className="text-white/50 text-[11px] uppercase tracking-wide font-semibold block mb-1">
                                 Projeto
-                                <span className="text-white/25 ml-1 normal-case font-normal">— POLOS, Implantação, Incubadora, Assessoria</span>
+                                <span className="text-white/25 ml-1 normal-case font-normal">— Polos, Implantação, Incubadora, Assessoria</span>
                             </label>
                             <ComboInput
                                 value={data.projeto}
@@ -622,7 +622,7 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                                     target="_blank"
                                     rel="noreferrer"
                                     onClick={ev => ev.stopPropagation()}
-                                    title="Link do Cliente (Implementação)"
+                                    title="Link do Cliente (Onboarding)"
                                     className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors"
                                 >
                                     <Link2 size={14} />
@@ -826,8 +826,8 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                     <form onSubmit={submit} className="space-y-4">
                         <div className="grid grid-cols-2 gap-2">
                             {[
-                                { value: 'polos',      label: 'POLO',       sub: 'Cria Implementação automaticamente' },
-                                { value: 'assessoria', label: 'Assessoria', sub: 'Sem Implementação' },
+                                { value: 'polos',      label: 'Polos',      sub: 'Cria Onboarding automaticamente' },
+                                { value: 'assessoria', label: 'Assessoria', sub: 'Sem Onboarding' },
                             ].map(opt => (
                                 <label key={opt.value} className={cn(
                                     'flex flex-col gap-1 px-3 py-3 rounded-lg border cursor-pointer transition-colors',

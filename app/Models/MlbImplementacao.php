@@ -9,11 +9,34 @@ class MlbImplementacao extends Model
 {
     protected $table = 'mlb_implementacoes';
 
-    protected $fillable = ['empresa_id', 'token', 'dados', 'ultimo_acesso'];
+    protected $fillable = [
+        // ── Campos originais ──
+        'empresa_id', 'token', 'dados', 'ultimo_acesso',
+
+        // ── Campos do Onboarding (Wave 1 — ONB-03) ──
+        'nome_contato',
+        'data_solicitacao',
+        'acesso_colaborador',
+        'gmail_colaborador',
+        'grupo_whatsapp',
+        'planilha_produtos',
+        'listagem',
+        'publicacao',
+        'decola',
+        'contextos_logistica',
+        'me1',
+        'integradora',
+        'places',
+        'erp',
+    ];
 
     protected $casts = [
-        'dados'         => 'array',
-        'ultimo_acesso' => 'datetime',
+        'dados'            => 'array',
+        'ultimo_acesso'    => 'datetime',
+        // Onboarding
+        'data_solicitacao' => 'date',
+        'grupo_whatsapp'   => 'boolean',
+        'decola'           => 'boolean',
     ];
 
     // tipos:
@@ -28,6 +51,108 @@ class MlbImplementacao extends Model
     //   instrucoes      — texto de instrução + checkbox
     //   instrucoes_link — texto de instrução + botão de link fixo + checkbox
     //   checkbox        — apenas checkbox
+
+    // ══════════════════════════════════════════════════════════════════
+    // Constantes do Onboarding Hub (Frente 3 — prefixo ONB_ para não
+    // colidir com ERP_OPCOES / INTEGRADOR_OPCOES do checklist público)
+    // Fonte de verdade: MAPEAMENTO_POLOS.xlsx (reunião 2026-06-10)
+    // ══════════════════════════════════════════════════════════════════
+
+    /** Polos de operação gerenciados pela ECF */
+    public const ONB_POLO_OPCOES = [
+        'Arapongas',
+        'S. J. Rio Preto',
+        'Bento Gonçalves',
+        'São Bento do Sul',
+    ];
+
+    /** Fase do onboarding da empresa no polo (M0 = entrada, Churn = saída) */
+    public const ONB_FASE_OPCOES = [
+        'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
+    ];
+
+    /** Status do acesso colaborador dado pela empresa ao colaborador ECF */
+    public const ONB_ACESSO_COLABORADOR_OPCOES = [
+        'Com acesso',
+        'Sem acesso',
+    ];
+
+    /** Status de envio da planilha de produtos */
+    public const ONB_PLANILHA_PRODUTOS_OPCOES = [
+        'Já enviado',
+        'Não enviado',
+    ];
+
+    /** Status de listagem dos anúncios */
+    public const ONB_LISTAGEM_OPCOES = [
+        'Não',
+        'Pronto para listar',
+        'Já listado',
+        'Falta informação',
+    ];
+
+    /** Status da publicação dos anúncios */
+    public const ONB_PUBLICACAO_OPCOES = [
+        'Concluído',
+        'Estágio 2',
+        'Suspensa',
+        'Banida',
+    ];
+
+    /** Status do ME1 (Mercado Envios Full nível 1) */
+    public const ONB_ME1_OPCOES = [
+        'Sem itens ainda',
+        'Não é necessário',
+        'Ativo',
+        'Em contratação',
+        'Precisa de ME1',
+        'Aguardando contato',
+        'Conversando com cliente',
+        'Pendente com integradora',
+        'Preenchendo tabela',
+        'Verificando',
+    ];
+
+    /** Integradora logística contratada (Frente 3 — diferente de INTEGRADOR_OPCOES do checklist) */
+    public const ONB_INTEGRADORA_OPCOES = [
+        'Nenhuma',
+        'Frenet',
+        'Sisfrete',
+        'Intelispost',
+        'Frete Gestão',
+        'Em contratação',
+        'Any',
+    ];
+
+    /** Status do Places (endereço de retirada ML) */
+    public const ONB_PLACES_OPCOES = [
+        'Ativo',
+        'Solicitado',
+        'Falta emissor fiscal',
+        'Falta certificado A1',
+        'Falta endereço fiscal',
+        'Checklist realizado',
+        'Realizando checklist',
+        'Não',
+    ];
+
+    /** ERP utilizado pela empresa (Frente 3 — diferente de ERP_OPCOES do checklist) */
+    public const ONB_ERP_OPCOES = [
+        'Sem informação',
+        'Bling',
+        'Tiny',
+        'Magazord',
+        'Anymarket',
+        'Olist',
+        'Tray',
+        'WeNext',
+        'Não utiliza',
+        'Em contratação',
+    ];
+
+    // ══════════════════════════════════════════════════════════════════
+    // Checklist público (workspace do cliente — NÃO confundir com ONB_*)
+    // ══════════════════════════════════════════════════════════════════
 
     public const CHECKLIST = [
         [
@@ -211,7 +336,47 @@ class MlbImplementacao extends Model
         return [
             'feitos' => $feitos,
             'total'  => $total,
-            'pct'    => $total > 0 ? round($feitos / $total * 100) : 0,
+            // round() retorna float em PHP; cast (int) garante que === 100 no controller funcione corretamente (ONB-11)
+            'pct'    => $total > 0 ? (int) round($feitos / $total * 100) : 0,
+        ];
+    }
+
+    /**
+     * Calcula informações de prazo para o Onboarding (ONB-09).
+     *
+     * "Concluído" = progresso()['pct'] === 100 (todos os itens do checklist marcados como feito).
+     * "Fora do prazo" = passados 5 dias desde data_solicitacao (ou created_at) E ainda não concluiu.
+     * Empresa concluída NUNCA é marcada como fora do prazo, mesmo que o prazo já tenha vencido.
+     *
+     * startOfDay() é aplicado em ambos os operandos do diff para neutralizar timezone BRT
+     * e evitar resultados diferentes dependendo da hora em que o cálculo é feito (Pitfall 2).
+     *
+     * @return array{
+     *     data_inicio: string,      Y-m-d — data_solicitacao ou created_at
+     *     dias_decorridos: int,
+     *     dias_restantes: int,      negativo = prazo já vencido
+     *     fora_do_prazo: bool,      true = vencido E não concluído
+     *     concluido: bool
+     * }
+     */
+    public function infoPrazo(): array
+    {
+        $concluido = $this->progresso()['pct'] === 100;
+
+        // Fallback: usa created_at se data_solicitacao for nula
+        $inicio = $this->data_solicitacao ?? $this->created_at;
+
+        // startOfDay() em ambos os lados para neutralizar componente de hora (Pitfall 2 — BRT)
+        $diasDecorridos = (int) \Carbon\Carbon::parse($inicio)->startOfDay()->diffInDays(
+            now()->startOfDay()
+        );
+
+        return [
+            'data_inicio'     => \Carbon\Carbon::parse($inicio)->format('Y-m-d'),
+            'dias_decorridos' => $diasDecorridos,
+            'dias_restantes'  => 5 - $diasDecorridos,
+            'fora_do_prazo'   => !$concluido && $diasDecorridos > 5,
+            'concluido'       => $concluido,
         ];
     }
 }

@@ -175,7 +175,7 @@ function EmpresaRow({ e, appUrl }) {
                             href={`${appUrl}/implementacao/${e.implementacao_token}`}
                             target="_blank"
                             rel="noreferrer"
-                            title="Link do Cliente (Implementação)"
+                            title="Link do Cliente (Onboarding)"
                             className="p-1.5 rounded-lg text-white/20 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors"
                         >
                             <Link2 size={13} />
@@ -224,7 +224,7 @@ function MSection({ mes, empresas, appUrl }) {
     );
 }
 
-function ProjetoSection({ nome, children, total }) {
+function ProjetoSection({ nome, titulo, children, total }) {
     const [open, setOpen] = useState(false);
     const cor = PROJETO_COR[nome] ?? { bg: 'bg-white/5', border: 'border-white/10', text: 'text-white/60' };
 
@@ -236,7 +236,7 @@ function ProjetoSection({ nome, children, total }) {
                 className="w-full flex items-center justify-between px-5 py-4 hover:brightness-110 transition-all"
             >
                 <div className="flex items-center gap-3">
-                    <span className={cn('font-bold text-base', cor.text)}>{nome}</span>
+                    <span className={cn('font-bold text-base', cor.text)}>{titulo ?? nome}</span>
                     <span className={cn('px-2 py-0.5 rounded-full text-[12px] font-semibold border', cor.border, cor.text)}>
                         {total} empresa{total !== 1 ? 's' : ''}
                     </span>
@@ -282,7 +282,7 @@ export default function Projetos({ polos, outros, totais, distribuicao, totalEmp
 
                 {/* POLOS */}
                 {temPolos && (
-                    <ProjetoSection nome="POLOS" total={totais.POLOS}>
+                    <ProjetoSection nome="POLOS" titulo="Polos" total={totais.POLOS}>
                         <p className="text-white/30 text-[12px] pb-1">
                             Empresas com fase M0 a M4. Cada M representa um mês de implantação.
                         </p>

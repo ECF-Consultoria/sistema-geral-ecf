@@ -30,6 +30,7 @@ class MlbConfiguracao extends Model
             ],
             'links_admin_extra' => [
                 'programa_decola' => '',
+                'tabela_frete'    => '',
             ],
         ];
         return array_replace_recursive($base, $defaults);

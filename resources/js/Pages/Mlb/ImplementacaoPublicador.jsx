@@ -166,7 +166,7 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                     <div>
                         <p className="text-violet-300/60 text-[11px] font-semibold uppercase tracking-widest">ECF Consultoria · Visão do Publicador</p>
                         <h1 className="text-white font-display font-bold text-2xl mt-1">{impl.empresa_nome}</h1>
-                        <p className="text-white/30 text-[12px] mt-1">Implementação iniciada em {impl.criado_em}</p>
+                        <p className="text-white/30 text-[12px] mt-1">Onboarding iniciado em {impl.criado_em}</p>
                     </div>
                     <div className="flex gap-3 flex-wrap items-center">
                         <button

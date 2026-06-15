@@ -1,8 +1,9 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, usePage } from '@inertiajs/react';
 import { useState, useRef } from 'react';
-import { Link2, Copy, Check, ExternalLink, RefreshCw, X, BookOpen, Eye, Plus, ArrowRightLeft, Settings2, BarChart2 } from 'lucide-react';
+import { Link2, Copy, Check, ExternalLink, RefreshCw, X, BookOpen, Eye, Plus, ArrowRightLeft, Settings2, BarChart2, FileText } from 'lucide-react';
 import { Link } from '@inertiajs/react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { cn } from '@/lib/utils';
 
 const ESTAGIO_COLORS = {
@@ -328,6 +329,7 @@ function PadroesModal({ padroes, checklist, onClose }) {
         tutoriais:           Object.fromEntries(tutoriaisComSuporte.map(i => [i.id, padroes.tutoriais?.[i.id] ?? ''])),
         links_admin_extra: {
             programa_decola: padroes.links_admin_extra?.programa_decola ?? '',
+            tabela_frete:    padroes.links_admin_extra?.tabela_frete ?? '',
         },
     });
     const [saving, setSaving] = useState(false);
@@ -357,6 +359,7 @@ function PadroesModal({ padroes, checklist, onClose }) {
                         <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-3">Links padrão</p>
                         {[
                             { id: 'programa_decola', label: 'Link — Programa Decola', key: 'links_admin_extra' },
+                            { id: 'tabela_frete',    label: 'Link — Tabela de Frete', key: 'links_admin_extra' },
                         ].map(({ id, label }) => (
                             <div key={id} className="mb-3">
                                 <label className="text-white/50 text-[11px] font-medium uppercase tracking-wider block mb-1.5">{label}</label>
@@ -462,9 +465,9 @@ function NovaImplModal({ onClose }) {
             <div className="card-ecf rounded-2xl w-full max-w-sm p-6">
                 <div className="flex items-center justify-between mb-5">
                     <div>
-                        <h2 className="text-white font-bold text-base">Nova Implementação</h2>
+                        <h2 className="text-white font-bold text-base">Novo Onboarding</h2>
                         <p className="text-white/40 text-[12px] mt-0.5">
-                            {aviso ? 'Empresa já cadastrada' : 'Empresa POLO · será criada automaticamente'}
+                            {aviso ? 'Empresa já cadastrada' : 'Empresa Polos · será criada automaticamente'}
                         </p>
                     </div>
                     <button onClick={onClose} className="p-1.5 text-white/30 hover:text-white/70 transition-colors">
@@ -545,7 +548,7 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose 
                 <div className="flex items-center justify-between p-5 border-b border-white/[0.06] shrink-0">
                     <div>
                         <h2 className="text-white font-bold text-base">{empresa.nome}</h2>
-                        <p className="text-white/40 text-[12px] mt-0.5">Implementação</p>
+                        <p className="text-white/40 text-[12px] mt-0.5">Onboarding</p>
                     </div>
                     <button onClick={onClose} className="p-1.5 text-white/30 hover:text-white/70 transition-colors">
                         <X size={16} />
@@ -659,22 +662,42 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose 
     );
 }
 
-export default function Implementacao({ empresas, checklist, erp_opcoes, integrador_opcoes, global_padroes }) {
+export default function Implementacao({ empresas, checklist, erp_opcoes, integrador_opcoes, global_padroes, filtros, polo_opcoes, fase_opcoes }) {
     const [modal, setModal]         = useState(null);
     const [busca, setBusca]         = useState('');
     const [novaImpl, setNovaImpl]   = useState(false);
     const [padroes, setPadroes]     = useState(false);
 
+    // Filtros de Polo e Fase (alimentados pelo backend)
+    const poloOpts = polo_opcoes ?? [];
+    const faseOpts = fase_opcoes ?? [];
+
+    function aplicarFiltro(campo, valor) {
+        // Preserva todos os filtros ativos no spread — trocar Polo/Fase não apaga fora_do_prazo e vice-versa
+        const params = {
+            polo:          filtros?.polo ?? '',
+            fase:          filtros?.fase ?? '',
+            fora_do_prazo: filtros?.fora_do_prazo ? '1' : '',
+            [campo]: valor === '__todos__' ? '' : valor,
+        };
+        router.get(route('mlb.implementacao.index'), params, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        });
+    }
+
+    // Busca local (complementar aos filtros de Polo/Fase do backend)
     const filtradas = empresas.filter(e => e.nome.toLowerCase().includes(busca.toLowerCase()));
 
     return (
-        <AppLayout title="Implementação">
+        <AppLayout title="Onboarding">
             <div className="max-w-5xl mx-auto space-y-6">
                 {/* Header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
-                        <h1 className="text-white font-display font-bold text-xl">Implementação</h1>
-                        <p className="text-white/40 text-[13px] mt-0.5">Crie implementações para novos clientes POLO e acompanhe o preenchimento</p>
+                        <h1 className="text-white font-display font-bold text-xl">Onboarding</h1>
+                        <p className="text-white/40 text-[13px] mt-0.5">Crie onboardings para novos clientes Polos e acompanhe o preenchimento</p>
                     </div>
                     <div className="flex items-center gap-2">
                         <input
@@ -704,10 +727,67 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             className="flex items-center gap-2 h-9 px-4 rounded-lg bg-ecf-yellow text-[#252525] font-semibold text-[13px] hover:brightness-110 transition-all whitespace-nowrap"
                         >
                             <Plus size={15} />
-                            Nova Implementação
+                            Novo Onboarding
                         </button>
                     </div>
                 </div>
+
+                {/* Barra de filtros Polo / Fase */}
+                {(poloOpts.length > 0 || faseOpts.length > 0) && (
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <span className="text-white/30 text-[12px]">Filtrar:</span>
+                        {poloOpts.length > 0 && (
+                            <Select
+                                value={filtros?.polo || '__todos__'}
+                                onValueChange={v => aplicarFiltro('polo', v)}
+                            >
+                                <SelectTrigger className="h-9 w-44 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px]">
+                                    <SelectValue placeholder="Todos os Polos" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__todos__">Todos os Polos</SelectItem>
+                                    {poloOpts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        {faseOpts.length > 0 && (
+                            <Select
+                                value={filtros?.fase || '__todos__'}
+                                onValueChange={v => aplicarFiltro('fase', v)}
+                            >
+                                <SelectTrigger className="h-9 w-44 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white text-[13px]">
+                                    <SelectValue placeholder="Todas as fases" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__todos__">Todas as fases</SelectItem>
+                                    {faseOpts.map(o => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        )}
+                        {/* Toggle "Fora do prazo" — button simples (não Radix Select) para evitar bug value="" */}
+                        <button
+                            onClick={() => aplicarFiltro('fora_do_prazo', filtros?.fora_do_prazo ? '' : '1')}
+                            className={cn(
+                                'flex items-center gap-1.5 h-9 px-3 rounded-xl border text-[13px] transition-all',
+                                filtros?.fora_do_prazo
+                                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                                    : 'border-white/[0.08] bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/20'
+                            )}
+                        >
+                            Fora do prazo
+                        </button>
+
+                        {/* Limpar filtros — aparece quando qualquer filtro está ativo */}
+                        {(filtros?.polo || filtros?.fase || filtros?.fora_do_prazo) && (
+                            <button
+                                onClick={() => router.get(route('mlb.implementacao.index'), {}, { replace: true })}
+                                className="text-white/30 hover:text-white text-[12px] transition-colors"
+                            >
+                                Limpar filtros
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 {/* Tabela */}
                 <div className="card-ecf rounded-2xl overflow-hidden">
@@ -715,6 +795,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                         <thead>
                             <tr className="border-b border-white/[0.06]">
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider">Empresa</th>
+                                <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Polos</th>
+                                <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Fase</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden sm:table-cell">Estágio</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider">Progresso</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell">Último Acesso</th>
@@ -724,8 +806,18 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                         <tbody>
                             {filtradas.length === 0 && (
                                 <tr>
-                                    <td colSpan={5} className="px-4 py-12 text-center text-white/30 text-[13px]">
-                                        {busca ? 'Nenhuma empresa encontrada.' : 'Nenhuma empresa cadastrada.'}
+                                    <td colSpan={7} className="px-4 py-12 text-center">
+                                        {busca || filtros?.polo || filtros?.fase || filtros?.fora_do_prazo ? (
+                                            <div className="space-y-1">
+                                                <p className="text-white/40 text-[13px] font-semibold">Nenhum resultado</p>
+                                                <p className="text-white/20 text-[12px]">Nenhuma empresa corresponde aos filtros selecionados. Limpe os filtros para ver todas.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-1">
+                                                <p className="text-white/40 text-[13px] font-semibold">Nenhuma empresa Polos</p>
+                                                <p className="text-white/20 text-[12px]">Nenhuma empresa Polos possui ficha de onboarding ainda. A criação de fichas será habilitada na Frente 4.</p>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             )}
@@ -735,7 +827,21 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                     className={cn('border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]', idx === filtradas.length - 1 && 'border-b-0')}
                                 >
                                     <td className="px-4 py-3">
-                                        <span className="text-white text-[13px] font-medium">{empresa.nome}</span>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <span className="text-white text-[13px] font-medium">{empresa.nome}</span>
+                                            {/* Badge "Fora do prazo" — apenas exibe prop calculada no backend (plano 02) */}
+                                            {empresa.fora_do_prazo && (
+                                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20 whitespace-nowrap">
+                                                    Fora do prazo
+                                                </span>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3 hidden lg:table-cell">
+                                        <span className="text-white/50 text-[12px]">{empresa.polo ?? '—'}</span>
+                                    </td>
+                                    <td className="px-4 py-3 hidden lg:table-cell">
+                                        <span className="text-white/50 text-[12px]">{empresa.fase ?? '—'}</span>
                                     </td>
                                     <td className="px-4 py-3 hidden sm:table-cell">
                                         <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', ESTAGIO_COLORS[empresa.estagio] ?? 'text-white/30 bg-white/[0.04]')}>
@@ -754,6 +860,16 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                     </td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex items-center justify-end gap-2">
+                                            {/* Link para a ficha de Onboarding (ONB-01) */}
+                                            {empresa.impl_id && (
+                                                <Link
+                                                    href={route('mlb.implementacao.ficha', empresa.impl_id)}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                >
+                                                    <FileText size={12} />
+                                                    Abrir ficha
+                                                </Link>
+                                            )}
                                             <button
                                                 onClick={() => setModal(empresa)}
                                                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"

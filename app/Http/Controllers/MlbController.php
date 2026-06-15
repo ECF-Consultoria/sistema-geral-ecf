@@ -1639,7 +1639,7 @@ class MlbController extends Controller
             }
         });
 
-        $label = $validated['tipo'] === 'polos' ? 'POLO (com Implementação)' : 'Assessoria';
+        $label = $validated['tipo'] === 'polos' ? 'Polos (com Onboarding)' : 'Assessoria';
 
         return back()->with('success', '"' . $company->name . '" ativada como ' . $label . '.');
     }

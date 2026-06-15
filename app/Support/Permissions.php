@@ -127,7 +127,7 @@ class Permissions
                 ['key' => self::MLB_HISTORICO,     'label' => 'Pub · Histórico',      'description' => 'Histórico de publicações'],
                 ['key' => self::MLB_REVISAO,       'label' => 'Pub · Revisão',        'description' => 'Revisar publicações da equipe'],
                 ['key' => self::MLB_EMPRESAS,      'label' => 'Pub · Empresas',       'description' => 'Empresas com módulo Publicação ativo'],
-                ['key' => self::MLB_IMPLEMENTACAO, 'label' => 'Pub · Implementação',  'description' => 'Onboarding de novas empresas'],
+                ['key' => self::MLB_IMPLEMENTACAO, 'label' => 'Pub · Onboarding',     'description' => 'Onboarding de novas empresas'],
                 ['key' => self::MLB_METAS,         'label' => 'Pub · Metas',          'description' => 'Configuração de metas de publicação'],
                 ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
             ],

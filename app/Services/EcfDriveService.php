@@ -484,6 +484,45 @@ class EcfDriveService
         );
     }
 
+    // ─── Files (Phase 38) ───
+
+    /**
+     * Lista arquivos disponíveis no ECF Drive com filtros opcionais.
+     *
+     * Filtros aceitos: search (string — ex: 'POLOS_MENSAL'), page, limit.
+     * Retorna envelope: ['data' => File[], 'total' => int, 'page' => int, 'limit' => int].
+     *
+     * SEM cache — a lista de arquivos muda mensalmente quando o ECF Drive faz
+     * novo sync; um cache aqui mascararia arquivos recém-chegados.
+     *
+     * @see API-GUIDE.md §3 (GET /files)
+     * @throws \RuntimeException quando HTTP != 2xx após retry.
+     */
+    public function listFiles(array $filtros = []): array
+    {
+        return $this->get('/files', $filtros);
+    }
+
+    /**
+     * Conteúdo JSON de um arquivo específico pelo seu ID.
+     *
+     * Parâmetros aceitos: limit (int, default 5000 — use >= 5000 para o CSV POLOS MENSAL
+     * que tem ~3664 linhas). Retorna envelope:
+     *   ['filename', 'totalRows', 'returned', 'limited', 'rows' => [...]]
+     * ATENÇÃO: 'rows' (não 'data') contém as linhas; 'totalRows' vem null quando limited=false.
+     *
+     * Cache: 1h (TTL=3600s) — conteúdo do CSV muda apenas com novo sync mensal;
+     * o TTL é intencionalmente conservador para reduzir carga e latência na UI.
+     *
+     * @see API-GUIDE.md §3 (GET /files/:id/json)
+     * @throws \RuntimeException quando HTTP != 2xx após retry.
+     */
+    public function fileJson(string $id, array $params = []): array
+    {
+        $path = "/files/{$id}/json";
+        return Cache::remember($this->cacheKey($path, $params), 3600, fn () => $this->get($path, $params));
+    }
+
     // ─── Auth/Health ───
 
     /**

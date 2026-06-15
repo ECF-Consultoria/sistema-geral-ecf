@@ -417,14 +417,32 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/coleta/{id}/status', [MlbController::class, 'coletaStatus'])->name('coleta.status');
 
     // Implementação MLB (admin)
+    // ATENÇÃO: /implementacao/indicadores DEVE vir antes de qualquer rota com {impl}
+    // para evitar que Laravel capture "indicadores" como parâmetro (Pitfall 2 do RESEARCH).
     Route::get('/implementacao/indicadores',                  [MlbImplementacaoController::class, 'indicadores'])->name('implementacao.indicadores');
     Route::get('/implementacao',                              [MlbImplementacaoController::class, 'index'])->name('implementacao.index');
     Route::post('/implementacao',                             [MlbImplementacaoController::class, 'criar'])->name('implementacao.criar');
     Route::post('/implementacao-padroes',                     [MlbImplementacaoController::class, 'salvarPadroes'])->name('implementacao.padroes');
+
+    // ─── Ficha de Onboarding (Frente 3 — ONB-02/05/06) ──────────────────────
+    // {impl}/ficha vem DEPOIS de /indicadores para não capturar "indicadores" como {impl}.
+    Route::get  ('/implementacao/{impl}/ficha',               [MlbImplementacaoController::class, 'ficha'])->name('implementacao.ficha');
+    Route::patch('/implementacao/{impl}/bloco/identificacao', [MlbImplementacaoController::class, 'salvarBlocoIdentificacao'])->name('implementacao.bloco.identificacao');
+    Route::patch('/implementacao/{impl}/bloco/acessos',       [MlbImplementacaoController::class, 'salvarBlocoAcessos'])->name('implementacao.bloco.acessos');
+    Route::patch('/implementacao/{impl}/bloco/produtos',      [MlbImplementacaoController::class, 'salvarBlocoProdutos'])->name('implementacao.bloco.produtos');
+    Route::patch('/implementacao/{impl}/bloco/logistica',     [MlbImplementacaoController::class, 'salvarBlocoLogistica'])->name('implementacao.bloco.logistica');
+
     Route::post('/implementacao/{empresa}/gerar',             [MlbImplementacaoController::class, 'gerarLink'])->name('implementacao.gerar');
     Route::post('/implementacao/{impl}/tutoriais',            [MlbImplementacaoController::class, 'atualizarTutoriais'])->name('implementacao.tutoriais');
     Route::post('/implementacao/{impl}/sincronizar-skus',     [MlbImplementacaoController::class, 'sincronizarSkus'])->name('implementacao.sincronizar-skus');
     Route::delete('/implementacao/{impl}',                    [MlbImplementacaoController::class, 'destroy'])->name('implementacao.destroy');
+
+    // ─── Card "Dados do ML" na ficha de Onboarding (Phase 36) ───────────────────
+    // Endpoint async — chamado pelo front via fetch após a ficha carregar.
+    // NÃO usa Inertia — retorna JSON diretamente (ONB-12/13/14).
+    Route::get('/implementacao/{impl}/dados-ml',
+        [MlbImplementacaoController::class, 'dadosMl'])
+        ->name('implementacao.dados-ml');
 });
 
 // ─── Módulo Administrativo ───────────────────────────────────────────────────

@@ -5,14 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Services\EcfDriveService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class MlbImplementacaoController extends Controller
 {
+    /**
+     * Injeção do EcfDriveService via construtor (PHP 8 promoted property).
+     * Mesmo padrão do EmpresaAnaliseEcfController (Phase 25).
+     */
+    public function __construct(private EcfDriveService $ecf) {}
+
     private function checkAccess(Request $request): void
     {
         $user   = $request->user();
@@ -25,6 +34,279 @@ class MlbImplementacaoController extends Controller
             || in_array($role, ['gestor', 'analista', 'lider']),
             403
         );
+    }
+
+    /**
+     * Exibe a ficha de onboarding de uma implementação (Frente 3 — ONB-02/05).
+     *
+     * Props retornadas:
+     *  - `impl`    : 13 campos operacionais + id, progresso, dados, token
+     *  - `empresa` : id, nome (Loja), cust_id, polo, fase, data_solicitacao
+     *  - `opcoes`  : todas as constantes ONB_* para alimentar os selects dos modais
+     */
+    public function ficha(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+        $impl->load('empresa');
+
+        $e = $impl->empresa;
+
+        return Inertia::render('Mlb/OnboardingFicha', [
+            'impl' => [
+                'id'                  => $impl->id,
+                'token'               => $impl->token,
+                'progresso'           => $impl->progresso(),
+                'dados'               => $impl->dados,
+                // Campos operacionais do bloco Acessos
+                'acesso_colaborador'  => $impl->acesso_colaborador,
+                'gmail_colaborador'   => $impl->gmail_colaborador,
+                'grupo_whatsapp'      => $impl->grupo_whatsapp,
+                // Campos operacionais do bloco Produtos
+                'planilha_produtos'   => $impl->planilha_produtos,
+                'listagem'            => $impl->listagem,
+                'publicacao'          => $impl->publicacao,
+                'decola'              => $impl->decola,
+                // Campos operacionais do bloco Logística
+                'contextos_logistica' => $impl->contextos_logistica,
+                'me1'                 => $impl->me1,
+                'integradora'         => $impl->integradora,
+                'places'              => $impl->places,
+                'erp'                 => $impl->erp,
+                // Data do bloco Identificação (vive na implementação)
+                'data_solicitacao'    => $impl->data_solicitacao?->format('Y-m-d'),
+            ],
+            'empresa' => [
+                'id'               => $e->id,
+                'nome'             => $e->nome,
+                'cust_id'          => $e->cust_id,
+                'polo'             => $e->polo,
+                'fase'             => $e->fase,
+                // data_solicitacao do bloco Identificação (lida da implementação)
+                'data_solicitacao' => $impl->data_solicitacao?->format('Y-m-d'),
+            ],
+            'opcoes' => [
+                'polo'                => MlbImplementacao::ONB_POLO_OPCOES,
+                'fase'                => MlbImplementacao::ONB_FASE_OPCOES,
+                'acesso_colaborador'  => MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES,
+                'planilha_produtos'   => MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES,
+                'listagem'            => MlbImplementacao::ONB_LISTAGEM_OPCOES,
+                'publicacao'          => MlbImplementacao::ONB_PUBLICACAO_OPCOES,
+                'me1'                 => MlbImplementacao::ONB_ME1_OPCOES,
+                'integradora'         => MlbImplementacao::ONB_INTEGRADORA_OPCOES,
+                'places'              => MlbImplementacao::ONB_PLACES_OPCOES,
+                'erp'                 => MlbImplementacao::ONB_ERP_OPCOES,
+            ],
+        ]);
+    }
+
+    /**
+     * Retorna dados do seller no ECF Drive para o card "Dados do ML" da ficha.
+     *
+     * Chamado assincronamente pelo front após a ficha carregar — não bloqueia a
+     * abertura da ficha (ONB-14). Retorna JSON puro (não Inertia).
+     *
+     * Consome: seller(), sellerMetricasMensal(programa=POLOS, fields=*) e
+     * sellerMedalhas() via EcfDriveService por $impl->empresa->cust_id.
+     *
+     * Respostas de erro sempre retornam HTTP 200 com campo descritivo para não
+     * quebrar a ficha no front (ONB-14):
+     *  - semCustId=true  : empresa sem Cust ID no cadastro MLB
+     *  - naoEncontrada=true: cust_id não encontrado no ECF Drive (404)
+     *  - erro=string     : ECF Drive offline ou erro genérico (sem stacktrace ao cliente)
+     *
+     * @see EcfDriveService::seller()
+     * @see EcfDriveService::sellerMetricasMensal()
+     * @see EcfDriveService::sellerMedalhas()
+     */
+    public function dadosMl(Request $request, MlbImplementacao $impl): JsonResponse
+    {
+        // Gate 403 — mesma lógica da ficha (admin / perms.empresas / role pub)
+        $this->checkAccess($request);
+
+        $impl->load('empresa');
+
+        // cust_id é coluna direta em mlb_empresas — NÃO é o accessor Company::cust_id
+        $custId = $impl->empresa->cust_id;
+
+        // Estado vazio: empresa sem Cust ID no cadastro ML (sem chamar o ECF Drive)
+        if (empty($custId)) {
+            return response()->json([
+                'semCustId'     => true,
+                'naoEncontrada' => false,
+                'erro'          => null,
+            ]);
+        }
+
+        try {
+            // Snapshot do seller (sem cache) — medalha atual e programa
+            $sellerResp = $this->ecf->seller($custId);
+
+            // Série histórica filtrada por POLOS com todos os campos (fields=* é OBRIGATÓRIO
+            // para tgmv_lc_me2, tgmv_lc_flex, total_livelistings — Pitfall 1 do RESEARCH)
+            $metricasResp = $this->ecf->sellerMetricasMensal($custId, [
+                'programa' => 'POLOS',
+                'fields'   => '*',
+            ]);
+
+            // Histórico de medalhas (cache 6h) — confirma nível atual
+            $this->ecf->sellerMedalhas($custId);
+
+            // A API retorna vários meses, e o mês CORRENTE costuma vir com GMV/anúncios
+            // nulos (em curso). A ordem do payload não é garantida. Ordena por timMonthId
+            // desc e escolhe o mês mais recente que JÁ tenha GMV ou anúncios; se nenhum
+            // tiver, cai no mais recente (ainda serve para nível/medalha). [] = seller M0.
+            $metricas = $metricasResp['data'] ?? [];
+            usort($metricas, fn ($a, $b) => ($b['timMonthId'] ?? '') <=> ($a['timMonthId'] ?? ''));
+            $comDados = array_values(array_filter(
+                $metricas,
+                fn ($m) => ($m['tgmvLc'] ?? null) !== null || ($m['totalLivelistings'] ?? null) !== null
+            ));
+            $ultimo = $comDados[0] ?? ($metricas[0] ?? null);
+
+            // Campos do ECF Drive vêm em camelCase (NÃO no snake_case do glossário SFTP).
+            // Places não tem GMV atual no payload de /metricas/mensal — só o forecast
+            // fTgmvLcPlaces; usamos ele como sinal de atividade do canal. Acesso defensivo.
+            $gmvMe2    = $ultimo ? (float) ($ultimo['tgmvLcMe2']     ?? 0) : 0.0;
+            $gmvFlex   = $ultimo ? (float) ($ultimo['tgmvLcFlex']    ?? 0) : 0.0;
+            $gmvPlaces = $ultimo ? (float) ($ultimo['fTgmvLcPlaces'] ?? 0) : 0.0;
+
+            // Nível/medalha: medalhaAtual do snapshot pode vir nula (ex.: seller ONBOARDING) —
+            // cai no nivelSolucion do mês mais recente das métricas POLOS.
+            $medalha  = $sellerResp['medalhaAtual']['nivelSolucion'] ?? ($ultimo['nivelSolucion'] ?? null);
+            $programa = $sellerResp['medalhaAtual']['programa']      ?? ($ultimo['programa']      ?? null);
+
+            // ─── Reputação (ONB-15) ─────────────────────────────────────────────────
+            // As taxas chegam como string numérica do ECF Drive (ex: '0', '2.5').
+            // Alerta dispara apenas quando alguma taxa, convertida para float, for > 0:
+            // '0' e '0.0' não disparam; '2' e '0.5' disparam. Acesso defensivo ?? '0'.
+            // Nenhuma nova chamada de API — tudo lido de $ultimo já obtido acima.
+            if ($ultimo !== null) {
+                $taxaClaims      = $ultimo['repClaimsRate']                ?? '0';
+                $taxaDisputas    = $ultimo['repDisputesRate']               ?? '0';
+                $taxaCancelamentos = $ultimo['repSellerCancellationsRate']  ?? '0';
+                $taxaAtraso      = $ultimo['repDelayedHtRate']              ?? '0';
+
+                $reputacao = [
+                    'nivel'  => $ultimo['repCurrentLevel'] ?? null,
+                    'taxas'  => [
+                        'claims'        => $taxaClaims,
+                        'disputas'      => $taxaDisputas,
+                        'cancelamentos' => $taxaCancelamentos,
+                        'atraso'        => $taxaAtraso,
+                    ],
+                    // Alerta ativo quando qualquer taxa convertida para float for > 0
+                    'alerta' => (float) $taxaClaims       > 0
+                             || (float) $taxaDisputas     > 0
+                             || (float) $taxaCancelamentos > 0
+                             || (float) $taxaAtraso        > 0,
+                ];
+            } else {
+                $reputacao = null;
+            }
+
+            // ─── Maturidade (ONB-16) ────────────────────────────────────────────────
+            // Nenhuma nova chamada de API — campos lidos de $ultimo já disponível.
+            $maturidade = $ultimo !== null ? [
+                'meses'      => (int) ($ultimo['mesesNoPrograma']   ?? 0),
+                'cluster'    => $ultimo['clusterSeller']            ?? null,
+                'subCluster' => $ultimo['subClusterSeller']         ?? null,
+            ] : null;
+
+            // ─── Série (ONB-17) ─────────────────────────────────────────────────────
+            // Todos os meses de $metricas (já obtidos pelo sellerMetricasMensal) mapeados
+            // para {mes, gmv, visitas}. O GMV nulo do mês corrente (em curso) é PRESERVADO
+            // como null — NÃO convertido para 0, pois ausência de dado difere de zero vendas.
+            // $metricas está ordenado DESC (usort acima); array_reverse reverte para ASC,
+            // expondo a tendência cronológica mês a mês ao frontend. Sem nova chamada de API.
+            $serie = array_values(array_map(
+                fn ($m) => [
+                    'mes'     => $m['timMonthId'] ?? null,
+                    'gmv'     => isset($m['tgmvLc']) ? $m['tgmvLc'] : null,
+                    'visitas' => isset($m['visitas']) ? (int) $m['visitas'] : null,
+                ],
+                array_reverse($metricas)
+            ));
+
+            // ─── Vendas & Forecast (novos blocos) ──────────────────────────────
+            // tsi = itens vendidos (string→int), fTgmvLc = GMV previsto (string→float).
+            // Preservar null quando a fonte for null — não forçar 0 (seller ONBOARDING).
+            $vendasItens      = isset($ultimo['tsi'])      ? (int)   $ultimo['tsi']      : null;
+            $vendasForecastGmv = isset($ultimo['fTgmvLc']) ? (float) $ultimo['fTgmvLc'] : null;
+
+            // ─── Tráfego ────────────────────────────────────────────────────────
+            // visitas e visitasClips em int; null quando ausentes.
+            $trafegoVisitas = isset($ultimo['visitas'])      ? (int) $ultimo['visitas']      : null;
+            $trafegoClips   = isset($ultimo['visitasClips']) ? (int) $ultimo['visitasClips'] : null;
+
+            // ─── Contexto ───────────────────────────────────────────────────────
+            // custState (ex: "BR-RS"), subPolo (ex: "MOVEIS"), hL (ex: "HIGH TOUCH").
+            $contextEstado     = $ultimo['custState'] ?? null;
+            $contextSubPolo    = $ultimo['subPolo']   ?? null;
+            $contextAtendimento = $ultimo['hL']       ?? null;
+
+            // ─── Anúncios & Qualidade (sellers maduros — pode vir nulo p/ ONBOARDING) ──
+            // newListers = novos listadores (int), itensFull (int),
+            // scoreQualidadeFinal (número). Preservar null quando ausente.
+            $qualNovosListadores = isset($ultimo['newListers'])          ? (int)   $ultimo['newListers']          : null;
+            $qualItensFull       = isset($ultimo['itensFull'])           ? (int)   $ultimo['itensFull']           : null;
+            $qualScore           = isset($ultimo['scoreQualidadeFinal']) ? (float) $ultimo['scoreQualidadeFinal'] : null;
+
+            return response()->json([
+                'semCustId'      => false,
+                'naoEncontrada'  => false,
+                'erro'           => null,
+                'medalha'        => $medalha,
+                'programa'       => $programa,
+                'anunciosAtivos' => $ultimo ? (int) ($ultimo['totalLivelistings'] ?? 0) : null,
+                'gmvPolos'       => $ultimo ? (float) ($ultimo['tgmvLc'] ?? 0)           : null,
+                'canais'         => [
+                    'me2'    => ['ativo' => $gmvMe2    > 0, 'gmv' => $gmvMe2],
+                    'flex'   => ['ativo' => $gmvFlex   > 0, 'gmv' => $gmvFlex],
+                    'places' => ['ativo' => $gmvPlaces > 0, 'gmv' => $gmvPlaces],
+                ],
+                'mesRef'     => $ultimo ? ($ultimo['timMonthId'] ?? null) : null,
+                'reputacao'  => $reputacao,
+                'maturidade' => $maturidade,
+                'serie'      => $serie,
+                // ─── Novos blocos (Phase 37 expansão) ────────────────────────
+                'vendas'    => $ultimo !== null ? [
+                    'itens'       => $vendasItens,
+                    'forecastGmv' => $vendasForecastGmv,
+                ] : null,
+                'trafego'   => $ultimo !== null ? [
+                    'visitas' => $trafegoVisitas,
+                    'clips'   => $trafegoClips,
+                ] : null,
+                'contexto'  => $ultimo !== null ? [
+                    'estado'      => $contextEstado,
+                    'subPolo'     => $contextSubPolo,
+                    'atendimento' => $contextAtendimento,
+                ] : null,
+                'qualidade' => $ultimo !== null ? [
+                    'novosListadores' => $qualNovosListadores,
+                    'itensFull'       => $qualItensFull,
+                    'scoreQualidade'  => $qualScore,
+                ] : null,
+            ]);
+
+        } catch (\Throwable $e) {
+            // 404 no ECF Drive: seller não cadastrado (cust_id inexistente)
+            if (str_contains($e->getMessage(), 'HTTP 404')) {
+                return response()->json([
+                    'semCustId'     => false,
+                    'naoEncontrada' => true,
+                    'erro'          => null,
+                ]);
+            }
+
+            // Qualquer outro erro (500, timeout, etc.) — registra no log, não vaza stacktrace
+            report($e);
+            return response()->json([
+                'semCustId'     => false,
+                'naoEncontrada' => false,
+                'erro'          => 'Não foi possível buscar dados do ML agora. Tente recarregar.',
+            ]);
+        }
     }
 
     public function indicadores(Request $request)
@@ -122,22 +404,49 @@ class MlbImplementacaoController extends Controller
 
         $globalPadroes = MlbConfiguracao::implementacaoPadroes();
 
-        $empresas = MlbImplementacao::with('empresa')
-            ->orderBy('created_at', 'desc')
-            ->get()
+        // Filtros opcionais por Polo e Fase (ONB-01) — filtram em mlb_empresas via whereHas
+        $filtroPolo        = $request->query('polo');
+        $filtroFase        = $request->query('fase');
+        // Filtro de prazo (ONB-10): boolean — '1'/'true'/'on' → true; ausente/'' → false
+        $filtroForaDoPrazo = $request->boolean('fora_do_prazo');
+
+        $query = MlbImplementacao::with('empresa')
+            ->orderBy('created_at', 'desc');
+
+        if ($filtroPolo) {
+            $query->whereHas('empresa', fn($q) => $q->where('polo', $filtroPolo));
+        }
+
+        if ($filtroFase) {
+            $query->whereHas('empresa', fn($q) => $q->where('fase', $filtroFase));
+        }
+
+        // Nota: fora_do_prazo NÃO pode ser filtrado via whereHas (cálculo depende de PHP/JSON,
+        // não é coluna SQL). O filtro é aplicado em Collection após o get().
+        $empresas = $query->get()
             ->map(function ($impl) {
-                $e = $impl->empresa;
+                $e     = $impl->empresa;
+                $prazo = $impl->infoPrazo();
                 return [
-                    'id'            => $e->id,
-                    'nome'          => $e->nome,
-                    'estagio'       => $e->estagio,
-                    'impl_id'       => $impl->id,
-                    'token'         => $impl->token,
-                    'dados'         => $impl->dados,
-                    'progresso'     => $impl->progresso(),
-                    'ultimo_acesso' => $impl->ultimo_acesso?->diffForHumans(),
+                    'id'             => $e->id,
+                    'nome'           => $e->nome,
+                    'estagio'        => $e->estagio,
+                    'polo'           => $e->polo,
+                    'fase'           => $e->fase,
+                    'impl_id'        => $impl->id,
+                    'token'          => $impl->token,
+                    'dados'          => $impl->dados,
+                    'progresso'      => $impl->progresso(),
+                    'ultimo_acesso'  => $impl->ultimo_acesso?->diffForHumans(),
+                    // Dados de prazo (ONB-09)
+                    'fora_do_prazo'  => $prazo['fora_do_prazo'],
+                    'dias_restantes' => $prazo['dias_restantes'],
+                    'dias_decorridos'=> $prazo['dias_decorridos'],
                 ];
-            });
+            })
+            // Filtro de prazo em Collection — aplicado após Polo/Fase (ONB-10)
+            ->when($filtroForaDoPrazo, fn($col) => $col->filter(fn($e) => $e['fora_do_prazo']))
+            ->values();
 
         return Inertia::render('Mlb/Implementacao', [
             'empresas'          => $empresas,
@@ -145,6 +454,14 @@ class MlbImplementacaoController extends Controller
             'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
             'integrador_opcoes' => MlbImplementacao::INTEGRADOR_OPCOES,
             'global_padroes'    => $globalPadroes,
+            // Filtros ativos (para os selects da listagem)
+            'filtros'           => [
+                'polo'          => $filtroPolo,
+                'fase'          => $filtroFase,
+                'fora_do_prazo' => $filtroForaDoPrazo,
+            ],
+            'polo_opcoes'       => MlbImplementacao::ONB_POLO_OPCOES,
+            'fase_opcoes'       => MlbImplementacao::ONB_FASE_OPCOES,
         ]);
     }
 
@@ -176,7 +493,7 @@ class MlbImplementacaoController extends Controller
         DB::transaction(function () use ($validated, $request, $existing, &$msg) {
             if ($existing) {
                 $empresa = $existing;
-                $msg = "Implementação vinculada à empresa existente \"{$empresa->nome}\".";
+                $msg = "Onboarding vinculado à empresa existente \"{$empresa->nome}\".";
             } else {
                 $empresa = MlbEmpresa::create([
                     'nome'       => $validated['nome'],
@@ -186,7 +503,7 @@ class MlbImplementacaoController extends Controller
                     'estagio'    => 'Não Listado',
                     'criado_por' => $request->user()->id,
                 ]);
-                $msg = 'Implementação criada com sucesso.';
+                $msg = 'Onboarding criado com sucesso.';
             }
 
             $impl = $this->criarImplementacaoPolo($empresa);
@@ -318,7 +635,132 @@ class MlbImplementacaoController extends Controller
     {
         $this->checkAccess($request);
         $impl->delete();
-        return back()->with('success', 'Implementação removida. A empresa permanece em Empresas.');
+        return back()->with('success', 'Onboarding removido. A empresa permanece em Empresas.');
+    }
+
+    // ─── Saves por bloco da ficha de Onboarding (ONB-06) ────────────────────
+
+    /**
+     * Salva o bloco Identificação da ficha.
+     *
+     * Polo e Fase vivem em mlb_empresas (ONB-03 + Pitfall 1):
+     * NUNCA chamar $impl->update(['fase' => ...]) — coluna não existe em mlb_implementacoes.
+     * Data de solicitação fica em mlb_implementacoes (campo operacional do onboarding).
+     */
+    public function salvarBlocoIdentificacao(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $validated = $request->validate([
+            'polo'             => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_POLO_OPCOES)],
+            'fase'             => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_FASE_OPCOES)],
+            'data_solicitacao' => ['nullable', 'date'],
+        ]);
+
+        // Polo e Fase → mlb_empresas (NÃO em mlb_implementacoes)
+        $dadosEmpresa = array_filter([
+            'polo' => $validated['polo'] ?? null,
+            'fase' => $validated['fase'] ?? null,
+        ], fn($v) => !is_null($v));
+
+        if (!empty($dadosEmpresa)) {
+            $impl->empresa->update($dadosEmpresa);
+        }
+
+        // Data de solicitação → mlb_implementacoes
+        if (array_key_exists('data_solicitacao', $validated)) {
+            $impl->update(['data_solicitacao' => $validated['data_solicitacao']]);
+        }
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('Bloco Identificação atualizado para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Identificação atualizada.');
+    }
+
+    /**
+     * Salva o bloco Acessos & Setup da ficha.
+     */
+    public function salvarBlocoAcessos(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $validated = $request->validate([
+            'acesso_colaborador' => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES)],
+            'gmail_colaborador'  => ['nullable', 'string', 'max:150'],
+            // grupo_whatsapp: aceita boolean, '0'/'1' e também strings 'true'/'false'
+            // validado separadamente via $request->boolean() para maior compatibilidade
+        ]);
+
+        // Extrair campo boolean com $request->boolean() que aceita 'true', '1', true, etc.
+        if ($request->has('grupo_whatsapp')) {
+            $validated['grupo_whatsapp'] = $request->boolean('grupo_whatsapp');
+        }
+
+        $impl->update($validated);
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('Bloco Acessos atualizado para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Acessos & Setup atualizados.');
+    }
+
+    /**
+     * Salva o bloco Produtos & Publicação da ficha.
+     */
+    public function salvarBlocoProdutos(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $validated = $request->validate([
+            'planilha_produtos' => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES)],
+            'listagem'          => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_LISTAGEM_OPCOES)],
+            'publicacao'        => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_PUBLICACAO_OPCOES)],
+            // decola: aceita boolean, '0'/'1' e também strings 'true'/'false'
+        ]);
+
+        // Extrair campo boolean com $request->boolean() que aceita 'true', '1', true, etc.
+        if ($request->has('decola')) {
+            $validated['decola'] = $request->boolean('decola');
+        }
+
+        $impl->update($validated);
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('Bloco Produtos & Publicação atualizado para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Produtos & Publicação atualizados.');
+    }
+
+    /**
+     * Salva o bloco Logística & Integrações da ficha.
+     */
+    public function salvarBlocoLogistica(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $validated = $request->validate([
+            'contextos_logistica' => ['nullable', 'string'],
+            'me1'                 => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ME1_OPCOES)],
+            'integradora'         => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_INTEGRADORA_OPCOES)],
+            'places'              => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_PLACES_OPCOES)],
+            'erp'                 => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ERP_OPCOES)],
+        ]);
+
+        $impl->update($validated);
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('Bloco Logística & Integrações atualizado para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Logística & Integrações atualizados.');
     }
 
     // ─── Público (sem autenticação) ──────────────────────────────────────────
@@ -327,11 +769,19 @@ class MlbImplementacaoController extends Controller
     {
         $impl = MlbImplementacao::where('token', $token)->with('empresa')->firstOrFail();
 
+        $dados = $impl->dados ?? MlbImplementacao::dadosPadrao();
+
+        // Coluna por-empresa (cadastro/ficha) tem precedência sobre o padrão global
+        // da ECF no passo "Acesso Colaborador" (lê dados.links_admin.gmail_colaborador).
+        if (!empty($impl->gmail_colaborador)) {
+            $dados['links_admin']['gmail_colaborador'] = $impl->gmail_colaborador;
+        }
+
         return Inertia::render('Mlb/ImplementacaoPublicador', [
             'impl' => [
                 'token'        => $impl->token,
                 'empresa_nome' => $impl->empresa->nome,
-                'dados'        => $impl->dados ?? MlbImplementacao::dadosPadrao(),
+                'dados'        => $dados,
                 'criado_em'    => $impl->created_at->format('d/m/Y'),
             ],
             'checklist'         => MlbImplementacao::CHECKLIST,
@@ -347,6 +797,21 @@ class MlbImplementacaoController extends Controller
 
         $dados = $impl->dados ?? MlbImplementacao::dadosPadrao();
 
+        // O gmail capturado no cadastro (Comercial) ou na ficha de Onboarding fica na
+        // COLUNA gmail_colaborador. O passo "Acesso Colaborador" do Onboarding lê de
+        // dados.links_admin.gmail_colaborador — então a coluna por-empresa tem
+        // precedência sobre o padrão global da ECF quando preenchida.
+        if (!empty($impl->gmail_colaborador)) {
+            $dados['links_admin']['gmail_colaborador'] = $impl->gmail_colaborador;
+        }
+
+        // Prazo automático de 5 dias (Frente 5 / ONB-09): data-limite = início + 5 dias.
+        $prazo       = $impl->infoPrazo();
+        $prazoLimite = \Carbon\Carbon::parse($prazo['data_inicio'])->addDays(5)->format('Y-m-d');
+
+        // Link global da Tabela de Frete (configurado nos Padrões Globais)
+        $tabelaFreteUrl = MlbConfiguracao::implementacaoPadroes()['links_admin_extra']['tabela_frete'] ?? '';
+
         return Inertia::render('Mlb/ImplementacaoPublica', [
             'impl' => [
                 'token'        => $impl->token,
@@ -358,6 +823,8 @@ class MlbImplementacaoController extends Controller
             'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
             'integrador_opcoes' => MlbImplementacao::INTEGRADOR_OPCOES,
             'prazo_data'        => $dados['prazo_data'] ?? '',
+            'prazo_limite'      => $prazoLimite,
+            'tabela_frete_url'  => $tabelaFreteUrl,
         ]);
     }
 

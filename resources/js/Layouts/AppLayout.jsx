@@ -114,7 +114,7 @@ const NAV_TREE = [
         group: 'Polos',
         icon: ListChecks,
         children: [
-            { label: 'Implementação', routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks,   permission: 'mlb.implementacao' },
+            { label: 'Onboarding',    routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks,   permission: 'mlb.implementacao' },
             { label: 'Projetos',      routeName: 'mlb.projetos',            page: 'Mlb/Projetos',      icon: FolderKanban, permission: 'mlb.projetos' },
         ],
     },

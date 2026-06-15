@@ -79,7 +79,7 @@ function ProgressHeader({ empresa_nome, progresso }) {
             <div className="max-w-2xl mx-auto px-4 py-4">
                 <div className="flex items-center justify-between mb-3">
                     <div>
-                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">ECF Consultoria · Implementação MLB</p>
+                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">ECF Consultoria · Onboarding MLB</p>
                         <h1 className="text-white font-display font-bold text-lg mt-0.5">{empresa_nome}</h1>
                     </div>
                     <div className="text-right">
@@ -585,7 +585,7 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
 
 // ─── Item do checklist ────────────────────────────────────────────────────────
 
-function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, onOpenProdutos, onOpenPrecificacao, num }) {
+function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, onOpenProdutos, onOpenPrecificacao, tabelaFreteUrl, num }) {
     const feito = dado?.feito ?? false;
 
     return (
@@ -621,16 +621,29 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                     </button>
                 </div>
             ) : item.tipo === 'precificacao' ? (
-                <div className="mt-3 flex items-center justify-between p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]">
-                    <span className="text-white/50 text-[13px]">
-                        {(dado?.produtos ?? []).length > 0
-                            ? `${dado.produtos.length} produto${dado.produtos.length !== 1 ? 's' : ''} com custo informado`
-                            : 'Nenhum produto precificado ainda'}
-                    </span>
-                    <button onClick={onOpenPrecificacao} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ecf-yellow text-[#252525] font-bold text-[13px] hover:brightness-110 transition-all">
-                        Abrir Precificação
-                    </button>
-                </div>
+                <>
+                    <div className="mt-3 flex items-center justify-between p-4 rounded-xl border border-white/[0.08] bg-white/[0.02]">
+                        <span className="text-white/50 text-[13px]">
+                            {(dado?.produtos ?? []).length > 0
+                                ? `${dado.produtos.length} produto${dado.produtos.length !== 1 ? 's' : ''} com custo informado`
+                                : 'Nenhum produto precificado ainda'}
+                        </span>
+                        <button onClick={onOpenPrecificacao} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-ecf-yellow text-[#252525] font-bold text-[13px] hover:brightness-110 transition-all">
+                            Abrir Precificação
+                        </button>
+                    </div>
+                    {tabelaFreteUrl && (
+                        <a
+                            href={tabelaFreteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow font-semibold text-[13px] hover:bg-ecf-yellow/[0.12] transition-all"
+                        >
+                            <ExternalLink size={14} />
+                            Tabela de Frete
+                        </a>
+                    )}
+                </>
             ) : (
                 <ItemInput item={item} dado={dado} linksAdmin={linksAdmin} onChange={onChange} />
             )}
@@ -687,7 +700,7 @@ function fmtPrazo(iso) {
     return `${d}/${m}/${y}`;
 }
 
-export default function ImplementacaoPublica({ impl, checklist, prazo_data = '' }) {
+export default function ImplementacaoPublica({ impl, checklist, prazo_data = '', prazo_limite = '', tabela_frete_url = '' }) {
     const [dadosLocais, setDadosLocais]     = useState(impl.dados);
     const [progresso, setProgresso]         = useState(impl.progresso);
     const [saveStatus, setSaveStatus]       = useState('idle');
@@ -736,7 +749,7 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '' 
                 <div className="flex items-start gap-3 p-4 rounded-2xl border border-ecf-yellow/20 bg-ecf-yellow/[0.04]">
                     <AlertCircle size={16} className="text-ecf-yellow shrink-0 mt-0.5" />
                     <p className="text-white/60 text-[13px] leading-relaxed">
-                        <span className="text-ecf-yellow font-semibold">Atenção:</span> todas as etapas devem ser concluídas antes{prazo_data ? <> de <span className="text-white font-semibold">{fmtPrazo(prazo_data)}</span></> : ' do prazo programado'} para mantermos o andamento da implementação. Projetos sem retorno dentro do prazo poderão ser descontinuados.
+                        <span className="text-ecf-yellow font-semibold">Atenção:</span> todas as etapas devem ser concluídas <span className="text-white font-semibold">em até 5 dias</span>{prazo_limite ? <> (até <span className="text-white font-semibold">{fmtPrazo(prazo_limite)}</span>)</> : ''} para mantermos o andamento da implementação. Projetos sem retorno dentro do prazo poderão ser descontinuados.
                     </p>
                 </div>
 
@@ -768,6 +781,7 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '' 
                         onPlay={playVideo}
                         onOpenProdutos={() => setProdutosOpen(true)}
                         onOpenPrecificacao={() => setPrecifOpen(true)}
+                        tabelaFreteUrl={tabela_frete_url}
                         num={String(idx + 1).padStart(2, '0')}
                     />
                 ))}

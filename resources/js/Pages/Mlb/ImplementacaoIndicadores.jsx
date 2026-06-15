@@ -236,7 +236,7 @@ function EmpresaModal({ empresa, onClose }) {
                         <p className="text-white/70 text-[13px] font-medium mt-0.5">{empresa.responsavel}</p>
                     </div>
                     <div>
-                        <p className="text-white/30 text-[11px]">Início da Implementação</p>
+                        <p className="text-white/30 text-[11px]">Início do Onboarding</p>
                         <p className="text-white/70 text-[13px] font-medium mt-0.5">{empresa.criado_em}</p>
                     </div>
                     <div>
@@ -332,7 +332,7 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
     const maisConcluidaItem = [...dificuldades].sort((a, b) => b.pct_concluido - a.pct_concluido)[0];
 
     return (
-        <AppLayout title="Indicadores de Implementação">
+        <AppLayout title="Indicadores de Onboarding">
             <div className="max-w-7xl mx-auto space-y-6">
 
                 {/* Header */}
@@ -344,7 +344,7 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
                         <ArrowLeft size={18} />
                     </Link>
                     <div>
-                        <h1 className="text-white font-display font-bold text-xl">Indicadores de Implementação</h1>
+                        <h1 className="text-white font-display font-bold text-xl">Indicadores de Onboarding</h1>
                         <p className="text-white/40 text-[13px] mt-0.5">
                             Acompanhe o andamento, gargalos e eficiência do processo de implementação
                         </p>
@@ -592,7 +592,7 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
                             <div className="w-6 h-6 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center">
                                 <Users size={12} className="text-white/40" />
                             </div>
-                            <p className="text-white font-semibold text-sm">Empresas em Implementação</p>
+                            <p className="text-white font-semibold text-sm">Empresas em Onboarding</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                             <input
