@@ -129,6 +129,58 @@ const PRODUTOS_COLS = [
     { id: 'descricao',      label: 'Descrição',       type: 'textarea', width: 200 },
 ];
 
+// Campo de texto/textarea/select rotulado (cadastro guiado de produto).
+function CampoTexto({ label, dica, value, onChange, placeholder, tipo, opcoes }) {
+    return (
+        <div>
+            <label className="text-white/60 text-[12px] font-medium block mb-1">
+                {label}{dica && <span className="text-white/30 font-normal"> · {dica}</span>}
+            </label>
+            {tipo === 'select' ? (
+                <CustomSelect value={value || opcoes[0]} onChange={onChange} opcoes={opcoes} className="w-full" />
+            ) : tipo === 'textarea' ? (
+                <textarea value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder} rows={3}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 resize-none" />
+            ) : (
+                <input value={value ?? ''} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+                    className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+            )}
+        </div>
+    );
+}
+
+// Grupos de campos do cadastro guiado (espelha PRODUTOS_COLS, mais humano).
+const PROD_GRUPOS = [
+    { titulo: 'Identificação', cols: 3, campos: [
+        { id: 'sku',     label: 'SKU',  dica: 'código', ph: 'ex: CAD-001' },
+        { id: 'produto', label: 'Nome do produto', ph: 'ex: Cadeira Gamer Preta' },
+        { id: 'curva',   label: 'Curva', tipo: 'select', opcoes: ['Curva A', 'Curva B', 'Curva C'] },
+    ] },
+    { titulo: 'Medidas do produto', cols: 4, campos: [
+        { id: 'altura',       label: 'Altura',       dica: 'cm' },
+        { id: 'largura',      label: 'Largura',      dica: 'cm' },
+        { id: 'profundidade', label: 'Profundidade', dica: 'cm' },
+        { id: 'peso_kg',      label: 'Peso',         dica: 'kg' },
+    ] },
+    { titulo: 'Medidas da embalagem', cols: 4, campos: [
+        { id: 'altura_emb',  label: 'Altura',       dica: 'cm' },
+        { id: 'largura_emb', label: 'Largura',      dica: 'cm' },
+        { id: 'prof_emb',    label: 'Profundidade', dica: 'cm' },
+        { id: 'peso_emb_kg', label: 'Peso',         dica: 'kg' },
+    ] },
+    { titulo: 'Disponibilidade', cols: 4, campos: [
+        { id: 'estoque', label: 'Estoque', dica: 'unidades' },
+    ] },
+];
+
+const PROD_VAZIO = { curva: 'Curva A', sku: '', produto: '', altura: '', largura: '', profundidade: '', peso_kg: '',
+    altura_emb: '', largura_emb: '', prof_emb: '', peso_emb_kg: '', estoque: '', especificacoes: '', descricao: '' };
+
+const PROD_OBRIG = ['sku', 'produto', 'altura', 'largura', 'profundidade', 'peso_kg', 'estoque', 'descricao'];
+function faltamCampos(p) {
+    return PROD_OBRIG.filter(k => String(p[k] ?? '').trim() === '');
+}
+
 function TabelaProdutos({ produtos, onSave }) {
     // Remove linhas completamente vazias do final (dados antigos salvos em excesso)
     const trimmed = [...produtos];
@@ -138,6 +190,9 @@ function TabelaProdutos({ produtos, onSave }) {
         if (!hasData) trimmed.pop(); else break;
     }
     const [rows, setRows] = useState(trimmed);
+    const [view, setView] = useState('guiado');
+    const [selIdx, setSelIdx] = useState(0);
+    const [saving, setSaving] = useState(false);
     const debRef    = useRef(null);
     const pendingRef = useRef(null);
     const onSaveRef  = useRef(onSave);
@@ -152,16 +207,114 @@ function TabelaProdutos({ produtos, onSave }) {
     function handleChange(newRows) {
         setRows(newRows);
         pendingRef.current = newRows;
+        setSaving(true);
         clearTimeout(debRef.current);
-        debRef.current = setTimeout(() => { onSaveRef.current(newRows); pendingRef.current = null; }, 800);
+        debRef.current = setTimeout(() => { onSaveRef.current(newRows); pendingRef.current = null; setSaving(false); }, 800);
     }
 
+    function editProduto(campo, valor) {
+        const base = rows.length > 0 ? rows : [{ ...PROD_VAZIO }];
+        const idx  = Math.min(selIdx, Math.max(0, base.length - 1));
+        handleChange(base.map((r, i) => i === idx ? { ...r, [campo]: valor } : r));
+    }
+    function addProduto() {
+        const novo = [...rows, { ...PROD_VAZIO }];
+        handleChange(novo);
+        setSelIdx(novo.length - 1);
+    }
+    function delProduto(idx) {
+        const novo = rows.filter((_, i) => i !== idx);
+        handleChange(novo);
+        setSelIdx(s => Math.max(0, Math.min(s >= idx ? s - 1 : s, novo.length - 1)));
+    }
+
+    const row = rows[selIdx] ?? PROD_VAZIO;
+
     return (
-        <div className="mt-3">
-            <SpreadsheetGrid columns={PRODUTOS_COLS} rows={rows} onChange={handleChange} minRows={10} exportFilename="produtos" showImportExport={false} />
-            <p className="mt-2 text-white/20 text-[11px]">
-                Dica: arraste o quadrado azul no canto da célula para preencher · Ctrl+C/V para copiar e colar
-            </p>
+        <div className="mt-3 space-y-4">
+            {/* Toggle de modo */}
+            <div className="flex items-center justify-between gap-3">
+                <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+                    {[{ k: 'guiado', l: '🎯 Guiado' }, { k: 'lote', l: '📊 Lote' }].map(({ k, l }) => (
+                        <button key={k} type="button" onClick={() => setView(k)}
+                            className={cn('px-4 py-1.5 rounded-lg text-[13px] font-semibold transition',
+                                view === k ? 'bg-white/[0.1] text-white' : 'text-white/45 hover:text-white/75')}>
+                            {l}
+                        </button>
+                    ))}
+                </div>
+                <span className="text-[11px] text-white/35 inline-flex items-center gap-1.5">
+                    <span className={cn('h-1.5 w-1.5 rounded-full', saving ? 'bg-ecf-yellow animate-pulse' : 'bg-green-400')} />
+                    {saving ? 'Salvando…' : 'Salvo automaticamente'}
+                </span>
+            </div>
+
+            {view === 'lote' ? (
+                <>
+                    <SpreadsheetGrid columns={PRODUTOS_COLS} rows={rows} onChange={handleChange} minRows={10} exportFilename="produtos" showImportExport={false} />
+                    <p className="mt-2 text-white/20 text-[11px]">
+                        Dica: arraste o quadrado azul no canto da célula para preencher · Ctrl+C/V para copiar e colar
+                    </p>
+                </>
+            ) : (
+                <div className="space-y-4">
+                    {/* Catálogo de chips */}
+                    <div>
+                        <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2">Meus produtos ({rows.length})</p>
+                        <div className="flex flex-wrap gap-2">
+                            {rows.map((p, i) => {
+                                const faltam = faltamCampos(p);
+                                const ativo = i === selIdx;
+                                return (
+                                    <div key={i} onClick={() => setSelIdx(i)}
+                                        className={cn('group relative rounded-xl border pl-3 pr-7 py-2 transition cursor-pointer',
+                                            ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/[0.08]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]')}>
+                                        <p className="text-white/90 text-[13px] font-medium truncate max-w-[170px]">{p.produto || p.sku || `Produto ${i + 1}`}</p>
+                                        <p className={cn('text-[11px]', faltam.length === 0 ? 'text-green-400/80' : 'text-amber-400/80')}>
+                                            {faltam.length === 0 ? '✓ Completo' : `Faltam ${faltam.length}`}
+                                        </p>
+                                        <button type="button" title="Excluir produto"
+                                            onClick={e => { e.stopPropagation(); delProduto(i); }}
+                                            className="absolute top-1.5 right-1.5 text-white/25 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
+                                            <X size={13} />
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                            <button type="button" onClick={addProduto}
+                                className="rounded-xl border border-dashed border-white/[0.15] px-4 py-2 text-white/50 hover:text-white hover:border-white/30 text-[13px] font-medium transition">
+                                + Adicionar produto
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Formulário do produto selecionado */}
+                    <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-5">
+                        {faltamCampos(row).length > 0 && (
+                            <div className="flex items-start gap-2 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-3 py-2">
+                                <span className="text-amber-300 text-[12px]">Faltam preencher: <span className="font-semibold">{faltamCampos(row).join(', ')}</span></span>
+                            </div>
+                        )}
+                        {PROD_GRUPOS.map(g => (
+                            <div key={g.titulo}>
+                                <p className="text-white/40 text-[11px] uppercase tracking-wider mb-2">{g.titulo}</p>
+                                <div className={cn('grid gap-3', g.cols === 3 ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-4')}>
+                                    {g.campos.map(c => (
+                                        <CampoTexto key={c.id} label={c.label} dica={c.dica} placeholder={c.ph} tipo={c.tipo} opcoes={c.opcoes}
+                                            value={row[c.id]} onChange={v => editProduto(c.id, v)} />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                            <CampoTexto label="Especificações técnicas" tipo="textarea" placeholder="material, cor, voltagem, garantia…"
+                                value={row.especificacoes} onChange={v => editProduto('especificacoes', v)} />
+                            <CampoTexto label="Descrição" tipo="textarea" placeholder="texto que vai no anúncio"
+                                value={row.descricao} onChange={v => editProduto('descricao', v)} />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -191,8 +344,10 @@ function GmailDisplay({ gmail }) {
 
 // ─── Calculadora de precificação ─────────────────────────────────────────────
 
-function calcPreco(custo, frete, comissao, imposto, margem) {
-    const divisor = 1 - comissao - imposto - margem;
+// Preço = (Custo + Frete) / (1 − Comissão − Imposto − Margem de Contribuição − Lucro Líquido)
+// (modelo da planilha ARB — MC e Lucro Líquido são dois alvos configuráveis no divisor)
+function calcPreco(custo, frete, comissao, imposto, mc, ll) {
+    const divisor = 1 - comissao - imposto - mc - ll;
     if (divisor <= 0 || isNaN(custo) || custo === '') return null;
     return (parseFloat(custo) + parseFloat(frete)) / divisor;
 }
@@ -202,20 +357,272 @@ function fmt(n) {
     return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+// % é sobre o CUSTO; se custo inválido/0, mostra só o R$
+function fmtRpct(valor, custo) {
+    if (valor === null || valor === undefined || isNaN(valor)) return '—';
+    const r = fmt(valor);
+    const c = parseFloat(custo);
+    if (!c || isNaN(c) || c <= 0) return r;
+    return `${r} · ${((valor / c) * 100).toFixed(1)}%`;
+}
+
+// Campo grande com rótulo + microcopy (linguagem para leigos).
+function CampoValor({ label, dica, valor, onChange, prefixo = 'R$' }) {
+    return (
+        <div>
+            <label className="text-white/70 text-[13px] font-medium block">{label}</label>
+            {dica && <p className="text-white/35 text-[11px] mb-1.5 mt-0.5">{dica}</p>}
+            <div className="flex items-center rounded-xl bg-white/[0.04] border border-white/[0.1] focus-within:border-ecf-yellow/40 transition-colors">
+                <span className="pl-3 text-white/30 text-sm">{prefixo}</span>
+                <input
+                    type="number" step="0.01" min="0" inputMode="decimal"
+                    value={valor}
+                    onChange={e => onChange(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full h-11 px-2 bg-transparent text-white text-base font-medium focus:outline-none placeholder:text-white/20"
+                />
+            </div>
+        </div>
+    );
+}
+
+/**
+ * SimuladorPreco — modo guiado (1 produto por vez) da precificação.
+ * Reaproveita a mesma lógica (calcPreco) e persistência (onEditProduto/cfg),
+ * mas apresenta de forma humana: entrada simples + resultado em destaque +
+ * composição visual do preço + semáforo de saúde da margem.
+ */
+function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving }) {
+    const [avancado, setAvancado] = useState(false);
+
+    const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
+    const t          = tier === 'classico' ? cc : cp;
+    const freteCampo = tier === 'classico' ? 'frete_classico' : 'frete_premium';
+    const custoN     = parseFloat(row.custo || 0) || 0;
+    const freteN     = parseFloat(row[freteCampo] || 0) || 0;
+
+    const preco      = calcPreco(row.custo, freteN, t.comissao, t.imposto, mcNum, llNum); // Preço C/ Desconto
+    const anunciado  = preco ? preco * (1 + acrNum) : null;
+    const comissaoRs = preco ? preco * t.comissao : 0;
+    const impostoRs  = preco ? preco * t.imposto  : 0;
+    const mcRs       = preco ? preco * mcNum : 0;   // Margem de Contribuição R$
+    const llRs       = preco ? preco * llNum : 0;   // Lucro Líquido R$
+
+    const comp = preco ? [
+        { label: 'Custo do produto',      valor: custoN,     cor: '#64748b' },
+        { label: 'Frete',                 valor: freteN,     cor: '#0ea5e9' },
+        { label: 'Comissão do site',      valor: comissaoRs, cor: '#a855f7' },
+        { label: 'Impostos',              valor: impostoRs,  cor: '#f97316' },
+        { label: 'Margem de contribuição',valor: mcRs,       cor: '#38bdf8' },
+        { label: 'Lucro líquido',         valor: llRs,       cor: '#22c55e' },
+    ] : [];
+
+    const cfgTier = cfg[tier];
+    const corTier = tier === 'classico' ? 'text-blue-300' : 'text-violet-300';
+
+    return (
+        <div className="mx-auto max-w-5xl space-y-5">
+            {/* Catálogo de produtos (chips) + adicionar + tier + status de salvo */}
+            <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                    <p className="text-white/40 text-[11px] uppercase tracking-wider">Meus produtos ({produtos.length})</p>
+                    <div className="flex items-center gap-3">
+                        <span className="text-[11px] text-white/35 inline-flex items-center gap-1.5">
+                            <span className={cn('h-1.5 w-1.5 rounded-full', saving ? 'bg-ecf-yellow animate-pulse' : 'bg-green-400')} />
+                            {saving ? 'Salvando…' : 'Salvo automaticamente'}
+                        </span>
+                        <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+                            {[{ k: 'classico', l: 'Clássico' }, { k: 'premium', l: 'Premium' }].map(({ k, l }) => (
+                                <button key={k} type="button" onClick={() => setTier(k)}
+                                    className={cn('px-4 py-1.5 rounded-lg text-[13px] font-semibold transition',
+                                        tier === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>
+                                    {l}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                    {produtos.map((p, i) => {
+                        const f  = parseFloat(p[freteCampo] || 0) || 0;
+                        const pr = calcPreco(p.custo, f, t.comissao, t.imposto, mcNum, llNum);
+                        const ativo = i === selIdx;
+                        return (
+                            <div key={i} onClick={() => setSelIdx(i)}
+                                className={cn('group relative rounded-xl border pl-3 pr-7 py-2 transition cursor-pointer',
+                                    ativo ? 'border-ecf-yellow/50 bg-ecf-yellow/[0.08]' : 'border-white/[0.08] bg-white/[0.02] hover:bg-white/[0.05]')}>
+                                <p className="text-white/90 text-[13px] font-medium truncate max-w-[170px]">{p.descricao || p.sku || `Produto ${i + 1}`}</p>
+                                <p className="text-white/40 text-[11px]">{pr ? fmt(pr) : 'sem preço'}{p.sku ? ` · ${p.sku}` : ''}</p>
+                                <button type="button" title="Excluir produto"
+                                    onClick={e => { e.stopPropagation(); onDeleteProduto(i); }}
+                                    className="absolute top-1.5 right-1.5 text-white/25 hover:text-red-400 opacity-0 group-hover:opacity-100 transition">
+                                    <X size={13} />
+                                </button>
+                            </div>
+                        );
+                    })}
+                    <button type="button" onClick={onAddProduto}
+                        className="rounded-xl border border-dashed border-white/[0.15] px-4 py-2 text-white/50 hover:text-white hover:border-white/30 text-[13px] font-medium transition self-stretch">
+                        + Adicionar produto
+                    </button>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                {/* ── Entrada ── */}
+                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 space-y-4">
+                    <p className="text-white/40 text-[11px] uppercase tracking-wider">Identificação do produto</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-white/70 text-[13px] font-medium block mb-1">SKU <span className="text-white/30 font-normal">(código)</span></label>
+                            <input value={row.sku ?? ''} onChange={e => onEditProduto('sku', e.target.value)} placeholder="ex: CAD-001"
+                                className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                        </div>
+                        <div>
+                            <label className="text-white/70 text-[13px] font-medium block mb-1">Descrição</label>
+                            <input value={row.descricao ?? ''} onChange={e => onEditProduto('descricao', e.target.value)} placeholder="ex: Cadeira Gamer Preta"
+                                className="w-full h-10 px-3 rounded-xl bg-white/[0.04] border border-white/[0.1] text-white text-sm focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20" />
+                        </div>
+                    </div>
+
+                    <p className="text-white/40 text-[11px] uppercase tracking-wider pt-1">Quanto você gasta</p>
+                    <CampoValor label="Custo do produto" dica="Quanto você paga no produto (sem frete)."
+                        valor={row.custo ?? ''} onChange={v => onEditProduto('custo', v)} />
+                    <CampoValor label={`Frete (${tier === 'classico' ? 'Clássico' : 'Premium'})`} dica="Quanto custa enviar este produto."
+                        valor={row[freteCampo] ?? ''} onChange={v => onEditProduto(freteCampo, v)} />
+
+                    {/* Avançado (defaults já preenchidos) */}
+                    <button type="button" onClick={() => setAvancado(v => !v)}
+                        className="flex items-center gap-2 text-white/40 hover:text-white/70 text-[12px] pt-1 transition-colors">
+                        <span className={cn('text-[10px] transition-transform', avancado && 'rotate-180')}>▼</span>
+                        Ajustar parâmetros (avançado) — já preenchemos o padrão
+                    </button>
+                    {avancado && (
+                        <div className="space-y-3 rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                            <p className={cn('text-[11px] font-bold uppercase tracking-wider', corTier)}>{tier === 'classico' ? 'Clássico' : 'Premium'} — taxas do site</p>
+                            <div className="grid grid-cols-2 gap-2">
+                                {[
+                                    { id: 'comissao', label: 'Comissão %', dica: 'o que o site cobra' },
+                                    { id: 'imposto',  label: 'Imposto %',  dica: 'tributos sobre a venda' },
+                                ].map(({ id, label, dica }) => (
+                                    <div key={id} title={dica}>
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">{label}</label>
+                                        <input type="number" step="0.01" min="0" value={cfgTier[id]}
+                                            onChange={e => updateCfg(tier, id, e.target.value)}
+                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="text-white/30 text-[10px] uppercase tracking-wider pt-1">Seus alvos (valem p/ Clássico e Premium)</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div title="margem de contribuição alvo">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
+                                    <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao}
+                                        onChange={e => updateMC(e.target.value)}
+                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                </div>
+                                <div title="lucro líquido alvo">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
+                                    <input type="number" step="0.01" min="0" value={cfg.lucro_liquido}
+                                        onChange={e => updateLL(e.target.value)}
+                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                </div>
+                                <div title="quanto inflar o preço de tabela para depois dar desconto">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Acréscimo %</label>
+                                    <input type="number" step="0.01" min="0" value={cfg.acrescimo}
+                                        onChange={e => updateAcrescimo(e.target.value)}
+                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                {/* ── Resultado ── */}
+                <div className="rounded-2xl border border-ecf-yellow/20 bg-gradient-to-b from-ecf-yellow/[0.06] to-transparent p-5 space-y-4">
+                    {preco ? (
+                        <>
+                            <div>
+                                <p className="text-white/40 text-[11px] uppercase tracking-wider">Preço de venda sugerido</p>
+                                <p className="text-ecf-yellow font-display font-extrabold text-4xl mt-1 leading-none">{fmt(preco)}</p>
+                                <p className="text-white/40 text-[12px] mt-1.5">
+                                    Anuncie por <span className="text-white/70 font-semibold">{fmt(anunciado)}</span> e dê o desconto até {fmt(preco)}.
+                                </p>
+                            </div>
+
+                            {/* Composição visual do preço */}
+                            <div>
+                                <p className="text-white/40 text-[11px] uppercase tracking-wider mb-1.5">Para onde vai cada real</p>
+                                <div className="flex h-3 rounded-full overflow-hidden">
+                                    {comp.map((c, i) => (
+                                        <div key={i} title={`${c.label}: ${fmt(c.valor)}`} style={{ width: `${(c.valor / preco) * 100}%`, background: c.cor }} />
+                                    ))}
+                                </div>
+                                <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                                    {comp.map((c, i) => (
+                                        <div key={i} className="flex items-center gap-2 text-[12px]">
+                                            <span className="h-2 w-2 rounded-full shrink-0" style={{ background: c.cor }} />
+                                            <span className="text-white/50 flex-1">{c.label}</span>
+                                            <span className="text-white/80 tabular-nums">{fmt(c.valor)}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Lucro líquido + margem de contribuição (valores configurados, sem julgar) */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="rounded-xl bg-green-500/[0.06] border border-green-500/20 p-3">
+                                    <p className="text-white/40 text-[11px]">Lucro líquido por venda</p>
+                                    <p className="text-green-400 font-bold text-lg mt-0.5">{fmt(llRs)}</p>
+                                    <p className="text-white/30 text-[11px]">{(llNum * 100).toFixed(1)}% do preço</p>
+                                </div>
+                                <div className="rounded-xl bg-sky-500/[0.06] border border-sky-500/20 p-3">
+                                    <p className="text-white/40 text-[11px]">Margem de contribuição</p>
+                                    <p className="text-sky-300 font-bold text-lg mt-0.5">{fmt(mcRs)}</p>
+                                    <p className="text-white/30 text-[11px]">{(mcNum * 100).toFixed(1)}% do preço</p>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-center py-10">
+                            <p className="text-white/50 text-sm">Informe o <span className="text-white/80">custo</span> e o <span className="text-white/80">frete</span> ao lado</p>
+                            <p className="text-white/30 text-[12px] mt-1">e o preço de venda aparece aqui automaticamente.</p>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// acréscimo global do Anunciado: único valor (não por tier), default 20%
+// Margem de Contribuição e Lucro Líquido são ALVOS globais (default 0 — cliente
+// escolhe). Comissão/Imposto por tier; Acréscimo global (markup p/ desconto).
 const CFG_DEFAULT = {
-    classico: { comissao: 0.115, imposto: 0.19, margem: 0.32 },
-    premium:  { comissao: 0.165, imposto: 0.19, margem: 0.35 },
+    classico:  { comissao: 0.115, imposto: 0.19 },
+    premium:   { comissao: 0.165, imposto: 0.19 },
+    margem_contribuicao: 0,
+    lucro_liquido: 0,
+    acrescimo: 0.20,
 };
 
 function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose }) {
-    const cfgC = dados.classico ?? CFG_DEFAULT.classico;
-    const cfgP = dados.premium  ?? CFG_DEFAULT.premium;
+    const cfgC   = dados.classico  ?? CFG_DEFAULT.classico;
+    const cfgP   = dados.premium   ?? CFG_DEFAULT.premium;
+    const acr    = dados.acrescimo           ?? CFG_DEFAULT.acrescimo;
+    const mc0    = dados.margem_contribuicao ?? CFG_DEFAULT.margem_contribuicao;
+    const ll0    = dados.lucro_liquido       ?? CFG_DEFAULT.lucro_liquido;
 
     const [cfg, setCfg] = useState({
-        classico: { comissao: (cfgC.comissao * 100).toFixed(2), imposto: (cfgC.imposto * 100).toFixed(2), margem: (cfgC.margem * 100).toFixed(2) },
-        premium:  { comissao: (cfgP.comissao * 100).toFixed(2), imposto: (cfgP.imposto * 100).toFixed(2), margem: (cfgP.margem * 100).toFixed(2) },
+        classico:  { comissao: (cfgC.comissao * 100).toFixed(2), imposto: (cfgC.imposto * 100).toFixed(2) },
+        premium:   { comissao: (cfgP.comissao * 100).toFixed(2), imposto: (cfgP.imposto * 100).toFixed(2) },
+        // alvos globais + acréscimo, como string percentual ("20.00") para os inputs
+        margem_contribuicao: (mc0 * 100).toFixed(2),
+        lucro_liquido:       (ll0 * 100).toFixed(2),
+        acrescimo:           (acr * 100).toFixed(2),
     });
     const [cfgOpen, setCfgOpen] = useState(false);
+    const [saving, setSaving]   = useState(false);
     const cfgDebRef = useRef(null);
 
     function updateCfg(tier, campo, valor) {
@@ -230,16 +637,32 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             const toDecimal = t => ({
                 comissao: parseFloat(novo[t].comissao) / 100,
                 imposto:  parseFloat(novo[t].imposto)  / 100,
-                margem:   parseFloat(novo[t].margem)   / 100,
             });
             onSaveCfg('classico', toDecimal('classico'));
             onSaveCfg('premium',  toDecimal('premium'));
         }, 800);
     }
 
+    // Parâmetros globais (margem_contribuicao, lucro_liquido, acrescimo) — persistem
+    // via onSaveCfg(campo, decimal) → onChange('precificacao', campo, val) → rota salvar.
+    function updateGlobal(campo, valor) {
+        const novo = { ...cfg, [campo]: valor };
+        setCfg(novo);
+        clearTimeout(cfgDebRef.current);
+        cfgDebRef.current = setTimeout(() => {
+            onSaveCfg(campo, (parseFloat(novo[campo]) || 0) / 100);
+        }, 800);
+    }
+    const updateAcrescimo = v => updateGlobal('acrescimo', v);
+    const updateMC        = v => updateGlobal('margem_contribuicao', v);
+    const updateLL        = v => updateGlobal('lucro_liquido', v);
+
     // config numérica para cálculos em tempo real
-    const cc = { comissao: parseFloat(cfg.classico.comissao)/100, imposto: parseFloat(cfg.classico.imposto)/100, margem: parseFloat(cfg.classico.margem)/100 };
-    const cp = { comissao: parseFloat(cfg.premium.comissao)/100,  imposto: parseFloat(cfg.premium.imposto)/100,  margem: parseFloat(cfg.premium.margem)/100  };
+    const cc = { comissao: parseFloat(cfg.classico.comissao)/100, imposto: parseFloat(cfg.classico.imposto)/100 };
+    const cp = { comissao: parseFloat(cfg.premium.comissao)/100,  imposto: parseFloat(cfg.premium.imposto)/100  };
+    const acrNum = (parseFloat(cfg.acrescimo) || 0) / 100;
+    const mcNum  = (parseFloat(cfg.margem_contribuicao) || 0) / 100;
+    const llNum  = (parseFloat(cfg.lucro_liquido) || 0) / 100;
 
     const emptyRow = { sku: '', descricao: '', custo: '', frete_classico: '', frete_premium: '' };
 
@@ -275,34 +698,69 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
     function handleChange(newRows) {
         setRows(newRows);
         pendingRef.current = newRows;
+        setSaving(true);
         clearTimeout(debRef.current);
-        debRef.current = setTimeout(() => { onSaveRef.current(newRows); pendingRef.current = null; }, 800);
+        debRef.current = setTimeout(() => { onSaveRef.current(newRows); pendingRef.current = null; setSaving(false); }, 800);
     }
 
+    // Modo de visualização: Simulador (guiado, 1 produto) | Lote (planilha completa)
+    const [view, setView]     = useState('simulador');
+    const [selIdx, setSelIdx] = useState(0);
+    const [tier, setTier]     = useState('classico');
+
+    // Edita um campo (sku/descricao/custo/frete) do produto selecionado e persiste.
+    function editProduto(campo, valor) {
+        const base = rows.length > 0 ? rows : [{ ...emptyRow }];
+        const idx  = Math.min(selIdx, Math.max(0, base.length - 1));
+        const novo = base.map((r, i) => i === idx ? { ...r, [campo]: valor } : r);
+        handleChange(novo);
+    }
+
+    // Adiciona um novo produto em branco e seleciona-o (catálogo do Simulador).
+    function addProduto() {
+        const novo = [...rows, { ...emptyRow }];
+        handleChange(novo);
+        setSelIdx(novo.length - 1);
+    }
+
+    // Exclui o produto do índice e ajusta a seleção.
+    function delProduto(idx) {
+        const novo = rows.filter((_, i) => i !== idx);
+        handleChange(novo);
+        setSelIdx(s => Math.max(0, Math.min(s >= idx ? s - 1 : s, novo.length - 1)));
+    }
+
+    // Bloco por tier: Frete → Anunciado → Preço C/ Desconto → Lucro Líquido → Margem Contrib.
+    // Preço = (custo+frete)/(1−comissão−imposto−MC−LL). Anunciado = preço×(1+acréscimo).
+    // Lucro Líquido = preço×LL · Margem Contrib. = preço×MC (em R$ por produto).
     const cols = useMemo(() => [
         { id: 'sku',            label: 'SKU',        type: 'text',     width: 110 },
         { id: 'descricao',      label: 'Descrição',  type: 'text',     width: 180 },
         { id: 'custo',          label: 'Custo R$',   type: 'number',   width: 90  },
         { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80  },
-        { id: '_preco_c',  label: 'CP Cl.',      type: 'readonly', width: 100, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, cc.margem); return fmt(p); } },
-        { id: '_anunc_c',  label: 'Anunciado Cl.', type: 'readonly', width: 110, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, cc.margem); return fmt(p ? p * 1.2 : null); } },
-        { id: '_marg_c',   label: 'Margem Cl.',  type: 'readonly', width: 95,  align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, cc.margem); return fmt(p ? p * cc.margem : null); } },
+        { id: '_anunc_c',  label: 'Anunciado Cl.',         type: 'readonly', width: 120, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
+        { id: '_preco_c',  label: 'Preço C/ Desconto Cl.', type: 'readonly', width: 140, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p); } },
+        { id: '_marg_c',   label: 'Lucro Líquido Cl.',      type: 'readonly', width: 130, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * llNum : null); } },
+        { id: '_mc_c',     label: 'Margem Contrib. Cl.',    type: 'readonly', width: 150, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * mcNum : null); } },
         { id: 'frete_premium',  label: 'Frete',      type: 'number',   width: 80  },
-        { id: '_preco_p',  label: 'CP Pr.',      type: 'readonly', width: 100, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, cp.margem); return fmt(p); } },
-        { id: '_anunc_p',  label: 'Anunciado Pr.', type: 'readonly', width: 110, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, cp.margem); return fmt(p ? p * 1.2 : null); } },
-        { id: '_marg_p',   label: 'Margem Pr.',  type: 'readonly', width: 95,  align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, cp.margem); return fmt(p ? p * cp.margem : null); } },
-    ], [cc.comissao, cc.imposto, cc.margem, cp.comissao, cp.imposto, cp.margem]);
+        { id: '_anunc_p',  label: 'Anunciado Pr.',          type: 'readonly', width: 120, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
+        { id: '_preco_p',  label: 'Preço C/ Desconto Pr.',  type: 'readonly', width: 140, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p); } },
+        { id: '_marg_p',   label: 'Lucro Líquido Pr.',       type: 'readonly', width: 130, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * llNum : null); } },
+        { id: '_mc_p',     label: 'Margem Contrib. Pr.',     type: 'readonly', width: 150, align: 'right',
+          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * mcNum : null); } },
+    ], [cc.comissao, cc.imposto, cp.comissao, cp.imposto, mcNum, llNum, acrNum]);
 
     const headerGroups = [
         { label: '',         span: 3, className: '' },
-        { label: 'Clássico', span: 4, className: 'text-blue-300/70' },
-        { label: 'Premium',  span: 4, className: 'text-violet-300/70' },
+        { label: 'Clássico', span: 5, className: 'text-blue-300/70' },
+        { label: 'Premium',  span: 5, className: 'text-violet-300/70' },
     ];
 
     return (
@@ -310,59 +768,106 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             <div className="flex items-center justify-between px-5 py-4 border-b border-white/[0.06] bg-[#0b0c10] shrink-0">
                 <div>
                     <h2 className="text-white font-display font-bold text-lg">Precificação</h2>
-                    <p className="text-white/40 text-[12px] mt-0.5">Informe o custo e frete por produto — os preços são calculados automaticamente</p>
+                    <p className="text-white/40 text-[12px] mt-0.5">
+                        {view === 'simulador'
+                            ? 'Descubra o preço de venda ideal de cada produto, passo a passo'
+                            : 'Planilha completa — todos os produtos e tiers de uma vez'}
+                    </p>
                 </div>
+
+                {/* Toggle de modo: Simulador (guiado) | Lote (planilha) */}
+                <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+                    {[{ k: 'simulador', l: '🎯 Simulador' }, { k: 'lote', l: '📊 Lote' }].map(({ k, l }) => (
+                        <button key={k} type="button" onClick={() => setView(k)}
+                            className={cn('px-4 py-1.5 rounded-lg text-[13px] font-semibold transition',
+                                view === k ? 'bg-white/[0.1] text-white' : 'text-white/45 hover:text-white/75')}>
+                            {l}
+                        </button>
+                    ))}
+                </div>
+
                 <button onClick={onClose} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[13px] transition-all">
                     <X size={14} />
                     Fechar
                 </button>
             </div>
 
+            {view === 'lote' && (
             <div className="border-b border-white/[0.06] shrink-0">
                 <button
                     onClick={() => setCfgOpen(v => !v)}
                     className="flex items-center gap-2 w-full px-5 py-3 text-white/40 hover:text-white/70 text-[12px] transition-colors"
                 >
                     <span className={cn('transition-transform text-[10px]', cfgOpen && 'rotate-180')}>▼</span>
-                    Configurar parâmetros — Comissão, Imposto, Margem
+                    Configurar parâmetros — Comissão, Imposto, Margem Contrib., Lucro Líquido, Acréscimo
                     <span className="ml-2 text-white/20 text-[11px]">(comissão premium = clássico + 5% automático)</span>
                 </button>
                 {cfgOpen && (
-                    <div className="px-5 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-6">
-                        {[
-                            { tier: 'classico', label: 'Clássico', color: 'text-blue-300' },
-                            { tier: 'premium',  label: 'Premium',  color: 'text-violet-300' },
-                        ].map(({ tier, label, color }) => (
-                            <div key={tier}>
-                                <p className={cn('text-[11px] font-bold uppercase tracking-wider mb-2', color)}>{label}</p>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {[
-                                        { id: 'comissao', label: 'Comissão %' },
-                                        { id: 'imposto',  label: 'Imposto %'  },
-                                        { id: 'margem',   label: 'Margem %'   },
-                                    ].map(({ id, label: lbl }) => (
-                                        <div key={id}>
-                                            <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">{lbl}</label>
-                                            <input
-                                                type="number" step="0.01" min="0"
-                                                value={cfg[tier][id]}
-                                                onChange={e => updateCfg(tier, id, e.target.value)}
-                                                className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40"
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
+                    <div className="px-5 pb-4 space-y-4">
+                        {/* Parâmetros globais — Margem Contrib., Lucro Líquido, Acréscimo (não por tier) */}
+                        <div className="flex flex-wrap gap-4">
+                            <div className="w-44">
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
+                                <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao} onChange={e => updateMC(e.target.value)}
+                                    className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                             </div>
-                        ))}
+                            <div className="w-44">
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
+                                <input type="number" step="0.01" min="0" value={cfg.lucro_liquido} onChange={e => updateLL(e.target.value)}
+                                    className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                            </div>
+                            <div className="w-44">
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Acréscimo Anunciado %</label>
+                                <input type="number" step="0.01" min="0" value={cfg.acrescimo} onChange={e => updateAcrescimo(e.target.value)}
+                                    className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            {[
+                                { tier: 'classico', label: 'Clássico', color: 'text-blue-300' },
+                                { tier: 'premium',  label: 'Premium',  color: 'text-violet-300' },
+                            ].map(({ tier, label, color }) => (
+                                <div key={tier}>
+                                    <p className={cn('text-[11px] font-bold uppercase tracking-wider mb-2', color)}>{label} — taxas do site</p>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {[
+                                            { id: 'comissao', label: 'Comissão %' },
+                                            { id: 'imposto',  label: 'Imposto %'  },
+                                        ].map(({ id, label: lbl }) => (
+                                            <div key={id}>
+                                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">{lbl}</label>
+                                                <input type="number" step="0.01" min="0" value={cfg[tier][id]} onChange={e => updateCfg(tier, id, e.target.value)}
+                                                    className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>
+            )}
 
             <div className="flex-1 overflow-auto p-5">
-                <SpreadsheetGrid columns={cols} rows={rows} onChange={handleChange} minRows={10} headerGroups={headerGroups} exportFilename="precificacao" />
-                <p className="mt-2 text-white/20 text-[11px]">
-                    Dica: arraste o quadrado azul no canto da célula para preencher · Ctrl+C/V para copiar e colar
-                </p>
+                {view === 'simulador' ? (
+                    <SimuladorPreco
+                        produtos={rows}
+                        selIdx={selIdx} setSelIdx={setSelIdx}
+                        tier={tier} setTier={setTier}
+                        cc={cc} cp={cp} acrNum={acrNum} mcNum={mcNum} llNum={llNum}
+                        onEditProduto={editProduto} onAddProduto={addProduto} onDeleteProduto={delProduto}
+                        cfg={cfg} updateCfg={updateCfg} updateMC={updateMC} updateLL={updateLL} updateAcrescimo={updateAcrescimo}
+                        saving={saving}
+                    />
+                ) : (
+                    <>
+                        <SpreadsheetGrid columns={cols} rows={rows} onChange={handleChange} minRows={10} headerGroups={headerGroups} exportFilename="precificacao" />
+                        <p className="mt-2 text-white/20 text-[11px]">
+                            Dica: arraste o quadrado azul no canto da célula para preencher · Ctrl+C/V para copiar e colar
+                        </p>
+                    </>
+                )}
             </div>
         </div>
     );
