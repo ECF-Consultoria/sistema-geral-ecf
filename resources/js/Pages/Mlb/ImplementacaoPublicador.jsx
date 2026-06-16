@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { router } from '@inertiajs/react';
+import axios from 'axios';
 import { cn } from '@/lib/utils';
 import { Copy, Check, RefreshCw } from 'lucide-react';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function calcPreco(custo, frete, comissao, imposto, margem) {
-    const d = 1 - comissao - imposto - margem;
+function calcPreco(custo, frete, comissao, imposto, mc, ll) {
+    const d = 1 - comissao - imposto - mc - ll;
     if (d <= 0 || !custo || isNaN(parseFloat(custo))) return null;
     return (parseFloat(custo) + parseFloat(frete || 0)) / d;
 }
@@ -25,9 +26,15 @@ function pct(n) {
 
 function mergeProdutos(produtos, precif) {
     const cfg = {
-        classico: { comissao: 0.115, imposto: 0.19, margem: 0.32, ...(precif.classico ?? {}) },
-        premium:  { comissao: 0.165, imposto: 0.19, margem: 0.35, ...(precif.premium  ?? {}) },
+        classico: { comissao: 0.115, imposto: 0.19, ...(precif.classico ?? {}) },
+        premium:  { comissao: 0.165, imposto: 0.19, ...(precif.premium  ?? {}) },
     };
+    // Globais: acréscimo + alvos Margem de Contribuição e Lucro Líquido (default 0).
+    const acr = precif.acrescimo ?? 0.20;
+    const mc  = precif.margem_contribuicao ?? 0;
+    const ll  = precif.lucro_liquido ?? 0;
+    cfg.margem_contribuicao = mc;
+    cfg.lucro_liquido = ll;
     const pricingMap = {};
     (precif.produtos ?? []).forEach((p, i) => { pricingMap[p.sku || `__idx_${i}`] = p; });
 
@@ -36,8 +43,8 @@ function mergeProdutos(produtos, precif) {
         const pr = pricingMap[key] ?? {};
         const fc = parseFloat(pr.frete_classico || 0);
         const fp = parseFloat(pr.frete_premium  || 0);
-        const precoC = calcPreco(pr.custo, fc, cfg.classico.comissao, cfg.classico.imposto, cfg.classico.margem);
-        const precoP = calcPreco(pr.custo, fp, cfg.premium.comissao,  cfg.premium.imposto,  cfg.premium.margem);
+        const precoC = calcPreco(pr.custo, fc, cfg.classico.comissao, cfg.classico.imposto, mc, ll);
+        const precoP = calcPreco(pr.custo, fp, cfg.premium.comissao,  cfg.premium.imposto,  mc, ll);
         return {
             sku:           p.sku,
             produto:       p.produto       || '—',
@@ -54,10 +61,12 @@ function mergeProdutos(produtos, precif) {
             frete_premium:  fp,
             preco_classico:    precoC,
             preco_premium:     precoP,
-            preco_anunciado_c: precoC ? precoC * 1.2 : null,
-            preco_anunciado_p: precoP ? precoP * 1.2 : null,
-            margem_c_r:        precoC ? precoC * cfg.classico.margem : null,
-            margem_p_r:        precoP ? precoP * cfg.premium.margem  : null,
+            preco_anunciado_c: precoC ? precoC * (1 + acr) : null,
+            preco_anunciado_p: precoP ? precoP * (1 + acr) : null,
+            margem_c_r:        precoC ? precoC * mc : null,   // margem de contribuição R$
+            margem_p_r:        precoP ? precoP * mc : null,
+            lucro_c_r:         precoC ? precoC * ll : null,   // lucro líquido R$
+            lucro_p_r:         precoP ? precoP * ll : null,
             cfg,
         };
     });
@@ -121,6 +130,132 @@ function BadgeFeito({ feito }) {
     return feito
         ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400">Feito</span>
         : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/[0.05] text-white/30">Pendente</span>;
+}
+
+// Botão copiar valor (para colar no marketplace).
+function BtnCopy({ text }) {
+    const [c, setC] = useState(false);
+    if (!text) return null;
+    return (
+        <button type="button" title="Copiar"
+            onClick={() => { navigator.clipboard.writeText(text); setC(true); setTimeout(() => setC(false), 1500); }}
+            className="shrink-0 text-white/25 hover:text-white transition">
+            {c ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+        </button>
+    );
+}
+
+/**
+ * PrecificacaoAcao — visão de AÇÃO do Publicador: por tier, mostra o preço a
+ * PUBLICAR (anunciado) e o preço FINAL (com desconto) de cada produto, com
+ * botão de copiar. O Publicador só pode mexer no FRETE (recalcula ao vivo e
+ * persiste via implementacao.salvar). Comissão/imposto/MC/LL/acréscimo travados.
+ */
+function PrecificacaoAcao({ produtos, precif, token }) {
+    const [tier, setTier] = useState('classico');
+    const [fretes, setFretes] = useState(() => {
+        const m = {};
+        produtos.forEach(p => { if (p.sku) m[p.sku] = { frete_classico: p.frete_classico ?? '', frete_premium: p.frete_premium ?? '' }; });
+        return m;
+    });
+    const debRef = useRef(null);
+
+    const cfg = tier === 'classico'
+        ? (precif.classico ?? { comissao: 0.115, imposto: 0.19 })
+        : (precif.premium  ?? { comissao: 0.165, imposto: 0.19 });
+    const mc  = precif.margem_contribuicao ?? 0;
+    const ll  = precif.lucro_liquido ?? 0;
+    const acr = precif.acrescimo ?? 0.20;
+    const campoFrete = tier === 'classico' ? 'frete_classico' : 'frete_premium';
+
+    function persist(fmap) {
+        const base = {};
+        (precif.produtos ?? []).forEach(p => { if (p.sku) base[p.sku] = p; });
+        const lista = produtos.filter(p => p.sku).map(p => ({
+            ...(base[p.sku] ?? { sku: p.sku }),
+            sku: p.sku,
+            frete_classico: fmap[p.sku]?.frete_classico ?? (base[p.sku]?.frete_classico ?? ''),
+            frete_premium:  fmap[p.sku]?.frete_premium  ?? (base[p.sku]?.frete_premium  ?? ''),
+        }));
+        // salvarItem retorna JSON → usar axios (não o router do Inertia).
+        axios.patch(route('implementacao.salvar', token), { id: 'precificacao', campo: 'produtos', valor: lista });
+    }
+
+    function setFrete(sku, valor) {
+        const novo = { ...fretes, [sku]: { ...(fretes[sku] ?? {}), [campoFrete]: valor } };
+        setFretes(novo);
+        clearTimeout(debRef.current);
+        debRef.current = setTimeout(() => persist(novo), 800);
+    }
+
+    return (
+        <SectionCard title="Precificação — o que publicar" accent>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <p className="text-white/40 text-[12px]">
+                    Anuncie pelo <span className="text-amber-300 font-semibold">Publicar por</span> e configure o desconto até o <span className="text-emerald-300 font-semibold">Preço final</span>. Você só ajusta o <span className="text-white/70 font-semibold">Frete</span>.
+                </p>
+                <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+                    {[{ k: 'classico', l: 'Clássico' }, { k: 'premium', l: 'Premium' }].map(({ k, l }) => (
+                        <button key={k} type="button" onClick={() => setTier(k)}
+                            className={cn('px-4 py-1.5 rounded-lg text-[13px] font-semibold transition',
+                                tier === k ? 'bg-ecf-yellow text-black' : 'text-white/50 hover:text-white/80')}>
+                            {l}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="overflow-x-auto -mx-1">
+                <table className="w-full" style={{ minWidth: '720px' }}>
+                    <thead>
+                        <tr className="border-b border-white/[0.08]">
+                            <th className="text-left px-3 py-2 text-white/30 font-semibold uppercase tracking-wider text-[10px]">Produto</th>
+                            <th className="text-left px-3 py-2 text-white/40 font-semibold uppercase tracking-wider text-[10px]">Frete R$ (você ajusta)</th>
+                            <th className="text-right px-3 py-2 text-amber-300/70 font-semibold uppercase tracking-wider text-[10px]">🏷️ Publicar por</th>
+                            <th className="text-right px-3 py-2 text-emerald-300/70 font-semibold uppercase tracking-wider text-[10px]">💰 Preço final</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {produtos.map((p, i) => {
+                            const frete = parseFloat(fretes[p.sku]?.[campoFrete] || 0) || 0;
+                            const preco = calcPreco(p.custo, frete, cfg.comissao, cfg.imposto, mc, ll); // final (c/ desconto)
+                            const anunciado = preco ? preco * (1 + acr) : null;
+                            return (
+                                <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
+                                    <td className="px-3 py-2.5">
+                                        <p className="text-white/85 text-[13px] font-medium max-w-[220px] truncate" title={p.produto}>{p.produto}</p>
+                                        <p className="text-ecf-yellow/60 text-[11px] font-mono">{p.sku}</p>
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                        <div className="flex items-center rounded-lg bg-white/[0.05] border border-white/[0.1] focus-within:border-ecf-yellow/40 w-28">
+                                            <span className="pl-2 text-white/30 text-[12px]">R$</span>
+                                            <input type="number" step="0.01" min="0" inputMode="decimal"
+                                                value={fretes[p.sku]?.[campoFrete] ?? ''}
+                                                onChange={e => setFrete(p.sku, e.target.value)}
+                                                placeholder="0,00"
+                                                className="w-full h-9 px-1.5 bg-transparent text-white text-[13px] focus:outline-none placeholder:text-white/20" />
+                                        </div>
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <span className="text-amber-300 font-bold text-[15px] tabular-nums">{brl(anunciado)}</span>
+                                            <BtnCopy text={anunciado ? Number(anunciado).toFixed(2) : ''} />
+                                        </div>
+                                    </td>
+                                    <td className="px-3 py-2.5">
+                                        <div className="flex items-center justify-end gap-2">
+                                            <span className="text-emerald-300 font-bold text-[15px] tabular-nums">{brl(preco)}</span>
+                                            <BtnCopy text={preco ? Number(preco).toFixed(2) : ''} />
+                                        </div>
+                                    </td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </SectionCard>
+    );
 }
 
 // ─── Página ───────────────────────────────────────────────────────────────────
@@ -227,7 +362,6 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                                     {[
                                         { k: 'Comissão',  v: pct(cfg.comissao) },
                                         { k: 'Imposto',   v: pct(cfg.imposto)  },
-                                        { k: 'Margem',    v: pct(cfg.margem)   },
                                     ].map(({ k, v }) => (
                                         <div key={k} className="flex justify-between text-[12px]">
                                             <span className="text-white/40">{k}</span>
@@ -235,6 +369,19 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                                         </div>
                                     ))}
                                 </div>
+                            </div>
+                        ))}
+                    </div>
+                    {/* Alvos globais (valem p/ os dois tiers) */}
+                    <div className="mt-4 pt-3 border-t border-white/[0.06] grid grid-cols-3 gap-3">
+                        {[
+                            { k: 'Margem Contrib.', v: pct(precif.margem_contribuicao ?? 0) },
+                            { k: 'Lucro Líquido',   v: pct(precif.lucro_liquido ?? 0)       },
+                            { k: 'Acréscimo',       v: pct(precif.acrescimo ?? 0.20)         },
+                        ].map(({ k, v }) => (
+                            <div key={k} className="flex flex-col">
+                                <span className="text-white/40 text-[11px]">{k}</span>
+                                <span className="text-white/80 font-medium text-[13px]">{v}</span>
                             </div>
                         ))}
                     </div>
@@ -276,51 +423,9 @@ export default function ImplementacaoPublicador({ impl, checklist }) {
                     </SectionCard>
                 )}
 
-                {/* Tabela de Precificação */}
+                {/* Precificação — visão de AÇÃO (frete editável, publicar por / preço final) */}
                 {produtos.length > 0 && (
-                    <SectionCard title="Precificação" accent>
-                        <div className="overflow-x-auto -mx-1">
-                            <table className="w-full" style={{ minWidth: '1100px' }}>
-                                <thead>
-                                    <tr className="border-b border-white/[0.08]">
-                                        <th className={thCls}>SKU</th>
-                                        <th className={thCls}>Produto</th>
-                                        <th className={thCls}>Custo R$</th>
-                                        <th className={cn(thCls, 'text-blue-300/60')} colSpan={4}>Clássico</th>
-                                        <th className={cn(thCls, 'text-violet-300/60')} colSpan={4}>Premium</th>
-                                    </tr>
-                                    <tr className="border-b border-white/[0.06] bg-white/[0.01]">
-                                        <th /><th /><th />
-                                        <th className={cn(thCls, 'text-blue-300/40')}>Frete R$</th>
-                                        <th className={cn(thCls, 'text-blue-300/40')}>CP</th>
-                                        <th className={cn(thCls, 'text-blue-300/40')}>Anunciado</th>
-                                        <th className={cn(thCls, 'text-blue-300/40')}>Margem R$</th>
-                                        <th className={cn(thCls, 'text-violet-300/40')}>Frete R$</th>
-                                        <th className={cn(thCls, 'text-violet-300/40')}>CP</th>
-                                        <th className={cn(thCls, 'text-violet-300/40')}>Anunciado</th>
-                                        <th className={cn(thCls, 'text-violet-300/40')}>Margem R$</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {produtos.map((p, i) => (
-                                        <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
-                                            <td className={cn(tdCls, 'font-mono text-ecf-yellow/80')}>{p.sku}</td>
-                                            <td className={cn(tdCls, 'max-w-[160px] truncate')} title={p.produto}>{p.produto}</td>
-                                            <td className={tdCls}>{brl(p.custo)}</td>
-                                            <td className={tdCls}>{brl(p.frete_classico)}</td>
-                                            <td className={cn(tdCls, 'font-semibold text-blue-300')}>{brl(p.preco_classico)}</td>
-                                            <td className={cn(tdCls, 'text-blue-200')}>{brl(p.preco_anunciado_c)}</td>
-                                            <td className={tdCls}>{brl(p.margem_c_r)}</td>
-                                            <td className={tdCls}>{brl(p.frete_premium)}</td>
-                                            <td className={cn(tdCls, 'font-semibold text-violet-300')}>{brl(p.preco_premium)}</td>
-                                            <td className={cn(tdCls, 'text-violet-200')}>{brl(p.preco_anunciado_p)}</td>
-                                            <td className={tdCls}>{brl(p.margem_p_r)}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </SectionCard>
+                    <PrecificacaoAcao produtos={produtos} precif={precif} token={impl.token} />
                 )}
 
                 {produtos.length === 0 && (

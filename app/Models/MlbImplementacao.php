@@ -309,10 +309,15 @@ class MlbImplementacao extends Model
                 'planilha_produtos'    => ['produtos' => [], 'feito' => false],
                 'drive_imagens'        => ['feito' => false],
                 'precificacao' => [
-                    'classico' => ['comissao' => 0.115, 'imposto' => 0.19, 'margem' => 0.32],
-                    'premium'  => ['comissao' => 0.165, 'imposto' => 0.19, 'margem' => 0.35],
-                    'produtos' => [],
-                    'feito'    => false,
+                    'classico'  => ['comissao' => 0.115, 'imposto' => 0.19],
+                    'premium'   => ['comissao' => 0.165, 'imposto' => 0.19],
+                    // Alvos globais (default 0 — o cliente/consultor escolhe). Preço =
+                    // (custo+frete)/(1−comissão−imposto−margem_contribuicao−lucro_liquido).
+                    'margem_contribuicao' => 0,
+                    'lucro_liquido'       => 0,
+                    'acrescimo' => 0.20, // acréscimo global do Anunciado (default 20%)
+                    'produtos'  => [],
+                    'feito'     => false,
                 ],
                 'certificado_a1'       => ['feito' => false],
                 'programa_decola'      => ['feito' => false],
