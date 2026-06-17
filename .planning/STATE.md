@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 35 Plan 35-01 (Fixes UX/backfill + filtro /companies sem MlbEmpresa) completo — Wave 1 de 2
-last_updated: "2026-06-17T14:30:00.000Z"
+stopped_at: Phase 35 Plan 35-03 (Notificacao Comercial pos-webhook HubSpot) completo — Wave 2 (35-02 + 35-03) done
+last_updated: "2026-06-17T15:08:00.000Z"
 last_activity: 2026-06-17
 progress:
   total_phases: 31
   completed_phases: 19
   total_plans: 47
-  completed_plans: 42
-  percent: 61
+  completed_plans: 44
+  percent: 64
 ---
 
 # Project State
@@ -25,11 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 35 (fix-cadastro-hubspot-v2) — Wave 1 iniciada (1/3 plans)
-Plan: 35-01 (Fixes UX/backfill + filtro /companies sem MlbEmpresa) **DONE** — 5 commits, build+suite Phase 31/33/34 verde
-Status: Wave 1 completa — Wave 2 (35-02 HubSpot v2 + 35-03 Notification) pode rodar em paralelo
+Phase: 35 (fix-cadastro-hubspot-v2) — Wave 2 completa (3/3 plans)
+Plan: 35-03 (Notificacao Comercial pos-webhook HubSpot) **DONE** — 4 commits, suite 17/17 verde (95 assertions Phase34+Phase35)
+Status: Phase 35 inteira completa (35-01 + 35-02 + 35-03). Proximo: /gsd:verify-phase 35 ou deploy agrupado Phase 34+35
 Last activity: 2026-06-17
-Last activity: 2026-06-12
 
 ## Performance Metrics
 
@@ -81,6 +80,8 @@ Last activity: 2026-06-12
 | Phase 34 P02 | 22 | 2 tasks | 4 files |
 | Phase 34-cadastro-comercial-otimizado-hubspot P03 | 30min | 4 commits | 4 files |
 | Phase 34-cadastro-comercial-otimizado-hubspot P04 | 28min | 4 commits | 6 files |
+| Phase 35-fix-cadastro-hubspot-v2 P01 | 25min | 5 commits | 6 files |
+| Phase 35-fix-cadastro-hubspot-v2 P03 | 22min | 4 commits | 4 files |
 
 ## Accumulated Context
 
@@ -325,6 +326,17 @@ Last activity: 2026-06-12
 - **MARKETPLACES_EXTRAS const duplicado em 3 sites** (Companies/Index, Comercial/Empresas, Comercial/NovaEmpresa do 34-02) — espelha Rule::in backend. Aceitavel; refator pra `@/lib/constants` fica para fase futura.
 - **CRITICO: NAO Deployar Sozinho** — agrupar deploy dos 4 plans da Phase 34 (schema 34-01 + wizard 34-02 + admin/comercial UI 34-03 + webhook 34-04).
 
+### Decisões do Plan 35-03 (registradas)
+
+- **D-09 — Categoria fixa `MANUAL`**: enum `Categoria` do MVP v3.0 (Phase 8) nao tem categoria HubSpot-especifica. Reutiliza `Categoria::MANUAL` (mesma estrategia do `EmpresaCadastradaNotification` Phase 14). Adicionar categoria nova esta em Deferred Ideas.
+- **D-10 — Audiencia simplificada para 2 fontes**: plan original sugeria 3 fontes incluindo cargo direto `lider-comercial`. Verificacao de schema confirmou que NAO existe esse cargo no seed atual — lideranca do setor Comercial e via `setor_lideres` pivot (nao cargo). Removida fonte (c) por nao ter destinatarios possiveis. Comportamento equivalente: lideres via `setor_lideres` (a) + permissionados via `hasPermission` (b) cobrem 100% do requisito D-06.
+- **D-11 — Dispatch APOS evento marcado processado** (nao dentro da transaction). Falha de notificacao nunca reverte estado consistente da Company + HubspotEvento.
+- **D-12 — try/catch `\Throwable` no dispatch + log warning, nao rethrow**. Webhook ja respondeu 200; problema de notification e interno e nao deve impactar webhook do HubSpot.
+- **D-13 — Idempotencia herdada do Plan 34-04**: guarda `jaProcessado` antes de `criarEmpresa` garante que 2o webhook do mesmo `object_id` e marcado `ignorado` antes do dispatch. Resultado: 1 notification por deal, sem redundancia.
+- **Test T1 usa reflection** ao inves de webhook completo: o webhook SEMPRE cria empresa com pendencias (responsavel/cust_id/email_colaborador faltam por definicao da fonte). Para validar a regra "empresa completa nao notifica" sem mudar fluxo, T1 testa `calcularPendencias` + `notificarComercialSePendente` direto via reflection. T2/T3/T4 cobrem end-to-end.
+- **AudienciaComercial performance**: ~50 users ativos = ~50ms (acceitable para webhook sincrono). Se base >500, refatorar para JOIN direto com `setor_permissoes` (comentado no helper).
+- **CRITICO: NAO deployar Plan 35-03 sozinho**: depende de Phase 8 (BaseNotification + tabela `notifications` ja em prod), Phase 34-01 (campo `email_colaborador`), Phase 34-04 (webhook HubSpot). Tudo ja em prod. Esta plan deploy-segura standalone OU agrupada com 35-02.
+
 ### Decisões do Plan 33-01 (registradas)
 
 - **`opcoes` forcadas a null fora de tipo=multipla** — backend defensivo no `criarPerguntaExtra`/`atualizarPerguntaExtra` zera o array mesmo se cliente enviar. UI nao precisa zerar.
@@ -397,19 +409,19 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-17T14:30:00.000Z
-Stopped at: Phase 35 Plan 35-01 (Fixes UX/backfill + filtro /companies sem MlbEmpresa) completo — Wave 1 de 2
+Last session: 2026-06-17T15:08:00.000Z
+Stopped at: Phase 35 Plan 35-03 (Notificacao Comercial pos-webhook HubSpot) completo — Wave 2 done, Phase 35 inteira fechada (3/3)
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY: `.planning/phases/32-customizacao-nps/32-04-SUMMARY.md`
-- Phase 32 completa (4/4 plans):
-  - 32-01: schema nps_email_envios + helper NpsTextRenderer + partial logo ECF + email reescrito
-  - 32-02: pagina /nps/configuracao com preview live + sidebar Configuracao NPS
-  - 32-03: LogoEcf + textos dinamicos em Respond.jsx
-  - 32-04: pagina /nps/emails-enviados (controller + rota + JSX 303 linhas + sidebar Emails enviados)
-- Suite Phase 31: **19/19 testes verdes** (zero regressao Phase 32)
+- SUMMARY: `.planning/phases/35-fix-cadastro-hubspot-v2/35-03-SUMMARY.md`
+- Phase 35 completa (3/3 plans):
+  - 35-01: UX/backfill + filtro /companies sem MlbEmpresa (5 commits)
+  - 35-02: webhook HubSpot v2 — fetch contato + cria MlbEmpresa por servico (Wave 2 paralela)
+  - 35-03: notificacao Comercial pos-webhook quando empresa tem pendencias (4 commits, 4 testes 16 assertions)
+- Suite Phase 31+33+34+35: **70/70 testes verdes (526 assertions)** — zero regressao baseline
+- Suite Phase34HubspotWebhook + Phase35Hubspot: **17/17 verdes (95 assertions)**
 - `npm run build` verde
-- Próximo passo natural: `/gsd:verify-phase 32` ou deploy
-- **Deploy:** Phase 32 SOZINHA pode subir (Phase 31 ja em prod) — migrations Phase 32: `create_nps_email_envios_table` + `seed_nps_textos_configuracao`. Pos-deploy: `php artisan migrate --force && php artisan cache:clear && php artisan config:cache && php artisan route:cache && php artisan view:cache`
-- HEAD: `37f468d` feat(32-04): adiciona sub-item 'Emails enviados' no grupo NPS do sidebar
+- Próximo passo natural: `/gsd:verify-phase 35` ou deploy agrupado Phase 34+35
+- **Deploy:** Phase 35 inteira pode subir agrupada (Phase 34 ja em prod, Phase 35 nao adiciona migrations — so backfill 35-01 + novos arquivos). Pos-deploy: `php artisan migrate --force && php artisan cache:clear && php artisan config:cache`
+- HEAD: `6c3514e` test(35-03): Phase35HubspotNotifyTest — 4 cases (16 assertions)
