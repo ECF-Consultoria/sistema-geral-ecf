@@ -59,6 +59,30 @@ function StatusBadge({ status }) {
     );
 }
 
+// Badge da fase ("M") da empresa — M0–M4 e demais (ASSESSORIA/Incubadora/Implantação).
+function FaseBadge({ fase }) {
+    if (!fase) return null;
+    return (
+        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 shrink-0">
+            {fase}
+        </span>
+    );
+}
+
+// Ordena as fases: M0..M4 primeiro (ordem numérica), demais fases depois (alfabético).
+function ordenaFases(lista) {
+    const ordemM = (v) => {
+        const m = /^M(\d+)$/i.exec(v);
+        return m ? parseInt(m[1], 10) : 999;
+    };
+    return [...lista].sort((a, b) => {
+        const oa = ordemM(a);
+        const ob = ordemM(b);
+        if (oa !== ob) return oa - ob;
+        return a.localeCompare(b);
+    });
+}
+
 function ProgressBar({ pct, feitos, total }) {
     const color = pctColor(pct);
     return (
@@ -205,6 +229,7 @@ function EmpresaModal({ empresa, onClose }) {
                         <h2 className="text-white font-bold text-base">{empresa.nome}</h2>
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             <StatusBadge status={empresa.status} />
+                            <FaseBadge fase={empresa.fase} />
                             {empresa.estagio && (
                                 <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full', ESTAGIO_COLORS[empresa.estagio] ?? 'text-white/30 bg-white/[0.04]')}>
                                     {empresa.estagio}
@@ -285,8 +310,9 @@ function EmpresaModal({ empresa, onClose }) {
     );
 }
 
-export default function ImplementacaoIndicadores({ total, media_progresso, status_counts, dificuldades, empresas }) {
+export default function ImplementacaoIndicadores({ empresas = [] }) {
     const [filtroStatus, setFiltroStatus]         = useState('todos');
+    const [filtroFase, setFiltroFase]             = useState('todos');
     const [filtroResponsavel, setFiltroResponsavel] = useState('todos');
     const [filtroPct, setFiltroPct]               = useState('todos');
     const [busca, setBusca]                       = useState('');
@@ -298,8 +324,62 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
         return unique.sort();
     }, [empresas]);
 
+    // Fases ("M") distintas presentes nas empresas, ordenadas M0..M4 e depois as demais.
+    const fases = useMemo(() => {
+        const unique = [...new Set(empresas.map(e => e.fase).filter(Boolean))];
+        return ordenaFases(unique);
+    }, [empresas]);
+
+    // Segmento da página: empresas do M selecionado (ou todas, se 'todos').
+    // O filtro de Fase (M) escopa a PÁGINA INTEIRA — KPIs, gráficos e lista.
+    const empresasSegmento = useMemo(
+        () => (filtroFase === 'todos' ? empresas : empresas.filter(e => e.fase === filtroFase)),
+        [empresas, filtroFase],
+    );
+
+    // Indicadores recalculados no cliente sobre o segmento (mesma lógica do
+    // controller, mas restrita ao M escolhido). Com 'todos', equivale ao total.
+    const { total, media_progresso, status_counts, dificuldades } = useMemo(() => {
+        const lista = empresasSegmento;
+        const n = lista.length;
+        const counts = { concluida: 0, em_andamento: 0, parada: 0, nao_iniciada: 0 };
+        let somaPct = 0;
+        lista.forEach(e => {
+            if (counts[e.status] !== undefined) counts[e.status]++;
+            somaPct += e.progresso?.pct ?? 0;
+        });
+
+        // Dificuldades por item do checklist (% pendente/concluído no segmento).
+        const base = lista[0]?.itens ?? [];
+        const difs = base.map(b => {
+            let feitos = 0;
+            lista.forEach(e => {
+                const it = e.itens?.find(i => i.id === b.id);
+                if (it?.feito) feitos++;
+            });
+            const pendentes = n - feitos;
+            return {
+                id:            b.id,
+                titulo:        b.titulo,
+                feitos,
+                pendentes,
+                total:         n,
+                pct_concluido: n > 0 ? Math.round((feitos / n) * 100) : 0,
+                pct_pendente:  n > 0 ? Math.round((pendentes / n) * 100) : 0,
+            };
+        }).sort((a, b) => b.pct_pendente - a.pct_pendente);
+
+        return {
+            total:           n,
+            media_progresso: n > 0 ? Math.round(somaPct / n) : 0,
+            status_counts:   counts,
+            dificuldades:    difs,
+        };
+    }, [empresasSegmento]);
+
     const filtradas = useMemo(() => empresas.filter(e => {
         if (filtroStatus !== 'todos' && e.status !== filtroStatus) return false;
+        if (filtroFase !== 'todos' && e.fase !== filtroFase) return false;
         if (filtroResponsavel !== 'todos' && e.responsavel !== filtroResponsavel) return false;
         if (busca && !e.nome.toLowerCase().includes(busca.toLowerCase())) return false;
         if (filtroPct !== 'todos') {
@@ -310,7 +390,7 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
             if (filtroPct === '100'   && p !== 100)             return false;
         }
         return true;
-    }), [empresas, filtroStatus, filtroResponsavel, busca, filtroPct]);
+    }), [empresas, filtroStatus, filtroFase, filtroResponsavel, busca, filtroPct]);
 
     const pieData = useMemo(() =>
         Object.entries(STATUS_CONFIG)
@@ -343,12 +423,26 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
                     >
                         <ArrowLeft size={18} />
                     </Link>
-                    <div>
+                    <div className="flex-1 min-w-0">
                         <h1 className="text-white font-display font-bold text-xl">Indicadores de Onboarding</h1>
                         <p className="text-white/40 text-[13px] mt-0.5">
                             Acompanhe o andamento, gargalos e eficiência do processo de implementação
                         </p>
                     </div>
+                    {/* Filtro de Fase (M) — escopa a PÁGINA INTEIRA (KPIs, gráficos e lista). */}
+                    {fases.length > 0 && (
+                        <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-white/40 text-[12px] hidden sm:inline">Fase (M):</span>
+                            <select
+                                value={filtroFase}
+                                onChange={e => setFiltroFase(e.target.value)}
+                                className="h-8 px-2 rounded-lg border border-white/[0.08] bg-[#0f1116] text-white/70 text-[12px] focus:outline-none focus:border-ecf-yellow/40"
+                            >
+                                <option value="todos">Todas as fases</option>
+                                {fases.map(f => <option key={f} value={f}>{f}</option>)}
+                            </select>
+                        </div>
+                    )}
                 </div>
 
                 {/* KPI Cards */}
@@ -668,7 +762,10 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
                                     )}
                                 >
                                     <td className="px-4 py-3">
-                                        <span className="text-white text-[13px] font-medium">{empresa.nome}</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-white text-[13px] font-medium">{empresa.nome}</span>
+                                            <FaseBadge fase={empresa.fase} />
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3 hidden sm:table-cell">
                                         <StatusBadge status={empresa.status} />
@@ -703,7 +800,7 @@ export default function ImplementacaoIndicadores({ total, media_progresso, statu
             {itemModal && (
                 <TarefaModal
                     item={itemModal}
-                    empresas={empresas}
+                    empresas={empresasSegmento}
                     onClose={() => setItemModal(null)}
                     onVerEmpresa={e => { setItemModal(null); setEmpresaModal(e); }}
                 />

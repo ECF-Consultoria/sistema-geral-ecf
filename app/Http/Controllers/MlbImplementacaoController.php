@@ -358,6 +358,8 @@ class MlbImplementacaoController extends Controller
                 'id'            => $empresa->id,
                 'nome'          => $empresa->nome,
                 'estagio'       => $empresa->estagio,
+                // Fase ("M": M0–M4, além de ASSESSORIA/Incubadora/Implantação) — alimenta o filtro por M nos indicadores.
+                'fase'          => $empresa->fase,
                 'responsavel'   => $empresa->responsavel?->name ?? '—',
                 'criado_em'     => $impl->created_at->format('d/m/Y'),
                 'ultimo_acesso' => $ultimoAcesso?->format('d/m/Y H:i'),

@@ -79,7 +79,7 @@ function ProgressHeader({ empresa_nome, progresso }) {
             <div className="max-w-2xl mx-auto px-4 py-4">
                 <div className="flex items-center justify-between mb-3">
                     <div>
-                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">ECF Consultoria · Onboarding MLB</p>
+                        <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wider">ECF Consultoria · Onboarding</p>
                         <h1 className="text-white font-display font-bold text-lg mt-0.5">{empresa_nome}</h1>
                     </div>
                     <div className="text-right">
@@ -1148,6 +1148,16 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                             Tabela de Frete
                         </a>
                     )}
+                    {/* Link fixo da ajuda do ML sobre custo de taxa de venda */}
+                    <a
+                        href="https://www.mercadolivre.com.br/ajuda/870"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow font-semibold text-[13px] hover:bg-ecf-yellow/[0.12] transition-all"
+                    >
+                        <ExternalLink size={14} />
+                        Taxa de Venda
+                    </a>
                 </>
             ) : (
                 <ItemInput item={item} dado={dado} linksAdmin={linksAdmin} onChange={onChange} />
