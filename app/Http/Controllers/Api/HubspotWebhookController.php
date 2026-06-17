@@ -9,12 +9,15 @@ use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
+use App\Notifications\EmpresaHubspotPendenteNotification;
 use App\Services\HubspotApiClient;
 use App\Services\MlbImplementacaoFactory;
+use App\Support\AudienciaComercial;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 
 /**
  * Phase 34 Plan 34-04 — Receiver POST /api/webhooks/hubspot.
@@ -197,6 +200,13 @@ class HubspotWebhookController extends Controller
                 'company_id' => $company->id,
                 'object_id'  => $evento->object_id,
             ]);
+
+            // ── Phase 35 Plan 35-03 (D-06) — notifica Comercial se tem pendencias ─
+            // Disparado APOS o commit da criarEmpresa (transaction ja fechou) e
+            // APOS o evento ser marcado processado — falha no dispatch nao desfaz
+            // o estado consistente. Idempotencia natural: 2o webhook do mesmo deal
+            // cai como ignorado na guarda acima (linha ~148), nao reentra aqui.
+            $this->notificarComercialSePendente($company, $evento);
         } catch (\Throwable $e) {
             $evento->update([
                 'status'        => 'erro',
@@ -341,6 +351,86 @@ class HubspotWebhookController extends Controller
 
             return $company;
         });
+    }
+
+    /**
+     * Phase 35 Plan 35-03 — calcula as pendencias da empresa para fins de
+     * notificacao Comercial. Espelha exatamente a logica de
+     * `CompanyController::index` (linhas 134-139), mas EXCLUI a pendencia
+     * `empresa_nova` — toda empresa criada por webhook nasce empresa_nova=true,
+     * entao notificar nela seria ruido. As demais pendencias indicam dados
+     * faltantes que o Comercial precisa preencher.
+     *
+     * @return array<int, string>  Lista de slugs (ex: ['sem_responsavel'])
+     */
+    private function calcularPendencias(Company $company): array
+    {
+        // refresh garante dados frescos depois do commit do criarEmpresa.
+        $company->refresh()->load(['consultor', 'estrategista', 'contratosServico']);
+
+        $pendencias = [];
+
+        if ($company->consultor->isEmpty() && $company->estrategista->isEmpty()) {
+            $pendencias[] = 'sem_responsavel';
+        }
+        if (!$company->adman_account_id && !$company->ml_store_id) {
+            $pendencias[] = 'sem_cust_id';
+        }
+        if (!$company->email_colaborador) {
+            $pendencias[] = 'sem_email_colaborador';
+        }
+        // ContratoServico::ativo eh boolean — only filter por ativo=true.
+        if ($company->contratosServico->where('ativo', true)->isEmpty()) {
+            $pendencias[] = 'sem_servico';
+        }
+
+        return $pendencias;
+    }
+
+    /**
+     * Phase 35 Plan 35-03 — dispatch da notificacao Comercial.
+     *
+     * Defensivo: erros aqui (audiencia vazia, falha de DB no insert da
+     * notification) NAO devem reverter o status do evento processado.
+     * Captura `\Throwable` e loga warning — webhook ja respondeu 200 e a
+     * empresa ja existe no banco.
+     */
+    private function notificarComercialSePendente(Company $company, HubspotEvento $evento): void
+    {
+        try {
+            $pendencias = $this->calcularPendencias($company);
+            if (empty($pendencias)) {
+                return;
+            }
+
+            $audiencia = AudienciaComercial::lideresEPermissionados();
+            if ($audiencia->isEmpty()) {
+                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Audiencia Comercial vazia — notificacao nao enviada', [
+                    'evento_id'  => $evento->id,
+                    'company_id' => $company->id,
+                    'pendencias' => $pendencias,
+                ]);
+                return;
+            }
+
+            Notification::send(
+                $audiencia,
+                new EmpresaHubspotPendenteNotification($company, $pendencias),
+            );
+
+            Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Notificacao Comercial enviada', [
+                'evento_id'           => $evento->id,
+                'company_id'          => $company->id,
+                'pendencias'          => $pendencias,
+                'destinatarios_count' => $audiencia->count(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Falha ao notificar Comercial (nao bloqueia o webhook)', [
+                'evento_id'  => $evento->id,
+                'company_id' => $company->id,
+                'erro'       => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
