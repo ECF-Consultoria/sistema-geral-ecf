@@ -298,6 +298,85 @@ class PortfolioController extends Controller
             $availablePeriods->push(now()->subMonths($i)->format('Y-m'));
         }
 
+        // Quick 260617-prt — Cards de alerta da carteira (4 grupos).
+        // Calculados aqui pra UI consumir direto sem N+1 client-side.
+        $alertas = [
+            // Grants expirando em ate 30 dias (inclui ja expirados ou sem grant ativo? — so os ATIVOS proximos do limite).
+            'grants_expirando_30d' => $companies
+                ->filter(fn($c) => $c['grant_status'] === 'active'
+                    && $c['grant_days_remaining'] !== null
+                    && $c['grant_days_remaining'] <= 30)
+                ->sortBy('grant_days_remaining')
+                ->values()
+                ->map(fn($c) => [
+                    'id' => $c['id'],
+                    'name' => $c['name'],
+                    'grant_expires_at' => $c['grant_expires_at'],
+                    'grant_days_remaining' => $c['grant_days_remaining'],
+                ])
+                ->all(),
+
+            // Empresas em queda MoM — revenue atual < revenue anterior (ambos > 0).
+            'empresas_em_queda' => $rawCompanies
+                ->map(function ($c) use ($isMesAtual, $sumDbAtual, $sumDbAnterior, $grossAtual, $grossAnterior) {
+                    $revAtual = null;
+                    $revAnt = null;
+                    if ($isMesAtual && $c->adman_account_id) {
+                        $revAtual = $grossAtual[$c->adman_account_id]['value'] ?? null;
+                        $revAnt = $grossAnterior[$c->adman_account_id]['value'] ?? null;
+                    }
+                    if ($revAtual === null) {
+                        $m = $sumDbAtual->get($c->id);
+                        $revAtual = $m ? (float) $m->total : null;
+                    }
+                    if ($revAnt === null) {
+                        $revAnt = (float) ($sumDbAnterior[$c->id] ?? 0);
+                    }
+                    if ($revAtual === null || $revAtual <= 0 || $revAnt <= 0 || $revAtual >= $revAnt) {
+                        return null;
+                    }
+                    $queda_pct = round((($revAtual - $revAnt) / $revAnt) * 100, 2);
+                    return [
+                        'id' => $c->id,
+                        'name' => $c->name,
+                        'revenue_atual' => (float) $revAtual,
+                        'revenue_anterior' => (float) $revAnt,
+                        'queda_pct' => $queda_pct,
+                    ];
+                })
+                ->filter()
+                ->sortBy('queda_pct') // queda mais severa primeiro (negativo menor)
+                ->values()
+                ->all(),
+
+            // Empresas com revenue > 0 mas sem ad spend (oportunidade de venda de servico Ads).
+            'empresas_sem_ad_spend' => $companies
+                ->filter(fn($c) => ($c['ad_spend'] === null || $c['ad_spend'] == 0)
+                    && $c['revenue'] !== null
+                    && $c['revenue'] > 0)
+                ->sortByDesc('revenue')
+                ->values()
+                ->map(fn($c) => [
+                    'id' => $c['id'],
+                    'name' => $c['name'],
+                    'revenue' => $c['revenue'],
+                ])
+                ->all(),
+
+            // Top 3 empresas por faturamento no periodo.
+            'top_3_revenue' => $companies
+                ->filter(fn($c) => $c['revenue'] !== null && $c['revenue'] > 0)
+                ->sortByDesc('revenue')
+                ->take(3)
+                ->values()
+                ->map(fn($c) => [
+                    'id' => $c['id'],
+                    'name' => $c['name'],
+                    'revenue' => $c['revenue'],
+                ])
+                ->all(),
+        ];
+
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
@@ -308,6 +387,8 @@ class PortfolioController extends Controller
             'available_periods'   => $availablePeriods,
             'has_metric_data'     => $companies->contains(fn($c) => $c['revenue'] !== null),
             'portfolio_goal_metrics' => PortfolioGoal::$metricLabels,
+            // Quick 260617-prt — alertas pre-calculados.
+            'alertas'             => $alertas,
         ]);
     }
 

@@ -9,8 +9,9 @@ import { Badge } from '@/Components/ui/badge';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
 import {
-    Briefcase, TrendingUp, DollarSign, Percent, Plus, Pencil, Trash2,
-    CheckCircle2, XCircle, Building2, Target, ShieldCheck, ChevronDown
+    Briefcase, TrendingUp, TrendingDown, DollarSign, Percent, Plus, Pencil, Trash2,
+    CheckCircle2, XCircle, Building2, Target, ShieldCheck, ChevronDown,
+    Search, Filter, AlertTriangle, Trophy, Clock
 } from 'lucide-react';
 import { cn, formatCurrency, formatPercent } from '@/lib/utils';
 
@@ -67,11 +68,20 @@ export default function PortfolioShow({
     available_periods,
     has_metric_data = true,
     portfolio_goal_metrics,
+    alertas = { grants_expirando_30d: [], empresas_em_queda: [], empresas_sem_ad_spend: [], top_3_revenue: [] },
 }) {
     const [goalOpen, setGoalOpen] = useState(false);
     const [editGoalOpen, setEditGoalOpen] = useState(false);
     const [editingGoal, setEditingGoal] = useState(null);
     const isAdmin = portfolio_user.role === 'admin' || window.location.pathname.includes('/admin/');
+
+    // Quick 260617-prt — Busca + filtros + sort. Tudo client-side por simplicidade.
+    const [busca, setBusca] = useState('');
+    const [filtroPapel, setFiltroPapel] = useState('all');         // all|consultor|mentor
+    const [filtroGrant, setFiltroGrant] = useState('all');         // all|active|expiring|expired|none
+    const [filtroMeta, setFiltroMeta] = useState('all');           // all|atingida|nao-atingida|sem-meta
+    const [sortCol, setSortCol] = useState('name');                // name|revenue|tacos
+    const [sortDir, setSortDir] = useState('asc');                 // asc|desc
 
     const goalForm = useForm({
         role: portfolio_user.role !== 'admin' ? portfolio_user.role : 'consultor',
@@ -134,19 +144,65 @@ export default function PortfolioShow({
         router.get(base, { period: p }, { preserveState: true });
     };
 
-    // Agrupa empresas por role do usuário
-    const byRole = companies.reduce((acc, c) => {
-        if (!acc[c.role]) acc[c.role] = [];
-        acc[c.role].push(c);
-        return acc;
-    }, {});
-
     // Metas por empresa, agrupadas por company_id
     const goalsByCompany = goals.reduce((acc, g) => {
         if (!acc[g.company_id]) acc[g.company_id] = [];
         acc[g.company_id].push(g);
         return acc;
     }, {});
+
+    // Quick 260617-prt — Helper: status do grant pra filtro.
+    //   active + <=30d = expiring (alerta), active >30d = active, sem grant = none.
+    const grantStatusFiltro = (c) => {
+        if (!c.grant_status) return 'none';
+        if (c.grant_status === 'active' && c.grant_days_remaining != null && c.grant_days_remaining <= 30) return 'expiring';
+        return c.grant_status; // 'active' | 'expired' | 'pending' (este ultimo cai em "outros")
+    };
+
+    // Helper: status meta da empresa (atingida = TODAS metas com resultado atingidas).
+    const metaStatusFiltro = (companyId) => {
+        const metas = goalsByCompany[companyId] || [];
+        if (metas.length === 0) return 'sem-meta';
+        const comResultado = metas.filter(g => g.latest_result);
+        if (comResultado.length === 0) return 'sem-meta';
+        return comResultado.every(g => g.latest_result.achieved) ? 'atingida' : 'nao-atingida';
+    };
+
+    // Aplica busca + filtros + sort.
+    const companiesFiltradas = companies
+        .filter(c => {
+            if (busca.trim() && !c.name.toLowerCase().includes(busca.trim().toLowerCase())) return false;
+            if (filtroPapel !== 'all' && c.role !== filtroPapel) return false;
+            if (filtroGrant !== 'all' && grantStatusFiltro(c) !== filtroGrant) return false;
+            if (filtroMeta !== 'all' && metaStatusFiltro(c.id) !== filtroMeta) return false;
+            return true;
+        })
+        .sort((a, b) => {
+            const dir = sortDir === 'asc' ? 1 : -1;
+            if (sortCol === 'name') return a.name.localeCompare(b.name, 'pt-BR') * dir;
+            if (sortCol === 'revenue') return ((a.revenue ?? -1) - (b.revenue ?? -1)) * dir;
+            if (sortCol === 'tacos') return ((a.tacos ?? -1) - (b.tacos ?? -1)) * dir;
+            return 0;
+        });
+
+    // Agrupa empresas filtradas por role do usuário
+    const byRole = companiesFiltradas.reduce((acc, c) => {
+        if (!acc[c.role]) acc[c.role] = [];
+        acc[c.role].push(c);
+        return acc;
+    }, {});
+
+    // Toggle sort: clica na mesma coluna inverte direcao, outra coluna reset asc.
+    const toggleSort = (col) => {
+        if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        else { setSortCol(col); setSortDir('asc'); }
+    };
+
+    // Reseta filtros (botao Limpar quando algum ativo).
+    const algumFiltroAtivo = !!(busca.trim() || filtroPapel !== 'all' || filtroGrant !== 'all' || filtroMeta !== 'all');
+    const limparFiltros = () => {
+        setBusca(''); setFiltroPapel('all'); setFiltroGrant('all'); setFiltroMeta('all');
+    };
 
     return (
         <AppLayout title={`Carteira — ${portfolio_user.name}`}>
@@ -226,6 +282,98 @@ export default function PortfolioShow({
                         value={summary.total_ad_spend ? formatCurrency(summary.total_ad_spend) : '—'}
                         color="text-purple-400"
                     />
+                </div>
+
+                {/* Quick 260617-prt — 4 cards de alerta (gestao do profissional) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Grants expirando em 30d */}
+                    <div className="card-ecf rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Clock size={14} className="text-amber-400" />
+                            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">Grants expirando (30d)</p>
+                        </div>
+                        {alertas.grants_expirando_30d.length === 0 ? (
+                            <p className="text-white/30 text-[12px]">Nenhuma empresa no risco</p>
+                        ) : (
+                            <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+                                {alertas.grants_expirando_30d.slice(0, 4).map(e => (
+                                    <div key={e.id} className="flex items-center justify-between gap-2 text-[12px]">
+                                        <span className="text-white/80 truncate">{e.name}</span>
+                                        <span className="text-amber-400 font-semibold shrink-0">{e.grant_days_remaining}d</span>
+                                    </div>
+                                ))}
+                                {alertas.grants_expirando_30d.length > 4 && (
+                                    <p className="text-white/30 text-[10px] pt-1">+ {alertas.grants_expirando_30d.length - 4} outras</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Empresas em queda MoM */}
+                    <div className="card-ecf rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <TrendingDown size={14} className="text-red-400" />
+                            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">Em queda vs anterior</p>
+                        </div>
+                        {alertas.empresas_em_queda.length === 0 ? (
+                            <p className="text-white/30 text-[12px]">Nenhuma empresa em queda</p>
+                        ) : (
+                            <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+                                {alertas.empresas_em_queda.slice(0, 4).map(e => (
+                                    <div key={e.id} className="flex items-center justify-between gap-2 text-[12px]">
+                                        <span className="text-white/80 truncate">{e.name}</span>
+                                        <span className="text-red-400 font-semibold shrink-0">{e.queda_pct}%</span>
+                                    </div>
+                                ))}
+                                {alertas.empresas_em_queda.length > 4 && (
+                                    <p className="text-white/30 text-[10px] pt-1">+ {alertas.empresas_em_queda.length - 4} outras</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Empresas sem ad spend (oportunidade venda Ads) */}
+                    <div className="card-ecf rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <AlertTriangle size={14} className="text-purple-400" />
+                            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">Sem investimento Ads</p>
+                        </div>
+                        {alertas.empresas_sem_ad_spend.length === 0 ? (
+                            <p className="text-white/30 text-[12px]">Todas investem em Ads</p>
+                        ) : (
+                            <div className="space-y-1.5 max-h-[120px] overflow-y-auto">
+                                {alertas.empresas_sem_ad_spend.slice(0, 4).map(e => (
+                                    <div key={e.id} className="flex items-center justify-between gap-2 text-[12px]">
+                                        <span className="text-white/80 truncate">{e.name}</span>
+                                        <span className="text-blue-400 shrink-0">{formatCurrency(e.revenue)}</span>
+                                    </div>
+                                ))}
+                                {alertas.empresas_sem_ad_spend.length > 4 && (
+                                    <p className="text-white/30 text-[10px] pt-1">+ {alertas.empresas_sem_ad_spend.length - 4} outras</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Top 3 por faturamento */}
+                    <div className="card-ecf rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Trophy size={14} className="text-ecf-yellow" />
+                            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide">Top 3 faturamento</p>
+                        </div>
+                        {alertas.top_3_revenue.length === 0 ? (
+                            <p className="text-white/30 text-[12px]">Sem dados de faturamento</p>
+                        ) : (
+                            <div className="space-y-1.5">
+                                {alertas.top_3_revenue.map((e, idx) => (
+                                    <div key={e.id} className="flex items-center justify-between gap-2 text-[12px]">
+                                        <span className="text-white/80 truncate">{idx + 1}º {e.name}</span>
+                                        <span className="text-emerald-400 font-semibold shrink-0">{formatCurrency(e.revenue)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 {/* Metas de carteira */}
@@ -310,6 +458,82 @@ export default function PortfolioShow({
                             ))}
                         </div>
                     )}
+                </div>
+
+                {/* Quick 260617-prt — Busca + filtros + sort */}
+                <div className="card-ecf rounded-2xl p-4 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <div className="relative flex-1 min-w-[200px]">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                            <input
+                                type="text"
+                                value={busca}
+                                onChange={e => setBusca(e.target.value)}
+                                placeholder="Buscar empresa..."
+                                className="w-full h-9 pl-9 pr-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white placeholder:text-white/30 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 transition-all"
+                            />
+                        </div>
+
+                        {/* Filtro papel — só visivel quando user tem ambos analista+estrategista */}
+                        {Object.keys(byRole).length > 1 || companies.some(c => c.role === 'mentor') && companies.some(c => c.role === 'consultor') ? (
+                            <select
+                                value={filtroPapel}
+                                onChange={e => setFiltroPapel(e.target.value)}
+                                className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40"
+                            >
+                                <option value="all">Todos os papéis</option>
+                                <option value="consultor">Analista</option>
+                                <option value="mentor">Estrategista</option>
+                            </select>
+                        ) : null}
+
+                        <select
+                            value={filtroGrant}
+                            onChange={e => setFiltroGrant(e.target.value)}
+                            className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40"
+                        >
+                            <option value="all">Todos os grants</option>
+                            <option value="active">Grant ativo</option>
+                            <option value="expiring">Expirando (30d)</option>
+                            <option value="expired">Expirado</option>
+                            <option value="none">Sem grant</option>
+                        </select>
+
+                        <select
+                            value={filtroMeta}
+                            onChange={e => setFiltroMeta(e.target.value)}
+                            className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40"
+                        >
+                            <option value="all">Todas as metas</option>
+                            <option value="atingida">Meta atingida</option>
+                            <option value="nao-atingida">Meta não atingida</option>
+                            <option value="sem-meta">Sem meta</option>
+                        </select>
+
+                        {algumFiltroAtivo && (
+                            <button onClick={limparFiltros} className="h-9 px-3 rounded-xl text-[12px] text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors">
+                                Limpar
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Sort + contador */}
+                    <div className="flex items-center justify-between flex-wrap gap-2 text-[11px] text-white/40">
+                        <div className="flex items-center gap-2">
+                            <Filter size={12} />
+                            <span>Ordenar:</span>
+                            <button onClick={() => toggleSort('name')} className={cn('px-2 py-0.5 rounded transition-colors', sortCol === 'name' ? 'text-ecf-yellow bg-ecf-yellow/10' : 'hover:text-white/70')}>
+                                Nome {sortCol === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
+                            </button>
+                            <button onClick={() => toggleSort('revenue')} className={cn('px-2 py-0.5 rounded transition-colors', sortCol === 'revenue' ? 'text-ecf-yellow bg-ecf-yellow/10' : 'hover:text-white/70')}>
+                                Faturamento {sortCol === 'revenue' && (sortDir === 'asc' ? '↑' : '↓')}
+                            </button>
+                            <button onClick={() => toggleSort('tacos')} className={cn('px-2 py-0.5 rounded transition-colors', sortCol === 'tacos' ? 'text-ecf-yellow bg-ecf-yellow/10' : 'hover:text-white/70')}>
+                                TACOS {sortCol === 'tacos' && (sortDir === 'asc' ? '↑' : '↓')}
+                            </button>
+                        </div>
+                        <span>{companiesFiltradas.length} de {companies.length} empresa{companies.length !== 1 ? 's' : ''}</span>
+                    </div>
                 </div>
 
                 {/* Empresas da carteira com metas */}
