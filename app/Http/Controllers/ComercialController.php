@@ -94,6 +94,68 @@ class ComercialController extends Controller
     }
 
     /**
+     * Phase 36 Plan 36-02 (D-03) — Página dedicada do Comercial para atribuir
+     * contrato de serviço a uma empresa existente.
+     *
+     * Migrada de `/administrativo/empresas` (Admin/Empresas.jsx modal — D-06)
+     * — quem sabe o que o cliente fechou é o time Comercial. A página recebe
+     * a `Company` via route model binding e expõe:
+     *   - dados contextuais da empresa (nome, cust_id, nicho, segment, contato)
+     *   - histórico de contratos (ativos + inativos) para conferência
+     *   - catálogo `servicos_disponiveis` (Servico::ativo=true) para o form
+     *
+     * Permissão: `comercial.cadastrar_empresa` ou admin (mesmo critério dos
+     * demais endpoints do Comercial — quem cadastra empresa também atribui
+     * serviço). Submit do form usa o endpoint backend já existente
+     * `/empresas/{company}/contratos-servico` (POST/PUT), inalterado (D-04).
+     */
+    public function atribuirServico(Company $company)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+
+        // Histórico completo (ativos + inativos) ordenado do mais recente para o
+        // mais antigo. A UI mostra ativos em destaque; inativos servem de
+        // referência caso o usuário precise re-contratar um serviço cancelado.
+        $contratos = $company->contratosServico()
+            ->with('servico')
+            ->orderByDesc('data_contratacao')
+            ->get()
+            ->map(fn($ct) => [
+                'id'               => $ct->id,
+                'servico_id'       => $ct->servico_id,
+                'servico_nome'     => $ct->servico?->nome,
+                'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
+                'valor_contratado' => (float) $ct->valor_contratado,
+                'data_contratacao' => $ct->data_contratacao?->toDateString(),
+                'data_vencimento'  => $ct->data_vencimento?->toDateString(),
+                'observacoes'      => $ct->observacoes,
+                'ativo'            => (bool) $ct->ativo,
+            ]);
+
+        $servicosDisponiveis = Servico::where('ativo', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
+
+        return Inertia::render('Comercial/AtribuirServico', [
+            'company' => [
+                'id'            => $company->id,
+                'name'          => $company->name,
+                'cnpj'          => $company->cnpj,
+                'cust_id'       => $company->cust_id ?? null,
+                'nicho'         => $company->nicho,
+                'segment'       => $company->segment ?? null,
+                'email_cliente' => $company->email_cliente,
+                'telefone'      => $company->telefone,
+            ],
+            'contratos'            => $contratos,
+            'servicos_disponiveis' => $servicosDisponiveis,
+        ]);
+    }
+
+    /**
      * Processa o cadastro centralizado de uma nova empresa.
      *
      * Fluxo (Phase 14 Plan 14-04):

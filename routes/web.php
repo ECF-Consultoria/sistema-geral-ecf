@@ -177,6 +177,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
              Route::post('/empresas',              [ComercialController::class, 'store'])->name('empresas.store');
              Route::put('/empresas/{company}',     [ComercialController::class, 'update'])->name('empresas.update');
              Route::delete('/empresas/{company}',  [ComercialController::class, 'destroy'])->name('empresas.destroy');
+
+             // Phase 36 Plan 36-02 (D-03) — página dedicada de atribuir serviço
+             // a uma empresa existente. Migrada de /administrativo/empresas (modal
+             // Admin/Empresas.jsx — D-06). Pré-resolve a Company via route model
+             // binding; renderiza Inertia Comercial/AtribuirServico com header
+             // contextual + histórico de contratos + form de novo contrato com
+             // máscara BRL (D-07) e default data_vencimento +1 ano (D-08).
+             Route::get('/atribuir-servico/{company}', [ComercialController::class, 'atribuirServico'])
+                 ->name('atribuir-servico');
          });
 
     // Reuniões (todos)
