@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\ComercialController;
 use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
+use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Services\HubspotApiClient;
+use App\Services\MlbImplementacaoFactory;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -154,6 +157,7 @@ class HubspotWebhookController extends Controller
         try {
             $propsDeal    = config('services.hubspot.props.deal');
             $propsCompany = config('services.hubspot.props.company');
+            $propsContact = config('services.hubspot.props.contact');
 
             $deal       = $api->fetchDeal((string) $evento->object_id, array_merge(
                 ['dealname', 'amount', 'dealstage'],
@@ -162,7 +166,25 @@ class HubspotWebhookController extends Controller
             $companyId  = $api->fetchAssociatedCompanyId((string) $evento->object_id);
             $hubCompany = $companyId ? $api->fetchCompany($companyId, array_values($propsCompany)) : null;
 
-            $company = $this->criarEmpresa($deal, $hubCompany);
+            // Phase 35 Plan 35-02 D-04 — fetch do contato vinculado (fallback
+            // p/ email_cliente/telefone se Company veio sem). Falha do GET ou
+            // ausencia de contato: segue silencioso (warning), nao bloqueia
+            // o cadastro porque deal+company sao o minimo viavel.
+            $contactId  = $api->fetchAssociatedContactId((string) $evento->object_id);
+            $hubContact = null;
+            if ($contactId) {
+                try {
+                    $hubContact = $api->fetchContact($contactId, array_values($propsContact));
+                } catch (\Throwable $e) {
+                    Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Falha ao buscar contato vinculado', [
+                        'evento_id'  => $evento->id,
+                        'contact_id' => $contactId,
+                        'msg'        => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $company = $this->criarEmpresa($deal, $hubCompany, $hubContact);
 
             $evento->update([
                 'status'            => 'processado',
@@ -191,19 +213,27 @@ class HubspotWebhookController extends Controller
     }
 
     /**
-     * Cria a Company + (opcionalmente) ContratoServico em transacao.
+     * Cria a Company + (opcionalmente) ContratoServico + MlbEmpresa em transacao.
+     *
+     * Phase 35 Plan 35-02 evoluiu o metodo para aceitar `$hubContact` (D-04)
+     * e criar `MlbEmpresa`/`MlbImplementacao` quando o servico do deal dispara
+     * implementacao (D-05). Comportamento default (Publicidade/Gestao/Publicacao):
+     * apenas Company — sem mlb_empresas — preservando COM-06 do fluxo Comercial.
      *
      * @param  array       $deal        payload HubSpot do deal (chave 'properties')
      * @param  array|null  $hubCompany  payload HubSpot do company associado
+     * @param  array|null  $hubContact  payload HubSpot do contato associado (fallback)
      */
-    private function criarEmpresa(array $deal, ?array $hubCompany): Company
+    private function criarEmpresa(array $deal, ?array $hubCompany, ?array $hubContact = null): Company
     {
         $propsDeal    = config('services.hubspot.props.deal');
         $propsCompany = config('services.hubspot.props.company');
+        $propsContact = config('services.hubspot.props.contact');
         $dprops       = $deal['properties'] ?? [];
         $cprops       = $hubCompany['properties'] ?? [];
+        $ctprops      = $hubContact['properties'] ?? [];
 
-        return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany) {
+        return DB::transaction(function () use ($deal, $dprops, $cprops, $ctprops, $propsDeal, $propsCompany, $propsContact) {
             $venderMlRaw = $dprops[$propsDeal['vende_ml']] ?? null;
             $vendeMl     = $venderMlRaw === null || $venderMlRaw === ''
                 ? null
@@ -212,13 +242,24 @@ class HubspotWebhookController extends Controller
             $faturamentoRaw = $dprops[$propsDeal['faturamento_mensal']] ?? null;
             $faturamento    = is_numeric($faturamentoRaw) ? (float) $faturamentoRaw : null;
 
+            // ── Phase 35 D-04 — fallback contato p/ email/telefone ────────────
+            // Prioridade: Company > Contato. Strings vazias sao tratadas como
+            // ausencia (a Company HubSpot pode mandar "" em vez de omitir).
+            $companyEmail = $cprops[$propsCompany['email']] ?? null;
+            $companyPhone = $cprops[$propsCompany['phone']] ?? null;
+            $contactEmail = $ctprops[$propsContact['email']] ?? null;
+            $contactPhone = $ctprops[$propsContact['phone']] ?? null;
+
+            $emailFinal = ($companyEmail !== null && $companyEmail !== '') ? $companyEmail : $contactEmail;
+            $foneFinal  = ($companyPhone !== null && $companyPhone !== '') ? $companyPhone : $contactPhone;
+
             $company = Company::create([
                 'name'               => $cprops[$propsCompany['name']]
                     ?? $deal['properties']['dealname']
                     ?? 'Empresa HubSpot',
                 'cnpj'               => $cprops[$propsCompany['cnpj']] ?? null,
-                'email_cliente'      => $cprops[$propsCompany['email']] ?? null,
-                'telefone'           => $cprops[$propsCompany['phone']] ?? null,
+                'email_cliente'      => ($emailFinal !== null && $emailFinal !== '') ? $emailFinal : null,
+                'telefone'           => ($foneFinal !== null && $foneFinal !== '') ? $foneFinal : null,
                 'nicho'              => $dprops[$propsDeal['nicho']] ?? null,
                 'dor'                => $dprops[$propsDeal['dor']] ?? null,
                 'vende_ml'           => $vendeMl,
@@ -227,6 +268,19 @@ class HubspotWebhookController extends Controller
                 'status'             => 'pendente',
                 'active'             => true,
             ]);
+
+            // ── Phase 35 D-04 — anexa nome do contato em notes ────────────────
+            // Concatena firstname + lastname (trim). Gancho semantico p/ coluna
+            // futura `contato_nome`. Linha "Contato (HubSpot): {nome}".
+            $firstname = trim((string) ($ctprops[$propsContact['firstname']] ?? ''));
+            $lastname  = trim((string) ($ctprops[$propsContact['lastname']] ?? ''));
+            $nomeContato = trim($firstname . ' ' . $lastname);
+            if ($nomeContato !== '') {
+                $notesAtuais = (string) ($company->notes ?? '');
+                $linhaContato = "Contato (HubSpot): {$nomeContato}";
+                $notes = trim($notesAtuais === '' ? $linhaContato : $notesAtuais . "\n" . $linhaContato);
+                $company->update(['notes' => $notes]);
+            }
 
             // ── Tenta vincular ContratoServico se nome do servico bate ───────
             $servicoNome = $dprops[$propsDeal['servico']] ?? null;
@@ -253,6 +307,36 @@ class HubspotWebhookController extends Controller
                 $linhaNova   = "Serviço (HubSpot): {$servicoNome}";
                 $notes       = trim($notesAtuais === '' ? $linhaNova : $notesAtuais . "\n" . $linhaNova);
                 $company->update(['notes' => $notes]);
+            }
+
+            // ── Phase 35 D-05 — roteamento MlbEmpresa por servico ─────────────
+            // Reaproveita helper estatico do ComercialController (fonte unica
+            // de verdade da regra "Polos" / "Assessoria" / "Incubadora").
+            // Publicidade/Gestao/Publicacao retornam null e nao criam mlb_empresas.
+            $tipoImpl = $servicoNome
+                ? ComercialController::servicoDisparaImplementacao($servicoNome)
+                : null;
+
+            if ($tipoImpl === 'polos') {
+                $mlbEmp = MlbEmpresa::create([
+                    'nome'       => $company->name,
+                    'tipo'       => 'POLO',
+                    'projeto'    => 'POLOS',
+                    'company_id' => $company->id,
+                ]);
+                MlbImplementacaoFactory::criarParaPolo($mlbEmp);
+            } elseif ($tipoImpl === 'assessoria') {
+                MlbEmpresa::create([
+                    'nome'       => $company->name,
+                    'tipo'       => 'ASSESSORIA',
+                    'company_id' => $company->id,
+                ]);
+            } elseif ($tipoImpl === 'incubadora') {
+                MlbEmpresa::create([
+                    'nome'       => $company->name,
+                    'tipo'       => 'INCUBADORA',
+                    'company_id' => $company->id,
+                ]);
             }
 
             return $company;
