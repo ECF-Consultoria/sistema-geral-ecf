@@ -139,9 +139,21 @@ export default function Companies({ companies, users, estrategistas = [], analis
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [servicoFilter, setServicoFilter] = useState(''); // servico id (string) ou ''
     const custIdStatusFilter = filters.cust_id_status || '';
+    // Phase 35 Plan 35-01 (D-02) — sort por created_at na aba Pendencias.
+    // Backend so honra valores 'nova_recente'|'nova_antiga'; '' (default) cai no orderBy('name').
+    const sortFilter = filters.sort || '';
 
     const aplicarCustIdFilter = (valor) => {
         router.get(route('companies.index'), valor ? { cust_id_status: valor } : {}, { preserveState: true, preserveScroll: true });
+    };
+
+    // Phase 35 Plan 35-01 (D-02) — aplica/limpa ?sort= preservando o tab=pendencias na URL.
+    const aplicarSort = (valor) => {
+        const params = {};
+        if (custIdStatusFilter) params.cust_id_status = custIdStatusFilter;
+        if (valor) params.sort = valor;
+        params.tab = 'pendencias';
+        router.get(route('companies.index'), params, { preserveState: true, preserveScroll: true });
     };
 
     const [open, setOpen] = useState(false);
@@ -488,6 +500,23 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                     limpar filtro
                                 </button>
                             )}
+                            {/* Phase 35 Plan 35-01 (D-02) — sort por created_at so quando filtro=empresa_nova.
+                                Outras pendencias mantem ordem alfabetica (padrao do backend). */}
+                            {pendenciaFilter === 'empresa_nova' && (
+                                <div className="ml-auto flex items-center gap-2">
+                                    <span className="text-[12px] text-white/40">Ordenar:</span>
+                                    <select
+                                        value={sortFilter}
+                                        onChange={e => aplicarSort(e.target.value)}
+                                        className="h-8 pl-2.5 pr-7 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px] text-white/80 focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                                        title="Ordenar empresas novas por data de cadastro"
+                                    >
+                                        <option value="">Padrão (nome)</option>
+                                        <option value="nova_recente">Mais recente primeiro</option>
+                                        <option value="nova_antiga">Mais antiga primeiro</option>
+                                    </select>
+                                </div>
+                            )}
                         </div>
 
                         {/* Barra de ações em massa (aparece com seleção) */}
@@ -779,7 +808,12 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                 </div>
                             </div>
                             <div className="space-y-1.5">
-                                <Label>Marketplaces extras</Label>
+                                {/* Phase 35 Plan 35-01 (D-08) — label reformulado pra deixar claro
+                                    que sao marketplaces que o CLIENTE ja opera (nao servicos da ECF). */}
+                                <Label>Em quais outros marketplaces o cliente já vende?</Label>
+                                <p className="text-xs text-white/40 -mt-1">
+                                    Marketplaces que o cliente já opera por conta própria. Não confundir com serviços que vamos prestar.
+                                </p>
                                 <div className="flex flex-wrap gap-3">
                                     {MARKETPLACES_EXTRAS.map(mp => (
                                         <label key={mp.value} className="inline-flex items-center gap-2 cursor-pointer select-none rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 hover:bg-white/[0.06]">
