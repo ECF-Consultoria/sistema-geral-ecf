@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: verifying
-stopped_at: Phase 36 Plan 36-01 completo — /comercial/empresas vira redirect; UI legada removida
+stopped_at: Phase 36 Plan 36-02 completo — Atribuir Servico migrado pro Comercial + UX modal (BRL + default +1 ano)
 last_updated: "2026-06-17T20:22:06.243Z"
 last_activity: 2026-06-17
 progress:
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 35 (fix-cadastro-hubspot-v2) — Wave 2 completa (3/3 plans)
-Plan: 35-03 (Notificacao Comercial pos-webhook HubSpot) **DONE** — 4 commits, suite 17/17 verde (95 assertions Phase34+Phase35)
-Status: Phase 35 inteira completa (35-01 + 35-02 + 35-03). Proximo: /gsd:verify-phase 35 ou deploy agrupado Phase 34+35
+Phase: 36 (comercial-uxe-atribuir-servico) — Wave 1 completa (2/2 plans)
+Plan: 36-02 (Atribuir Servico migrado pro Comercial + UX modal) **DONE** — 4 commits, build verde, 449/494 testes (zero regressao vs baseline)
+Status: Phase 36 inteira completa (36-01 + 36-02 em paralelo). Proximo: /gsd:verify-phase 36 ou deploy
 Last activity: 2026-06-17
 
 ## Performance Metrics
@@ -83,6 +83,7 @@ Last activity: 2026-06-17
 | Phase 35-fix-cadastro-hubspot-v2 P01 | 25min | 5 commits | 6 files |
 | Phase 35-fix-cadastro-hubspot-v2 P03 | 22min | 4 commits | 4 files |
 | Phase 36-comercial-uxe-atribuir-servico P01 | 8 | 4 tasks | 4 files |
+| Phase 36-comercial-uxe-atribuir-servico P02 | 33min | 4 tasks | 5 files |
 
 ## Accumulated Context
 
