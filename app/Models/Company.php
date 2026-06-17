@@ -243,6 +243,24 @@ class Company extends Model
         return $this->hasOne(MlToken::class);
     }
 
+    /**
+     * Empresa MLB associada (Polos/Assessoria/Incubadora/Publicacao).
+     *
+     * Phase 35 Plan 35-01 (D-03) — usada pelo CompanyController::index para
+     * excluir empresas que ja vivem em /mlb/empresas e evitar dupla contagem
+     * com /companies. Empresas "puras" (Publicidade/Gestao sem mlb_empresas)
+     * continuam aparecendo em /companies normalmente.
+     *
+     * Embora a tabela permita 1 company ter varios MlbEmpresa em teoria,
+     * o fluxo atual (ComercialController::store + HubspotWebhookController)
+     * cria no maximo 1 registro mlb_empresas por company — `hasOne` reflete
+     * essa intencao operacional.
+     */
+    public function mlbEmpresa()
+    {
+        return $this->hasOne(MlbEmpresa::class);
+    }
+
     public function getActiveGrantAttribute(): ?CompanyGrant
     {
         return $this->grants()->where('status', 'active')->first();
