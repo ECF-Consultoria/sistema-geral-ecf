@@ -165,7 +165,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
          ->prefix('comercial')
          ->name('comercial.')
          ->group(function () {
-             Route::get('/empresas',               [ComercialController::class, 'empresas'])->name('empresas');
+             // Phase 36 Plan 36-01 (D-01) — listagem antiga descontinuada.
+             // /comercial/empresas vira redirect 302 pra /comercial/empresas/novo
+             // (cadastro de empresa). Mantém o nome 'comercial.empresas' vivo pra
+             // não quebrar links existentes (sidebar, bookmarks). Listagem geral
+             // de empresas continua em /companies e /mlb/empresas.
+             Route::get('/empresas', function () {
+                 return redirect()->route('comercial.empresas.novo');
+             })->name('empresas');
              Route::get('/empresas/novo',          [ComercialController::class, 'create'])->name('empresas.novo');
              Route::post('/empresas',              [ComercialController::class, 'store'])->name('empresas.store');
              Route::put('/empresas/{company}',     [ComercialController::class, 'update'])->name('empresas.update');

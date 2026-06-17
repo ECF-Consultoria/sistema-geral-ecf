@@ -59,85 +59,6 @@ class ComercialController extends Controller
     }
 
     /**
-     * Lista todas as empresas + expõe o formulário de cadastro embutido.
-     * Acesso: users com 'comercial.cadastrar_empresa' ou admin.
-     *
-     * `servicos_contratados[]` (nomes pt-BR) a partir de `contratosServico`
-     * para preservar compat com a UI `Comercial/Empresas.jsx` (refator final
-     * essa reconstrução vira a única fonte de verdade até o Plan 14-07
-     */
-    public function empresas()
-    {
-        abort_unless(
-            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
-            403
-        );
-
-        // Eager load de pai/filhas para expor o vínculo de grupo (empresa
-        // principal + vinculadas) na UI. `parent_company_id` precisa estar nas
-        // colunas selecionadas para o relacionamento `pai` resolver.
-        $companies = Company::where('active', true)
-            ->with([
-                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
-                'pai:id,name',
-                'filhas:id,name,parent_company_id',
-            ])
-            ->orderByRaw("CASE WHEN status = 'pendente' THEN 0 ELSE 1 END")
-            ->orderBy('name')
-            // Phase 31 D-04 + Quick 260611-eml — email_cliente/telefone carregados para pre-preencher o form de edicao do Comercial.
-            // Phase 34 Plan 34-03 — 6 campos novos do close comercial (nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras/email_colaborador)
-            // tambem pre-populam o form de edicao em /comercial/empresas.
-            ->get([
-                'id', 'name', 'cnpj', 'status', 'created_at', 'adman_account_id', 'ml_store_id',
-                'notes', 'parent_company_id', 'email_cliente', 'telefone',
-                'nicho', 'dor', 'vende_ml', 'faturamento_mensal', 'marketplaces_extras', 'email_colaborador',
-            ]);
-
-        $companies->transform(function ($c) {
-            $c->servicos_contratados = $c->contratosServico
-                ->where('ativo', true)
-                ->map(fn($ct) => [
-                    'id'               => $ct->id,
-                    'servico_id'       => $ct->servico_id,
-                    'servico_nome'     => $ct->servico?->nome,
-                    'valor_contratado' => (float) $ct->valor_contratado,
-                    'tipo_cobranca'    => $ct->servico?->tipo_cobranca,
-                    'data_contratacao' => $ct->data_contratacao?->toDateString(),
-                    'data_vencimento'  => $ct->data_vencimento?->toDateString(),
-                    'observacoes'      => $ct->observacoes,
-                    'ativo'            => true,
-                ])
-                ->values()
-                ->toArray();
-
-            // Vínculo de grupo: nome da principal (se esta for vinculada) e
-            // contagem de filhas (se esta for principal). `is_principal` dirige
-            // o badge na listagem e trava o seletor no modal.
-            $c->nome_pai     = $c->pai?->name;
-            $c->filhas_count = $c->filhas->count();
-            $c->is_principal = $c->filhas->isNotEmpty();
-
-            // Phase 34 Plan 34-03 — normaliza tipos pro Inertia/JSX:
-            // faturamento_mensal cast decimal:2 retorna string; converter para float
-            // pra Input type=number nao quebrar. marketplaces_extras ja vem array via cast.
-            if ($c->faturamento_mensal !== null) {
-                $c->faturamento_mensal = (float) $c->faturamento_mensal;
-            }
-
-            return $c;
-        });
-
-        $servicosDisponiveis = Servico::where('ativo', true)
-            ->orderBy('nome')
-            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
-
-        return Inertia::render('Comercial/Empresas', [
-            'companies' => $companies,
-            'servicos_disponiveis' => $servicosDisponiveis,
-        ]);
-    }
-
-    /**
      * Form GET para cadastro de nova empresa.
      *
      * Phase 14 Plan 14-04: substitui o antigo `index()` (que era apenas um
@@ -161,11 +82,15 @@ class ComercialController extends Controller
     }
 
     /**
-     * @deprecated Mantido apenas para compatibilidade de redirect; use empresas().
+     * @deprecated Mantido apenas para compatibilidade de redirect; use create().
+     *
+     * Phase 36 Plan 36-01 — antes redirecionava para `comercial.empresas`, que
+     * por sua vez também é redirect (D-01). Aponta direto para `comercial.empresas.novo`
+     * para evitar redirect duplo.
      */
     public function index()
     {
-        return redirect()->route('comercial.empresas');
+        return redirect()->route('comercial.empresas.novo');
     }
 
     /**
