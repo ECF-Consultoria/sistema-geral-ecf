@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\ContratoServico;
-use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\Servico;
@@ -13,7 +12,6 @@ use App\Notifications\EmpresaCadastradaNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -522,32 +520,16 @@ class ComercialController extends Controller
      * @param  array        $handoff  Campos do wizard (usa só gmail_colaborador aqui).
      * @return MlbImplementacao
      */
+    /**
+     * Phase 35 Plan 35-02 — proxy para `MlbImplementacaoFactory::criarParaPolo`.
+     *
+     * Lógica original extraída para a factory estática reutilizável (D-05),
+     * permitindo o `HubspotWebhookController` chamar o mesmo fluxo quando um
+     * deal "Fechado Ganho" do HubSpot dispara cadastro automático. Mantemos
+     * o método private aqui para preservar a API interna do controller.
+     */
     private function criarImplementacaoPolo(MlbEmpresa $empresa, array $handoff = []): MlbImplementacao
     {
-        $dados = MlbImplementacao::dadosPadrao();
-        $p     = MlbConfiguracao::implementacaoPadroes();
-
-        if ($p['tutorial_intro']) {
-            $dados['tutorial_intro'] = $p['tutorial_intro'];
-        }
-        if (!empty($p['tutoriais'])) {
-            $dados['tutoriais'] = array_merge($dados['tutoriais'], $p['tutoriais']);
-        }
-        if (!empty($p['links_admin_extra'])) {
-            $dados['links_admin']['programa_decola'] = $p['links_admin_extra']['programa_decola'] ?? '';
-        }
-
-        // Gmail capturado no cadastro (wizard Polos) alimenta o passo público
-        // "Acesso Colaborador" do Onboarding, que lê dados.links_admin.gmail_colaborador.
-        // Sobrescreve o padrão global da ECF quando informado por empresa.
-        if (!empty($handoff['gmail_colaborador'])) {
-            $dados['links_admin']['gmail_colaborador'] = $handoff['gmail_colaborador'];
-        }
-
-        return MlbImplementacao::create([
-            'empresa_id' => $empresa->id,
-            'token'      => Str::random(48),
-            'dados'      => $dados,
-        ]);
+        return \App\Services\MlbImplementacaoFactory::criarParaPolo($empresa, $handoff);
     }
 }
