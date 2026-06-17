@@ -93,6 +93,17 @@ return [
                 'email' => env('HUBSPOT_PROP_COMPANY_EMAIL', 'email'),
                 'phone' => env('HUBSPOT_PROP_COMPANY_PHONE', 'phone'),
             ],
+            // Phase 35 Plan 35-02 — contato vinculado ao deal (D-04).
+            // Usado pra preencher email_cliente/telefone da Company quando
+            // a HubSpot Company nao tem esses campos (fallback). firstname +
+            // lastname concatenados viram linha "Contato (HubSpot): ..." em
+            // notes da Company.
+            'contact' => [
+                'firstname' => env('HUBSPOT_PROP_CONTACT_FIRSTNAME', 'firstname'),
+                'lastname'  => env('HUBSPOT_PROP_CONTACT_LASTNAME', 'lastname'),
+                'email'     => env('HUBSPOT_PROP_CONTACT_EMAIL', 'email'),
+                'phone'     => env('HUBSPOT_PROP_CONTACT_PHONE', 'phone'),
+            ],
         ],
     ],
 
