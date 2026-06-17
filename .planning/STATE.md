@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
-status: executing
-stopped_at: Phase 35 Plan 35-03 (Notificacao Comercial pos-webhook HubSpot) completo — Wave 2 (35-02 + 35-03) done
-last_updated: "2026-06-17T15:08:00.000Z"
+status: verifying
+stopped_at: Phase 36 Plan 36-01 completo — /comercial/empresas vira redirect; UI legada removida
+last_updated: "2026-06-17T20:22:06.243Z"
 last_activity: 2026-06-17
 progress:
   total_phases: 31
   completed_phases: 19
   total_plans: 47
-  completed_plans: 44
-  percent: 64
+  completed_plans: 42
+  percent: 61
 ---
 
 # Project State
@@ -82,6 +82,7 @@ Last activity: 2026-06-17
 | Phase 34-cadastro-comercial-otimizado-hubspot P04 | 28min | 4 commits | 6 files |
 | Phase 35-fix-cadastro-hubspot-v2 P01 | 25min | 5 commits | 6 files |
 | Phase 35-fix-cadastro-hubspot-v2 P03 | 22min | 4 commits | 4 files |
+| Phase 36-comercial-uxe-atribuir-servico P01 | 8 | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -409,8 +410,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-17T15:08:00.000Z
-Stopped at: Phase 35 Plan 35-03 (Notificacao Comercial pos-webhook HubSpot) completo — Wave 2 done, Phase 35 inteira fechada (3/3)
+Last session: 2026-06-17T20:22:06.221Z
+Stopped at: Phase 36 Plan 36-01 completo — /comercial/empresas vira redirect; UI legada removida
 
 **Estado para próxima sessão retomar:**
 
