@@ -36,7 +36,7 @@ import {
     Mail, MapPin, MessageCircle, Phone, PlusCircle, ShoppingBag,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 // Regiões de atuação dos Polos — espelham MlbImplementacao::ONB_POLO_OPCOES.
 const POLO_REGIOES = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
@@ -72,8 +72,9 @@ const STEPS = [
     { n: 2, titulo: 'Serviços & onboarding', desc: 'Serviços contratados e dados de entrada.' },
 ];
 
-const fmtBRL = (n) =>
-    Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+// Phase 35 Plan 35-01 (D-07) — Reusa o helper canonico do projeto pra garantir
+// 2 casas decimais consistentes em toda a UI (Companies/Show, Comercial/Empresas).
+const fmtBRL = (n) => formatCurrency(n);
 
 export default function NovaEmpresa({ servicos_disponiveis = [] }) {
     const { flash } = usePage().props;
@@ -472,11 +473,16 @@ export default function NovaEmpresa({ servicos_disponiveis = [] }) {
                                             </Field>
                                         </div>
 
-                                        {/* Marketplaces extras — 5 checkboxes em grid responsivo (D-09 fixa as opções). */}
+                                        {/* Marketplaces extras — 5 checkboxes em grid responsivo (D-09 fixa as opções).
+                                            Phase 35 Plan 35-01 (D-08) — label reformulado pra deixar claro que sao
+                                            marketplaces que o CLIENTE ja opera (nao servicos da ECF). */}
                                         <div className="space-y-2">
                                             <label className="block text-xs text-white/60 font-medium">
-                                                Vende em outras marketplaces?
+                                                Em quais outros marketplaces o cliente já vende?
                                             </label>
+                                            <p className="text-[11px] text-white/40 -mt-1">
+                                                Marketplaces que o cliente já opera por conta própria. Não confundir com serviços que vamos prestar.
+                                            </p>
                                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                                                 {MARKETPLACES_EXTRAS.map(mp => {
                                                     const selecionado = data.marketplaces_extras.includes(mp.value);

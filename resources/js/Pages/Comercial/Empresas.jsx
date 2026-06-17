@@ -3,7 +3,7 @@ import { Head, useForm, usePage, router } from '@inertiajs/react';
 import { AlertTriangle, Briefcase, Building2, Pencil, Plus, PlusCircle, PowerOff, Search, Trash2, X } from 'lucide-react';
 import { IMaskInput } from 'react-imask';
 import AppLayout from '@/Layouts/AppLayout';
-import { cn } from '@/lib/utils';
+import { cn, formatCurrency } from '@/lib/utils';
 
 // Phase 34 D-09 — lista canonica de marketplaces extras (espelha Rule::in no backend).
 // Espelha a constante em Companies/Index.jsx e Comercial/NovaEmpresa.jsx (Plan 34-02).
@@ -24,13 +24,10 @@ const fmtDate = (iso) => {
     return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 };
 
-const fmtBRL = (n) => n == null ? '-'
-    : Number(n).toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL',
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-    });
+// Phase 35 Plan 35-01 (D-07) — Padroniza BRL em 2 casas decimais usando o
+// helper canonico do projeto (`formatCurrency` em @/lib/utils). Removida a
+// versao local sem decimais que destoava do resto (Companies/Show, NovaEmpresa).
+const fmtBRL = (n) => n == null ? '-' : formatCurrency(n);
 
 function Modal({ open, onClose, children }) {
     if (!open) return null;
@@ -323,7 +320,14 @@ function FormularioEditar({ company, onClose, onAdicionarContrato, onEditarContr
                 </div>
 
                 <div className="space-y-1.5">
-                    <label className="block text-xs text-white/60 font-medium">Marketplaces extras <span className="text-white/30 text-[11px] font-normal">(opcional)</span></label>
+                    {/* Phase 35 Plan 35-01 (D-08) — label reformulado para esclarecer que sao
+                        marketplaces que o cliente JA opera por conta propria. */}
+                    <label className="block text-xs text-white/60 font-medium">
+                        Em quais outros marketplaces o cliente já vende? <span className="text-white/30 text-[11px] font-normal">(opcional)</span>
+                    </label>
+                    <p className="text-[11px] text-white/40">
+                        Marketplaces que o cliente já opera por conta própria. Não confundir com serviços que vamos prestar.
+                    </p>
                     <div className="flex flex-wrap gap-2">
                         {MARKETPLACES_EXTRAS.map(mp => (
                             <label key={mp.value} className="inline-flex items-center gap-2 cursor-pointer select-none rounded-lg border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 hover:bg-white/[0.06]">
