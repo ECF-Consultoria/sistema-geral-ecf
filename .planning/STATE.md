@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
-status: Phase 34 Wave 2 — 34-02 + 34-03 + 34-04 completos; falta verify+deploy agrupado
-stopped_at: Phase 34 Plan 03 (admin UI + Comercial edit + Show — campos do close + mascaras) completo
-last_updated: "2026-06-12T20:30:00.000Z"
-last_activity: 2026-06-12
+status: executing
+stopped_at: Phase 35 Plan 35-01 (Fixes UX/backfill + filtro /companies sem MlbEmpresa) completo — Wave 1 de 2
+last_updated: "2026-06-17T14:30:00.000Z"
+last_activity: 2026-06-17
 progress:
   total_phases: 31
-  completed_phases: 18
+  completed_phases: 19
   total_plans: 47
-  completed_plans: 44
-  percent: 63
+  completed_plans: 42
+  percent: 61
 ---
 
 # Project State
@@ -25,9 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 34 (cadastro-comercial-otimizado-hubspot) — Wave 2 completa (4/4 plans)
-Plan: 34-03 admin UI (CompanyController validation+payload show + modal admin com 6 campos + botao marcar-visto + Companies/Show secao + Comercial/Empresas edit + mascaras IMaskInput em 2 sites) **DONE**
-Status: Phase 34 completa em codigo — falta verify+deploy AGRUPADO dos 4 plans
+Phase: 35 (fix-cadastro-hubspot-v2) — Wave 1 iniciada (1/3 plans)
+Plan: 35-01 (Fixes UX/backfill + filtro /companies sem MlbEmpresa) **DONE** — 5 commits, build+suite Phase 31/33/34 verde
+Status: Wave 1 completa — Wave 2 (35-02 HubSpot v2 + 35-03 Notification) pode rodar em paralelo
+Last activity: 2026-06-17
 Last activity: 2026-06-12
 
 ## Performance Metrics
@@ -396,8 +397,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-12T20:30:00.000Z
-Stopped at: Phase 34 Plan 03 (admin UI + Comercial edit + Show — campos do close + mascaras IMaskInput) completo — Wave 2 completa (4/4)
+Last session: 2026-06-17T14:30:00.000Z
+Stopped at: Phase 35 Plan 35-01 (Fixes UX/backfill + filtro /companies sem MlbEmpresa) completo — Wave 1 de 2
 
 **Estado para próxima sessão retomar:**
 
