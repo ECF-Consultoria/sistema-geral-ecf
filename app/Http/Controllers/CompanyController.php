@@ -40,6 +40,18 @@ class CompanyController extends Controller
             $custIdStatusFilter = null;
         }
 
+        // Phase 35 Plan 35-01 (D-02) — sort opcional por created_at. Usado pela
+        // aba Pendencias quando filtro=empresa_nova para o admin priorizar
+        // recem-cadastradas (ou ver antigas). Default mantem ordem alfabetica.
+        $sort = $request->input('sort');
+        if (!in_array($sort, ['nova_recente', 'nova_antiga'], true)) {
+            $sort = null;
+        }
+
+        // Phase 35 Plan 35-01 (D-03) — exclui empresas com MlbEmpresa associada
+        // para evitar dupla contagem com /mlb/empresas (Polos/Publicacao/etc).
+        // Aplicado como query base — tanto lista quanto contadores (`pendCounts`)
+        // refletem o mesmo conjunto.
         $companies = Company::with([
                 'consultor',
                 'estrategista',
@@ -50,8 +62,15 @@ class CompanyController extends Controller
             ])
             // Grant ativo local (company_grants sincronizado da API ECF Drive) para a pendência "sem grant".
             ->withCount(['grants as grants_ativos_count' => fn($q) => $q->where('status', 'active')])
+            ->whereDoesntHave('mlbEmpresa')
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
-            ->orderBy('name')
+            ->when($sort, function ($q) use ($sort) {
+                // Quando sort por created_at solicitado, prioriza essa ordenacao.
+                // Sem sort, mantem alfabetico por nome (comportamento legado).
+                $q->orderBy('created_at', $sort === 'nova_recente' ? 'desc' : 'asc');
+            }, function ($q) {
+                $q->orderBy('name');
+            })
             ->get();
 
         $companies = $companies->map(fn($c) => [
@@ -175,8 +194,11 @@ class CompanyController extends Controller
             'servico_counts'       => $servicoCounts,
             'servicos_disponiveis' => $servicosDisponiveis,
             // Phase 18 W5-T4 — Filtro snake_case; null se nao aplicado.
+            // Phase 35 Plan 35-01 (D-02) — `sort` exposto ao frontend para
+            // sincronizar o estado do <Select> de ordenacao na aba Pendencias.
             'filters'        => [
                 'cust_id_status' => $custIdStatusFilter,
+                'sort'           => $sort,
             ],
         ]);
     }
