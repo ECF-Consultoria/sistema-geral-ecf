@@ -7,19 +7,23 @@ use Illuminate\Support\Facades\Http;
 /**
  * Phase 34 Plan 34-04 — Wrapper HTTP para HubSpot CRM API v3.
  *
- * Cobre os 3 GETs necessarios pelo HubspotWebhookController quando um deal
+ * Cobre os GETs necessarios pelo HubspotWebhookController quando um deal
  * vira "Fechado Ganho":
  *   1. fetchDeal($id, $props)               — propriedades do deal
  *   2. fetchAssociatedCompanyId($dealId)    — primeiro company associado
  *   3. fetchCompany($id, $props)            — propriedades do company
  *
+ * Phase 35 Plan 35-02 — adiciona suporte ao contato vinculado (D-04):
+ *   4. fetchAssociatedContactId($dealId)    — primeiro contato associado
+ *   5. fetchContact($id, $props)            — propriedades do contato
+ *
  * Token: Bearer de Private App (config('services.hubspot.access_token')).
  * Base: https://api.hubapi.com (fixa).
  *
- * Erros 4xx/5xx em fetchDeal/fetchCompany sao re-lancados via $res->throw()
- * para o controller capturar e marcar HubspotEvento.status='erro'. Em
- * fetchAssociatedCompanyId um 404 (deal sem company) e tratado como null
- * — situacao valida (deal nao tem company associada).
+ * Erros 4xx/5xx em fetchDeal/fetchCompany/fetchContact sao re-lancados via
+ * $res->throw() para o caller capturar. Em fetchAssociatedCompanyId/
+ * fetchAssociatedContactId um 404 (deal sem associacao) e tratado como null
+ * — situacao valida (deal pode nao ter company/contato associado).
  */
 class HubspotApiClient
 {
@@ -85,6 +89,46 @@ class HubspotApiClient
     {
         $res = Http::withToken($this->token)
             ->get(self::BASE . "/crm/v3/objects/companies/{$id}", [
+                'properties' => implode(',', $properties),
+            ]);
+        $res->throw();
+        return $res->json();
+    }
+
+    /**
+     * Phase 35 Plan 35-02 — GET /crm/v3/objects/deals/{id}/associations/contacts
+     *
+     * Retorna o ID do primeiro contato associado, ou null se nao houver
+     * associacao OU o endpoint retornar erro (resiliente — deal pode existir
+     * sem contato associado; o fluxo segue criando empresa so com os dados do
+     * deal + company).
+     */
+    public function fetchAssociatedContactId(string $dealId): ?string
+    {
+        $res = Http::withToken($this->token)
+            ->get(self::BASE . "/crm/v3/objects/deals/{$dealId}/associations/contacts");
+
+        if (!$res->ok()) {
+            return null;
+        }
+
+        $id = $res->json('results.0.toObjectId');
+        return $id !== null ? (string) $id : null;
+    }
+
+    /**
+     * Phase 35 Plan 35-02 — GET /crm/v3/objects/contacts/{id}?properties=...
+     *
+     * @param  string         $id          objectId do contato no HubSpot
+     * @param  array<string>  $properties  lista de prop names a retornar
+     * @return array          payload decoded com chave 'properties'
+     *
+     * @throws \Illuminate\Http\Client\RequestException em 4xx/5xx
+     */
+    public function fetchContact(string $id, array $properties): array
+    {
+        $res = Http::withToken($this->token)
+            ->get(self::BASE . "/crm/v3/objects/contacts/{$id}", [
                 'properties' => implode(',', $properties),
             ]);
         $res->throw();
