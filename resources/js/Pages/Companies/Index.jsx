@@ -596,9 +596,13 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                             </button>
                                                         )}
                                                         {(c.pendencias || []).includes('sem_servico') && (
+                                                            // Phase 36 Plan 36-02 (D-05) — botao "Servico" aponta direto pra
+                                                            // pagina dedicada do Comercial (Comercial/AtribuirServico.jsx) em vez
+                                                            // da listagem generica do Admin. A empresa ja vem pre-resolvida via
+                                                            // route model binding — UX sem hop intermediario.
                                                             <a
-                                                                href={`${route('admin.empresas')}?empresa=${c.id}`}
-                                                                title="Atribuir serviço no Administrativo"
+                                                                href={route('comercial.atribuir-servico', c.id)}
+                                                                title="Atribuir serviço no Comercial"
                                                                 className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-fuchsia-500/30 text-fuchsia-400 hover:bg-fuchsia-500/10 text-[12px] font-medium"
                                                             >
                                                                 <Briefcase className="h-3.5 w-3.5" /> Serviço

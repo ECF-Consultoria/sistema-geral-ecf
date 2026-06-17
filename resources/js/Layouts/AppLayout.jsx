@@ -87,8 +87,12 @@ const NAV_TREE = [
         group: 'Comercial',
         icon: Briefcase,
         children: [
-            // Renomeado de "Empresas" para "Entrada de Empresas" conforme spec do plano.
-            { label: 'Entrada de Empresas', routeName: 'comercial.empresas', page: 'Comercial/Empresas', icon: Building2, permission: 'comercial.cadastrar_empresa' },
+            // Phase 36 Plan 36-01 — apontamos direto pra /comercial/empresas/novo (cadastro).
+            // A listagem antiga (/comercial/empresas) foi descontinuada; a rota nomeada
+            // 'comercial.empresas' agora redireciona pra cá. Trocamos label pra
+            // 'Cadastrar empresa' (clareza) e routeName pra 'comercial.empresas.novo'
+            // pra evitar o hop do redirect 302.
+            { label: 'Cadastrar empresa', routeName: 'comercial.empresas.novo', page: 'Comercial/NovaEmpresa', icon: Building2, permission: 'comercial.cadastrar_empresa' },
         ],
     },
 
