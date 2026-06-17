@@ -1,8 +1,13 @@
+// Phase 36 Plan 36-02 (D-06) — Admin/Empresas.jsx perdeu o modal de
+// atribuir contrato. A acao foi migrada para a pagina dedicada do Comercial
+// (Comercial/AtribuirServico.jsx, rota /comercial/atribuir-servico/{company}).
+// Esta tela continua oferecendo listagem + filtros + visualizacao read-only
+// dos contratos por empresa. Para atribuir/editar um contrato, o admin clica
+// no botao "Servico" em /companies (aba Pendencias) ou navega manualmente
+// para /comercial/atribuir-servico/{id}.
 import AppLayout from '@/Layouts/AppLayout';
-import { router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Briefcase, Building2, ChevronDown, Pencil, Plus, PowerOff } from 'lucide-react';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/Components/ui/dialog';
+import { Briefcase, Building2, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import GruposManager, { GrupoBadge } from '@/Components/GruposManager';
 
@@ -67,7 +72,7 @@ function EmpresaRow({ empresa, expandida, onToggle }) {
     );
 }
 
-function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
+function ContratosSection({ empresa }) {
     const contratos = empresa.servicos_contratados || [];
 
     return (
@@ -77,13 +82,16 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
                     <Briefcase size={14} className="text-ecf-yellow/70" />
                     <span className="text-white/80 text-[13px] font-semibold">Servicos contratados</span>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => onAdicionar(empresa)}
+                {/* Phase 36 Plan 36-02 (D-06) — botao "Adicionar contrato" removido.
+                    Acao migrada para a pagina dedicada do Comercial. Aponta direto
+                    para a rota nomeada do Comercial pra quem precisar atribuir
+                    contrato a partir daqui. */}
+                <a
+                    href={`/comercial/atribuir-servico/${empresa.id}`}
                     className="inline-flex items-center gap-1 px-2.5 py-1 text-[12px] rounded-md bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow border border-ecf-yellow/20"
                 >
-                    <Plus size={12} /> Adicionar contrato
-                </button>
+                    Atribuir no Comercial
+                </a>
             </div>
             {contratos.length === 0 ? (
                 <p className="text-white/35 text-[12px] py-2">Nenhum contrato ativo.</p>
@@ -95,7 +103,6 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
                                 <th className="text-left py-2 px-3">Servico</th>
                                 <th className="text-right py-2 px-3">Valor</th>
                                 <th className="text-center py-2 px-3">Tipo</th>
-                                <th className="text-right py-2 px-3">Acoes</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -104,16 +111,6 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
                                     <td className="py-2 px-3">{c.servico_nome ?? '-'}</td>
                                     <td className="py-2 px-3 text-right font-mono">{fmtBRL(c.valor_contratado) ?? '-'}</td>
                                     <td className="py-2 px-3 text-center">{c.tipo_cobranca === 'mensal' ? 'Mensal' : 'Unica'}</td>
-                                    <td className="py-2 px-3">
-                                        <div className="flex justify-end gap-1">
-                                            <button type="button" onClick={() => onEditar(empresa, c)} className="p-1 text-white/40 hover:text-ecf-yellow">
-                                                <Pencil size={12} />
-                                            </button>
-                                            <button type="button" onClick={() => onDesativar(empresa, c)} className="p-1 text-white/40 hover:text-red-400">
-                                                <PowerOff size={12} />
-                                            </button>
-                                        </div>
-                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -124,20 +121,13 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
-// Conteúdo expandido da empresa: só os contratos de serviço.
+// Conteúdo expandido da empresa: só os contratos de serviço (read-only).
 // (O agrupamento agora é feito pelos grupos nomeados na aba "Grupos".)
-function EmpresaForm({ empresa, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
-    return (
-        <ContratosSection
-            empresa={empresa}
-            onAdicionar={onAdicionarContrato}
-            onEditar={onEditarContrato}
-            onDesativar={onDesativarContrato}
-        />
-    );
+function EmpresaForm({ empresa }) {
+    return <ContratosSection empresa={empresa} />;
 }
 
-function EmpresaList({ empresas, initialAberta = null, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+function EmpresaList({ empresas, initialAberta = null }) {
     const [aberta, setAberta] = useState(initialAberta);
 
     return (
@@ -151,12 +141,7 @@ function EmpresaList({ empresas, initialAberta = null, onAdicionarContrato, onEd
                     />
                     {aberta === empresa.id && (
                         <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04]">
-                            <EmpresaForm
-                                empresa={empresa}
-                                onAdicionarContrato={onAdicionarContrato}
-                                onEditarContrato={onEditarContrato}
-                                onDesativarContrato={onDesativarContrato}
-                            />
+                            <EmpresaForm empresa={empresa} />
                         </div>
                     )}
                 </div>
@@ -175,17 +160,6 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
     const [busca, setBusca] = useState('');
     const [servicoFiltro, setServicoFiltro] = useState('');
     const [semServico, setSemServico] = useState(false);
-    const [contratoModal, setContratoModal] = useState({ open: false, empresa: null, contrato: null });
-    const [contratoForm, setContratoForm] = useState({
-        servico_id: '',
-        valor_contratado: '',
-        data_contratacao: '',
-        data_vencimento: '',
-        observacoes: '',
-        ativo: true,
-    });
-    const [contratoErrors, setContratoErrors] = useState({});
-    const [contratoSalvando, setContratoSalvando] = useState(false);
 
     const servicosNomes = [...new Set(
         companies.flatMap(e => (e.servicos_contratados || []).map(s => s.servico_nome).filter(Boolean)),
@@ -203,72 +177,6 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
         return buscaOk && servicoOk && semServicoOk;
     });
 
-    function abrirAdicionarContrato(empresa) {
-        setContratoModal({ open: true, empresa, contrato: null });
-        setContratoForm({
-            servico_id: '',
-            valor_contratado: '',
-            data_contratacao: new Date().toISOString().slice(0, 10),
-            data_vencimento: '',
-            observacoes: '',
-            ativo: true,
-        });
-        setContratoErrors({});
-    }
-
-    function abrirEditarContrato(empresa, contrato) {
-        setContratoModal({ open: true, empresa, contrato });
-        setContratoForm({
-            servico_id: String(contrato.servico_id ?? ''),
-            valor_contratado: contrato.valor_contratado ?? '',
-            data_contratacao: contrato.data_contratacao || '',
-            data_vencimento: contrato.data_vencimento || '',
-            observacoes: contrato.observacoes || '',
-            ativo: contrato.ativo !== false,
-        });
-        setContratoErrors({});
-    }
-
-    function fecharModalContrato() {
-        setContratoModal({ open: false, empresa: null, contrato: null });
-        setContratoErrors({});
-    }
-
-    function escolherServico(id) {
-        const servico = servicos_disponiveis.find(s => String(s.id) === String(id));
-        setContratoForm(prev => ({
-            ...prev,
-            servico_id: id,
-            valor_contratado: servico ? servico.valor_padrao : prev.valor_contratado,
-        }));
-    }
-
-    function salvarContrato(e) {
-        e.preventDefault();
-        if (!contratoModal.empresa) return;
-
-        const baseUrl = `/empresas/${contratoModal.empresa.id}/contratos-servico`;
-        const url = contratoModal.contrato ? `${baseUrl}/${contratoModal.contrato.id}` : baseUrl;
-        const method = contratoModal.contrato ? 'put' : 'post';
-
-        setContratoSalvando(true);
-        router[method](url, contratoForm, {
-            preserveScroll: true,
-            onSuccess: () => fecharModalContrato(),
-            onError: errors => setContratoErrors(errors || {}),
-            onFinish: () => setContratoSalvando(false),
-        });
-    }
-
-    function desativarContrato(empresa, contrato) {
-        const nome = contrato.servico_nome ?? 'servico';
-        if (!confirm(`Desativar contrato "${nome}"?`)) return;
-
-        router.delete(`/empresas/${empresa.id}/contratos-servico/${contrato.id}`, {
-            preserveScroll: true,
-        });
-    }
-
     return (
         <AppLayout title="Empresas - Administrativo">
             <main className="p-6">
@@ -280,7 +188,7 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
                                 <h1 className="text-xl font-semibold font-display text-white">Empresas</h1>
                             </div>
                             <p className="text-[13px] text-white/40">
-                                Contratos de servico e vinculos usados no Fechamento.
+                                Listagem read-only. Para atribuir contrato use o Comercial.
                             </p>
                         </div>
                         <span className="text-white/30 text-[12px] shrink-0 pt-1">
@@ -350,9 +258,6 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
                                     <EmpresaList
                                         empresas={filtradas}
                                         initialAberta={empresaFoco}
-                                        onAdicionarContrato={abrirAdicionarContrato}
-                                        onEditarContrato={abrirEditarContrato}
-                                        onDesativarContrato={desativarContrato}
                                     />
                                 )}
                             </div>
@@ -364,124 +269,6 @@ export default function Empresas({ companies, servicos_disponiveis = [], grupos 
                     )}
                 </div>
             </main>
-
-            <Dialog open={contratoModal.open} onOpenChange={open => !open && fecharModalContrato()}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>
-                            {contratoModal.contrato ? 'Editar' : 'Adicionar'} contrato
-                            {contratoModal.empresa && (
-                                <span className="text-white/40 font-normal"> - {contratoModal.empresa.name}</span>
-                            )}
-                        </DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={salvarContrato} className="space-y-4">
-                        <div className="space-y-1.5">
-                            <label className="block text-xs text-white/60 font-medium">Servico *</label>
-                            {contratoModal.contrato ? (
-                                <input
-                                    value={contratoModal.contrato.servico_nome ?? '-'}
-                                    disabled
-                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white/60"
-                                />
-                            ) : (
-                                <select
-                                    value={contratoForm.servico_id}
-                                    onChange={e => escolherServico(e.target.value)}
-                                    required
-                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
-                                >
-                                    <option value="">Selecionar...</option>
-                                    {servicos_disponiveis.map(s => (
-                                        <option key={s.id} value={s.id}>
-                                            {s.nome} - {s.tipo_cobranca === 'mensal' ? 'Mensal' : 'Unica'} - {fmtBRL(s.valor_padrao)}
-                                        </option>
-                                    ))}
-                                </select>
-                            )}
-                            {contratoErrors.servico_id && <p className="text-red-400 text-xs">{contratoErrors.servico_id}</p>}
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-xs text-white/60 font-medium">Valor contratado (R$) *</label>
-                            <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                value={contratoForm.valor_contratado}
-                                onChange={e => setContratoForm(prev => ({ ...prev, valor_contratado: e.target.value }))}
-                                required
-                                className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
-                            />
-                            {contratoErrors.valor_contratado && <p className="text-red-400 text-xs">{contratoErrors.valor_contratado}</p>}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1.5">
-                                <label className="block text-xs text-white/60 font-medium">Contratacao *</label>
-                                <input
-                                    type="date"
-                                    value={contratoForm.data_contratacao}
-                                    onChange={e => setContratoForm(prev => ({ ...prev, data_contratacao: e.target.value }))}
-                                    required
-                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
-                                />
-                                {contratoErrors.data_contratacao && <p className="text-red-400 text-xs">{contratoErrors.data_contratacao}</p>}
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="block text-xs text-white/60 font-medium">Vencimento</label>
-                                <input
-                                    type="date"
-                                    value={contratoForm.data_vencimento || ''}
-                                    onChange={e => setContratoForm(prev => ({ ...prev, data_vencimento: e.target.value }))}
-                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
-                                />
-                                {contratoErrors.data_vencimento && <p className="text-red-400 text-xs">{contratoErrors.data_vencimento}</p>}
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="block text-xs text-white/60 font-medium">Observacoes</label>
-                            <textarea
-                                rows={2}
-                                value={contratoForm.observacoes}
-                                onChange={e => setContratoForm(prev => ({ ...prev, observacoes: e.target.value }))}
-                                className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white resize-none focus:border-ecf-yellow/40 focus:outline-none"
-                            />
-                            {contratoErrors.observacoes && <p className="text-red-400 text-xs">{contratoErrors.observacoes}</p>}
-                        </div>
-
-                        {contratoModal.contrato && (
-                            <label className="flex items-center gap-2 text-sm text-white/80">
-                                <input
-                                    type="checkbox"
-                                    checked={!!contratoForm.ativo}
-                                    onChange={e => setContratoForm(prev => ({ ...prev, ativo: e.target.checked }))}
-                                    className="h-4 w-4 accent-ecf-yellow"
-                                />
-                                Contrato ativo
-                            </label>
-                        )}
-
-                        <DialogFooter>
-                            <button
-                                type="button"
-                                onClick={fecharModalContrato}
-                                className="h-9 px-4 rounded-lg border border-white/[0.08] text-white/60 hover:text-white/90 text-[13px]"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                type="submit"
-                                disabled={contratoSalvando}
-                                className="h-9 px-4 rounded-lg bg-ecf-yellow text-black font-semibold text-[13px] disabled:opacity-50"
-                            >
-                                {contratoSalvando ? 'Salvando...' : contratoModal.contrato ? 'Atualizar' : 'Adicionar'}
-                            </button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
         </AppLayout>
     );
 }
