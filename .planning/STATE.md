@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: verifying
-stopped_at: Phase 36 Plan 36-02 completo — Atribuir Servico migrado pro Comercial + UX modal (BRL + default +1 ano)
-last_updated: "2026-06-17T20:22:06.243Z"
-last_activity: 2026-06-17
+stopped_at: "Quick task 260618-jpx completa — Rastrear envio do link e responsável no Onboarding (3 tarefas, 5 arquivos, 2 commits)"
+last_updated: "2026-06-18T00:00:00Z"
+last_activity: 2026-06-18
 progress:
   total_phases: 31
   completed_phases: 19

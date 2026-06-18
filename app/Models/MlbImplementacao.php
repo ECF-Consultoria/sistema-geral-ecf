@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -28,6 +29,11 @@ class MlbImplementacao extends Model
         'integradora',
         'places',
         'erp',
+
+        // ── Rastreio de envio do link + responsável (ONB-ENVIO-LINK / ONB-RESPONSAVEL) ──
+        'link_enviado_em',
+        'link_enviado_por',
+        'responsavel_id',
     ];
 
     protected $casts = [
@@ -37,6 +43,8 @@ class MlbImplementacao extends Model
         'data_solicitacao' => 'date',
         'grupo_whatsapp'   => 'boolean',
         'decola'           => 'boolean',
+        // Rastreio de envio do link (ONB-ENVIO-LINK)
+        'link_enviado_em'  => 'datetime',
     ];
 
     // tipos:
@@ -329,6 +337,38 @@ class MlbImplementacao extends Model
     public function empresa(): BelongsTo
     {
         return $this->belongsTo(MlbEmpresa::class, 'empresa_id');
+    }
+
+    /** Usuário responsável pelo onboarding (ONB-RESPONSAVEL) */
+    public function responsavel(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'responsavel_id');
+    }
+
+    /** Usuário que marcou o link como enviado (ONB-ENVIO-LINK) */
+    public function linkEnviadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'link_enviado_por');
+    }
+
+    /**
+     * Retorna o status do envio do link do cliente (ONB-ENVIO-LINK).
+     *
+     * Precedência: o status reflete a fase atual, não o histórico.
+     *   concluido    — todos os itens do checklist marcados (progresso 100%)
+     *   enviado      — equipe marcou manualmente que enviou o link (link_enviado_em preenchido)
+     *   falta_enviar — nenhuma das condições acima
+     *
+     * NÃO usamos ultimo_acesso para inferir "cliente acessou": o link público é aberto
+     * também pela própria equipe (testes/conferência), então atribuir esse acesso ao
+     * cliente quebra a lógica. O status reflete apenas o que a equipe controla (envio
+     * manual) + a conclusão do checklist.
+     */
+    public function statusEnvio(): string
+    {
+        if ($this->progresso()['pct'] === 100) return 'concluido';
+        if ($this->link_enviado_em !== null)    return 'enviado';
+        return 'falta_enviar';
     }
 
     public function progresso(): array
