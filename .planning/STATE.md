@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 36 Plan 36-01 completo — /comercial/empresas vira redirect; UI legada removida
-last_updated: "2026-06-18T18:20:25.946Z"
-last_activity: 2026-06-18 -- Phase 37 planning complete
+stopped_at: Phase 37 Plan 37-01 completo — coluna servicos.setor + seed canônico + model helpers/scope (RED→GREEN; 6 testes verdes)
+last_updated: "2026-06-18T18:37:00Z"
+last_activity: 2026-06-18 -- Phase 37 Plan 37-01 completo
 progress:
   total_phases: 32
   completed_phases: 19
   total_plans: 54
-  completed_plans: 42
-  percent: 59
+  completed_plans: 43
+  percent: 60
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 36 (comercial-uxe-atribuir-servico) — Wave 1 completa (2/2 plans)
-Plan: 36-02 (Atribuir Servico migrado pro Comercial + UX modal) **DONE** — 4 commits, build verde, 449/494 testes (zero regressao vs baseline)
-Status: Ready to execute
-Last activity: 2026-06-18 -- Phase 37 planning complete
+Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 1 em execução
+Plan: 37-01 (coluna servicos.setor + seed canônico) **DONE** — 3 commits TDD (f8a0091 RED → b93ee62 GREEN → ca84bd1 GREEN), 6/6 testes verdes (27 assertions), zero regressão vs baseline Phase 14
+Status: Ready to execute (próximo plan da Wave 1 a depender do `depends_on` no PLAN.md)
+Last activity: 2026-06-18 -- Phase 37 Plan 37-01 completo
 
 ## Performance Metrics
 
@@ -84,6 +84,7 @@ Last activity: 2026-06-18 -- Phase 37 planning complete
 | Phase 35-fix-cadastro-hubspot-v2 P03 | 22min | 4 commits | 4 files |
 | Phase 36-comercial-uxe-atribuir-servico P01 | 8 | 4 tasks | 4 files |
 | Phase 36-comercial-uxe-atribuir-servico P02 | 33min | 4 tasks | 5 files |
+| Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P01 | 15min | 3 commits (TDD) | 4 files |
 
 ## Accumulated Context
 
@@ -336,6 +337,19 @@ Last activity: 2026-06-18 -- Phase 37 planning complete
 - **D-11 — Dispatch APOS evento marcado processado** (nao dentro da transaction). Falha de notificacao nunca reverte estado consistente da Company + HubspotEvento.
 - **D-12 — try/catch `\Throwable` no dispatch + log warning, nao rethrow**. Webhook ja respondeu 200; problema de notification e interno e nao deve impactar webhook do HubSpot.
 - **D-13 — Idempotencia herdada do Plan 34-04**: guarda `jaProcessado` antes de `criarEmpresa` garante que 2o webhook do mesmo `object_id` e marcado `ignorado` antes do dispatch. Resultado: 1 notification por deal, sem redundancia.
+
+### Decisões do Plan 37-01 (registradas)
+
+- **Setor mora no catálogo `servicos`, NÃO em `companies`** — cross-cutting constraint da Phase 37: setor sempre derivado via `contratos_servico.servico.setor`, preserva 1-to-many (uma empresa pode ter contratos de setores distintos) e evita coluna paralela desnormalizada.
+- **Enum SQL + default 'outros'** — bloqueia valores inesperados no DB (T-37-02 mitigation) e garante que inserções sem `setor` (catálogo Phase 14 pré-existente) não falhem por NOT NULL. Novos serviços nunca quebram cadastro nem geram pendência comercial por categoria desconhecida.
+- **Seed via UPDATE LIKE Title Case** — pares `%Gestão%` → performance, `%Mentoria%` → performance (silencioso se não existir no catálogo Phase 14), `%Publicação%` → publicacao. Alinhado com D-02 Phase 14 (catálogo está em Title Case). UPDATE idempotente por natureza (re-rodar com mesmo valor é no-op de efeito).
+- **Migrations separadas: 100001 (schema) + 100002 (seed)** — permite rollback seletivo do dado preservando schema, e separa responsabilidades pra debug/auditoria. `down()` da seed reseta tudo pra 'outros' (default).
+- **Constants `SETOR_*` no model, NÃO enum PHP backed** — segue convenção `TIPO_MENSAL/UNICA` da Phase 14. Array `SETORES` consolidador espelha o enum SQL para iteração.
+- **Test suite usa `aplicarSeedSetor()` helper inline** em vez de `Artisan::call('migrate', ['--path' => ...])` — isola do estado do migrator no SQLite (RefreshDatabase só roda as migrations padrão). Valida o EFEITO da regra (Gestão→performance) e não a maquinaria (já coberta indiretamente pelo RefreshDatabase).
+- **Mentoria silenciosa se inexistente** — Mentoria pode não existir no catálogo Phase 14; `UPDATE LIKE '%Mentoria%'` afeta 0 rows sem erro. Decisão explícita para evitar `if exists` desnecessário (custo de complexidade > benefício).
+- **`scopePorSetor($query, string $setor)` sem type-hint em `$query`** — replica convenção `scopeActive` existente do model Phase 14. Diagnóstico IDE P1132 (Information) ignorado por consistência.
+- **`logOnly` inclui 'setor'** — mudanças no setor via UI (futuro) geram entrada no activity log, permitindo auditar quem mudou categoria de um serviço (Performance/Publicação/Outros).
+- **Sem regressão Phase 14**: baseline confirmada via `git stash` — 8 failed / 37 passed antes E depois das mudanças (mesmo shape). Falhas pré-existentes em `Phase14MigrationTest` (Carbon timezone parse de `contract_start`) já documentadas como deferred desde 2026-05-26. SCOPE BOUNDARY do executor.
 - **Test T1 usa reflection** ao inves de webhook completo: o webhook SEMPRE cria empresa com pendencias (responsavel/cust_id/email_colaborador faltam por definicao da fonte). Para validar a regra "empresa completa nao notifica" sem mudar fluxo, T1 testa `calcularPendencias` + `notificarComercialSePendente` direto via reflection. T2/T3/T4 cobrem end-to-end.
 - **AudienciaComercial performance**: ~50 users ativos = ~50ms (acceitable para webhook sincrono). Se base >500, refatorar para JOIN direto com `setor_permissoes` (comentado no helper).
 - **CRITICO: NAO deployar Plan 35-03 sozinho**: depende de Phase 8 (BaseNotification + tabela `notifications` ja em prod), Phase 34-01 (campo `email_colaborador`), Phase 34-04 (webhook HubSpot). Tudo ja em prod. Esta plan deploy-segura standalone OU agrupada com 35-02.
@@ -412,19 +426,19 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-17T20:22:06.221Z
-Stopped at: Phase 36 Plan 36-01 completo — /comercial/empresas vira redirect; UI legada removida
+Last session: 2026-06-18T18:37:00Z
+Stopped at: Phase 37 Plan 37-01 completo — coluna servicos.setor + seed canônico (RED→GREEN)
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY: `.planning/phases/35-fix-cadastro-hubspot-v2/35-03-SUMMARY.md`
-- Phase 35 completa (3/3 plans):
-  - 35-01: UX/backfill + filtro /companies sem MlbEmpresa (5 commits)
-  - 35-02: webhook HubSpot v2 — fetch contato + cria MlbEmpresa por servico (Wave 2 paralela)
-  - 35-03: notificacao Comercial pos-webhook quando empresa tem pendencias (4 commits, 4 testes 16 assertions)
-- Suite Phase 31+33+34+35: **70/70 testes verdes (526 assertions)** — zero regressao baseline
-- Suite Phase34HubspotWebhook + Phase35Hubspot: **17/17 verdes (95 assertions)**
-- `npm run build` verde
-- Próximo passo natural: `/gsd:verify-phase 35` ou deploy agrupado Phase 34+35
-- **Deploy:** Phase 35 inteira pode subir agrupada (Phase 34 ja em prod, Phase 35 nao adiciona migrations — so backfill 35-01 + novos arquivos). Pos-deploy: `php artisan migrate --force && php artisan cache:clear && php artisan config:cache`
-- HEAD: `6c3514e` test(35-03): Phase35HubspotNotifyTest — 4 cases (16 assertions)
+- SUMMARY: `.planning/phases/37-onboarding-comercial-unificado-via-hubspot-line-items/37-01-SUMMARY.md`
+- Phase 37 Plan 37-01 entregue (Wave 1):
+  - Migration 100001: coluna `servicos.setor` enum (performance|publicacao|outros, default 'outros')
+  - Migration 100002: seed Gestão+Mentoria → performance, Publicação → publicacao
+  - `app/Models/Servico.php`: constants SETOR_*, SETORES array, setoresLabels(), isPerformance(), isPublicacao(), scopePorSetor(), logOnly += 'setor'
+  - `tests/Feature/Phase37ServicoSetorTest.php`: 6 testes verdes (27 assertions)
+- TDD: commits RED→GREEN limpos (f8a0091 → b93ee62 → ca84bd1)
+- Zero regressão vs baseline Phase 14 (`git stash` validado)
+- **Próximo passo natural:** executar próximo plan da Wave 1 (Phase 37 tem 7 plans em 3 waves — checar PLAN.md frontmatter `depends_on` para próximo desbloqueado)
+- **Deploy:** NÃO fazer deploy do Plan 37-01 sozinho — agrupar com Plans seguintes da Phase 37 (especialmente 37-05 e 37-06 que consomem `porSetor()`). Pos-deploy: `php artisan migrate --force && php artisan cache:clear`
+- HEAD: `ca84bd1` feat(37-01): seed setor + Servico model com SETORES const + helpers + scope (GREEN)
