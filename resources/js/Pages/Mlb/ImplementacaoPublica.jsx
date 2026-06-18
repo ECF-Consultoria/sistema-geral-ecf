@@ -569,42 +569,24 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                             </div>
                             <p className="text-white/30 text-[10px] uppercase tracking-wider pt-1">Seus alvos (valem p/ Clássico e Premium)</p>
                             <div className="grid grid-cols-3 gap-2">
-                                {/* MC %: no individual edita mc_individual do produto com placeholder global; no massa edita o global */}
-                                {modoImposto === 'massa' ? (
-                                    <div title="margem de contribuição alvo (todos os produtos)">
-                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
-                                        <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao}
-                                            onChange={e => updateMC(e.target.value)}
-                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
-                                    </div>
-                                ) : (
-                                    <div title="MC deste produto (vazio = herda o padrão global)">
-                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">MC deste produto %</label>
-                                        <input type="number" step="0.01" min="0"
-                                            value={row.mc_individual ?? ''}
-                                            placeholder={String(cfg.margem_contribuicao ?? '')}
-                                            onChange={e => onEditProduto('mc_individual', e.target.value)}
-                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
-                                    </div>
-                                )}
-                                {/* LL %: no individual edita ll_individual do produto com placeholder global; no massa edita o global */}
-                                {modoImposto === 'massa' ? (
-                                    <div title="lucro líquido alvo (todos os produtos)">
-                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
-                                        <input type="number" step="0.01" min="0" value={cfg.lucro_liquido}
-                                            onChange={e => updateLL(e.target.value)}
-                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
-                                    </div>
-                                ) : (
-                                    <div title="LL deste produto (vazio = herda o padrão global)">
-                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">LL deste produto %</label>
-                                        <input type="number" step="0.01" min="0"
-                                            value={row.ll_individual ?? ''}
-                                            placeholder={String(cfg.lucro_liquido ?? '')}
-                                            onChange={e => onEditProduto('ll_individual', e.target.value)}
-                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
-                                    </div>
-                                )}
+                                {/* MC %: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
+                                <div title="MC deste produto (vazio = herda o padrão global)">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">MC deste produto %</label>
+                                    <input type="number" step="0.01" min="0"
+                                        value={row.mc_individual ?? ''}
+                                        placeholder={String(cfg.margem_contribuicao ?? '')}
+                                        onChange={e => onEditProduto('mc_individual', e.target.value)}
+                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                </div>
+                                {/* LL %: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
+                                <div title="LL deste produto (vazio = herda o padrão global)">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">LL deste produto %</label>
+                                    <input type="number" step="0.01" min="0"
+                                        value={row.ll_individual ?? ''}
+                                        placeholder={String(cfg.lucro_liquido ?? '')}
+                                        onChange={e => onEditProduto('ll_individual', e.target.value)}
+                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                </div>
                                 {/* Acréscimo: sempre global nos dois modos */}
                                 <div title="quanto inflar o preço de tabela para depois dar desconto">
                                     <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Acréscimo %</label>
@@ -771,15 +753,15 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             ? ((parseFloat(row?.imposto_individual) || 0) / 100)
             : tierImpostoDecimal;
 
-    // Helpers de MC e LL efetivos — diferem do imposto: campo VAZIO = HERDA o global (mcNum/llNum).
-    // "preenchido" = string não-vazia e não-nula. No modo massa sempre devolve o global.
+    // Helpers de MC e LL efetivos — MC e LL são SEMPRE por produto (independente do modo do imposto).
+    // Campo VAZIO = HERDA o global (mcNum/llNum, o "padrão"); preenchido = override só daquele produto.
     const mcEfetivo = (row) =>
-        (modoImposto === 'individual' && row?.mc_individual !== '' && row?.mc_individual != null)
+        (row?.mc_individual !== '' && row?.mc_individual != null)
             ? ((parseFloat(row.mc_individual) || 0) / 100)
             : mcNum;
 
     const llEfetivo = (row) =>
-        (modoImposto === 'individual' && row?.ll_individual !== '' && row?.ll_individual != null)
+        (row?.ll_individual !== '' && row?.ll_individual != null)
             ? ((parseFloat(row.ll_individual) || 0) / 100)
             : llNum;
 
@@ -858,12 +840,13 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             { id: 'sku',            label: 'SKU',        type: 'text',     width: 110 },
             { id: 'descricao',      label: 'Descrição',  type: 'text',     width: 180 },
             { id: 'custo',          label: 'Custo R$',   type: 'number',   width: 90  },
-            // Colunas individuais: visíveis apenas no modo individual (ocultas no massa para reduzir ruído)
+            // Imposto individual: só no modo individual (o toggle Massa|Individual controla SÓ o imposto).
             ...(modoImposto === 'individual' ? [
                 { id: 'imposto_individual', label: 'Imposto Ind. %', type: 'number', width: 110 },
-                { id: 'mc_individual',      label: 'MC %',           type: 'number', width: 90  },
-                { id: 'll_individual',      label: 'LL %',           type: 'number', width: 90  },
             ] : []),
+            // MC e LL são SEMPRE por produto (vazio herda o global) — colunas sempre visíveis nos dois modos.
+            { id: 'mc_individual',      label: 'MC %',           type: 'number', width: 90 },
+            { id: 'll_individual',      label: 'LL %',           type: 'number', width: 90 },
         ];
         const colsClassico = [
             { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80,
@@ -895,7 +878,7 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
     // headerGroups: grupo de produto tem span 3 (massa) ou 6 (individual: SKU, Descrição, Custo, Imposto Ind., MC, LL).
     // Clássico=5 colunas e Premium=5 colunas permanecem fixos.
     const headerGroups = [
-        { label: '',         span: modoImposto === 'individual' ? 6 : 3, className: '' },
+        { label: '',         span: modoImposto === 'individual' ? 6 : 5, className: '' },
         { label: 'Clássico', span: 5, className: 'text-blue-300/70' },
         { label: 'Premium',  span: 5, className: 'text-violet-300/70' },
     ];
@@ -915,7 +898,7 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                 <div className="flex items-center gap-3">
                     {/* Toggle de modo: Massa (tudo global) | Individual (imposto, MC e LL por produto) */}
                     <div className="flex items-center gap-2">
-                        <span className="text-white/40 text-[12px]">Modo:</span>
+                        <span className="text-white/40 text-[12px]">Imposto:</span>
                         <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
                             {[{ k: 'massa', l: 'Massa' }, { k: 'individual', l: 'Individual' }].map(({ k, l }) => (
                                 <button key={k} type="button" onClick={() => setModo(k)}
@@ -960,12 +943,12 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         {/* Parâmetros globais — Margem Contrib., Lucro Líquido, Acréscimo (não por tier) */}
                         <div className="flex flex-wrap gap-4">
                             <div className="w-44">
-                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. % (padrão)</label>
                                 <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao} onChange={e => updateMC(e.target.value)}
                                     className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                             </div>
                             <div className="w-44">
-                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido % (padrão)</label>
                                 <input type="number" step="0.01" min="0" value={cfg.lucro_liquido} onChange={e => updateLL(e.target.value)}
                                     className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                             </div>
