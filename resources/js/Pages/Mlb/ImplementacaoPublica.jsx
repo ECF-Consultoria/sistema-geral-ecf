@@ -367,13 +367,14 @@ function fmtRpct(valor, custo) {
 }
 
 // Campo grande com rótulo + microcopy (linguagem para leigos).
-function CampoValor({ label, dica, valor, onChange, prefixo = 'R$' }) {
+// `invalido`: quando true, o campo pisca em vermelho (borda + rótulo) até receber um valor — usado p/ frete obrigatório não preenchido.
+function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = false }) {
     return (
         <div>
-            <label className="text-white/70 text-[13px] font-medium block">{label}</label>
+            {label && <label className={`text-[13px] font-medium block ${invalido ? 'text-red-400' : 'text-white/70'}`}>{label}</label>}
             {dica && <p className="text-white/35 text-[11px] mb-1.5 mt-0.5">{dica}</p>}
-            <div className="flex items-center rounded-xl bg-white/[0.04] border border-white/[0.1] focus-within:border-ecf-yellow/40 transition-colors">
-                <span className="pl-3 text-white/30 text-sm">{prefixo}</span>
+            <div className={`flex items-center rounded-xl bg-white/[0.04] border ${invalido ? 'border-red-500 animate-blink-red' : 'border-white/[0.1] focus-within:border-ecf-yellow/40 transition-colors'}`}>
+                <span className={`pl-3 text-sm ${invalido ? 'text-red-400' : 'text-white/30'}`}>{prefixo}</span>
                 <input
                     type="number" step="0.01" min="0" inputMode="decimal"
                     value={valor}
@@ -488,11 +489,11 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                     <p className="text-white/40 text-[11px] uppercase tracking-wider pt-1">Quanto você gasta</p>
                     <CampoValor label="Custo do produto" dica="Quanto você paga no produto (sem frete)."
                         valor={row.custo ?? ''} onChange={v => onEditProduto('custo', v)} />
-                    {/* Wrapper do campo Frete: link "Tabela de Frete" ao lado do label + alerta quando frete não preenchido */}
+                    {/* Wrapper do campo Frete: link "Tabela de Frete" ao lado do label + campo piscando vermelho enquanto o frete não for preenchido */}
                     <div>
                         {tabelaFreteUrl && (
                             <div className="flex items-center justify-between mb-1">
-                                <span className="text-white/70 text-[13px] font-medium">
+                                <span className={`text-[13px] font-medium ${freteN <= 0 ? 'text-red-400' : 'text-white/70'}`}>
                                     Frete ({tier === 'classico' ? 'Clássico' : 'Premium'})
                                 </span>
                                 <a
@@ -506,21 +507,14 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                                 </a>
                             </div>
                         )}
+                        {/* Frete vazio/zerado: campo pisca vermelho (invalido) até o cliente informar um valor > 0 */}
                         <CampoValor
                             label={tabelaFreteUrl ? '' : `Frete (${tier === 'classico' ? 'Clássico' : 'Premium'})`}
                             dica="Quanto custa enviar este produto."
                             valor={row[freteCampo] ?? ''}
                             onChange={v => onEditProduto(freteCampo, v)}
+                            invalido={freteN <= 0}
                         />
-                        {/* Alerta âmbar quando o frete do produto/tier selecionado está vazio ou zerado */}
-                        {freteN <= 0 && (
-                            <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-3 py-2">
-                                <AlertCircle size={13} className="text-amber-300 shrink-0 mt-0.5" />
-                                <span className="text-amber-300 text-[12px]">
-                                    Frete não inserido — informe o frete deste produto para calcular o preço correto.
-                                </span>
-                            </div>
-                        )}
                     </div>
 
                     {/* Avançado (defaults já preenchidos) */}
