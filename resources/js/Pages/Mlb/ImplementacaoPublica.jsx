@@ -392,7 +392,7 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$' }) {
  * mas apresenta de forma humana: entrada simples + resultado em destaque +
  * composição visual do preço + semáforo de saúde da margem.
  */
-function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving }) {
+function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl }) {
     const [avancado, setAvancado] = useState(false);
 
     const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
@@ -488,8 +488,40 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                     <p className="text-white/40 text-[11px] uppercase tracking-wider pt-1">Quanto você gasta</p>
                     <CampoValor label="Custo do produto" dica="Quanto você paga no produto (sem frete)."
                         valor={row.custo ?? ''} onChange={v => onEditProduto('custo', v)} />
-                    <CampoValor label={`Frete (${tier === 'classico' ? 'Clássico' : 'Premium'})`} dica="Quanto custa enviar este produto."
-                        valor={row[freteCampo] ?? ''} onChange={v => onEditProduto(freteCampo, v)} />
+                    {/* Wrapper do campo Frete: link "Tabela de Frete" ao lado do label + alerta quando frete não preenchido */}
+                    <div>
+                        {tabelaFreteUrl && (
+                            <div className="flex items-center justify-between mb-1">
+                                <span className="text-white/70 text-[13px] font-medium">
+                                    Frete ({tier === 'classico' ? 'Clássico' : 'Premium'})
+                                </span>
+                                <a
+                                    href={tabelaFreteUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-ecf-yellow hover:text-ecf-yellow/80 text-[12px] font-medium transition-colors"
+                                >
+                                    <ExternalLink size={12} />
+                                    Tabela de Frete
+                                </a>
+                            </div>
+                        )}
+                        <CampoValor
+                            label={tabelaFreteUrl ? '' : `Frete (${tier === 'classico' ? 'Clássico' : 'Premium'})`}
+                            dica="Quanto custa enviar este produto."
+                            valor={row[freteCampo] ?? ''}
+                            onChange={v => onEditProduto(freteCampo, v)}
+                        />
+                        {/* Alerta âmbar quando o frete do produto/tier selecionado está vazio ou zerado */}
+                        {freteN <= 0 && (
+                            <div className="mt-2 flex items-start gap-2 rounded-lg bg-amber-500/[0.08] border border-amber-500/20 px-3 py-2">
+                                <AlertCircle size={13} className="text-amber-300 shrink-0 mt-0.5" />
+                                <span className="text-amber-300 text-[12px]">
+                                    Frete não inserido — informe o frete deste produto para calcular o preço correto.
+                                </span>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Avançado (defaults já preenchidos) */}
                     <button type="button" onClick={() => setAvancado(v => !v)}
@@ -606,7 +638,7 @@ const CFG_DEFAULT = {
     acrescimo: 0.20,
 };
 
-function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose }) {
+function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose, tabelaFreteUrl }) {
     const cfgC   = dados.classico  ?? CFG_DEFAULT.classico;
     const cfgP   = dados.premium   ?? CFG_DEFAULT.premium;
     const acr    = dados.acrescimo           ?? CFG_DEFAULT.acrescimo;
@@ -859,6 +891,7 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         onEditProduto={editProduto} onAddProduto={addProduto} onDeleteProduto={delProduto}
                         cfg={cfg} updateCfg={updateCfg} updateMC={updateMC} updateLL={updateLL} updateAcrescimo={updateAcrescimo}
                         saving={saving}
+                        tabelaFreteUrl={tabelaFreteUrl}
                     />
                 ) : (
                     <>
@@ -1332,6 +1365,7 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
                     onSave={arr => onChange('precificacao', 'produtos', arr, true)}
                     onSaveCfg={(tier, val) => onChange('precificacao', tier, val, true)}
                     onClose={() => setPrecifOpen(false)}
+                    tabelaFreteUrl={tabela_frete_url}
                 />
             )}
         </div>
