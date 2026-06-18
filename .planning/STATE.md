@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 37 Plan 37-02 completo — tabela hubspot_line_item_mapping + model HubspotLineItemMapping com paraNome case-insensitive + seed canônico (RED→GREEN; 9 testes verdes, 23 assertions)
-last_updated: "2026-06-18T19:00:00Z"
-last_activity: 2026-06-18 -- Phase 37 Plan 37-02 completo
+stopped_at: Phase 37 Plan 37-03 completo — HubspotApiClient::fetchDealLineItems resiliente (2-call pattern associations + line_items batch loop; 9/9 testes verdes, 28 assertions; zero regressao Phase 34)
+last_updated: "2026-06-18T20:00:00Z"
+last_activity: 2026-06-18 -- Phase 37 Plan 37-03 completo
 progress:
   total_phases: 32
   completed_phases: 19
   total_plans: 54
-  completed_plans: 44
-  percent: 62
+  completed_plans: 45
+  percent: 63
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 1 completa
-Plan: 37-02 (tabela hubspot_line_item_mapping + model HubspotLineItemMapping + seed canônico) **DONE** — 4 commits TDD (a3085be RED → 6b14a89 Task 1 GREEN → 5543ab5 Task 2 GREEN → 0557342 Task 3 GREEN), 9/9 testes verdes (23 assertions), zero regressão (suite Phase 37 total: 26/26 verdes)
-Status: Wave 1 completa (37-01 + 37-02). Pronto para Wave 2 — 37-03 (HubspotApiClient::fetchDealLineItems) + 37-04 (webhook estendido com line items)
-Last activity: 2026-06-18 -- Phase 37 Plan 37-02 completo
+Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 2 em execução
+Plan: 37-03 (HubspotApiClient::fetchDealLineItems + Phase37LineItemsFetchTest) **DONE** — 2 commits TDD (3cbb1d6 RED → b2adcc7 GREEN), 9/9 testes verdes (28 assertions), zero regressao Phase 34 (6/6), suite Phase 37 total: 35/35 verdes (134 assertions)
+Status: Wave 2 parcial (37-03 done). Próximo: 37-04 (HubspotWebhookController estendido — consumir fetchDealLineItems + materializar contratos_servico via paraNome do Plan 37-02)
+Last activity: 2026-06-18 -- Phase 37 Plan 37-03 completo
 
 ## Performance Metrics
 
@@ -86,6 +86,7 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-02 completo
 | Phase 36-comercial-uxe-atribuir-servico P02 | 33min | 4 tasks | 5 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P01 | 15min | 3 commits (TDD) | 4 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P02 | 22min | 4 commits (TDD) | 4 files |
+| Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P03 | 18min | 2 commits (TDD) | 2 files |
 
 ## Accumulated Context
 
@@ -367,6 +368,17 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-02 completo
 - **Eager loading `with('servico')` no `paraNome()`** — evita N+1 garantido no webhook (Plan 37-04) que chamará `$mapping->servico->id` logo apos o lookup para criar ContratoServico.
 - **`down()` apaga apenas mappings seedados** (whereIn nos 8 nomes) — preserva mappings criados via UI admin (Plan 37-07) durante rollback. Diferente do `dropIfExists` total da migration de schema.
 - **CRITICO: NAO fazer deploy do Plan 37-02 sozinho** — tabela + seed sao consumidos pelo webhook no Plan 37-04. Agrupar deploy com 37-03/04/05/06/07 (deploy agrupado Phase 37 conforme lição 34/35).
+
+### Decisões do Plan 37-03 (registradas)
+
+- **Resiliencia em 2 camadas** — associations 4xx/5xx retorna `[]` (mesmo padrao de `fetchAssociatedCompanyId` Phase 34, deal sem line items eh estado valido); falha individual em `line_items/{id}` loga warning no canal `ecf-webhooks` (deal_id+line_item_id+status, SEM Bearer token) e pula o item, segue com os demais. Permite que o webhook do Plan 37-04 lide com pendencia 'sem_servico' (Plan 37-05) de forma uniforme.
+- **Loop 1×1 em vez de POST /batch/read** — deals tipicos da Phase 37 tem 1-3 line items; otimizacao batch deferida (T-37-06 marcado como `accept` no threat model). Vantagem da implementacao atual: falhas individuais sao visiveis via warning estruturado (batch endpoint silenciaria com 200+item ausente).
+- **Cast defensivo `is_numeric` em price/quantity** — HubSpot envia strings mesmo para numeros (`'500'`, `'3'`). Sem o guard, `(float) null = 0.0` propagaria valor falso. Com o guard, campo ausente/invalido vira `null` e o consumidor (Plan 37-04) decide.
+- **Normalizar `id` para `(string)`** — HubSpot retorna `int` em `results.0.id` da associations mas `string` em algumas variantes; coercao explicita evita comparacao tipo-fraca quando Plan 37-04 fizer lookup em `hubspot_line_item_mapping.hs_product_id` (tipado string).
+- **Canal `ecf-webhooks` reusado (Phase 26)** com prefixo `[HubSpot Webhook]` em vez de criar canal novo — concentra eventos da pipeline HubSpot no mesmo arquivo rotativo daily; prefixo distingue de `[ECF Webhook]` da integracao Drive.
+- **Token NUNCA logado** (T-37-05 mitigated) — contexto do warning contem apenas `deal_id`, `line_item_id`, `status`. Teste explicito `test_log_de_falha_individual_nao_vaza_o_bearer_token` usa Mockery LoggerInterface mock para assertar que nenhuma chamada de `warning()` contem 'fake-token' ou 'Bearer'.
+- **Pequeno desvio tecnico:** `Log::spy()` retorna null em `Log::channel('ecf-webhooks')` — substituido por `Log::shouldReceive('channel')->andReturn($loggerMock)` (Mockery) no test_line_item_individual_500. Mesma garantia, primitiva correta.
+- **CRITICO: NAO fazer deploy do Plan 37-03 sozinho** — wrapper existe mas nenhum caller consome. Agrupar deploy com 37-04 (webhook) + 37-05/06/07.
 
 ### Decisões do Plan 33-01 (registradas)
 

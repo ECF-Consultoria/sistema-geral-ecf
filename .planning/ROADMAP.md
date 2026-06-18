@@ -775,7 +775,7 @@ Plans:
 - [x] 37-02-PLAN.md — Migration `create_hubspot_line_item_mapping_table` + seed inicial (MAP/Polo/Brigada/Gestão/Mentoria/Publicação) + model HubspotLineItemMapping (scope ativo + relação servico + helper paraNome case-insensitive) + 9 testes (REQ-37-02 schema/model) (completed 2026-06-18)
 
 **Wave 2** *(bloqueado na Wave 1)*
-- [ ] 37-03-PLAN.md — HubspotApiClient::fetchDealLineItems (2-call pattern: associations + batch de detalhes) + tratamento resiliente 4xx/5xx + 8 testes Http::fake (REQ-37-01)
+- [x] 37-03-PLAN.md — HubspotApiClient::fetchDealLineItems (2-call pattern: associations + batch loop de detalhes) + tratamento resiliente 4xx/5xx (associations → []; line_item individual → log warning + skip) + cast defensivo price/quantity + 9 testes Http::fake / 28 assertions (REQ-37-01) (completed 2026-06-18)
 - [ ] 37-04-PLAN.md — HubspotWebhookController estendido: processarLineItems via HubspotLineItemMapping::paraNome + cria ContratoServico atomicamente em DB::transaction + tipo_cobranca derivado de recurringbillingfrequency + fallback fluxo legado quando deal sem line items + idempotência preservada + 10 testes Feature ponta-a-ponta (REQ-37-04)
 
 **Wave 3** *(bloqueado na Wave 2 — Plans 37-05/37-06/37-07 paralelizáveis entre si, sem overlap)*
