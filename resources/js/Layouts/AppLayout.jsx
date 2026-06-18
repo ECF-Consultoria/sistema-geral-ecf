@@ -87,6 +87,11 @@ const NAV_TREE = [
         group: 'Comercial',
         icon: Briefcase,
         children: [
+            // Phase 37 Plan 37-05 — listagem unificada do Comercial (todos os setores)
+            // com filtros snake_case empilháveis + 5 cards de pendência (apenas origem
+            // HubSpot, REQ-37-10) + aba de Grupos integrada. Adicionado como PRIMEIRO
+            // sub-item por ser a porta de entrada operacional do Comercial.
+            { label: 'Empresas (todos os setores)', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: Building2, permission: 'comercial.cadastrar_empresa' },
             // Phase 36 Plan 36-01 — apontamos direto pra /comercial/empresas/novo (cadastro).
             // A listagem antiga (/comercial/empresas) foi descontinuada; a rota nomeada
             // 'comercial.empresas' agora redireciona pra cá. Trocamos label pra
