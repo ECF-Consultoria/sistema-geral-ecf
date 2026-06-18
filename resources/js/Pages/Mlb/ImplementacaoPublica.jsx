@@ -393,7 +393,9 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
  * mas apresenta de forma humana: entrada simples + resultado em destaque +
  * composição visual do preço + semáforo de saúde da margem.
  */
-function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl }) {
+// Simulador recebe modoImposto e impostoEfetivo para calcular com imposto por produto (modo individual)
+// ou com o imposto global do tier (modo massa — comportamento original).
+function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo }) {
     const [avancado, setAvancado] = useState(false);
 
     const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
@@ -402,10 +404,12 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
     const custoN     = parseFloat(row.custo || 0) || 0;
     const freteN     = parseFloat(row[freteCampo] || 0) || 0;
 
-    const preco      = calcPreco(row.custo, freteN, t.comissao, t.imposto, mcNum, llNum); // Preço C/ Desconto
+    // No modo individual usa o imposto_individual do produto; no massa usa o imposto do tier.
+    const impostoSimulador = impostoEfetivo(row, t.imposto);
+    const preco      = calcPreco(row.custo, freteN, t.comissao, impostoSimulador, mcNum, llNum); // Preço C/ Desconto
     const anunciado  = preco ? preco * (1 + acrNum) : null;
     const comissaoRs = preco ? preco * t.comissao : 0;
-    const impostoRs  = preco ? preco * t.imposto  : 0;
+    const impostoRs  = preco ? preco * impostoSimulador  : 0;
     const mcRs       = preco ? preco * mcNum : 0;   // Margem de Contribuição R$
     const llRs       = preco ? preco * llNum : 0;   // Lucro Líquido R$
 
@@ -446,7 +450,8 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                 <div className="flex flex-wrap gap-2">
                     {produtos.map((p, i) => {
                         const f  = parseFloat(p[freteCampo] || 0) || 0;
-                        const pr = calcPreco(p.custo, f, t.comissao, t.imposto, mcNum, llNum);
+                        // Chips do catálogo: usa imposto efetivo do produto (individual) ou do tier (massa)
+                        const pr = calcPreco(p.custo, f, t.comissao, impostoEfetivo(p, t.imposto), mcNum, llNum);
                         const ativo = i === selIdx;
                         return (
                             <div key={i} onClick={() => setSelIdx(i)}
@@ -534,17 +539,30 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                         <div className="space-y-3 rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
                             <p className={cn('text-[11px] font-bold uppercase tracking-wider', corTier)}>{tier === 'classico' ? 'Clássico' : 'Premium'} — taxas do site</p>
                             <div className="grid grid-cols-2 gap-2">
-                                {[
-                                    { id: 'comissao', label: 'Comissão %', dica: 'o que o site cobra' },
-                                    { id: 'imposto',  label: 'Imposto %',  dica: 'tributos sobre a venda' },
-                                ].map(({ id, label, dica }) => (
-                                    <div key={id} title={dica}>
-                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">{label}</label>
-                                        <input type="number" step="0.01" min="0" value={cfgTier[id]}
-                                            onChange={e => updateCfg(tier, id, e.target.value)}
+                                {/* Comissão: sempre global por tier, em ambos os modos */}
+                                <div title="o que o site cobra">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Comissão %</label>
+                                    <input type="number" step="0.01" min="0" value={cfgTier.comissao}
+                                        onChange={e => updateCfg(tier, 'comissao', e.target.value)}
+                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                </div>
+                                {/* Imposto: no modo massa edita o global do tier; no individual edita o imposto_individual do produto selecionado */}
+                                {modoImposto === 'massa' ? (
+                                    <div title="tributos sobre a venda (todos os produtos)">
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Imposto %</label>
+                                        <input type="number" step="0.01" min="0" value={cfgTier.imposto}
+                                            onChange={e => updateCfg(tier, 'imposto', e.target.value)}
                                             className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                                     </div>
-                                ))}
+                                ) : (
+                                    <div title="imposto deste produto (modo individual)">
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Imposto deste produto %</label>
+                                        <input type="number" step="0.01" min="0"
+                                            value={row.imposto_individual ?? ''}
+                                            onChange={e => onEditProduto('imposto_individual', e.target.value)}
+                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                    </div>
+                                )}
                             </div>
                             <p className="text-white/30 text-[10px] uppercase tracking-wider pt-1">Seus alvos (valem p/ Clássico e Premium)</p>
                             <div className="grid grid-cols-3 gap-2">
@@ -794,34 +812,48 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
     // Bloco por tier: Frete → Anunciado → Preço C/ Desconto → Lucro Líquido → Margem Contrib.
     // Preço = (custo+frete)/(1−comissão−imposto−MC−LL). Anunciado = preço×(1+acréscimo).
     // Lucro Líquido = preço×LL · Margem Contrib. = preço×MC (em R$ por produto).
-    const cols = useMemo(() => [
-        { id: 'sku',            label: 'SKU',        type: 'text',     width: 110 },
-        { id: 'descricao',      label: 'Descrição',  type: 'text',     width: 180 },
-        { id: 'custo',          label: 'Custo R$',   type: 'number',   width: 90  },
-        { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80,
-          conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
-        { id: '_anunc_c',  label: 'Anunciado Cl.',         type: 'readonly', width: 120, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
-        { id: '_preco_c',  label: 'Preço C/ Desconto Cl.', type: 'readonly', width: 140, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p); } },
-        { id: '_marg_c',   label: 'Lucro Líquido Cl.',      type: 'readonly', width: 130, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * llNum : null); } },
-        { id: '_mc_c',     label: 'Margem Contrib. Cl.',    type: 'readonly', width: 150, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * mcNum : null); } },
-        { id: 'frete_premium',  label: 'Frete',      type: 'number',   width: 80,
-          conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
-        { id: '_anunc_p',  label: 'Anunciado Pr.',          type: 'readonly', width: 120, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
-        { id: '_preco_p',  label: 'Preço C/ Desconto Pr.',  type: 'readonly', width: 140, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p); } },
-        { id: '_marg_p',   label: 'Lucro Líquido Pr.',       type: 'readonly', width: 130, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * llNum : null); } },
-        { id: '_mc_p',     label: 'Margem Contrib. Pr.',     type: 'readonly', width: 150, align: 'right',
-          compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * mcNum : null); } },
-    ], [cc.comissao, cc.imposto, cp.comissao, cp.imposto, mcNum, llNum, acrNum]);
+    // No modo individual os 8 computes usam impostoEfetivo(row, tier.imposto) em vez do imposto global do tier.
+    const cols = useMemo(() => {
+        const colsProduto = [
+            { id: 'sku',            label: 'SKU',        type: 'text',     width: 110 },
+            { id: 'descricao',      label: 'Descrição',  type: 'text',     width: 180 },
+            { id: 'custo',          label: 'Custo R$',   type: 'number',   width: 90  },
+            // Coluna de imposto individual: visível apenas no modo individual (oculta no massa para reduzir ruído)
+            ...(modoImposto === 'individual' ? [
+                { id: 'imposto_individual', label: 'Imposto Ind. %', type: 'number', width: 110 },
+            ] : []),
+        ];
+        const colsClassico = [
+            { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80,
+              conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
+            { id: '_anunc_c',  label: 'Anunciado Cl.',         type: 'readonly', width: 120, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
+            { id: '_preco_c',  label: 'Preço C/ Desconto Cl.', type: 'readonly', width: 140, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p); } },
+            { id: '_marg_c',   label: 'Lucro Líquido Cl.',      type: 'readonly', width: 130, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p ? p * llNum : null); } },
+            { id: '_mc_c',     label: 'Margem Contrib. Cl.',    type: 'readonly', width: 150, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p ? p * mcNum : null); } },
+        ];
+        const colsPremium = [
+            { id: 'frete_premium',  label: 'Frete',      type: 'number',   width: 80,
+              conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
+            { id: '_anunc_p',  label: 'Anunciado Pr.',          type: 'readonly', width: 120, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
+            { id: '_preco_p',  label: 'Preço C/ Desconto Pr.',  type: 'readonly', width: 140, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p); } },
+            { id: '_marg_p',   label: 'Lucro Líquido Pr.',       type: 'readonly', width: 130, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p ? p * llNum : null); } },
+            { id: '_mc_p',     label: 'Margem Contrib. Pr.',     type: 'readonly', width: 150, align: 'right',
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p ? p * mcNum : null); } },
+        ];
+        return [...colsProduto, ...colsClassico, ...colsPremium];
+    }, [cc.comissao, cc.imposto, cp.comissao, cp.imposto, mcNum, llNum, acrNum, modoImposto, impostoEfetivo]);
 
+    // headerGroups: grupo de produto tem span 3 (massa) ou 4 (individual, com coluna imposto_individual).
+    // Clássico=5 colunas e Premium=5 colunas permanecem fixos.
     const headerGroups = [
-        { label: '',         span: 3, className: '' },
+        { label: '',         span: modoImposto === 'individual' ? 4 : 3, className: '' },
         { label: 'Clássico', span: 5, className: 'text-blue-300/70' },
         { label: 'Premium',  span: 5, className: 'text-violet-300/70' },
     ];
@@ -838,15 +870,31 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                     </p>
                 </div>
 
-                {/* Toggle de modo: Simulador (guiado) | Lote (planilha) */}
-                <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
-                    {[{ k: 'simulador', l: '🎯 Simulador' }, { k: 'lote', l: '📊 Lote' }].map(({ k, l }) => (
-                        <button key={k} type="button" onClick={() => setView(k)}
-                            className={cn('px-4 py-1.5 rounded-lg text-[13px] font-semibold transition',
-                                view === k ? 'bg-white/[0.1] text-white' : 'text-white/45 hover:text-white/75')}>
-                            {l}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-3">
+                    {/* Toggle de imposto: Massa (global por tier) | Individual (por produto) */}
+                    <div className="flex items-center gap-2">
+                        <span className="text-white/40 text-[12px]">Imposto:</span>
+                        <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+                            {[{ k: 'massa', l: 'Massa' }, { k: 'individual', l: 'Individual' }].map(({ k, l }) => (
+                                <button key={k} type="button" onClick={() => setModo(k)}
+                                    className={cn('px-3 py-1.5 rounded-lg text-[12px] font-semibold transition',
+                                        modoImposto === k ? 'bg-ecf-yellow text-black' : 'text-white/45 hover:text-white/75')}>
+                                    {l}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Toggle de modo de visualização: Simulador (guiado) | Lote (planilha) */}
+                    <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
+                        {[{ k: 'simulador', l: '🎯 Simulador' }, { k: 'lote', l: '📊 Lote' }].map(({ k, l }) => (
+                            <button key={k} type="button" onClick={() => setView(k)}
+                                className={cn('px-4 py-1.5 rounded-lg text-[13px] font-semibold transition',
+                                    view === k ? 'bg-white/[0.1] text-white' : 'text-white/45 hover:text-white/75')}>
+                                {l}
+                            </button>
+                        ))}
+                    </div>
                 </div>
 
                 <button onClick={onClose} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[13px] transition-all">
@@ -923,6 +971,8 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         cfg={cfg} updateCfg={updateCfg} updateMC={updateMC} updateLL={updateLL} updateAcrescimo={updateAcrescimo}
                         saving={saving}
                         tabelaFreteUrl={tabelaFreteUrl}
+                        modoImposto={modoImposto}
+                        impostoEfetivo={impostoEfetivo}
                     />
                 ) : (
                     <>
