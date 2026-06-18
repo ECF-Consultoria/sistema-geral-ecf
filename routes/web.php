@@ -471,6 +471,11 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/implementacao/{impl}/sincronizar-skus',     [MlbImplementacaoController::class, 'sincronizarSkus'])->name('implementacao.sincronizar-skus');
     Route::delete('/implementacao/{impl}',                    [MlbImplementacaoController::class, 'destroy'])->name('implementacao.destroy');
 
+    // ─── Rastreio de envio do link e responsável (ONB-ENVIO-LINK / ONB-RESPONSAVEL) ──
+    Route::post ('/implementacao/{impl}/marcar-enviado', [MlbImplementacaoController::class, 'marcarLinkEnviado'])->name('implementacao.marcar-enviado');
+    Route::post ('/implementacao/{impl}/desfazer-envio', [MlbImplementacaoController::class, 'desfazerEnvio'])->name('implementacao.desfazer-envio');
+    Route::patch('/implementacao/{impl}/responsavel',    [MlbImplementacaoController::class, 'atribuirResponsavel'])->name('implementacao.responsavel');
+
     // ─── Card "Dados do ML" na ficha de Onboarding (Phase 36) ───────────────────
     // Endpoint async — chamado pelo front via fetch após a ficha carregar.
     // NÃO usa Inertia — retorna JSON diretamente (ONB-12/13/14).

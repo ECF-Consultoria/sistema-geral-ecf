@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\User;
 use App\Services\EcfDriveService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -411,8 +412,10 @@ class MlbImplementacaoController extends Controller
         $filtroFase        = $request->query('fase');
         // Filtro de prazo (ONB-10): boolean — '1'/'true'/'on' → true; ausente/'' → false
         $filtroForaDoPrazo = $request->boolean('fora_do_prazo');
+        // Filtro de envio do link (ONB-ENVIO-LINK): boolean — mostra só quem ainda falta enviar
+        $filtroFaltaEnviar = $request->boolean('falta_enviar');
 
-        $query = MlbImplementacao::with('empresa')
+        $query = MlbImplementacao::with(['empresa', 'responsavel', 'linkEnviadoPor'])
             ->orderBy('created_at', 'desc');
 
         if ($filtroPolo) {
@@ -423,8 +426,9 @@ class MlbImplementacaoController extends Controller
             $query->whereHas('empresa', fn($q) => $q->where('fase', $filtroFase));
         }
 
-        // Nota: fora_do_prazo NÃO pode ser filtrado via whereHas (cálculo depende de PHP/JSON,
-        // não é coluna SQL). O filtro é aplicado em Collection após o get().
+        // Nota: fora_do_prazo e falta_enviar NÃO podem ser filtrados via whereHas
+        // (cálculos dependem de PHP/JSON, não de colunas SQL simples).
+        // Ambos os filtros são aplicados na Collection após o get().
         $empresas = $query->get()
             ->map(function ($impl) {
                 $e     = $impl->empresa;
@@ -444,10 +448,19 @@ class MlbImplementacaoController extends Controller
                     'fora_do_prazo'  => $prazo['fora_do_prazo'],
                     'dias_restantes' => $prazo['dias_restantes'],
                     'dias_decorridos'=> $prazo['dias_decorridos'],
+                    // Rastreio de envio do link (ONB-ENVIO-LINK)
+                    'status_envio'     => $impl->statusEnvio(),
+                    'link_enviado_em'  => $impl->link_enviado_em?->format('d/m/Y'),
+                    'link_enviado_por' => $impl->linkEnviadoPor?->name,
+                    // Responsável pelo onboarding (ONB-RESPONSAVEL)
+                    'responsavel_id'   => $impl->responsavel_id,
+                    'responsavel_nome' => $impl->responsavel?->name,
                 ];
             })
             // Filtro de prazo em Collection — aplicado após Polo/Fase (ONB-10)
             ->when($filtroForaDoPrazo, fn($col) => $col->filter(fn($e) => $e['fora_do_prazo']))
+            // Filtro "falta enviar link" em Collection — depende de statusEnvio() calculado acima
+            ->when($filtroFaltaEnviar, fn($col) => $col->filter(fn($e) => $e['status_envio'] === 'falta_enviar'))
             ->values();
 
         return Inertia::render('Mlb/Implementacao', [
@@ -461,9 +474,12 @@ class MlbImplementacaoController extends Controller
                 'polo'          => $filtroPolo,
                 'fase'          => $filtroFase,
                 'fora_do_prazo' => $filtroForaDoPrazo,
+                'falta_enviar'  => $filtroFaltaEnviar,
             ],
             'polo_opcoes'       => MlbImplementacao::ONB_POLO_OPCOES,
             'fase_opcoes'       => MlbImplementacao::ONB_FASE_OPCOES,
+            // Usuários ativos para o select de responsável (ONB-RESPONSAVEL)
+            'usuarios'          => User::where('active', true)->orderBy('name')->get(['id', 'name']),
         ]);
     }
 
@@ -763,6 +779,70 @@ class MlbImplementacaoController extends Controller
             ->log('Bloco Logística & Integrações atualizado para "' . $impl->empresa->nome . '"');
 
         return back()->with('success', 'Logística & Integrações atualizados.');
+    }
+
+    // ─── Rastreio de envio do link e responsável (ONB-ENVIO-LINK / ONB-RESPONSAVEL) ──
+
+    /**
+     * Marca manualmente que o link do cliente foi enviado à empresa.
+     * Grava quem enviou (usuário logado) e quando (now()).
+     */
+    public function marcarLinkEnviado(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $impl->update([
+            'link_enviado_em'  => now(),
+            'link_enviado_por' => $request->user()->id,
+        ]);
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('[Onboarding] Link marcado como enviado para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Link marcado como enviado.');
+    }
+
+    /**
+     * Desfaz o envio do link, limpando quem/quando (permite re-registro correto).
+     */
+    public function desfazerEnvio(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $impl->update([
+            'link_enviado_em'  => null,
+            'link_enviado_por' => null,
+        ]);
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('[Onboarding] Envio do link desfeito para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Envio desfeito.');
+    }
+
+    /**
+     * Atribui (ou remove) o responsável pelo onboarding.
+     */
+    public function atribuirResponsavel(Request $request, MlbImplementacao $impl)
+    {
+        $this->checkAccess($request);
+
+        $validated = $request->validate([
+            'responsavel_id' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $impl->update(['responsavel_id' => $validated['responsavel_id'] ?? null]);
+
+        activity('implementacao')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $impl->empresa->nome])
+            ->log('[Onboarding] Responsável atualizado para "' . $impl->empresa->nome . '"');
+
+        return back()->with('success', 'Responsável atualizado.');
     }
 
     // ─── Público (sem autenticação) ──────────────────────────────────────────
