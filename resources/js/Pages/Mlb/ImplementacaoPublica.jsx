@@ -380,7 +380,7 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
                     value={valor}
                     onChange={e => onChange(e.target.value)}
                     placeholder="0,00"
-                    className="w-full h-11 px-2 bg-transparent text-white text-base font-medium focus:outline-none placeholder:text-white/20"
+                    className="w-full h-11 px-2 bg-transparent border-0 focus:ring-0 text-white text-base font-medium focus:outline-none placeholder:text-white/20"
                 />
             </div>
         </div>
@@ -515,6 +515,13 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                             onChange={v => onEditProduto(freteCampo, v)}
                             invalido={freteN <= 0}
                         />
+                        {/* Aviso textual de reforço — aparece junto com o campo piscando enquanto o frete não for preenchido */}
+                        {freteN <= 0 && (
+                            <p className="mt-1.5 flex items-center gap-1.5 text-red-400 text-[12px] font-medium">
+                                <AlertCircle size={13} className="shrink-0" />
+                                Frete não inserido — informe o frete deste produto para calcular o preço correto.
+                            </p>
+                        )}
                     </div>
 
                     {/* Avançado (defaults já preenchidos) */}
@@ -631,6 +638,14 @@ const CFG_DEFAULT = {
     lucro_liquido: 0,
     acrescimo: 0.20,
 };
+
+// Frete obrigatório no lote: destaca em vermelho quando a linha tem dados (SKU/descrição/custo) mas o frete está vazio/zerado.
+function freteFaltando(valor, row) {
+    if (!row) return false;
+    const temDados = String(row.sku ?? '').trim() || String(row.descricao ?? '').trim() || String(row.custo ?? '').trim();
+    const semFrete = !(parseFloat(valor || 0) > 0);
+    return Boolean(temDados) && semFrete;
+}
 
 function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose, tabelaFreteUrl }) {
     const cfgC   = dados.classico  ?? CFG_DEFAULT.classico;
@@ -763,7 +778,8 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
         { id: 'sku',            label: 'SKU',        type: 'text',     width: 110 },
         { id: 'descricao',      label: 'Descrição',  type: 'text',     width: 180 },
         { id: 'custo',          label: 'Custo R$',   type: 'number',   width: 90  },
-        { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80  },
+        { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80,
+          conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
         { id: '_anunc_c',  label: 'Anunciado Cl.',         type: 'readonly', width: 120, align: 'right',
           compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
         { id: '_preco_c',  label: 'Preço C/ Desconto Cl.', type: 'readonly', width: 140, align: 'right',
@@ -772,7 +788,8 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
           compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * llNum : null); } },
         { id: '_mc_c',     label: 'Margem Contrib. Cl.',    type: 'readonly', width: 150, align: 'right',
           compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, cc.imposto, mcNum, llNum); return fmt(p ? p * mcNum : null); } },
-        { id: 'frete_premium',  label: 'Frete',      type: 'number',   width: 80  },
+        { id: 'frete_premium',  label: 'Frete',      type: 'number',   width: 80,
+          conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
         { id: '_anunc_p',  label: 'Anunciado Pr.',          type: 'readonly', width: 120, align: 'right',
           compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, cp.imposto, mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
         { id: '_preco_p',  label: 'Preço C/ Desconto Pr.',  type: 'readonly', width: 140, align: 'right',
