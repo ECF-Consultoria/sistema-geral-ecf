@@ -37,7 +37,7 @@ class MlbEmpresa extends Model
         'skus_estagio1', 'skus_estagio2', 'skus_estagio3',
         'prazo_estagio1', 'prazo_estagio2', 'prazo_estagio3',
         'encerramento', 'criado_por',
-        'problema', 'problema_nota', 'problema_em',
+        'problema', 'problema_nota', 'problema_em', 'ads_desligado',
         'company_id',
     ];
 
@@ -51,6 +51,7 @@ class MlbEmpresa extends Model
         'encerramento'   => 'date',
         'problema'       => 'boolean',
         'problema_em'    => 'datetime',
+        'ads_desligado'  => 'boolean',
     ];
 
     /**

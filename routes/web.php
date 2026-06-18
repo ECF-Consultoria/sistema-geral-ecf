@@ -28,6 +28,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\PainelExecutivoController;
+use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PpaController;
@@ -370,6 +371,23 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 Route::middleware(['auth', 'verified', 'role:admin'])
      ->group(function () {
          Route::get('/concentracao', [ConcentracaoController::class, 'show'])->name('concentracao.index');
+     });
+
+// ─── Polos — Faturamento por Polo vs Meta (Phase 38) ─────────────────────────
+// Consome o CSV POLOS MENSAL via EcfDriveService (listFiles + fileJson).
+// Agrega TGMV_LC por LOCALIDADE, calcula meta = ativos × R$/empresa (default 3000,
+// configurável por polo via Configuracao). Grade de donuts por polo. Apenas admin.
+Route::middleware(['auth', 'verified', 'role:admin'])
+     ->prefix('polos')
+     ->name('polos.')
+     ->group(function () {
+         Route::get('/', [PolosController::class, 'index'])->name('index');
+         // Visão completa em tabela (abre em aba própria).
+         Route::get('/empresas', [PolosController::class, 'todasEmpresas'])->name('empresas');
+         // Botão "Sincronizar": aquece o cache da Adman do mês selecionado (background).
+         Route::post('/sync', [PolosController::class, 'sync'])->name('sync');
+         // Detalhe semanal de 1 empresa (AJAX, sob demanda ao clicar no card).
+         Route::get('/empresa/{cust}/semanal', [PolosController::class, 'semanal'])->name('empresa.semanal');
      });
 
 // ─── Análise por Empresa via ECF Drive (Phase 25) ────────────────────────────
