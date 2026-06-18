@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
+use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
@@ -187,7 +188,13 @@ class HubspotWebhookController extends Controller
                 }
             }
 
-            $company = $this->criarEmpresa($deal, $hubCompany, $hubContact);
+            // Phase 37 Plan 37-04 (REQ-37-04) — busca line items do deal.
+            // Quando vazio, criarEmpresa cai no fluxo legado (Servico::where nome
+            // do deal + amount). Quando >=1 line item retornado, processarLineItems
+            // tem prioridade total sobre o servico_ecf do deal.
+            $lineItems = $api->fetchDealLineItems((string) $evento->object_id);
+
+            $company = $this->criarEmpresa($deal, $hubCompany, $hubContact, $lineItems, $evento);
 
             $evento->update([
                 'status'            => 'processado',
@@ -196,9 +203,10 @@ class HubspotWebhookController extends Controller
             ]);
 
             Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Empresa criada', [
-                'evento_id'  => $evento->id,
-                'company_id' => $company->id,
-                'object_id'  => $evento->object_id,
+                'evento_id'        => $evento->id,
+                'company_id'       => $company->id,
+                'object_id'        => $evento->object_id,
+                'line_items_total' => count($lineItems),
             ]);
 
             // ── Phase 35 Plan 35-03 (D-06) — notifica Comercial se tem pendencias ─
@@ -230,12 +238,25 @@ class HubspotWebhookController extends Controller
      * implementacao (D-05). Comportamento default (Publicidade/Gestao/Publicacao):
      * apenas Company — sem mlb_empresas — preservando COM-06 do fluxo Comercial.
      *
-     * @param  array       $deal        payload HubSpot do deal (chave 'properties')
-     * @param  array|null  $hubCompany  payload HubSpot do company associado
-     * @param  array|null  $hubContact  payload HubSpot do contato associado (fallback)
+     * Phase 37 Plan 37-04 (REQ-37-04) — aceita `$lineItems` para criar
+     * ContratoServico baseado em HubspotLineItemMapping. Quando `$lineItems` vazio,
+     * cai no fluxo legado (Servico nome do deal + deal.amount). MlbEmpresa via
+     * servicoDisparaImplementacao eh avaliada por CADA servico identificado
+     * (line items mapeados OU servico do deal no fallback).
+     *
+     * @param  array              $deal        payload HubSpot do deal (chave 'properties')
+     * @param  array|null         $hubCompany  payload HubSpot do company associado
+     * @param  array|null         $hubContact  payload HubSpot do contato associado (fallback)
+     * @param  array              $lineItems   line items normalizados (Plan 37-03); array vazio cai no legado
+     * @param  HubspotEvento|null $evento      necessario para gravar warnings (line_items_nao_mapeados)
      */
-    private function criarEmpresa(array $deal, ?array $hubCompany, ?array $hubContact = null): Company
-    {
+    private function criarEmpresa(
+        array $deal,
+        ?array $hubCompany,
+        ?array $hubContact = null,
+        array $lineItems = [],
+        ?HubspotEvento $evento = null,
+    ): Company {
         $propsDeal    = config('services.hubspot.props.deal');
         $propsCompany = config('services.hubspot.props.company');
         $propsContact = config('services.hubspot.props.contact');
@@ -243,7 +264,7 @@ class HubspotWebhookController extends Controller
         $cprops       = $hubCompany['properties'] ?? [];
         $ctprops      = $hubContact['properties'] ?? [];
 
-        return DB::transaction(function () use ($deal, $dprops, $cprops, $ctprops, $propsDeal, $propsCompany, $propsContact) {
+        return DB::transaction(function () use ($deal, $dprops, $cprops, $ctprops, $propsDeal, $propsCompany, $propsContact, $lineItems, $evento) {
             $venderMlRaw = $dprops[$propsDeal['vende_ml']] ?? null;
             $vendeMl     = $venderMlRaw === null || $venderMlRaw === ''
                 ? null
@@ -292,65 +313,205 @@ class HubspotWebhookController extends Controller
                 $company->update(['notes' => $notes]);
             }
 
-            // ── Tenta vincular ContratoServico se nome do servico bate ───────
-            $servicoNome = $dprops[$propsDeal['servico']] ?? null;
-            $servico     = $servicoNome
-                ? Servico::where('nome', $servicoNome)->where('ativo', true)->first()
-                : null;
-
-            // amount do HubSpot eh o valor do contrato (campo nativo, sem mapeamento)
-            $valor = isset($dprops['amount']) && is_numeric($dprops['amount'])
-                ? (float) $dprops['amount']
-                : ((float) ($servico?->valor_padrao ?? 0));
-
-            if ($servico) {
-                ContratoServico::create([
-                    'company_id'       => $company->id,
-                    'servico_id'       => $servico->id,
-                    'valor_contratado' => $valor,
-                    'data_contratacao' => now()->toDateString(),
-                    'ativo'            => true,
-                ]);
-            } elseif ($servicoNome) {
-                // Servico nao encontrado no catalogo — grava em notes para admin completar.
-                $notesAtuais = $company->notes ?? '';
-                $linhaNova   = "Serviço (HubSpot): {$servicoNome}";
-                $notes       = trim($notesAtuais === '' ? $linhaNova : $notesAtuais . "\n" . $linhaNova);
-                $company->update(['notes' => $notes]);
+            // ── Phase 37 Plan 37-04 (REQ-37-04) — branch entre line items e fluxo legado ──
+            // Line items HubSpot tem PRIORIDADE: quando fetchDealLineItems retorna >=1,
+            // ignoramos o servico_ecf do deal. Quando vazio, fluxo legado Phase 34/35.
+            if (!empty($lineItems)) {
+                $servicosCriados = $this->processarLineItems($company, $lineItems, $evento);
+            } else {
+                $servicosCriados = $this->processarServicoLegado($company, $dprops, $propsDeal);
             }
 
-            // ── Phase 35 D-05 — roteamento MlbEmpresa por servico ─────────────
-            // Reaproveita helper estatico do ComercialController (fonte unica
-            // de verdade da regra "Polos" / "Assessoria" / "Incubadora").
-            // Publicidade/Gestao/Publicacao retornam null e nao criam mlb_empresas.
-            $tipoImpl = $servicoNome
-                ? ComercialController::servicoDisparaImplementacao($servicoNome)
-                : null;
-
-            if ($tipoImpl === 'polos') {
-                $mlbEmp = MlbEmpresa::create([
-                    'nome'       => $company->name,
-                    'tipo'       => 'POLO',
-                    'projeto'    => 'POLOS',
-                    'company_id' => $company->id,
-                ]);
-                MlbImplementacaoFactory::criarParaPolo($mlbEmp);
-            } elseif ($tipoImpl === 'assessoria') {
-                MlbEmpresa::create([
-                    'nome'       => $company->name,
-                    'tipo'       => 'ASSESSORIA',
-                    'company_id' => $company->id,
-                ]);
-            } elseif ($tipoImpl === 'incubadora') {
-                MlbEmpresa::create([
-                    'nome'       => $company->name,
-                    'tipo'       => 'INCUBADORA',
-                    'company_id' => $company->id,
-                ]);
+            // ── Roteamento MlbEmpresa por CADA servico criado ───────────────────────────
+            // Phase 35 D-05 + Phase 37: avalia servicoDisparaImplementacao em cada nome;
+            // guard contra duplicacao se 2 line items mapeiam para servicos Polo/Assessoria.
+            foreach ($servicosCriados as $nomeServico) {
+                $this->rotearImplementacao($company, $nomeServico);
             }
 
             return $company;
         });
+    }
+
+    /**
+     * Phase 37 Plan 37-04 (REQ-37-04) — processa line items do deal HubSpot.
+     *
+     * Para cada line item:
+     *  - Resolve via HubspotLineItemMapping::paraNome (case-insensitive, scope ativo)
+     *  - Mapping encontrado: cria ContratoServico com servico_id do mapping,
+     *    valor_contratado=item.price (fallback servico.valor_padrao quando null/invalid),
+     *    observacoes anota tipo_cobranca derivada de recurringbillingfrequency
+     *    (monthly|annually => 'mensal'; ausente|outro => 'unica').
+     *  - Mapping ausente: NAO cria contrato; acumula em $naoMapeados para warning.
+     *
+     * Warnings sao gravados em HubspotEvento.payload['line_items_nao_mapeados']
+     * (array de {name, price, recurringbillingfrequency}) + log no canal ecf-webhooks.
+     * Status final do evento permanece 'processado' (webhook responde 200) — comercial
+     * recebe pendencia via listagem Comercial (Plan 37-05).
+     *
+     * @param  Company             $company    empresa recem-criada (mesma transaction)
+     * @param  array<int, array>   $lineItems  line items normalizados pelo Plan 37-03
+     * @param  HubspotEvento|null  $evento     necessario para gravar payload de warnings
+     * @return array<int, string>              nomes dos servicos criados (alimenta rotearImplementacao)
+     */
+    private function processarLineItems(Company $company, array $lineItems, ?HubspotEvento $evento): array
+    {
+        $servicosCriados = [];
+        $naoMapeados     = [];
+
+        foreach ($lineItems as $item) {
+            $nome = (string) ($item['name'] ?? '');
+            if ($nome === '') {
+                continue;
+            }
+
+            $mapping = HubspotLineItemMapping::paraNome($nome);
+            // Sem mapping ativo OU mapping aponta para Servico inativo → trata como nao-mapeado.
+            if (!$mapping || !$mapping->servico || !$mapping->servico->ativo) {
+                $naoMapeados[] = [
+                    'name'                      => $nome,
+                    'price'                     => $item['price']                     ?? null,
+                    'recurringbillingfrequency' => $item['recurringbillingfrequency'] ?? null,
+                ];
+                continue;
+            }
+
+            // Valor: usa item.price quando valido (Plan 37-03 ja fez is_numeric);
+            // fallback para valor_padrao do Servico se ausente.
+            $valor = isset($item['price']) && is_numeric($item['price'])
+                ? (float) $item['price']
+                : (float) ($mapping->servico->valor_padrao ?? 0);
+
+            // tipo_cobranca derivado: monthly|annually = mensal; ausente|null = unica.
+            // ContratoServico nao tem coluna tipo_cobranca (ela vive em Servico);
+            // anotamos no campo observacoes para preservar a informacao Phase 37
+            // sem alterar schema existente.
+            $freq = $item['recurringbillingfrequency'] ?? null;
+            $tipoCobranca = in_array($freq, ['monthly', 'annually'], true)
+                ? Servico::TIPO_MENSAL
+                : Servico::TIPO_UNICA;
+
+            ContratoServico::create([
+                'company_id'       => $company->id,
+                'servico_id'       => $mapping->servico_id,
+                'valor_contratado' => $valor,
+                'data_contratacao' => now()->toDateString(),
+                'data_vencimento'  => null,
+                'ativo'            => true,
+                'observacoes'      => "tipo_cobranca: {$tipoCobranca} (HubSpot line_item: {$nome})",
+            ]);
+
+            $servicosCriados[] = $mapping->servico->nome;
+        }
+
+        // Warning: persiste line items sem mapping no payload do evento + log.
+        if (!empty($naoMapeados) && $evento) {
+            $payload = $evento->payload ?? [];
+            $payload['line_items_nao_mapeados'] = $naoMapeados;
+            $evento->payload = $payload;
+            $evento->save();
+
+            Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line items sem mapeamento', [
+                'evento_id'  => $evento->id,
+                'company_id' => $company->id,
+                'itens'      => array_column($naoMapeados, 'name'),
+            ]);
+        }
+
+        return $servicosCriados;
+    }
+
+    /**
+     * Phase 37 Plan 37-04 — fluxo legado Phase 34/35 (extraido de criarEmpresa).
+     *
+     * Quando o deal HubSpot NAO tem line items (fetchDealLineItems retornou []),
+     * cai aqui: tenta achar Servico pelo nome em `services.hubspot.props.deal.servico`
+     * + cria ContratoServico com valor_contratado = deal.amount.
+     *
+     * Servico nome existe mas nao bate com catalogo: grava em notes (admin completa).
+     * Sem servico_ecf no deal: nao cria contrato (sera pendencia Comercial via Plan 37-05).
+     *
+     * @return array<int, string>  Lista com o nome do servico (ou vazia)
+     */
+    private function processarServicoLegado(Company $company, array $dprops, array $propsDeal): array
+    {
+        $servicoNome = $dprops[$propsDeal['servico']] ?? null;
+        $servico     = $servicoNome
+            ? Servico::where('nome', $servicoNome)->where('ativo', true)->first()
+            : null;
+
+        // amount do HubSpot eh o valor do contrato (campo nativo, sem mapeamento).
+        $valor = isset($dprops['amount']) && is_numeric($dprops['amount'])
+            ? (float) $dprops['amount']
+            : ((float) ($servico?->valor_padrao ?? 0));
+
+        if ($servico) {
+            ContratoServico::create([
+                'company_id'       => $company->id,
+                'servico_id'       => $servico->id,
+                'valor_contratado' => $valor,
+                'data_contratacao' => now()->toDateString(),
+                'ativo'            => true,
+            ]);
+            return [$servico->nome];
+        }
+
+        if ($servicoNome) {
+            // Servico nao encontrado no catalogo — grava em notes para admin completar.
+            $notesAtuais = $company->notes ?? '';
+            $linhaNova   = "Serviço (HubSpot): {$servicoNome}";
+            $notes       = trim($notesAtuais === '' ? $linhaNova : $notesAtuais . "\n" . $linhaNova);
+            $company->update(['notes' => $notes]);
+        }
+
+        return [];
+    }
+
+    /**
+     * Phase 37 Plan 37-04 — roteamento MlbEmpresa por servico (extraido de criarEmpresa).
+     *
+     * Reusa helper estatico ComercialController::servicoDisparaImplementacao
+     * (fonte unica de verdade Polos/Assessoria/Incubadora).
+     *
+     * Guard contra duplicacao: empresa pode ter 2 line items que mapeiam para
+     * servicos Polo+Assessoria; cria o 1o, pula o 2o (1 MlbEmpresa por empresa).
+     * Implementacao Phase 35 D-05: Publicidade/Gestao/Publicacao retornam null
+     * e nao criam mlb_empresas.
+     */
+    private function rotearImplementacao(Company $company, string $nomeServico): void
+    {
+        $tipoImpl = ComercialController::servicoDisparaImplementacao($nomeServico);
+        if ($tipoImpl === null) {
+            return;
+        }
+
+        // Guard: nao duplica MlbEmpresa quando ha 2+ line items mapeados para
+        // servicos do tipo Polos/Assessoria/Incubadora na mesma empresa.
+        if (MlbEmpresa::where('company_id', $company->id)->exists()) {
+            return;
+        }
+
+        if ($tipoImpl === 'polos') {
+            $mlbEmp = MlbEmpresa::create([
+                'nome'       => $company->name,
+                'tipo'       => 'POLO',
+                'projeto'    => 'POLOS',
+                'company_id' => $company->id,
+            ]);
+            MlbImplementacaoFactory::criarParaPolo($mlbEmp);
+        } elseif ($tipoImpl === 'assessoria') {
+            MlbEmpresa::create([
+                'nome'       => $company->name,
+                'tipo'       => 'ASSESSORIA',
+                'company_id' => $company->id,
+            ]);
+        } elseif ($tipoImpl === 'incubadora') {
+            MlbEmpresa::create([
+                'nome'       => $company->name,
+                'tipo'       => 'INCUBADORA',
+                'company_id' => $company->id,
+            ]);
+        }
     }
 
     /**
