@@ -769,19 +769,27 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
 
     function mergeComPlanilha() {
         const planilha = (planilhaProdutos ?? []).filter(p => p.sku?.trim());
+        const salvos   = dados.produtos ?? [];
         if (planilha.length === 0) {
-            return dados.produtos?.length > 0
-                ? dados.produtos.map(p => ({ ...emptyRow, ...p }))
-                : [];
+            return salvos.length > 0 ? salvos.map(p => ({ ...emptyRow, ...p })) : [];
         }
+        // Precificação já salva, indexada por SKU (para mesclar nos produtos da planilha).
         const existente = {};
-        (dados.produtos ?? []).forEach(p => { if (p.sku) existente[p.sku] = p; });
-        return planilha.map(p => ({
+        salvos.forEach(p => { if (p.sku) existente[p.sku] = p; });
+        // 1) Produtos vindos da Planilha de Produtos (mesclando a precificação salva por SKU).
+        const daPlanilha = planilha.map(p => ({
             ...emptyRow,
             sku:       p.sku ?? '',
             descricao: p.produto ?? '',
             ...(existente[p.sku] ?? {}),
         }));
+        // 2) Produtos salvos que NÃO estão na planilha — tipicamente adicionados manualmente no
+        //    Simulador (SKU em branco). Sem isso, o produto avulso sumia ao reabrir o modal.
+        const skusPlanilha = new Set(planilha.map(p => p.sku));
+        const avulsos = salvos
+            .filter(p => !p.sku?.trim() || !skusPlanilha.has(p.sku))
+            .map(p => ({ ...emptyRow, ...p }));
+        return [...daPlanilha, ...avulsos];
     }
 
     const [rows, setRows] = useState(() => mergeComPlanilha());
