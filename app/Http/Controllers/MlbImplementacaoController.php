@@ -779,6 +779,11 @@ class MlbImplementacaoController extends Controller
             $dados['links_admin']['gmail_colaborador'] = $impl->gmail_colaborador;
         }
 
+        // Link do App ECF agora é GLOBAL (configurado nos Padrões Globais) — serve
+        // todas as contas. Injetado em tempo de render para que empresas existentes
+        // peguem o link sem migração.
+        $dados['links_admin']['app_ecf'] = MlbConfiguracao::implementacaoPadroes()['links_admin_extra']['app_ecf'] ?? '';
+
         return Inertia::render('Mlb/ImplementacaoPublicador', [
             'impl' => [
                 'token'        => $impl->token,
@@ -806,6 +811,11 @@ class MlbImplementacaoController extends Controller
         if (!empty($impl->gmail_colaborador)) {
             $dados['links_admin']['gmail_colaborador'] = $impl->gmail_colaborador;
         }
+
+        // Link do App ECF agora é GLOBAL (configurado nos Padrões Globais) — serve
+        // todas as contas. Injetado em tempo de render para que empresas existentes
+        // peguem o link sem migração.
+        $dados['links_admin']['app_ecf'] = MlbConfiguracao::implementacaoPadroes()['links_admin_extra']['app_ecf'] ?? '';
 
         // Prazo automático de 5 dias (Frente 5 / ONB-09): data-limite = início + 5 dias.
         $prazo       = $impl->infoPrazo();

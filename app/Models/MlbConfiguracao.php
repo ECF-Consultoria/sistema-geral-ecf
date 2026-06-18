@@ -24,11 +24,10 @@ class MlbConfiguracao extends Model
             'tutorial_intro' => '',
             'tutoriais' => [
                 'acesso_colaborador' => '',
-                'app_ecf'            => '',
-                'planilha_produtos'  => '',
                 'inscricao_estadual' => '',
             ],
             'links_admin_extra' => [
+                'app_ecf'         => '',
                 'programa_decola' => '',
                 'tabela_frete'    => '',
             ],

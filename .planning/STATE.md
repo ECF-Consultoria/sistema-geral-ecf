@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 Phase: 36 (comercial-uxe-atribuir-servico) — Wave 1 completa (2/2 plans)
 Plan: 36-02 (Atribuir Servico migrado pro Comercial + UX modal) **DONE** — 4 commits, build verde, 449/494 testes (zero regressao vs baseline)
 Status: Phase 36 inteira completa (36-01 + 36-02 em paralelo). Proximo: /gsd:verify-phase 36 ou deploy
-Last activity: 2026-06-17
+Last activity: 2026-06-18 - Quick task 260618-jcb: Onboarding remove tutoriais (App ECF / Planilha de Produtos) + link App ECF vira global (Padrões)
 
 ## Performance Metrics
 
@@ -381,6 +381,7 @@ None.
 | 260610-lzi | Fix aba "Tipo de Envio" (frete) da Decomposição da carteira (Painel Executivo): frete é dimensão SOBREPOSTA (ME2/COLETAS/FULL/OUTROS/FLEX/PLACES somam >100% do GMV). Passa a usar o `pct` da API + barras horizontais (em vez de pizza que forçava 100% e recalculava errado — ME2 aparecia ~49% vs 91,8% real), aviso de sobreposição, oculta coluna Lojistas e traduz COLETAS/PLACES/OUTROS. Inclui verificação ao vivo da API (CPP voltou) e revisão da página Concentração. | 2026-06-10 | 46714ab | [260610-lzi-frete-breakdown-sobreposto](.planning/quick/260610-lzi-frete-breakdown-sobreposto/) |
 | 260611-cgp | Melhorias /companies: abas Empresas/Pendências/Grupos. Filtro por tipo de serviço + contagem total por serviço (chips). Aba Pendências dedicada com 4 pendências calculadas (sem responsável, sem cust id, sem email colaborador, sem grant ativo via company_grants). Grupos nomeados tipo carteira (nova tabela company_groups + companies.company_group_id) com aba visual (cards/membros/CRUD) e badge na linha. Remove cadastro de empresa de /companies (entrada só por /comercial/empresas). Precisa deploy + migrate. | 2026-06-11 | e055699 | [260611-cgp-melhorias-companies](.planning/quick/260611-cgp-melhorias-companies/) |
 | 260611-jha | Refatora menu lateral (AppLayout.jsx) de lista plana com separadores para grupos colapsáveis (dropdowns): NAV_TREE + filterTree (preserva 100% do gating permission/excludeRoles, grupo some sem filhos visíveis), auto-expand do grupo na rota ativa, ChevronDown animado. Grupos: Dados Estratégicos, Empresas, Dev, Comercial, Publicações, Polos (novo, movido de Publicações), Administrativo. Comercial › "Empresas" renomeado p/ "Entrada de Empresas". Empresas › Pendências via deep-link companies.index?tab=pendencias (Companies/Index.jsx lê aba inicial do ?tab). | 2026-06-11 | 3c3bc1b | [260611-jha-refatorar-menu-lateral-em-grupos-colapsa](.planning/quick/260611-jha-refatorar-menu-lateral-em-grupos-colapsa/) |
+| 260618-jcb | Onboarding: remove tutoriais dos itens App ECF (=Adman) e Planilha de Produtos (tem_tutorial=false; workspace público passa a respeitar tem_tutorial, some botão mesmo p/ impls antigas com URL salva). Link do App ECF deixa de ser per-conta e vira GLOBAL nos Padrões Globais (links_admin_extra.app_ecf) — injetado em render no workspace()/publicador(), cobre impls existentes sem migração. Tutoriais de Acesso Colaborador e Inscrição Estadual preservados. | 2026-06-18 | pending (working tree) | [260618-jcb-onboarding-remover-tutoriais-app-ecf-e-p](.planning/quick/260618-jcb-onboarding-remover-tutoriais-app-ecf-e-p/) |
 
 ## Deferred Items
 

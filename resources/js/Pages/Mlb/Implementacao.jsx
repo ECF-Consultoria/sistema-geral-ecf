@@ -58,7 +58,6 @@ function ConfigurarForm({ impl, checklist, onClose }) {
         links_admin: {
             gmail_colaborador: linksAdmin.gmail_colaborador ?? '',
             drive_imagens:     linksAdmin.drive_imagens     ?? '',
-            app_ecf:           linksAdmin.app_ecf           ?? '',
             programa_decola:   linksAdmin.programa_decola   ?? '',
         },
         precificacao_config: {
@@ -108,7 +107,6 @@ function ConfigurarForm({ impl, checklist, onClose }) {
                 {[
                     { id: 'gmail_colaborador', label: 'Gmail — Acesso Colaborador', type: 'email', placeholder: 'exemplo@gmail.com' },
                     { id: 'drive_imagens',     label: 'Link — Drive com Imagens',   type: 'url',   placeholder: 'https://drive.google.com/...' },
-                    { id: 'app_ecf',           label: 'Link — App ECF',             type: 'url',   placeholder: 'https://...' },
                     { id: 'programa_decola',   label: 'Link — Programa Decola',      type: 'url',   placeholder: 'https://...' },
                 ].map(({ id, label, type, placeholder }) => (
                     <div key={id} className="mb-3">
@@ -328,6 +326,7 @@ function PadroesModal({ padroes, checklist, onClose }) {
         tutorial_intro: padroes.tutorial_intro ?? '',
         tutoriais:           Object.fromEntries(tutoriaisComSuporte.map(i => [i.id, padroes.tutoriais?.[i.id] ?? ''])),
         links_admin_extra: {
+            app_ecf:         padroes.links_admin_extra?.app_ecf ?? '',
             programa_decola: padroes.links_admin_extra?.programa_decola ?? '',
             tabela_frete:    padroes.links_admin_extra?.tabela_frete ?? '',
         },
@@ -358,6 +357,7 @@ function PadroesModal({ padroes, checklist, onClose }) {
                     <div>
                         <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-3">Links padrão</p>
                         {[
+                            { id: 'app_ecf',         label: 'Link — App ECF',         key: 'links_admin_extra' },
                             { id: 'programa_decola', label: 'Link — Programa Decola', key: 'links_admin_extra' },
                             { id: 'tabela_frete',    label: 'Link — Tabela de Frete', key: 'links_admin_extra' },
                         ].map(({ id, label }) => (

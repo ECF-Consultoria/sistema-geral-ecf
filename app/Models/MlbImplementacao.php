@@ -174,7 +174,7 @@ class MlbImplementacao extends Model
             'id'          => 'app_ecf',
             'titulo'      => 'App ECF',
             'tipo'        => 'link_admin',
-            'tem_tutorial'=> true,
+            'tem_tutorial'=> false,
             'descricao'   => 'Acesse o App ECF pelo link abaixo',
         ],
         [
@@ -215,7 +215,7 @@ class MlbImplementacao extends Model
             'id'          => 'planilha_produtos',
             'titulo'      => 'Planilha de Produtos',
             'tipo'        => 'produtos',
-            'tem_tutorial'=> true,
+            'tem_tutorial'=> false,
             'descricao'   => 'Preencha abaixo as informações dos seus produtos',
         ],
         [
@@ -288,8 +288,6 @@ class MlbImplementacao extends Model
             'prazo_data'     => '',
             'tutoriais' => [
                 'acesso_colaborador' => '',
-                'app_ecf'            => '',
-                'planilha_produtos'  => '',
                 'inscricao_estadual' => '',
             ],
             'links_admin' => [
