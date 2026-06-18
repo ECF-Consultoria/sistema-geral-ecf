@@ -31,6 +31,21 @@ class Phase37LineItemMappingTest extends TestCase
     use RefreshDatabase;
 
     /**
+     * Limpa o estado deixado pelas migrations do seed (Phase 14 + Phase 37 Plan 37-02)
+     * antes de cada teste — cada teste constroi seu proprio cenario isolado.
+     *
+     * RefreshDatabase ja zera o schema entre testes mas roda as migrations de seed
+     * automaticamente; queremos cenario controlado para asserts de contagem.
+     */
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        DB::table('hubspot_line_item_mapping')->delete();
+        DB::table('servicos')->delete();
+    }
+
+    /**
      * Helper: cria um Servico minimo no catalogo.
      */
     private function criarServico(string $nome, string $setor = Servico::SETOR_OUTROS): Servico
