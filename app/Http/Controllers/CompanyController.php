@@ -63,6 +63,16 @@ class CompanyController extends Controller
             // Grant ativo local (company_grants sincronizado da API ECF Drive) para a pendência "sem grant".
             ->withCount(['grants as grants_ativos_count' => fn($q) => $q->where('status', 'active')])
             ->whereDoesntHave('mlbEmpresa')
+            // Phase 37 Plan 37-06 (REQ-37-07) — /companies refoca em Performance
+            // (Gestao + Mentoria). Empresas com contratos APENAS em Publicacao/Outros
+            // sao visiveis em /comercial/empresas/listagem (Plan 37-05). MlbEmpresa
+            // ja excluido acima (Phase 35 preservada).
+            ->whereHas('contratosServico', fn($q) =>
+                $q->where('contratos_servico.ativo', true)
+                  ->whereHas('servico', fn($qs) =>
+                      $qs->where('setor', Servico::SETOR_PERFORMANCE)
+                  )
+            )
             ->when($custIdStatusFilter, fn($q) => $q->where('cust_id_status', $custIdStatusFilter))
             ->when($sort, function ($q) use ($sort) {
                 // Quando sort por created_at solicitado, prioriza essa ordenacao.
@@ -135,8 +145,10 @@ class CompanyController extends Controller
                     (! $c->adman_account_id && ! $c->ml_store_id)             ? 'sem_cust_id' : null,
                     (! $c->email_colaborador)                                 ? 'sem_email_colaborador' : null,
                     ($c->grants_ativos_count < 1)                            ? 'sem_grant_ativo' : null,
-                    // contratosServico já vem filtrado por ativo=true no eager load
-                    ($c->contratosServico->isEmpty())                        ? 'sem_servico' : null,
+                    // Phase 37 Plan 37-06 (REQ-37-07) — pendencia sem_servico removida.
+                    // Migrou para /comercial/empresas/listagem (Plan 37-05) — apos o
+                    // scope whereHas Performance acima, toda empresa em /companies ja
+                    // tem >=1 contrato Performance ativo por definicao.
                     $c->empresa_nova                                          ? 'empresa_nova' : null,
                 ])),
             ]);

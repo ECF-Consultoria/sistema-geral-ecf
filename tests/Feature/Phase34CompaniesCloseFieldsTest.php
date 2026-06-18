@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Company;
+use App\Models\ContratoServico;
+use App\Models\Servico;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -53,6 +55,30 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
             'cnpj'   => substr(str_pad((string) random_int(1, 99999999999999), 14, '0', STR_PAD_LEFT), 0, 14),
             'active' => true,
         ], $overrides));
+    }
+
+    /**
+     * Phase 37 Plan 37-06 (REQ-37-07) — /companies passou a filtrar empresas
+     * por contrato Performance ativo. Helper garante que a empresa tenha um
+     * contrato Performance, pra continuar aparecendo no payload em testes
+     * que validam pendencias/campos de close (foco diferente do filtro).
+     */
+    private function attachPerformanceContract(Company $c): ContratoServico
+    {
+        $servico = Servico::create([
+            'nome'          => 'Gestao P34 ' . uniqid(),
+            'valor_padrao'  => 1500,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
+        ]);
+        return ContratoServico::create([
+            'company_id'       => $c->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 1500,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+        ]);
     }
 
     public function test_company_default_tem_empresa_nova_true(): void
@@ -114,6 +140,9 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
             'email_colaborador' => 'colaborador@empresa.com',
             'adman_account_id'  => '123456',
         ]);
+        // Phase 37 Plan 37-06 — empresa precisa de contrato Performance pra
+        // aparecer em /companies (REQ-37-07). Foco do teste eh pendencia, nao filtro.
+        $this->attachPerformanceContract($empresa);
 
         $response = $this->actingAs($admin)->get('/companies');
         $response->assertStatus(200);
@@ -135,6 +164,8 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
             'email_colaborador' => 'colaborador@empresa.com',
             'adman_account_id'  => '123456',
         ]);
+        // Phase 37 Plan 37-06 — contrato Performance pra empresa aparecer em /companies.
+        $this->attachPerformanceContract($empresa);
 
         // Marca como visto.
         $this->actingAs($admin)->post("/companies/{$empresa->id}/marcar-visto")
@@ -162,6 +193,8 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
             'email_colaborador' => null,                        // ECF ainda nao criou
             'adman_account_id'  => '123456',
         ]);
+        // Phase 37 Plan 37-06 — contrato Performance pra empresa aparecer em /companies.
+        $this->attachPerformanceContract($empresa);
 
         $response = $this->actingAs($admin)->get('/companies');
         $alvo = collect($response->viewData('page')['props']['companies'])
@@ -183,6 +216,8 @@ class Phase34CompaniesCloseFieldsTest extends TestCase
             'marketplaces_extras' => ['shopee', 'amazon'],
             'email_colaborador'   => 'colab@empresa.com',
         ]);
+        // Phase 37 Plan 37-06 — contrato Performance pra empresa aparecer em /companies.
+        $this->attachPerformanceContract($empresa);
 
         $response = $this->actingAs($admin)->get('/companies');
         $alvo = collect($response->viewData('page')['props']['companies'])
