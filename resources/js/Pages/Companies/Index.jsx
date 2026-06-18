@@ -10,10 +10,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, Link, router, useRemember, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw, Tag, Briefcase } from 'lucide-react';
+import { Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw, Tag } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import GruposManager from '@/Components/GruposManager';
+// Phase 37 Plan 37-06 (REQ-37-07) — GruposManager removido daqui; aba Grupos
+// migrou para /comercial/empresas/listagem (Plan 37-05). Briefcase removido
+// junto pois o botao "Servico" inline tambem nao aparece mais (pendencia
+// sem_servico migrou para o Comercial).
 import { IMaskInput } from 'react-imask';
 
 // Phase 34 D-09 — lista canonica de marketplaces extras (espelha Rule::in no backend)
@@ -86,15 +89,17 @@ function MlStatusBadge({ status }) {
     return null;
 }
 
-// ─── Pendências (6 tipos calculados no backend) ─────────────────────────────
+// ─── Pendências (5 tipos calculados no backend) ─────────────────────────────
 // Phase 34 Plan 34-03 — empresa_nova adicionado (D-06): empresa recem-cadastrada
 // que ainda nao foi triada pelo admin; sai via botao "Marcar como visto" inline.
+// Phase 37 Plan 37-06 (REQ-37-07) — pendencia sem_servico removida desta lista;
+// migrou para /comercial/empresas/listagem (Plan 37-05). Apos o scope Performance
+// no backend, toda empresa em /companies ja tem >=1 contrato Performance ativo.
 const PENDENCIAS = {
     sem_responsavel:       { label: 'Sem responsável',       cls: 'bg-red-500/10 text-red-400 border-red-500/20' },
     sem_cust_id:           { label: 'Sem cust id',           cls: 'bg-orange-500/10 text-orange-400 border-orange-500/20' },
     sem_email_colaborador: { label: 'Sem email colaborador', cls: 'bg-amber-500/10 text-amber-300 border-amber-500/20' },
     sem_grant_ativo:       { label: 'Sem grant ativo',       cls: 'bg-sky-500/10 text-sky-400 border-sky-500/20' },
-    sem_servico:           { label: 'Sem serviço',           cls: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20' },
     empresa_nova:          { label: 'Empresa nova',          cls: 'bg-yellow-500/15 text-ecf-yellow border-ecf-yellow/30' },
 };
 
@@ -132,9 +137,11 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     // Lê a aba inicial do query param ?tab (deep-link vindo do menu lateral, ex: Empresas › Pendências).
     // Lazy initializer roda apenas uma vez no mount; valores inválidos/ausentes caem em 'empresas'.
+    // Phase 37 Plan 37-06 (REQ-37-07) — aba 'grupos' removida; deep-links antigos
+    // caem silenciosamente em 'empresas'. Gestao de grupos migrou para /comercial/empresas/listagem.
     const [tab, setTab] = useState(() => {
         const t = new URLSearchParams(window.location.search).get('tab');
-        return ['empresas', 'pendencias', 'grupos'].includes(t) ? t : 'empresas';
+        return ['empresas', 'pendencias'].includes(t) ? t : 'empresas';
     });
     const [search, setSearch] = useRemember('', 'companies-index-search');
     const [servicoFilter, setServicoFilter] = useState(''); // servico id (string) ou ''
@@ -215,8 +222,10 @@ export default function Companies({ companies, users, estrategistas = [], analis
 
     // ── Pendências (empresas ativas com ≥1 pendência) ────────────────────────
     // Phase 34 Plan 34-03 — pendCounts ganhou sem_servico (5o card existente) e empresa_nova (D-06).
+    // Phase 37 Plan 37-06 (REQ-37-07) — sem_servico removido do pendCounts; migrou
+    // para /comercial/empresas/listagem (Plan 37-05).
     const pendentes = companies.filter(c => c.active && (c.pendencias || []).length > 0);
-    const pendCounts = { sem_responsavel: 0, sem_cust_id: 0, sem_email_colaborador: 0, sem_grant_ativo: 0, sem_servico: 0, empresa_nova: 0 };
+    const pendCounts = { sem_responsavel: 0, sem_cust_id: 0, sem_email_colaborador: 0, sem_grant_ativo: 0, empresa_nova: 0 };
     companies.forEach(c => {
         if (!c.active) return;
         (c.pendencias || []).forEach(p => { if (pendCounts[p] !== undefined) pendCounts[p]++; });
@@ -341,10 +350,11 @@ export default function Companies({ companies, users, estrategistas = [], analis
     // Grupos nomeados: a gestão (cards/modal/atribuição) vive no componente
     // compartilhado GruposManager (mesma UI usada em /administrativo/empresas).
 
+    // Phase 37 Plan 37-06 (REQ-37-07) — aba Grupos removida; migrou para
+    // /comercial/empresas/listagem (Plan 37-05).
     const TABS = [
         { key: 'empresas',   label: `Empresas (${totalAtivas})` },
         { key: 'pendencias', label: `Pendências (${pendentes.length})` },
-        { key: 'grupos',     label: `Grupos (${grupos.length})` },
     ];
 
     return (
@@ -595,19 +605,9 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                                 <Check className="h-4 w-4" />
                                                             </button>
                                                         )}
-                                                        {(c.pendencias || []).includes('sem_servico') && (
-                                                            // Phase 36 Plan 36-02 (D-05) — botao "Servico" aponta direto pra
-                                                            // pagina dedicada do Comercial (Comercial/AtribuirServico.jsx) em vez
-                                                            // da listagem generica do Admin. A empresa ja vem pre-resolvida via
-                                                            // route model binding — UX sem hop intermediario.
-                                                            <a
-                                                                href={route('comercial.atribuir-servico', c.id)}
-                                                                title="Atribuir serviço no Comercial"
-                                                                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-fuchsia-500/30 text-fuchsia-400 hover:bg-fuchsia-500/10 text-[12px] font-medium"
-                                                            >
-                                                                <Briefcase className="h-3.5 w-3.5" /> Serviço
-                                                            </a>
-                                                        )}
+                                                        {/* Phase 37 Plan 37-06 (REQ-37-07) — botao inline "Servico"
+                                                            removido junto com a pendencia sem_servico. Atribuicao de servico
+                                                            agora vive em /comercial/empresas/listagem + /comercial/empresas/{id}/atribuir-servico. */}
                                                         <Button size="sm" variant="outline" className="gap-1.5" onClick={() => openEdit(c)}>
                                                             <Pencil className="h-3.5 w-3.5" /> Resolver
                                                         </Button>
@@ -633,10 +633,7 @@ export default function Companies({ companies, users, estrategistas = [], analis
                     </>
                 )}
 
-                {/* ══════════════ ABA GRUPOS ══════════════ */}
-                {tab === 'grupos' && (
-                    <GruposManager grupos={grupos} companies={companies} servicos={servicos_disponiveis} />
-                )}
+                {/* Phase 37 Plan 37-06 (REQ-37-07) — aba Grupos migrou para /comercial/empresas/listagem (Plan 37-05). */}
             </div>
 
             {/* Modal link ML OAuth */}
