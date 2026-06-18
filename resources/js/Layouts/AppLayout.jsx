@@ -6,7 +6,7 @@ import {
     LogOut, User, Menu, X, Trophy, Briefcase, ShieldCheck,
     BarChart2, LineChart, PlusCircle, Clock, ClipboardCheck, LayoutList, Store, ShoppingCart, BookOpen, FolderKanban, SlidersHorizontal,
     AlertTriangle, ListChecks, FileBarChart, Banknote, Package2, ScrollText,
-    Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox
+    Code2, Crown, Shield, Send, Link2, TrendingUp, Settings, Inbox, PieChart
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
@@ -120,6 +120,8 @@ const NAV_TREE = [
         children: [
             { label: 'Onboarding',    routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks,   permission: 'mlb.implementacao' },
             { label: 'Projetos',      routeName: 'mlb.projetos',            page: 'Mlb/Projetos',      icon: FolderKanban, permission: 'mlb.projetos' },
+            // Phase 38 — Faturamento por Polo vs Meta (admin-only, dados ECF Drive)
+            { label: 'Faturamento Polos', routeName: 'polos.index', page: 'Polos/Index', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
 
