@@ -552,6 +552,12 @@ class MlbImplementacaoController extends Controller
             'tutoriais.*'              => 'nullable|string|max:500',
             'links_admin_extra'        => 'nullable|array',
             'links_admin_extra.*'      => 'nullable|string|max:500',
+            // Mensagem de boas-vindas padrão do Onboarding
+            'mensagem_boas_vindas'     => 'nullable|string|max:5000',
+            // Grant por polo: mapa polo => {url, nome}
+            'grants_por_polo'          => 'nullable|array',
+            'grants_por_polo.*.url'    => 'nullable|string|max:500',
+            'grants_por_polo.*.nome'   => 'nullable|string|max:200',
         ]);
 
         MlbConfiguracao::get()->update([

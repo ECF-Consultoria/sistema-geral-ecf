@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
@@ -339,5 +340,50 @@ class Phase33OnboardingFichaTest extends TestCase
         $this->assertEquals('Já listado', $impl->listagem);
         $this->assertEquals('Concluído', $impl->publicacao);
         $this->assertFalse((bool) $impl->decola);
+    }
+
+    /**
+     * Padrões Globais expõem mensagem de boas-vindas e grants por polo por padrão.
+     */
+    public function test_padroes_expoem_mensagem_e_grants_padrao(): void
+    {
+        $p = MlbConfiguracao::implementacaoPadroes();
+
+        $this->assertStringContainsString('{link_formulario}', $p['mensagem_boas_vindas']);
+        $this->assertStringContainsString('{link_grant}', $p['mensagem_boas_vindas']);
+        $this->assertStringContainsString('{projeto_grant}', $p['mensagem_boas_vindas']);
+
+        // Os 4 polos de ONB_POLO_OPCOES têm Grant configurado com url + nome
+        foreach (MlbImplementacao::ONB_POLO_OPCOES as $polo) {
+            $this->assertArrayHasKey($polo, $p['grants_por_polo']);
+            $this->assertNotEmpty($p['grants_por_polo'][$polo]['url']);
+            $this->assertNotEmpty($p['grants_por_polo'][$polo]['nome']);
+        }
+        // Bento Gonçalves carrega o Grant da Serra Gaúcha (sem renomear o polo)
+        $this->assertEquals('Projeto Polos - Serra Gaúcha', $p['grants_por_polo']['Bento Gonçalves']['nome']);
+    }
+
+    /**
+     * POST padrões persiste mensagem de boas-vindas e grants por polo editados.
+     */
+    public function test_salvar_padroes_persiste_mensagem_e_grants(): void
+    {
+        $admin = $this->criarAdmin();
+
+        $this->actingAs($admin)
+            ->post(route('mlb.implementacao.padroes'), [
+                'mensagem_boas_vindas' => 'Olá {empresa}! Formulário: {link_formulario} — Grant: {link_grant}',
+                'grants_por_polo'      => [
+                    'Arapongas' => ['url' => 'https://partners.mercadolivre.com.br/auth/NOVO', 'nome' => 'Grant Arapongas Editado'],
+                ],
+            ])
+            ->assertRedirect();
+
+        $p = MlbConfiguracao::implementacaoPadroes();
+        $this->assertStringContainsString('Olá {empresa}!', $p['mensagem_boas_vindas']);
+        $this->assertEquals('https://partners.mercadolivre.com.br/auth/NOVO', $p['grants_por_polo']['Arapongas']['url']);
+        $this->assertEquals('Grant Arapongas Editado', $p['grants_por_polo']['Arapongas']['nome']);
+        // Polos não enviados mantêm o default via merge recursivo do base
+        $this->assertEquals('Projeto Polos - Serra Gaúcha', $p['grants_por_polo']['Bento Gonçalves']['nome']);
     }
 }

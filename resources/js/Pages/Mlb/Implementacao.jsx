@@ -332,7 +332,7 @@ function DadosView({ impl, checklist, erp_opcoes, integrador_opcoes }) {
     );
 }
 
-function PadroesModal({ padroes, checklist, onClose }) {
+function PadroesModal({ padroes, checklist, polo_opcoes = [], onClose }) {
     const tutoriaisComSuporte = checklist.filter(i => i.tem_tutorial);
     const [form, setForm] = useState({
         tutorial_intro: padroes.tutorial_intro ?? '',
@@ -342,6 +342,15 @@ function PadroesModal({ padroes, checklist, onClose }) {
             programa_decola: padroes.links_admin_extra?.programa_decola ?? '',
             tabela_frete:    padroes.links_admin_extra?.tabela_frete ?? '',
         },
+        // Mensagem de boas-vindas padrão (placeholders substituídos por empresa ao copiar)
+        mensagem_boas_vindas: padroes.mensagem_boas_vindas ?? '',
+        // Grant por polo: cada região tem url + nome do projeto (resolvido pelo polo da empresa)
+        grants_por_polo: Object.fromEntries(
+            polo_opcoes.map(p => [p, {
+                url:  padroes.grants_por_polo?.[p]?.url  ?? '',
+                nome: padroes.grants_por_polo?.[p]?.nome ?? '',
+            }])
+        ),
     });
     const [saving, setSaving] = useState(false);
 
@@ -384,6 +393,61 @@ function PadroesModal({ padroes, checklist, onClose }) {
                                 />
                             </div>
                         ))}
+                    </div>
+                    <div className="h-px bg-white/[0.06]" />
+                    {/* Grants por Polo — cada região tem seu link de Grant do Mercado Livre */}
+                    <div>
+                        <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-1">Grants por Polo</p>
+                        <p className="text-white/25 text-[11px] mb-3">Cada região tem seu Grant. A empresa recebe o Grant do polo em que está cadastrada.</p>
+                        {polo_opcoes.length === 0 && (
+                            <p className="text-white/20 text-[12px]">Nenhum polo disponível.</p>
+                        )}
+                        {polo_opcoes.map(polo => (
+                            <div key={polo} className="mb-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                <p className="text-white/60 text-[12px] font-semibold mb-2">{polo}</p>
+                                <div className="space-y-2">
+                                    <div>
+                                        <label className="text-white/40 text-[10px] uppercase tracking-wider block mb-1">Nome do projeto (Grant)</label>
+                                        <input
+                                            type="text"
+                                            value={form.grants_por_polo[polo]?.nome ?? ''}
+                                            onChange={e => setForm(f => ({ ...f, grants_por_polo: { ...f.grants_por_polo, [polo]: { ...f.grants_por_polo[polo], nome: e.target.value } } }))}
+                                            placeholder="Ex: Projeto Polos - Serra Gaúcha"
+                                            className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="text-white/40 text-[10px] uppercase tracking-wider block mb-1">Link do Grant</label>
+                                        <input
+                                            type="url"
+                                            value={form.grants_por_polo[polo]?.url ?? ''}
+                                            onChange={e => setForm(f => ({ ...f, grants_por_polo: { ...f.grants_por_polo, [polo]: { ...f.grants_por_polo[polo], url: e.target.value } } }))}
+                                            placeholder="https://partners.mercadolivre.com.br/auth/..."
+                                            className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[13px] focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="h-px bg-white/[0.06]" />
+                    {/* Mensagem de boas-vindas padrão */}
+                    <div>
+                        <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest mb-1">Mensagem de Boas-vindas</p>
+                        <p className="text-white/25 text-[11px] mb-3">
+                            Texto padrão enviado ao cliente. Use os marcadores:{' '}
+                            <code className="text-ecf-yellow/80">{'{link_formulario}'}</code>,{' '}
+                            <code className="text-ecf-yellow/80">{'{link_grant}'}</code>,{' '}
+                            <code className="text-ecf-yellow/80">{'{projeto_grant}'}</code>,{' '}
+                            <code className="text-ecf-yellow/80">{'{empresa}'}</code> — substituídos automaticamente por empresa ao copiar.
+                        </p>
+                        <textarea
+                            value={form.mensagem_boas_vindas}
+                            onChange={e => setForm(f => ({ ...f, mensagem_boas_vindas: e.target.value }))}
+                            rows={12}
+                            placeholder="Olá, seja muito bem-vindo(a) ao Projeto Polos! 🚀..."
+                            className="w-full px-3 py-2 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px] leading-relaxed focus:outline-none focus:border-ecf-yellow/40 placeholder:text-white/20 resize-y"
+                        />
                     </div>
                     <div className="h-px bg-white/[0.06]" />
                     {/* Tutoriais */}
@@ -537,12 +601,31 @@ function NovaImplModal({ onClose }) {
     );
 }
 
-function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose }) {
+function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, global_padroes = {}, onClose }) {
     const [tab, setTab] = useState('link');
     const [confirmRemover, setConfirmRemover] = useState(false);
     const [removendo, setRemovendo] = useState(false);
     const url           = route('implementacao.workspace',  empresa.token);
     const urlPublicador = route('implementacao.publicador', empresa.token);
+
+    // ─── Mensagem de boas-vindas (template global + dados da empresa) ───────────
+    // Resolve o Grant pelo polo cadastrado da empresa (sem texto livre → sem divergência).
+    const grantPolo    = empresa.polo ? (global_padroes.grants_por_polo?.[empresa.polo] ?? null) : null;
+    const linkGrant    = grantPolo?.url ?? '';
+    const projetoGrant = grantPolo?.nome ?? (empresa.polo ? `Projeto Polos - ${empresa.polo}` : '');
+    const template     = global_padroes.mensagem_boas_vindas ?? '';
+    // split/join evita depender de String.prototype.replaceAll e troca todas as ocorrências
+    const aplicar = (txt, alvo, valor) => txt.split(alvo).join(valor ?? '');
+    const mensagem = aplicar(aplicar(aplicar(aplicar(
+        template,
+        '{link_formulario}', url),
+        '{link_grant}',      linkGrant),
+        '{projeto_grant}',   projetoGrant),
+        '{empresa}',         empresa.nome ?? '');
+    // Aviso quando faltam dados para preencher o Grant na mensagem
+    const avisoGrant = !empresa.polo
+        ? 'Empresa sem polo definido — o link do Grant não será preenchido. Defina o polo na ficha.'
+        : (!linkGrant ? `Nenhum Grant configurado para o polo "${empresa.polo}". Configure em Padrões.` : null);
 
     function remover() {
         setRemovendo(true);
@@ -652,6 +735,27 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose 
                                     </a>
                                 </div>
                             </div>
+
+                            {/* Mensagem de boas-vindas pronta para enviar (link do formulário + Grant do polo já preenchidos) */}
+                            {template ? (
+                                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="text-white/40 text-[11px] font-medium uppercase tracking-wider">Mensagem de Boas-vindas</p>
+                                        <CopyBtn text={mensagem} />
+                                    </div>
+                                    {avisoGrant && (
+                                        <p className="text-amber-300 text-[11px] bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                                            {avisoGrant}
+                                        </p>
+                                    )}
+                                    <pre className="text-white/60 text-[12px] leading-relaxed whitespace-pre-wrap font-sans bg-black/30 border border-white/[0.06] rounded-lg p-3 max-h-56 overflow-y-auto">{mensagem}</pre>
+                                </div>
+                            ) : (
+                                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                                    <p className="text-white/40 text-[11px] font-medium uppercase tracking-wider mb-1">Mensagem de Boas-vindas</p>
+                                    <p className="text-white/30 text-[12px]">Nenhum modelo configurado. Defina o texto em <span className="text-white/50">Padrões</span>.</p>
+                                </div>
+                            )}
 
                             <div className="p-4 rounded-xl bg-violet-500/[0.05] border border-violet-500/20 space-y-3">
                                 <p className="text-violet-300/70 text-[11px] font-medium uppercase tracking-wider">Link do Publicador</p>
@@ -1016,7 +1120,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                 <p className="text-white/20 text-[12px] text-center">{filtradas.length} empresa{filtradas.length !== 1 ? 's' : ''}</p>
             </div>
 
-            {padroes && <PadroesModal padroes={global_padroes ?? {}} checklist={checklist} onClose={() => setPadroes(false)} />}
+            {padroes && <PadroesModal padroes={global_padroes ?? {}} checklist={checklist} polo_opcoes={poloOpts} onClose={() => setPadroes(false)} />}
 
             {novaImpl && <NovaImplModal onClose={() => setNovaImpl(false)} />}
 
@@ -1026,6 +1130,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                     checklist={checklist}
                     erp_opcoes={erp_opcoes}
                     integrador_opcoes={integrador_opcoes}
+                    global_padroes={global_padroes ?? {}}
                     onClose={() => setModal(null)}
                 />
             )}
