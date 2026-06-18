@@ -772,7 +772,7 @@ Plans:
 
 **Wave 1** *(paralelo — fundação schema, sem overlap de arquivos)*
 - [x] 37-01-PLAN.md — Migration `servicos.setor` (enum performance/publicacao/outros) + seed Gestão+Mentoria→performance, Publicação→publicacao + Servico::SETORES const + helpers isPerformance/isPublicacao + scope porSetor + 6 testes (REQ-37-03) (completed 2026-06-18)
-- [ ] 37-02-PLAN.md — Migration `create_hubspot_line_item_mapping_table` + seed inicial (MAP/Polo/Brigada/Gestão/Mentoria/Publicação) + model HubspotLineItemMapping (scope ativo + relação servico + helper paraNome case-insensitive) + 8 testes (REQ-37-02 schema/model)
+- [x] 37-02-PLAN.md — Migration `create_hubspot_line_item_mapping_table` + seed inicial (MAP/Polo/Brigada/Gestão/Mentoria/Publicação) + model HubspotLineItemMapping (scope ativo + relação servico + helper paraNome case-insensitive) + 9 testes (REQ-37-02 schema/model) (completed 2026-06-18)
 
 **Wave 2** *(bloqueado na Wave 1)*
 - [ ] 37-03-PLAN.md — HubspotApiClient::fetchDealLineItems (2-call pattern: associations + batch de detalhes) + tratamento resiliente 4xx/5xx + 8 testes Http::fake (REQ-37-01)

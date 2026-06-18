@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 37 Plan 37-01 completo — coluna servicos.setor + seed canônico + model helpers/scope (RED→GREEN; 6 testes verdes)
-last_updated: "2026-06-18T18:37:00Z"
-last_activity: 2026-06-18 -- Phase 37 Plan 37-01 completo
+stopped_at: Phase 37 Plan 37-02 completo — tabela hubspot_line_item_mapping + model HubspotLineItemMapping com paraNome case-insensitive + seed canônico (RED→GREEN; 9 testes verdes, 23 assertions)
+last_updated: "2026-06-18T19:00:00Z"
+last_activity: 2026-06-18 -- Phase 37 Plan 37-02 completo
 progress:
   total_phases: 32
   completed_phases: 19
   total_plans: 54
-  completed_plans: 43
-  percent: 60
+  completed_plans: 44
+  percent: 62
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 1 em execução
-Plan: 37-01 (coluna servicos.setor + seed canônico) **DONE** — 3 commits TDD (f8a0091 RED → b93ee62 GREEN → ca84bd1 GREEN), 6/6 testes verdes (27 assertions), zero regressão vs baseline Phase 14
-Status: Ready to execute (próximo plan da Wave 1 a depender do `depends_on` no PLAN.md)
-Last activity: 2026-06-18 -- Phase 37 Plan 37-01 completo
+Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 1 completa
+Plan: 37-02 (tabela hubspot_line_item_mapping + model HubspotLineItemMapping + seed canônico) **DONE** — 4 commits TDD (a3085be RED → 6b14a89 Task 1 GREEN → 5543ab5 Task 2 GREEN → 0557342 Task 3 GREEN), 9/9 testes verdes (23 assertions), zero regressão (suite Phase 37 total: 26/26 verdes)
+Status: Wave 1 completa (37-01 + 37-02). Pronto para Wave 2 — 37-03 (HubspotApiClient::fetchDealLineItems) + 37-04 (webhook estendido com line items)
+Last activity: 2026-06-18 -- Phase 37 Plan 37-02 completo
 
 ## Performance Metrics
 
@@ -85,6 +85,7 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-01 completo
 | Phase 36-comercial-uxe-atribuir-servico P01 | 8 | 4 tasks | 4 files |
 | Phase 36-comercial-uxe-atribuir-servico P02 | 33min | 4 tasks | 5 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P01 | 15min | 3 commits (TDD) | 4 files |
+| Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P02 | 22min | 4 commits (TDD) | 4 files |
 
 ## Accumulated Context
 
@@ -354,6 +355,19 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-01 completo
 - **AudienciaComercial performance**: ~50 users ativos = ~50ms (acceitable para webhook sincrono). Se base >500, refatorar para JOIN direto com `setor_permissoes` (comentado no helper).
 - **CRITICO: NAO deployar Plan 35-03 sozinho**: depende de Phase 8 (BaseNotification + tabela `notifications` ja em prod), Phase 34-01 (campo `email_colaborador`), Phase 34-04 (webhook HubSpot). Tudo ja em prod. Esta plan deploy-segura standalone OU agrupada com 35-02.
 
+### Decisões do Plan 37-02 (registradas)
+
+- **`paraNome()` retorna nullable (`?self`)**, NÃO lança excecao quando line_item.name não mapeia. Webhook (Plan 37-04) interpreta `null` como "servico nao reconhecido" e registra a empresa com flag de pendência comercial (Plan 37-05) — admin esquecer de cadastrar mapping novo não pode parar o pipeline.
+- **`firstOrCreate` no seed (NÃO `updateOrCreate`)** — preserva ajustes manuais (`ativo=false`, `observacoes` editadas) feitos via UI admin entre deploys. Mesmo padrão da Phase 14 Plan 14-02 (D-01 do plan original).
+- **Mentoria com fallback para Gestão** — `$mentoria = $servicos['Mentoria'] ?? $gestao`. Defesa em profundidade caso Phase 14 seed não tenha corrido em algum ambiente prod (Phase 37 Plan 37-01 confirmou presenca em dev).
+- **Index composto `(ativo, line_item_name)`** alimenta o lookup do webhook (`WHERE ativo=1 AND LOWER(line_item_name)=LOWER(?)`). UNIQUE em `line_item_name` cria index implicito separado — coexistem sem conflito.
+- **MySQL `utf8mb4_unicode_ci` colapsa POLO/Polo no seed prod** — collation case-insensitive trata como mesma chave no `firstOrCreate`. Em prod: 7 rows seedadas; em testes (SQLite case-sensitive): 8 rows. Comportamento desejado — `paraNome()` já é case-insensitive, 1 row cobre toda a família.
+- **`setUp()` apaga rows seedadas (tabela hubspot_line_item_mapping + servicos)** antes de cada teste — RefreshDatabase re-aplica seeds automaticamente; cenarios de contagem precisa exigem estado controlado. Alternativa rejeitada: nomes unicos por teste (fragil, polui namespace).
+- **trim() no input antes do LOWER comparison** — defesa contra espacos acidentais vindos do HubSpot ("MAP " vs "MAP"). Sem alocacao de memoria significativa.
+- **Eager loading `with('servico')` no `paraNome()`** — evita N+1 garantido no webhook (Plan 37-04) que chamará `$mapping->servico->id` logo apos o lookup para criar ContratoServico.
+- **`down()` apaga apenas mappings seedados** (whereIn nos 8 nomes) — preserva mappings criados via UI admin (Plan 37-07) durante rollback. Diferente do `dropIfExists` total da migration de schema.
+- **CRITICO: NAO fazer deploy do Plan 37-02 sozinho** — tabela + seed sao consumidos pelo webhook no Plan 37-04. Agrupar deploy com 37-03/04/05/06/07 (deploy agrupado Phase 37 conforme lição 34/35).
+
 ### Decisões do Plan 33-01 (registradas)
 
 - **`opcoes` forcadas a null fora de tipo=multipla** — backend defensivo no `criarPerguntaExtra`/`atualizarPerguntaExtra` zera o array mesmo se cliente enviar. UI nao precisa zerar.
@@ -426,19 +440,21 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-18T18:37:00Z
-Stopped at: Phase 37 Plan 37-01 completo — coluna servicos.setor + seed canônico (RED→GREEN)
+Last session: 2026-06-18T19:00:00Z
+Stopped at: Phase 37 Plan 37-02 completo — tabela hubspot_line_item_mapping + model HubspotLineItemMapping com paraNome case-insensitive + seed canônico (RED→GREEN)
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY: `.planning/phases/37-onboarding-comercial-unificado-via-hubspot-line-items/37-01-SUMMARY.md`
-- Phase 37 Plan 37-01 entregue (Wave 1):
-  - Migration 100001: coluna `servicos.setor` enum (performance|publicacao|outros, default 'outros')
-  - Migration 100002: seed Gestão+Mentoria → performance, Publicação → publicacao
-  - `app/Models/Servico.php`: constants SETOR_*, SETORES array, setoresLabels(), isPerformance(), isPublicacao(), scopePorSetor(), logOnly += 'setor'
-  - `tests/Feature/Phase37ServicoSetorTest.php`: 6 testes verdes (27 assertions)
-- TDD: commits RED→GREEN limpos (f8a0091 → b93ee62 → ca84bd1)
-- Zero regressão vs baseline Phase 14 (`git stash` validado)
-- **Próximo passo natural:** executar próximo plan da Wave 1 (Phase 37 tem 7 plans em 3 waves — checar PLAN.md frontmatter `depends_on` para próximo desbloqueado)
-- **Deploy:** NÃO fazer deploy do Plan 37-01 sozinho — agrupar com Plans seguintes da Phase 37 (especialmente 37-05 e 37-06 que consomem `porSetor()`). Pos-deploy: `php artisan migrate --force && php artisan cache:clear`
-- HEAD: `ca84bd1` feat(37-01): seed setor + Servico model com SETORES const + helpers + scope (GREEN)
+- SUMMARY: `.planning/phases/37-onboarding-comercial-unificado-via-hubspot-line-items/37-02-SUMMARY.md`
+- Phase 37 Wave 1 COMPLETA (Plans 37-01 + 37-02). Pronto para Wave 2.
+- Plan 37-02 entregue:
+  - Migration 100003: tabela `hubspot_line_item_mapping` (line_item_name UNIQUE, servico_id FK cascade, ativo, observacoes, index composto `(ativo, line_item_name)`)
+  - Migration 100004: seed canônico (8 famílias — MAP/MAP PREMIUM/Polo/POLO/Brigada/Gestão/Mentoria/Publicação)
+  - `app/Models/HubspotLineItemMapping.php`: belongsTo Servico + scope `ativo()` + helper estático `paraNome(string)` case-insensitive com eager-load `with('servico')` + ignora inativos
+  - `tests/Feature/Phase37LineItemMappingTest.php`: 9 testes verdes (23 assertions)
+- TDD: commits RED→GREEN limpos (a3085be → 6b14a89 → 5543ab5 → 0557342)
+- Zero regressão Phase 37 (26/26 verdes: 9 Plan 37-02 + 6 Plan 37-01 + 11 MlbDadosMl Phase 37)
+- Estado em dev (MySQL utf8mb4_unicode_ci): 7 mappings seedados (POLO/Polo colapsado por collation case-insensitive — comportamento desejado; paraNome já é case-insensitive)
+- **Próximo passo natural:** Wave 2 — executar Plan 37-03 (HubspotApiClient::fetchDealLineItems) E/OU Plan 37-04 (webhook estendido que consumirá `HubspotLineItemMapping::paraNome()` deste plan)
+- **Deploy:** NÃO fazer deploy do Plan 37-02 sozinho — agrupar com Plans 37-03/04/05/06/07 (deploy agrupado da Phase 37, lição Phase 34/35). Pos-deploy: `php artisan migrate --force && php artisan cache:clear`
+- HEAD: `0557342` test(37-02): consolida suite com setUp truncate para isolar cenario controlado (Task 3 GREEN)
