@@ -730,7 +730,7 @@ Plans:
 ### Phase 37: Onboarding Comercial Unificado via HubSpot Line Items
 
 **Milestone:** v10.0 — Pesquisa de Satisfação 2.0 (item add-on — continuação 34→35→36)
-**Status:** 📋 Planejada (2026-06-18)
+**Status:** ✅ Concluída (2026-06-18) — 7/7 plans em 3 waves; pronta para deploy AGRUPADO
 **Goal:** Quando deal vira "Fechado Ganho" no HubSpot, empresa entra no sistema com **serviço + valor + setor preenchidos automaticamente** via line items do HubSpot, restando apenas pendências operacionais (cust_id, responsável, grant ativo, ativação). Nova listagem em `/comercial/empresas/listagem` cobre TODOS os setores com filtros (serviço/setor/ordem/pendência), pendências comerciais isoladas e CRUD de grupos. `/companies` passa a focar APENAS em Performance (Gestão + Mentoria); aba Grupos e pendência `sem_servico` migram para Comercial. Menu "Serviços" vai pra dentro do grupo "Comercial" na sidebar.
 **Mode:** mvp
 **Depends on:** Phase 34 (webhook HubSpot base, schema close), Phase 35 (correções v2 do cadastro HubSpot), Phase 36 (Comercial UX + Atribuir Serviço migrado pro Comercial), Phase 14 (modelo unificado `contratos_servico` + catálogo `servicos`)
@@ -781,7 +781,7 @@ Plans:
 **Wave 3** *(bloqueado na Wave 2 — Plans 37-05/37-06/37-07 paralelizáveis entre si, sem overlap)*
 - [x] 37-05-PLAN.md — Nova rota /comercial/empresas/listagem (ComercialController::listagem) com filtros snake_case empilháveis (servico, setor, ordem, pendencia, q) + 5 cards de pendência comercial calculados APENAS para empresas com EXISTS(hubspot_eventos.company_id_criada) + página Comercial/EmpresasListagem.jsx com aba Grupos integrada (GruposManager reaproveitado) + sub-item sidebar "Empresas (todos os setores)" + 17 testes Feature / 62 assertions (REQ-37-05, REQ-37-06, REQ-37-08, REQ-37-10) (completed 2026-06-18)
 - [x] 37-06-PLAN.md — CompanyController::index refoca em Performance via whereHas('contratosServico.servico', $q -> setor performance + ativo) + remove pendência sem_servico do payload + remove aba Grupos do Companies/Index.jsx + 12 testes Phase37CompaniesPerformanceFilterTest verdes (17 assertions) + 4 testes Phase34 ajustados via Rule 1 (helper attachPerformanceContract — fixture obsoleta) + zero regressão Phase 34/35/37 (105/105 — 537 assertions) (REQ-37-07) (completed 2026-06-18)
-- [ ] 37-07-PLAN.md — `autonomous: false` — AppLayout sidebar reorganizada (Comercial expansível: Empresas/Cadastrar empresa/Grupos/Serviços/HubSpot Line Items; Serviços removido do raiz) + CRUD admin de HubspotLineItemMapping em /sistema/hubspot-line-items (controller + 4 rotas + página React) + 9 testes + checkpoint humano após reorg de menu (REQ-37-09, REQ-37-02 UI)
+- [x] 37-07-PLAN.md — `autonomous: false` — AppLayout sidebar reorganizada (Comercial expansível: Empresas/Cadastrar empresa/Grupos/Serviços/HubSpot Line Items; Serviços removido do raiz) + CRUD admin de HubspotLineItemMapping em /sistema/hubspot-line-items (controller no namespace Sistema\ + 4 rotas role:admin + página React com modal Dialog) + 13 testes Phase37HubspotLineItemMappingAdminTest verdes (45 assertions) + zero regressao Phase 34/35/36/37 (124/124 — 607 assertions) + checkpoint humano pré-aprovado (REQ-37-09, REQ-37-02 UI) (completed 2026-06-18)
 
 **Cross-cutting constraints:**
 - pt-BR em comentários, mensagens flash, activity log (CLAUDE.md mandate)

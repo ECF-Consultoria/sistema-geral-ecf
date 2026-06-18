@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 37 Plan 37-06 completo — /companies refoca em Performance via whereHas('contratosServico.servico', setor='performance', ativo=true); pendencia sem_servico removida do payload + aba Grupos removida do JSX; 12/12 testes Phase37CompaniesPerformanceFilterTest verdes (17 assertions); zero regressao Phase 34/35/37 (105/105 — 537 assertions; 4 testes Phase34 ajustados via Rule 1 para incluir contrato Performance no fixture)
-last_updated: "2026-06-18T21:00:00Z"
-last_activity: 2026-06-18 -- Phase 37 Plan 37-06 completo
+stopped_at: Phase 37 Plan 37-07 completo — CRUD admin /sistema/hubspot-line-items (HubspotLineItemMappingController em namespace Sistema\ + 4 rotas role:admin + Sistema/HubspotLineItems.jsx com modal Dialog) + sidebar reorg (Servicos removido do raiz; grupo Comercial agora com 5 sub-itens: Empresas/Cadastrar/Grupos/Servicos/HubSpot Line Items); 13/13 testes Phase37HubspotLineItemMappingAdminTest verdes (45 assertions); zero regressao Phase 34/35/36/37 (124/124 — 607 assertions); Phase 37 inteira pronta para deploy AGRUPADO (Plans 37-01..07)
+last_updated: "2026-06-18T21:43:00Z"
+last_activity: 2026-06-18 -- Phase 37 Plan 37-07 completo (Phase 37 inteira CLOSED — 7 plans em 3 waves)
 progress:
   total_phases: 32
   completed_phases: 19
   total_plans: 54
-  completed_plans: 48
-  percent: 68
+  completed_plans: 49
+  percent: 70
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 3 EM ANDAMENTO
-Plan: 37-06 (CompanyController::index scope Performance + cleanup pendencia sem_servico + Companies/Index.jsx remove aba Grupos + Phase37CompaniesPerformanceFilterTest) **DONE** — 3 commits TDD (024c5a1 RED → a8d7d64 controller GREEN → e4b296e JSX GREEN), 12/12 testes verdes (17 assertions), zero regressao Phase 34/35/37 (105/105 — 537 assertions)
-Status: Wave 3 — 37-06 done. Próximo: 37-07 (UI admin mapping + reorg final sidebar — migrar Servicos e Grupos para Comercial)
-Last activity: 2026-06-18 -- Phase 37 Plan 37-06 completo
+Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 3 CONCLUÍDA — **PHASE 37 INTEIRA FECHADA (7/7 plans)**
+Plan: 37-07 (UI admin /sistema/hubspot-line-items + reorg final sidebar — Servicos+Grupos+HubSpot Line Items migrados para grupo Comercial) **DONE** — 4 commits (364b99b test RED → 03409fe controller GREEN → 94a1aec JSX → 67701cc sidebar), 13/13 testes Phase37HubspotLineItemMappingAdminTest verdes (45 assertions), zero regressao Phase 34/35/36/37 (124/124 — 607 assertions)
+Status: Phase 37 inteira pronta para deploy AGRUPADO (Plans 37-01..07). Próximo: `/gsd:complete-phase 37` + decisão do usuário sobre v10.0 milestone close.
+Last activity: 2026-06-18 -- Phase 37 Plan 37-07 completo (Phase 37 inteira concluída)
 
 ## Performance Metrics
 
@@ -90,11 +90,13 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-06 completo
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P04 | 22min | 2 commits (TDD) | 2 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P05 | 22min | 3 commits (TDD) | 6 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P06 | 18min | 3 commits (TDD) | 4 files |
+| Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P07 | 28min | 4 commits (TDD) | 5 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-06-18 — **Phase 37 Plan 37-07: UI admin HubSpot Line Items + sidebar reorg final — PHASE 37 INTEIRA FECHADA**. Plan 37-07 entrega o CRUD admin de mapeamentos HubSpot via `/sistema/hubspot-line-items` (4 rotas role:admin no namespace `Sistema\` + Inertia page com modal Dialog para create/edit + delete confirmation + busca client-side + dark theme com tokens ecf-*); REQ-37-02 fechado (admin cadastra novos line items sem deploy). Sidebar reorganizada (REQ-37-09): item "Serviços" removido do nível raiz, grupo "Comercial" agora consolida 5 sub-itens — Empresas (todos os setores), Cadastrar empresa, Grupos, Serviços, HubSpot Line Items (este último excludeRoles=admin-only). 13/13 testes `Phase37HubspotLineItemMappingAdminTest` verdes (45 assertions) cobrindo render Inertia, CRUD completo, validações (unique line_item_name + servico_id ativo via Rule::exists), activity_log em pt-BR (log_name='sistema') e autorização role:admin nas 4 rotas. **Phase 37 inteira (Plans 37-01..07) PRONTA para deploy AGRUPADO**: 124/124 testes verdes combinado Phase 34/35/36/37 (607 assertions); zero regressão. Próximo: `/gsd:complete-phase 37` + decisão sobre encerramento v10.0 ou continuação.
 - 2026-06-18 — **Phase 37 Plan 37-06: /companies refoca em Performance** entregue. `CompanyController::index` agora aplica `whereHas('contratosServico', ativo=true)->whereHas('servico', setor='performance')` apos o `whereDoesntHave('mlbEmpresa')` existente — empresas com contratos APENAS em Publicacao/Outros migram para `/comercial/empresas/listagem` (Plan 37-05). Pendencia `sem_servico` removida do payload + 5 cards na aba Pendencias (era 6). Aba Grupos da UI removida (migrou tambem para o Comercial). 12/12 testes `Phase37CompaniesPerformanceFilterTest` verdes (17 assertions); 105/105 combinado Phase 34/35/37 (537 assertions). 4 testes Phase 34 ajustados via Rule 1 (helper attachPerformanceContract — Rule 1 test obsoleto por mudanca de contrato). Proximo: Plan 37-07 (UI admin mapeamentos + reorg final sidebar).
 - 2026-06-18 — **Phase 37: Onboarding Comercial Unificado via HubSpot Line Items** adicionada ao v10.0 (continuação 34→35→36). Goal: quando deal vira "Fechado Ganho" no HubSpot, empresa entra com serviço+valor+setor preenchidos automaticamente via line items (`GET /crm/v3/objects/deals/{dealId}/associations/line_items`); pendências comerciais (sem_servico, sem_valor, servico_nao_reconhecido) isoladas em nova listagem `/comercial/empresas/listagem` (todos os setores, filtros empilháveis); `/companies` refoca em Performance (Gestão+Mentoria) via `servicos.setor='performance'`; grupos e menu Serviços migram pro Comercial. Decisões: phase única (mega) com 5-7 plans em waves; filtro Performance via catálogo (nova coluna `servicos.setor`); empresas legacy não geram pendência comercial (só origem HubSpot via `hubspot_eventos.company_id_criada`); `hubspot_line_item_mapping` editável no admin pra novos mapeamentos sem deploy. Próximo: `/gsd-plan-phase 37`.
 - 2026-06-01 — Novo **Milestone v5.0 — Inteligência de Anúncios ML**; adicionada **Phase 17: Coleta de Dados ML (Fase 1 — sem IA)**. Decisões travadas via probe ML (busca `/sites/MLB/search` = 403; usar `/products/search` + `/highlights` + `/trends` via app token). Não depende da Phase 16. Próximo: `/gsd-plan-phase 17`.
@@ -406,6 +408,21 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-06 completo
 - **4 testes Phase34CompaniesCloseFieldsTest ajustados via Rule 1 (test obsoleto por mudanca de contrato)** — helper `attachPerformanceContract()` adiciona Servico+ContratoServico Performance para empresa continuar aparecendo no payload de `/companies`. Testes ainda validam o que prometiam (pendencias + payload close fields), apenas a precondicao mudou.
 - **Whitelist `['ok', 'invalido', 'desconhecido', 'nao_aplicavel']` para cust_id_status preservada** — filtro existente segue funcionando sem mudanca (testado).
 - **CRITICO: NAO fazer deploy do Plan 37-06 sozinho** — agrupar com Plans 37-01 a 37-07 conforme licao Phase 34/35. UI do admin para mapeamentos (Plan 37-07) ainda pendente; deploy parcial deixaria `/companies` filtrado sem cobertura completa de pendencias comerciais na nova listagem.
+
+### Decisões do Plan 37-07 (registradas)
+
+- **Namespace `App\Http\Controllers\Sistema\`** (1º controller do projeto neste namespace) — alinhado ao pattern `Admin\` ja existente (CargoController/SetorController/SetorMembroController) mas sem o prefixo URL `/admin` (rotas vivem em `/sistema/hubspot-line-items`, coerente com `/sistema/setores`). Importacao explicita em routes/web.php: `use App\Http\Controllers\Sistema\HubspotLineItemMappingController`.
+- **Hard delete em `destroy()`** (não soft via `ativo=false`) — admin sabe o que faz; activity_log captura o nome ANTES do delete via `$nome = $mapping->line_item_name` para preservar auditoria. Soft-deactivate é redundante quando a coluna `ativo` ja eh editavel via UI.
+- **Props snake_case** (`mappings`, `servicos_disponiveis`) — convenção Phase 37 mantida; consistencia com Comercial/EmpresasListagem (Plan 37-05) e companies/Index.
+- **`excludeRoles` em vez de `permission_key` dedicada** para o sub-item "HubSpot Line Items" — evita poluir catálogo de permissões com chave de uso restrito (admin only). Defesa em profundidade via middleware `role:admin` no grupo de rotas; sem `abort_unless` redundante no controller.
+- **Sub-item 'Grupos' aponta para a mesma URL de 'Empresas (todos os setores)'** — `routeName: 'comercial.empresas.listagem'` sem query param. O helper de menu do AppLayout atual nao aceita `query: { tab: 'grupos' }`. Usuario clica na aba "Grupos" da listagem ao chegar. TODO marcado nos comentários para refinar quando o helper suportar.
+- **Activity log via `activity('sistema')` + `causedBy($request->user())` + `withProperties([...])`** — log_name dedicado para mudancas em metadados infraestruturais (mappings, lookups); separado de 'default' que pega CRUD de Companies/Users/Goals.
+- **`Rule::exists('servicos','id')->where('ativo', true)`** no store + update — garante que mapping criado nunca aponta para Servico inativo (impediria webhook de criar contrato). Validação stronger que `exists:servicos,id` puro.
+- **`Rule::unique(...)->ignore($mapping->id)` no update** — permite PUT preservando `line_item_name` sem falhar por unique constraint (test `test_unique_no_update_ignora_self` cobre).
+- **Native HTML `<select>` no modal** (não shadcn Select component) — universo de servicos eh pequeno (~10), padrao Servicos/Index.jsx ja usa native select, evita import extra. Estilizado com classes ECF (border-white/10 + bg-white/[0.02] + focus:ring-ecf-yellow/40).
+- **Modal de confirmacao de delete separado** do modal de edicao — UX clara, evita dupla acao acidental, permite cor red-600 no botao Remover sem poluir o modal de edicao.
+- **Item "Servicos" do raiz REMOVIDO** (estava entre Reuniões e Usuários no nivel topo) — REQ-37-09 fechado. Comentário pt-BR no AppLayout explicando o porquê para futuros readers.
+- **Phase 37 INTEIRA pronta para deploy AGRUPADO** (Plans 37-01..07) — não fazer deploy parcial. Pos-deploy: `php artisan migrate --force && php artisan cache:clear`. Migrações pendentes: 37-01 (servicos.setor), 37-02 (hubspot_line_item_mapping + seed), 37-03 (hubspot_eventos.company_id_criada).
 
 ### Decisões do Plan 33-01 (registradas)
 
