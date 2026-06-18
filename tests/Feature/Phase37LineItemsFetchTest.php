@@ -133,7 +133,24 @@ class Phase37LineItemsFetchTest extends TestCase
 
     public function test_line_item_individual_500_pula_item_e_loga_warning(): void
     {
-        Log::spy();
+        // Mock o logger do canal ecf-webhooks para confirmar que warning() foi
+        // chamado com deal/item ids + status (sem o token).
+        $logger = \Mockery::mock(\Psr\Log\LoggerInterface::class);
+        $logger->shouldReceive('warning')
+            ->once()
+            ->with(
+                '[HubSpot Webhook] Falha ao buscar line item',
+                \Mockery::on(function ($context) {
+                    return is_array($context)
+                        && ($context['deal_id'] ?? null) === self::DEAL_ID
+                        && ($context['line_item_id'] ?? null) === '222'
+                        && ($context['status'] ?? null) === 500;
+                })
+            );
+
+        Log::shouldReceive('channel')
+            ->with('ecf-webhooks')
+            ->andReturn($logger);
 
         Http::fake([
             self::ASSOC_URL => Http::response([
@@ -162,11 +179,6 @@ class Phase37LineItemsFetchTest extends TestCase
         // Apenas o item OK deve estar no retorno.
         $this->assertCount(1, $out);
         $this->assertEquals('111', $out[0]['id']);
-
-        // Deve ter logado warning no canal ecf-webhooks com deal/item ids + status.
-        Log::shouldHaveReceived('channel')
-            ->with('ecf-webhooks')
-            ->atLeast()->once();
     }
 
     public function test_recurringbillingfrequency_ausente_preserva_null(): void

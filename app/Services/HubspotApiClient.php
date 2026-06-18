@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Phase 34 Plan 34-04 — Wrapper HTTP para HubSpot CRM API v3.
@@ -133,5 +134,93 @@ class HubspotApiClient
             ]);
         $res->throw();
         return $res->json();
+    }
+
+    /**
+     * Phase 37 Plan 37-03 (REQ-37-01) — busca line items associados a um deal HubSpot.
+     *
+     * Encadeia 2 chamadas:
+     *   1. GET /crm/v3/objects/deals/{dealId}/associations/line_items — lista IDs dos line items
+     *   2. GET /crm/v3/objects/line_items/{id}?properties=...        — detalhes de cada item
+     *
+     * Resiliente: 4xx/5xx em associations retorna []; falha em GET /line_items/{id}
+     * individual loga warning e pula o item (segue com os demais). Deal sem line
+     * items eh cenario valido (retorna [] silencioso).
+     *
+     * Consumido pelo HubspotWebhookController (Plan 37-04) apos criarEmpresa para
+     * materializar contratos_servico em DB::transaction.
+     *
+     * IMPORTANTE: nunca loga o Bearer token no contexto do warning — somente
+     * deal_id / line_item_id / status (T-37-05 do threat model).
+     *
+     * @return array<int, array{id: string, name: ?string, price: ?float, quantity: ?int, hs_product_id: ?string, recurringbillingfrequency: ?string}>
+     */
+    public function fetchDealLineItems(string $dealId): array
+    {
+        // ─── Chamada 1: associations ───
+        // Resiliente: qualquer falha (404 deal inexistente, 500 instabilidade)
+        // retorna [] sem propagar excecao — mesmo padrao de fetchAssociatedCompanyId.
+        $assocRes = Http::withToken($this->token)
+            ->get(self::BASE . "/crm/v3/objects/deals/{$dealId}/associations/line_items");
+
+        if (!$assocRes->ok()) {
+            return [];
+        }
+
+        $results = $assocRes->json('results') ?? [];
+        $ids = [];
+        foreach ($results as $r) {
+            if (isset($r['id']) && $r['id'] !== '' && $r['id'] !== null) {
+                $ids[] = (string) $r['id'];
+            }
+        }
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        // ─── Chamada 2..N: detalhes de cada line item ───
+        $properties = 'name,price,quantity,hs_product_id,recurringbillingfrequency';
+        $out = [];
+
+        foreach ($ids as $id) {
+            $res = Http::withToken($this->token)
+                ->get(self::BASE . "/crm/v3/objects/line_items/{$id}", [
+                    'properties' => $properties,
+                ]);
+
+            if (!$res->ok()) {
+                // Falha individual loga warning + pula — segue com os demais.
+                // NUNCA logar o token aqui (T-37-05): apenas IDs + status HTTP.
+                Log::channel('ecf-webhooks')->warning(
+                    '[HubSpot Webhook] Falha ao buscar line item',
+                    [
+                        'deal_id'      => $dealId,
+                        'line_item_id' => $id,
+                        'status'       => $res->status(),
+                    ]
+                );
+                continue;
+            }
+
+            $props = $res->json('properties') ?? [];
+
+            $out[] = [
+                'id'                        => $id,
+                'name'                      => $props['name'] ?? null,
+                'price'                     => isset($props['price']) && is_numeric($props['price'])
+                    ? (float) $props['price']
+                    : null,
+                'quantity'                  => isset($props['quantity']) && is_numeric($props['quantity'])
+                    ? (int) $props['quantity']
+                    : null,
+                'hs_product_id'             => isset($props['hs_product_id'])
+                    ? (string) $props['hs_product_id']
+                    : null,
+                'recurringbillingfrequency' => $props['recurringbillingfrequency'] ?? null,
+            ];
+        }
+
+        return $out;
     }
 }
