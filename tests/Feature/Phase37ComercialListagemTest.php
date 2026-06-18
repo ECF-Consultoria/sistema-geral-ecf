@@ -6,12 +6,8 @@ use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
 use App\Models\Servico;
-use App\Models\Setor;
-use App\Models\SetorPermissao;
 use App\Models\User;
-use App\Support\Permissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia;
 use Tests\TestCase;
 
@@ -447,8 +443,9 @@ class Phase37ComercialListagemTest extends TestCase
         $response->assertOk();
         $props = $response->viewData('page')['props'];
         $this->assertNotEmpty($props['servico_counts']);
-        // Cada item tem id, nome, setor, total
-        $first = $props['servico_counts'][0];
+        // Cada item tem id, nome, setor, total. DB::table retorna stdClass;
+        // convertemos para array para o assertArrayHasKey.
+        $first = (array) $props['servico_counts'][0];
         $this->assertArrayHasKey('id', $first);
         $this->assertArrayHasKey('nome', $first);
         $this->assertArrayHasKey('setor', $first);

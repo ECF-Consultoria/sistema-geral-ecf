@@ -187,6 +187,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
              // máscara BRL (D-07) e default data_vencimento +1 ano (D-08).
              Route::get('/atribuir-servico/{company}', [ComercialController::class, 'atribuirServico'])
                  ->name('atribuir-servico');
+
+             // Phase 37 Plan 37-05 (REQ-37-05/06/08/10) — Listagem unificada do Comercial.
+             // Cobre TODAS as empresas (todos os setores) com filtros snake_case empilháveis,
+             // 5 cards de pendência comercial (calculadas apenas para origem HubSpot, REQ-37-10)
+             // e aba de Grupos (CRUD via rotas company-groups.* admin-only — non-admin ve read-only).
+             Route::get('/empresas/listagem', [ComercialController::class, 'listagem'])
+                 ->name('empresas.listagem');
          });
 
     // Reuniões (todos)

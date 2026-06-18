@@ -261,6 +261,32 @@ class Company extends Model
         return $this->hasOne(MlbEmpresa::class);
     }
 
+    /**
+     * Phase 37 Plan 37-05 (REQ-37-10) — relação para flag is_origem_hubspot
+     * via withExists. Empresas SEM registro em hubspot_eventos.company_id_criada
+     * são legacy e NÃO geram pendência comercial na listagem Comercial.
+     *
+     * Usado por ComercialController::listagem para classificar a origem da
+     * empresa (HubSpot vs Legacy) e gatear o cálculo das 5 pendências comerciais
+     * (sem_servico, sem_valor, servico_nao_reconhecido, sem_setor, dados_close_incompletos).
+     */
+    public function hubspotEventoOrigem()
+    {
+        return $this->hasOne(HubspotEvento::class, 'company_id_criada');
+    }
+
+    /**
+     * Phase 37 Plan 37-05 — todos os HubspotEventos que apontam para esta empresa.
+     *
+     * Usado para detectar pendência "servico_nao_reconhecido" via payload->
+     * line_items_nao_mapeados (gravado pelo Plan 37-04). Eager-load opcional
+     * para evitar N+1 quando a listagem itera sobre N empresas.
+     */
+    public function hubspotEventos()
+    {
+        return $this->hasMany(HubspotEvento::class, 'company_id_criada');
+    }
+
     public function getActiveGrantAttribute(): ?CompanyGrant
     {
         return $this->grants()->where('status', 'active')->first();

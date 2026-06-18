@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\CompanyGroup;
 use App\Models\ContratoServico;
+use App\Models\HubspotEvento;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\Servico;
@@ -153,6 +155,254 @@ class ComercialController extends Controller
             'contratos'            => $contratos,
             'servicos_disponiveis' => $servicosDisponiveis,
         ]);
+    }
+
+    /**
+     * Phase 37 Plan 37-05 (REQ-37-05/06/08/10) — Listagem unificada do Comercial.
+     *
+     * Endpoint GET /comercial/empresas/listagem renderiza
+     * `Comercial/EmpresasListagem` com TODAS as empresas (todos os setores),
+     * filtros snake_case empilhaveis (servico, setor, ordem, pendencia, q),
+     * 5 cards de pendencia comercial (sem_servico, sem_valor,
+     * servico_nao_reconhecido, sem_setor, dados_close_incompletos) calculadas
+     * APENAS para empresas com origem HubSpot (REQ-37-10), e
+     * `grupos`/`servicos_disponiveis` para a aba de gestao de grupos
+     * (reaproveita GruposManager + rotas company-groups.* existentes).
+     *
+     * Lição Phase 18 — filtros empilháveis: `applyFilter` no frontend deve
+     * passar `{...filters, [key]: value}` para preservar os outros 4 filtros
+     * ao alterar 1. Backend honra o whitelist nos enums (setor/ordem/pendencia)
+     * com `in_array` antes de aplicar.
+     */
+    public function listagem(Request $request)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+
+        // (1) Sanitização snake_case com whitelist em PHP (T-37-12 mitigation)
+        $filters = [
+            'servico'   => $request->input('servico'),
+            'setor'     => in_array($request->input('setor'), [Servico::SETOR_PERFORMANCE, Servico::SETOR_PUBLICACAO, Servico::SETOR_OUTROS], true)
+                ? $request->input('setor')
+                : null,
+            'ordem'     => in_array($request->input('ordem'), ['recentes', 'antigas'], true)
+                ? $request->input('ordem')
+                : 'recentes',
+            'pendencia' => in_array($request->input('pendencia'), [
+                'sem_servico', 'sem_valor', 'servico_nao_reconhecido', 'sem_setor', 'dados_close_incompletos',
+            ], true) ? $request->input('pendencia') : null,
+            'q'         => $request->input('q'),
+        ];
+
+        // (2) Query base. withExists materializa a flag `hubspot_evento_origem_exists`
+        // sem joins desnecessarios (subquery EXISTS). hubspotEventos eager-loaded
+        // para detectar `servico_nao_reconhecido` sem N+1.
+        $query = Company::with([
+                'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
+                'consultor',
+                'estrategista',
+                'grupo:id,name,color',
+                'hubspotEventos' => fn($q) => $q->orderByDesc('id')->limit(3),
+            ])
+            ->where('active', true)
+            ->withExists(['hubspotEventoOrigem']);
+
+        // (3) Filtros sql (empilháveis — Lição Phase 18)
+        if ($filters['servico']) {
+            $query->whereHas('contratosServico', fn($q) =>
+                $q->where('servico_id', $filters['servico'])->where('ativo', true)
+            );
+        }
+        if ($filters['setor']) {
+            $query->whereHas('contratosServico', fn($q) =>
+                $q->where('ativo', true)
+                  ->whereHas('servico', fn($s) => $s->where('setor', $filters['setor']))
+            );
+        }
+        if ($filters['q']) {
+            $qLike = '%' . trim($filters['q']) . '%';
+            $query->where(function ($w) use ($qLike) {
+                $w->where('name', 'like', $qLike)
+                  ->orWhere('cnpj', 'like', $qLike);
+            });
+        }
+        $query->orderBy('created_at', $filters['ordem'] === 'antigas' ? 'asc' : 'desc');
+
+        // (4) Materializa, anota pendencias e is_origem_hubspot em PHP
+        // (paginação manual depois do filtro pendencia para não falsear contagens).
+        $todasEmpresas = $query->get();
+
+        $todasEmpresas->each(function (Company $c) {
+            $c->is_origem_hubspot      = (bool) ($c->hubspot_evento_origem_exists ?? false);
+            $c->pendencias_comerciais  = $this->calcularPendenciasComerciais($c);
+        });
+
+        // (5) pendencia_counts ANTES do filtro pendencia (contagens absolutas)
+        $pendenciaCounts = [
+            'sem_servico'             => 0,
+            'sem_valor'               => 0,
+            'servico_nao_reconhecido' => 0,
+            'sem_setor'               => 0,
+            'dados_close_incompletos' => 0,
+        ];
+        foreach ($todasEmpresas as $c) {
+            foreach ($c->pendencias_comerciais as $p) {
+                if (isset($pendenciaCounts[$p])) {
+                    $pendenciaCounts[$p]++;
+                }
+            }
+        }
+
+        // (6) Aplica filtro pendencia em PHP (depende do calculo acima)
+        $companies = $filters['pendencia']
+            ? $todasEmpresas->filter(fn($c) => in_array($filters['pendencia'], $c->pendencias_comerciais, true))->values()
+            : $todasEmpresas;
+
+        // (7) Paginação manual via LengthAwarePaginator (preserva queryString)
+        $perPage = 50;
+        $page    = max(1, (int) $request->input('page', 1));
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $companies->forPage($page, $perPage)->values(),
+            $companies->count(),
+            $perPage,
+            $page,
+            [
+                'path'  => $request->url(),
+                'query' => $request->query(),
+            ],
+        );
+
+        // (8) Map para payload Inertia (apenas as empresas da pagina atual)
+        $companiesPaginadas = $paginator->getCollection()->map(function (Company $c) {
+            $contratosAtivos = $c->contratosServico->where('ativo', true);
+            $setorDominante  = $contratosAtivos->map(fn($ct) => optional($ct->servico)->setor)->filter()->first();
+
+            return [
+                'id'                    => $c->id,
+                'name'                  => $c->name,
+                'cnpj'                  => $c->cnpj,
+                'status'                => $c->status,
+                'is_origem_hubspot'     => $c->is_origem_hubspot,
+                'pendencias_comerciais' => $c->pendencias_comerciais,
+                'setor_dominante'       => $setorDominante,
+                'nicho'                 => $c->nicho,
+                'email_cliente'         => $c->email_cliente,
+                'telefone'              => $c->telefone,
+                'created_at'            => $c->created_at?->toDateString(),
+                'consultor'             => $c->consultor->first()?->only(['id', 'name']),
+                'estrategista'          => $c->estrategista->first()?->only(['id', 'name']),
+                'company_group_id'      => $c->company_group_id,
+                'grupo'                 => $c->grupo ? [
+                    'id'    => $c->grupo->id,
+                    'name'  => $c->grupo->name,
+                    'color' => $c->grupo->color,
+                ] : null,
+                'contratos_servico'     => $contratosAtivos->map(fn($ct) => [
+                    'id'               => $ct->id,
+                    'valor_contratado' => (float) $ct->valor_contratado,
+                    'servico'          => $ct->servico ? [
+                        'id'    => $ct->servico->id,
+                        'nome'  => $ct->servico->nome,
+                        'setor' => $ct->servico->setor,
+                    ] : null,
+                ])->values(),
+                'adman_account_id'      => $c->adman_account_id,
+                'ml_store_id'           => $c->ml_store_id,
+            ];
+        })->values();
+
+        $paginator->setCollection($companiesPaginadas);
+
+        // (9) servico_counts — chips no header (replica padrão CompanyController::index)
+        $servicoCounts = DB::table('contratos_servico as cs')
+            ->join('servicos as s', 's.id', '=', 'cs.servico_id')
+            ->join('companies as c', 'c.id', '=', 'cs.company_id')
+            ->where('cs.ativo', true)
+            ->where('c.active', true)
+            ->groupBy('s.id', 's.nome', 's.setor')
+            ->orderBy('s.nome')
+            ->selectRaw('s.id, s.nome, s.setor, COUNT(DISTINCT c.id) as total')
+            ->get();
+
+        // (10) grupos + catálogo (alimentam aba Grupos via GruposManager)
+        $grupos = CompanyGroup::withCount('companies')
+            ->orderBy('name')
+            ->get(['id', 'name', 'color']);
+
+        $servicosDisponiveis = Servico::where('ativo', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca', 'setor']);
+
+        return Inertia::render('Comercial/EmpresasListagem', [
+            'companies'            => $paginator,
+            'filters'              => $filters,
+            'pendencia_counts'     => $pendenciaCounts,
+            'servico_counts'       => $servicoCounts,
+            'grupos'               => $grupos,
+            'servicos_disponiveis' => $servicosDisponiveis,
+        ]);
+    }
+
+    /**
+     * Calcula as 5 pendencias comerciais de uma empresa (Phase 37 REQ-37-06).
+     *
+     * REQ-37-10: empresas SEM HubspotEvento::company_id_criada (legacy) sempre
+     * retornam array vazio — pendencias comerciais sao calculadas APENAS para
+     * empresas de origem HubSpot. Outros tipos de pendencia (sem_responsavel,
+     * sem_cust_id, etc.) ficam em /companies (CompanyController::index).
+     *
+     * @return array<int, string>  Lista de slugs de pendencia encontradas
+     */
+    private function calcularPendenciasComerciais(Company $c): array
+    {
+        if (!$c->is_origem_hubspot) {
+            return [];
+        }
+
+        $pendencias = [];
+        $contratosAtivos = $c->contratosServico->where('ativo', true);
+
+        // sem_servico: zero contratos ativos
+        if ($contratosAtivos->isEmpty()) {
+            $pendencias[] = 'sem_servico';
+        }
+
+        // sem_valor: tem contrato ativo COM valor_contratado=0
+        if ($contratosAtivos->isNotEmpty() && $contratosAtivos->contains(fn($ct) => (float) $ct->valor_contratado === 0.0)) {
+            $pendencias[] = 'sem_valor';
+        }
+
+        // servico_nao_reconhecido: payload de algum HubspotEvento tem line_items_nao_mapeados
+        // (gravado pelo Plan 37-04 quando line item HubSpot nao bate no mapping)
+        $temLineItemsNaoMapeados = $c->hubspotEventos->contains(function ($ev) {
+            $payload = $ev->payload ?? [];
+            return !empty($payload['line_items_nao_mapeados'] ?? null);
+        });
+        if ($temLineItemsNaoMapeados) {
+            $pendencias[] = 'servico_nao_reconhecido';
+        }
+
+        // sem_setor: TODOS os contratos ativos apontam para Servico com setor='outros'
+        // (catalogo ainda nao categorizado — admin precisa ajustar). Se nao ha contrato,
+        // a pendencia 'sem_servico' ja cobre o caso.
+        if ($contratosAtivos->isNotEmpty()) {
+            $todosOutros = $contratosAtivos->every(function ($ct) {
+                $setor = optional($ct->servico)->setor;
+                return $setor === Servico::SETOR_OUTROS || $setor === null;
+            });
+            if ($todosOutros) {
+                $pendencias[] = 'sem_setor';
+            }
+        }
+
+        // dados_close_incompletos: nicho|dor|faturamento_mensal NULL
+        if ($c->nicho === null || $c->dor === null || $c->faturamento_mensal === null) {
+            $pendencias[] = 'dados_close_incompletos';
+        }
+
+        return $pendencias;
     }
 
     /**
