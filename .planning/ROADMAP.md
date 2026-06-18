@@ -726,3 +726,72 @@ Plans:
 - [x] 34-02-PLAN.md — Wizard Comercial estendido: NovaEmpresa.jsx + ComercialController::store validation dos 9 campos + máscaras CNPJ/telefone
 - [x] 34-03-PLAN.md — Admin UI: Companies/Index.jsx (badge "Empresa nova", botão "Marcar visto", modal admin com novos campos + máscaras IMaskInput) + Companies/Show.jsx (seção "Informações do Close") + Comercial/Empresas.jsx edit form com 6 campos + máscaras + CompanyController validation update + payload show (completed 2026-06-12)
 - [x] 34-04-PLAN.md — Webhook HubSpot: rota `/api/webhooks/hubspot` + HMAC v3 validation + grava `hubspot_eventos` + processamento inline (fetch deal+company HubSpot → cria Company) + idempotência por `object_id` (completed 2026-06-12)
+
+### Phase 37: Onboarding Comercial Unificado via HubSpot Line Items
+
+**Milestone:** v10.0 — Pesquisa de Satisfação 2.0 (item add-on — continuação 34→35→36)
+**Status:** 📋 Planejada (2026-06-18)
+**Goal:** Quando deal vira "Fechado Ganho" no HubSpot, empresa entra no sistema com **serviço + valor + setor preenchidos automaticamente** via line items do HubSpot, restando apenas pendências operacionais (cust_id, responsável, grant ativo, ativação). Nova listagem em `/comercial/empresas/listagem` cobre TODOS os setores com filtros (serviço/setor/ordem/pendência), pendências comerciais isoladas e CRUD de grupos. `/companies` passa a focar APENAS em Performance (Gestão + Mentoria); aba Grupos e pendência `sem_servico` migram para Comercial. Menu "Serviços" vai pra dentro do grupo "Comercial" na sidebar.
+**Mode:** mvp
+**Depends on:** Phase 34 (webhook HubSpot base, schema close), Phase 35 (correções v2 do cadastro HubSpot), Phase 36 (Comercial UX + Atribuir Serviço migrado pro Comercial), Phase 14 (modelo unificado `contratos_servico` + catálogo `servicos`)
+
+**Decisões travadas (2026-06-18):**
+- **Phase 37 ÚNICA** (mega) com 5-7 plans em waves — mantém contexto único e deploy agrupado (sem fragmentar webhook + UI)
+- **Filtro de Performance via catálogo de serviços**: `contratos_servico` JOIN `servicos` WHERE `servicos.setor = 'performance'` (Gestão + Mentoria). Reusa modelo unificado Phase 14 + nova coluna `servicos.setor` (enum). Sem nova coluna em `companies` — setor sempre derivado do catálogo
+- **Empresas legacy** (created_at < deploy desta phase) entram na nova listagem Comercial SEM pendências comerciais. Pendência comercial só dispara para empresas com origem HubSpot (`hubspot_eventos.company_id_criada` apontando pra elas) que vieram sem line items ou com serviço não reconhecido
+- **Mapeamento line_item.name → servico** via tabela `hubspot_line_item_mapping` editável no painel admin (sem deploy para novos mapeamentos)
+- **Backwards compat MLB**: empresas de Publicação criadas via HubSpot continuam aparecendo em `/mlb/empresas` e widget "Empresas Pendentes" — zero regressão do fluxo Publicação atual
+
+**Requirements:**
+- REQ-37-01 — `HubspotApiClient::fetchDealLineItems(dealId)` consome `GET /crm/v3/objects/deals/{dealId}/associations/line_items` + `GET /crm/v3/objects/line_items/{id}?properties=name,price,quantity,hs_product_id,recurringbillingfrequency`
+- REQ-37-02 — Tabela `hubspot_line_item_mapping` (`line_item_name` → `servico_id`) gerenciável via UI admin; cobre famílias MAP/Polo/Brigada/Gestão/Mentoria/Publicação
+- REQ-37-03 — Coluna `servicos.setor` (enum: `performance`, `publicacao`, `outros`) com seed atualizando Gestão+Mentoria→`performance`, Publicação→`publicacao`, demais→`outros`; default `outros`; migration idempotente
+- REQ-37-04 — Webhook HubSpot (Phase 34-04) estendido: após `criarEmpresa`, busca line items, mapeia via `hubspot_line_item_mapping`, cria `contratos_servico` com `valor_contratado=item.price`, `tipo_cobranca` derivado de `recurringbillingfrequency` (`monthly`→`mensal`, ausente→`unica`), `data_contratacao=now()` — atomicamente em `DB::transaction`
+- REQ-37-05 — Nova rota `/comercial/empresas/listagem` (controller `ComercialController` ou dedicado), exibe TODAS as empresas com filtros: `?servico=`, `?setor=`, `?ordem=recentes|antigas`, `?pendencia=...`, busca por nome — filtros empilháveis (lição Phase 18)
+- REQ-37-06 — Pendências comerciais isoladas no Comercial: `sem_servico`, `sem_valor`, `servico_nao_reconhecido`, `sem_setor`, `dados_close_incompletos`. Cards/badges/contadores no header da listagem Comercial
+- REQ-37-07 — `/companies` filtra apenas empresas com pelo menos 1 contrato ATIVO em serviço cujo `Servico::setor='performance'`; remove tag/pendência `sem_servico` (movida pro Comercial); remove aba Grupos do Companies/Index
+- REQ-37-08 — CRUD de grupos migra pra `/comercial/empresas/listagem` (aba ou seção dedicada); rota `groups.*` reaproveitada; permissions ajustadas
+- REQ-37-09 — `AppLayout` sidebar reorganiza: grupo "Comercial" expansível contendo (Empresas, Grupos, Serviços); item "Serviços" some do nível raiz
+- REQ-37-10 — Empresas legacy não geram pendência comercial: query de pendência checa `EXISTS(hubspot_eventos WHERE company_id_criada = companies.id)` para considerar empresa "de origem HubSpot"
+
+**Success Criteria (what must be TRUE):**
+  1. Quando deal vira `closedwon` no HubSpot, webhook `/api/webhooks/hubspot` busca line items associados, mapeia cada `item.name` para um servico do catálogo via `hubspot_line_item_mapping`, e cria `contratos_servico` na empresa criada com `valor_contratado=item.price`, `tipo_cobranca` derivado de `recurringbillingfrequency` (mensal/única), `data_contratacao=now()` — atomicamente em `DB::transaction`
+  2. Quando `line_item.name` não tem mapeamento no `hubspot_line_item_mapping`, a empresa é criada SEM contrato + pendência comercial `servico_nao_reconhecido` marcada — webhook não falha (retorna 200, registra HubspotEvento.processado com warning)
+  3. Página `/comercial/empresas/listagem` exibe TODAS as empresas (todos os setores) com filtros funcionais: `?servico=`, `?setor=`, `?ordem=recentes|antigas`, `?pendencia=sem_servico|sem_valor|servico_nao_reconhecido` — filtros empilháveis sem perder seleções (padrão Phase 18 snake_case)
+  4. Listagem mostra grupos e permite CRUD de grupos diretamente; admin `Companies/Index` NÃO mostra mais a aba Grupos
+  5. `/companies` passa a listar APENAS empresas que têm pelo menos 1 contrato ATIVO em serviço cujo `Servico::setor='performance'` — query reusa scope existente do `CompanyController` com novo `whereHas('contratosServico.servico', fn($q) => $q->where('ativo', true)->where('setor', 'performance'))`
+  6. `/companies` não mostra mais a tag/pendência `sem_servico` (movida pro Comercial); aba Pendências em `/companies` lista apenas pendências OPERACIONAIS (sem_cust_id, sem_responsavel, sem_grant_ativo, etc)
+  7. `AppLayout` exibe menu "Comercial" expansível contendo: Empresas (listagem nova), Grupos, Serviços (catálogo `/servicos` hoje no `/sistema`); menu "Serviços" some do nível raiz
+  8. Empresas pré-existentes (created_at < deploy desta phase) que não têm contratos válidos NÃO geram pendência comercial — pendência só dispara para empresas com `hubspot_eventos.company_id_criada` apontando pra elas (origem HubSpot)
+  9. Empresas de Publicação criadas via HubSpot continuam aparecendo em `/mlb/empresas` e no widget "Empresas Pendentes" do MLB (zero regressão do fluxo Publicação atual — `MlbController::empresas` continua usando `service_type_label` / `contratos_servico` com serviço Publicação)
+  10. Tabela `hubspot_line_item_mapping` editável via UI admin (rota `/sistema/hubspot-line-items` ou similar) para que comercial cadastre novos mapeamentos sem precisar de deploy
+
+**Plans:** 7 plans em 3 waves
+
+Plans:
+
+**Wave 1** *(paralelo — fundação schema, sem overlap de arquivos)*
+- [ ] 37-01-PLAN.md — Migration `servicos.setor` (enum performance/publicacao/outros) + seed Gestão+Mentoria→performance, Publicação→publicacao + Servico::SETORES const + helpers isPerformance/isPublicacao + scope porSetor + 6 testes (REQ-37-03)
+- [ ] 37-02-PLAN.md — Migration `create_hubspot_line_item_mapping_table` + seed inicial (MAP/Polo/Brigada/Gestão/Mentoria/Publicação) + model HubspotLineItemMapping (scope ativo + relação servico + helper paraNome case-insensitive) + 8 testes (REQ-37-02 schema/model)
+
+**Wave 2** *(bloqueado na Wave 1)*
+- [ ] 37-03-PLAN.md — HubspotApiClient::fetchDealLineItems (2-call pattern: associations + batch de detalhes) + tratamento resiliente 4xx/5xx + 8 testes Http::fake (REQ-37-01)
+- [ ] 37-04-PLAN.md — HubspotWebhookController estendido: processarLineItems via HubspotLineItemMapping::paraNome + cria ContratoServico atomicamente em DB::transaction + tipo_cobranca derivado de recurringbillingfrequency + fallback fluxo legado quando deal sem line items + idempotência preservada + 10 testes Feature ponta-a-ponta (REQ-37-04)
+
+**Wave 3** *(bloqueado na Wave 2 — Plans 37-05/37-06/37-07 paralelizáveis entre si, sem overlap)*
+- [ ] 37-05-PLAN.md — Nova rota /comercial/empresas/listagem (ComercialController::listagem) com filtros snake_case empilháveis (servico, setor, ordem, pendencia, q) + 5 cards de pendência comercial calculados APENAS para empresas com EXISTS(hubspot_eventos.company_id_criada) + página Comercial/EmpresasListagem.jsx com aba Grupos integrada (GruposManager reaproveitado) + sub-item sidebar "Empresas (todos os setores)" + 13 testes (REQ-37-05, REQ-37-06, REQ-37-08, REQ-37-10)
+- [ ] 37-06-PLAN.md — CompanyController::index refoca em Performance via whereHas('contratosServico.servico', $q -> setor performance + ativo) + remove pendência sem_servico do payload + remove aba Grupos do Companies/Index.jsx + 11 testes garantindo zero regressão Phase 35 (whereDoesntHave mlbEmpresa preservado) (REQ-37-07)
+- [ ] 37-07-PLAN.md — `autonomous: false` — AppLayout sidebar reorganizada (Comercial expansível: Empresas/Cadastrar empresa/Grupos/Serviços/HubSpot Line Items; Serviços removido do raiz) + CRUD admin de HubspotLineItemMapping em /sistema/hubspot-line-items (controller + 4 rotas + página React) + 9 testes + checkpoint humano após reorg de menu (REQ-37-09, REQ-37-02 UI)
+
+**Cross-cutting constraints:**
+- pt-BR em comentários, mensagens flash, activity log (CLAUDE.md mandate)
+- `npm run build` obrigatório após cada edição JSX
+- **Deploy agrupado** — não fragmentar: schema + webhook + UI saem juntos (lição Phase 34/35)
+- **NÃO quebrar** webhook HubSpot atual (Phase 34-04) durante migração — testes de regressão obrigatórios
+- **Reusar** `Servico` model + `contratos_servico` (Phase 14) — NÃO criar tabela paralela de contratos
+- Migration `servicos.setor` é idempotente (default=`outros`); seed re-rodável atualiza Gestão/Mentoria→`performance`, Publicação→`publicacao`
+- Empresas legacy continuam funcionando em `/companies` se já têm contrato de Gestão/Mentoria no catálogo (cobertura natural via JOIN)
+- `hubspot_line_item_mapping`: case-insensitive match no `line_item_name` (LOWER comparison) para tolerar variações de capitalização do HubSpot
+
+**UI hint**: yes
+**Autonomous**: false (checkpoint humano após plan do webhook + após reorg de menu)
