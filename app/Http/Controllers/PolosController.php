@@ -48,7 +48,14 @@ class PolosController extends Controller
     public function __construct(
         private EcfDriveService $ecf,
         private AdmanService $adman,
-    ) {}
+    ) {
+        // O /polos processa o CSV POLOS MENSAL (até 5000 linhas) + Adman ao vivo
+        // dos ativos no mês corrente; o pico (~157MB) excede o memory_limit de
+        // 128M do PHP-FPM e derrubava a página com 500 (memory exhausted). Eleva
+        // o teto só para esta área (admin-only, baixa concorrência) — não afeta
+        // a config global do servidor.
+        @ini_set('memory_limit', '512M');
+    }
 
     /**
      * Carrega os ativos do ECF, cruza com o CSV POLOS MENSAL do ECF Drive por cust_id,
