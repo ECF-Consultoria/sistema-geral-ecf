@@ -705,7 +705,27 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
     const mcNum  = (parseFloat(cfg.margem_contribuicao) || 0) / 100;
     const llNum  = (parseFloat(cfg.lucro_liquido) || 0) / 100;
 
-    const emptyRow = { sku: '', descricao: '', custo: '', frete_classico: '', frete_premium: '' };
+    // ── Modo de imposto: 'massa' (padrão) | 'individual' (por produto) ────────
+    // Ausência da chave modo_imposto em precificações antigas = modo massa (compat retroativa).
+    const [modoImposto, setModoImposto] = useState(
+        dados.modo_imposto === 'individual' ? 'individual' : 'massa'
+    );
+
+    // Persiste o modo via onSaveCfg → onChange('precificacao', 'modo_imposto', valor, true).
+    // O valor é a string 'massa'|'individual' — o controller salva sem conversão.
+    function setModo(novo) {
+        setModoImposto(novo);
+        onSaveCfg('modo_imposto', novo);
+    }
+
+    // Helper: no modo individual usa o imposto_individual do produto (string %, ex: "12" → 0.12).
+    // No modo massa devolve o imposto decimal do tier (comportamento atual sem alteração).
+    const impostoEfetivo = (row, tierImpostoDecimal) =>
+        modoImposto === 'individual'
+            ? ((parseFloat(row?.imposto_individual) || 0) / 100)
+            : tierImpostoDecimal;
+
+    const emptyRow = { sku: '', descricao: '', custo: '', frete_classico: '', frete_premium: '', imposto_individual: '' };
 
     function mergeComPlanilha() {
         const planilha = (planilhaProdutos ?? []).filter(p => p.sku?.trim());
