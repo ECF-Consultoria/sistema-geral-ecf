@@ -19,15 +19,13 @@ const ESTAGIO_COLORS = {
 
 // Status do envio do link ao cliente (ONB-ENVIO-LINK)
 const STATUS_ENVIO_LABELS = {
-    falta_enviar: 'Falta enviar',
+    falta_enviar: 'Pendente de envio',
     enviado:      'Enviado',
-    acessou:      'Cliente acessou',
     concluido:    'Concluído',
 };
 const STATUS_ENVIO_BADGE = {
     falta_enviar: 'text-red-300 bg-red-500/10 border-red-500/20',
     enviado:      'text-amber-300 bg-amber-500/10 border-amber-500/20',
-    acessou:      'text-blue-300 bg-blue-500/10 border-blue-500/20',
     concluido:    'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
 };
 
@@ -617,7 +615,7 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose 
                                             )}
                                         </div>
                                         <div>
-                                            {empresa.link_enviado_em == null && empresa.status_envio !== 'concluido' && empresa.status_envio !== 'acessou' && (
+                                            {empresa.link_enviado_em == null && empresa.status_envio !== 'concluido' && (
                                                 <button
                                                     onClick={() => router.post(route('mlb.implementacao.marcar-enviado', empresa.impl_id), {}, { preserveScroll: true })}
                                                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
@@ -754,7 +752,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             <h1 className="text-white font-display font-bold text-xl">Onboarding</h1>
                             {faltamEnviar > 0 && (
                                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20 whitespace-nowrap">
-                                    {faltamEnviar} faltam enviar
+                                    {faltamEnviar} pendente{faltamEnviar !== 1 ? 's' : ''} de envio
                                 </span>
                             )}
                         </div>
@@ -838,7 +836,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             Fora do prazo
                         </button>
 
-                        {/* Toggle "Falta enviar link" — mesmo padrão do botão "Fora do prazo" */}
+                        {/* Toggle "Pendente de envio" — mesmo padrão do botão "Fora do prazo" */}
                         <button
                             onClick={() => aplicarFiltro('falta_enviar', filtros?.falta_enviar ? '' : '1')}
                             className={cn(
@@ -848,7 +846,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                     : 'border-white/[0.08] bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/20'
                             )}
                         >
-                            Falta enviar link
+                            Pendente de envio
                         </button>
 
                         {/* Limpar filtros — aparece quando qualquer filtro está ativo */}
@@ -942,7 +940,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                                         </button>
                                                     </p>
                                                 ) : (
-                                                    empresa.impl_id && empresa.status_envio !== 'concluido' && empresa.status_envio !== 'acessou' && (
+                                                    empresa.impl_id && empresa.status_envio !== 'concluido' && (
                                                         <button
                                                             onClick={() => router.post(route('mlb.implementacao.marcar-enviado', empresa.impl_id), {}, { preserveScroll: true })}
                                                             className="text-emerald-300/70 hover:text-emerald-300 text-[10px] transition-colors whitespace-nowrap"

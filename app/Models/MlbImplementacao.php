@@ -356,14 +356,17 @@ class MlbImplementacao extends Model
      *
      * Precedência: o status reflete a fase atual, não o histórico.
      *   concluido    — todos os itens do checklist marcados (progresso 100%)
-     *   acessou      — cliente acessou o link ao menos uma vez (ultimo_acesso preenchido)
      *   enviado      — equipe marcou manualmente que enviou o link (link_enviado_em preenchido)
      *   falta_enviar — nenhuma das condições acima
+     *
+     * NÃO usamos ultimo_acesso para inferir "cliente acessou": o link público é aberto
+     * também pela própria equipe (testes/conferência), então atribuir esse acesso ao
+     * cliente quebra a lógica. O status reflete apenas o que a equipe controla (envio
+     * manual) + a conclusão do checklist.
      */
     public function statusEnvio(): string
     {
         if ($this->progresso()['pct'] === 100) return 'concluido';
-        if ($this->ultimo_acesso !== null)      return 'acessou';
         if ($this->link_enviado_em !== null)    return 'enviado';
         return 'falta_enviar';
     }
