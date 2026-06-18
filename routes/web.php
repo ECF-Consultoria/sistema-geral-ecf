@@ -35,6 +35,7 @@ use App\Http\Controllers\PpaController;
 use App\Http\Controllers\PpaTaskController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ServicoController;
+use App\Http\Controllers\Sistema\HubspotLineItemMappingController;
 use App\Http\Controllers\SugadorConfigController;
 use App\Http\Controllers\SugadorController;
 use App\Http\Controllers\UserController;
@@ -345,6 +346,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/empresas/{company}/contratos-servico',                  [CompanyController::class, 'storeContrato'])->name('empresas.contratos.store');
         Route::put('/empresas/{company}/contratos-servico/{contrato}',        [CompanyController::class, 'updateContrato'])->name('empresas.contratos.update');
         Route::delete('/empresas/{company}/contratos-servico/{contrato}',     [CompanyController::class, 'destroyContrato'])->name('empresas.contratos.destroy');
+
+        // ─── Phase 37 Plan 37-07 (REQ-37-02) ─────────────────────────────────
+        // UI admin para mapping HubSpot line_item → Servico. Consumido pelo
+        // HubspotWebhookController (Plan 37-04) via HubspotLineItemMapping::paraNome.
+        // Admin pode cadastrar/editar mapeamentos novos sem precisar de deploy
+        // quando o Comercial cria nomes de line item novos no HubSpot.
+        Route::get   ('/sistema/hubspot-line-items',            [HubspotLineItemMappingController::class, 'index'])  ->name('sistema.hubspot-line-items.index');
+        Route::post  ('/sistema/hubspot-line-items',            [HubspotLineItemMappingController::class, 'store'])  ->name('sistema.hubspot-line-items.store');
+        Route::put   ('/sistema/hubspot-line-items/{mapping}',  [HubspotLineItemMappingController::class, 'update']) ->name('sistema.hubspot-line-items.update');
+        Route::delete('/sistema/hubspot-line-items/{mapping}',  [HubspotLineItemMappingController::class, 'destroy'])->name('sistema.hubspot-line-items.destroy');
     });
 });
 
