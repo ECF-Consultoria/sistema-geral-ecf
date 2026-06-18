@@ -743,7 +743,19 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             ? ((parseFloat(row?.imposto_individual) || 0) / 100)
             : tierImpostoDecimal;
 
-    const emptyRow = { sku: '', descricao: '', custo: '', frete_classico: '', frete_premium: '', imposto_individual: '' };
+    // Helpers de MC e LL efetivos — diferem do imposto: campo VAZIO = HERDA o global (mcNum/llNum).
+    // "preenchido" = string não-vazia e não-nula. No modo massa sempre devolve o global.
+    const mcEfetivo = (row) =>
+        (modoImposto === 'individual' && row?.mc_individual !== '' && row?.mc_individual != null)
+            ? ((parseFloat(row.mc_individual) || 0) / 100)
+            : mcNum;
+
+    const llEfetivo = (row) =>
+        (modoImposto === 'individual' && row?.ll_individual !== '' && row?.ll_individual != null)
+            ? ((parseFloat(row.ll_individual) || 0) / 100)
+            : llNum;
+
+    const emptyRow = { sku: '', descricao: '', custo: '', frete_classico: '', frete_premium: '', imposto_individual: '', mc_individual: '', ll_individual: '' };
 
     function mergeComPlanilha() {
         const planilha = (planilhaProdutos ?? []).filter(p => p.sku?.trim());
