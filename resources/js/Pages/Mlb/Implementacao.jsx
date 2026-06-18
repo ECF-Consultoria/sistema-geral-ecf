@@ -17,6 +17,20 @@ const ESTAGIO_COLORS = {
     'Problema':    'text-red-400 bg-red-500/10',
 };
 
+// Status do envio do link ao cliente (ONB-ENVIO-LINK)
+const STATUS_ENVIO_LABELS = {
+    falta_enviar: 'Falta enviar',
+    enviado:      'Enviado',
+    acessou:      'Cliente acessou',
+    concluido:    'Concluído',
+};
+const STATUS_ENVIO_BADGE = {
+    falta_enviar: 'text-red-300 bg-red-500/10 border-red-500/20',
+    enviado:      'text-amber-300 bg-amber-500/10 border-amber-500/20',
+    acessou:      'text-blue-300 bg-blue-500/10 border-blue-500/20',
+    concluido:    'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
+};
+
 function ProgressBar({ pct, feitos, total }) {
     const color = pct === 100 ? '#22c55e' : pct >= 60 ? '#eab308' : '#6366f1';
     return (
@@ -587,6 +601,42 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose 
                                     <ProgressBar pct={empresa.progresso.pct} feitos={empresa.progresso.feitos} total={empresa.progresso.total} />
                                 </div>
                             )}
+                            {/* Status do envio do link (ONB-ENVIO-LINK) */}
+                            {empresa.status_envio && (
+                                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/[0.06] space-y-3">
+                                    <p className="text-white/40 text-[11px] font-medium uppercase tracking-wider">Status do Envio</p>
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border', STATUS_ENVIO_BADGE[empresa.status_envio])}>
+                                                {STATUS_ENVIO_LABELS[empresa.status_envio]}
+                                            </span>
+                                            {empresa.link_enviado_em && (
+                                                <p className="text-white/30 text-[11px] mt-1.5">
+                                                    por {empresa.link_enviado_por ?? '—'} em {empresa.link_enviado_em}
+                                                </p>
+                                            )}
+                                        </div>
+                                        <div>
+                                            {empresa.link_enviado_em == null && empresa.status_envio !== 'concluido' && empresa.status_envio !== 'acessou' && (
+                                                <button
+                                                    onClick={() => router.post(route('mlb.implementacao.marcar-enviado', empresa.impl_id), {}, { preserveScroll: true })}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                >
+                                                    Marcar enviado
+                                                </button>
+                                            )}
+                                            {empresa.link_enviado_em != null && (
+                                                <button
+                                                    onClick={() => router.post(route('mlb.implementacao.desfazer-envio', empresa.impl_id), {}, { preserveScroll: true })}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                >
+                                                    Desfazer envio
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                             {empresa.ultimo_acesso && (
                                 <p className="text-white/30 text-[12px]">Último acesso do cliente: <span className="text-white/60">{empresa.ultimo_acesso}</span></p>
                             )}
@@ -662,7 +712,7 @@ function ImplModal({ empresa, checklist, erp_opcoes, integrador_opcoes, onClose 
     );
 }
 
-export default function Implementacao({ empresas, checklist, erp_opcoes, integrador_opcoes, global_padroes, filtros, polo_opcoes, fase_opcoes }) {
+export default function Implementacao({ empresas, checklist, erp_opcoes, integrador_opcoes, global_padroes, filtros, polo_opcoes, fase_opcoes, usuarios = [] }) {
     const [modal, setModal]         = useState(null);
     const [busca, setBusca]         = useState('');
     const [novaImpl, setNovaImpl]   = useState(false);
@@ -673,11 +723,12 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
     const faseOpts = fase_opcoes ?? [];
 
     function aplicarFiltro(campo, valor) {
-        // Preserva todos os filtros ativos no spread — trocar Polo/Fase não apaga fora_do_prazo e vice-versa
+        // Preserva todos os filtros ativos no spread — trocar qualquer filtro não apaga os outros
         const params = {
             polo:          filtros?.polo ?? '',
             fase:          filtros?.fase ?? '',
             fora_do_prazo: filtros?.fora_do_prazo ? '1' : '',
+            falta_enviar:  filtros?.falta_enviar  ? '1' : '',
             [campo]: valor === '__todos__' ? '' : valor,
         };
         router.get(route('mlb.implementacao.index'), params, {
@@ -686,6 +737,9 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
             replace: true,
         });
     }
+
+    // Contador de empresas que ainda faltam ter o link enviado
+    const faltamEnviar = empresas.filter(e => e.status_envio === 'falta_enviar').length;
 
     // Busca local (complementar aos filtros de Polo/Fase do backend)
     const filtradas = empresas.filter(e => e.nome.toLowerCase().includes(busca.toLowerCase()));
@@ -696,7 +750,14 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                 {/* Header */}
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
-                        <h1 className="text-white font-display font-bold text-xl">Onboarding</h1>
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-white font-display font-bold text-xl">Onboarding</h1>
+                            {faltamEnviar > 0 && (
+                                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20 whitespace-nowrap">
+                                    {faltamEnviar} faltam enviar
+                                </span>
+                            )}
+                        </div>
                         <p className="text-white/40 text-[13px] mt-0.5">Crie onboardings para novos clientes Polos e acompanhe o preenchimento</p>
                     </div>
                     <div className="flex items-center gap-2">
@@ -777,8 +838,21 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             Fora do prazo
                         </button>
 
+                        {/* Toggle "Falta enviar link" — mesmo padrão do botão "Fora do prazo" */}
+                        <button
+                            onClick={() => aplicarFiltro('falta_enviar', filtros?.falta_enviar ? '' : '1')}
+                            className={cn(
+                                'flex items-center gap-1.5 h-9 px-3 rounded-xl border text-[13px] transition-all',
+                                filtros?.falta_enviar
+                                    ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                                    : 'border-white/[0.08] bg-white/[0.03] text-white/40 hover:text-white/70 hover:border-white/20'
+                            )}
+                        >
+                            Falta enviar link
+                        </button>
+
                         {/* Limpar filtros — aparece quando qualquer filtro está ativo */}
-                        {(filtros?.polo || filtros?.fase || filtros?.fora_do_prazo) && (
+                        {(filtros?.polo || filtros?.fase || filtros?.fora_do_prazo || filtros?.falta_enviar) && (
                             <button
                                 onClick={() => router.get(route('mlb.implementacao.index'), {}, { replace: true })}
                                 className="text-white/30 hover:text-white text-[12px] transition-colors"
@@ -798,6 +872,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Polos</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Fase</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden sm:table-cell">Estágio</th>
+                                <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell">Status do envio</th>
+                                <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden lg:table-cell">Responsável</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider">Progresso</th>
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider hidden md:table-cell">Último Acesso</th>
                                 <th className="text-right px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider">Ações</th>
@@ -806,8 +882,8 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                         <tbody>
                             {filtradas.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-12 text-center">
-                                        {busca || filtros?.polo || filtros?.fase || filtros?.fora_do_prazo ? (
+                                    <td colSpan={9} className="px-4 py-12 text-center">
+                                        {busca || filtros?.polo || filtros?.fase || filtros?.fora_do_prazo || filtros?.falta_enviar ? (
                                             <div className="space-y-1">
                                                 <p className="text-white/40 text-[13px] font-semibold">Nenhum resultado</p>
                                                 <p className="text-white/20 text-[12px]">Nenhuma empresa corresponde aos filtros selecionados. Limpe os filtros para ver todas.</p>
@@ -848,6 +924,45 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                             {empresa.estagio ?? '—'}
                                         </span>
                                     </td>
+                                    {/* Coluna Status do envio (ONB-ENVIO-LINK) */}
+                                    <td className="px-4 py-3 hidden md:table-cell">
+                                        {empresa.status_envio ? (
+                                            <div>
+                                                <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border', STATUS_ENVIO_BADGE[empresa.status_envio])}>
+                                                    {STATUS_ENVIO_LABELS[empresa.status_envio]}
+                                                </span>
+                                                {empresa.link_enviado_em && (
+                                                    <p className="text-white/30 text-[10px] mt-0.5">
+                                                        por {empresa.link_enviado_por ?? '—'} em {empresa.link_enviado_em}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span className="text-white/20 text-[12px]">—</span>
+                                        )}
+                                    </td>
+                                    {/* Coluna Responsável (ONB-RESPONSAVEL) */}
+                                    <td className="px-4 py-3 hidden lg:table-cell">
+                                        <Select
+                                            value={empresa.responsavel_id ? String(empresa.responsavel_id) : '__sem__'}
+                                            onValueChange={v => router.patch(
+                                                route('mlb.implementacao.responsavel', empresa.impl_id),
+                                                { responsavel_id: v === '__sem__' ? null : Number(v) },
+                                                { preserveScroll: true, preserveState: true }
+                                            )}
+                                        >
+                                            <SelectTrigger className="h-8 w-36 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white text-[12px]">
+                                                <SelectValue placeholder="Sem responsável" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {/* CRÍTICO: nunca <SelectItem value=""> — sentinela '__sem__' → null (memória do projeto) */}
+                                                <SelectItem value="__sem__">Sem responsável</SelectItem>
+                                                {usuarios.map(u => (
+                                                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </td>
                                     <td className="px-4 py-3">
                                         {empresa.progresso ? (
                                             <ProgressBar pct={empresa.progresso.pct} feitos={empresa.progresso.feitos} total={empresa.progresso.total} />
@@ -859,7 +974,24 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                         <span className="text-white/40 text-[12px]">{empresa.ultimo_acesso ?? '—'}</span>
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <div className="flex items-center justify-end gap-2">
+                                        <div className="flex items-center justify-end gap-2 flex-wrap">
+                                            {/* Botões marcar/desfazer envio do link (ONB-ENVIO-LINK) */}
+                                            {empresa.impl_id && empresa.link_enviado_em == null && empresa.status_envio !== 'concluido' && empresa.status_envio !== 'acessou' && (
+                                                <button
+                                                    onClick={() => router.post(route('mlb.implementacao.marcar-enviado', empresa.impl_id), {}, { preserveScroll: true })}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                >
+                                                    Marcar enviado
+                                                </button>
+                                            )}
+                                            {empresa.impl_id && empresa.link_enviado_em != null && (
+                                                <button
+                                                    onClick={() => router.post(route('mlb.implementacao.desfazer-envio', empresa.impl_id), {}, { preserveScroll: true })}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                >
+                                                    Desfazer envio
+                                                </button>
+                                            )}
                                             {/* Link para a ficha de Onboarding (ONB-01) */}
                                             {empresa.impl_id && (
                                                 <Link
