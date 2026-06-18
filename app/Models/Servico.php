@@ -13,6 +13,13 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * Frente A (Módulo Serviços): catálogo mestre que alimenta o modal de
  * contrato em Companies/Show. Activity log via spatie/laravel-activitylog
  * (consistente com User/Company/Goal).
+ *
+ * Phase 37 / Plan 37-01 (REQ-37-03) — coluna `setor` permite categorização
+ * Performance / Publicação / Outros usada por:
+ *  - /companies (filtro Performance via whereHas contratos_servico.servico.setor='performance')
+ *  - /comercial/empresas/listagem (categorização visual por setor)
+ *
+ * Sem coluna paralela em `companies`: setor sempre derivado do catálogo.
  */
 class Servico extends Model
 {
@@ -25,6 +32,7 @@ class Servico extends Model
         'valor_padrao',
         'tipo_cobranca',
         'ativo',
+        'setor',
     ];
 
     protected $casts = [
@@ -35,6 +43,20 @@ class Servico extends Model
     // ─── Constants de tipo de cobrança ──────────────────────────────────────
     public const TIPO_MENSAL = 'mensal';
     public const TIPO_UNICA  = 'unica';
+
+    // ─── Constants de setor (Phase 37 Plan 37-01 — REQ-37-03) ───────────────
+    public const SETOR_PERFORMANCE = 'performance';
+    public const SETOR_PUBLICACAO  = 'publicacao';
+    public const SETOR_OUTROS      = 'outros';
+
+    /**
+     * Lista plana dos setores válidos (espelha o enum do schema).
+     */
+    public const SETORES = [
+        self::SETOR_PERFORMANCE,
+        self::SETOR_PUBLICACAO,
+        self::SETOR_OUTROS,
+    ];
 
     /**
      * Mapeamento tipo → label para UI/relatórios.
@@ -47,10 +69,22 @@ class Servico extends Model
         ];
     }
 
+    /**
+     * Mapeamento setor → label pt-BR para UI/relatórios (Phase 37).
+     */
+    public static function setoresLabels(): array
+    {
+        return [
+            self::SETOR_PERFORMANCE => 'Performance',
+            self::SETOR_PUBLICACAO  => 'Publicação',
+            self::SETOR_OUTROS      => 'Outros',
+        ];
+    }
+
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo'])
+            ->logOnly(['nome', 'valor_padrao', 'tipo_cobranca', 'ativo', 'setor'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->setDescriptionForEvent(fn(string $eventName) => match ($eventName) {
@@ -75,5 +109,31 @@ class Servico extends Model
     public function scopeActive($query)
     {
         return $query->where('ativo', true);
+    }
+
+    /**
+     * Scope: filtra serviços por setor (Phase 37).
+     *
+     * Exemplo: Servico::porSetor('performance')->get()
+     */
+    public function scopePorSetor($query, string $setor)
+    {
+        return $query->where('setor', $setor);
+    }
+
+    /**
+     * Helper: este serviço pertence ao setor Performance? (Phase 37)
+     */
+    public function isPerformance(): bool
+    {
+        return $this->setor === self::SETOR_PERFORMANCE;
+    }
+
+    /**
+     * Helper: este serviço pertence ao setor Publicação? (Phase 37)
+     */
+    public function isPublicacao(): bool
+    {
+        return $this->setor === self::SETOR_PUBLICACAO;
     }
 }
