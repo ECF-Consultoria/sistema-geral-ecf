@@ -5,7 +5,7 @@ import { Input } from '@/Components/ui/input';
 import { Badge } from '@/Components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, Link, router, usePage } from '@inertiajs/react';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
     Building2, Search, Tag, Eye, Briefcase, ChevronLeft, ChevronRight,
     AlertCircle, Plus, ListChecks, Webhook,
@@ -164,6 +164,7 @@ function Paginator({ paginator }) {
 
 export default function EmpresasListagem({
     companies,
+    companies_para_grupos = [],
     filters = {},
     pendencia_counts = {},
     servico_counts = [],
@@ -210,11 +211,6 @@ export default function EmpresasListagem({
             window.history.replaceState({}, '', u.toString());
         }
     };
-
-    const totalGruposEmpresas = useMemo(
-        () => companies.data?.length ?? 0,
-        [companies.data]
-    );
 
     return (
         <AppLayout title="Comercial · Empresas">
@@ -421,14 +417,17 @@ export default function EmpresasListagem({
                 {tab === 'grupos' && (
                     <Card>
                         <CardContent className="p-4 space-y-4">
+                            {/* Phase 37 fix pós-deploy — usa companies_para_grupos (TODAS
+                                as ativas) em vez de companies.data (paginado/filtrado),
+                                senão membros de grupos não aparecem mesmo com count correto. */}
                             <GruposManager
                                 grupos={grupos}
-                                companies={companies.data || []}
+                                companies={companies_para_grupos}
                                 servicos={servicos_disponiveis}
                             />
                             <p className="text-white/40 text-[11px] leading-relaxed border-t border-white/[0.06] pt-3">
                                 <ListChecks size={11} className="inline mr-1" />
-                                Apenas {totalGruposEmpresas} empresa(s) da página atual aparecem como candidatas para vincular. Use os filtros da aba "Empresas" para refinar antes de gerenciar grupos.
+                                {companies_para_grupos.length} empresa(s) ativas disponíveis para vincular.
                             </p>
                         </CardContent>
                     </Card>

@@ -104,11 +104,10 @@ const NAV_TREE = [
             // 'Cadastrar empresa' (clareza) e routeName pra 'comercial.empresas.novo'
             // pra evitar o hop do redirect 302.
             { label: 'Cadastrar empresa', routeName: 'comercial.empresas.novo', page: 'Comercial/NovaEmpresa', icon: Building2, permission: 'comercial.cadastrar_empresa' },
-            // Phase 37 Plan 37-07 — Grupos aponta para a mesma listagem unificada;
-            // ao chegar lá, o usuário clica na aba "Grupos" (entregue no Plan 37-05).
-            // O helper de menu atual nao suporta query param na rota nomeada — quando
-            // suportar, refinar para `?tab=grupos`. Mesma permission_key pq mesma URL.
-            { label: 'Grupos', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
+            // Phase 37 Plan 37-07 — Grupos aponta para a mesma listagem unificada
+            // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
+            // Ziggy; segments fora do path viram query string automaticamente).
+            { label: 'Grupos', routeName: 'comercial.empresas.listagem', routeParams: { tab: 'grupos' }, page: 'Comercial/EmpresasListagem', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
             // Phase 37 Plan 37-07 (REQ-37-09) — Serviços movido do nivel raiz.
             // Permission 'sistema.servicos' preservada para manter o gating de
             // catalogo (admin sempre; outros usuarios via setor_permissoes).

@@ -331,17 +331,33 @@ class ComercialController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'color']);
 
+        // Phase 37 fix pós-deploy — payload enxuto com TODAS as empresas ativas
+        // para alimentar GruposManager (membros do grupo + AddCompanyPicker). O
+        // `companies` principal é paginado/filtrado, então não serve aqui — sem
+        // este array, membros do grupo aparecem como "Nenhuma empresa neste grupo"
+        // mesmo quando o header conta corretamente via `g.companies_count`.
+        $companiesParaGrupos = Company::where('active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'active', 'company_group_id'])
+            ->map(fn($c) => [
+                'id'               => $c->id,
+                'name'             => $c->name,
+                'active'           => $c->active,
+                'company_group_id' => $c->company_group_id,
+            ]);
+
         $servicosDisponiveis = Servico::where('ativo', true)
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca', 'setor']);
 
         return Inertia::render('Comercial/EmpresasListagem', [
-            'companies'            => $paginator,
-            'filters'              => $filters,
-            'pendencia_counts'     => $pendenciaCounts,
-            'servico_counts'       => $servicoCounts,
-            'grupos'               => $grupos,
-            'servicos_disponiveis' => $servicosDisponiveis,
+            'companies'             => $paginator,
+            'companies_para_grupos' => $companiesParaGrupos,
+            'filters'               => $filters,
+            'pendencia_counts'      => $pendenciaCounts,
+            'servico_counts'        => $servicoCounts,
+            'grupos'                => $grupos,
+            'servicos_disponiveis'  => $servicosDisponiveis,
         ]);
     }
 

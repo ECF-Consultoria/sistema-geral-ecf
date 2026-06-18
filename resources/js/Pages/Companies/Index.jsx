@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, Link, router, useRemember, usePage } from '@inertiajs/react';
 import { useState } from 'react';
-import { Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw, Tag } from 'lucide-react';
+import { Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw, Tag, Briefcase } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 // Phase 37 Plan 37-06 (REQ-37-07) — GruposManager removido daqui; aba Grupos
