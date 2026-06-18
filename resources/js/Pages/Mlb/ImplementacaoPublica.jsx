@@ -817,9 +817,20 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
         handleChange(novo);
     }
 
-    // Adiciona um novo produto em branco e seleciona-o (catálogo do Simulador).
+    // Adiciona um novo produto e o seleciona. O novo produto "chega" com a MESMA precificação
+    // (imposto/MC/LL) do produto atualmente selecionado, como ponto de partida — assim você não
+    // re-digita os alvos. Custo, frete, SKU e descrição ficam em branco (dados físicos do novo
+    // produto). Como cada linha é um objeto próprio e imutável, editar um produto NÃO reflete
+    // nos outros (nem o novo no anterior, nem o anterior no novo).
     function addProduto() {
-        const novo = [...rows, { ...emptyRow }];
+        const atual = rows[selIdx] ?? {};
+        const novoProduto = {
+            ...emptyRow,
+            imposto_individual: atual.imposto_individual ?? '',
+            mc_individual:      atual.mc_individual ?? '',
+            ll_individual:      atual.ll_individual ?? '',
+        };
+        const novo = [...rows, novoProduto];
         handleChange(novo);
         setSelIdx(novo.length - 1);
     }
