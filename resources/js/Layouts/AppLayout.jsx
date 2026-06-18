@@ -45,7 +45,9 @@ const NAV_TREE = [
     { label: 'Empresas', routeName: 'companies.index', page: 'Companies', icon: Building2, permission: 'core.empresas' },
 
     // ── Itens de topo ───────────────────────────────────────────────────────
-    { label: 'Serviços',            routeName: 'servicos.index',          page: 'Servicos',         icon: Briefcase,    permission: 'sistema.servicos' },
+    // Phase 37 Plan 37-07 (REQ-37-09) — item "Serviços" removido do nivel raiz;
+    // movido para dentro do grupo Comercial abaixo (junto com HubSpot Line Items
+    // e Grupos) pq a manutencao do catalogo eh atribuicao do setor Comercial.
     { label: 'Usuários',            routeName: 'users.index',             page: 'Users',            icon: Users,        permission: 'core.usuarios' },
     { label: 'Setores',             routeName: 'admin.setores.index',     page: 'Admin/Setores',    icon: Shield,       permission: 'sistema.setores' },
     { label: 'Enviar notificação',  routeName: 'notificacoes.nova',       page: 'Notificacoes/Nova', icon: Send,        permission: 'notificacoes.criar' },
@@ -83,6 +85,10 @@ const NAV_TREE = [
     },
 
     // ── Grupo: Comercial ────────────────────────────────────────────────────
+    // Phase 37 Plan 37-07 (REQ-37-09) — sidebar consolidada do setor Comercial.
+    // Serviços migrou pra cá do nível raiz; HubSpot Line Items é UI nova admin
+    // pra gerenciar mappings line_item → Servico (Plan 37-07 Task 1-2). Grupos
+    // aponta para a aba Grupos da listagem (entregue no Plan 37-05).
     {
         group: 'Comercial',
         icon: Briefcase,
@@ -98,6 +104,21 @@ const NAV_TREE = [
             // 'Cadastrar empresa' (clareza) e routeName pra 'comercial.empresas.novo'
             // pra evitar o hop do redirect 302.
             { label: 'Cadastrar empresa', routeName: 'comercial.empresas.novo', page: 'Comercial/NovaEmpresa', icon: Building2, permission: 'comercial.cadastrar_empresa' },
+            // Phase 37 Plan 37-07 — Grupos aponta para a mesma listagem unificada;
+            // ao chegar lá, o usuário clica na aba "Grupos" (entregue no Plan 37-05).
+            // O helper de menu atual nao suporta query param na rota nomeada — quando
+            // suportar, refinar para `?tab=grupos`. Mesma permission_key pq mesma URL.
+            { label: 'Grupos', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: ListChecks, permission: 'comercial.cadastrar_empresa' },
+            // Phase 37 Plan 37-07 (REQ-37-09) — Serviços movido do nivel raiz.
+            // Permission 'sistema.servicos' preservada para manter o gating de
+            // catalogo (admin sempre; outros usuarios via setor_permissoes).
+            { label: 'Serviços', routeName: 'servicos.index', page: 'Servicos', icon: Briefcase, permission: 'sistema.servicos' },
+            // Phase 37 Plan 37-07 (REQ-37-02) — UI admin do mapping HubSpot.
+            // excludeRoles mantém o sub-item invisível para todos os papeis
+            // não-admin (mesmo pattern do "Configuração NPS" do grupo NPS).
+            // Sem permission_key dedicado: defesa em profundidade no controller
+            // via grupo de rotas role:admin.
+            { label: 'HubSpot Line Items', routeName: 'sistema.hubspot-line-items.index', page: 'Sistema/HubspotLineItems', icon: Link2, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
 
