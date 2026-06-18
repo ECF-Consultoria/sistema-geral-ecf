@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome + DB::transaction atomica + branch line items vs fluxo legado Phase 34/35 (10/10 testes verdes, 57 assertions; zero regressao Phase 34/35/37)
-last_updated: "2026-06-18T19:06:06Z"
-last_activity: 2026-06-18 -- Phase 37 Plan 37-04 completo
+stopped_at: Phase 37 Plan 37-05 completo — Listagem Comercial unificada /comercial/empresas/listagem com filtros snake_case empilhaveis (servico/setor/ordem/pendencia/q) + 5 cards de pendencia comercial isoladas (apenas origem HubSpot, REQ-37-10) + aba Grupos via GruposManager + sub-item AppLayout (17/17 testes verdes, 62 assertions; zero regressao Phase 34/35/36/37 — 99/99)
+last_updated: "2026-06-18T20:00:00Z"
+last_activity: 2026-06-18 -- Phase 37 Plan 37-05 completo
 progress:
   total_phases: 32
   completed_phases: 19
   total_plans: 54
-  completed_plans: 46
-  percent: 65
+  completed_plans: 47
+  percent: 66
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 2 COMPLETA
-Plan: 37-04 (HubspotWebhookController + processarLineItems + Phase37WebhookLineItemsTest) **DONE** — 2 commits TDD (0f42abb RED → b26b42d GREEN), 10/10 testes verdes (57 assertions), zero regressao Phase 34 (6/6), Phase 35 OnboardingPrazo (6/6), suite Phase 37 total: 45/45 verdes (191 assertions)
-Status: Wave 2 COMPLETA (37-03 + 37-04 done). Próximo: Wave 3 (Plans 37-05/06/07 paralelizáveis — listagem comercial + refoco Companies + UI admin mapping)
-Last activity: 2026-06-18 -- Phase 37 Plan 37-04 completo
+Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 3 EM ANDAMENTO
+Plan: 37-05 (ComercialController::listagem + Comercial/EmpresasListagem + AppLayout sub-item + Phase37ComercialListagemTest) **DONE** — 3 commits TDD (28b1e42 RED → 4ecd6b3 controller GREEN → eae9036 page/sidebar GREEN), 17/17 testes verdes (62 assertions), zero regressao Phase 34/35/36/37 (99/99 — 545 assertions)
+Status: Wave 3 — 37-05 done. Próximo: 37-06 (refoco /companies em Performance) e 37-07 (UI admin mapping + reorg final sidebar)
+Last activity: 2026-06-18 -- Phase 37 Plan 37-05 completo
 
 ## Performance Metrics
 
@@ -88,6 +88,7 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-04 completo
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P02 | 22min | 4 commits (TDD) | 4 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P03 | 18min | 2 commits (TDD) | 2 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P04 | 22min | 2 commits (TDD) | 2 files |
+| Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P05 | 22min | 3 commits (TDD) | 6 files |
 
 ## Accumulated Context
 
