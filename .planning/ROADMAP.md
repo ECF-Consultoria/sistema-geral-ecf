@@ -776,7 +776,7 @@ Plans:
 
 **Wave 2** *(bloqueado na Wave 1)*
 - [x] 37-03-PLAN.md — HubspotApiClient::fetchDealLineItems (2-call pattern: associations + batch loop de detalhes) + tratamento resiliente 4xx/5xx (associations → []; line_item individual → log warning + skip) + cast defensivo price/quantity + 9 testes Http::fake / 28 assertions (REQ-37-01) (completed 2026-06-18)
-- [ ] 37-04-PLAN.md — HubspotWebhookController estendido: processarLineItems via HubspotLineItemMapping::paraNome + cria ContratoServico atomicamente em DB::transaction + tipo_cobranca derivado de recurringbillingfrequency + fallback fluxo legado quando deal sem line items + idempotência preservada + 10 testes Feature ponta-a-ponta (REQ-37-04)
+- [x] 37-04-PLAN.md — HubspotWebhookController estendido: processarLineItems via HubspotLineItemMapping::paraNome + cria ContratoServico atomicamente em DB::transaction + tipo_cobranca derivado de recurringbillingfrequency (anotado em observacoes, coluna nao existe em contratos_servico) + fallback fluxo legado quando deal sem line items + idempotência preservada + 10 testes Feature ponta-a-ponta / 57 assertions (REQ-37-04) (completed 2026-06-18)
 
 **Wave 3** *(bloqueado na Wave 2 — Plans 37-05/37-06/37-07 paralelizáveis entre si, sem overlap)*
 - [ ] 37-05-PLAN.md — Nova rota /comercial/empresas/listagem (ComercialController::listagem) com filtros snake_case empilháveis (servico, setor, ordem, pendencia, q) + 5 cards de pendência comercial calculados APENAS para empresas com EXISTS(hubspot_eventos.company_id_criada) + página Comercial/EmpresasListagem.jsx com aba Grupos integrada (GruposManager reaproveitado) + sub-item sidebar "Empresas (todos os setores)" + 13 testes (REQ-37-05, REQ-37-06, REQ-37-08, REQ-37-10)

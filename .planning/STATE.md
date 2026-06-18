@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 37 Plan 37-03 completo — HubspotApiClient::fetchDealLineItems resiliente (2-call pattern associations + line_items batch loop; 9/9 testes verdes, 28 assertions; zero regressao Phase 34)
-last_updated: "2026-06-18T20:00:00Z"
-last_activity: 2026-06-18 -- Phase 37 Plan 37-03 completo
+stopped_at: Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome + DB::transaction atomica + branch line items vs fluxo legado Phase 34/35 (10/10 testes verdes, 57 assertions; zero regressao Phase 34/35/37)
+last_updated: "2026-06-18T19:06:06Z"
+last_activity: 2026-06-18 -- Phase 37 Plan 37-04 completo
 progress:
   total_phases: 32
   completed_phases: 19
   total_plans: 54
-  completed_plans: 45
-  percent: 63
+  completed_plans: 46
+  percent: 65
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 2 em execução
-Plan: 37-03 (HubspotApiClient::fetchDealLineItems + Phase37LineItemsFetchTest) **DONE** — 2 commits TDD (3cbb1d6 RED → b2adcc7 GREEN), 9/9 testes verdes (28 assertions), zero regressao Phase 34 (6/6), suite Phase 37 total: 35/35 verdes (134 assertions)
-Status: Wave 2 parcial (37-03 done). Próximo: 37-04 (HubspotWebhookController estendido — consumir fetchDealLineItems + materializar contratos_servico via paraNome do Plan 37-02)
-Last activity: 2026-06-18 -- Phase 37 Plan 37-03 completo
+Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 2 COMPLETA
+Plan: 37-04 (HubspotWebhookController + processarLineItems + Phase37WebhookLineItemsTest) **DONE** — 2 commits TDD (0f42abb RED → b26b42d GREEN), 10/10 testes verdes (57 assertions), zero regressao Phase 34 (6/6), Phase 35 OnboardingPrazo (6/6), suite Phase 37 total: 45/45 verdes (191 assertions)
+Status: Wave 2 COMPLETA (37-03 + 37-04 done). Próximo: Wave 3 (Plans 37-05/06/07 paralelizáveis — listagem comercial + refoco Companies + UI admin mapping)
+Last activity: 2026-06-18 -- Phase 37 Plan 37-04 completo
 
 ## Performance Metrics
 
@@ -87,6 +87,7 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-03 completo
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P01 | 15min | 3 commits (TDD) | 4 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P02 | 22min | 4 commits (TDD) | 4 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P03 | 18min | 2 commits (TDD) | 2 files |
+| Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P04 | 22min | 2 commits (TDD) | 2 files |
 
 ## Accumulated Context
 
@@ -380,6 +381,18 @@ Last activity: 2026-06-18 -- Phase 37 Plan 37-03 completo
 - **Pequeno desvio tecnico:** `Log::spy()` retorna null em `Log::channel('ecf-webhooks')` — substituido por `Log::shouldReceive('channel')->andReturn($loggerMock)` (Mockery) no test_line_item_individual_500. Mesma garantia, primitiva correta.
 - **CRITICO: NAO fazer deploy do Plan 37-03 sozinho** — wrapper existe mas nenhum caller consome. Agrupar deploy com 37-04 (webhook) + 37-05/06/07.
 
+### Decisões do Plan 37-04 (registradas)
+
+- **`tipo_cobranca` anotada em `ContratoServico.observacoes` (NÃO em coluna nova)** — `contratos_servico` não tem coluna `tipo_cobranca` (ela vive em `servicos`, conforme migration `2026_05_26_120002_create_contratos_servico_table.php`). Phase 37 não altera schema — preserva a informação derivada do `recurringbillingfrequency` em formato auditável (`"tipo_cobranca: mensal (HubSpot line_item: MAP)"`). Plan previu explicitamente este ajuste como Rule 1 - Bug deviation no Passo D.
+- **Branch line items vs legado dentro do mesmo `DB::transaction`** — plan deu a opção de mover line items para fora; escolhi DENTRO (D-04 atomicidade Phase 37). `$evento` passado via `use ()` no closure permite gravar `payload['line_items_nao_mapeados']` na mesma unidade atômica de `criarEmpresa`. Falha parcial faz rollback total Company+ContratoServico+MlbEmpresa+payload warning.
+- **Guard contra duplicação `MlbEmpresa` por empresa** — quando 2 line items mapeiam para Polos+Assessoria na mesma empresa, `rotearImplementacao()` cria a 1ª e pula as demais via `MlbEmpresa::where('company_id', X)->exists()`. Sem isso, o `foreach $servicosCriados` criaria 2 MlbEmpresa por empresa (regressão Phase 35-02 D-05).
+- **Mapping inativo == mapping ausente** — `HubspotLineItemMapping::paraNome()` já filtra por `scope ativo()` (Plan 37-02). Adicionei guard defensivo `!$mapping->servico->ativo` para também tratar Servico inativo (admin pode desativar mapping E manter servico ativo, ou vice-versa). Caso T9 valida.
+- **Status `processado` mesmo com line items não mapeados** — webhook retorna 200 (HubSpot não retentaria), pendência comercial fica responsabilidade da listagem Comercial (Plan 37-05). Não-mapeado **não é erro**: é estado válido onde admin precisa cadastrar mapeamento novo via UI Plan 37-06/07.
+- **Test `setUp` limpa `servicos` + `hubspot_line_item_mapping` + `contratos_servico`** — RefreshDatabase aplica seeds automáticos (Phase 14 cadastra catálogo + Phase 37-02 cadastra 8 mappings); sem o reset, contagens explodiriam. Mesmo padrão estabelecido no Plan 37-02.
+- **Http::fake ordem importa (first-match-wins)** — URLs específicas (`/associations/companies`, `/line_items/{id}*`) ANTES do glob `/deals/{id}*`. Versão inicial do helper `mockHubspot` falhou 8/10 porque o glob capturava `/deals/{id}/associations/companies` antes do mock específico. Resolvido reordenando — comportamento documentado no helper para referência futura.
+- **3 métodos privados novos extraídos** (`processarLineItems`/`processarServicoLegado`/`rotearImplementacao`) — fluxo legado Phase 34/35 movido para método nomeado SEM mudar comportamento, facilitando teste e leitura. Roteamento MlbEmpresa avaliado por CADA serviço criado (era antes só pelo servico_ecf do deal).
+- **CRÍTICO: NÃO fazer deploy do Plan 37-04 sozinho** — depende do Plan 37-02 (tabela `hubspot_line_item_mapping` + seed) e Plan 37-03 (`fetchDealLineItems`). Agrupar deploy dos 7 plans da Phase 37 conforme lição Phase 34/35. Pos-deploy: `php artisan migrate --force && php artisan cache:clear`.
+
 ### Decisões do Plan 33-01 (registradas)
 
 - **`opcoes` forcadas a null fora de tipo=multipla** — backend defensivo no `criarPerguntaExtra`/`atualizarPerguntaExtra` zera o array mesmo se cliente enviar. UI nao precisa zerar.
@@ -452,21 +465,27 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-18T19:00:00Z
-Stopped at: Phase 37 Plan 37-02 completo — tabela hubspot_line_item_mapping + model HubspotLineItemMapping com paraNome case-insensitive + seed canônico (RED→GREEN)
+Last session: 2026-06-18T19:06:06Z
+Stopped at: Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome (RED→GREEN). Wave 2 COMPLETA.
 
 **Estado para próxima sessão retomar:**
 
-- SUMMARY: `.planning/phases/37-onboarding-comercial-unificado-via-hubspot-line-items/37-02-SUMMARY.md`
-- Phase 37 Wave 1 COMPLETA (Plans 37-01 + 37-02). Pronto para Wave 2.
-- Plan 37-02 entregue:
-  - Migration 100003: tabela `hubspot_line_item_mapping` (line_item_name UNIQUE, servico_id FK cascade, ativo, observacoes, index composto `(ativo, line_item_name)`)
-  - Migration 100004: seed canônico (8 famílias — MAP/MAP PREMIUM/Polo/POLO/Brigada/Gestão/Mentoria/Publicação)
-  - `app/Models/HubspotLineItemMapping.php`: belongsTo Servico + scope `ativo()` + helper estático `paraNome(string)` case-insensitive com eager-load `with('servico')` + ignora inativos
-  - `tests/Feature/Phase37LineItemMappingTest.php`: 9 testes verdes (23 assertions)
-- TDD: commits RED→GREEN limpos (a3085be → 6b14a89 → 5543ab5 → 0557342)
-- Zero regressão Phase 37 (26/26 verdes: 9 Plan 37-02 + 6 Plan 37-01 + 11 MlbDadosMl Phase 37)
-- Estado em dev (MySQL utf8mb4_unicode_ci): 7 mappings seedados (POLO/Polo colapsado por collation case-insensitive — comportamento desejado; paraNome já é case-insensitive)
-- **Próximo passo natural:** Wave 2 — executar Plan 37-03 (HubspotApiClient::fetchDealLineItems) E/OU Plan 37-04 (webhook estendido que consumirá `HubspotLineItemMapping::paraNome()` deste plan)
-- **Deploy:** NÃO fazer deploy do Plan 37-02 sozinho — agrupar com Plans 37-03/04/05/06/07 (deploy agrupado da Phase 37, lição Phase 34/35). Pos-deploy: `php artisan migrate --force && php artisan cache:clear`
-- HEAD: `0557342` test(37-02): consolida suite com setUp truncate para isolar cenario controlado (Task 3 GREEN)
+- SUMMARY: `.planning/phases/37-onboarding-comercial-unificado-via-hubspot-line-items/37-04-SUMMARY.md`
+- Phase 37 Wave 2 COMPLETA (Plans 37-03 + 37-04). Pronto para Wave 3.
+- Plan 37-04 entregue:
+  - `HubspotWebhookController::processar()` injeta `$lineItems = $api->fetchDealLineItems(...)` ANTES de `criarEmpresa`
+  - `criarEmpresa()` aceita 2 params novos: `array $lineItems = []` + `?HubspotEvento $evento = null`
+  - 3 métodos privados novos: `processarLineItems()`, `processarServicoLegado()`, `rotearImplementacao()`
+  - Branch atomico em DB::transaction unica: line items HubSpot tem prioridade total; vazio cai no fluxo Phase 34/35
+  - tipo_cobranca anotada em `ContratoServico.observacoes` (coluna nao existe em contratos_servico)
+  - Warnings persistidos em `HubspotEvento.payload['line_items_nao_mapeados']` + log canal `ecf-webhooks`
+  - Roteamento MlbEmpresa avaliado por CADA servico criado + guard contra duplicacao
+  - `tests/Feature/Phase37WebhookLineItemsTest.php`: 10 testes verdes (57 assertions)
+- TDD: commits RED→GREEN limpos (0f42abb → b26b42d)
+- Zero regressao confirmada: Phase 34HubspotWebhook (6/6), Phase 35 OnboardingPrazo (6/6), Phase 37 total (45/45)
+- **Próximo passo natural:** Wave 3 — Plans 37-05/06/07 paralelizáveis:
+  - 37-05: listagem `/comercial/empresas/listagem` (filtros snake_case + 5 cards de pendência + aba Grupos)
+  - 37-06: refoco `/companies` em Performance (whereHas contratos_servico.servico.setor=performance)
+  - 37-07: UI admin `/sistema/hubspot-line-items` + reorg sidebar Comercial (autonomous: false — checkpoint humano)
+- **Deploy:** NÃO fazer deploy do Plan 37-04 sozinho — agrupar com Plans 37-02/03/05/06/07 (deploy agrupado Phase 37, lição Phase 34/35). Pos-deploy: `php artisan migrate --force && php artisan cache:clear`
+- HEAD: `b26b42d` feat(37-04): HubspotWebhookController consome line items + materializa ContratoServico (GREEN)
