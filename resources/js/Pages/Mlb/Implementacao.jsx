@@ -863,9 +863,9 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                     </div>
                 )}
 
-                {/* Tabela */}
-                <div className="card-ecf rounded-2xl overflow-hidden">
-                    <table className="w-full">
+                {/* Tabela — rola horizontalmente em telas estreitas em vez de espremer as colunas */}
+                <div className="card-ecf rounded-2xl overflow-x-auto">
+                    <table className="w-full min-w-[860px]">
                         <thead>
                             <tr className="border-b border-white/[0.06]">
                                 <th className="text-left px-4 py-3 text-white/30 text-[11px] font-semibold uppercase tracking-wider">Empresa</th>
@@ -900,7 +900,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                             {filtradas.map((empresa, idx) => (
                                 <tr
                                     key={empresa.id}
-                                    className={cn('border-b border-white/[0.04] transition-colors hover:bg-white/[0.02]', idx === filtradas.length - 1 && 'border-b-0')}
+                                    className={cn('border-b border-white/[0.04] transition-colors hover:bg-white/[0.02] [&>td]:align-top', idx === filtradas.length - 1 && 'border-b-0')}
                                 >
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2 flex-wrap">
@@ -924,17 +924,32 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                             {empresa.estagio ?? '—'}
                                         </span>
                                     </td>
-                                    {/* Coluna Status do envio (ONB-ENVIO-LINK) */}
+                                    {/* Coluna Status do envio (ONB-ENVIO-LINK) — badge + ação de envio consolidada */}
                                     <td className="px-4 py-3 hidden md:table-cell">
                                         {empresa.status_envio ? (
-                                            <div>
-                                                <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border', STATUS_ENVIO_BADGE[empresa.status_envio])}>
+                                            <div className="flex flex-col items-start gap-1">
+                                                <span className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full border whitespace-nowrap', STATUS_ENVIO_BADGE[empresa.status_envio])}>
                                                     {STATUS_ENVIO_LABELS[empresa.status_envio]}
                                                 </span>
-                                                {empresa.link_enviado_em && (
-                                                    <p className="text-white/30 text-[10px] mt-0.5">
+                                                {empresa.link_enviado_em ? (
+                                                    <p className="text-white/30 text-[10px] leading-tight">
                                                         por {empresa.link_enviado_por ?? '—'} em {empresa.link_enviado_em}
+                                                        <button
+                                                            onClick={() => router.post(route('mlb.implementacao.desfazer-envio', empresa.impl_id), {}, { preserveScroll: true })}
+                                                            className="ml-2 text-white/30 hover:text-white/60 transition-colors"
+                                                        >
+                                                            Desfazer
+                                                        </button>
                                                     </p>
+                                                ) : (
+                                                    empresa.impl_id && empresa.status_envio !== 'concluido' && empresa.status_envio !== 'acessou' && (
+                                                        <button
+                                                            onClick={() => router.post(route('mlb.implementacao.marcar-enviado', empresa.impl_id), {}, { preserveScroll: true })}
+                                                            className="text-emerald-300/70 hover:text-emerald-300 text-[10px] transition-colors whitespace-nowrap"
+                                                        >
+                                                            Marcar enviado
+                                                        </button>
+                                                    )
                                                 )}
                                             </div>
                                         ) : (
@@ -974,29 +989,12 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                         <span className="text-white/40 text-[12px]">{empresa.ultimo_acesso ?? '—'}</span>
                                     </td>
                                     <td className="px-4 py-3 text-right">
-                                        <div className="flex items-center justify-end gap-2 flex-wrap">
-                                            {/* Botões marcar/desfazer envio do link (ONB-ENVIO-LINK) */}
-                                            {empresa.impl_id && empresa.link_enviado_em == null && empresa.status_envio !== 'concluido' && empresa.status_envio !== 'acessou' && (
-                                                <button
-                                                    onClick={() => router.post(route('mlb.implementacao.marcar-enviado', empresa.impl_id), {}, { preserveScroll: true })}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
-                                                >
-                                                    Marcar enviado
-                                                </button>
-                                            )}
-                                            {empresa.impl_id && empresa.link_enviado_em != null && (
-                                                <button
-                                                    onClick={() => router.post(route('mlb.implementacao.desfazer-envio', empresa.impl_id), {}, { preserveScroll: true })}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
-                                                >
-                                                    Desfazer envio
-                                                </button>
-                                            )}
-                                            {/* Link para a ficha de Onboarding (ONB-01) */}
+                                        <div className="flex items-center justify-end gap-2">
+                                            {/* Link para a ficha de Onboarding (ONB-01). Ações de envio vivem na coluna Status do envio. */}
                                             {empresa.impl_id && (
                                                 <Link
                                                     href={route('mlb.implementacao.ficha', empresa.impl_id)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all whitespace-nowrap"
                                                 >
                                                     <FileText size={12} />
                                                     Abrir ficha
@@ -1004,7 +1002,7 @@ export default function Implementacao({ empresas, checklist, erp_opcoes, integra
                                             )}
                                             <button
                                                 onClick={() => setModal(empresa)}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all"
+                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/50 hover:text-white text-[12px] transition-all whitespace-nowrap"
                                             >
                                                 <Eye size={12} />
                                                 Ver
