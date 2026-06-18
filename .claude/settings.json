@@ -361,7 +361,12 @@
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && echo \"=== PDF arquivado ===\" && ls -lh storage/app/relatorios/ && echo \"\" && echo \"=== Logs recentes \\(mail/relatorios\\) ===\" && tail -50 storage/logs/laravel.log | grep -iE \"mail|relatorio|swift|matheus\" | tail -10')",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && find storage -name \"relatorio-*.pdf\" 2>/dev/null && echo \"---\" && php artisan tinker --execute=\"echo \\\\\"local path: \\\\\" . config\\(\\\\\"filesystems.disks.local.root\\\\\"\\) . PHP_EOL;\"')",
       "Bash(./plink.exe -ssh -P 22 -pw \"ECF-100376vps\" -hostkey \"SHA256:rA83w6TmPmvPKqDsjUNZclPFdeiZq4mduyBUhNzvKc8\" -batch root@177.7.53.164 'cd /var/www/ecf_admin && tail -50 storage/logs/laravel.log | grep -iE \"matheus|RelatorioMensal|smtp|swiftmailer|exception\" | tail -10')",
-      "Bash(git rebase *)"
+      "Bash(git rebase *)",
+      "Bash(vendor/bin/phpunit --testdox --filter \"Phase3[78]\")",
+      "PowerShell(php vendor/bin/phpunit --testdox --filter \"Phase3[78]\" 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" vendor/bin/phpunit --filter \"Phase3[78]\" 2>&1)",
+      "PowerShell(& \"C:\\\\xampp\\\\php\\\\php.exe\" vendor/bin/phpunit --filter \"Phase37\" 2>&1)",
+      "Bash(./deploy.sh)"
     ],
     "additionalDirectories": [
       "\\tmp"
