@@ -393,9 +393,9 @@ function CampoValor({ label, dica, valor, onChange, prefixo = 'R$', invalido = f
  * mas apresenta de forma humana: entrada simples + resultado em destaque +
  * composição visual do preço + semáforo de saúde da margem.
  */
-// Simulador recebe modoImposto e impostoEfetivo para calcular com imposto por produto (modo individual)
-// ou com o imposto global do tier (modo massa — comportamento original).
-function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo }) {
+// Simulador recebe modoImposto, impostoEfetivo, mcEfetivo e llEfetivo para calcular por produto
+// (modo individual) ou com os valores globais do tier (modo massa — comportamento original).
+function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, acrNum, mcNum, llNum, onEditProduto, onAddProduto, onDeleteProduto, cfg, updateCfg, updateMC, updateLL, updateAcrescimo, saving, tabelaFreteUrl, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo }) {
     const [avancado, setAvancado] = useState(false);
 
     const row        = produtos[selIdx] ?? { custo: '', frete_classico: '', frete_premium: '' };
@@ -406,12 +406,15 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
 
     // No modo individual usa o imposto_individual do produto; no massa usa o imposto do tier.
     const impostoSimulador = impostoEfetivo(row, t.imposto);
-    const preco      = calcPreco(row.custo, freteN, t.comissao, impostoSimulador, mcNum, llNum); // Preço C/ Desconto
+    // MC e LL efetivos: no individual usa o valor do produto se preenchido; vazio herda o global.
+    const mcEfetivoRow = mcEfetivo(row);
+    const llEfetivoRow = llEfetivo(row);
+    const preco      = calcPreco(row.custo, freteN, t.comissao, impostoSimulador, mcEfetivoRow, llEfetivoRow); // Preço C/ Desconto
     const anunciado  = preco ? preco * (1 + acrNum) : null;
     const comissaoRs = preco ? preco * t.comissao : 0;
     const impostoRs  = preco ? preco * impostoSimulador  : 0;
-    const mcRs       = preco ? preco * mcNum : 0;   // Margem de Contribuição R$
-    const llRs       = preco ? preco * llNum : 0;   // Lucro Líquido R$
+    const mcRs       = preco ? preco * mcEfetivoRow : 0;   // Margem de Contribuição R$
+    const llRs       = preco ? preco * llEfetivoRow : 0;   // Lucro Líquido R$
 
     const comp = preco ? [
         { label: 'Custo do produto',      valor: custoN,     cor: '#64748b' },
@@ -450,8 +453,8 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                 <div className="flex flex-wrap gap-2">
                     {produtos.map((p, i) => {
                         const f  = parseFloat(p[freteCampo] || 0) || 0;
-                        // Chips do catálogo: usa imposto efetivo do produto (individual) ou do tier (massa)
-                        const pr = calcPreco(p.custo, f, t.comissao, impostoEfetivo(p, t.imposto), mcNum, llNum);
+                        // Chips do catálogo: usa imposto/MC/LL efetivos do produto (individual) ou globais (massa)
+                        const pr = calcPreco(p.custo, f, t.comissao, impostoEfetivo(p, t.imposto), mcEfetivo(p), llEfetivo(p));
                         const ativo = i === selIdx;
                         return (
                             <div key={i} onClick={() => setSelIdx(i)}
@@ -566,18 +569,43 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                             </div>
                             <p className="text-white/30 text-[10px] uppercase tracking-wider pt-1">Seus alvos (valem p/ Clássico e Premium)</p>
                             <div className="grid grid-cols-3 gap-2">
-                                <div title="margem de contribuição alvo">
-                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
-                                    <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao}
-                                        onChange={e => updateMC(e.target.value)}
-                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
-                                </div>
-                                <div title="lucro líquido alvo">
-                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
-                                    <input type="number" step="0.01" min="0" value={cfg.lucro_liquido}
-                                        onChange={e => updateLL(e.target.value)}
-                                        className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
-                                </div>
+                                {/* MC %: no individual edita mc_individual do produto com placeholder global; no massa edita o global */}
+                                {modoImposto === 'massa' ? (
+                                    <div title="margem de contribuição alvo (todos os produtos)">
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
+                                        <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao}
+                                            onChange={e => updateMC(e.target.value)}
+                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                    </div>
+                                ) : (
+                                    <div title="MC deste produto (vazio = herda o padrão global)">
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">MC deste produto %</label>
+                                        <input type="number" step="0.01" min="0"
+                                            value={row.mc_individual ?? ''}
+                                            placeholder={String(cfg.margem_contribuicao ?? '')}
+                                            onChange={e => onEditProduto('mc_individual', e.target.value)}
+                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                    </div>
+                                )}
+                                {/* LL %: no individual edita ll_individual do produto com placeholder global; no massa edita o global */}
+                                {modoImposto === 'massa' ? (
+                                    <div title="lucro líquido alvo (todos os produtos)">
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
+                                        <input type="number" step="0.01" min="0" value={cfg.lucro_liquido}
+                                            onChange={e => updateLL(e.target.value)}
+                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                    </div>
+                                ) : (
+                                    <div title="LL deste produto (vazio = herda o padrão global)">
+                                        <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">LL deste produto %</label>
+                                        <input type="number" step="0.01" min="0"
+                                            value={row.ll_individual ?? ''}
+                                            placeholder={String(cfg.lucro_liquido ?? '')}
+                                            onChange={e => onEditProduto('ll_individual', e.target.value)}
+                                            className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
+                                    </div>
+                                )}
+                                {/* Acréscimo: sempre global nos dois modos */}
                                 <div title="quanto inflar o preço de tabela para depois dar desconto">
                                     <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Acréscimo %</label>
                                     <input type="number" step="0.01" min="0" value={cfg.acrescimo}
@@ -625,12 +653,12 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                                 <div className="rounded-xl bg-green-500/[0.06] border border-green-500/20 p-3">
                                     <p className="text-white/40 text-[11px]">Lucro líquido por venda</p>
                                     <p className="text-green-400 font-bold text-lg mt-0.5">{fmt(llRs)}</p>
-                                    <p className="text-white/30 text-[11px]">{(llNum * 100).toFixed(1)}% do preço</p>
+                                    <p className="text-white/30 text-[11px]">{(llEfetivoRow * 100).toFixed(1)}% do preço</p>
                                 </div>
                                 <div className="rounded-xl bg-sky-500/[0.06] border border-sky-500/20 p-3">
                                     <p className="text-white/40 text-[11px]">Margem de contribuição</p>
                                     <p className="text-sky-300 font-bold text-lg mt-0.5">{fmt(mcRs)}</p>
-                                    <p className="text-white/30 text-[11px]">{(mcNum * 100).toFixed(1)}% do preço</p>
+                                    <p className="text-white/30 text-[11px]">{(mcEfetivoRow * 100).toFixed(1)}% do preço</p>
                                 </div>
                             </div>
                         </>
@@ -830,42 +858,44 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
             { id: 'sku',            label: 'SKU',        type: 'text',     width: 110 },
             { id: 'descricao',      label: 'Descrição',  type: 'text',     width: 180 },
             { id: 'custo',          label: 'Custo R$',   type: 'number',   width: 90  },
-            // Coluna de imposto individual: visível apenas no modo individual (oculta no massa para reduzir ruído)
+            // Colunas individuais: visíveis apenas no modo individual (ocultas no massa para reduzir ruído)
             ...(modoImposto === 'individual' ? [
                 { id: 'imposto_individual', label: 'Imposto Ind. %', type: 'number', width: 110 },
+                { id: 'mc_individual',      label: 'MC %',           type: 'number', width: 90  },
+                { id: 'll_individual',      label: 'LL %',           type: 'number', width: 90  },
             ] : []),
         ];
         const colsClassico = [
             { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80,
               conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
             { id: '_anunc_c',  label: 'Anunciado Cl.',         type: 'readonly', width: 120, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p ? p * (1 + acrNum) : null); } },
             { id: '_preco_c',  label: 'Preço C/ Desconto Cl.', type: 'readonly', width: 140, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p); } },
             { id: '_marg_c',   label: 'Lucro Líquido Cl.',      type: 'readonly', width: 130, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p ? p * llNum : null); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p ? p * llEfetivo(row) : null); } },
             { id: '_mc_c',     label: 'Margem Contrib. Cl.',    type: 'readonly', width: 150, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcNum, llNum); return fmt(p ? p * mcNum : null); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_classico||0), cc.comissao, impostoEfetivo(row, cc.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p ? p * mcEfetivo(row) : null); } },
         ];
         const colsPremium = [
             { id: 'frete_premium',  label: 'Frete',      type: 'number',   width: 80,
               conditionalFormat: (v, row) => freteFaltando(v, row) ? 'bg-red-500/20 text-red-300 ring-1 ring-inset ring-red-500/50' : null },
             { id: '_anunc_p',  label: 'Anunciado Pr.',          type: 'readonly', width: 120, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p ? p * (1 + acrNum) : null); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p ? p * (1 + acrNum) : null); } },
             { id: '_preco_p',  label: 'Preço C/ Desconto Pr.',  type: 'readonly', width: 140, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p); } },
             { id: '_marg_p',   label: 'Lucro Líquido Pr.',       type: 'readonly', width: 130, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p ? p * llNum : null); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p ? p * llEfetivo(row) : null); } },
             { id: '_mc_p',     label: 'Margem Contrib. Pr.',     type: 'readonly', width: 150, align: 'right',
-              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcNum, llNum); return fmt(p ? p * mcNum : null); } },
+              compute: row => { const p = calcPreco(row.custo, parseFloat(row.frete_premium||0), cp.comissao, impostoEfetivo(row, cp.imposto), mcEfetivo(row), llEfetivo(row)); return fmt(p ? p * mcEfetivo(row) : null); } },
         ];
         return [...colsProduto, ...colsClassico, ...colsPremium];
-    }, [cc.comissao, cc.imposto, cp.comissao, cp.imposto, mcNum, llNum, acrNum, modoImposto, impostoEfetivo]);
+    }, [cc.comissao, cc.imposto, cp.comissao, cp.imposto, mcNum, llNum, acrNum, modoImposto, impostoEfetivo, mcEfetivo, llEfetivo]);
 
-    // headerGroups: grupo de produto tem span 3 (massa) ou 4 (individual, com coluna imposto_individual).
+    // headerGroups: grupo de produto tem span 3 (massa) ou 6 (individual: SKU, Descrição, Custo, Imposto Ind., MC, LL).
     // Clássico=5 colunas e Premium=5 colunas permanecem fixos.
     const headerGroups = [
-        { label: '',         span: modoImposto === 'individual' ? 4 : 3, className: '' },
+        { label: '',         span: modoImposto === 'individual' ? 6 : 3, className: '' },
         { label: 'Clássico', span: 5, className: 'text-blue-300/70' },
         { label: 'Premium',  span: 5, className: 'text-violet-300/70' },
     ];
@@ -883,9 +913,9 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                 </div>
 
                 <div className="flex items-center gap-3">
-                    {/* Toggle de imposto: Massa (global por tier) | Individual (por produto) */}
+                    {/* Toggle de modo: Massa (tudo global) | Individual (imposto, MC e LL por produto) */}
                     <div className="flex items-center gap-2">
-                        <span className="text-white/40 text-[12px]">Imposto:</span>
+                        <span className="text-white/40 text-[12px]">Modo:</span>
                         <div className="inline-flex rounded-xl bg-white/[0.04] border border-white/[0.08] p-1">
                             {[{ k: 'massa', l: 'Massa' }, { k: 'individual', l: 'Individual' }].map(({ k, l }) => (
                                 <button key={k} type="button" onClick={() => setModo(k)}
@@ -985,6 +1015,8 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         tabelaFreteUrl={tabelaFreteUrl}
                         modoImposto={modoImposto}
                         impostoEfetivo={impostoEfetivo}
+                        mcEfetivo={mcEfetivo}
+                        llEfetivo={llEfetivo}
                     />
                 ) : (
                     <>
