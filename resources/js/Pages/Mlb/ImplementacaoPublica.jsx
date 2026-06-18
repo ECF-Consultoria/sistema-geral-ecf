@@ -569,18 +569,18 @@ function SimuladorPreco({ produtos, selIdx, setSelIdx, tier, setTier, cc, cp, ac
                             </div>
                             <p className="text-white/30 text-[10px] uppercase tracking-wider pt-1">Seus alvos (valem p/ Clássico e Premium)</p>
                             <div className="grid grid-cols-3 gap-2">
-                                {/* MC %: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
-                                <div title="MC deste produto (vazio = herda o padrão global)">
-                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">MC deste produto %</label>
+                                {/* Margem Contrib.: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
+                                <div title="Margem de Contribuição deste produto (vazio = herda o padrão global)">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
                                     <input type="number" step="0.01" min="0"
                                         value={row.mc_individual ?? ''}
                                         placeholder={String(cfg.margem_contribuicao ?? '')}
                                         onChange={e => onEditProduto('mc_individual', e.target.value)}
                                         className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                                 </div>
-                                {/* LL %: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
-                                <div title="LL deste produto (vazio = herda o padrão global)">
-                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">LL deste produto %</label>
+                                {/* Lucro Líquido: SEMPRE por produto (vazio = herda o padrão global, configurável no painel do Lote) */}
+                                <div title="Lucro Líquido deste produto (vazio = herda o padrão global)">
+                                    <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
                                     <input type="number" step="0.01" min="0"
                                         value={row.ll_individual ?? ''}
                                         placeholder={String(cfg.lucro_liquido ?? '')}
@@ -856,8 +856,8 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                 { id: 'imposto_individual', label: 'Imposto Ind. %', type: 'number', width: 110 },
             ] : []),
             // MC e LL são SEMPRE por produto (vazio herda o global) — colunas sempre visíveis nos dois modos.
-            { id: 'mc_individual',      label: 'MC %',           type: 'number', width: 90 },
-            { id: 'll_individual',      label: 'LL %',           type: 'number', width: 90 },
+            { id: 'mc_individual',      label: 'Margem Contrib. %', type: 'number', width: 130 },
+            { id: 'll_individual',      label: 'Lucro Líquido %',  type: 'number', width: 120 },
         ];
         const colsClassico = [
             { id: 'frete_classico', label: 'Frete',      type: 'number',   width: 80,
@@ -954,12 +954,12 @@ function PrecificacaoModal({ dados, planilhaProdutos, onSave, onSaveCfg, onClose
                         {/* Parâmetros globais — Margem Contrib., Lucro Líquido, Acréscimo (não por tier) */}
                         <div className="flex flex-wrap gap-4">
                             <div className="w-44">
-                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. % (padrão)</label>
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Margem Contrib. %</label>
                                 <input type="number" step="0.01" min="0" value={cfg.margem_contribuicao} onChange={e => updateMC(e.target.value)}
                                     className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                             </div>
                             <div className="w-44">
-                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido % (padrão)</label>
+                                <label className="text-white/30 text-[10px] uppercase tracking-wider block mb-1">Lucro Líquido %</label>
                                 <input type="number" step="0.01" min="0" value={cfg.lucro_liquido} onChange={e => updateLL(e.target.value)}
                                     className="w-full h-8 px-2 rounded-lg bg-white/[0.05] border border-white/[0.08] text-white text-[12px] focus:outline-none focus:border-ecf-yellow/40" />
                             </div>
