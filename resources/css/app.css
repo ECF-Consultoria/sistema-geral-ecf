@@ -93,6 +93,17 @@
         background-image: none;
     }
 
+    /* Remove as setas de incremento/decremento dos inputs numéricos (ex.: Custo/Frete na precificação) */
+    input[type='number'] {
+        -moz-appearance: textfield;
+        appearance: textfield;
+    }
+    input[type='number']::-webkit-outer-spin-button,
+    input[type='number']::-webkit-inner-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(255,255,255,.12); border-radius: 9999px; }
