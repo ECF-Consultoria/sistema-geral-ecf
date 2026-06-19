@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, RefreshCw, X, Megaphone, MegaphoneOff, LayoutList
 import { formatCurrency, cn } from '@/lib/utils';
 import DonutCard from './components/DonutCard';
 import RoseChart from './components/RoseChart';
+import CityCartogram from './components/CityCartogram';
 
 // Paleta de identidade por polo (pizza de distribuição + ponto no card). Amarelo ECF primeiro.
 const POLO_PALETTE = ['#ffe600', '#38bdf8', '#22c55e', '#a855f7', '#fb923c', '#f43f5e', '#2dd4bf', '#e879f9'];
@@ -253,6 +254,10 @@ export default function PolosIndex({
                             <p className="text-white/50 text-sm">
                                 Total: <span className="text-ecf-yellow font-semibold">{formatCurrency(distrib.total)}</span>
                             </p>
+
+                            {/* Cartograma: cidades escaladas por faturamento */}
+                            <p className="text-white/40 text-xs uppercase tracking-wider self-start">Por cidade (área ∝ faturamento)</p>
+                            <CityCartogram itens={distrib.itens} className="w-full" />
                         </div>
 
                         {/* Legenda / ranking */}
