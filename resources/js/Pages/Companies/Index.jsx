@@ -665,9 +665,12 @@ export default function Companies({ companies, users, estrategistas = [], analis
                 </DialogContent>
             </Dialog>
 
-            {/* Modal editar empresa (cadastro é só via /comercial/empresas) */}
+            {/* Modal editar empresa (cadastro é só via /comercial/empresas).
+                Hotfix 2026-06-19 — max-h-[90vh] + overflow-y-auto pra rolar
+                quando o conteúdo ultrapassar a viewport (form admin tem ~6
+                blocos de campos). max-w-3xl da mais respiro horizontal. */}
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-2xl">
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
                     <DialogHeader>
                         <DialogTitle>Editar Empresa</DialogTitle>
                     </DialogHeader>

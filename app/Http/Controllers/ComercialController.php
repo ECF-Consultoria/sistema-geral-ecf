@@ -314,6 +314,8 @@ class ComercialController extends Controller
                 'pendencias_detalhes'   => $detalhes,
                 'setor_dominante'       => $setorDominante,
                 'nicho'                 => $c->nicho,
+                'dor'                   => $c->dor,
+                'faturamento_mensal'    => $c->faturamento_mensal !== null ? (float) $c->faturamento_mensal : null,
                 'email_cliente'         => $c->email_cliente,
                 'telefone'              => $c->telefone,
                 'created_at'            => $c->created_at?->toDateString(),
@@ -328,6 +330,8 @@ class ComercialController extends Controller
                 'contratos_servico'     => $contratosAtivos->map(fn($ct) => [
                     'id'               => $ct->id,
                     'valor_contratado' => (float) $ct->valor_contratado,
+                    'data_contratacao' => optional($ct->data_contratacao)->toDateString(),
+                    'data_vencimento'  => optional($ct->data_vencimento)->toDateString(),
                     'servico'          => $ct->servico ? [
                         'id'    => $ct->servico->id,
                         'nome'  => $ct->servico->nome,
@@ -745,6 +749,60 @@ class ComercialController extends Controller
             ->log('Empresa removida pelo Comercial: "' . $nome . '"');
 
         return back()->with('success', 'Empresa "' . $nome . '" removida.');
+    }
+
+    /**
+     * Hotfix 2026-06-19 — atualiza valor/datas/ativo/observacoes de um
+     * ContratoServico a partir do Comercial. Mesma assinatura do
+     * CompanyController::updateContrato (admin-only) mas gated pelo
+     * permission 'comercial.cadastrar_empresa' do grupo.
+     */
+    public function updateContrato(Request $request, Company $company, ContratoServico $contrato)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+        abort_if($contrato->company_id !== $company->id, 404);
+
+        $data = $request->validate([
+            'valor_contratado' => 'required|numeric|min:0',
+            'data_contratacao' => 'required|date',
+            'data_vencimento'  => 'nullable|date|after_or_equal:data_contratacao',
+            'ativo'            => 'boolean',
+            'observacoes'      => 'nullable|string|max:1000',
+        ]);
+
+        $contrato->update($data);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $company->name, 'contrato_id' => $contrato->id])
+            ->log('Contrato editado pelo Comercial: "' . $company->name . '"');
+
+        return back()->with('success', 'Contrato atualizado.');
+    }
+
+    /**
+     * Hotfix 2026-06-19 — desativa contrato (soft, preservando historico) a
+     * partir do Comercial. Espelha CompanyController::destroyContrato.
+     */
+    public function destroyContrato(Request $request, Company $company, ContratoServico $contrato)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+        abort_if($contrato->company_id !== $company->id, 404);
+
+        $contrato->update(['ativo' => false]);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $company->name, 'contrato_id' => $contrato->id])
+            ->log('Contrato desativado pelo Comercial: "' . $company->name . '"');
+
+        return back()->with('success', 'Contrato desativado.');
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────
