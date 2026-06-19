@@ -280,6 +280,30 @@ class ComercialController extends Controller
             $contratosAtivos = $c->contratosServico->where('ativo', true);
             $setorDominante  = $contratosAtivos->map(fn($ct) => optional($ct->servico)->setor)->filter()->first();
 
+            // Hotfix 2026-06-19 — detalhe por pendencia pra alimentar tooltips na UI.
+            // Cada chave eh o slug da pendencia; valor eh a lista de itens faltantes.
+            // Frontend mostra como title="..." no badge correspondente.
+            $detalhes = [];
+            if (in_array('dados_close_incompletos', $c->pendencias_comerciais, true)) {
+                $faltam = [];
+                if ($c->nicho === null)              $faltam[] = 'Nicho';
+                if ($c->dor === null)                $faltam[] = 'Dor';
+                if ($c->faturamento_mensal === null) $faltam[] = 'Faturamento mensal';
+                $detalhes['dados_close_incompletos'] = $faltam;
+            }
+            if (in_array('servico_nao_reconhecido', $c->pendencias_comerciais, true)) {
+                $nomesPendentes = [];
+                foreach ($c->hubspotEventos as $ev) {
+                    foreach (($ev->payload['line_items_nao_mapeados'] ?? []) as $item) {
+                        $nome = (string) ($item['name'] ?? '');
+                        if ($nome !== '' && !HubspotLineItemMapping::paraNome($nome)) {
+                            $nomesPendentes[] = $nome;
+                        }
+                    }
+                }
+                $detalhes['servico_nao_reconhecido'] = array_values(array_unique($nomesPendentes));
+            }
+
             return [
                 'id'                    => $c->id,
                 'name'                  => $c->name,
@@ -287,6 +311,7 @@ class ComercialController extends Controller
                 'status'                => $c->status,
                 'is_origem_hubspot'     => $c->is_origem_hubspot,
                 'pendencias_comerciais' => $c->pendencias_comerciais,
+                'pendencias_detalhes'   => $detalhes,
                 'setor_dominante'       => $setorDominante,
                 'nicho'                 => $c->nicho,
                 'email_cliente'         => $c->email_cliente,

@@ -108,12 +108,22 @@ function ServicoBadges({ contratos }) {
     );
 }
 
-function PendenciaBadges({ pendencias }) {
+function PendenciaBadges({ pendencias, detalhes = {} }) {
     if (!pendencias?.length) return <span className="text-white/30">—</span>;
+    const tooltipFor = (p) => {
+        const itens = detalhes?.[p];
+        const labelBase = PENDENCIAS_LABELS[p] ?? p;
+        if (!itens || itens.length === 0) return labelBase;
+        return `${labelBase}: ${itens.join(', ')}`;
+    };
     return (
         <div className="flex flex-wrap gap-1">
             {pendencias.map(p => (
-                <span key={p} className={cn('inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded border', PENDENCIAS_CLS[p] ?? '')}>
+                <span
+                    key={p}
+                    title={tooltipFor(p)}
+                    className={cn('inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded border cursor-help', PENDENCIAS_CLS[p] ?? '')}
+                >
                     {PENDENCIAS_LABELS[p] ?? p}
                 </span>
             ))}
@@ -388,7 +398,7 @@ export default function EmpresasListagem({
                                                     <SetorBadge setor={c.setor_dominante} />
                                                 </TableCell>
                                                 <TableCell>
-                                                    <PendenciaBadges pendencias={c.pendencias_comerciais} />
+                                                    <PendenciaBadges pendencias={c.pendencias_comerciais} detalhes={c.pendencias_detalhes} />
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="inline-flex items-center gap-1">

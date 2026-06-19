@@ -8,6 +8,7 @@ use App\Models\Company;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
+use App\Models\Servico;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
@@ -99,7 +100,20 @@ class DashboardController extends Controller
         $estrategistaFilter = $request->get('estrategista_id') ?? $request->get('mentor_id'); // back-compat com chamadas antigas
         $grupoFilter = $request->get('group_id');
 
-        $companiesQuery = Company::with(['latestMetrics', 'consultor', 'estrategista'])->where('active', true);
+        // Hotfix 2026-06-19 — alinha o universo do Dashboard ao de /companies:
+        // (1) Phase 35 D-03 — exclui empresas com MlbEmpresa (dupla contagem com /mlb/empresas).
+        // (2) Phase 37 Plan 37-06 (REQ-37-07) — restringe a empresas com >=1 contrato ATIVO
+        //     em servico de setor=Performance (Gestao+Mentoria). Sem o filtro, o
+        //     dashboard contava 115 empresas enquanto /companies mostrava 104.
+        $companiesQuery = Company::with(['latestMetrics', 'consultor', 'estrategista'])
+            ->where('active', true)
+            ->whereDoesntHave('mlbEmpresa')
+            ->whereHas('contratosServico', fn ($q) =>
+                $q->where('contratos_servico.ativo', true)
+                  ->whereHas('servico', fn ($qs) =>
+                      $qs->where('setor', Servico::SETOR_PERFORMANCE)
+                  )
+            );
 
         if ($companyFilter) $companiesQuery->where('id', $companyFilter);
         if ($consultorFilter) $companiesQuery->whereHas('consultor', fn($q) => $q->where('users.id', $consultorFilter));
@@ -423,7 +437,18 @@ class DashboardController extends Controller
             ->whereIn('role', ['consultor', 'mentor'])
             ->whereNull('publication_role')
             ->get();
-        $allCompanies = Company::where('active', true)->get(['id', 'name']);
+        // Hotfix 2026-06-19 — dropdown reflete o universo do Dashboard
+        // (Performance + sem MlbEmpresa), igual ao $companiesQuery acima.
+        $allCompanies = Company::where('active', true)
+            ->whereDoesntHave('mlbEmpresa')
+            ->whereHas('contratosServico', fn ($q) =>
+                $q->where('contratos_servico.ativo', true)
+                  ->whereHas('servico', fn ($qs) =>
+                      $qs->where('setor', Servico::SETOR_PERFORMANCE)
+                  )
+            )
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         // ─── Fonte da verdade: cargo no setor Performance via pivot ──────────
         //
