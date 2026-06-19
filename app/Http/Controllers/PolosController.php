@@ -337,10 +337,10 @@ class PolosController extends Controller
             } catch (\Throwable $e) {
                 Log::warning("[Polos] semanal cust={$custId} S" . ($i + 1) . ': ' . $e->getMessage());
             }
-            // ADS semanal: busca account metrics da mesma janela (cacheado após o warm do job).
+            // ADS semanal: investment da mesma janela via /performance (cacheado após o 1º clique).
             try {
-                $mAds = $this->adman->fetchAccountMetricsCached($custId, $de, $ate);
-                $ads  = ($mAds && isset($mAds['investment'])) ? (float) $mAds['investment'] : 0.0;
+                $v   = $this->adman->fetchInvestment($custId, $de, $ate, 1440, false);
+                $ads = $v !== null ? (float) $v : 0.0;
             } catch (\Throwable $e) {
                 Log::warning("[Polos] semanal ADS cust={$custId} S" . ($i + 1) . ': ' . $e->getMessage());
             }
@@ -413,13 +413,14 @@ class PolosController extends Controller
             $ate = date('Y-m-t', strtotime($de));
 
             // SOMENTE cache (sem HTTP) — sem throttle na request. Cache aquecido
-            // pelo SyncPolosFaturamentoJob (forceRefresh=true).
-            $cache  = $this->adman->getCachedAccountMetricsMany($custIds, $de, $ate);
+            // pelo SyncPolosFaturamentoJob (warmPerformance). O valor já é o
+            // investment (float) — fonte = summarizedData.investment do /performance.
+            $cache  = $this->adman->getCachedInvestmentsMany($custIds, $de, $ate);
             $out    = [];
             $faltam = 0;
             foreach ($custIds as $id) {
                 if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
-                    $out[$id] = (float) ($cache[$id]['value']['investment'] ?? 0.0);
+                    $out[$id] = (float) $cache[$id]['value'];
                 } else {
                     $faltam++;
                 }

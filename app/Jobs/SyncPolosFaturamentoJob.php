@@ -73,26 +73,21 @@ class SyncPolosFaturamentoJob implements ShouldQueue
             if ($i > 0) {
                 usleep(7_000_000);
             }
+            // UMA chamada /performance aquece faturamento E ADS (investment) para
+            // o mesmo cust_id/janela — os getCached*Many do controller leem só-cache.
             try {
-                $val = $adman->fetchGrossBilling($custId, $de, $ate, 1440, forceRefresh: true);
-                if ($val !== null) {
+                $r = $adman->warmPerformance($custId, $de, $ate);
+                if ($r['gross_billing'] !== null) {
                     $ok++;
-                    if ($val > 0) {
+                    if ($r['gross_billing'] > 0) {
                         $comValor++;
                     }
                 }
-            } catch (\Throwable $e) {
-                Log::warning("[Polos] Sync: falha faturamento cust={$custId}: " . $e->getMessage());
-            }
-            // Aquece o cache de investment (ADS) para o mesmo cust_id e janela.
-            // adsAdmanDoMes() do controller lê só-cache; sem esse warm ADS fica R$0.
-            try {
-                $mAds = $adman->fetchAccountMetricsCached($custId, $de, $ate, 1440, forceRefresh: true);
-                if ($mAds !== null && (float) ($mAds['investment'] ?? 0) > 0) {
+                if ($r['investment'] !== null && $r['investment'] > 0) {
                     $adsComValor++;
                 }
             } catch (\Throwable $e) {
-                Log::warning("[Polos] Sync: falha ADS cust={$custId}: " . $e->getMessage());
+                Log::warning("[Polos] Sync: falha cust={$custId}: " . $e->getMessage());
             }
         }
 

@@ -425,6 +425,121 @@ class AdmanService
         return $out;
     }
 
+    // ─── Investimento de ADS (summarizedData.investment) ─────────────────────
+    //
+    // O gasto de ADS vem do MESMO endpoint /performance/{custId} do faturamento
+    // (summarizedData.investment.value). O endpoint /accounts/{custId}/metrics
+    // dá 404 para a maioria das contas (todos os polos testados), por isso NÃO
+    // usamos account metrics aqui — lemos investment do /performance que funciona.
+
+    /**
+     * Gasto de ADS (summarizedData.investment.value) numa janela — espelha
+     * fetchGrossBilling, lendo outro campo da MESMA resposta /performance.
+     * Cache TTL 24h, chave por dia (BRT). Fail-open: erro → null.
+     */
+    public function fetchInvestment(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false, string $marketplace = 'meli'): ?float
+    {
+        $cacheKey = "adman:investment:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return $cached === self::ERROR_SENTINEL ? null : (float) $cached;
+            }
+        }
+
+        try {
+            $data  = $this->fetchPerformance($custId, $dateFrom, $dateTo, 3, $marketplace);
+            $value = $data['summarizedData']['investment']['value'] ?? null;
+            unset($data);
+            gc_collect_cycles();
+
+            if ($value === null) {
+                // Resposta OK mas sem investment — cacheia como erro pra não
+                // voltar a chamar essa empresa por 10min.
+                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+                return null;
+            }
+
+            Cache::put($cacheKey, (float) $value, now()->addMinutes($cacheMinutes));
+            return (float) $value;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/Investment] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
+    }
+
+    /**
+     * Batch read SÓ-CACHE do gasto de ADS — espelho exato de
+     * getCachedGrossBillingsMany (mesma shape e semântica de hasEntry).
+     *
+     * @param  array<string>  $custIds
+     * @return array<string, array{value: ?float, hasEntry: bool}>
+     */
+    public function getCachedInvestmentsMany(array $custIds, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
+    {
+        $custIds = array_values(array_unique(array_filter($custIds, fn($id) => $id !== null && $id !== '')));
+        if (empty($custIds)) return [];
+
+        $keysByCustId = [];
+        $day          = $this->cacheDay();
+        foreach ($custIds as $custId) {
+            $keysByCustId[$custId] = "adman:investment:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:{$day}";
+        }
+
+        $raw = Cache::many(array_values($keysByCustId));
+
+        $out = [];
+        foreach ($custIds as $custId) {
+            $key = $keysByCustId[$custId];
+            $val = $raw[$key] ?? null;
+            $hasEntry = $val !== null;
+
+            $out[$custId] = [
+                'value'    => ($val !== null && $val !== self::ERROR_SENTINEL) ? (float) $val : null,
+                'hasEntry' => $hasEntry,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Aquece (cacheia) faturamento + gasto de ADS numa ÚNICA chamada /performance
+     * — evita 2 fetches do payload grande no warm dos polos. Cacheia sob as MESMAS
+     * chaves de fetchGrossBilling e fetchInvestment, então os getCached*Many leem
+     * normalmente. Sempre busca e sobrescreve (uso de warm, forceRefresh implícito).
+     *
+     * @return array{gross_billing: ?float, investment: ?float}
+     */
+    public function warmPerformance(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): array
+    {
+        $gbKey  = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        $invKey = "adman:investment:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+
+        try {
+            $data = $this->fetchPerformance($custId, $dateFrom, $dateTo, 3, $marketplace);
+            $gb   = $data['summarizedData']['grossBilling']['value'] ?? null;
+            $inv  = $data['summarizedData']['investment']['value']   ?? null;
+            unset($data);
+            gc_collect_cycles();
+
+            Cache::put($gbKey,  $gb  !== null ? (float) $gb  : self::ERROR_SENTINEL, now()->addMinutes($gb  !== null ? 1440 : self::ERROR_CACHE_MINUTES));
+            Cache::put($invKey, $inv !== null ? (float) $inv : self::ERROR_SENTINEL, now()->addMinutes($inv !== null ? 1440 : self::ERROR_CACHE_MINUTES));
+
+            return [
+                'gross_billing' => $gb  !== null ? (float) $gb  : null,
+                'investment'    => $inv !== null ? (float) $inv : null,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/WarmPerf] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($gbKey,  self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            Cache::put($invKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return ['gross_billing' => null, 'investment' => null];
+        }
+    }
+
     // ─── Account Metrics (ACOS, TACOS, margem, etc) ───────────────────────────
     //
     // Endpoint /v1/{marketplace}/accounts/{custId}/metrics retorna métricas
