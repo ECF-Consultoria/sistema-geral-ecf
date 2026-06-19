@@ -5,6 +5,7 @@ import { AlertTriangle, Clock, RefreshCw, X, Megaphone, MegaphoneOff, LayoutList
 import { formatCurrency, cn } from '@/lib/utils';
 import DonutCard from './components/DonutCard';
 import Pie3D from './components/Pie3D';
+import RosePie from './components/RosePie';
 
 // Paleta de identidade por polo (pizza de distribuição + ponto no card). Amarelo ECF primeiro.
 const POLO_PALETTE = ['#ffe600', '#38bdf8', '#22c55e', '#a855f7', '#fb923c', '#f43f5e', '#2dd4bf', '#e879f9'];
@@ -235,7 +236,7 @@ export default function PolosIndex({
                     </div>
                 )}
 
-                {/* ── Pizza 3D de distribuição + legenda ────────────────────── */}
+                {/* ── Pizza rose de distribuição de faturamento + legenda ────── */}
                 {temDados && visiveis.length > 0 && (
                     <div className={cn('rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6',
                                        'grid grid-cols-1 lg:grid-cols-2 gap-6 items-center')}>
@@ -244,11 +245,9 @@ export default function PolosIndex({
                                 Distribuição do faturamento — {mesRefLabel}
                             </p>
                             <div style={{ minHeight: 230 }} className="flex items-center justify-center w-full">
-                                <Pie3D
-                                    slices={distrib.itens.map((i) => ({ color: i.cor, value: i.faturamento }))}
+                                <RosePie
+                                    slices={distrib.itens.map((i) => ({ color: i.cor, value: i.faturamento, label: i.polo }))}
                                     size={240}
-                                    depth={30}
-                                    tilt={58}
                                 />
                             </div>
                             <p className="text-white/50 text-sm">
