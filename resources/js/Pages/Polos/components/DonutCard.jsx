@@ -2,17 +2,21 @@ import { formatCurrency, cn } from '@/lib/utils';
 import CityGauge from './CityGauge';
 import { shapeForPolo } from './cityShapes';
 
-// Mapa de status → cor da fatia atingida + rótulo (Phase 38 — novo modelo D-11/D-13).
-// Status vem do PolosController como string: 'Sim' | 'Em progresso' | 'Não' | 'Problema'.
-const STATUS = {
-    'Sim':          { cor: '#22c55e', label: 'No alvo' },      // fat >= limiar
-    'Em progresso': { cor: '#ffe600', label: 'Em progresso' }, // 0 < fat < limiar
-    'Não':          { cor: '#ef4444', label: 'Não' },          // fat = 0 (sem CSV)
-    'Problema':     { cor: '#a855f7', label: 'Problema' },     // empresa.problema = true (precedência máxima)
-};
+// Cor + rótulo do card pela CONQUISTA DA META do polo (não pelo status "pior caso"
+// agregado, que pintava o polo de roxo "Problema" se UMA única empresa tivesse o
+// flag — mesmo o polo tendo batido a meta). O "Problema" vira um selo (abaixo).
+function metaVisual(pct) {
+    const p = Number(pct) || 0;
+    if (p >= 100) return { cor: '#22c55e', label: 'No alvo' };       // bateu a meta
+    if (p > 0)    return { cor: '#ffe600', label: 'Em progresso' };  // 0 < x < 100
+    return { cor: '#ef4444', label: 'Não faturou' };                 // 0%
+}
 
 // Cor do anel "restante" (faltante para a meta) — cinza sutil no tema dark
 const COR_RESTANTE = '#2a2d36';
+
+// Cor do selo de problema (empresas do polo com flag) — NÃO pinta a silhueta
+const COR_PROBLEMA = '#a855f7';
 
 /**
  * DonutCard — card de % da meta por polo (Phase 38 · quick 260619-dce).
@@ -32,11 +36,14 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
         faturamento = 0,
         meta        = 0,
         ativos      = 0,
-        status      = 'Não',
+        empresas    = [],
     } = dados;
 
-    // Fallback para 'Não' caso status desconhecido (defesa contra prop malformada — T-38-11)
-    const { cor, label } = STATUS[status] ?? STATUS['Não'];
+    // Cor/rótulo pela conquista da meta (verde >=100, amarelo <100, vermelho 0)
+    const { cor, label } = metaVisual(pct);
+
+    // Empresas deste polo marcadas com problema → vira selo, não pinta a silhueta
+    const nProblema = (empresas ?? []).filter((e) => e?.problema).length;
 
     const temShape = !!shapeForPolo(nome);
 
@@ -91,10 +98,22 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
                 )}
             </div>
 
-            {/* Status */}
-            <div className="flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full" style={{ background: cor }} />
-                <span className="text-[11px] uppercase tracking-wider" style={{ color: cor }}>{label}</span>
+            {/* Status pela meta + selo de problema (se houver empresas sinalizadas) */}
+            <div className="flex flex-col items-center gap-1">
+                <div className="flex items-center gap-1.5">
+                    <span className="h-2 w-2 rounded-full" style={{ background: cor }} />
+                    <span className="text-[11px] uppercase tracking-wider" style={{ color: cor }}>{label}</span>
+                </div>
+                {nProblema > 0 && (
+                    <span
+                        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                        style={{ background: `${COR_PROBLEMA}22`, color: COR_PROBLEMA }}
+                        title={`${nProblema} de ${ativos} ${nProblema === 1 ? 'empresa' : 'empresas'} deste polo com problema sinalizado — não afeta a cor da meta`}
+                    >
+                        <span className="h-1.5 w-1.5 rounded-full" style={{ background: COR_PROBLEMA }} />
+                        {nProblema} com problema
+                    </span>
+                )}
             </div>
 
             {/* KPIs compactos (sem caixa) */}
