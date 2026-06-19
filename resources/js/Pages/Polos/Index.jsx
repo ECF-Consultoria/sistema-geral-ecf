@@ -4,7 +4,7 @@ import { Head, router } from '@inertiajs/react';
 import { AlertTriangle, Clock, RefreshCw, X, Megaphone, MegaphoneOff, LayoutList } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import DonutCard from './components/DonutCard';
-import RosePie from './components/RosePie';
+import RoseChart from './components/RoseChart';
 
 // Paleta de identidade por polo (pizza de distribuição + ponto no card). Amarelo ECF primeiro.
 const POLO_PALETTE = ['#ffe600', '#38bdf8', '#22c55e', '#a855f7', '#fb923c', '#f43f5e', '#2dd4bf', '#e879f9'];
@@ -243,10 +243,11 @@ export default function PolosIndex({
                             <p className="text-white/40 text-xs uppercase tracking-wider self-start">
                                 Distribuição do faturamento — {mesRefLabel}
                             </p>
-                            <div style={{ minHeight: 230 }} className="flex items-center justify-center w-full">
-                                <RosePie
+                            <div className="w-full">
+                                <RoseChart
                                     slices={distrib.itens.map((i) => ({ color: i.cor, value: i.faturamento, label: i.polo }))}
-                                    size={240}
+                                    height={300}
+                                    emptyLabel="Sem faturamento no mês selecionado"
                                 />
                             </div>
                             <p className="text-white/50 text-sm">
@@ -284,14 +285,16 @@ export default function PolosIndex({
                             <p className="text-white/40 text-xs uppercase tracking-wider self-start">
                                 Distribuição de status — {mesRefLabel}
                             </p>
-                            <div style={{ minHeight: 230 }} className="flex items-center justify-center w-full">
-                                <RosePie
+                            <div className="w-full">
+                                <RoseChart
                                     slices={STATUS_ORDEM.map((k) => ({
                                         color: STATUS_META[k].cor,
                                         value: statusDist[k] ?? 0,
                                         label: STATUS_META[k].label,
                                     }))}
-                                    size={240}
+                                    height={300}
+                                    money={false}
+                                    emptyLabel="Sem ativos no mês selecionado"
                                 />
                             </div>
                             <p className="text-white/50 text-sm">
