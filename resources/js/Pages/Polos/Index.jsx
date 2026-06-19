@@ -4,7 +4,6 @@ import { Head, router } from '@inertiajs/react';
 import { AlertTriangle, Clock, RefreshCw, X, Megaphone, MegaphoneOff, LayoutList } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 import DonutCard from './components/DonutCard';
-import Pie3D from './components/Pie3D';
 import RosePie from './components/RosePie';
 
 // Paleta de identidade por polo (pizza de distribuição + ponto no card). Amarelo ECF primeiro.
@@ -276,8 +275,8 @@ export default function PolosIndex({
                 )}
 
                 {/* ── Vista de distribuição de Status (réplica "Gráfico Junho" — D-14) ──
-                 *  Mostra a pizza 3D Sim/Em progresso/Não/Problema entre todos os ativos
-                 *  do mês selecionado. Renderizada apenas quando há ativos (statusDist.total > 0). */}
+                 *  Pizza rose Sim/Em progresso/Não/Problema entre todos os ativos do mês
+                 *  selecionado. Renderizada apenas quando há ativos (statusDist.total > 0). */}
                 {temDados && statusDist.total > 0 && (
                     <div className={cn('rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6',
                                        'grid grid-cols-1 lg:grid-cols-2 gap-6 items-center')}>
@@ -286,14 +285,13 @@ export default function PolosIndex({
                                 Distribuição de status — {mesRefLabel}
                             </p>
                             <div style={{ minHeight: 230 }} className="flex items-center justify-center w-full">
-                                <Pie3D
+                                <RosePie
                                     slices={STATUS_ORDEM.map((k) => ({
                                         color: STATUS_META[k].cor,
                                         value: statusDist[k] ?? 0,
+                                        label: STATUS_META[k].label,
                                     }))}
                                     size={240}
-                                    depth={30}
-                                    tilt={58}
                                 />
                             </div>
                             <p className="text-white/50 text-sm">
