@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
+use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\Servico;
@@ -391,12 +392,44 @@ class ComercialController extends Controller
         }
 
         // servico_nao_reconhecido: payload de algum HubspotEvento tem line_items_nao_mapeados
-        // (gravado pelo Plan 37-04 quando line item HubSpot nao bate no mapping)
-        $temLineItemsNaoMapeados = $c->hubspotEventos->contains(function ($ev) {
+        // (gravado pelo Plan 37-04 quando line item HubSpot nao bate no mapping).
+        //
+        // Hotfix 2026-06-19 — re-valida via paraNome() em tempo de leitura. Se o
+        // admin cadastrou o mapping depois (ou o paraNome substring agora bate), o
+        // nome deixa de contar como nao-reconhecido — a pendencia some sem precisar
+        // mexer no payload historico do evento. Cache estatica por request evita
+        // re-query do mesmo nome em empresas diferentes.
+        static $matchCache = [];
+        $resolverNome = function (string $nome) use (&$matchCache): bool {
+            $key = mb_strtolower(trim($nome));
+            if ($key === '') {
+                return true;
+            }
+            if (!array_key_exists($key, $matchCache)) {
+                $matchCache[$key] = (bool) HubspotLineItemMapping::paraNome($nome);
+            }
+            return $matchCache[$key];
+        };
+
+        $temLineItemNaoResolvidoAgora = $c->hubspotEventos->contains(function ($ev) use ($resolverNome) {
             $payload = $ev->payload ?? [];
-            return !empty($payload['line_items_nao_mapeados'] ?? null);
+            $itens = $payload['line_items_nao_mapeados'] ?? [];
+            if (empty($itens)) {
+                return false;
+            }
+            foreach ($itens as $item) {
+                $nome = (string) ($item['name'] ?? '');
+                if ($nome === '') {
+                    continue;
+                }
+                // Se algum item AINDA nao bate em mapping ativo, a pendencia persiste.
+                if (!$resolverNome($nome)) {
+                    return true;
+                }
+            }
+            return false;
         });
-        if ($temLineItemsNaoMapeados) {
+        if ($temLineItemNaoResolvidoAgora) {
             $pendencias[] = 'servico_nao_reconhecido';
         }
 
