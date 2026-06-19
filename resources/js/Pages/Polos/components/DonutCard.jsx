@@ -1,4 +1,6 @@
 import { formatCurrency, cn } from '@/lib/utils';
+import CityGauge from './CityGauge';
+import { shapeForPolo } from './cityShapes';
 
 // Mapa de status → cor da fatia atingida + rótulo (Phase 38 — novo modelo D-11/D-13).
 // Status vem do PolosController como string: 'Sim' | 'Em progresso' | 'Não' | 'Problema'.
@@ -39,6 +41,10 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
     // Progresso clampado 0–100 para o anel (o número exibido mantém o pct real)
     const atingido = Math.max(Math.min(Number(pct) || 0, 100), 0);
 
+    // Contorno da cidade do polo (se houver) → medidor no formato da cidade;
+    // senão, cai no anel de progresso flat (fallback p/ polos sem shape mapeado).
+    const temShape = !!shapeForPolo(nome);
+
     // ── Geometria do anel de progresso (flat) ─────────────────────────────────
     const size   = 150;
     const stroke = 13;
@@ -69,8 +75,11 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
                 </span>
             </div>
 
-            {/* Anel de progresso flat com glow (% da meta) */}
+            {/* Medidor de % da meta: forma da cidade (se houver) ou anel flat */}
             <div className="flex items-center justify-center py-2" style={{ minHeight: 150 }}>
+                {temShape ? (
+                    <CityGauge nome={nome} pct={pct} cor={cor} height={150} />
+                ) : (
                 <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
                     <defs>
                         <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
@@ -107,6 +116,7 @@ export default function DonutCard({ polo: dados, cor: corPolo }) {
                         DA META
                     </text>
                 </svg>
+                )}
             </div>
 
             {/* KPIs */}
