@@ -181,19 +181,27 @@ class CompanyController extends Controller
             ->get(['id', 'name', 'color']);
 
         // Contagem de empresas ATIVAS por tipo de serviço (contrato ativo) — chips de filtro.
-        // Query direta para contar empresas distintas por serviço sem depender de relação.
+        // Phase 37 hotfix 2026-06-19 — restrito a Servico::SETOR_PERFORMANCE pq /companies
+        // refoca em Performance (REQ-37-07 do Plan 37-06). Sem o filtro, chips de
+        // Polos/Publicação/Outros apareciam mas retornavam 0 (ou contavam empresas
+        // multi-contrato Performance+Outro), confundindo o usuario.
         $servicoCounts = DB::table('contratos_servico as cs')
             ->join('servicos as s', 's.id', '=', 'cs.servico_id')
             ->join('companies as c', 'c.id', '=', 'cs.company_id')
             ->where('cs.ativo', true)
             ->where('c.active', true)
+            ->where('s.setor', Servico::SETOR_PERFORMANCE)
             ->groupBy('s.id', 's.nome')
             ->orderBy('s.nome')
             ->selectRaw('s.id, s.nome, COUNT(DISTINCT c.id) as total')
             ->get();
 
         // Catálogo de serviços para o "Atribuir serviço ao grupo" (GruposManager).
+        // Phase 37 hotfix 2026-06-19 — restrito a Performance (mesmo motivo dos chips
+        // acima; GruposManager foi movido pro Comercial mas o select usado no modal
+        // admin de /companies ainda consulta servicos_disponiveis).
         $servicosDisponiveis = \App\Models\Servico::where('ativo', true)
+            ->where('setor', Servico::SETOR_PERFORMANCE)
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 

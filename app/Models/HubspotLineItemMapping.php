@@ -58,24 +58,68 @@ class HubspotLineItemMapping extends Model
     /**
      * Resolve um line_item.name (HubSpot) para o mapping correspondente do catalogo.
      *
-     * Match case-insensitive via LOWER comparison — HubSpot manda variacoes livres
-     * ("MAP PREMIUM", "Map Premium", "map premium"); a UI admin permite cadastrar em
-     * qualquer caixa. Eager-load servico para evitar N+1 no consumidor (Plan 37-04).
+     * Matching em 2 camadas (rastreado em prod com deal real 61293024061 / Galiloja):
      *
-     * Ignora mappings com ativo=false (admin pode desativar sem deletar).
+     *  1. EXATO — comparacao case-insensitive + trim no input. Cobre o caso ideal
+     *     em que o Comercial cadastra o line item HubSpot com o nome canonico
+     *     ("Gestão", "Mentoria", "MAP PREMIUM").
      *
-     * Retorna null quando:
-     *  - nao existe mapping para o nome (admin deve cadastrar via UI Plan 37-07);
-     *  - existe mapping mas esta inativo (admin desativou intencionalmente).
+     *  2. SUBSTRING — quando o exato falha, percorre os mappings ATIVOS em ordem
+     *     decrescente de comprimento e retorna o primeiro cujo `line_item_name`
+     *     aparece como substring no input. Pega variacoes naturais que o
+     *     comercial digita no HubSpot mas que mapeiam para o mesmo Servico:
      *
-     * Em ambos os casos, o webhook (Plan 37-04) registra a empresa com a flag
-     * "servico_nao_reconhecido" para aparecer na listagem comercial (Plan 37-05).
+     *        input "Gestão de Ads "       -> mapping "Gestão"        -> match
+     *        input "MAP PREMIUM Trimestre"-> mapping "MAP PREMIUM"   -> match
+     *        input "Polo Pleno 12 meses"  -> mapping "Polo"           -> match
+     *
+     *     A ordem por CHAR_LENGTH(line_item_name) DESC evita que "MAP" bata antes
+     *     de "MAP PREMIUM" quando ambos existem no input ("MAP PREMIUM" tem
+     *     11 chars, "MAP" tem 3).
+     *
+     * Eager-load servico para evitar N+1 no consumidor (Plan 37-04). Ignora
+     * mappings inativos. Retorna null quando ambas camadas falham — o webhook
+     * grava warning em HubspotEvento.payload['line_items_nao_mapeados'] e a
+     * empresa fica visivel em /comercial/empresas/listagem com a pendencia
+     * "servico_nao_reconhecido" pro Comercial cadastrar via UI admin
+     * (/sistema/hubspot-line-items, Plan 37-07).
      */
     public static function paraNome(string $nome): ?self
     {
-        return self::ativo()
-            ->whereRaw('LOWER(line_item_name) = LOWER(?)', [trim($nome)])
+        $nomeNormalizado = trim($nome);
+        if ($nomeNormalizado === '') {
+            return null;
+        }
+
+        // Camada 1 — match exato (case-insensitive).
+        $exato = self::ativo()
+            ->whereRaw('LOWER(line_item_name) = LOWER(?)', [$nomeNormalizado])
             ->with('servico')
             ->first();
+        if ($exato) {
+            return $exato;
+        }
+
+        // Camada 2 — fallback substring. Carrega todos os mappings ativos
+        // (poucos registros — UI admin) ordenados por especificidade decrescente
+        // e retorna o primeiro contido no input. mb_strtolower preserva
+        // acentos (importante: "Gestão" tem 'ã').
+        $nomeLower = mb_strtolower($nomeNormalizado);
+        $mappings = self::ativo()
+            ->with('servico')
+            ->orderByRaw('LENGTH(line_item_name) DESC')
+            ->get();
+
+        foreach ($mappings as $m) {
+            $mLower = mb_strtolower(trim($m->line_item_name));
+            if ($mLower === '') {
+                continue;
+            }
+            if (mb_strpos($nomeLower, $mLower) !== false) {
+                return $m;
+            }
+        }
+
+        return null;
     }
 }
