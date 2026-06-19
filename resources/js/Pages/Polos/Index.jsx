@@ -332,7 +332,7 @@ export default function PolosIndex({
                                     type="button"
                                     onClick={() => setPoloAberto(p)}
                                     title={`Ver empresas do polo ${p.polo}`}
-                                    className="text-left rounded-2xl transition hover:ring-2 hover:ring-ecf-yellow/40 focus:outline-none focus:ring-2 focus:ring-ecf-yellow/50"
+                                    className="rounded-2xl p-2 transition hover:bg-white/[0.03] hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-ecf-yellow/40"
                                 >
                                     <DonutCard polo={p} cor={corDoPolo[p.polo]} />
                                 </button>
