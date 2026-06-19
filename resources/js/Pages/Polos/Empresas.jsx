@@ -11,6 +11,20 @@ const STATUS_META = {
     'Problema':     { cor: '#a855f7', label: 'Problema' },
 };
 
+/**
+ * Retorna a cor do gasto de ADS por limiar universal:
+ * - vermelho (>= alerta2): estouro crítico
+ * - amarelo (>= alerta1): atenção
+ * - verde (< alerta1): dentro do esperado
+ */
+function corAds(gasto, limites) {
+    const alerta1 = (limites?.alerta1) ?? 1000;
+    const alerta2 = (limites?.alerta2) ?? 2000;
+    if (gasto >= alerta2) return '#ef4444'; // vermelho
+    if (gasto >= alerta1) return '#ffe600'; // amarelo / ecf-yellow
+    return '#22c55e'; // verde
+}
+
 const FILTROS = [
     { key: 'todas',        label: 'Todas' },
     { key: 'Sim',          label: 'No alvo' },
@@ -42,6 +56,7 @@ export default function PolosEmpresas({
     mesRefLabel    = null,
     parcial        = false,
     totais         = { faturamento: 0, meta: 0, pct: 0, ativos: 0 },
+    adsLimites     = { teto: 3000, alerta1: 1000, alerta2: 2000 },
     erro           = null,
 }) {
     const [filtro, setFiltro]   = useState('todas');
@@ -177,18 +192,22 @@ export default function PolosEmpresas({
                                 <Th campo="status">Status</Th>
                                 <Th campo="faturamento" className="text-right">Faturamento</Th>
                                 <Th campo="pct">% da meta</Th>
+                                <Th campo="ads">ADS</Th>
                                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-white/40">Sinais</th>
                                 <th className="w-8" />
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/[0.04]">
                             {lista.length === 0 && (
-                                <tr><td colSpan={8} className="px-4 py-8 text-center text-white/40">Nenhuma empresa neste filtro.</td></tr>
+                                <tr><td colSpan={9} className="px-4 py-8 text-center text-white/40">Nenhuma empresa neste filtro.</td></tr>
                             )}
                             {lista.map((e) => {
-                                const expandida = aberta === e.cust_id;
-                                const sem       = semanal[e.cust_id];
-                                const statusCor = (STATUS_META[e.status] ?? {}).cor ?? '#94a3b8';
+                                const expandida  = aberta === e.cust_id;
+                                const sem        = semanal[e.cust_id];
+                                const statusCor  = (STATUS_META[e.status] ?? {}).cor ?? '#94a3b8';
+                                const gastoAds   = e.ads ?? 0;
+                                const adsCorHex  = corAds(gastoAds, adsLimites);
+                                const adsPct     = Math.min(gastoAds / (adsLimites.teto || 3000) * 100, 100);
                                 return (
                                     <>
                                         <tr key={e.cust_id} onClick={() => abrirSemanal(e.cust_id)}
@@ -206,6 +225,17 @@ export default function PolosEmpresas({
                                                     <span className="text-white/40 text-xs tabular-nums w-14">{e.pct}%</span>
                                                 </div>
                                             </td>
+                                            {/* Coluna ADS: barra de progresso do gasto mensal vs teto, colorida por limiar */}
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                                                        <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: adsCorHex }} />
+                                                    </div>
+                                                    <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
+                                                        {formatCurrency(gastoAds)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
+                                                    </span>
+                                                </div>
+                                            </td>
                                             <td className="px-4 py-3">
                                                 <div className="flex items-center gap-1.5">
                                                     {e.ads_desligado === true && <span title="Ads desligado" className="text-red-400"><MegaphoneOff size={15} /></span>}
@@ -217,20 +247,31 @@ export default function PolosEmpresas({
                                         </tr>
                                         {expandida && (
                                             <tr key={`${e.cust_id}-sem`} className="bg-white/[0.02]">
-                                                <td colSpan={8} className="px-6 py-4">
-                                                    <p className="text-white/30 text-[10px] uppercase tracking-wider mb-2">Faturamento por semana — {e.nome}</p>
+                                                <td colSpan={9} className="px-6 py-4">
+                                                    <p className="text-white/30 text-[10px] uppercase tracking-wider mb-2">Faturamento e ADS por semana — {e.nome}</p>
                                                     {sem?.loading && <p className="text-white/40 text-xs">Carregando da Adman…</p>}
                                                     {sem?.erro && <p className="text-red-300 text-xs">Falha ao buscar o semanal.</p>}
                                                     {sem && !sem.loading && !sem.erro && (
                                                         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 max-w-3xl">
                                                             {sem.semanas?.map((s) => {
-                                                                const max = Math.max(...sem.semanas.map((x) => x.faturamento), 1);
+                                                                const max         = Math.max(...sem.semanas.map((x) => x.faturamento), 1);
+                                                                const gastoSemAds = s.ads ?? 0;
+                                                                const adsSemPct   = Math.min(gastoSemAds / (adsLimites.teto || 3000) * 100, 100);
+                                                                const adsSemCor   = corAds(gastoSemAds, adsLimites);
                                                                 return (
                                                                     <div key={s.semana} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
                                                                         <p className="text-white/40 text-[11px]">Semana {s.semana}</p>
                                                                         <p className="text-white font-semibold tabular-nums mt-0.5">{formatCurrency(s.faturamento)}</p>
                                                                         <div className="mt-2 h-1.5 rounded bg-white/[0.06] overflow-hidden">
                                                                             <div className="h-full rounded bg-ecf-yellow" style={{ width: `${(s.faturamento / max) * 100}%` }} />
+                                                                        </div>
+                                                                        {/* ADS da semana: rótulo + valor + barra fina colorida por limiar */}
+                                                                        <div className="mt-2.5 flex items-center justify-between">
+                                                                            <p className="text-white/40 text-[10px] uppercase tracking-wide">ADS</p>
+                                                                            <p className="text-white/70 text-[11px] tabular-nums">{formatCurrency(gastoSemAds)}</p>
+                                                                        </div>
+                                                                        <div className="mt-1 h-1 rounded bg-white/[0.06] overflow-hidden">
+                                                                            <div className="h-full rounded" style={{ width: `${adsSemPct}%`, background: adsSemCor }} />
                                                                         </div>
                                                                     </div>
                                                                 );

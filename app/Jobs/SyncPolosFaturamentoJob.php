@@ -65,8 +65,9 @@ class SyncPolosFaturamentoJob implements ShouldQueue
 
         Log::info('[Polos] Sync iniciado: ' . count($custIds) . " polos ({$de}..{$ate})");
 
-        $ok = 0;
-        $comValor = 0;
+        $ok          = 0;
+        $comValor    = 0;
+        $adsComValor = 0; // contador de empresas com investment>0 no cache de ADS
         foreach ($custIds as $i => $custId) {
             // Throttle Adman (~10 rpm): 7s entre chamadas, exceto a primeira.
             if ($i > 0) {
@@ -81,11 +82,21 @@ class SyncPolosFaturamentoJob implements ShouldQueue
                     }
                 }
             } catch (\Throwable $e) {
-                Log::warning("[Polos] Sync: falha cust={$custId}: " . $e->getMessage());
+                Log::warning("[Polos] Sync: falha faturamento cust={$custId}: " . $e->getMessage());
+            }
+            // Aquece o cache de investment (ADS) para o mesmo cust_id e janela.
+            // adsAdmanDoMes() do controller lê só-cache; sem esse warm ADS fica R$0.
+            try {
+                $mAds = $adman->fetchAccountMetricsCached($custId, $de, $ate, 1440, forceRefresh: true);
+                if ($mAds !== null && (float) ($mAds['investment'] ?? 0) > 0) {
+                    $adsComValor++;
+                }
+            } catch (\Throwable $e) {
+                Log::warning("[Polos] Sync: falha ADS cust={$custId}: " . $e->getMessage());
             }
         }
 
-        Log::info("[Polos] Sync concluído: {$ok}/" . count($custIds) . " ok · {$comValor} com faturamento>0 ({$de}..{$ate})");
+        Log::info("[Polos] Sync concluído: {$ok}/" . count($custIds) . " ok · {$comValor} com faturamento>0 · {$adsComValor} com ADS>0 ({$de}..{$ate})");
     }
 
     public function failed(\Throwable $e): void

@@ -165,6 +165,8 @@ class PolosController extends Controller
             'mesRefLabel'    => null,
             'parcial'        => false,
             'totais'         => ['faturamento' => 0, 'meta' => 0, 'pct' => 0, 'ativos' => 0],
+            // Limites de ADS defensivos: garante shape consistente no frontend mesmo sem dados.
+            'adsLimites'     => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'erro'           => null,
         ];
 
@@ -201,6 +203,7 @@ class PolosController extends Controller
                     'pct'         => $totMeta > 0 ? round($totFat / $totMeta * 100, 1) : 0,
                     'ativos'      => count($empresas),
                 ],
+                'adsLimites'     => $d['adsLimites'],
                 'erro'           => null,
             ]);
         } catch (\Throwable $e) {
@@ -216,7 +219,7 @@ class PolosController extends Controller
      * Adman → agregação por polo + distribuição de status). Compartilhado pela
      * visão completa. Retorna null quando o POLOS MENSAL não existe.
      *
-     * @return array{polos:array,statusDist:array,meses:array,mesSel:?string,mesAtual:?array,parcial:bool}|null
+     * @return array{polos:array,statusDist:array,meses:array,mesSel:?string,mesAtual:?array,parcial:bool,adsLimites:array}|null
      */
     private function montarPolos(): ?array
     {
@@ -255,10 +258,21 @@ class PolosController extends Controller
         // Faturamento: Adman no corrente, TGMV_LC do CSV no mês fechado.
         [$fatMes] = $this->faturamentoDoMes($mesSel, $parcial, $ativos, $linhasMes);
 
-        $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes);
+        // ADS do mês corrente via Adman (SÓ-CACHE). Mês fechado → cache frio → [].
+        // ADS = R$0 em mês fechado — sem fonte CSV para ADS (limitação documentada).
+        $adsMes = $mesSel !== null ? $this->adsAdmanDoMes($ativos, $mesSel) : [];
+
+        // Limiares de ADS configuráveis via Configuracao (defaults: teto=3000, alerta1=1000, alerta2=2000).
+        $adsLimites = [
+            'teto'    => (float) Configuracao::get('polo_ads_teto', 3000),
+            'alerta1' => (float) Configuracao::get('polo_ads_alerta1', 1000),
+            'alerta2' => (float) Configuracao::get('polo_ads_alerta2', 2000),
+        ];
+
+        $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes);
         $statusDist = $this->distribuicaoStatus($ativos, $linhasMes, $limiares, $fatMes);
 
-        return compact('polos', 'statusDist', 'meses', 'mesSel', 'mesAtual', 'parcial');
+        return compact('polos', 'statusDist', 'meses', 'mesSel', 'mesAtual', 'parcial', 'adsLimites');
     }
 
     /**
@@ -308,33 +322,45 @@ class PolosController extends Controller
         $m   = (int) substr($mes, 4, 2);
         $ult = (int) date('t', mktime(0, 0, 0, $m, 1, $ano));
 
-        $cortes  = [[1, 7], [8, 14], [15, 21], [22, $ult]];
-        $semanas = [];
-        $total   = 0.0;
+        $cortes   = [[1, 7], [8, 14], [15, 21], [22, $ult]];
+        $semanas  = [];
+        $total    = 0.0;
+        $totalAds = 0.0;
         foreach ($cortes as $i => [$d1, $d2]) {
             $de  = sprintf('%04d-%02d-%02d', $ano, $m, $d1);
             $ate = sprintf('%04d-%02d-%02d', $ano, $m, $d2);
             $fat = 0.0;
+            $ads = 0.0;
             try {
                 $v   = $this->adman->fetchGrossBilling($custId, $de, $ate, 1440, false);
                 $fat = $v !== null ? (float) $v : 0.0;
             } catch (\Throwable $e) {
                 Log::warning("[Polos] semanal cust={$custId} S" . ($i + 1) . ': ' . $e->getMessage());
             }
+            // ADS semanal: busca account metrics da mesma janela (cacheado após o warm do job).
+            try {
+                $mAds = $this->adman->fetchAccountMetricsCached($custId, $de, $ate);
+                $ads  = ($mAds && isset($mAds['investment'])) ? (float) $mAds['investment'] : 0.0;
+            } catch (\Throwable $e) {
+                Log::warning("[Polos] semanal ADS cust={$custId} S" . ($i + 1) . ': ' . $e->getMessage());
+            }
             $total    += $fat;
+            $totalAds += $ads;
             $semanas[] = [
                 'semana'      => $i + 1,
                 'de'          => $de,
                 'ate'         => $ate,
                 'faturamento' => $fat,
+                'ads'         => $ads,
             ];
         }
 
         return response()->json([
-            'cust_id' => $custId,
-            'mes'     => $mes,
-            'semanas' => $semanas,
-            'total'   => $total,
+            'cust_id'  => $custId,
+            'mes'      => $mes,
+            'semanas'  => $semanas,
+            'total'    => $total,
+            'totalAds' => $totalAds,
         ]);
     }
 
@@ -357,6 +383,58 @@ class PolosController extends Controller
             'fonteFaturamento' => 'csv',
             'erro'             => $mensagem,
         ]);
+    }
+
+    /**
+     * Gasto de ADS (Adman `investment`) do mês CORRENTE/parcial, por cust_id normalizado.
+     * Espelha `faturamentoAdmanDoMes` usando `getCachedAccountMetricsMany` (SÓ-CACHE, sem HTTP).
+     * Adman fora do ar / cust_id sem cache → R$0; página NÃO quebra.
+     *
+     * @param  array<array<string,mixed>>  $ativos  Ativos M2–M4 (toArray)
+     * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
+     * @return array<string,float>  [cust_id normalizado => investment]
+     */
+    private function adsAdmanDoMes(array $ativos, string $mesSel): array
+    {
+        try {
+            $custIds = collect($ativos)
+                ->map(fn ($a) => CustId::normaliza((string) ($a['cust_id'] ?? '')))
+                ->filter(fn ($id) => $id !== '')
+                ->unique()
+                ->values()
+                ->all();
+
+            if (empty($custIds)) {
+                return [];
+            }
+
+            // Janela do mês: primeiro ao último dia.
+            $de  = substr($mesSel, 0, 4) . '-' . substr($mesSel, 4, 2) . '-01';
+            $ate = date('Y-m-t', strtotime($de));
+
+            // SOMENTE cache (sem HTTP) — sem throttle na request. Cache aquecido
+            // pelo SyncPolosFaturamentoJob (forceRefresh=true).
+            $cache  = $this->adman->getCachedAccountMetricsMany($custIds, $de, $ate);
+            $out    = [];
+            $faltam = 0;
+            foreach ($custIds as $id) {
+                if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
+                    $out[$id] = (float) ($cache[$id]['value']['investment'] ?? 0.0);
+                } else {
+                    $faltam++;
+                }
+            }
+
+            if ($faltam > 0) {
+                Log::info("[Polos] Adman: {$faltam} cust_ids sem cache de ADS no mês corrente — ADS=R\$0 até o cache aquecer (warm fora da request).");
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            // Defensiva: Adman fora do ar NÃO quebra /polos/empresas — ADS vira R$0.
+            Log::warning('[Polos] Falha ao buscar ADS Adman do mês corrente: ' . $e->getMessage());
+            return [];
+        }
     }
 
     /**
@@ -682,9 +760,10 @@ class PolosController extends Controller
      * @param  array<array<string,mixed>>  $linhasMes  Linhas do CSV do mês selecionado
      * @param  array<string,float>         $limiares   ['M2'=>1000, 'M3'=>4000, 'M4'=>8000]
      * @param  array<string,float>         $fatAdman   [cust_id => gross_billing] do mês corrente (vazio em mês fechado)
+     * @param  array<string,float>         $adsAdman   [cust_id => investment ADS] do mês corrente (vazio quando sem cache)
      * @return array<array<string,mixed>>              Polos agregados, ordenados por nome
      */
-    private function agregarPorPolo(array $ativos, array $linhasMes, array $limiares, array $fatAdman = []): array
+    private function agregarPorPolo(array $ativos, array $linhasMes, array $limiares, array $fatAdman = [], array $adsAdman = []): array
     {
         $lookup = $this->montarLookup($linhasMes);
         $grupos = []; // polo → { fat[], limiar[], statuses[] }
@@ -697,6 +776,9 @@ class PolosController extends Controller
             // Faturamento: SEMPRE da Adman (gross_billing). cust_id sem dado na
             // Adman → R$0 (sem fallback CSV). O CSV aqui serve só p/ LOCALIDADE.
             $tgmv = $fatAdman[$id] ?? 0.0;
+
+            // Gasto de ADS do mês corrente (investment Adman). Sem cache → R$0.
+            $ads = $adsAdman[$id] ?? 0.0;
 
             // D-15: polo vem de LOCALIDADE do CSV quando disponível; fallback MlbEmpresa.polo
             $localidade = ($csv !== null && $csv['localidade'] !== '')
@@ -723,6 +805,7 @@ class PolosController extends Controller
                 'meta'          => $limiar,
                 'pct'           => $limiar > 0 ? round($tgmv / $limiar * 100, 1) : 0.0,
                 'status'        => $status,
+                'ads'           => $ads,
                 'problema'      => (bool) ($ativo['problema'] ?? false),
                 'problema_nota' => $ativo['problema_nota'] ?? null,
                 'ads_desligado' => isset($ativo['ads_desligado']) ? (bool) $ativo['ads_desligado'] : null,
