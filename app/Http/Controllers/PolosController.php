@@ -14,6 +14,7 @@ namespace App\Http\Controllers;
 use App\Jobs\SyncPolosFaturamentoJob;
 use App\Models\Configuracao;
 use App\Models\MlbEmpresa;
+use App\Models\PoloFaturamentoSnapshot;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
 use App\Support\CustId;
@@ -415,19 +416,37 @@ class PolosController extends Controller
             // SOMENTE cache (sem HTTP) — sem throttle na request. Cache aquecido
             // pelo SyncPolosFaturamentoJob (warmPerformance). O valor já é o
             // investment (float) — fonte = summarizedData.investment do /performance.
-            $cache  = $this->adman->getCachedInvestmentsMany($custIds, $de, $ate);
-            $out    = [];
-            $faltam = 0;
+            $cache     = $this->adman->getCachedInvestmentsMany($custIds, $de, $ate);
+            $out       = [];
+            $faltantes = [];
             foreach ($custIds as $id) {
                 if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
                     $out[$id] = (float) $cache[$id]['value'];
                 } else {
-                    $faltam++;
+                    $faltantes[] = $id;
                 }
             }
 
-            if ($faltam > 0) {
-                Log::info("[Polos] Adman: {$faltam} cust_ids sem cache de ADS no mês corrente — ADS=R\$0 até o cache aquecer (warm fora da request).");
+            // Fallback durável: cust_ids sem cache do dia (chave fria — logo após a
+            // meia-noite BRT, quando o cacheDay rotaciona, ou após flush/restart do Redis)
+            // são preenchidos com o último ADS sincronizado e persistido no snapshot.
+            // O cache do dia (mais fresco) continua sendo a fonte preferencial.
+            $doSnapshot = 0;
+            if (! empty($faltantes)) {
+                $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
+                    ->whereIn('cust_id', $faltantes)
+                    ->pluck('ads', 'cust_id');
+                foreach ($faltantes as $id) {
+                    if (isset($snaps[$id])) {
+                        $out[$id] = (float) $snaps[$id];
+                        $doSnapshot++;
+                    }
+                }
+            }
+
+            $semDado = count($faltantes) - $doSnapshot;
+            if ($semDado > 0) {
+                Log::info("[Polos] Adman: {$semDado} cust_ids sem cache nem snapshot de ADS no mês corrente — ADS=R\$0 até o próximo sync.");
             }
 
             return $out;
@@ -475,19 +494,38 @@ class PolosController extends Controller
             // SOMENTE cache (sem HTTP) — round-trip único, igual ao DashboardController.
             // Cust_id sem cache NÃO é buscado aqui (evita ~7s/cust_id no render); cai
             // no TGMV_LC do CSV no chamador até o cache aquecer fora da request.
-            $cache  = $this->adman->getCachedGrossBillingsMany($custIds, $de, $ate);
-            $out    = [];
-            $faltam = 0;
+            $cache     = $this->adman->getCachedGrossBillingsMany($custIds, $de, $ate);
+            $out       = [];
+            $faltantes = [];
             foreach ($custIds as $id) {
                 if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
                     $out[$id] = (float) $cache[$id]['value'];
                 } else {
-                    $faltam++;
+                    $faltantes[] = $id;
                 }
             }
 
-            if ($faltam > 0) {
-                Log::info("[Polos] Adman: {$faltam} cust_ids sem cache no mês corrente — usando CSV até o cache aquecer (warm fora da request).");
+            // Fallback durável: cust_ids sem cache do dia (chave fria — logo após a
+            // meia-noite BRT, quando o cacheDay rotaciona, ou após flush/restart do Redis)
+            // são preenchidos com o último faturamento sincronizado e persistido no
+            // snapshot. Sem isto a página zerava para R$0 ao virar o dia. O cache do dia
+            // (mais fresco) continua sendo a fonte preferencial — só preenche o que faltou.
+            $doSnapshot = 0;
+            if (! empty($faltantes)) {
+                $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
+                    ->whereIn('cust_id', $faltantes)
+                    ->pluck('faturamento', 'cust_id');
+                foreach ($faltantes as $id) {
+                    if (isset($snaps[$id])) {
+                        $out[$id] = (float) $snaps[$id];
+                        $doSnapshot++;
+                    }
+                }
+            }
+
+            $semDado = count($faltantes) - $doSnapshot;
+            if ($semDado > 0) {
+                Log::info("[Polos] Adman: {$semDado} cust_ids sem cache nem snapshot no mês corrente — R\$0 até o próximo sync.");
             }
 
             return $out;
