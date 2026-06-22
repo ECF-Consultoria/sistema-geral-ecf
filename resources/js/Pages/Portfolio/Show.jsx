@@ -10,7 +10,7 @@ import { Link, router, useForm } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Target, AlertTriangle,
-    Trophy, Briefcase, Building2, Plus, Pencil, Trash2, ShoppingCart,
+    Trophy, Briefcase, Building2, Plus, Pencil, Trash2, ShoppingCart, Award, Users, Minus,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import {
@@ -81,6 +81,28 @@ function Chip({ children, tone = 'neutral' }) {
     );
 }
 
+// ── Linha de comparação (card lateral) ───────────────────────────────────────
+
+function ComparacaoLinha({ label, status, valor, media }) {
+    const cfg = {
+        acima:    { cls: 'text-emerald-300', Icon: TrendingUp,   txt: 'acima' },
+        na_media: { cls: 'text-white/60',    Icon: Minus,        txt: 'média' },
+        abaixo:   { cls: 'text-red-300',     Icon: TrendingDown, txt: 'abaixo' },
+    }[status] ?? { cls: 'text-white/60', Icon: Minus, txt: '—' };
+    const { Icon } = cfg;
+    return (
+        <div className="flex items-center justify-between gap-2 text-[12px]" title={`Equipe: ${media}`}>
+            <span className="text-white/70 truncate">{label}</span>
+            <span className="flex items-center gap-1.5 shrink-0">
+                <span className="text-white/85 tabular-nums">{valor}</span>
+                <span className={cn('inline-flex items-center gap-0.5 text-[10px] font-semibold', cfg.cls)}>
+                    <Icon size={11} /> {cfg.txt}
+                </span>
+            </span>
+        </div>
+    );
+}
+
 // ── Tooltip custom do gráfico ────────────────────────────────────────────────
 
 function ChartTooltip({ active, payload, label }) {
@@ -144,6 +166,7 @@ export default function PortfolioShow({
     meta_carteira = { target_value: null, realized_value: 0, achieved_pct: null, restante: null, has_goal: false },
     periodo_amostra = { from_label: '—', to_label: '—', mes_label: '—', is_mes_atual: true },
     prioridade_do_dia = 0,
+    comparacao_equipe = null,
 }) {
     const isAdmin = portfolio_user.role === 'admin'
         || (typeof window !== 'undefined' && window.location.pathname.includes('/admin/'));
@@ -323,6 +346,21 @@ export default function PortfolioShow({
                                     {meta_carteira.has_goal && meta_carteira.restante !== null && meta_carteira.restante > 0 && (
                                         <Chip tone="neutral">
                                             {formatCurrencyCompact(meta_carteira.restante)} restante
+                                        </Chip>
+                                    )}
+                                    {comparacao_equipe && (
+                                        <Chip tone={
+                                            comparacao_equipe.nivel === 'A' ? 'positive'
+                                            : comparacao_equipe.nivel === 'D' ? 'negative'
+                                            : 'neutral'
+                                        }>
+                                            <Award size={11} /> Nível {comparacao_equipe.nivel}
+                                            <span className="opacity-70">
+                                                · {comparacao_equipe.nivel === 'A' ? 'acima da média'
+                                                : comparacao_equipe.nivel === 'B' ? 'média alta'
+                                                : comparacao_equipe.nivel === 'C' ? 'média baixa'
+                                                : 'abaixo da média'} da equipe
+                                            </span>
                                         </Chip>
                                     )}
                                 </div>
@@ -554,6 +592,48 @@ export default function PortfolioShow({
                                 </ol>
                             </CardContent>
                         </Card>
+
+                        {/* Comparação com equipe (quick 260619 — chip + card) */}
+                        {comparacao_equipe && (
+                            <Card className="bg-ecf-card/60 border-white/[0.06]">
+                                <CardContent className="p-4">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2 text-white/90 text-sm font-semibold">
+                                            <Users size={14} className="text-sky-300" /> Comparação
+                                        </div>
+                                        <span className="text-white/40 text-[10px]">
+                                            vs {comparacao_equipe.tamanho_amostra} {comparacao_equipe.cargo_label.toLowerCase()}s
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <ComparacaoLinha
+                                            label="Faturamento total"
+                                            status={comparacao_equipe.relativo.faturamento_total}
+                                            valor={formatCurrencyCompact(comparacao_equipe.meus_valores.faturamento_total)}
+                                            media={formatCurrencyCompact(comparacao_equipe.medias_equipe.faturamento_total)}
+                                        />
+                                        <ComparacaoLinha
+                                            label="Fat. por empresa"
+                                            status={comparacao_equipe.relativo.faturamento_por_empresa}
+                                            valor={formatCurrencyCompact(comparacao_equipe.meus_valores.faturamento_por_empresa)}
+                                            media={formatCurrencyCompact(comparacao_equipe.medias_equipe.faturamento_por_empresa)}
+                                        />
+                                        <ComparacaoLinha
+                                            label="Empresas"
+                                            status={comparacao_equipe.relativo.num_empresas}
+                                            valor={String(comparacao_equipe.meus_valores.num_empresas)}
+                                            media={comparacao_equipe.medias_equipe.num_empresas.toFixed(1)}
+                                        />
+                                        <ComparacaoLinha
+                                            label="Investimento Ads"
+                                            status={comparacao_equipe.relativo.ad_spend}
+                                            valor={formatCurrencyCompact(comparacao_equipe.meus_valores.ad_spend)}
+                                            media={formatCurrencyCompact(comparacao_equipe.medias_equipe.ad_spend)}
+                                        />
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
 
                         {/* Alertas estratégicos */}
                         <Card className="bg-ecf-card/60 border-white/[0.06]">

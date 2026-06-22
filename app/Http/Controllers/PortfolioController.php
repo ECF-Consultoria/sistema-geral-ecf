@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\AdmanService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class PortfolioController extends Controller
@@ -558,6 +559,109 @@ class PortfolioController extends Controller
             return $c;
         });
 
+        // ── Quick 260619 redesign Carteira — comparacao com a equipe ──
+        // Identifica o cargo do user atual via user_setores -> cargos (fonte da
+        // verdade desde quick 260610-f69; users.role eh legacy e divergiu).
+        // Calcula percentil dele dentro dos pares do MESMO cargo, mais 3 metricas
+        // adicionais (faturamento medio por empresa, cobertura ads %, num empresas).
+        $cargoSlug = DB::table('user_setores as us')
+            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+            ->where('us.user_id', $user->id)
+            ->whereIn('c.slug', ['analista', 'estrategista'])
+            ->value('c.slug');
+
+        $comparacaoEquipe = null;
+        if ($cargoSlug) {
+            // Todos os user_ids com o mesmo cargo (ativos).
+            $paresIds = DB::table('user_setores as us')
+                ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                ->join('users as u', 'u.id', '=', 'us.user_id')
+                ->where('c.slug', $cargoSlug)
+                ->where('u.active', true)
+                ->pluck('us.user_id')
+                ->unique()
+                ->values();
+
+            // Agregados por user (sum revenue, sum ad_spend, count empresas) no
+            // mesmo intervalo [dateFrom, dateTo]. Uma unica query — usa join no
+            // pivot company_users pra atribuir cada empresa ao profissional.
+            $agregados = DB::table('company_users as cu')
+                ->join('companies as co', 'co.id', '=', 'cu.company_id')
+                ->leftJoin('adman_metrics as am', function ($j) use ($dateFrom, $dateTo) {
+                    $j->on('am.company_id', '=', 'co.id')
+                      ->whereBetween('am.reference_date', [$dateFrom, $dateTo]);
+                })
+                ->whereIn('cu.user_id', $paresIds)
+                ->where('co.active', true)
+                ->groupBy('cu.user_id')
+                ->selectRaw('cu.user_id, COUNT(DISTINCT co.id) as num_empresas, COALESCE(SUM(am.revenue),0) as total_revenue, COALESCE(SUM(am.ad_spend),0) as total_ad_spend, SUM(CASE WHEN am.ad_spend IS NOT NULL AND am.ad_spend > 0 THEN 1 ELSE 0 END) as empresas_com_ads_raw')
+                ->get()
+                ->keyBy('user_id');
+
+            $minhaLinha = $agregados->get($user->id);
+
+            if ($minhaLinha && $agregados->count() >= 2) {
+                $revenues = $agregados->pluck('total_revenue')->map(fn ($v) => (float) $v)->sort()->values();
+                $meuRev   = (float) $minhaLinha->total_revenue;
+                // Percentil: % de pares com revenue <= o meu (definicao classica).
+                $abaixoOuIgual = $revenues->filter(fn ($v) => $v <= $meuRev)->count();
+                $percentil    = $revenues->count() > 0
+                    ? round(($abaixoOuIgual / $revenues->count()) * 100)
+                    : 50;
+
+                if ($percentil >= 75)      $nivel = 'A';
+                elseif ($percentil >= 50)  $nivel = 'B';
+                elseif ($percentil >= 25)  $nivel = 'C';
+                else                       $nivel = 'D';
+
+                // Faturamento medio por empresa do grupo (para tooltip do chip).
+                $medias = [
+                    'faturamento_total' => round((float) $agregados->avg('total_revenue'), 2),
+                    'faturamento_por_empresa' => 0.0,
+                    'num_empresas'      => round((float) $agregados->avg('num_empresas'), 2),
+                    'ad_spend'          => round((float) $agregados->avg('total_ad_spend'), 2),
+                ];
+                $faturamentoPorEmpresa = $agregados->map(fn ($r) => ($r->num_empresas > 0)
+                    ? (float) $r->total_revenue / (int) $r->num_empresas
+                    : 0.0);
+                $medias['faturamento_por_empresa'] = round((float) $faturamentoPorEmpresa->avg(), 2);
+
+                $meuFatPorEmpresa = ($minhaLinha->num_empresas > 0)
+                    ? (float) $meuRev / (int) $minhaLinha->num_empresas
+                    : 0.0;
+
+                // Status por indicador (acima / abaixo / na media) — tolera +/- 5% do desvio.
+                $relativo = function (float $meu, float $media): string {
+                    if ($media <= 0) return 'na_media';
+                    $delta = ($meu - $media) / $media;
+                    if ($delta >= 0.05)  return 'acima';
+                    if ($delta <= -0.05) return 'abaixo';
+                    return 'na_media';
+                };
+
+                $comparacaoEquipe = [
+                    'cargo_slug'        => $cargoSlug,
+                    'cargo_label'       => $cargoSlug === 'analista' ? 'Analista' : 'Estrategista',
+                    'tamanho_amostra'   => $agregados->count(),
+                    'percentil'         => $percentil,
+                    'nivel'             => $nivel,
+                    'meus_valores'      => [
+                        'faturamento_total'       => (float) $meuRev,
+                        'faturamento_por_empresa' => $meuFatPorEmpresa,
+                        'num_empresas'            => (int) $minhaLinha->num_empresas,
+                        'ad_spend'                => (float) $minhaLinha->total_ad_spend,
+                    ],
+                    'medias_equipe'     => $medias,
+                    'relativo'          => [
+                        'faturamento_total'       => $relativo($meuRev, $medias['faturamento_total']),
+                        'faturamento_por_empresa' => $relativo($meuFatPorEmpresa, $medias['faturamento_por_empresa']),
+                        'num_empresas'            => $relativo((float) $minhaLinha->num_empresas, $medias['num_empresas']),
+                        'ad_spend'                => $relativo((float) $minhaLinha->total_ad_spend, $medias['ad_spend']),
+                    ],
+                ];
+            }
+        }
+
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
@@ -582,6 +686,7 @@ class PortfolioController extends Controller
             ],
             'periodo_amostra'     => $periodoAmostra,
             'prioridade_do_dia'   => $prioridadeDoDia,
+            'comparacao_equipe'   => $comparacaoEquipe,
         ]);
     }
 

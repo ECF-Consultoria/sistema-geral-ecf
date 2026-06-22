@@ -11,30 +11,43 @@ export function formatCurrency(value) {
 
 /**
  * Formato compacto pra dashboards (Quick 260619 redesign Carteira):
- *   1.230 -> "R$ 1.23K"
+ *   12 -> "R$ 12,00"        (formato BR completo — sem unidade compacta)
+ *   891 -> "R$ 891,00"      (id.; deixa claro que NAO sao 891 mil)
+ *   1.234 -> "R$ 1,23K"
  *   891.040 -> "R$ 891K"
- *   3.469.401 -> "R$ 3.47M"
- *   20.200.857 -> "R$ 20.20M"
+ *   3.469.401 -> "R$ 3,47M"
+ *   20.200.857 -> "R$ 20,20M"
  *
- * Regra: >=1M usa M com 2 decimais; >=1K usa K (sem decimais quando >=10K).
- * Use em cards principais/chips; mantenha formatCurrency em modais e tabelas
- * onde valor exato importa.
+ * Regra: >=1M usa M com 2 decimais; >=10K usa K sem decimais; 1K-9.99K usa
+ * K com 2 decimais; <1K usa formato BR completo (R$ X,XX) — esse <1K
+ * inclui virgula+centavos pra eliminar a ambiguidade reportada em 2026-06-19
+ * (usuario via 'R$ 891' e nao sabia se eram 891 reais ou 891 mil).
+ *
+ * Decimais usam virgula BR ("R$ 1,23M") em todos os tiers; o briefing original
+ * usava ponto americano mas a UI eh pt-BR, entao mantemos consistencia.
  */
 export function formatCurrencyCompact(value) {
     const n = Number(value ?? 0);
-    if (!Number.isFinite(n)) return 'R$ 0';
+    if (!Number.isFinite(n)) return 'R$ 0,00';
     const abs = Math.abs(n);
     const sign = n < 0 ? '-' : '';
+    const withComma = (decStr) => decStr.replace('.', ',');
     if (abs >= 1_000_000) {
-        return `${sign}R$ ${(abs / 1_000_000).toFixed(2)}M`;
+        return `${sign}R$ ${withComma((abs / 1_000_000).toFixed(2))}M`;
     }
     if (abs >= 10_000) {
         return `${sign}R$ ${Math.round(abs / 1_000)}K`;
     }
     if (abs >= 1_000) {
-        return `${sign}R$ ${(abs / 1_000).toFixed(2)}K`;
+        return `${sign}R$ ${withComma((abs / 1_000).toFixed(2))}K`;
     }
-    return `${sign}R$ ${abs.toFixed(0)}`;
+    // <1K: BR completo (R$ X,XX) — elimina ambiguidade 'R$ 891' vs 'R$ 891K'.
+    return `${sign}${new Intl.NumberFormat('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    }).format(abs)}`;
 }
 
 export function formatPercent(value, decimals = 1) {
