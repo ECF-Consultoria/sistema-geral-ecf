@@ -19,6 +19,16 @@ import M1Card from './components/M1Card';
 // Paleta de identidade por polo (ponto de identidade nos chips/ranking). Amarelo ECF primeiro.
 const POLO_PALETTE = ['#ffe600', '#38bdf8', '#22c55e', '#a855f7', '#fb923c', '#f43f5e', '#2dd4bf', '#e879f9'];
 
+// BRL compacto para o número herói de faturamento (evita estourar o card):
+// R$ 1,34 mi · R$ 207 mil · valores menores ficam no formato cheio.
+const fmtBRLcompacto = (n) => {
+    const v   = Number(n) || 0;
+    const abs = Math.abs(v);
+    if (abs >= 1e6) return `R$ ${(v / 1e6).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 2 })} mi`;
+    if (abs >= 1e3) return `R$ ${(v / 1e3).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} mil`;
+    return formatCurrency(v);
+};
+
 // Chrome do card de seção do Cockpit (com inner-glow sutil no topo).
 const CARD = cn(
     'relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 lg:p-6',
@@ -108,7 +118,9 @@ export default function PolosIndex({
     const totalAtivos = visiveis.reduce((acc, p) => acc + (p.ativos ?? 0), 0);
     const pctGeral    = totalMeta > 0 ? totalFat / totalMeta * 100 : 0;
 
-    const fechado = fonteFaturamento === 'csv';
+    // Faturamento agora é sempre da Adman; "fechado" passa a significar mês histórico
+    // (não-corrente) — usado p/ sinalizar que ADS só é apurado no mês corrente.
+    const fechado = !parcial;
 
     // KPI "Alertas": empresas com ADS desligado OU problema (booleanos reais — NUNCA o
     // valor e.ads, que vem zerado no /index). Em mês fechado o roster CSV não traz flags.
@@ -222,17 +234,18 @@ export default function PolosIndex({
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in">
                         <HeroKpi
                             titulo="Faturamento total"
-                            valor={formatCurrency(totalFat)}
+                            valor={fmtBRLcompacto(totalFat)}
                             icone={Wallet}
                             glow="yellow"
-                            sublabel={mesRefLabel ? `${mesRefLabel} · ${parcial ? 'parcial' : 'fechado'}` : null}
+                            sublabel={mesRefLabel
+                                ? `${formatCurrency(totalFat)} · ${parcial ? 'parcial' : 'fechado'}`
+                                : null}
                         />
                         <HeroKpi
                             titulo="% Geral da meta"
                             valor={`${pctGeral.toFixed(0)}%`}
                             icone={Target}
                             glow="yellow"
-                            gauge={pctGeral}
                             sublabel={`${formatCurrency(totalFat)} / ${formatCurrency(totalMeta)}`}
                         />
                         <HeroKpi
@@ -321,7 +334,7 @@ export default function PolosIndex({
                             <p className="text-white/40 text-xs uppercase tracking-wider self-start">
                                 Distribuição de status — {mesRefLabel}
                             </p>
-                            <StatusDonut statusDist={statusDist} height={280} />
+                            <StatusDonut statusDist={statusDist} height={340} />
                             <p className="text-white/40 text-[11px] self-start">
                                 <span className="text-ecf-yellow font-semibold">{statusDist.total}</span> ativos no mês · todos os polos
                             </p>

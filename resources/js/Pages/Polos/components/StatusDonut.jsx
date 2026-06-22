@@ -36,7 +36,7 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
         series: [{
             name: 'Status',
             type: 'pie',
-            radius: ['58%', '80%'],
+            radius: ['62%', '88%'],
             center: ['50%', '50%'],
             avoidLabelOverlap: false,
             label: { show: false },
@@ -93,10 +93,10 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
             />
             {/* Número central: % de empresas "No alvo" */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-display text-4xl font-extrabold tabular-nums text-emerald-400 drop-shadow-[0_0_16px_rgba(34,197,94,0.45)]">
+                <span className="font-display text-5xl font-extrabold tabular-nums text-emerald-400 drop-shadow-[0_0_16px_rgba(34,197,94,0.45)]">
                     {pctNoAlvo}%
                 </span>
-                <span className="text-[10px] uppercase tracking-wider text-white/40">No alvo</span>
+                <span className="text-[11px] uppercase tracking-wider text-white/40 mt-0.5">No alvo</span>
             </div>
         </div>
     );

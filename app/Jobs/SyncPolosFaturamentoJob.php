@@ -54,7 +54,9 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         // derivado de $de ('YYYY-MM-01') — chave do snapshot durável.
         $mes = substr(str_replace('-', '', $de), 0, 6);
 
-        $custIds = MlbEmpresa::whereIn('fase', ['M2', 'M3', 'M4'])
+        // Inclui M1 (onboarding): o /polos passou a ler o faturamento de M1 também
+        // da Adman (não mais do CSV), então o cache/snapshot de M1 precisa ser aquecido.
+        $custIds = MlbEmpresa::whereIn('fase', ['M1', 'M2', 'M3', 'M4'])
             ->where('projeto', 'POLOS')
             ->pluck('cust_id')
             ->map(fn ($c) => CustId::normaliza((string) $c))
@@ -64,7 +66,7 @@ class SyncPolosFaturamentoJob implements ShouldQueue
             ->all();
 
         if (empty($custIds)) {
-            Log::info('[Polos] Sync: nenhum polo ativo (M2–M4) para aquecer.');
+            Log::info('[Polos] Sync: nenhum polo ativo (M1–M4) para aquecer.');
             return;
         }
 

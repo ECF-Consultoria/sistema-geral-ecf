@@ -736,14 +736,19 @@ class PolosController extends Controller
             }
         }
 
-        // ── Agregação: faturando = TGMV_LC > 0 ──
+        // Faturamento M1 via Adman (gross_billing, só-cache + snapshot) — igual aos
+        // ativos M2–M4; NÃO usa TGMV do CSV. O CSV serve só p/ localidade (abaixo).
+        $m1Ativos = array_map(fn ($id) => ['cust_id' => $id], array_keys($roster));
+        $fatMap   = $mesSel !== null ? $this->faturamentoAdmanDoMes($m1Ativos, $mesSel) : [];
+
+        // ── Agregação: faturando = gross_billing (Adman) > 0 ──
         $empresas  = [];
         $porPolo   = [];
         $faturando = 0;
         $totalFat  = 0.0;
         foreach ($roster as $id => $r) {
             $csv   = $lookup[$id] ?? null;
-            $fat   = $csv['tgmv'] ?? 0.0;
+            $fat   = $fatMap[$id] ?? 0.0;
             $polo  = ($csv !== null && $csv['localidade'] !== '') ? $csv['localidade'] : ($r['polo'] ?: 'Sem polo');
             $isFat = $fat > 0;
             if ($isFat) {
@@ -800,18 +805,14 @@ class PolosController extends Controller
      */
     private function faturamentoDoMes(?string $mesSel, bool $parcial, array $ativos, array $linhasMes): array
     {
-        if ($parcial) {
-            $fat = $mesSel !== null ? $this->faturamentoAdmanDoMes($ativos, $mesSel) : [];
-            return [$fat, 'adman'];
-        }
+        // Faturamento 100% da Adman (gross_billing) — SÓ-CACHE + fallback no snapshot
+        // mensal. NUNCA do CSV (decisão de produto: faturamento só via API). O mês
+        // fechado lê do snapshot capturado quando aquele mês era corrente; cust_id sem
+        // cache nem snapshot → R$0. O CSV segue apenas para lista de meses e localidade
+        // ($parcial/$linhasMes mantidos na assinatura por compatibilidade dos callers).
+        $fat = $mesSel !== null ? $this->faturamentoAdmanDoMes($ativos, $mesSel) : [];
 
-        // Mês fechado: TGMV_LC do CSV por cust_id normalizado (já parseado em pt-BR).
-        $fat = [];
-        foreach ($this->montarLookup($linhasMes) as $id => $dados) {
-            $fat[$id] = $dados['tgmv'];
-        }
-
-        return [$fat, 'csv'];
+        return [$fat, 'adman'];
     }
 
     /**

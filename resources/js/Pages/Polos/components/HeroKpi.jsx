@@ -58,9 +58,9 @@ export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 
                 </div>
             ) : (
                 <>
-                    <p className={cn(numCls, 'mt-3 text-4xl lg:text-5xl')}>{valor}</p>
+                    <p className={cn(numCls, 'mt-3 text-3xl lg:text-4xl break-words')}>{valor}</p>
                     {sublabel && (
-                        <p className="mt-2 text-[11px] text-white/50 leading-snug">{sublabel}</p>
+                        <p className="mt-2 text-[11px] text-white/50 leading-snug break-words">{sublabel}</p>
                     )}
                 </>
             )}
