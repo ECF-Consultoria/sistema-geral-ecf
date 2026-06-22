@@ -110,6 +110,83 @@ function TutorialBtn({ url, titulo, onPlay }) {
     );
 }
 
+// ─── Passo a passo em texto (App ECF / Adman) ────────────────────────────────
+
+// Conteúdo fixo do passo a passo de cadastro na Adman, exibido no card do item
+// App ECF. É institucional (não varia por empresa), então mora no front.
+const ADMAN_PASSO_A_PASSO = {
+    titulo:   'Passo a passo para cadastro na Adman',
+    saudacao: 'Olá! Para realizar seu cadastro na Adman, o processo é bem simples:',
+    passos: [
+        'Acesse o link de criação de conta da Adman.',
+        'Clique em "Criar uma conta".',
+        'Preencha os dados solicitados no cadastro.',
+        'Antes de fazer o vínculo com o Mercado Livre, confirme que você está logado no mesmo navegador/Chrome com a conta principal do Mercado Livre que participará do projeto.',
+        'Faça o vínculo da Adman com essa conta do Mercado Livre.',
+    ],
+    atencao: 'O vínculo precisa ser feito com a conta do Mercado Livre participante do projeto, e não com uma conta pessoal ou outra conta que não será utilizada no projeto. Por isso, antes de acessar o link da Adman, abra o Mercado Livre no mesmo Chrome e confirme se está logado na conta correta.',
+};
+
+// Botão discreto que abre o passo a passo em texto. Usa ecf-yellow para se
+// distinguir do TutorialBtn (vídeo, vermelho). Renderizado só no item app_ecf.
+function PassoAPassoBtn({ onClick }) {
+    return (
+        <button
+            onClick={onClick}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-ecf-yellow/10 hover:bg-ecf-yellow/20 text-ecf-yellow text-[11px] font-medium transition-all"
+        >
+            <BookOpen size={11} />
+            Passo a passo
+        </button>
+    );
+}
+
+// Modal sobreposto com o tutorial em texto: saudação + passos numerados + caixa
+// de atenção. Fecha no X ou no clique do backdrop (mesmo padrão do VideoModal).
+function PassoAPassoModal({ conteudo, onClose }) {
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={onClose}>
+            <div
+                className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-2xl border border-white/[0.08] bg-[#0f1116] shadow-2xl"
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Cabeçalho fixo */}
+                <div className="sticky top-0 flex items-center justify-between gap-3 px-5 py-4 border-b border-white/[0.06] bg-[#0f1116]">
+                    <p className="text-white font-semibold text-[15px]">{conteudo.titulo}</p>
+                    <button onClick={onClose} className="p-1.5 text-white/40 hover:text-white transition-colors shrink-0">
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* Corpo */}
+                <div className="px-5 py-4 space-y-4">
+                    <p className="text-white/70 text-[13px] leading-relaxed">{conteudo.saudacao}</p>
+
+                    <ol className="space-y-2.5">
+                        {conteudo.passos.map((passo, i) => (
+                            <li key={i} className="flex items-start gap-3">
+                                <span className="flex items-center justify-center w-6 h-6 rounded-full bg-ecf-yellow/15 text-ecf-yellow text-[12px] font-bold shrink-0">
+                                    {i + 1}
+                                </span>
+                                <span className="text-white/70 text-[13px] leading-relaxed pt-0.5">{passo}</span>
+                            </li>
+                        ))}
+                    </ol>
+
+                    {/* Caixa de atenção — vínculo precisa ser na conta ML do projeto */}
+                    <div className="flex items-start gap-2.5 p-3.5 rounded-xl bg-amber-500/[0.08] border border-amber-500/25">
+                        <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-amber-300 font-semibold text-[11px] uppercase tracking-wider mb-1">Atenção</p>
+                            <p className="text-white/70 text-[13px] leading-relaxed">{conteudo.atencao}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 // ─── Tabela de produtos ───────────────────────────────────────────────────────
 
 const PRODUTOS_COLS = [
@@ -1250,7 +1327,7 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
 
 // ─── Item do checklist ────────────────────────────────────────────────────────
 
-function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, onOpenProdutos, onOpenPrecificacao, tabelaFreteUrl, num }) {
+function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, onOpenProdutos, onOpenPrecificacao, onOpenPassoAPasso, tabelaFreteUrl, num }) {
     const feito = dado?.feito ?? false;
 
     return (
@@ -1269,6 +1346,8 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
                     <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="text-white font-semibold text-[15px]">{item.titulo}</h3>
                         <TutorialBtn url={tutorialUrl} titulo={item.titulo} onPlay={onPlay} />
+                        {/* Passo a passo em texto — exclusivo do App ECF (cadastro na Adman) */}
+                        {item.id === 'app_ecf' && <PassoAPassoBtn onClick={onOpenPassoAPasso} />}
                     </div>
                     <p className="text-white/40 text-[12px] mt-0.5">{item.descricao}</p>
                 </div>
@@ -1380,6 +1459,7 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
     const [progresso, setProgresso]         = useState(impl.progresso);
     const [saveStatus, setSaveStatus]       = useState('idle');
     const [video, setVideo]                 = useState(null);
+    const [passoAPasso, setPassoAPasso]     = useState(null);
     const [produtosOpen, setProdutosOpen]   = useState(false);
     const [precifOpen, setPrecifOpen]       = useState(false);
     const saveTimer = useRef(null);
@@ -1456,6 +1536,7 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
                         onPlay={playVideo}
                         onOpenProdutos={() => setProdutosOpen(true)}
                         onOpenPrecificacao={() => setPrecifOpen(true)}
+                        onOpenPassoAPasso={() => setPassoAPasso(ADMAN_PASSO_A_PASSO)}
                         tabelaFreteUrl={tabela_frete_url}
                         num={String(idx + 1).padStart(2, '0')}
                     />
@@ -1475,6 +1556,10 @@ export default function ImplementacaoPublica({ impl, checklist, prazo_data = '',
 
             {video && (
                 <VideoModal url={video.url} titulo={video.titulo} onClose={() => setVideo(null)} />
+            )}
+
+            {passoAPasso && (
+                <PassoAPassoModal conteudo={passoAPasso} onClose={() => setPassoAPasso(null)} />
             )}
 
             {produtosOpen && (
