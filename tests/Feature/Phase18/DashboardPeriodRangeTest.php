@@ -56,12 +56,30 @@ class DashboardPeriodRangeTest extends TestCase
      */
     private function criarEmpresa(string $name, string $cnpj, string $custId): Company
     {
-        return Company::create([
+        // Quick 260619 — Dashboard filtra empresas por contrato Performance ativo
+        // (alinhamento com /companies). Helper anexa o contrato pra testes de
+        // outras dimensoes (cache hibrido, period range) ficarem isolados disso.
+        $company = Company::create([
             'name'         => $name,
             'cnpj'         => $cnpj,
             'active'       => true,
             'ml_store_id'  => $custId,
         ]);
+        $servico = \App\Models\Servico::create([
+            'nome'          => 'Gestao DashTest ' . uniqid(),
+            'valor_padrao'  => 1000,
+            'tipo_cobranca' => \App\Models\Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => \App\Models\Servico::SETOR_PERFORMANCE,
+        ]);
+        \App\Models\ContratoServico::create([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 1000,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+        ]);
+        return $company;
     }
 
     /** Seed de N dias retroativos com revenue fixo. */

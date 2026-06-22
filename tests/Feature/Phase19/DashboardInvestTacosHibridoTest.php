@@ -40,12 +40,30 @@ class DashboardInvestTacosHibridoTest extends TestCase
 
     private function empresa(string $name, string $cnpj, ?string $custId): Company
     {
-        return Company::create([
+        // Quick 260619 — Dashboard filtra por contrato Performance ativo.
+        // Helper anexa o contrato pra testes de invest/tacos hibrido ficarem
+        // isolados desse filtro.
+        $company = Company::create([
             'name'        => $name,
             'cnpj'        => $cnpj,
             'active'      => true,
             'ml_store_id' => $custId,
         ]);
+        $servico = \App\Models\Servico::create([
+            'nome'          => 'Gestao DashTest ' . uniqid(),
+            'valor_padrao'  => 1000,
+            'tipo_cobranca' => \App\Models\Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => \App\Models\Servico::SETOR_PERFORMANCE,
+        ]);
+        \App\Models\ContratoServico::create([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 1000,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+        ]);
+        return $company;
     }
 
     /** Pre-popula cache /performance (gross) para cache hit de faturamento. */

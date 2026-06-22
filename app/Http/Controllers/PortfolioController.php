@@ -174,8 +174,12 @@ class PortfolioController extends Controller
         $grossAtual    = $isMesAtual ? $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo) : [];
         $grossAnterior = $isMesAtual ? $this->adman->getCachedGrossBillingsMany($custIds, $dateFromAnterior, $dateToAnterior) : [];
 
+        // Pre-calcula SUM DB anterior por empresa pra detectar queda MoM
+        // (consumido na derivacao de status + acao_recomendada abaixo).
+        $sumDbAnteriorPorEmpresa = $sumDbAnterior; // keyed by company_id
+
         // Mapeia cada empresa pro array final
-        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual) {
+        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa) {
             $activeGrant = $c->grants->where('status', 'active')->first();
 
             // Faturamento da empresa no período: prioriza cache Adman (mês atual),
@@ -193,6 +197,21 @@ class PortfolioController extends Controller
             }
 
             $sumRow = $sumDbAtual->get($c->id);
+            $adSpendNum = $sumRow ? (float) $sumRow->ads : ((float) ($c->latestMetrics?->ad_spend ?? 0));
+            $grantDays  = $activeGrant?->days_remaining;
+            $grantOk    = $activeGrant && $activeGrant->status === 'active';
+
+            // Faturamento anterior pra detectar queda MoM (usado em status/acao).
+            $revAnterior = null;
+            if ($isMesAtual && $c->adman_account_id) {
+                $revAnterior = $grossAnterior[$c->adman_account_id]['value'] ?? null;
+            }
+            if ($revAnterior === null) {
+                $revAnterior = (float) ($sumDbAnteriorPorEmpresa[$c->id] ?? 0);
+            }
+            $quedaMomPct = ($revenue !== null && $revAnterior > 0)
+                ? round((($revenue - $revAnterior) / $revAnterior) * 100, 2)
+                : null;
 
             return [
                 'id'                  => $c->id,
@@ -200,11 +219,17 @@ class PortfolioController extends Controller
                 'role'                => $c->pivot->role,
                 'tacos'               => $sumRow ? round((float) $sumRow->tacos, 2)  : $c->latestMetrics?->tacos,
                 'revenue'             => $revenue,
+                'revenue_anterior'    => $revAnterior > 0 ? (float) $revAnterior : null,
+                'queda_mom_pct'       => $quedaMomPct,
                 'contribution_margin_pct' => $sumRow ? round((float) $sumRow->margem, 2) : $c->latestMetrics?->contribution_margin_pct,
-                'ad_spend'            => $sumRow ? (float) $sumRow->ads             : $c->latestMetrics?->ad_spend,
+                'ad_spend'            => $adSpendNum,
                 'grant_status'        => $activeGrant?->status,
                 'grant_expires_at'    => $activeGrant?->expires_at?->toDateString(),
-                'grant_days_remaining'=> $activeGrant?->days_remaining,
+                'grant_days_remaining'=> $grantDays,
+                // status + acao derivados abaixo (depois que a meta de revenue
+                // por empresa estiver indexada — precisa do $goals carregado).
+                '_grant_ok'           => $grantOk,
+                '_ad_spend_num'       => $adSpendNum,
             ];
         });
 
@@ -254,6 +279,61 @@ class PortfolioController extends Controller
                     'achieved'       => $g->results->first()->achieved,
                 ] : null,
             ]);
+
+        // ── Quick 260619 redesign — derivar Status + Acao recomendada por empresa ──
+        // Indexa metas de revenue por company_id para consulta O(1) no map.
+        $metasRevenuePorEmpresa = collect($goals)
+            ->filter(fn ($g) => $g['metric'] === 'revenue')
+            ->keyBy('company_id');
+
+        $companies = $companies->map(function ($c) use ($metasRevenuePorEmpresa) {
+            $meta             = $metasRevenuePorEmpresa->get($c['id']);
+            $metaTarget       = $meta['target_value'] ?? null;
+            $metaRealizado    = $meta['latest_result']['realized_value'] ?? $c['revenue'];
+            $metaAchievedPct  = ($metaTarget && $metaTarget > 0 && $metaRealizado !== null)
+                ? round(((float) $metaRealizado / (float) $metaTarget) * 100, 1)
+                : null;
+
+            // Regras de status (briefing — defaults aprovados):
+            //   Critico   : grant inativo OU achieved < 50%
+            //   Atencao   : 50-79% OU queda MoM >=10% OU sem meta cadastrada
+            //   Saudavel  : achieved >=80% E grant ativo
+            $status = 'atencao';
+            if (!$c['_grant_ok'] || ($metaAchievedPct !== null && $metaAchievedPct < 50)) {
+                $status = 'critico';
+            } elseif ($metaAchievedPct !== null && $metaAchievedPct >= 80 && $c['_grant_ok']) {
+                $status = 'saudavel';
+            } elseif ($c['queda_mom_pct'] !== null && $c['queda_mom_pct'] <= -10) {
+                $status = 'atencao';
+            }
+
+            // Regras de acao priorizada:
+            //   1) Renovar grant       (grant expira em <=15d)
+            //   2) Ativar Ads          (revenue>0 e ad_spend=0)
+            //   3) Atingir meta        (achieved < 50%)
+            //   4) Recuperar queda     (queda MoM >= 10%)
+            //   5) Manter ritmo        (saudavel)
+            //   6) —                   (nenhum acionavel claro)
+            $acao = '—';
+            if ($c['grant_days_remaining'] !== null && $c['grant_days_remaining'] <= 15) {
+                $acao = 'Renovar grant';
+            } elseif (($c['revenue'] ?? 0) > 0 && $c['_ad_spend_num'] <= 0) {
+                $acao = 'Ativar Ads';
+            } elseif ($metaAchievedPct !== null && $metaAchievedPct < 50) {
+                $acao = 'Atingir meta';
+            } elseif ($c['queda_mom_pct'] !== null && $c['queda_mom_pct'] <= -10) {
+                $acao = 'Recuperar queda';
+            } elseif ($status === 'saudavel') {
+                $acao = 'Manter ritmo';
+            }
+
+            return array_merge($c, [
+                'status'               => $status,
+                'acao_recomendada'     => $acao,
+                'meta_target_revenue'  => $metaTarget !== null ? (float) $metaTarget : null,
+                'meta_achieved_pct'    => $metaAchievedPct,
+            ]);
+        });
 
         // Faturamento total da carteira no período atual (usa o mesmo cache
         // Adman 30d quando mês atual; SUM DB pra mês passado).
@@ -377,6 +457,107 @@ class PortfolioController extends Controller
                 ->all(),
         ];
 
+        // ── Quick 260619 redesign — serie temporal diaria do faturamento ──
+        // Somatorio diario de revenue (AdmanMetric) de TODAS as empresas da
+        // carteira no [dateFrom, dateTo]. Frontend plota como linha "Realizado"
+        // junto com Meta Acumulada (target / dias_periodo * dia_index) e
+        // Projecao (realizado_ate_hoje + media_diaria * dias_restantes).
+        $serieRealizado = AdmanMetric::query()
+            ->whereIn('company_id', $companyIdsAll)
+            ->whereBetween('reference_date', [$dateFrom, $dateTo])
+            ->whereNotNull('revenue')
+            ->selectRaw('reference_date as data, SUM(revenue) as total')
+            ->groupBy('reference_date')
+            ->orderBy('reference_date')
+            ->get()
+            ->keyBy(fn ($r) => (string) $r->data);
+
+        // Meta de revenue da carteira (PortfolioGoal metric='revenue' ativo).
+        $metaCarteiraModel = PortfolioGoal::where('user_id', $user->id)
+            ->where('metric', 'revenue')
+            ->active()
+            ->orderByDesc('id')
+            ->first();
+        $metaCarteiraTarget    = $metaCarteiraModel?->target_value !== null
+            ? (float) $metaCarteiraModel->target_value
+            : null;
+        $metaCarteiraRealizado = $totalRevenueAtual;
+        $metaCarteiraAchieved  = ($metaCarteiraTarget && $metaCarteiraTarget > 0)
+            ? round(($metaCarteiraRealizado / $metaCarteiraTarget) * 100, 1)
+            : null;
+        $metaCarteiraRestante  = $metaCarteiraTarget !== null
+            ? max(0.0, $metaCarteiraTarget - $metaCarteiraRealizado)
+            : null;
+
+        // Constroi a serie [dateFrom .. dateTo] preenchendo gaps com 0.
+        $inicio        = Carbon::parse($dateFrom);
+        $fim           = Carbon::parse($dateTo);
+        $diasNoPeriodo = $inicio->diffInDays($fim) + 1;
+        $hoje          = now()->startOfDay();
+        $revenueTimeseries = [];
+        $acumulado     = 0.0;
+        $dia           = 0;
+        for ($d = $inicio->copy(); $d->lte($fim); $d->addDay()) {
+            $dia++;
+            $key       = $d->toDateString();
+            $realDia   = isset($serieRealizado[$key]) ? (float) $serieRealizado[$key]->total : 0.0;
+            $acumulado += $realDia;
+            $metaAcum  = $metaCarteiraTarget !== null
+                ? round(($metaCarteiraTarget / max(1, $diasNoPeriodo)) * $dia, 2)
+                : null;
+            $isFuturo  = $d->gt($hoje);
+            $revenueTimeseries[] = [
+                'date'              => $key,
+                'realizado'         => $isFuturo ? null : round($acumulado, 2),
+                'realizado_dia'     => $isFuturo ? null : round($realDia, 2),
+                'meta_acumulada'    => $metaAcum,
+                'is_futuro'         => $isFuturo,
+            ];
+        }
+        // Projecao = realizado_hoje + media_diaria_realizada * dias_restantes.
+        // Preenche `projecao` em todos os pontos: ate hoje copia realizado, depois extrapola.
+        $diasAteHoje      = min($diasNoPeriodo, max(1, $inicio->diffInDays($hoje->isAfter($fim) ? $fim : $hoje) + 1));
+        $mediaDiariaReal  = $acumulado > 0 ? ($acumulado / $diasAteHoje) : 0.0;
+        $projecaoAcumulada = 0.0;
+        foreach ($revenueTimeseries as $idx => &$pt) {
+            if ($pt['is_futuro']) {
+                $projecaoAcumulada += $mediaDiariaReal;
+                $pt['projecao'] = round(($revenueTimeseries[$idx - 1]['projecao'] ?? $acumulado) + $mediaDiariaReal, 2);
+            } else {
+                $pt['projecao'] = $pt['realizado'];
+            }
+        }
+        unset($pt);
+
+        // ── Periodo vigente da amostra (ex: "01/06 a 22/06") ──
+        $amostraFim = $hoje->isAfter($fim) ? $fim : $hoje;
+        $periodoAmostra = [
+            'from'       => $dateFrom,
+            'to'         => $amostraFim->toDateString(),
+            'from_label' => $inicio->format('d/m'),
+            'to_label'   => $amostraFim->format('d/m'),
+            'mes_label'  => $refDate->locale('pt_BR')->isoFormat('MMMM [de] YYYY'),
+            'is_mes_atual' => $isMesAtual,
+        ];
+
+        // ── Prioridade do dia ── distinct de empresas que aparecem em qualquer
+        // alerta acionavel (grants expirando, em queda, sem ad spend). Top 3 NAO
+        // entra (e ranking positivo). Distinct evita inflar count quando a mesma
+        // empresa cai em 2 alertas.
+        $idsAcionaveis = collect()
+            ->merge(collect($alertas['grants_expirando_30d'])->pluck('id'))
+            ->merge(collect($alertas['empresas_em_queda'])->pluck('id'))
+            ->merge(collect($alertas['empresas_sem_ad_spend'])->pluck('id'))
+            ->unique()
+            ->values();
+        $prioridadeDoDia = $idsAcionaveis->count();
+
+        // Limpa flags internos (_grant_ok / _ad_spend_num) antes do payload.
+        $companies = $companies->map(function ($c) {
+            unset($c['_grant_ok'], $c['_ad_spend_num']);
+            return $c;
+        });
+
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
@@ -389,6 +570,18 @@ class PortfolioController extends Controller
             'portfolio_goal_metrics' => PortfolioGoal::$metricLabels,
             // Quick 260617-prt — alertas pre-calculados.
             'alertas'             => $alertas,
+            // Quick 260619 redesign Carteira UI — dados novos pro novo layout.
+            'revenue_timeseries'  => $revenueTimeseries,
+            'meta_carteira'       => [
+                'target_value'   => $metaCarteiraTarget,
+                'realized_value' => $metaCarteiraRealizado,
+                'achieved_pct'   => $metaCarteiraAchieved,
+                'restante'       => $metaCarteiraRestante,
+                'has_goal'       => $metaCarteiraTarget !== null,
+                'goal_id'        => $metaCarteiraModel?->id,
+            ],
+            'periodo_amostra'     => $periodoAmostra,
+            'prioridade_do_dia'   => $prioridadeDoDia,
         ]);
     }
 

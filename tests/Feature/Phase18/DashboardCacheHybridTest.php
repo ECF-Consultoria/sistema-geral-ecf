@@ -47,15 +47,35 @@ class DashboardCacheHybridTest extends TestCase
     /**
      * Empresa ativa COM cust_id via ml_store_id. Replica o padrao do
      * DashboardPeriodRangeTest pra ter cache lookup acontecendo.
+     *
+     * Hotfix Quick 260619 — Phase 37 Plan 37-06 fez /companies (e Dashboard
+     * por extensao no quick 260619) filtrar empresas por contrato Performance
+     * ativo. Helper agora anexa um contrato Performance default; testes que
+     * focam em outros aspectos (cache hibrido, etc.) ficam isolados do filtro.
      */
     private function criarEmpresa(string $name, string $cnpj, string $custId): Company
     {
-        return Company::create([
+        $company = Company::create([
             'name'        => $name,
             'cnpj'        => $cnpj,
             'active'      => true,
             'ml_store_id' => $custId,
         ]);
+        $servico = \App\Models\Servico::create([
+            'nome'          => 'Gestao DashTest ' . uniqid(),
+            'valor_padrao'  => 1000,
+            'tipo_cobranca' => \App\Models\Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => \App\Models\Servico::SETOR_PERFORMANCE,
+        ]);
+        \App\Models\ContratoServico::create([
+            'company_id'       => $company->id,
+            'servico_id'       => $servico->id,
+            'valor_contratado' => 1000,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+        ]);
+        return $company;
     }
 
     /**
@@ -192,10 +212,25 @@ class DashboardCacheHybridTest extends TestCase
         $this->semearCacheAccount('CUST_GOOD');
 
         // Empresa SEM cust_id (sem ml_store_id e sem adman_account_id).
-        Company::create([
+        // Quick 260619 — anexa contrato Performance pro filtro Dashboard aceitar.
+        $semCustid = Company::create([
             'name'   => 'Empresa Sem Custid',
             'cnpj'   => '44444444000044',
             'active' => true,
+        ]);
+        $svc = \App\Models\Servico::create([
+            'nome'          => 'Gestao SemCustid ' . uniqid(),
+            'valor_padrao'  => 1000,
+            'tipo_cobranca' => \App\Models\Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => \App\Models\Servico::SETOR_PERFORMANCE,
+        ]);
+        \App\Models\ContratoServico::create([
+            'company_id'       => $semCustid->id,
+            'servico_id'       => $svc->id,
+            'valor_contratado' => 1000,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
         ]);
 
         $response = $this->actingAs($admin)->get('/dashboard?period=30');
