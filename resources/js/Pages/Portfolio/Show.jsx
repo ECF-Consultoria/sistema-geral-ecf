@@ -173,7 +173,6 @@ export default function PortfolioShow({
 
     // ── Estado local ──
     const [busca, setBusca] = useState('');
-    const [filtroStatus, setFiltroStatus] = useState('all');     // all|saudavel|atencao|critico
     const [sortCol, setSortCol] = useState('revenue');
     const [sortDir, setSortDir] = useState('desc');
 
@@ -231,7 +230,6 @@ export default function PortfolioShow({
     const empresasView = useMemo(() => {
         const term = busca.trim().toLowerCase();
         let arr = (companies || []).filter(c => {
-            if (filtroStatus !== 'all' && c.status !== filtroStatus) return false;
             if (term && !c.name.toLowerCase().includes(term)) return false;
             return true;
         });
@@ -242,7 +240,7 @@ export default function PortfolioShow({
             return sortDir === 'asc' ? av - bv : bv - av;
         });
         return arr;
-    }, [companies, busca, filtroStatus, sortCol, sortDir]);
+    }, [companies, busca, sortCol, sortDir]);
 
     const toggleSort = (col) => {
         if (sortCol === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -266,8 +264,15 @@ export default function PortfolioShow({
                 {/* ── 1. Topo ───────────────────────────────────────────────── */}
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="flex items-center gap-3">
+                        {/* Hotfix 2026-06-19 — voltar dava 404 quando admin estava
+                            em /admin/users/{id}/portfolio (rota /admin nao existe).
+                            Agora: admin volta pra listagem Carteiras (/portfolio,
+                            que pra admin renderiza Carteiras.jsx consolidado);
+                            profissional volta pra /dashboard. */}
                         <Link
-                            href={isAdmin && window.location.pathname.includes('/admin/') ? '/admin' : '/dashboard'}
+                            href={isAdmin && typeof window !== 'undefined' && window.location.pathname.includes('/admin/')
+                                ? route('portfolio.own')
+                                : '/dashboard'}
                             className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-white/10 text-white/70 hover:bg-white/[0.05]"
                             title="Voltar"
                         >
@@ -477,7 +482,9 @@ export default function PortfolioShow({
                     {/* Tabela de empresas */}
                     <Card className="bg-ecf-card/60 border-white/[0.06]">
                         <CardContent className="p-4 md:p-5">
-                            {/* Barra de filtros */}
+                            {/* Barra de filtros (hotfix 2026-06-19 — filtro de Status
+                                removido junto com as colunas Status e Acao por pedido
+                                do usuario; busca + contador preservados). */}
                             <div className="flex flex-col md:flex-row md:items-center gap-2 mb-3">
                                 <div className="flex-1 relative">
                                     <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40" />
@@ -488,51 +495,57 @@ export default function PortfolioShow({
                                         className="pl-8 h-9 text-[13px]"
                                     />
                                 </div>
-                                <Select value={filtroStatus} onValueChange={setFiltroStatus}>
-                                    <SelectTrigger className="w-36 h-9 text-[12px]">
-                                        <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">Todos status</SelectItem>
-                                        <SelectItem value="saudavel">Saudável</SelectItem>
-                                        <SelectItem value="atencao">Atenção</SelectItem>
-                                        <SelectItem value="critico">Crítico</SelectItem>
-                                    </SelectContent>
-                                </Select>
                                 <div className="text-white/40 text-[11px] tabular-nums whitespace-nowrap">
                                     {empresasView.length} de {companies?.length ?? 0}
                                 </div>
                             </div>
 
-                            {/* Tabela compacta */}
+                            {/* Tabela compacta — sem Status/Acao; grant vencido como badge inline na coluna Empresa */}
                             <div className="overflow-x-auto -mx-1">
                                 <table className="w-full text-[13px]">
                                     <thead>
                                         <tr className="text-white/50 text-[11px] uppercase tracking-wide">
                                             <th className="text-left font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('name')}>Empresa</th>
-                                            <th className="text-left font-medium px-2 py-2">Status</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('revenue')}>Faturamento</th>
                                             <th className="text-right font-medium px-2 py-2">Meta</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('contribution_margin_pct')}>Margem</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('ad_spend')}>Ads</th>
-                                            <th className="text-left font-medium px-2 py-2">Ação</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {empresasView.map(c => (
+                                        {empresasView.map(c => {
+                                            const grantInativo = c.grant_status !== 'active';
+                                            const grantVencendo = c.grant_status === 'active'
+                                                && c.grant_days_remaining !== null
+                                                && c.grant_days_remaining !== undefined
+                                                && c.grant_days_remaining <= 15;
+                                            return (
                                             <tr key={c.id} className="border-t border-white/[0.06] hover:bg-white/[0.02]">
                                                 <td className="px-2 py-2">
-                                                    <Link
-                                                        href={route('companies.show', c.id)}
-                                                        className="text-white/90 hover:text-ecf-yellow truncate inline-block max-w-[200px] md:max-w-none"
-                                                    >
-                                                        {c.name}
-                                                    </Link>
-                                                </td>
-                                                <td className="px-2 py-2">
-                                                    <span className={cn('inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', STATUS_CLS[c.status] ?? STATUS_CLS.atencao)}>
-                                                        {STATUS_LABEL[c.status] ?? '—'}
-                                                    </span>
+                                                    <div className="flex items-center gap-2">
+                                                        <Link
+                                                            href={route('companies.show', c.id)}
+                                                            className="text-white/90 hover:text-ecf-yellow truncate inline-block max-w-[200px] md:max-w-none"
+                                                        >
+                                                            {c.name}
+                                                        </Link>
+                                                        {grantInativo && (
+                                                            <span
+                                                                title="Grant vencido ou inativo"
+                                                                className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-500/15 text-red-300 border-red-500/25 shrink-0"
+                                                            >
+                                                                <AlertTriangle size={9} /> Grant vencido
+                                                            </span>
+                                                        )}
+                                                        {!grantInativo && grantVencendo && (
+                                                            <span
+                                                                title={`Grant expira em ${c.grant_days_remaining} dia(s)`}
+                                                                className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-300 border-amber-500/25 shrink-0"
+                                                            >
+                                                                <AlertTriangle size={9} /> Grant {c.grant_days_remaining}d
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-2 py-2 text-right text-white/90 tabular-nums">
                                                     {c.revenue !== null ? formatCurrencyCompact(c.revenue) : '—'}
@@ -546,16 +559,14 @@ export default function PortfolioShow({
                                                         : '—'}
                                                 </td>
                                                 <td className="px-2 py-2 text-right text-white/70 tabular-nums">
-                                                    {(c.ad_spend ?? 0) > 0 ? formatCurrencyCompact(c.ad_spend) : 'R$ 0'}
-                                                </td>
-                                                <td className="px-2 py-2 text-white/80 text-[12px]">
-                                                    {c.acao_recomendada}
+                                                    {(c.ad_spend ?? 0) > 0 ? formatCurrencyCompact(c.ad_spend) : 'R$ 0,00'}
                                                 </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                         {empresasView.length === 0 && (
                                             <tr>
-                                                <td colSpan={7} className="text-center text-white/40 py-8">
+                                                <td colSpan={5} className="text-center text-white/40 py-8">
                                                     Nenhuma empresa encontrada com os filtros.
                                                 </td>
                                             </tr>

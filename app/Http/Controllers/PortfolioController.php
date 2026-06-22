@@ -171,8 +171,21 @@ class PortfolioController extends Controller
             ->pluck('total', 'company_id');
 
         // Cache batch da Adman (somente no mês atual — mês passado é histórico).
-        $custIds = $rawCompanies->pluck('adman_account_id')->filter(fn($id) => !empty($id))->all();
+        // Hotfix 2026-06-19 auditoria — usa o accessor cust_id (adman_account_id
+        // OU ml_store_id) em vez de pluck cru de adman_account_id. Antes, empresas
+        // com APENAS ml_store_id (ex: DINMAP) ficavam fora do batch e o lookup
+        // posterior caia no DB com valor parcial — Portfolio Gustavo perdia
+        // ~R$ 816K em revenue real comparado ao Dashboard (que ja usa cust_id).
+        $custIds = $rawCompanies->map(fn ($c) => $c->cust_id)
+            ->filter(fn ($id) => !empty($id))
+            ->unique()
+            ->values()
+            ->all();
         $grossAtual    = $isMesAtual ? $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo) : [];
+        // Hotfix 2026-06-19 — Portfolio agora consome account metrics do cache
+        // (mesma fonte que o Dashboard). Antes, ad_spend vinha SO do SUM DB, que
+        // tem fracao minima dos dados reais (Gustavo: cache=R$ 106K, DB=R$ 1.380).
+        $accountAtual  = $isMesAtual ? $this->adman->getCachedAccountMetricsMany($custIds, $dateFrom, $dateTo) : [];
         $grossAnterior = $isMesAtual ? $this->adman->getCachedGrossBillingsMany($custIds, $dateFromAnterior, $dateToAnterior) : [];
 
         // Pre-calcula SUM DB anterior por empresa pra detectar queda MoM
@@ -180,15 +193,18 @@ class PortfolioController extends Controller
         $sumDbAnteriorPorEmpresa = $sumDbAnterior; // keyed by company_id
 
         // Mapeia cada empresa pro array final
-        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa) {
+        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa, $accountAtual) {
             $activeGrant = $c->grants->where('status', 'active')->first();
+            $custId      = $c->cust_id; // accessor: adman_account_id ?: ml_store_id
 
             // Faturamento da empresa no período: prioriza cache Adman (mês atual),
-            // fallback SUM DB. Resultado é o valor MENSAL completo, não 1 dia.
+            // fallback SUM DB. Hotfix 2026-06-19 — usa cust_id (accessor) em vez
+            // de adman_account_id puro pra incluir empresas com APENAS ml_store_id
+            // (que entravam no DB com valor parcial — ex: DINMAP perdia R$ 816K).
             $revenue = null;
-            if ($isMesAtual && $c->adman_account_id) {
-                $entry = $grossAtual[$c->adman_account_id] ?? null;
-                if ($entry && $entry['value'] !== null) {
+            if ($isMesAtual && $custId) {
+                $entry = $grossAtual[$custId] ?? null;
+                if ($entry && ($entry['value'] ?? null) !== null) {
                     $revenue = $entry['value'];
                 }
             }
@@ -198,14 +214,28 @@ class PortfolioController extends Controller
             }
 
             $sumRow = $sumDbAtual->get($c->id);
-            $adSpendNum = $sumRow ? (float) $sumRow->ads : ((float) ($c->latestMetrics?->ad_spend ?? 0));
+            // Hotfix 2026-06-19 — ad_spend agora prioriza cache Adman (chave
+            // 'investment' do getCachedAccountMetricsMany), mesma fonte do
+            // DashboardController::adminDashboard. Antes vinha SO do SUM DB,
+            // que tem fracao minima dos dados (Gustavo: cache=R$ 106K, DB=R$ 1.380).
+            $adSpendCache = null;
+            if ($isMesAtual && $custId) {
+                $accEntry = $accountAtual[$custId]['value'] ?? null;
+                if ($accEntry && isset($accEntry['investment'])) {
+                    $adSpendCache = (float) $accEntry['investment'];
+                }
+            }
+            $adSpendNum = $adSpendCache !== null
+                ? $adSpendCache
+                : ($sumRow ? (float) $sumRow->ads : ((float) ($c->latestMetrics?->ad_spend ?? 0)));
             $grantDays  = $activeGrant?->days_remaining;
             $grantOk    = $activeGrant && $activeGrant->status === 'active';
 
             // Faturamento anterior pra detectar queda MoM (usado em status/acao).
+            // Hotfix 2026-06-19 — usa cust_id (mesmo motivo do revenue atual).
             $revAnterior = null;
-            if ($isMesAtual && $c->adman_account_id) {
-                $revAnterior = $grossAnterior[$c->adman_account_id]['value'] ?? null;
+            if ($isMesAtual && $custId) {
+                $revAnterior = $grossAnterior[$custId]['value'] ?? null;
             }
             if ($revAnterior === null) {
                 $revAnterior = (float) ($sumDbAnteriorPorEmpresa[$c->id] ?? 0);
@@ -341,13 +371,13 @@ class PortfolioController extends Controller
         $totalRevenueAtual = (float) $companies->sum('revenue');
 
         // Faturamento da carteira no PERÍODO ANTERIOR (mês passado ou janela
-        // 30-60d atrás). Mesma lógica de fallback.
+        // 30-60d atrás). Mesma lógica de fallback. Hotfix 2026-06-19 — cust_id.
         $totalRevenueAnterior = 0.0;
         foreach ($rawCompanies as $c) {
             $rev = null;
-            if ($isMesAtual && $c->adman_account_id) {
-                $entry = $grossAnterior[$c->adman_account_id] ?? null;
-                if ($entry && $entry['value'] !== null) {
+            if ($isMesAtual && $c->cust_id) {
+                $entry = $grossAnterior[$c->cust_id] ?? null;
+                if ($entry && ($entry['value'] ?? null) !== null) {
                     $rev = $entry['value'];
                 }
             }
@@ -402,9 +432,10 @@ class PortfolioController extends Controller
                 ->map(function ($c) use ($isMesAtual, $sumDbAtual, $sumDbAnterior, $grossAtual, $grossAnterior) {
                     $revAtual = null;
                     $revAnt = null;
-                    if ($isMesAtual && $c->adman_account_id) {
-                        $revAtual = $grossAtual[$c->adman_account_id]['value'] ?? null;
-                        $revAnt = $grossAnterior[$c->adman_account_id]['value'] ?? null;
+                    // Hotfix 2026-06-19 — cust_id (mesmo motivo do bloco principal).
+                    if ($isMesAtual && $c->cust_id) {
+                        $revAtual = $grossAtual[$c->cust_id]['value'] ?? null;
+                        $revAnt = $grossAnterior[$c->cust_id]['value'] ?? null;
                     }
                     if ($revAtual === null) {
                         $m = $sumDbAtual->get($c->id);
