@@ -82,7 +82,7 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
     }
 
     return (
-        <div className="relative" style={{ height }}>
+        <div className="relative w-full" style={{ height }}>
             <ReactEChartsCore
                 echarts={echarts}
                 option={option}
