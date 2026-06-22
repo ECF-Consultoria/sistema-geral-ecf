@@ -130,9 +130,27 @@ class PolosController extends Controller
             // que já saíram do programa (a Adman não guarda histórico delas, daria R$0).
             [$fatMes, $fonteFaturamento] = $this->faturamentoDoMes($mesSel, $parcial, $ativos, $linhasMes);
 
-            // ─── 8. Agregar por polo e calcular distribuição de status ────────
-            $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes);
+            // ─── 7b. Gasto de ADS (investment Adman) do mês corrente, por cust_id ──
+            // SÓ-CACHE (sem HTTP). Mês fechado → cache frio → [] (ADS=R$0; sem fonte
+            // de ADS para meses fechados — limitação documentada). Alimenta o saldo
+            // de ADS (teto × ativos) e o gasto por polo/estágio no Cockpit.
+            $adsMes = ($mesSel !== null && $parcial) ? $this->adsAdmanDoMes($ativos, $mesSel) : [];
+
+            // Teto de ADS por empresa (configurável; default R$3.000) — base do "disponível".
+            $adsLimites = [
+                'teto'    => (float) Configuracao::get('polo_ads_teto', 3000),
+                'alerta1' => (float) Configuracao::get('polo_ads_alerta1', 1000),
+                'alerta2' => (float) Configuracao::get('polo_ads_alerta2', 2000),
+            ];
+
+            // ─── 8. Agregar por polo (com ADS) e calcular distribuição de status ──
+            $polos      = $this->agregarPorPolo($ativos, $linhasMes, $limiares, $fatMes, $adsMes);
             $statusDist = $this->distribuicaoStatus($ativos, $linhasMes, $limiares, $fatMes);
+
+            // ─── 9. Empresas M1 (onboarding) — FORA da meta; visão própria ────
+            // M1 é excluído dos ativos (D-01). Aqui montamos uma coorte separada com
+            // status binário (faturando vs não) para o gráfico dedicado de M1.
+            $m1 = $this->montarM1($mesSel, $parcial, $linhasMes);
 
             return Inertia::render('Polos/Index', [
                 'polos'            => $polos,
@@ -142,6 +160,8 @@ class PolosController extends Controller
                 'mesRefLabel'      => $mesAtual['label'] ?? null,
                 'parcial'          => $parcial,
                 'fonteFaturamento' => $fonteFaturamento,
+                'adsLimites'       => $adsLimites,
+                'm1'               => $m1,
                 'erro'             => null,
             ]);
         } catch (\Throwable $e) {
@@ -382,6 +402,8 @@ class PolosController extends Controller
             'mesRefLabel'      => null,
             'parcial'          => false,
             'fonteFaturamento' => 'csv',
+            'adsLimites'       => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
+            'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
             'erro'             => $mensagem,
         ]);
     }
@@ -659,6 +681,108 @@ class PolosController extends Controller
         }
 
         return array_values($ativos);
+    }
+
+    /**
+     * Coorte de empresas M1 (onboarding, MESES_NO_PROGRAMA=0) do mês — FORA da meta
+     * de faturamento (D-01 exclui M1 dos ativos). Visão própria com status binário:
+     * "faturando" (TGMV_LC > 0) vs "não".
+     *
+     * Roster: MlbEmpresa ao vivo (fase=M1) no mês corrente; reconstrução do CSV
+     * (MESES_NO_PROGRAMA=0) no mês fechado — mesma regra dos ativos M2–M4.
+     * Faturamento: SEMPRE TGMV_LC do CSV (a Adman não aquece cache p/ M1; o TGMV é a
+     * métrica oficial da planilha e existe tanto no mês corrente quanto no fechado).
+     *
+     * @param  ?string                       $mesSel     Mês exibido (YYYYMM) ou null
+     * @param  bool                          $parcial    true = mês corrente
+     * @param  array<array<string,mixed>>    $linhasMes  Linhas do CSV do mês
+     * @return array{total:int,faturando:int,nao:int,faturamento:float,empresas:array,polos:array}
+     */
+    private function montarM1(?string $mesSel, bool $parcial, array $linhasMes): array
+    {
+        $lookup = $this->montarLookup($linhasMes); // cust_id => { tgmv, localidade }
+
+        // ── Roster M1 (cust_id => nome/polo) ──
+        $roster = [];
+        if ($parcial || $mesSel === null) {
+            // Mês corrente: estado ao vivo do ECF.
+            foreach (
+                MlbEmpresa::where('fase', 'M1')->where('projeto', 'POLOS')
+                    ->get(['nome', 'cust_id', 'polo']) as $e
+            ) {
+                $id = CustId::normaliza((string) $e->cust_id);
+                if ($id === '' || isset($roster[$id])) {
+                    continue;
+                }
+                $nome = trim((string) $e->nome);
+                $roster[$id] = ['nome' => $nome !== '' ? $nome : "Empresa {$id}", 'polo' => trim((string) $e->polo)];
+            }
+        } else {
+            // Mês fechado: reconstrói pelo CSV (MESES_NO_PROGRAMA = 0 → M1).
+            foreach ($linhasMes as $row) {
+                $meses = (int) ($row['MESES_NO_PROGRAMA'] ?? $row['meses_no_programa'] ?? -1);
+                if ($meses !== 0) {
+                    continue;
+                }
+                $id = CustId::normaliza((string) ($row['CUS_CUST_ID_SEL'] ?? $row['cus_cust_id_sel'] ?? ''));
+                if ($id === '' || isset($roster[$id])) {
+                    continue;
+                }
+                $nome = trim((string) ($row['CUS_NICKNAME'] ?? $row['cus_nickname'] ?? ''));
+                $roster[$id] = [
+                    'nome' => $nome !== '' ? $nome : "Empresa {$id}",
+                    'polo' => trim((string) ($row['LOCALIDADE'] ?? $row['localidade'] ?? '')),
+                ];
+            }
+        }
+
+        // ── Agregação: faturando = TGMV_LC > 0 ──
+        $empresas  = [];
+        $porPolo   = [];
+        $faturando = 0;
+        $totalFat  = 0.0;
+        foreach ($roster as $id => $r) {
+            $csv   = $lookup[$id] ?? null;
+            $fat   = $csv['tgmv'] ?? 0.0;
+            $polo  = ($csv !== null && $csv['localidade'] !== '') ? $csv['localidade'] : ($r['polo'] ?: 'Sem polo');
+            $isFat = $fat > 0;
+            if ($isFat) {
+                $faturando++;
+            }
+            $totalFat += $fat;
+
+            $empresas[] = [
+                'cust_id'     => $id,
+                'nome'        => $r['nome'],
+                'polo'        => $polo,
+                'faturamento' => $fat,
+                'faturando'   => $isFat,
+            ];
+
+            if (! isset($porPolo[$polo])) {
+                $porPolo[$polo] = ['polo' => $polo, 'total' => 0, 'faturando' => 0, 'faturamento' => 0.0];
+            }
+            $porPolo[$polo]['total']++;
+            if ($isFat) {
+                $porPolo[$polo]['faturando']++;
+            }
+            $porPolo[$polo]['faturamento'] += $fat;
+        }
+
+        usort($empresas, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
+        $polos = array_values($porPolo);
+        usort($polos, fn ($a, $b) => $b['faturamento'] <=> $a['faturamento']);
+
+        $total = count($roster);
+
+        return [
+            'total'       => $total,
+            'faturando'   => $faturando,
+            'nao'         => $total - $faturando,
+            'faturamento' => $totalFat,
+            'empresas'    => $empresas,
+            'polos'       => $polos,
+        ];
     }
 
     /**
