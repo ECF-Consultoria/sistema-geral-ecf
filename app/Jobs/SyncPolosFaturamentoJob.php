@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\MlbEmpresa;
+use App\Models\PoloFaturamentoSnapshot;
 use App\Services\AdmanService;
 use App\Support\CustId;
 use Illuminate\Bus\Queueable;
@@ -49,6 +50,10 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         $de  = $this->de  ?? now()->startOfMonth()->toDateString();
         $ate = $this->ate ?? now()->endOfMonth()->toDateString();
 
+        // Mês de referência no formato 'YYYYMM' (mesmo formato do $mesSel do controller),
+        // derivado de $de ('YYYY-MM-01') — chave do snapshot durável.
+        $mes = substr(str_replace('-', '', $de), 0, 6);
+
         $custIds = MlbEmpresa::whereIn('fase', ['M2', 'M3', 'M4'])
             ->where('projeto', 'POLOS')
             ->pluck('cust_id')
@@ -82,6 +87,19 @@ class SyncPolosFaturamentoJob implements ShouldQueue
                     if ($r['gross_billing'] > 0) {
                         $comValor++;
                     }
+
+                    // Persiste o snapshot durável SÓ quando a Adman respondeu (gross_billing
+                    // !== null — inclui 0 legítimo). Em erro/timeout (null) NÃO escrevemos:
+                    // preserva o último valor bom, sem clobberar com lixo transitório. É esse
+                    // snapshot que o controller serve quando o cache do dia está frio.
+                    PoloFaturamentoSnapshot::updateOrCreate(
+                        ['mes' => $mes, 'cust_id' => $custId],
+                        [
+                            'faturamento' => $r['gross_billing'],
+                            'ads'         => $r['investment'] ?? 0,
+                            'synced_at'   => now(),
+                        ],
+                    );
                 }
                 if ($r['investment'] !== null && $r['investment'] > 0) {
                     $adsComValor++;
