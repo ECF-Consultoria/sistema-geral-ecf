@@ -164,6 +164,13 @@ class HubspotApiClient
             ->get(self::BASE . "/crm/v3/objects/deals/{$dealId}/associations/line_items");
 
         if (!$assocRes->ok()) {
+            Log::channel('ecf-webhooks')->warning(
+                '[HubSpot Webhook] fetchDealLineItems: associations falhou',
+                [
+                    'deal_id' => $dealId,
+                    'status'  => $assocRes->status(),
+                ]
+            );
             return [];
         }
 
@@ -174,6 +181,15 @@ class HubspotApiClient
                 $ids[] = (string) $r['id'];
             }
         }
+
+        Log::channel('ecf-webhooks')->info(
+            '[HubSpot Webhook] fetchDealLineItems: associations OK',
+            [
+                'deal_id'        => $dealId,
+                'line_item_ids'  => $ids,
+                'total'          => count($ids),
+            ]
+        );
 
         if (empty($ids)) {
             return [];

@@ -163,6 +163,19 @@ export default function AtribuirServico({ company, contratos = [], servicos_disp
         }));
     }
 
+    // Hotfix 2026-06-19 — destino do cancelar/sucesso vinha hardcoded em
+    // /companies, ignorando que a tela hoje eh tipicamente acessada via
+    // /comercial/empresas/listagem (clicar na maleta). Le `?return_to=`
+    // quando presente; fallback pra /comercial/empresas/listagem (porta de
+    // entrada principal). window.history.back nao serve aqui porque o submit
+    // bem-sucedido faz POST + redirect — historico nao guarda a tela anterior.
+    const returnTo = (() => {
+        if (typeof window === 'undefined') return '/comercial/empresas/listagem';
+        const fromQuery = new URLSearchParams(window.location.search).get('return_to');
+        if (fromQuery && fromQuery.startsWith('/')) return fromQuery;
+        return '/comercial/empresas/listagem';
+    })();
+
     function submit(e) {
         e.preventDefault();
         setSalvando(true);
@@ -170,14 +183,14 @@ export default function AtribuirServico({ company, contratos = [], servicos_disp
         router.post(`/empresas/${company.id}/contratos-servico`, form, {
             preserveScroll: false,
             onSuccess: () => {
-                router.visit('/companies');
+                router.visit(returnTo);
             },
             onFinish: () => setSalvando(false),
         });
     }
 
     function cancelar() {
-        router.visit('/companies');
+        router.visit(returnTo);
     }
 
     const servicoSelecionado = servicos_disponiveis.find(s => String(s.id) === String(form.servico_id));

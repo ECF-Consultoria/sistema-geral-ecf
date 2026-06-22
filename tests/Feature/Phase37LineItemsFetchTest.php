@@ -147,6 +147,9 @@ class Phase37LineItemsFetchTest extends TestCase
                         && ($context['status'] ?? null) === 500;
                 })
             );
+        // Hotfix 2026-06-19 — fetchDealLineItems agora loga info() de "associations OK"
+        // com IDs encontrados; mock aceita silenciosamente para nao quebrar o spy strict.
+        $logger->shouldReceive('info')->andReturnNull();
 
         Log::shouldReceive('channel')
             ->with('ecf-webhooks')
@@ -279,6 +282,16 @@ class Phase37LineItemsFetchTest extends TestCase
                 return true;
             })
             ->atLeast()->once();
+        // Hotfix 2026-06-19 — info() de "associations OK" tambem precisa nao vazar.
+        $logger->shouldReceive('info')
+            ->withArgs(function ($message, $context = []) {
+                $ctxJson = json_encode($context);
+                return !str_contains((string) $message, 'fake-token')
+                    && !str_contains((string) $message, 'Bearer')
+                    && !str_contains($ctxJson, 'fake-token')
+                    && !str_contains($ctxJson, 'Bearer ');
+            })
+            ->andReturnNull();
 
         Log::shouldReceive('channel')
             ->with('ecf-webhooks')

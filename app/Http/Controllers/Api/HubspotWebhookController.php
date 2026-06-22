@@ -159,6 +159,13 @@ class HubspotWebhookController extends Controller
         }
 
         try {
+            Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Iniciando processamento', [
+                'evento_id'         => $evento->id,
+                'deal_id'           => $evento->object_id,
+                'subscription_type' => $evento->subscription_type,
+                'property_value'    => $evento->property_value,
+            ]);
+
             $propsDeal    = config('services.hubspot.props.deal');
             $propsCompany = config('services.hubspot.props.company');
             $propsContact = config('services.hubspot.props.contact');
@@ -359,15 +366,38 @@ class HubspotWebhookController extends Controller
         $servicosCriados = [];
         $naoMapeados     = [];
 
+        // Log de entrada — diagnostico rapido em prod sem precisar de tinker.
+        Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Processando line items', [
+            'evento_id'  => $evento?->id,
+            'company_id' => $company->id,
+            'total'      => count($lineItems),
+            'nomes'      => array_map(
+                fn ($i) => (string) ($i['name'] ?? '(sem nome)'),
+                $lineItems
+            ),
+        ]);
+
         foreach ($lineItems as $item) {
             $nome = (string) ($item['name'] ?? '');
             if ($nome === '') {
+                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line item sem nome — ignorado', [
+                    'evento_id'  => $evento?->id,
+                    'company_id' => $company->id,
+                    'item'       => $item,
+                ]);
                 continue;
             }
 
             $mapping = HubspotLineItemMapping::paraNome($nome);
             // Sem mapping ativo OU mapping aponta para Servico inativo → trata como nao-mapeado.
             if (!$mapping || !$mapping->servico || !$mapping->servico->ativo) {
+                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line item sem mapping ativo', [
+                    'evento_id'        => $evento?->id,
+                    'company_id'       => $company->id,
+                    'line_item_name'   => $nome,
+                    'mapping_existe'   => (bool) $mapping,
+                    'servico_ativo'    => (bool) ($mapping?->servico?->ativo),
+                ]);
                 $naoMapeados[] = [
                     'name'                      => $nome,
                     'price'                     => $item['price']                     ?? null,
@@ -377,9 +407,13 @@ class HubspotWebhookController extends Controller
             }
 
             // Valor: usa item.price quando valido (Plan 37-03 ja fez is_numeric);
-            // fallback para valor_padrao do Servico se ausente.
+            // fallback para valor_padrao do Servico se ausente. Multiplica por quantity
+            // quando >1 (regra valor_do_servico = price * quantity do hotfix Phase 37).
+            $qty = isset($item['quantity']) && is_numeric($item['quantity']) && (int) $item['quantity'] > 0
+                ? (int) $item['quantity']
+                : 1;
             $valor = isset($item['price']) && is_numeric($item['price'])
-                ? (float) $item['price']
+                ? (float) $item['price'] * $qty
                 : (float) ($mapping->servico->valor_padrao ?? 0);
 
             // tipo_cobranca derivado: monthly|annually = mensal; ausente|null = unica.
@@ -391,7 +425,7 @@ class HubspotWebhookController extends Controller
                 ? Servico::TIPO_MENSAL
                 : Servico::TIPO_UNICA;
 
-            ContratoServico::create([
+            $contrato = ContratoServico::create([
                 'company_id'       => $company->id,
                 'servico_id'       => $mapping->servico_id,
                 'valor_contratado' => $valor,
@@ -399,6 +433,22 @@ class HubspotWebhookController extends Controller
                 'data_vencimento'  => null,
                 'ativo'            => true,
                 'observacoes'      => "tipo_cobranca: {$tipoCobranca} (HubSpot line_item: {$nome})",
+            ]);
+
+            Log::channel('ecf-webhooks')->info('[HubSpot Webhook] ContratoServico criado', [
+                'evento_id'        => $evento?->id,
+                'company_id'       => $company->id,
+                'contrato_id'      => $contrato->id,
+                'line_item_name'   => $nome,
+                'servico_mapeado'  => $mapping->servico->nome,
+                'setor'            => $mapping->servico->setor,
+                'price_unitario'   => $item['price']    ?? null,
+                'quantity'         => $item['quantity'] ?? null,
+                'valor_final'      => $valor,
+                'tipo_cobranca'    => $tipoCobranca,
+                'match_strategy'   => mb_strtolower(trim($mapping->line_item_name)) === mb_strtolower(trim($nome))
+                    ? 'exato'
+                    : 'substring',
             ]);
 
             $servicosCriados[] = $mapping->servico->nome;

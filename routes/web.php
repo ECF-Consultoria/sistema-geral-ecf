@@ -180,6 +180,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
              Route::put('/empresas/{company}',     [ComercialController::class, 'update'])->name('empresas.update');
              Route::delete('/empresas/{company}',  [ComercialController::class, 'destroy'])->name('empresas.destroy');
 
+             // Hotfix 2026-06-19 — editar/desativar contratos a partir da listagem
+             // Comercial. Espelha as rotas admin-only de CompanyController mas com
+             // permission='comercial.cadastrar_empresa' (mesmo gating do resto do
+             // grupo) — Comercial precisa ajustar valor de contrato quando o line
+             // item HubSpot vem com valor errado, sem virar admin.
+             Route::put('/empresas/{company}/contratos-servico/{contrato}',
+                 [ComercialController::class, 'updateContrato']
+             )->name('empresas.contratos.update');
+             Route::delete('/empresas/{company}/contratos-servico/{contrato}',
+                 [ComercialController::class, 'destroyContrato']
+             )->name('empresas.contratos.destroy');
+
              // Phase 36 Plan 36-02 (D-03) — página dedicada de atribuir serviço
              // a uma empresa existente. Migrada de /administrativo/empresas (modal
              // Admin/Empresas.jsx — D-06). Pré-resolve a Company via route model

@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\CompanyGroup;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
+use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\Servico;
@@ -279,6 +280,30 @@ class ComercialController extends Controller
             $contratosAtivos = $c->contratosServico->where('ativo', true);
             $setorDominante  = $contratosAtivos->map(fn($ct) => optional($ct->servico)->setor)->filter()->first();
 
+            // Hotfix 2026-06-19 — detalhe por pendencia pra alimentar tooltips na UI.
+            // Cada chave eh o slug da pendencia; valor eh a lista de itens faltantes.
+            // Frontend mostra como title="..." no badge correspondente.
+            $detalhes = [];
+            if (in_array('dados_close_incompletos', $c->pendencias_comerciais, true)) {
+                $faltam = [];
+                if ($c->nicho === null)              $faltam[] = 'Nicho';
+                if ($c->dor === null)                $faltam[] = 'Dor';
+                if ($c->faturamento_mensal === null) $faltam[] = 'Faturamento mensal';
+                $detalhes['dados_close_incompletos'] = $faltam;
+            }
+            if (in_array('servico_nao_reconhecido', $c->pendencias_comerciais, true)) {
+                $nomesPendentes = [];
+                foreach ($c->hubspotEventos as $ev) {
+                    foreach (($ev->payload['line_items_nao_mapeados'] ?? []) as $item) {
+                        $nome = (string) ($item['name'] ?? '');
+                        if ($nome !== '' && !HubspotLineItemMapping::paraNome($nome)) {
+                            $nomesPendentes[] = $nome;
+                        }
+                    }
+                }
+                $detalhes['servico_nao_reconhecido'] = array_values(array_unique($nomesPendentes));
+            }
+
             return [
                 'id'                    => $c->id,
                 'name'                  => $c->name,
@@ -286,8 +311,11 @@ class ComercialController extends Controller
                 'status'                => $c->status,
                 'is_origem_hubspot'     => $c->is_origem_hubspot,
                 'pendencias_comerciais' => $c->pendencias_comerciais,
+                'pendencias_detalhes'   => $detalhes,
                 'setor_dominante'       => $setorDominante,
                 'nicho'                 => $c->nicho,
+                'dor'                   => $c->dor,
+                'faturamento_mensal'    => $c->faturamento_mensal !== null ? (float) $c->faturamento_mensal : null,
                 'email_cliente'         => $c->email_cliente,
                 'telefone'              => $c->telefone,
                 'created_at'            => $c->created_at?->toDateString(),
@@ -302,6 +330,8 @@ class ComercialController extends Controller
                 'contratos_servico'     => $contratosAtivos->map(fn($ct) => [
                     'id'               => $ct->id,
                     'valor_contratado' => (float) $ct->valor_contratado,
+                    'data_contratacao' => optional($ct->data_contratacao)->toDateString(),
+                    'data_vencimento'  => optional($ct->data_vencimento)->toDateString(),
                     'servico'          => $ct->servico ? [
                         'id'    => $ct->servico->id,
                         'nome'  => $ct->servico->nome,
@@ -391,12 +421,44 @@ class ComercialController extends Controller
         }
 
         // servico_nao_reconhecido: payload de algum HubspotEvento tem line_items_nao_mapeados
-        // (gravado pelo Plan 37-04 quando line item HubSpot nao bate no mapping)
-        $temLineItemsNaoMapeados = $c->hubspotEventos->contains(function ($ev) {
+        // (gravado pelo Plan 37-04 quando line item HubSpot nao bate no mapping).
+        //
+        // Hotfix 2026-06-19 — re-valida via paraNome() em tempo de leitura. Se o
+        // admin cadastrou o mapping depois (ou o paraNome substring agora bate), o
+        // nome deixa de contar como nao-reconhecido — a pendencia some sem precisar
+        // mexer no payload historico do evento. Cache estatica por request evita
+        // re-query do mesmo nome em empresas diferentes.
+        static $matchCache = [];
+        $resolverNome = function (string $nome) use (&$matchCache): bool {
+            $key = mb_strtolower(trim($nome));
+            if ($key === '') {
+                return true;
+            }
+            if (!array_key_exists($key, $matchCache)) {
+                $matchCache[$key] = (bool) HubspotLineItemMapping::paraNome($nome);
+            }
+            return $matchCache[$key];
+        };
+
+        $temLineItemNaoResolvidoAgora = $c->hubspotEventos->contains(function ($ev) use ($resolverNome) {
             $payload = $ev->payload ?? [];
-            return !empty($payload['line_items_nao_mapeados'] ?? null);
+            $itens = $payload['line_items_nao_mapeados'] ?? [];
+            if (empty($itens)) {
+                return false;
+            }
+            foreach ($itens as $item) {
+                $nome = (string) ($item['name'] ?? '');
+                if ($nome === '') {
+                    continue;
+                }
+                // Se algum item AINDA nao bate em mapping ativo, a pendencia persiste.
+                if (!$resolverNome($nome)) {
+                    return true;
+                }
+            }
+            return false;
         });
-        if ($temLineItemsNaoMapeados) {
+        if ($temLineItemNaoResolvidoAgora) {
             $pendencias[] = 'servico_nao_reconhecido';
         }
 
@@ -687,6 +749,60 @@ class ComercialController extends Controller
             ->log('Empresa removida pelo Comercial: "' . $nome . '"');
 
         return back()->with('success', 'Empresa "' . $nome . '" removida.');
+    }
+
+    /**
+     * Hotfix 2026-06-19 — atualiza valor/datas/ativo/observacoes de um
+     * ContratoServico a partir do Comercial. Mesma assinatura do
+     * CompanyController::updateContrato (admin-only) mas gated pelo
+     * permission 'comercial.cadastrar_empresa' do grupo.
+     */
+    public function updateContrato(Request $request, Company $company, ContratoServico $contrato)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+        abort_if($contrato->company_id !== $company->id, 404);
+
+        $data = $request->validate([
+            'valor_contratado' => 'required|numeric|min:0',
+            'data_contratacao' => 'required|date',
+            'data_vencimento'  => 'nullable|date|after_or_equal:data_contratacao',
+            'ativo'            => 'boolean',
+            'observacoes'      => 'nullable|string|max:1000',
+        ]);
+
+        $contrato->update($data);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $company->name, 'contrato_id' => $contrato->id])
+            ->log('Contrato editado pelo Comercial: "' . $company->name . '"');
+
+        return back()->with('success', 'Contrato atualizado.');
+    }
+
+    /**
+     * Hotfix 2026-06-19 — desativa contrato (soft, preservando historico) a
+     * partir do Comercial. Espelha CompanyController::destroyContrato.
+     */
+    public function destroyContrato(Request $request, Company $company, ContratoServico $contrato)
+    {
+        abort_unless(
+            auth()->user()->hasPermission('comercial.cadastrar_empresa') || auth()->user()->isAdmin(),
+            403
+        );
+        abort_if($contrato->company_id !== $company->id, 404);
+
+        $contrato->update(['ativo' => false]);
+
+        activity('comercial')
+            ->causedBy($request->user())
+            ->withProperties(['empresa' => $company->name, 'contrato_id' => $contrato->id])
+            ->log('Contrato desativado pelo Comercial: "' . $company->name . '"');
+
+        return back()->with('success', 'Contrato desativado.');
     }
 
     // ─── Métodos privados ────────────────────────────────────────────────────

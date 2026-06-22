@@ -2,13 +2,16 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
+import { Label } from '@/Components/ui/label';
+import { Textarea } from '@/Components/ui/textarea';
 import { Badge } from '@/Components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { useForm, Link, router, usePage } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import {
     Building2, Search, Tag, Eye, Briefcase, ChevronLeft, ChevronRight,
-    AlertCircle, Plus, ListChecks, Webhook,
+    AlertCircle, Plus, ListChecks, Webhook, Pencil, Trash2, Save,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import GruposManager from '@/Components/GruposManager';
@@ -108,12 +111,22 @@ function ServicoBadges({ contratos }) {
     );
 }
 
-function PendenciaBadges({ pendencias }) {
+function PendenciaBadges({ pendencias, detalhes = {} }) {
     if (!pendencias?.length) return <span className="text-white/30">—</span>;
+    const tooltipFor = (p) => {
+        const itens = detalhes?.[p];
+        const labelBase = PENDENCIAS_LABELS[p] ?? p;
+        if (!itens || itens.length === 0) return labelBase;
+        return `${labelBase}: ${itens.join(', ')}`;
+    };
     return (
         <div className="flex flex-wrap gap-1">
             {pendencias.map(p => (
-                <span key={p} className={cn('inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded border', PENDENCIAS_CLS[p] ?? '')}>
+                <span
+                    key={p}
+                    title={tooltipFor(p)}
+                    className={cn('inline-flex text-[10px] font-semibold px-1.5 py-0.5 rounded border cursor-help', PENDENCIAS_CLS[p] ?? '')}
+                >
                     {PENDENCIAS_LABELS[p] ?? p}
                 </span>
             ))}
@@ -160,6 +173,195 @@ function Paginator({ paginator }) {
     );
 }
 
+// ─── Modal de edição da empresa (close fields + contratos) ────────────────────
+
+function EditarEmpresaModal({ empresa, open, onClose }) {
+    // Form dos campos do close — alimenta a pendência dados_close_incompletos.
+    const empresaForm = useForm({
+        name:               empresa?.name ?? '',
+        nicho:              empresa?.nicho ?? '',
+        dor:                empresa?.dor ?? '',
+        faturamento_mensal: empresa?.faturamento_mensal ?? '',
+        email_cliente:      empresa?.email_cliente ?? '',
+        telefone:           empresa?.telefone ?? '',
+    });
+
+    // Estado local dos contratos (com edição inline de valor_contratado). O
+    // backend aceita PUT por contrato individual, então salvamos um por vez ao
+    // clicar no botão "salvar valor". Evita merge complexo em transação.
+    const [contratos, setContratos] = useState(() => empresa?.contratos_servico ?? []);
+
+    useEffect(() => {
+        if (open && empresa) {
+            empresaForm.setData({
+                name:               empresa.name ?? '',
+                nicho:              empresa.nicho ?? '',
+                dor:                empresa.dor ?? '',
+                faturamento_mensal: empresa.faturamento_mensal ?? '',
+                email_cliente:      empresa.email_cliente ?? '',
+                telefone:           empresa.telefone ?? '',
+            });
+            setContratos(empresa.contratos_servico ?? []);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, empresa?.id]);
+
+    if (!empresa) return null;
+
+    const salvarEmpresa = (e) => {
+        e.preventDefault();
+        empresaForm.put(route('comercial.empresas.update', empresa.id), {
+            preserveScroll: true,
+            onSuccess: () => onClose(),
+        });
+    };
+
+    const editarContratoValor = (contratoId, novoValor) => {
+        setContratos(prev => prev.map(c => c.id === contratoId ? { ...c, valor_contratado: novoValor } : c));
+    };
+
+    const salvarContrato = (contrato) => {
+        router.put(route('comercial.empresas.contratos.update', [empresa.id, contrato.id]), {
+            valor_contratado: parseFloat(contrato.valor_contratado) || 0,
+            data_contratacao: contrato.data_contratacao || new Date().toISOString().slice(0, 10),
+            data_vencimento:  contrato.data_vencimento || null,
+            ativo:            true,
+        }, { preserveScroll: true });
+    };
+
+    const desativarContrato = (contrato) => {
+        if (!confirm(`Desativar o contrato de "${contrato.servico?.nome ?? '—'}"?`)) return;
+        router.delete(route('comercial.empresas.contratos.destroy', [empresa.id, contrato.id]), {
+            preserveScroll: true,
+            onSuccess: () => setContratos(prev => prev.filter(c => c.id !== contrato.id)),
+        });
+    };
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Editar empresa — {empresa.name}</DialogTitle>
+                </DialogHeader>
+
+                <form onSubmit={salvarEmpresa} className="space-y-6 mt-2">
+                    {/* ── Bloco 1: identificação básica ─────────────────────── */}
+                    <div className="space-y-3">
+                        <div className="space-y-1.5">
+                            <Label>Nome *</Label>
+                            <Input value={empresaForm.data.name} onChange={e => empresaForm.setData('name', e.target.value)} required />
+                            {empresaForm.errors.name && <p className="text-destructive text-xs">{empresaForm.errors.name}</p>}
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Email do cliente</Label>
+                                <Input type="email" value={empresaForm.data.email_cliente} onChange={e => empresaForm.setData('email_cliente', e.target.value)} />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Telefone</Label>
+                                <Input value={empresaForm.data.telefone} onChange={e => empresaForm.setData('telefone', e.target.value)} />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── Bloco 2: informações do close (resolve a pendência) ── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <AlertCircle size={14} className="text-fuchsia-400" />
+                            <h3 className="text-white/85 text-sm font-semibold">Informações do close</h3>
+                            <span className="text-[10px] text-white/40">resolve a tag "Close incompleto"</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Nicho</Label>
+                                <Input value={empresaForm.data.nicho} onChange={e => empresaForm.setData('nicho', e.target.value)} placeholder="Ex: Moda feminina, Auto peças" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Faturamento mensal (R$)</Label>
+                                <Input
+                                    type="number" step="0.01" min="0"
+                                    value={empresaForm.data.faturamento_mensal ?? ''}
+                                    onChange={e => empresaForm.setData('faturamento_mensal', e.target.value)}
+                                    placeholder="0.00"
+                                />
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <Label>Dor</Label>
+                            <Textarea
+                                value={empresaForm.data.dor}
+                                onChange={e => empresaForm.setData('dor', e.target.value)}
+                                placeholder="Principal dor / motivação do cliente coletada no fechamento."
+                                rows={3}
+                            />
+                        </div>
+                    </div>
+
+                    {/* ── Bloco 3: contratos ativos (editar valor / desativar) ── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Briefcase size={14} className="text-ecf-yellow/70" />
+                                <h3 className="text-white/85 text-sm font-semibold">Contratos ativos</h3>
+                            </div>
+                            <Link
+                                href={route('comercial.atribuir-servico', empresa.id) + '?return_to=' + encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/comercial/empresas/listagem')}
+                                className="inline-flex items-center gap-1 text-[11px] text-ecf-yellow hover:underline"
+                            >
+                                <Plus size={12} /> novo contrato
+                            </Link>
+                        </div>
+                        {contratos.length === 0 && (
+                            <p className="text-white/40 text-[12px]">Nenhum contrato ativo. Clique em "novo contrato" para atribuir.</p>
+                        )}
+                        {contratos.map(ct => (
+                            <div key={ct.id} className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-2">
+                                <div className="flex-1 min-w-0">
+                                    <div className="text-white/85 text-[13px] truncate">{ct.servico?.nome ?? '—'}</div>
+                                    <div className="text-white/40 text-[10px]">
+                                        {ct.servico?.setor ? SETOR_LABELS[ct.servico.setor] ?? ct.servico.setor : '—'}
+                                    </div>
+                                </div>
+                                <div className="w-32">
+                                    <Input
+                                        type="number" step="0.01" min="0"
+                                        value={ct.valor_contratado ?? ''}
+                                        onChange={e => editarContratoValor(ct.id, e.target.value)}
+                                        className="h-8 text-[12px]"
+                                    />
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => salvarContrato(ct)}
+                                    title="Salvar valor"
+                                    className="p-1.5 rounded-md border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/15"
+                                >
+                                    <Save size={13} />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => desativarContrato(ct)}
+                                    title="Desativar contrato"
+                                    className="p-1.5 rounded-md border border-red-500/30 text-red-400 hover:bg-red-500/15"
+                                >
+                                    <Trash2 size={13} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={onClose}>Fechar</Button>
+                        <Button type="submit" disabled={empresaForm.processing}>
+                            {empresaForm.processing ? 'Salvando…' : 'Salvar empresa'}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ─── Página principal ────────────────────────────────────────────────────────
 
 export default function EmpresasListagem({
@@ -171,6 +373,11 @@ export default function EmpresasListagem({
     grupos = [],
     servicos_disponiveis = [],
 }) {
+    // Estado da modal de edição (Bug 1+2 hotfix).
+    const [editandoEmpresa, setEditandoEmpresa] = useState(null);
+    const abrirEdicao = (c) => setEditandoEmpresa(c);
+    const fecharEdicao = () => setEditandoEmpresa(null);
+
     // Aba inicial via ?tab= (deep-link). Default = 'empresas'.
     const [tab, setTab] = useState(() => {
         const t = typeof window !== 'undefined'
@@ -388,11 +595,19 @@ export default function EmpresasListagem({
                                                     <SetorBadge setor={c.setor_dominante} />
                                                 </TableCell>
                                                 <TableCell>
-                                                    <PendenciaBadges pendencias={c.pendencias_comerciais} />
+                                                    <PendenciaBadges pendencias={c.pendencias_comerciais} detalhes={c.pendencias_detalhes} />
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="inline-flex items-center gap-1">
-                                                        <Link href={route('comercial.atribuir-servico', c.id)}>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            title="Editar empresa (close + contratos)"
+                                                            onClick={() => abrirEdicao(c)}
+                                                        >
+                                                            <Pencil size={13} />
+                                                        </Button>
+                                                        <Link href={route('comercial.atribuir-servico', c.id) + '?return_to=' + encodeURIComponent(typeof window !== 'undefined' ? window.location.pathname + window.location.search : '/comercial/empresas/listagem')}>
                                                             <Button size="sm" variant="ghost" title="Atribuir serviço">
                                                                 <Briefcase size={13} />
                                                             </Button>
@@ -433,6 +648,13 @@ export default function EmpresasListagem({
                     </Card>
                 )}
             </div>
+
+            {/* Modal de edição da empresa (Bug 1+2 hotfix 2026-06-19) */}
+            <EditarEmpresaModal
+                empresa={editandoEmpresa}
+                open={!!editandoEmpresa}
+                onClose={fecharEdicao}
+            />
         </AppLayout>
     );
 }
