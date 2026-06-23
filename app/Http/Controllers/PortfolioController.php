@@ -8,6 +8,7 @@ use App\Models\GoalResult;
 use App\Models\PortfolioGoal;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\PortfolioScoreService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +16,10 @@ use Inertia\Inertia;
 
 class PortfolioController extends Controller
 {
-    public function __construct(private AdmanService $adman) {}
+    public function __construct(
+        private AdmanService $adman,
+        private PortfolioScoreService $scoreService,
+    ) {}
 
     // Admin vê a carteira de qualquer profissional
     public function show(Request $request, User $user)
@@ -590,20 +594,24 @@ class PortfolioController extends Controller
             return $c;
         });
 
-        // ── Quick 260619 redesign Carteira — comparacao com a equipe ──
-        // Identifica o cargo do user atual via user_setores -> cargos (fonte da
-        // verdade desde quick 260610-f69; users.role eh legacy e divergiu).
-        // Calcula percentil dele dentro dos pares do MESMO cargo, mais 3 metricas
-        // adicionais (faturamento medio por empresa, cobertura ads %, num empresas).
+        // ── Quick 260623 redesign performance — Score + comparacao contextual ──
+        // Conforme metodologia-desempenho-carteira.md: NAO comparar por
+        // faturamento bruto (vies de tamanho). Comparar por crescimento ajustado,
+        // % empresas crescendo, atingimento meta, recuperacao, execucao, qualidade.
+        // Score 0-100 combina as 6 categorias com pesos do brief.
+        $performanceProfissional = $this->scoreService->compute($user);
+
+        // Comparacao contextual com pares do mesmo cargo (analista x analista
+        // ou estrategista x estrategista). Identifica cargo via user_setores
+        // (fonte da verdade desde quick 260610-f69; users.role eh legacy).
         $cargoSlug = DB::table('user_setores as us')
             ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
             ->where('us.user_id', $user->id)
             ->whereIn('c.slug', ['analista', 'estrategista'])
             ->value('c.slug');
 
-        $comparacaoEquipe = null;
+        $comparacaoContextual = null;
         if ($cargoSlug) {
-            // Todos os user_ids com o mesmo cargo (ativos).
             $paresIds = DB::table('user_setores as us')
                 ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
                 ->join('users as u', 'u.id', '=', 'us.user_id')
@@ -613,81 +621,82 @@ class PortfolioController extends Controller
                 ->unique()
                 ->values();
 
-            // Agregados por user (sum revenue, sum ad_spend, count empresas) no
-            // mesmo intervalo [dateFrom, dateTo]. Uma unica query — usa join no
-            // pivot company_users pra atribuir cada empresa ao profissional.
-            $agregados = DB::table('company_users as cu')
-                ->join('companies as co', 'co.id', '=', 'cu.company_id')
-                ->leftJoin('adman_metrics as am', function ($j) use ($dateFrom, $dateTo) {
-                    $j->on('am.company_id', '=', 'co.id')
-                      ->whereBetween('am.reference_date', [$dateFrom, $dateTo]);
-                })
-                ->whereIn('cu.user_id', $paresIds)
-                ->where('co.active', true)
-                ->groupBy('cu.user_id')
-                ->selectRaw('cu.user_id, COUNT(DISTINCT co.id) as num_empresas, COALESCE(SUM(am.revenue),0) as total_revenue, COALESCE(SUM(am.ad_spend),0) as total_ad_spend, SUM(CASE WHEN am.ad_spend IS NOT NULL AND am.ad_spend > 0 THEN 1 ELSE 0 END) as empresas_com_ads_raw')
-                ->get()
-                ->keyBy('user_id');
+            // Calcula score de cada par (N+1 mas N tipicamente <= 10).
+            $scoresPares = collect();
+            foreach (User::whereIn('id', $paresIds)->get() as $par) {
+                $scoresPares->put($par->id, $this->scoreService->compute($par));
+            }
 
-            $minhaLinha = $agregados->get($user->id);
+            if ($scoresPares->count() >= 2) {
+                $meuResultado = $scoresPares->get($user->id) ?? $performanceProfissional;
 
-            if ($minhaLinha && $agregados->count() >= 2) {
-                $revenues = $agregados->pluck('total_revenue')->map(fn ($v) => (float) $v)->sort()->values();
-                $meuRev   = (float) $minhaLinha->total_revenue;
-                // Percentil: % de pares com revenue <= o meu (definicao classica).
-                $abaixoOuIgual = $revenues->filter(fn ($v) => $v <= $meuRev)->count();
-                $percentil    = $revenues->count() > 0
-                    ? round(($abaixoOuIgual / $revenues->count()) * 100)
-                    : 50;
+                $scoresAll = $scoresPares->pluck('score')->map(fn ($s) => (float) $s)->sort()->values();
+                $abaixoOuIgual = $scoresAll->filter(fn ($s) => $s <= $meuResultado['score'])->count();
+                $percentil = round(($abaixoOuIgual / $scoresAll->count()) * 100);
 
-                if ($percentil >= 75)      $nivel = 'A';
-                elseif ($percentil >= 50)  $nivel = 'B';
-                elseif ($percentil >= 25)  $nivel = 'C';
-                else                       $nivel = 'D';
+                // Helper: mediana de uma metrica em todos os pares (ignora nulls).
+                $medianaPares = function (string $caminho) use ($scoresPares) {
+                    $valores = $scoresPares->map(function ($r) use ($caminho) {
+                        $cur = $r['metricas'] ?? null;
+                        foreach (explode('.', $caminho) as $k) {
+                            if (!is_array($cur) || !array_key_exists($k, $cur)) return null;
+                            $cur = $cur[$k];
+                        }
+                        return is_numeric($cur) ? (float) $cur : null;
+                    })->filter(fn ($v) => $v !== null)->values()->all();
+                    if (empty($valores)) return null;
+                    sort($valores);
+                    $count = count($valores);
+                    $mid   = (int) floor($count / 2);
+                    return $count % 2 === 1 ? (float) $valores[$mid] : (float) (($valores[$mid - 1] + $valores[$mid]) / 2);
+                };
 
-                // Faturamento medio por empresa do grupo (para tooltip do chip).
-                $medias = [
-                    'faturamento_total' => round((float) $agregados->avg('total_revenue'), 2),
-                    'faturamento_por_empresa' => 0.0,
-                    'num_empresas'      => round((float) $agregados->avg('num_empresas'), 2),
-                    'ad_spend'          => round((float) $agregados->avg('total_ad_spend'), 2),
-                ];
-                $faturamentoPorEmpresa = $agregados->map(fn ($r) => ($r->num_empresas > 0)
-                    ? (float) $r->total_revenue / (int) $r->num_empresas
-                    : 0.0);
-                $medias['faturamento_por_empresa'] = round((float) $faturamentoPorEmpresa->avg(), 2);
-
-                $meuFatPorEmpresa = ($minhaLinha->num_empresas > 0)
-                    ? (float) $meuRev / (int) $minhaLinha->num_empresas
-                    : 0.0;
-
-                // Status por indicador (acima / abaixo / na media) — tolera +/- 5% do desvio.
-                $relativo = function (float $meu, float $media): string {
-                    if ($media <= 0) return 'na_media';
-                    $delta = ($meu - $media) / $media;
+                $relativo = function (?float $meu, ?float $mediana): string {
+                    if ($meu === null || $mediana === null) return 'sem_dado';
+                    if ($mediana == 0.0) {
+                        if ($meu > 0)  return 'acima';
+                        if ($meu < 0)  return 'abaixo';
+                        return 'na_media';
+                    }
+                    $delta = ($meu - $mediana) / abs($mediana);
                     if ($delta >= 0.05)  return 'acima';
                     if ($delta <= -0.05) return 'abaixo';
                     return 'na_media';
                 };
 
-                $comparacaoEquipe = [
-                    'cargo_slug'        => $cargoSlug,
-                    'cargo_label'       => $cargoSlug === 'analista' ? 'Analista' : 'Estrategista',
-                    'tamanho_amostra'   => $agregados->count(),
-                    'percentil'         => $percentil,
-                    'nivel'             => $nivel,
-                    'meus_valores'      => [
-                        'faturamento_total'       => (float) $meuRev,
-                        'faturamento_por_empresa' => $meuFatPorEmpresa,
-                        'num_empresas'            => (int) $minhaLinha->num_empresas,
-                        'ad_spend'                => (float) $minhaLinha->total_ad_spend,
+                $meu = fn (string $caminho) => (function () use ($meuResultado, $caminho) {
+                    $cur = $meuResultado['metricas'] ?? null;
+                    foreach (explode('.', $caminho) as $k) {
+                        if (!is_array($cur) || !array_key_exists($k, $cur)) return null;
+                        $cur = $cur[$k];
+                    }
+                    return is_numeric($cur) ? (float) $cur : null;
+                })();
+
+                $comparacaoContextual = [
+                    'cargo_slug'      => $cargoSlug,
+                    'cargo_label'     => $cargoSlug === 'analista' ? 'Analista' : 'Estrategista',
+                    'tamanho_amostra' => $scoresPares->count(),
+                    'percentil'       => $percentil,
+                    'classificacao_top' => $percentil >= 80 ? 'Top 20%'
+                        : ($percentil >= 60 ? 'Top 40%'
+                            : ($percentil >= 40 ? 'Mediana'
+                                : 'Inferior')),
+                    'medianas' => [
+                        'score'                    => round((float) $scoresAll->median(), 1),
+                        'crescimento_ajustado_pct' => $medianaPares('crescimento_ajustado_pct'),
+                        'empresas_em_crescimento_pct' => $medianaPares('empresas_em_crescimento.pct'),
+                        'atingimento_meta_pct'     => $medianaPares('atingimento_meta.pct'),
+                        'execucao_ads_pct'         => $medianaPares('execucao_ads.pct'),
+                        'recuperacao_pct'          => $medianaPares('recuperacao.pct'),
                     ],
-                    'medias_equipe'     => $medias,
-                    'relativo'          => [
-                        'faturamento_total'       => $relativo($meuRev, $medias['faturamento_total']),
-                        'faturamento_por_empresa' => $relativo($meuFatPorEmpresa, $medias['faturamento_por_empresa']),
-                        'num_empresas'            => $relativo((float) $minhaLinha->num_empresas, $medias['num_empresas']),
-                        'ad_spend'                => $relativo((float) $minhaLinha->total_ad_spend, $medias['ad_spend']),
+                    'relativo' => [
+                        'score'                       => $relativo((float) $meuResultado['score'], (float) $scoresAll->median()),
+                        'crescimento_ajustado_pct'    => $relativo($meu('crescimento_ajustado_pct'), $medianaPares('crescimento_ajustado_pct')),
+                        'empresas_em_crescimento_pct' => $relativo($meu('empresas_em_crescimento.pct'), $medianaPares('empresas_em_crescimento.pct')),
+                        'atingimento_meta_pct'        => $relativo($meu('atingimento_meta.pct'), $medianaPares('atingimento_meta.pct')),
+                        'execucao_ads_pct'            => $relativo($meu('execucao_ads.pct'), $medianaPares('execucao_ads.pct')),
+                        'recuperacao_pct'             => $relativo($meu('recuperacao.pct'), $medianaPares('recuperacao.pct')),
                     ],
                 ];
             }
@@ -717,7 +726,9 @@ class PortfolioController extends Controller
             ],
             'periodo_amostra'     => $periodoAmostra,
             'prioridade_do_dia'   => $prioridadeDoDia,
-            'comparacao_equipe'   => $comparacaoEquipe,
+            // Quick 260623 redesign performance — substitui comparacao_equipe antigo.
+            'performance_profissional' => $performanceProfissional,
+            'comparacao_contextual'    => $comparacaoContextual,
         ]);
     }
 

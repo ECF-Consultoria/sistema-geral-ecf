@@ -9,6 +9,7 @@ use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\Publicacao;
 use App\Models\User;
+use App\Services\PortfolioScoreService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,6 +17,8 @@ use Inertia\Inertia;
 
 class PerformanceController extends Controller
 {
+    public function __construct(private PortfolioScoreService $scoreService) {}
+
     public function index(Request $request)
     {
         $setor = $request->get('setor', 'consultoria');
@@ -38,84 +41,65 @@ class PerformanceController extends Controller
             ->whereNull('publication_role')
             ->get();
 
-        $ranking = $users->map(function ($u) use ($since) {
-            // Usa empresas específicas pelo papel do usuário para cálculos de NPS
-            $companyIds = $u->isMentor()
-                ? $u->estrategistaCompanies()->pluck('companies.id')
-                : $u->consultorCompanies()->pluck('companies.id');
+        // ── Quick 260623 redesign performance — ranking por SCORE ──
+        // Conforme metodologia-desempenho-carteira.md: ranking por score
+        // composto, NAO por faturamento bruto ou NPS isolado. Cada user passa
+        // pelo PortfolioScoreService que aplica os pesos do brief.
+        //
+        // Identifica cargo (analista/estrategista) via user_setores → cargos
+        // (fonte da verdade desde quick 260610-f69). users.role eh legacy.
+        $cargosPorUser = DB::table('user_setores as us')
+            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+            ->whereIn('c.slug', ['analista', 'estrategista'])
+            ->select('us.user_id', 'c.slug')
+            ->get()
+            ->keyBy('user_id');
 
-            // Fallback: se não tem empresas no papel específico, usa todas
-            if ($companyIds->isEmpty()) {
-                $companyIds = $u->companies()->pluck('companies.id');
-            }
-
-            $surveys = NpsSurvey::with('response')
-                ->whereIn('company_id', $companyIds)
-                ->where('status', 'completed')
-                ->where('completed_at', '>=', $since)
-                ->get();
-
-            // Phase 31 (Plan 05) — taxonomia nova:
-            //   Estrategista (isMentor) → score_estrategista (era score_mentor)
-            //   Analista (consultor)    → score_analista     (era score_consultant)
-            // Escala agora é 1-5 (era 0-10).
-            $scoreField = $u->isMentor() ? 'score_estrategista' : 'score_analista';
-            $avgNps = $surveys->count() > 0
-                ? round($surveys->avg(fn($s) => $s->response?->$scoreField ?? 0), 1)
-                : null;
-
-            // Reuniões e absenteísmo
-            $meetings = Meeting::whereIn('company_id', $companyIds)
-                ->where('status', 'completed')
-                ->where('scheduled_at', '>=', $since)
-                ->get();
-
-            $absences = $meetings->filter(fn($m) => !$m->consultant_present || !$m->mentor_present)->count();
-            $absenteeism = $meetings->count() > 0
-                ? round($absences / $meetings->count() * 100, 1)
-                : 0;
-
-            // Participação no crescimento de faturamento das empresas
-            $admanMetrics = AdmanMetric::whereIn('company_id', $companyIds)
-                ->where('reference_date', '>=', $since)
-                ->get()
-                ->filter(fn($m) => $m->revenue_prev_period > 0);
-
-            $revenueGrowth = $admanMetrics->count() > 0
-                ? round($admanMetrics->avg(fn($m) => $m->revenue_growth), 1)
-                : null;
-
-            // Taxa de conclusão de PPAs (% empresas com pelo menos 1 PPA concluído)
-            $totalCompanies = $companyIds->count();
-            $companiesWithCompletedPpa = Ppa::whereIn('company_id', $companyIds)
-                ->where('status', 'completed')
-                ->distinct('company_id')
-                ->count('company_id');
-
-            $ppaCompletionRate = $totalCompanies > 0
-                ? round($companiesWithCompletedPpa / $totalCompanies * 100, 1)
-                : null;
-
-            $avgTacos     = $admanMetrics->count() > 0 ? round($admanMetrics->avg('tacos'), 2) : null;
-            $totalRevenue = $admanMetrics->sum('revenue') > 0 ? $admanMetrics->sum('revenue') : null;
-            $totalSold    = $admanMetrics->sum('sold_quantity') > 0 ? (int) $admanMetrics->sum('sold_quantity') : null;
-
+        $rankingRaw = $users->map(function ($u) use ($cargosPorUser) {
+            $resultado = $this->scoreService->compute($u);
+            $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
+            $m = $resultado['metricas'];
             return [
                 'id'                  => $u->id,
                 'name'                => $u->name,
                 'role'                => $u->role,
-                'companies_count'     => $companyIds->count(),
-                'avg_nps'             => $avgNps,
-                'total_meetings'      => $meetings->count(),
-                'absenteeism_rate'    => $absenteeism,
-                'nps_responses'       => $surveys->count(),
-                'revenue_growth'      => $revenueGrowth,
-                'ppa_completion_rate' => $ppaCompletionRate,
-                'avg_tacos'           => $avgTacos,
-                'total_revenue'       => $totalRevenue,
-                'total_sold'          => $totalSold,
+                'cargo_slug'          => $cargoSlug,
+                'cargo_label'         => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                'empresas_carteira'   => $resultado['empresas_carteira'],
+                'empresas_eligiveis'  => $resultado['empresas_eligiveis'],
+                'tem_base_comparativa'=> $resultado['tem_base_comparativa'],
+                'score'               => $resultado['score'],
+                'classificacao'       => $resultado['classificacao'],
+                'crescimento_ajustado_pct'   => $m['crescimento_ajustado_pct'],
+                'empresas_em_crescimento_pct'=> $m['empresas_em_crescimento']['pct'] ?? null,
+                'atingimento_meta_pct'       => $m['atingimento_meta']['pct'] ?? null,
+                'execucao_ads_pct'           => $m['execucao_ads']['pct'] ?? null,
+                'recuperacao_pct'            => $m['recuperacao']['pct'] ?? null,
+                'avg_nps'                    => $m['qualidade']['avg_nps'] ?? null,
+                'total_meetings'             => $m['qualidade']['meetings'] ?? 0,
+                'absenteeism_rate'           => $m['qualidade']['absenteismo_pct'] ?? 0,
+                'faturamento_atual'          => $m['faturamento']['atual'] ?? 0.0,
+                'faturamento_anterior'       => $m['faturamento']['anterior'] ?? 0.0,
             ];
-        })->sortByDesc(fn($u) => $u['avg_nps'] ?? -1)->values();
+        });
+
+        // Tendencia (subindo/estavel/descendo) baseada no crescimento ajustado.
+        $rankingRaw = $rankingRaw->map(function ($r) {
+            $cr = $r['crescimento_ajustado_pct'];
+            $r['tendencia'] = $cr === null ? 'sem_dado'
+                : ($cr >= 5 ? 'subindo'
+                    : ($cr <= -5 ? 'descendo' : 'estavel'));
+            return $r;
+        });
+
+        // Ordena por score DESC; bases comparativas insuficientes vao pro fim.
+        $ranking = $rankingRaw
+            ->sortByDesc(fn ($r) => ($r['tem_base_comparativa'] ? 1 : 0) * 1000 + $r['score'])
+            ->values()
+            ->map(function ($r, $idx) {
+                $r['posicao'] = $idx + 1;
+                return $r;
+            });
 
         return Inertia::render('Performance/Index', [
             'ranking' => $ranking,

@@ -131,11 +131,11 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                     </div>
                 </div>
 
-                {/* Legend */}
+                {/* Legend — quick 260623 ranking por score */}
                 {!isPolos && (
                     <div className="flex flex-wrap gap-4 text-[11px] text-white/30">
-                        <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Crescim. = crescimento médio do faturamento</span>
-                        <span className="flex items-center gap-1.5"><CheckSquare size={12} /> PPA = % empresas com PPA concluído</span>
+                        <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Score: 30% cresc. ajustado + 20% empresas crescendo + 20% meta + 15% recuperação + 10% execução + 5% qualidade</span>
+                        <span>Click na linha → carteira individual com detalhe da nota</span>
                     </div>
                 )}
 
@@ -154,19 +154,66 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
     );
 }
 
+// Quick 260623 — ranking justo por SCORE (não por faturamento bruto).
+// Colunas conforme metodologia-desempenho-carteira.md. Click leva pra
+// carteira individual onde o profissional ve o detalhe da nota.
+
+const CLASSIF_CFG = {
+    excelente: { label: 'Excelente', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
+    bom:       { label: 'Bom',       cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30' },
+    atencao:   { label: 'Atenção',   cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+    critico:   { label: 'Crítico',   cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
+};
+
+function ScorePill({ score, classif }) {
+    const cfg = CLASSIF_CFG[classif] ?? CLASSIF_CFG.atencao;
+    return (
+        <div className="flex items-center gap-1.5">
+            <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', cfg.cls)}>
+                {cfg.label}
+            </span>
+            <span className="text-white tabular-nums font-bold text-[13px]">{score}</span>
+        </div>
+    );
+}
+
+function PctTone({ value, good = 60, okay = 40, suffix = '%' }) {
+    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
+    const tone = value >= good ? 'text-emerald-300' : value >= okay ? 'text-amber-300' : 'text-red-300';
+    return <span className={cn('font-semibold tabular-nums text-[12px]', tone)}>{value.toFixed(0)}{suffix}</span>;
+}
+
+function GrowthTone({ value }) {
+    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
+    const tone = value >= 5 ? 'text-emerald-300' : value <= -5 ? 'text-red-300' : 'text-white/60';
+    const sign = value > 0 ? '+' : '';
+    return <span className={cn('font-semibold tabular-nums text-[12px]', tone)}>{sign}{value.toFixed(1)}%</span>;
+}
+
+function Tendencia({ value }) {
+    const cfg = {
+        subindo:  { label: '↑ subindo',  cls: 'text-emerald-300' },
+        estavel:  { label: '— estável',  cls: 'text-white/60' },
+        descendo: { label: '↓ descendo', cls: 'text-red-300' },
+        sem_dado: { label: '—',          cls: 'text-white/20' },
+    }[value] ?? { label: '—', cls: 'text-white/20' };
+    return <span className={cn('text-[11px] font-semibold', cfg.cls)}>{cfg.label}</span>;
+}
+
 function RankingConsultoria({ ranking }) {
     return (
         <div className="card-ecf rounded-2xl overflow-hidden">
-            <div className="grid grid-cols-[2.5rem_1fr_5rem_5rem_5rem_5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
+            <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_4.5rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
                 <span>#</span>
                 <span>Nome</span>
+                <span className="text-right">Empresas</span>
+                <span>Score</span>
+                <span className="text-right">Cresc.</span>
+                <span className="text-right">Crescendo</span>
+                <span className="text-right">Meta</span>
+                <span className="text-right">Execução</span>
                 <span className="text-right">NPS</span>
-                <span className="text-right">TACOS</span>
-                <span className="text-right">Fat. Total</span>
-                <span className="text-right">Crescim.</span>
-                <span className="text-right">PPA</span>
-                <span className="text-right">Reuniões</span>
-                <span className="text-right">Absent.</span>
+                <span>Tend.</span>
                 <span />
             </div>
 
@@ -174,52 +221,46 @@ function RankingConsultoria({ ranking }) {
                 {ranking.map((u, idx) => (
                     <div
                         key={u.id}
-                        onClick={() => router.visit(route('performance.show', u.id))}
+                        onClick={() => router.visit(route('portfolio.show', u.id))}
                         className={cn(
-                            'grid grid-cols-[2.5rem_1fr_5rem_5rem_5rem_5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-4 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
-                            idx === 0 && 'bg-ecf-yellow/[0.03]'
+                            'grid grid-cols-[2.5rem_1fr_5rem_8rem_4.5rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
+                            idx === 0 && u.tem_base_comparativa && 'bg-ecf-yellow/[0.03]',
+                            !u.tem_base_comparativa && 'opacity-60'
                         )}
+                        title={!u.tem_base_comparativa ? 'Carteira < 5 empresas elegíveis — score sem base comparativa robusta' : undefined}
                     >
                         <div className="flex items-center justify-center">
-                            <MedalBadge idx={idx} />
+                            {idx < 3 && u.tem_base_comparativa
+                                ? <MedalBadge idx={idx} />
+                                : <span className="text-white/40 font-semibold text-[12px] tabular-nums">{u.posicao}</span>}
                         </div>
 
                         <div>
                             <p className="text-white font-semibold text-[13px]">{u.name}</p>
                             <p className="text-white/30 text-[11px]">
-                                {roleLabel[u.role]} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''} · {u.nps_responses} resp.
+                                {u.cargo_label}
+                                {!u.tem_base_comparativa && <span className="text-amber-300/70"> · base insuficiente</span>}
                             </p>
                         </div>
 
-                        <div className="text-right"><NpsTag value={u.avg_nps} /></div>
+                        <div className="text-right text-white/70 tabular-nums text-[12px]">
+                            {u.empresas_eligiveis}/{u.empresas_carteira}
+                        </div>
+
+                        <ScorePill score={u.score} classif={u.classificacao} />
+
+                        <div className="text-right"><GrowthTone value={u.crescimento_ajustado_pct} /></div>
+                        <div className="text-right"><PctTone value={u.empresas_em_crescimento_pct} good={60} okay={40} /></div>
+                        <div className="text-right"><PctTone value={u.atingimento_meta_pct} good={80} okay={50} /></div>
+                        <div className="text-right"><PctTone value={u.execucao_ads_pct} good={60} okay={30} /></div>
 
                         <div className="text-right">
-                            {u.avg_tacos != null
-                                ? <span className="text-ecf-yellow font-semibold text-[13px]">{formatPercent(u.avg_tacos)}</span>
+                            {u.avg_nps !== null && u.avg_nps !== undefined
+                                ? <span className="text-white/85 font-semibold tabular-nums text-[12px]">{u.avg_nps.toFixed(1)}</span>
                                 : <span className="text-white/20 font-bold">—</span>}
                         </div>
 
-                        <div className="text-right">
-                            {u.total_revenue != null
-                                ? <span className="text-blue-400 font-semibold text-[12px]">{formatCurrency(u.total_revenue)}</span>
-                                : <span className="text-white/20 font-bold">—</span>}
-                        </div>
-
-                        <div className="text-right"><GrowthTag value={u.revenue_growth} /></div>
-                        <div className="text-right"><PpaTag value={u.ppa_completion_rate} /></div>
-
-                        <div className="text-right">
-                            <span className="text-white/60 font-semibold">{u.total_meetings}</span>
-                        </div>
-
-                        <div className="text-right">
-                            <span className={cn(
-                                'font-semibold text-[13px]',
-                                u.absenteeism_rate > 20 ? 'text-red-400' : u.absenteeism_rate > 10 ? 'text-ecf-yellow' : 'text-emerald-400'
-                            )}>
-                                {u.total_meetings > 0 ? formatPercent(u.absenteeism_rate) : '—'}
-                            </span>
-                        </div>
+                        <div><Tendencia value={u.tendencia} /></div>
 
                         <div className="flex items-center justify-end">
                             <ChevronRight size={14} className="text-white/20" />

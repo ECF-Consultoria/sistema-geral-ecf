@@ -48,6 +48,27 @@ const ROLE_LABEL = {
     estrategista: 'Estrategista',
 };
 
+const CLASSIF_LABEL = {
+    excelente: 'Excelente',
+    bom:       'Bom',
+    atencao:   'Atenção',
+    critico:   'Crítico',
+};
+
+const CLASSIF_CLS = {
+    excelente: 'text-emerald-300',
+    bom:       'text-sky-300',
+    atencao:   'text-amber-300',
+    critico:   'text-red-300',
+};
+
+const CLASSIF_BG = {
+    excelente: 'bg-emerald-500/10 border-emerald-500/30',
+    bom:       'bg-sky-500/10 border-sky-500/30',
+    atencao:   'bg-amber-500/10 border-amber-500/30',
+    critico:   'bg-red-500/10 border-red-500/30',
+};
+
 // ── KPI compacto ─────────────────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white/85' }) {
@@ -78,6 +99,23 @@ function Chip({ children, tone = 'neutral' }) {
         <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border', tones[tone])}>
             {children}
         </span>
+    );
+}
+
+// ── Card de métrica de performance ───────────────────────────────────────────
+
+function PerformanceCard({ label, value, sub, tone = 'neutral' }) {
+    const toneCls = {
+        good:    'text-emerald-300',
+        neutral: 'text-white/85',
+        bad:     'text-red-300',
+    }[tone];
+    return (
+        <div className="rounded-lg bg-white/[0.04] border border-white/[0.06] p-3">
+            <div className="text-white/50 text-[10px] uppercase tracking-wide">{label}</div>
+            <div className={cn('mt-1 text-xl font-bold tabular-nums leading-tight', toneCls)}>{value}</div>
+            <div className="text-white/40 text-[10px] mt-0.5">{sub}</div>
+        </div>
     );
 }
 
@@ -166,7 +204,8 @@ export default function PortfolioShow({
     meta_carteira = { target_value: null, realized_value: 0, achieved_pct: null, restante: null, has_goal: false },
     periodo_amostra = { from_label: '—', to_label: '—', mes_label: '—', is_mes_atual: true },
     prioridade_do_dia = 0,
-    comparacao_equipe = null,
+    performance_profissional = null,
+    comparacao_contextual = null,
 }) {
     const isAdmin = portfolio_user.role === 'admin'
         || (typeof window !== 'undefined' && window.location.pathname.includes('/admin/'));
@@ -353,19 +392,16 @@ export default function PortfolioShow({
                                             {formatCurrencyCompact(meta_carteira.restante)} restante
                                         </Chip>
                                     )}
-                                    {comparacao_equipe && (
+                                    {performance_profissional && (
                                         <Chip tone={
-                                            comparacao_equipe.nivel === 'A' ? 'positive'
-                                            : comparacao_equipe.nivel === 'D' ? 'negative'
+                                            performance_profissional.classificacao === 'excelente' ? 'positive'
+                                            : performance_profissional.classificacao === 'critico' ? 'negative'
                                             : 'neutral'
                                         }>
-                                            <Award size={11} /> Nível {comparacao_equipe.nivel}
-                                            <span className="opacity-70">
-                                                · {comparacao_equipe.nivel === 'A' ? 'acima da média'
-                                                : comparacao_equipe.nivel === 'B' ? 'média alta'
-                                                : comparacao_equipe.nivel === 'C' ? 'média baixa'
-                                                : 'abaixo da média'} da equipe
-                                            </span>
+                                            <Award size={11} /> Score {performance_profissional.score} · {CLASSIF_LABEL[performance_profissional.classificacao]}
+                                            {comparacao_contextual && (
+                                                <span className="opacity-70">· {comparacao_contextual.classificacao_top}</span>
+                                            )}
                                         </Chip>
                                     )}
                                 </div>
@@ -411,6 +447,110 @@ export default function PortfolioShow({
                         icon={ShoppingCart}
                     />
                 </div>
+
+                {/* ── 3.5 Performance do profissional ─────────────────────────────
+                    Quick 260623 — 6 cards conforme metodologia-desempenho-carteira.md.
+                    Mede evolução + execução, NÃO faturamento bruto. */}
+                {performance_profissional && (
+                    <Card className={cn('border', CLASSIF_BG[performance_profissional.classificacao] ?? 'border-white/[0.06]')}>
+                        <CardContent className="p-4 md:p-5">
+                            <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-2">
+                                    <Award size={16} className={CLASSIF_CLS[performance_profissional.classificacao]} />
+                                    <h3 className="text-white text-sm font-semibold">Performance do profissional</h3>
+                                </div>
+                                <div className="text-right">
+                                    <div className={cn('text-2xl font-bold tabular-nums leading-none', CLASSIF_CLS[performance_profissional.classificacao])}>
+                                        {performance_profissional.score} <span className="text-[10px] text-white/40 font-normal">pts</span>
+                                    </div>
+                                    <div className={cn('text-[11px] font-semibold', CLASSIF_CLS[performance_profissional.classificacao])}>
+                                        {CLASSIF_LABEL[performance_profissional.classificacao]}
+                                        {comparacao_contextual && ` · ${comparacao_contextual.classificacao_top} de ${comparacao_contextual.tamanho_amostra} ${comparacao_contextual.cargo_label.toLowerCase()}s`}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* 6 cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                <PerformanceCard
+                                    label="Crescimento ajustado"
+                                    value={performance_profissional.metricas.crescimento_ajustado_pct !== null
+                                        ? `${performance_profissional.metricas.crescimento_ajustado_pct >= 0 ? '+' : ''}${performance_profissional.metricas.crescimento_ajustado_pct.toFixed(1)}%`
+                                        : '—'}
+                                    sub="30d vs 30d anteriores"
+                                    tone={performance_profissional.metricas.crescimento_ajustado_pct !== null
+                                        ? (performance_profissional.metricas.crescimento_ajustado_pct >= 5 ? 'good'
+                                            : performance_profissional.metricas.crescimento_ajustado_pct >= -5 ? 'neutral' : 'bad')
+                                        : 'neutral'}
+                                />
+                                <PerformanceCard
+                                    label="Empresas em crescimento"
+                                    value={`${performance_profissional.metricas.empresas_em_crescimento.count}/${performance_profissional.metricas.empresas_em_crescimento.total}`}
+                                    sub={`${performance_profissional.metricas.empresas_em_crescimento.pct.toFixed(0)}% da carteira`}
+                                    tone={performance_profissional.metricas.empresas_em_crescimento.pct >= 60 ? 'good'
+                                        : performance_profissional.metricas.empresas_em_crescimento.pct >= 40 ? 'neutral' : 'bad'}
+                                />
+                                <PerformanceCard
+                                    label="Atingimento de meta"
+                                    value={performance_profissional.metricas.atingimento_meta.pct !== null
+                                        ? `${performance_profissional.metricas.atingimento_meta.pct.toFixed(0)}%`
+                                        : '—'}
+                                    sub={performance_profissional.metricas.atingimento_meta.pct !== null
+                                        ? `${formatCurrencyCompact(performance_profissional.metricas.atingimento_meta.realized_value)} / ${formatCurrencyCompact(performance_profissional.metricas.atingimento_meta.target_value)}`
+                                        : 'sem meta cadastrada'}
+                                    tone={performance_profissional.metricas.atingimento_meta.pct !== null
+                                        ? (performance_profissional.metricas.atingimento_meta.pct >= 80 ? 'good'
+                                            : performance_profissional.metricas.atingimento_meta.pct >= 50 ? 'neutral' : 'bad')
+                                        : 'neutral'}
+                                />
+                                <PerformanceCard
+                                    label="Empresas recuperadas"
+                                    value={performance_profissional.metricas.recuperacao.pct !== null
+                                        ? `${performance_profissional.metricas.recuperacao.recuperadas}/${performance_profissional.metricas.recuperacao.em_queda}`
+                                        : '—'}
+                                    sub={performance_profissional.metricas.recuperacao.pct !== null
+                                        ? `${performance_profissional.metricas.recuperacao.pct.toFixed(0)}% recuperadas`
+                                        : 'nenhuma estava em queda'}
+                                    tone={performance_profissional.metricas.recuperacao.pct !== null
+                                        ? (performance_profissional.metricas.recuperacao.pct >= 60 ? 'good'
+                                            : performance_profissional.metricas.recuperacao.pct >= 30 ? 'neutral' : 'bad')
+                                        : 'neutral'}
+                                />
+                                <PerformanceCard
+                                    label="Ações executadas"
+                                    value={performance_profissional.metricas.execucao_ads.pct !== null
+                                        ? `${performance_profissional.metricas.execucao_ads.ativaram}/${performance_profissional.metricas.execucao_ads.oportunidades}`
+                                        : '—'}
+                                    sub={performance_profissional.metricas.execucao_ads.pct !== null
+                                        ? `${performance_profissional.metricas.execucao_ads.pct.toFixed(0)}% Ads ativados`
+                                        : 'nenhuma oportunidade'}
+                                    tone={performance_profissional.metricas.execucao_ads.pct !== null
+                                        ? (performance_profissional.metricas.execucao_ads.pct >= 60 ? 'good'
+                                            : performance_profissional.metricas.execucao_ads.pct >= 30 ? 'neutral' : 'bad')
+                                        : 'neutral'}
+                                />
+                                <PerformanceCard
+                                    label="Qualidade (NPS)"
+                                    value={performance_profissional.metricas.qualidade.avg_nps !== null
+                                        ? `${performance_profissional.metricas.qualidade.avg_nps.toFixed(1)}/5`
+                                        : '—'}
+                                    sub={`${performance_profissional.metricas.qualidade.meetings} reuniões · ${performance_profissional.metricas.qualidade.absenteismo_pct ?? 0}% absent.`}
+                                    tone={performance_profissional.metricas.qualidade.avg_nps !== null
+                                        ? (performance_profissional.metricas.qualidade.avg_nps >= 4 ? 'good'
+                                            : performance_profissional.metricas.qualidade.avg_nps >= 3 ? 'neutral' : 'bad')
+                                        : 'neutral'}
+                                />
+                            </div>
+
+                            {!performance_profissional.tem_base_comparativa && (
+                                <p className="mt-3 text-white/40 text-[11px]">
+                                    <AlertTriangle size={10} className="inline mr-1" />
+                                    Carteira com menos de 5 empresas elegíveis — score calculado mas comparação com pares pode ser instável.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* ── 4. Gráfico de evolução ─────────────────────────────────── */}
                 {revenue_timeseries.length > 0 && (
@@ -604,8 +744,9 @@ export default function PortfolioShow({
                             </CardContent>
                         </Card>
 
-                        {/* Comparação com equipe (quick 260619 — chip + card) */}
-                        {comparacao_equipe && (
+                        {/* Comparação contextual com pares (quick 260623 — justo,
+                            baseado em crescimento/execução/meta, NÃO em faturamento bruto). */}
+                        {comparacao_contextual && performance_profissional && (
                             <Card className="bg-ecf-card/60 border-white/[0.06]">
                                 <CardContent className="p-4">
                                     <div className="flex items-center justify-between mb-3">
@@ -613,33 +754,53 @@ export default function PortfolioShow({
                                             <Users size={14} className="text-sky-300" /> Comparação
                                         </div>
                                         <span className="text-white/40 text-[10px]">
-                                            vs {comparacao_equipe.tamanho_amostra} {comparacao_equipe.cargo_label.toLowerCase()}s
+                                            vs {comparacao_contextual.tamanho_amostra} {comparacao_contextual.cargo_label.toLowerCase()}s
                                         </span>
                                     </div>
                                     <div className="space-y-2">
                                         <ComparacaoLinha
-                                            label="Faturamento total"
-                                            status={comparacao_equipe.relativo.faturamento_total}
-                                            valor={formatCurrencyCompact(comparacao_equipe.meus_valores.faturamento_total)}
-                                            media={formatCurrencyCompact(comparacao_equipe.medias_equipe.faturamento_total)}
+                                            label="Score"
+                                            status={comparacao_contextual.relativo.score}
+                                            valor={`${performance_profissional.score} pts`}
+                                            media={`${comparacao_contextual.medianas.score?.toFixed(1) ?? '—'} pts`}
                                         />
                                         <ComparacaoLinha
-                                            label="Fat. por empresa"
-                                            status={comparacao_equipe.relativo.faturamento_por_empresa}
-                                            valor={formatCurrencyCompact(comparacao_equipe.meus_valores.faturamento_por_empresa)}
-                                            media={formatCurrencyCompact(comparacao_equipe.medias_equipe.faturamento_por_empresa)}
+                                            label="Crescimento ajustado"
+                                            status={comparacao_contextual.relativo.crescimento_ajustado_pct}
+                                            valor={performance_profissional.metricas.crescimento_ajustado_pct !== null
+                                                ? `${performance_profissional.metricas.crescimento_ajustado_pct >= 0 ? '+' : ''}${performance_profissional.metricas.crescimento_ajustado_pct.toFixed(1)}%`
+                                                : '—'}
+                                            media={comparacao_contextual.medianas.crescimento_ajustado_pct !== null
+                                                ? `${comparacao_contextual.medianas.crescimento_ajustado_pct.toFixed(1)}%`
+                                                : '—'}
                                         />
                                         <ComparacaoLinha
-                                            label="Empresas"
-                                            status={comparacao_equipe.relativo.num_empresas}
-                                            valor={String(comparacao_equipe.meus_valores.num_empresas)}
-                                            media={comparacao_equipe.medias_equipe.num_empresas.toFixed(1)}
+                                            label="Empresas crescendo"
+                                            status={comparacao_contextual.relativo.empresas_em_crescimento_pct}
+                                            valor={`${performance_profissional.metricas.empresas_em_crescimento.pct.toFixed(0)}%`}
+                                            media={comparacao_contextual.medianas.empresas_em_crescimento_pct !== null
+                                                ? `${comparacao_contextual.medianas.empresas_em_crescimento_pct.toFixed(0)}%`
+                                                : '—'}
                                         />
                                         <ComparacaoLinha
-                                            label="Investimento Ads"
-                                            status={comparacao_equipe.relativo.ad_spend}
-                                            valor={formatCurrencyCompact(comparacao_equipe.meus_valores.ad_spend)}
-                                            media={formatCurrencyCompact(comparacao_equipe.medias_equipe.ad_spend)}
+                                            label="Atingimento meta"
+                                            status={comparacao_contextual.relativo.atingimento_meta_pct}
+                                            valor={performance_profissional.metricas.atingimento_meta.pct !== null
+                                                ? `${performance_profissional.metricas.atingimento_meta.pct.toFixed(0)}%`
+                                                : '—'}
+                                            media={comparacao_contextual.medianas.atingimento_meta_pct !== null
+                                                ? `${comparacao_contextual.medianas.atingimento_meta_pct.toFixed(0)}%`
+                                                : '—'}
+                                        />
+                                        <ComparacaoLinha
+                                            label="Execução Ads"
+                                            status={comparacao_contextual.relativo.execucao_ads_pct}
+                                            valor={performance_profissional.metricas.execucao_ads.pct !== null
+                                                ? `${performance_profissional.metricas.execucao_ads.pct.toFixed(0)}%`
+                                                : '—'}
+                                            media={comparacao_contextual.medianas.execucao_ads_pct !== null
+                                                ? `${comparacao_contextual.medianas.execucao_ads_pct.toFixed(0)}%`
+                                                : '—'}
                                         />
                                     </div>
                                 </CardContent>
