@@ -410,301 +410,313 @@ function CopyGmail({ gmail }) {
     );
 }
 
-function EmpresaCard({ empresa, mlbsRegistrados, onSync, onProblemaEmpresa, showResponsavel = false, appUrl = '' }) {
-    const [expanded, setExpanded] = useState(false);
-    const [registerFor, setRegisterFor] = useState(null);
+/* ── Helpers/compoentes do NOVO layout em grade (mesmo visual da página Empresas) ── */
+// Estágios vencidos: prazo no passado + SKU pendente
+function stagesVencidos(empresa) {
+    return [1, 2, 3].filter(stage => {
+        const prazo = empresa[`prazo_estagio${stage}`];
+        if (!prazo) return false;
+        const diff = Math.ceil((new Date(prazo + 'T00:00:00') - new Date()) / 86400000);
+        if (diff >= 0) return false;
+        const skus = empresa[`skus_estagio${stage}`] ?? [];
+        return skus.filter(s => (s.sku ?? '').trim()).some(s => !s.ok);
+    });
+}
 
-    const { ok, total, pct } = empresa.progresso;
-    const concluida = empresa.estagio === 'Concluido';
-    const isAssessoria = (empresa.tipo ?? 'POLO') === 'ASSESSORIA';
-    const temProblema = !!empresa.problema;
-    const temAtrasado = [1,2,3].some(s => (empresa[`skus_estagio${s}`] ?? []).some(sk => sk.atrasado));
-
-    const prazos = {
-        1: empresa.prazo_estagio1,
-        2: empresa.prazo_estagio2,
-        3: empresa.prazo_estagio3,
+// Stepper de etapas E1/E2/E3 (● feito · ◉ andamento · ○ a fazer · vermelho = vencido) + % e contagens
+function StageStepper({ stages, ok, total, pct, mlbs }) {
+    const stateOf = (s) => {
+        if (s.total === 0)     return 'empty';
+        if (s.vencido)         return 'vencido';
+        if (s.done >= s.total) return 'done';
+        if (s.done > 0)        return 'current';
+        return 'todo';
     };
+    const dotCls = {
+        done:    'border-emerald-500 bg-emerald-500',
+        current: 'border-ecf-yellow bg-ecf-yellow/30',
+        todo:    'border-white/25',
+        empty:   'border-white/10',
+        vencido: 'border-red-500 bg-red-500/30',
+    };
+    const lblCls = {
+        done: 'text-emerald-400', current: 'text-ecf-yellow', todo: 'text-white/35', empty: 'text-white/20', vencido: 'text-red-400',
+    };
+    return (
+        <div className="flex items-center gap-3">
+            <div className="flex items-center flex-1 min-w-0 px-1">
+                {stages.map((s, i) => {
+                    const st = stateOf(s);
+                    const prev = stages[i - 1];
+                    const prevDone = i > 0 && prev.total > 0 && prev.done >= prev.total;
+                    return (
+                        <div key={s.stage} className={cn('flex items-center', i === 0 ? 'shrink-0' : 'flex-1 min-w-0')}>
+                            {i > 0 && <div className={cn('h-px flex-1 mx-1.5', prevDone ? 'bg-emerald-500/50' : 'bg-white/10')} />}
+                            <div className="flex flex-col items-center gap-1 shrink-0"
+                                title={`Estágio ${s.stage}: ${s.done}/${s.total}${s.vencido ? ' — vencido' : ''}`}>
+                                <span className={cn('w-3.5 h-3.5 rounded-full border-2', dotCls[st])} />
+                                <span className={cn('text-[9px] font-semibold leading-none', lblCls[st])}>E{s.stage}</span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="text-right shrink-0 leading-tight">
+                <div className="tabular-nums text-[13px] font-bold"
+                    style={{ color: pct === 100 ? '#22c55e' : pct >= 50 ? '#eab308' : '#8b5cf6' }}>{pct}%</div>
+                <div className="tabular-nums text-[10px] text-white/35">{ok}/{total} SKUs{mlbs != null ? ` · ${mlbs} MLBs` : ''}</div>
+            </div>
+        </div>
+    );
+}
 
-    // Estágio atual → índice do prazo relevante
-    const stageAtual = { 'Estágio 1': 1, 'Estágio 2': 2, 'Estágio 3': 3 }[empresa.estagio] ?? null;
-    const prazoAtual = stageAtual ? prazos[stageAtual] : null;
-    const diasUrgencia = minDiasPendente(empresa);
+// Chip de saúde — só acende quando há sinal
+function SaudeChip({ tone, icon: Icon, title, children }) {
+    const tones = {
+        red:     'bg-red-500/15 text-red-400 border-red-500/30',
+        orange:  'bg-orange-500/15 text-orange-400 border-orange-500/30',
+        neutral: 'bg-white/[0.03] text-white/40 border-white/[0.08]',
+    };
+    return (
+        <span title={title} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap', tones[tone])}>
+            <Icon size={9} /> {children}
+        </span>
+    );
+}
+
+// Card compacto em grade (clique abre o popup interativo de SKUs)
+function EmpresaCardGrid({ empresa, onOpenSkus, onSync, onProblemaEmpresa, showResponsavel = false, appUrl = '' }) {
+    const e = empresa;
+    const { ok, total, pct } = e.progresso;
+    const concluida = e.estagio === 'Concluido';
+    const isAssessoria = (e.tipo ?? 'POLO') === 'ASSESSORIA';
+    const temProblema = !!e.problema;
+    const vencidos = stagesVencidos(e);
+    const temAtrasado = [1, 2, 3].some(s => (e[`skus_estagio${s}`] ?? []).some(sk => sk.atrasado));
+
+    const stagesData = [1, 2, 3].map(stage => {
+        const filled = (e[`skus_estagio${stage}`] ?? []).filter(s => (s.sku ?? '').trim() !== '');
+        const done = filled.filter(s => s.ok).length;
+        return { stage, done, total: filled.length, vencido: vencidos.includes(stage) };
+    });
+
+    const prazoChip = (() => {
+        const hoje = new Date();
+        if (vencidos.length) {
+            const stage = vencidos[0];
+            const d = Math.ceil((new Date(e[`prazo_estagio${stage}`] + 'T00:00:00') - hoje) / 86400000);
+            return { label: `E${stage} venceu ${d}d`, vencido: true };
+        }
+        const prox = stagesData.find(s => s.done < s.total && e[`prazo_estagio${s.stage}`]);
+        if (!prox) return null;
+        const d = Math.ceil((new Date(e[`prazo_estagio${prox.stage}`] + 'T00:00:00') - hoje) / 86400000);
+        return { label: `E${prox.stage} faltam ${d}d`, vencido: false };
+    })();
+
+    return (
+        <div className={cn(
+            'card-ecf rounded-2xl overflow-hidden transition-all flex flex-col',
+            concluida && 'opacity-60',
+            temProblema && 'ring-1 ring-red-500/30'
+        )}>
+            {/* Conteúdo — clique abre o popup de SKUs */}
+            <div className="p-3.5 flex flex-col gap-2.5 flex-1 cursor-pointer hover:bg-white/[0.02]"
+                onClick={() => onOpenSkus(e)}>
+                {/* Identidade */}
+                <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                        <span className="text-white font-semibold text-[14px] truncate" title={e.nome}>{e.nome}</span>
+                        {e.prioridade && PRIO_COLOR[e.prioridade] && (
+                            <span className={cn('px-1.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0', PRIO_COLOR[e.prioridade])}>{e.prioridade}</span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 min-w-0">
+                        <span className="text-white/30 text-[11px] font-mono tabular-nums shrink-0">{e.cust_id || '— sem Cust ID —'}</span>
+                        {e.gmail && <CopyGmail gmail={e.gmail} />}
+                    </div>
+                </div>
+
+                {/* Classificação */}
+                <div className="flex items-center gap-1 flex-wrap">
+                    {e.estagio && (
+                        <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                            concluida ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                        )}>{e.estagio}</span>
+                    )}
+                    {e.fase && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/15 text-sky-400 border-sky-500/30">{e.fase}</span>}
+                    {e.projeto && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/15 text-amber-400 border-amber-500/30">{e.projeto}</span>}
+                    {isAssessoria && <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-blue-500/15 text-blue-400 border-blue-500/30">ASSESSORIA</span>}
+                </div>
+
+                {/* Operação — stepper + % + MLBs */}
+                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+                    <StageStepper stages={stagesData} ok={ok} total={total} pct={pct} mlbs={e.mlbs_count} />
+                </div>
+
+                {/* Saúde — só quando há alerta */}
+                {(temProblema || prazoChip || temAtrasado) && (
+                    <div className="flex items-center gap-1 flex-wrap">
+                        {temProblema && <SaudeChip tone="red" icon={AlertTriangle} title={e.problema_nota}>Conta</SaudeChip>}
+                        {prazoChip && <SaudeChip tone={prazoChip.vencido ? 'red' : 'neutral'} icon={Clock}>{prazoChip.label}</SaudeChip>}
+                        {temAtrasado && <SaudeChip tone="orange" icon={Clock}>Atrasado</SaudeChip>}
+                    </div>
+                )}
+
+                {/* Carteira (responsável) — só admin */}
+                {showResponsavel && (
+                    <div className="flex items-center gap-3 text-[11px] pt-0.5 min-w-0">
+                        {e.responsavel
+                            ? <span className="text-white/45 truncate">→ {e.responsavel}</span>
+                            : <span className="text-amber-400/80 flex items-center gap-1"><AlertTriangle size={10} /> sem resp.</span>}
+                    </div>
+                )}
+            </div>
+
+            {/* Rodapé — ações */}
+            <div className="flex items-center justify-end gap-1 px-2.5 py-1.5 border-t border-white/[0.05]">
+                <button onClick={() => onProblemaEmpresa(e)}
+                    title={temProblema ? `Problema: ${e.problema_nota}` : 'Reportar problema na conta'}
+                    className={cn('p-1.5 rounded-lg transition-colors', temProblema ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20' : 'text-white/30 hover:text-red-400 hover:bg-red-500/10')}>
+                    <AlertTriangle size={14} />
+                </button>
+                {e.cust_id && (
+                    <button onClick={() => onSync(e)} title="Sincronizar vendas via Adman"
+                        className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors">
+                        <RefreshCw size={14} />
+                    </button>
+                )}
+                {e.implementacao_token && (
+                    <a href={`${appUrl}/implementacao/${e.implementacao_token}/publicador`} target="_blank" rel="noreferrer"
+                        title="Link do Publicador"
+                        className="p-1.5 rounded-lg text-white/30 hover:text-violet-400 hover:bg-violet-500/10 transition-colors">
+                        <BookUser size={14} />
+                    </a>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// Popup INTERATIVO de SKUs — o publicador marca concluído e registra MLBs (substitui o accordion na grade)
+function SkuModal({ empresa, mlbsRegistrados, onProblemaEmpresa, onClose }) {
+    const e = empresa;
+    const [registerFor, setRegisterFor] = useState(null);
+    const concluida = e.estagio === 'Concluido';
+    const prazos = { 1: e.prazo_estagio1, 2: e.prazo_estagio2, 3: e.prazo_estagio3 };
 
     function handleMarcarSku(stage, position, ok) {
-        router.patch(route('mlb.empresas.sku', empresa.id), { stage, position, ok },
-            { preserveScroll: true });
+        router.patch(route('mlb.empresas.sku', e.id), { stage, position, ok }, { preserveScroll: true });
     }
-
-    function handleSkuClick(stage, idx, novoOk) {
-        handleMarcarSku(stage, idx, novoOk);
-    }
-
     function toggleRegister(stage, position) {
         const key = `${stage}-${position}`;
         setRegisterFor(prev => prev === key ? null : key);
     }
-
-    const barColor = concluida ? '#22c55e' : pct >= 80 ? '#eab308' : '#8b5cf6';
+    const badge = (txt, cls) => <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', cls)}>{txt}</span>;
+    const semSkus = [1, 2, 3].every(s => (e[`skus_estagio${s}`] ?? []).filter(x => (x.sku ?? '').trim()).length === 0);
 
     return (
-        <div className={cn(
-            'card-ecf rounded-2xl overflow-hidden',
-            concluida && 'opacity-70',
-            temProblema && 'ring-1 ring-red-500/40'
-        )}>
-            {/* Banner de problema da conta — visível sem expandir */}
-            {temProblema && (
-                <div className="flex items-start gap-2 px-4 pt-3 pb-0">
-                    <div className="flex-1 flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2">
-                        <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                            <span className="text-red-300 text-[12px] font-semibold">Conta com problema: </span>
-                            <span className="text-red-300 text-[12px]">{empresa.problema_nota || 'Sem descrição'}</span>
-                            {empresa.problema_em && (
-                                <span className="text-red-400/50 text-[11px] ml-2">({empresa.problema_em})</span>
-                            )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+            <div className="card-ecf rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onClick={ev => ev.stopPropagation()}>
+                {/* Header */}
+                <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="min-w-0">
+                        <h2 className="text-white font-bold text-base truncate">{e.nome}</h2>
+                        <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                            {e.cust_id && <span className="text-white/30 text-[11px] font-mono">{e.cust_id}</span>}
+                            {e.gmail && <CopyGmail gmail={e.gmail} />}
+                            {e.estagio && badge(e.estagio, concluida ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-purple-500/15 text-purple-400 border-purple-500/30')}
+                            {e.fase && badge(e.fase, 'bg-sky-500/15 text-sky-400 border-sky-500/30')}
+                            {e.projeto && badge(e.projeto, 'bg-amber-500/15 text-amber-400 border-amber-500/30')}
                         </div>
-                        <button
-                            onClick={ev => { ev.stopPropagation(); onProblemaEmpresa(empresa); }}
-                            className="text-red-400/60 hover:text-red-300 text-[11px] underline shrink-0 transition-colors"
-                        >
-                            Editar
-                        </button>
                     </div>
+                    <button onClick={onClose} className="p-1.5 rounded-lg text-white/30 hover:text-white/70 transition-colors shrink-0">
+                        <X size={16} />
+                    </button>
                 </div>
-            )}
 
-            {/* Header clicável */}
-            <button
-                className="w-full flex items-center gap-4 p-4 text-left hover:bg-white/[0.02] transition-colors"
-                onClick={() => setExpanded(e => !e)}
-            >
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        <span className="text-white font-semibold text-[14px]">{empresa.nome}</span>
-                        {empresa.cust_id && <span className="text-white/30 text-[11px] font-mono">{empresa.cust_id}</span>}
-                        {empresa.gmail && <CopyGmail gmail={empresa.gmail} />}
-                        {isAssessoria && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-blue-500/15 text-blue-400 border-blue-500/30">
-                                ASSESSORIA
-                            </span>
-                        )}
-                        {showResponsavel && empresa.responsavel && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-white/[0.05] text-white/50 border-white/[0.08]">
-                                {empresa.responsavel}
-                            </span>
-                        )}
-                        {empresa.estagio && (
-                            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border',
-                                concluida
-                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                    : 'bg-purple-500/15 text-purple-400 border-purple-500/30'
-                            )}>
-                                {empresa.estagio}
-                            </span>
-                        )}
-                        {empresa.fase && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/15 text-sky-400 border-sky-500/30">
-                                {empresa.fase}
-                            </span>
-                        )}
-                        {empresa.prioridade && PRIO_COLOR[empresa.prioridade] && (
-                            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', PRIO_COLOR[empresa.prioridade])}>
-                                {empresa.prioridade}
-                            </span>
-                        )}
-                        {concluida && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-emerald-500/15 text-emerald-400 border-emerald-500/30">
-                                ✓ Concluído
-                            </span>
-                        )}
-                        {/* Prazo do estágio atual — destaque no header */}
-                        {prazoAtual && !concluida && (
-                            <PrazoBadge prazoStr={prazoAtual} label={`Est.${stageAtual}`} />
-                        )}
-                        {temAtrasado && (
-                            <span title="Possui SKU(s) concluído(s) fora do prazo"
-                                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border bg-orange-500/10 border-orange-500/25 text-orange-400">
-                                <Clock size={9} /> Atrasado
-                            </span>
-                        )}
-                    </div>
-                    {/* Barra de progresso + urgência */}
-                    <div className="flex items-center gap-3">
-                        <div className="flex-1 max-w-[200px] h-1.5 bg-white/10 rounded-full overflow-hidden">
-                            <div style={{ width: `${pct}%`, background: barColor }} className="h-full rounded-full transition-all" />
-                        </div>
-                        <span className="text-white/40 text-[11px]">{ok}/{total} SKUs · {empresa.mlbs_count} MLBs</span>
-                        {diasUrgencia !== null && !concluida && (
-                            <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shrink-0',
-                                diasUrgencia < 0  ? 'text-red-400 border-red-500/30 bg-red-500/10' :
-                                diasUrgencia === 0 ? 'text-orange-400 border-orange-500/30 bg-orange-500/10' :
-                                diasUrgencia <= 7  ? 'text-yellow-400 border-yellow-500/30 bg-yellow-500/10' :
-                                'text-white/30 border-white/[0.08]'
-                            )}>
-                                {diasUrgencia < 0 ? `${Math.abs(diasUrgencia)}d vencido` :
-                                 diasUrgencia === 0 ? 'Vence hoje' :
-                                 `${diasUrgencia}d`}
-                            </span>
-                        )}
-                        {/* Botão Reportar Problema da Conta */}
-                        <button
-                            onClick={ev => { ev.stopPropagation(); onProblemaEmpresa(empresa); }}
-                            className={cn(
-                                'flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold border transition-colors',
-                                temProblema
-                                    ? 'bg-red-500/20 border-red-500/40 text-red-400 hover:bg-red-500/30'
-                                    : 'border-white/[0.06] text-white/20 hover:text-red-400 hover:border-red-500/30'
-                            )}
-                        >
-                            <AlertTriangle size={9} />
-                            {temProblema ? 'Conta c/ problema' : 'Reportar conta'}
-                        </button>
-                        {empresa.cust_id && (
-                            <button
-                                onClick={ev => { ev.stopPropagation(); onSync(empresa); }}
-                                className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-semibold border border-ecf-yellow/20 text-ecf-yellow/60 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors"
-                            >
-                                <RefreshCw size={10} /> Sync
-                            </button>
-                        )}
-                        {empresa.implementacao_token && (
-                            <a
-                                href={`${appUrl}/implementacao/${empresa.implementacao_token}/publicador`}
-                                target="_blank"
-                                rel="noreferrer"
-                                onClick={ev => ev.stopPropagation()}
-                                title="Link do Publicador"
-                                className="p-1.5 rounded-lg text-white/30 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
-                            >
-                                <BookUser size={14} />
-                            </a>
-                        )}
-                    </div>
-                </div>
-                {expanded ? <ChevronUp size={16} className="text-white/30 shrink-0" /> : <ChevronDown size={16} className="text-white/30 shrink-0" />}
-            </button>
-
-            {/* Estágios + SKUs expandidos */}
-            {expanded && (
-                <div className="border-t border-white/[0.06] p-4 space-y-4">
-                    {empresa.contexto && (
-                        <p className="text-white/40 text-[12px] italic">📝 {empresa.contexto}</p>
-                    )}
-
-                    {[1, 2, 3].map(stage => {
-                        const skus = empresa[`skus_estagio${stage}`] ?? [];
-                        const filled = skus.filter(s => (s.sku ?? '').trim() !== '');
-                        if (filled.length === 0) return null;
-
-                        const doneCount = filled.filter(s => s.ok).length;
-
-                        return (
-                            <div key={stage}>
-                                <div className="flex items-center justify-between mb-2">
-                                    <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">
-                                        Estágio {stage} · {doneCount}/{filled.length} concluídos
-                                    </p>
-                                    {prazos[stage] && (
-                                        <PrazoBadge prazoStr={prazos[stage]} label="Prazo" />
-                                    )}
-                                </div>
-                                <div className="space-y-2">
-                                    {skus.map((sku, idx) => {
-                                        if (!(sku.sku ?? '').trim()) return null;
-                                        const key = `${stage}-${idx}`;
-                                        const isReg = registerFor === key;
-                                        const skuMlbs = (mlbsRegistrados ?? []).filter(
-                                            m => m.mlb_empresa_id === empresa.id &&
-                                                 m.sku_stage === stage &&
-                                                 m.sku_position === idx
-                                        );
-
-                                        return (
-                                            <div key={idx} className={cn(
-                                                'rounded-xl border p-3',
-                                                sku.ok
-                                                    ? 'border-emerald-500/20 bg-emerald-500/5'
-                                                    : 'border-white/[0.06] bg-white/[0.02]'
-                                            )}>
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => handleSkuClick(stage, idx, !sku.ok)}
-                                                        className="shrink-0 transition-colors"
-                                                        title={sku.ok ? 'Desmarcar' : 'Marcar como concluído'}
-                                                    >
-                                                        {sku.ok
-                                                            ? <CheckCircle2 size={20} className="text-emerald-400" />
-                                                            : <Circle size={20} className="text-white/25 hover:text-white/60" />
-                                                        }
-                                                    </button>
-                                                    <div className="flex-1 min-w-0">
-                                                        <span className={cn('text-[13px] font-medium block',
-                                                            sku.ok ? 'text-emerald-400 line-through' : 'text-white')}>
-                                                            {sku.sku}
-                                                        </span>
-                                                        {sku.ok && sku.concluido_em && (
-                                                            <span className={cn('text-[10px]', sku.atrasado ? 'text-red-400' : 'text-white/30')}>
-                                                                {sku.atrasado ? '⚠ Fora do prazo · ' : ''}
-                                                                Concluído {new Date(sku.concluido_em).toLocaleDateString('pt-BR')}
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        {skuMlbs.length > 0 && (
-                                                            <span className="text-white/40 text-[11px]">
-                                                                {skuMlbs.length} MLB(s)
-                                                            </span>
-                                                        )}
-                                                        {!sku.ok && (
-                                                            <button
-                                                                onClick={() => toggleRegister(stage, idx)}
-                                                                className={cn(
-                                                                    'flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors',
-                                                                    isReg
-                                                                        ? 'bg-ecf-yellow/15 border-ecf-yellow/30 text-ecf-yellow'
-                                                                        : 'border-white/[0.08] text-white/50 hover:text-white hover:border-white/20'
-                                                                )}
-                                                            >
-                                                                <PlusCircle size={12} />
-                                                                {isReg ? 'Fechar' : 'Registrar MLBs'}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                {skuMlbs.length > 0 && (
-                                                    <div className="mt-2 flex flex-wrap gap-1.5 pl-8">
-                                                        {skuMlbs.map(m => (
-                                                            <a key={m.id} href={mlbUrl(m.mlb_code)} target="_blank" rel="noopener noreferrer"
-                                                                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[11px] font-mono hover:text-purple-200 transition-colors">
-                                                                {m.mlb_code} <ExternalLink size={9} />
-                                                            </a>
-                                                        ))}
-                                                    </div>
-                                                )}
-
-                                                {isReg && (
-                                                    <MlbRegisterForm
-                                                        empresa={empresa}
-                                                        skuStage={stage}
-                                                        skuPosition={idx}
-                                                        skuNome={sku.sku}
-                                                        registrados={(mlbsRegistrados ?? []).map(m => m.mlb_code)}
-                                                        onClose={() => setRegisterFor(null)}
-                                                    />
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
+                {/* Problema da conta */}
+                {e.problema && (
+                    <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3 flex items-start justify-between gap-2">
+                        <div className="flex items-start gap-2">
+                            <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />
+                            <div>
+                                <p className="text-red-400 text-[11px] font-bold uppercase tracking-wide mb-0.5">Conta com problema</p>
+                                <p className="text-red-300 text-[12px]">{e.problema_nota || 'Sem descrição'}</p>
+                                {e.problema_em && <p className="text-red-400/50 text-[11px] mt-0.5">Registrado em {e.problema_em}</p>}
                             </div>
-                        );
-                    })}
-                </div>
-            )}
+                        </div>
+                        <button onClick={() => onProblemaEmpresa(e)} className="text-red-400/60 hover:text-red-300 text-[11px] underline shrink-0 transition-colors">Editar</button>
+                    </div>
+                )}
 
+                {e.contexto && <p className="text-white/40 text-[12px] italic mb-4">📝 {e.contexto}</p>}
+
+                {/* Estágios + SKUs (interativo) */}
+                {semSkus ? (
+                    <p className="text-white/30 text-[12px] italic text-center py-6">Nenhum SKU cadastrado nos estágios desta empresa.</p>
+                ) : (
+                    <div className="space-y-4">
+                        {[1, 2, 3].map(stage => {
+                            const skus = e[`skus_estagio${stage}`] ?? [];
+                            const filled = skus.filter(s => (s.sku ?? '').trim() !== '');
+                            if (filled.length === 0) return null;
+                            const doneCount = filled.filter(s => s.ok).length;
+                            return (
+                                <div key={stage}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-white/50 text-[11px] font-semibold uppercase tracking-wide">Estágio {stage} · {doneCount}/{filled.length} concluídos</p>
+                                        {prazos[stage] && <PrazoBadge prazoStr={prazos[stage]} label="Prazo" />}
+                                    </div>
+                                    <div className="space-y-2">
+                                        {skus.map((sku, idx) => {
+                                            if (!(sku.sku ?? '').trim()) return null;
+                                            const key = `${stage}-${idx}`;
+                                            const isReg = registerFor === key;
+                                            const skuMlbs = (mlbsRegistrados ?? []).filter(m => m.mlb_empresa_id === e.id && m.sku_stage === stage && m.sku_position === idx);
+                                            return (
+                                                <div key={idx} className={cn('rounded-xl border p-3', sku.ok ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-white/[0.06] bg-white/[0.02]')}>
+                                                    <div className="flex items-center gap-3">
+                                                        <button onClick={() => handleMarcarSku(stage, idx, !sku.ok)} className="shrink-0 transition-colors" title={sku.ok ? 'Desmarcar' : 'Marcar como concluído'}>
+                                                            {sku.ok ? <CheckCircle2 size={20} className="text-emerald-400" /> : <Circle size={20} className="text-white/25 hover:text-white/60" />}
+                                                        </button>
+                                                        <div className="flex-1 min-w-0">
+                                                            <span className={cn('text-[13px] font-medium block', sku.ok ? 'text-emerald-400 line-through' : 'text-white')}>{sku.sku}</span>
+                                                            {sku.ok && sku.concluido_em && (
+                                                                <span className={cn('text-[10px]', sku.atrasado ? 'text-red-400' : 'text-white/30')}>
+                                                                    {sku.atrasado ? '⚠ Fora do prazo · ' : ''}Concluído {new Date(sku.concluido_em).toLocaleDateString('pt-BR')}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2 shrink-0">
+                                                            {skuMlbs.length > 0 && <span className="text-white/40 text-[11px]">{skuMlbs.length} MLB(s)</span>}
+                                                            {!sku.ok && (
+                                                                <button onClick={() => toggleRegister(stage, idx)} className={cn('flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-colors', isReg ? 'bg-ecf-yellow/15 border-ecf-yellow/30 text-ecf-yellow' : 'border-white/[0.08] text-white/50 hover:text-white hover:border-white/20')}>
+                                                                    <PlusCircle size={12} />{isReg ? 'Fechar' : 'Registrar MLBs'}
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    {skuMlbs.length > 0 && (
+                                                        <div className="mt-2 flex flex-wrap gap-1.5 pl-8">
+                                                            {skuMlbs.map(m => (
+                                                                <a key={m.id} href={mlbUrl(m.mlb_code)} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-[11px] font-mono hover:text-purple-200 transition-colors">{m.mlb_code} <ExternalLink size={9} /></a>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                    {isReg && (
+                                                        <MlbRegisterForm empresa={e} skuStage={stage} skuPosition={idx} skuNome={sku.sku}
+                                                            registrados={(mlbsRegistrados ?? []).map(m => m.mlb_code)} onClose={() => setRegisterFor(null)} />
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
         </div>
     );
 }
@@ -800,6 +812,7 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
     const [syncEmpresa, setSyncEmpresa] = useState(null);
     const [problemaModal, setProblemaModal] = useState(null);
     const [problemaEmpresaModal, setProblemaEmpresaModal] = useState(null);
+    const [skuModalEmpresa, setSkuModalEmpresa] = useState(null); // empresa cujo popup de SKUs está aberto
     const [showLivre, setShowLivre] = useState(false);
     const [filtroEstagio, setFiltroEstagio] = useState('');
     const [filtroFase, setFiltroFase] = useState('');
@@ -999,10 +1012,14 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
 
             {/* Empresas atribuídas */}
             {temEmpresas ? (
-                <div className="space-y-3 mb-6">
-                    {pendentes.map(e => (
-                        <EmpresaCard key={e.id} empresa={e} mlbsRegistrados={ultimos} onSync={setSyncEmpresa} onProblemaEmpresa={setProblemaEmpresaModal} showResponsavel={isAdmin} appUrl={appUrl} />
-                    ))}
+                <div className="space-y-4 mb-6">
+                    {pendentes.length > 0 && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            {pendentes.map(e => (
+                                <EmpresaCardGrid key={e.id} empresa={e} onOpenSkus={setSkuModalEmpresa} onSync={setSyncEmpresa} onProblemaEmpresa={setProblemaEmpresaModal} showResponsavel={isAdmin} appUrl={appUrl} />
+                            ))}
+                        </div>
+                    )}
 
                     {concluidas.length > 0 && (
                         <>
@@ -1011,9 +1028,11 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
                                 <span className="text-white/20 text-[11px] uppercase tracking-wider">Concluídas ({concluidas.length})</span>
                                 <div className="h-px flex-1 bg-white/[0.06]" />
                             </div>
-                            {concluidas.map(e => (
-                                <EmpresaCard key={e.id} empresa={e} mlbsRegistrados={ultimos} onSync={setSyncEmpresa} onProblemaEmpresa={setProblemaEmpresaModal} showResponsavel={isAdmin} appUrl={appUrl} />
-                            ))}
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                                {concluidas.map(e => (
+                                    <EmpresaCardGrid key={e.id} empresa={e} onOpenSkus={setSkuModalEmpresa} onSync={setSyncEmpresa} onProblemaEmpresa={setProblemaEmpresaModal} showResponsavel={isAdmin} appUrl={appUrl} />
+                                ))}
+                            </div>
                         </>
                     )}
                 </div>
@@ -1204,6 +1223,11 @@ export default function Publicacoes({ kpis, hoje, ultimos, meta, empresas, isAdm
             {/* Modal Problema na empresa/conta */}
             {problemaEmpresaModal && (
                 <ProblemaEmpresaModal empresa={problemaEmpresaModal} onClose={() => setProblemaEmpresaModal(null)} />
+            )}
+
+            {/* Modal SKUs (interativo) — marcar concluído + registrar MLBs */}
+            {skuModalEmpresa && (
+                <SkuModal empresa={skuModalEmpresa} mlbsRegistrados={ultimos} onProblemaEmpresa={setProblemaEmpresaModal} onClose={() => setSkuModalEmpresa(null)} />
             )}
         </AppLayout>
     );
