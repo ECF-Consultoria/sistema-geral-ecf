@@ -7,7 +7,6 @@ use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\PortfolioGoal;
 use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -75,9 +74,12 @@ class PortfolioScoreService
         $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
 
         // ── Revenue por empresa (3 janelas) ──
+        // Hotfix smoke test 260623 — passa custIds em TODAS as janelas pra Adman
+        // tentar resolver. Quando faltar cache, cai pro SUM DB (que pode estar
+        // quase vazio em janelas >30d se o sync local nao for retroativo).
         $revAtual    = $this->revenuePorEmpresa($companies, $custIds, $atualFrom, $atualTo, $companyIds);
-        $revAnterior = $this->revenuePorEmpresa($companies, [], $anteriorFrom, $anteriorTo, $companyIds);
-        $revRetro    = $this->revenuePorEmpresa($companies, [], $retroFrom, $retroTo, $companyIds);
+        $revAnterior = $this->revenuePorEmpresa($companies, $custIds, $anteriorFrom, $anteriorTo, $companyIds);
+        $revRetro    = $this->revenuePorEmpresa($companies, $custIds, $retroFrom, $retroTo, $companyIds);
 
         // ── Empresas eligíveis pra cálculo de crescimento ──
         $eligiveis = $companies->filter(function ($c) use ($revAtual, $revAnterior) {
