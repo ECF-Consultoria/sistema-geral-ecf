@@ -684,7 +684,7 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                     )}
 
                     {/* Carteira — responsável + polo */}
-                    <div className="flex items-center gap-3 text-[11px] mt-auto pt-0.5 min-w-0">
+                    <div className="flex items-center gap-3 text-[11px] pt-0.5 min-w-0">
                         {e.responsavel_nome
                             ? <span className="text-white/45 truncate" title={e.responsavel_nome}>→ {e.responsavel_nome}</span>
                             : <span className="text-amber-400/80 flex items-center gap-1 shrink-0"><AlertTriangle size={10} /> sem resp.</span>}
@@ -1137,7 +1137,7 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
 
             <div className="space-y-4">
                 {pendentes.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                         {pendentes.map(renderEmpresa)}
                     </div>
                 )}
@@ -1148,7 +1148,7 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                             <span className="text-white/20 text-[11px] uppercase tracking-wider">Concluídas ({concluidas.length})</span>
                             <div className="h-px flex-1 bg-white/[0.06]" />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                             {concluidas.map(renderEmpresa)}
                         </div>
                     </>
