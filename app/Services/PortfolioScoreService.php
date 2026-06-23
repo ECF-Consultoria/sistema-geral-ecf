@@ -58,28 +58,58 @@ class PortfolioScoreService
     public function compute(User $user): array
     {
         // ── Janelas ──
-        // Atual: 0-30 dias (rolling)
-        // Anterior: 30-60 dias
-        // Retro:    60-90 dias (usado pra recuperação)
+        // Hotfix smoke test 260623: DB local guarda 30d rolling; cache Adman
+        // gross/account so retorna janela rolling. Comparar 0-30d vs 30-60d
+        // era impossivel (gerava +6997% pro Gustavo). Solucao: usar a coluna
+        // AdmanMetric.revenue_prev_period (vem da API Adman ja com baseline
+        // do dia anterior equivalente). Cada metrica diaria carrega revenue
+        // ATUAL + revenue ANTERIOR no payload da Adman — usa isso.
+        //
+        // Atual:   0-30 dias (rolling)
+        // Half1:   0-15 dias (segunda metade — usado pra detectar recuperacao)
+        // Half2:   15-30 dias (primeira metade)
         $hoje          = now();
         $atualFrom     = $hoje->copy()->subDays(30)->toDateString();
         $atualTo       = $hoje->toDateString();
-        $anteriorFrom  = $hoje->copy()->subDays(60)->toDateString();
-        $anteriorTo    = $hoje->copy()->subDays(30)->toDateString();
-        $retroFrom     = $hoje->copy()->subDays(90)->toDateString();
-        $retroTo       = $hoje->copy()->subDays(60)->toDateString();
+        $half1From     = $hoje->copy()->subDays(15)->toDateString();
+        $half2From     = $hoje->copy()->subDays(30)->toDateString();
+        $half2To       = $hoje->copy()->subDays(15)->toDateString();
 
         $companies = $user->companies()->with('grants')->where('active', true)->get();
         $companyIds = $companies->pluck('id');
         $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
 
-        // ── Revenue por empresa (3 janelas) ──
-        // Hotfix smoke test 260623 — passa custIds em TODAS as janelas pra Adman
-        // tentar resolver. Quando faltar cache, cai pro SUM DB (que pode estar
-        // quase vazio em janelas >30d se o sync local nao for retroativo).
-        $revAtual    = $this->revenuePorEmpresa($companies, $custIds, $atualFrom, $atualTo, $companyIds);
-        $revAnterior = $this->revenuePorEmpresa($companies, $custIds, $anteriorFrom, $anteriorTo, $companyIds);
-        $revRetro    = $this->revenuePorEmpresa($companies, $custIds, $retroFrom, $retroTo, $companyIds);
+        // ── Revenue + revenue_prev_period por empresa (janela atual) ──
+        // Soma diaria: tanto revenue (a empresa fez no periodo) quanto
+        // revenue_prev_period (a empresa fez no mesmo numero de dias antes
+        // do periodo). Adman calcula isso por dia; somar dia-a-dia da uma
+        // aproximacao confiavel do crescimento 30d vs 30d anteriores SEM
+        // depender de cache historico do nosso DB.
+        $sumAtual = AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$atualFrom, $atualTo])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(revenue_prev_period) as rev_prev, SUM(ad_spend) as ads')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        // Cache atual via Adman gross (mais robusto que SUM DB; preenche custIds
+        // missing como DINMAP fix do hotfix anterior).
+        $grossCache = $this->adman->getCachedGrossBillingsMany($custIds, $atualFrom, $atualTo);
+
+        // Revenue final por empresa: cache gross (mais completo) com fallback
+        // pra SUM DB. revenue_prev_period vem SEMPRE do DB porque o cache nao
+        // expoe esse campo separado.
+        $revAtual = [];
+        $revAnterior = [];
+        foreach ($companies as $c) {
+            $row = $sumAtual->get($c->id);
+            $cacheRev = null;
+            if ($c->cust_id && isset($grossCache[$c->cust_id]['value']) && $grossCache[$c->cust_id]['value'] !== null) {
+                $cacheRev = (float) $grossCache[$c->cust_id]['value'];
+            }
+            $revAtual[$c->id]    = $cacheRev ?? (float) ($row->rev ?? 0);
+            $revAnterior[$c->id] = (float) ($row->rev_prev ?? 0);
+        }
 
         // ── Empresas eligíveis pra cálculo de crescimento ──
         $eligiveis = $companies->filter(function ($c) use ($revAtual, $revAnterior) {
@@ -138,17 +168,37 @@ class PortfolioScoreService
             : null;
 
         // ── 5. Recuperação de empresas em queda ──
-        // Em queda no período anterior = revAnterior < revRetro (ambos > 0).
-        // Recuperada = revAtual > revAnterior.
-        $emQuedaIds = $companies->filter(function ($c) use ($revAnterior, $revRetro) {
-            $ant   = (float) ($revAnterior[$c->id] ?? 0);
-            $retro = (float) ($revRetro[$c->id]    ?? 0);
-            return $retro > 0 && $ant > 0 && $ant < $retro;
+        // Hotfix 260623: sem historico >30d, comparamos as 2 metades da janela
+        // de 30d. Em queda na 1a metade (15-30d): sum(rev) da 1a metade <
+        // sum(rev_prev_period) da 1a metade. Recuperada: sum(rev) da 2a metade
+        // > sum(rev) da 1a metade.
+        $sumHalf1 = AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$half1From, $atualTo])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(revenue_prev_period) as rev_prev, SUM(ad_spend) as ads')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+        $sumHalf2 = AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$half2From, $half2To])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(revenue_prev_period) as rev_prev, SUM(ad_spend) as ads')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        $emQuedaIds = $companies->filter(function ($c) use ($sumHalf2) {
+            $row = $sumHalf2->get($c->id);
+            if (!$row) return false;
+            $rev = (float) $row->rev;
+            $prev = (float) $row->rev_prev;
+            return $prev > 0 && $rev > 0 && $rev < $prev;
         })->pluck('id');
 
-        $recuperadasCount = $companies->filter(function ($c) use ($emQuedaIds, $revAtual, $revAnterior) {
+        $recuperadasCount = $companies->filter(function ($c) use ($emQuedaIds, $sumHalf1, $sumHalf2) {
             if (!$emQuedaIds->contains($c->id)) return false;
-            return ((float) ($revAtual[$c->id] ?? 0)) > ((float) ($revAnterior[$c->id] ?? 0));
+            $h1 = $sumHalf1->get($c->id);
+            $h2 = $sumHalf2->get($c->id);
+            if (!$h1 || !$h2) return false;
+            return (float) $h1->rev > (float) $h2->rev;
         })->count();
 
         $recuperacaoPct = $emQuedaIds->count() > 0
@@ -156,26 +206,18 @@ class PortfolioScoreService
             : null;
 
         // ── 6. Execução: empresas que ativaram Ads ──
-        // Sem Ads no anterior (sum ad_spend = 0) e com Ads no atual (>0).
-        $adsAnteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereBetween('reference_date', [$anteriorFrom, $anteriorTo])
-            ->selectRaw('company_id, SUM(ad_spend) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
-        $adsAtualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereBetween('reference_date', [$atualFrom, $atualTo])
-            ->selectRaw('company_id, SUM(ad_spend) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
-
-        $semAdsAnterior = $companies->filter(function ($c) use ($adsAnteriorPorEmpresa, $revAnterior) {
-            $ads = (float) ($adsAnteriorPorEmpresa[$c->id] ?? 0);
+        // Hotfix 260623: usa half2 (15-30d atras) como "anterior" e half1
+        // (0-15d) como "atual". Sem Ads no half2 + com Ads no half1 = ativou.
+        $semAdsAnterior = $companies->filter(function ($c) use ($sumHalf2, $revAnterior) {
+            $row = $sumHalf2->get($c->id);
+            $ads = (float) ($row->ads ?? 0);
             $rev = (float) ($revAnterior[$c->id] ?? 0);
             return $ads <= 0 && $rev > 0;
         });
 
-        $ativaramAds = $semAdsAnterior->filter(function ($c) use ($adsAtualPorEmpresa) {
-            return ((float) ($adsAtualPorEmpresa[$c->id] ?? 0)) > 0;
+        $ativaramAds = $semAdsAnterior->filter(function ($c) use ($sumHalf1) {
+            $row = $sumHalf1->get($c->id);
+            return ((float) ($row->ads ?? 0)) > 0;
         })->count();
 
         $execucaoPct = $semAdsAnterior->count() > 0
