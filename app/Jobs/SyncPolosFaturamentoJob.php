@@ -14,12 +14,17 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Aquece o cache de gross_billing da Adman para os polos ativos (M2–M4) de um
- * mês — alimenta o botão "Sincronizar" do /polos.
+ * Aquece faturamento (gross_billing via /performance) + gasto de ADS REAL (soma do
+ * investment dos adgroups via /ads/{cust}/adgroups/metrics) da Adman para os polos
+ * ativos de um mês, persistindo no PoloFaturamentoSnapshot — alimenta o /polos e o
+ * botão "Sincronizar".
  *
- * Roda em background porque o throttle da Adman (~7s/cust_id) leva ~12 min para
- * ~85 polos. forceRefresh=true: "sincronizar os dados do dia" deve puxar o valor
- * atual da Adman, não reusar o cache do início do dia.
+ * ADS: o summarizedData.investment do /performance vem 0 p/ a maioria dos polos; o
+ * gasto verdadeiro (que bate com a planilha) está nos adgroups → fetchAdsInvestmentTotal.
+ * Como isso pagina por adgroup (contas grandes = muitas chamadas), o warm ficou mais
+ * pesado: processa por STALENESS (empresas sem snapshot / mais antigas primeiro, p/ o
+ * tail de empresas novas não ficar de fora) e com ORÇAMENTO de tempo (para limpo antes
+ * do worker --timeout; o que sobrar é coberto no próximo sync).
  *
  * Requer worker de fila ativo (`php artisan queue:work`) — na VPS o Supervisor
  * já roda; no localhost o dev precisa subir o worker para o job processar.
@@ -54,64 +59,90 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         // derivado de $de ('YYYY-MM-01') — chave do snapshot durável.
         $mes = substr(str_replace('-', '', $de), 0, 6);
 
-        // Inclui M1 (onboarding): o /polos passou a ler o faturamento de M1 também
-        // da Adman (não mais do CSV), então o cache/snapshot de M1 precisa ser aquecido.
-        $custIds = MlbEmpresa::whereIn('fase', ['M1', 'M2', 'M3', 'M4'])
+        // Inclui M1 (onboarding): o /polos lê o faturamento de M1 também da Adman.
+        // Guarda a fase: o gasto de ADS só é apurado p/ M2–M4 (o AdsCard ignora M1).
+        $empresas = MlbEmpresa::whereIn('fase', ['M1', 'M2', 'M3', 'M4'])
             ->where('projeto', 'POLOS')
-            ->pluck('cust_id')
-            ->map(fn ($c) => CustId::normaliza((string) $c))
-            ->filter(fn ($id) => $id !== '')
-            ->unique()
-            ->values()
-            ->all();
+            ->get(['cust_id', 'fase'])
+            ->map(fn ($e) => ['cust' => CustId::normaliza((string) $e->cust_id), 'fase' => (string) $e->fase])
+            ->filter(fn ($e) => $e['cust'] !== '')
+            ->unique('cust')
+            ->values();
 
-        if (empty($custIds)) {
+        if ($empresas->isEmpty()) {
             Log::info('[Polos] Sync: nenhum polo ativo (M1–M4) para aquecer.');
             return;
         }
 
-        Log::info('[Polos] Sync iniciado: ' . count($custIds) . " polos ({$de}..{$ate})");
+        // Ordem por STALENESS: sem snapshot do mês (recém-cadastradas) ou synced_at mais
+        // antigo primeiro. Garante que o tail (empresas novas) seja aquecido mesmo se o
+        // orçamento de tempo cortar a run — antes, o tail nunca era alcançado.
+        $sincronizados = PoloFaturamentoSnapshot::where('mes', $mes)->pluck('synced_at', 'cust_id');
+        $empresas = $empresas
+            ->sortBy(fn ($e) => (string) ($sincronizados[$e['cust']] ?? ''))
+            ->values();
 
-        $ok          = 0;
-        $comValor    = 0;
-        $adsComValor = 0; // contador de empresas com investment>0 no cache de ADS
-        foreach ($custIds as $i => $custId) {
-            // Throttle Adman (~10 rpm): 7s entre chamadas, exceto a primeira.
+        Log::info('[Polos] Sync iniciado: ' . $empresas->count() . " polos ({$de}..{$ate})");
+
+        // Orçamento de tempo: para LIMPO antes do worker --timeout=1800s matar o job (o
+        // ADS por adgroup deixou o warm pesado). O resto é coberto no próximo sync — a
+        // ordem por staleness faz a fila avançar a cada run.
+        $inicio    = time();
+        $orcamento = 1500;
+
+        $ok = 0; $comFat = 0; $comAds = 0; $processados = 0;
+        foreach ($empresas as $i => $emp) {
+            if (time() - $inicio > $orcamento) {
+                Log::info("[Polos] Sync: orçamento de {$orcamento}s atingido em {$processados}/{$empresas->count()} — resto no próximo sync.");
+                break;
+            }
+
+            $cust    = $emp['cust'];
+            $ehM2aM4 = in_array($emp['fase'], ['M2', 'M3', 'M4'], true);
+
+            // Throttle Adman (~10 rpm): 7s entre empresas, exceto a 1ª.
             if ($i > 0) {
                 usleep(7_000_000);
             }
-            // UMA chamada /performance aquece faturamento E ADS (investment) para
-            // o mesmo cust_id/janela — os getCached*Many do controller leem só-cache.
-            try {
-                $r = $adman->warmPerformance($custId, $de, $ate);
-                if ($r['gross_billing'] !== null) {
-                    $ok++;
-                    if ($r['gross_billing'] > 0) {
-                        $comValor++;
-                    }
 
-                    // Persiste o snapshot durável SÓ quando a Adman respondeu (gross_billing
-                    // !== null — inclui 0 legítimo). Em erro/timeout (null) NÃO escrevemos:
-                    // preserva o último valor bom, sem clobberar com lixo transitório. É esse
-                    // snapshot que o controller serve quando o cache do dia está frio.
-                    PoloFaturamentoSnapshot::updateOrCreate(
-                        ['mes' => $mes, 'cust_id' => $custId],
-                        [
-                            'faturamento' => $r['gross_billing'],
-                            'ads'         => $r['investment'] ?? 0,
-                            'synced_at'   => now(),
-                        ],
-                    );
+            try {
+                // Faturamento (gross_billing) via /performance.
+                $r = $adman->warmPerformance($cust, $de, $ate);
+                if ($r['gross_billing'] === null) {
+                    continue; // erro/timeout: NÃO grava (preserva o último valor bom)
                 }
-                if ($r['investment'] !== null && $r['investment'] > 0) {
-                    $adsComValor++;
+                $ok++;
+                if ($r['gross_billing'] > 0) {
+                    $comFat++;
                 }
+
+                $dados = ['faturamento' => $r['gross_billing'], 'synced_at' => now()];
+
+                // ADS REAL = soma do investment dos adgroups (fonte correta; bate com a
+                // planilha). O summarizedData.investment do /performance vem 0 p/ a maioria
+                // dos polos — por isso NÃO usamos $r['investment']. Só p/ M2–M4.
+                if ($ehM2aM4) {
+                    $ads = $adman->fetchAdsInvestmentTotal($cust, $de, $ate);
+                    if ($ads !== null) {        // erro → não sobrescreve o ADS anterior
+                        $dados['ads'] = $ads;
+                        if ($ads > 0) {
+                            $comAds++;
+                        }
+                    }
+                } else {
+                    $dados['ads'] = 0;          // M1 não tem ADS no card
+                }
+
+                // Persiste SÓ quando a Adman respondeu o faturamento (gross_billing !== null,
+                // inclui 0 legítimo). É o snapshot que o controller serve.
+                PoloFaturamentoSnapshot::updateOrCreate(['mes' => $mes, 'cust_id' => $cust], $dados);
+                $processados++;
             } catch (\Throwable $e) {
-                Log::warning("[Polos] Sync: falha cust={$custId}: " . $e->getMessage());
+                Log::warning("[Polos] Sync: falha cust={$cust}: " . $e->getMessage());
             }
         }
 
-        Log::info("[Polos] Sync concluído: {$ok}/" . count($custIds) . " ok · {$comValor} com faturamento>0 · {$adsComValor} com ADS>0 ({$de}..{$ate})");
+        Log::info("[Polos] Sync concluído: {$processados}/{$empresas->count()} processados · {$comFat} com faturamento>0 · {$comAds} com ADS>0 ({$de}..{$ate})");
     }
 
     public function failed(\Throwable $e): void

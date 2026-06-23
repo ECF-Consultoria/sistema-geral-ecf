@@ -506,10 +506,43 @@ class AdmanService
     }
 
     /**
+     * Gasto de ADS REAL (soma do `investment` de TODOS os adgroups) numa janela —
+     * a fonte CORRETA do gasto de ADS dos polos.
+     *
+     * Por que NÃO usar summarizedData.investment do /performance: esse campo vem 0
+     * para a maioria das contas dos polos (testado: Manuella/King/Campassi gb cheio,
+     * investment 0). O gasto verdadeiro está em /ads/{cust}/adgroups/metrics
+     * (fetchAdsMetrics) — a soma bate com a planilha "Evolução Semanal" (col Pads).
+     * Paginado: contas grandes (ex.: 361 adgroups) fazem várias chamadas;
+     * fetchAdsMetrics já trata 429 com backoff exponencial.
+     *
+     * @return ?float  Soma do investment dos adgroups; null em erro (p/ o chamador
+     *                 NÃO sobrescrever um valor bom anterior com lixo transitório).
+     */
+    public function fetchAdsInvestmentTotal(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): ?float
+    {
+        try {
+            $rows = $this->fetchAdsMetrics($custId, $dateFrom, $dateTo, 50, $marketplace);
+            $sum  = 0.0;
+            foreach ($rows as $r) {
+                $sum += (float) ($r['investment'] ?? 0);
+            }
+            return $sum;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/AdsTotal] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
      * Aquece (cacheia) faturamento + gasto de ADS numa ÚNICA chamada /performance
      * — evita 2 fetches do payload grande no warm dos polos. Cacheia sob as MESMAS
      * chaves de fetchGrossBilling e fetchInvestment, então os getCached*Many leem
      * normalmente. Sempre busca e sobrescreve (uso de warm, forceRefresh implícito).
+     *
+     * NOTA: o `investment` daqui (summarizedData.investment do /performance) vem 0
+     * para a maioria dos polos — o gasto de ADS REAL é apurado à parte via
+     * fetchAdsInvestmentTotal (adgroups). Este método segue servindo o faturamento.
      *
      * @return array{gross_billing: ?float, investment: ?float}
      */

@@ -409,13 +409,19 @@ class PolosController extends Controller
     }
 
     /**
-     * Gasto de ADS (Adman `investment`) do mês CORRENTE/parcial, por cust_id normalizado.
-     * Espelha `faturamentoAdmanDoMes` usando `getCachedAccountMetricsMany` (SÓ-CACHE, sem HTTP).
-     * Adman fora do ar / cust_id sem cache → R$0; página NÃO quebra.
+     * Gasto de ADS REAL do mês por cust_id normalizado, lido do snapshot durável
+     * (PoloFaturamentoSnapshot.ads).
+     *
+     * A fonte do ADS é a SOMA do `investment` dos adgroups da Adman
+     * (/ads/{cust}/adgroups/metrics), gravada pelo SyncPolosFaturamentoJob via
+     * AdmanService::fetchAdsInvestmentTotal — NÃO o summarizedData.investment do
+     * /performance, que vem 0 para a maioria dos polos (e fazia o ADS do /polos vir
+     * muito menor que a planilha). Empresa sem snapshot → sai sem ADS (R$0) até o
+     * próximo sync. Lê só do banco (sem HTTP): a request nunca chama a Adman.
      *
      * @param  array<array<string,mixed>>  $ativos  Ativos M2–M4 (toArray)
      * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
-     * @return array<string,float>  [cust_id normalizado => investment]
+     * @return array<string,float>  [cust_id normalizado => ADS]
      */
     private function adsAdmanDoMes(array $ativos, string $mesSel): array
     {
@@ -431,50 +437,14 @@ class PolosController extends Controller
                 return [];
             }
 
-            // Janela do mês: primeiro ao último dia.
-            $de  = substr($mesSel, 0, 4) . '-' . substr($mesSel, 4, 2) . '-01';
-            $ate = date('Y-m-t', strtotime($de));
-
-            // SOMENTE cache (sem HTTP) — sem throttle na request. Cache aquecido
-            // pelo SyncPolosFaturamentoJob (warmPerformance). O valor já é o
-            // investment (float) — fonte = summarizedData.investment do /performance.
-            $cache     = $this->adman->getCachedInvestmentsMany($custIds, $de, $ate);
-            $out       = [];
-            $faltantes = [];
-            foreach ($custIds as $id) {
-                if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
-                    $out[$id] = (float) $cache[$id]['value'];
-                } else {
-                    $faltantes[] = $id;
-                }
-            }
-
-            // Fallback durável: cust_ids sem cache do dia (chave fria — logo após a
-            // meia-noite BRT, quando o cacheDay rotaciona, ou após flush/restart do Redis)
-            // são preenchidos com o último ADS sincronizado e persistido no snapshot.
-            // O cache do dia (mais fresco) continua sendo a fonte preferencial.
-            $doSnapshot = 0;
-            if (! empty($faltantes)) {
-                $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
-                    ->whereIn('cust_id', $faltantes)
-                    ->pluck('ads', 'cust_id');
-                foreach ($faltantes as $id) {
-                    if (isset($snaps[$id])) {
-                        $out[$id] = (float) $snaps[$id];
-                        $doSnapshot++;
-                    }
-                }
-            }
-
-            $semDado = count($faltantes) - $doSnapshot;
-            if ($semDado > 0) {
-                Log::info("[Polos] Adman: {$semDado} cust_ids sem cache nem snapshot de ADS no mês corrente — ADS=R\$0 até o próximo sync.");
-            }
-
-            return $out;
+            return PoloFaturamentoSnapshot::where('mes', $mesSel)
+                ->whereIn('cust_id', $custIds)
+                ->pluck('ads', 'cust_id')
+                ->map(fn ($v) => (float) $v)
+                ->all();
         } catch (\Throwable $e) {
-            // Defensiva: Adman fora do ar NÃO quebra /polos/empresas — ADS vira R$0.
-            Log::warning('[Polos] Falha ao buscar ADS Adman do mês corrente: ' . $e->getMessage());
+            // Defensiva: erro de banco NÃO quebra /polos — ADS vira R$0.
+            Log::warning('[Polos] Falha ao ler ADS do snapshot: ' . $e->getMessage());
             return [];
         }
     }
