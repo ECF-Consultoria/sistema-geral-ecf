@@ -26,7 +26,7 @@ const ALTURA_LINHA = 38;          // px por polo
  *
  * Dois modos (toggle interno):
  *   • Faturamento (bullet): barra de faturamento sobre o trilho da meta — a
- *     fração descoberta do trilho é o gap. Cor = cor do polo (gradiente neon).
+ *     fração descoberta do trilho é o gap. Cor = cor do polo (gradiente).
  *   • Cobertura (%): barra empilhada normalizada (atingido + restante) com a
  *     linha de meta a 100% — compara polos de tamanhos muito diferentes.
  *
@@ -104,8 +104,6 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                             itemStyle: {
                                 color: STATUS_META[p.status]?.cor ?? '#ffe600',
                                 borderRadius: [4, 0, 0, 4],
-                                shadowBlur: 14,
-                                shadowColor: `${STATUS_META[p.status]?.cor ?? '#ffe600'}55`,
                             },
                         })),
                     },
@@ -146,7 +144,7 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                     data: ord.map((p) => p.meta ?? 0),
                     itemStyle: { color: 'rgba(255,255,255,0.05)', borderRadius: [0, 6, 6, 0] },
                 },
-                // Faturamento sobre o trilho (gradiente neon na cor do polo)
+                // Faturamento sobre o trilho (gradiente na cor do polo)
                 {
                     name: 'Faturamento', type: 'bar', barWidth: '58%', barGap: '-100%', z: 2,
                     data: ord.map((p) => {
@@ -155,8 +153,6 @@ export default function FatVsMetaChart({ polos = [], corDoPolo = {}, fonteFatura
                             value: p.faturamento ?? 0,
                             itemStyle: {
                                 borderRadius: [0, 6, 6, 0],
-                                shadowBlur: 16,
-                                shadowColor: `${cor}66`,
                                 color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
                                     { offset: 0, color: `${cor}99` },
                                     { offset: 1, color: cor },

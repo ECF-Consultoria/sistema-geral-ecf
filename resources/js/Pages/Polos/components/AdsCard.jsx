@@ -17,7 +17,7 @@ function BarraAds({ label, gasto, disponivel, sub, mounted = true }) {
             <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                 <div
                     className="h-full rounded-full transition-[width] duration-700 ease-out"
-                    style={{ width: `${mounted ? pct : 0}%`, background: `linear-gradient(90deg, ${cor}cc, ${cor})`, boxShadow: `0 0 12px ${cor}33` }}
+                    style={{ width: `${mounted ? pct : 0}%`, background: `linear-gradient(90deg, ${cor}cc, ${cor})` }}
                 />
             </div>
             <span className="w-44 shrink-0 text-right text-xs tabular-nums text-white/65">
@@ -147,7 +147,7 @@ export default function AdsCard({ polos = [], teto = 3000, fechado = false, onPo
                             <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                                 <div
                                     className="h-full rounded-full transition-[width] duration-700 ease-out"
-                                    style={{ width: `${mounted ? pct : 0}%`, background: `linear-gradient(90deg, ${cor}cc, ${cor})`, boxShadow: `0 0 10px ${cor}33` }}
+                                    style={{ width: `${mounted ? pct : 0}%`, background: `linear-gradient(90deg, ${cor}cc, ${cor})` }}
                                 />
                             </div>
                             <span className="w-44 shrink-0 text-right text-xs tabular-nums text-white/65">

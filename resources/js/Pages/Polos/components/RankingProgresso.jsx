@@ -51,18 +51,17 @@ export default function RankingProgresso({ polos = [], corDoPolo = {}, onPolo, f
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: corDoPolo[p.polo] ?? '#fff' }} />
                         <span className="w-32 shrink-0 truncate text-sm text-white/85 sm:w-36">{p.polo}</span>
 
-                        {/* Barra de progresso (cap neon quando passa de 100%) */}
+                        {/* Barra de progresso (cap branco quando passa de 100%) */}
                         <div className="relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                             <div
                                 className="h-full rounded-full transition-[width] duration-700 ease-out"
                                 style={{
                                     width: `${width}%`,
                                     background: `linear-gradient(90deg, ${cor}cc, ${cor})`,
-                                    boxShadow: `0 0 12px ${cor}33`,
                                 }}
                             />
                             {pct > 100 && (
-                                <span className="absolute right-0 top-0 h-full w-1 bg-white shadow-[0_0_8px_#fff]" />
+                                <span className="absolute right-0 top-0 h-full w-1 bg-white" />
                             )}
                         </div>
 

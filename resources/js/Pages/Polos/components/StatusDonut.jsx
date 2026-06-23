@@ -12,7 +12,7 @@ echarts.use([PieChart, TooltipComponent, CanvasRenderer]);
 /**
  * StatusDonut — donut de comando da distribuição de status entre TODOS os ativos
  * do mês (independe do filtro de chips). % de "No alvo" em destaque no centro,
- * anel multicor com glow por fatia. Substitui a pizza rose de status.
+ * anel multicor por fatia. Substitui a pizza rose de status.
  *
  * Props:
  *   statusDist : { Sim, 'Em progresso', 'Não', Problema, total }
@@ -42,12 +42,12 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
             label: { show: false },
             labelLine: { show: false },
             itemStyle: { borderRadius: 6, borderColor: '#0f1116', borderWidth: 2 },
-            emphasis: { scale: true, scaleSize: 6, itemStyle: { shadowBlur: 22 } },
+            emphasis: { scale: true, scaleSize: 6 },
             data: STATUS_ORDEM
                 .map((k) => ({
                     value: statusDist[k] ?? 0,
                     name: STATUS_META[k].label,
-                    itemStyle: { color: STATUS_META[k].cor, shadowBlur: 14, shadowColor: `${STATUS_META[k].cor}55` },
+                    itemStyle: { color: STATUS_META[k].cor },
                 }))
                 .filter((d) => d.value > 0),
         }],
@@ -64,7 +64,7 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
                         <div
                             key={k}
                             className="h-full first:rounded-l-full last:rounded-r-full"
-                            style={{ width: `${(v / total) * 100}%`, background: STATUS_META[k].cor, boxShadow: `0 0 10px ${STATUS_META[k].cor}44` }}
+                            style={{ width: `${(v / total) * 100}%`, background: STATUS_META[k].cor }}
                             title={`${STATUS_META[k].label}: ${v}`}
                         />
                     );
@@ -93,7 +93,7 @@ export default function StatusDonut({ statusDist = { total: 0 }, height = 280, c
             />
             {/* Número central: % de empresas "No alvo" */}
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                <span className="font-display text-5xl font-extrabold tabular-nums text-emerald-400 drop-shadow-[0_0_16px_rgba(34,197,94,0.45)]">
+                <span className="font-display text-5xl font-extrabold tabular-nums text-emerald-400">
                     {pctNoAlvo}%
                 </span>
                 <span className="text-[11px] uppercase tracking-wider text-white/40 mt-0.5">No alvo</span>

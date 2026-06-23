@@ -42,11 +42,10 @@ export default function M1Card({ m1 = {}, fechado = false }) {
                             className="relative h-44 w-44 rounded-full"
                             style={{
                                 background: `conic-gradient(${COR_FAT} 0deg ${deg}deg, ${COR_NAO} ${deg}deg 360deg)`,
-                                boxShadow: `0 0 28px ${COR_FAT}22`,
                             }}
                         >
                             <div className="absolute inset-[15%] rounded-full bg-ecf-card flex flex-col items-center justify-center">
-                                <span className="font-display text-3xl font-extrabold tabular-nums text-emerald-400 drop-shadow-[0_0_14px_rgba(34,197,94,0.4)]">
+                                <span className="font-display text-3xl font-extrabold tabular-nums text-emerald-400">
                                     {fat}<span className="text-white/30 text-xl">/{total}</span>
                                 </span>
                                 <span className="text-[10px] uppercase tracking-wider text-white/40">faturando</span>
@@ -87,7 +86,7 @@ export default function M1Card({ m1 = {}, fechado = false }) {
                                                 <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
                                                     <div
                                                         className="h-full rounded-full"
-                                                        style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${COR_FAT}cc, ${COR_FAT})`, boxShadow: `0 0 10px ${COR_FAT}33` }}
+                                                        style={{ width: `${pct}%`, background: `linear-gradient(90deg, ${COR_FAT}cc, ${COR_FAT})` }}
                                                     />
                                                 </div>
                                                 <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-white/50">{p.faturando}/{p.total}</span>

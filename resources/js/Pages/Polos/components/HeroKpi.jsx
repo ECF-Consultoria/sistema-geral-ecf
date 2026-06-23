@@ -1,19 +1,19 @@
 import { cn } from '@/lib/utils';
 import RadialGauge from './RadialGauge';
 
-// Tratamento de glow por hierarquia: amarelo no número herói, rose só em alertas
-// quando há ocorrências, neutro caso contrário.
+// Cor do número herói por hierarquia (sem glow): amarelo no número principal,
+// rose só em alertas quando há ocorrências, neutro caso contrário.
 const GLOW = {
-    yellow: 'text-ecf-yellow drop-shadow-[0_0_18px_rgba(255,230,0,0.45)]',
-    rose:   'text-rose-400 drop-shadow-[0_0_16px_rgba(244,63,94,0.45)]',
-    green:  'text-emerald-400 drop-shadow-[0_0_16px_rgba(34,197,94,0.45)]',
+    yellow: 'text-ecf-yellow',
+    rose:   'text-rose-400',
+    green:  'text-emerald-400',
     none:   'text-white/85',
 };
 
 /**
  * HeroKpi — card de KPI de comando: ícone (chip) + título + número herói grande
- * (font-display) + sublabel narrativo. Glow dosado por `glow`. Quando recebe
- * `gauge` (percentual), embute um arco radial atrás do número (card "% Geral").
+ * (font-display) + sublabel narrativo. Cor de destaque por `glow` (sem brilho).
+ * Quando recebe `gauge` (percentual), embute um arco radial atrás do número (card "% Geral").
  *
  * Props:
  *   titulo   : rótulo curto (uppercase)
@@ -22,7 +22,7 @@ const GLOW = {
  *   sublabel : linha de apoio (string)
  *   glow     : 'yellow' | 'rose' | 'green' | 'none'
  *   gauge    : percentual 0–100 → renderiza RadialGauge atrás do número
- *   alerta   : realça o card (borda/sombra rose) — usado quando há alertas
+ *   alerta   : realça o card (borda rose) — usado quando há alertas
  */
 export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 'none', gauge = null, alerta = false }) {
     const numCls = cn('font-display font-extrabold tabular-nums leading-none', GLOW[glow] ?? GLOW.none);
@@ -32,7 +32,7 @@ export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 
             className={cn(
                 'relative overflow-hidden rounded-2xl border bg-ecf-card-2/60 p-5',
                 'before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.12] before:to-transparent',
-                alerta ? 'border-rose-500/25 shadow-[0_0_24px_rgba(244,63,94,0.18)]' : 'border-white/[0.08]',
+                alerta ? 'border-rose-500/40' : 'border-white/[0.08]',
             )}
         >
             {/* Cabeçalho: título + chip do ícone */}

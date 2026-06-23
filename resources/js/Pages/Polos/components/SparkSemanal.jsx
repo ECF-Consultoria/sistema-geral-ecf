@@ -9,7 +9,7 @@ const ADS_BASE = 88, ADS_TOP = 62;   // faixa das barras de ADS (sobem do base)
 
 /**
  * SparkSemanal — micro-série intramês do faturamento semanal (Semana 1–4) como
- * área neon amarela + barras de investimento em ADS (sky) abaixo. Eleva as
+ * área amarela + barras de investimento em ADS (sky) abaixo. Eleva as
  * mini-barras planas do drawer a uma leitura de tendência macro→micro.
  *
  * Props:
@@ -48,9 +48,6 @@ export default function SparkSemanal({ semanas = [], total = 0, totalAds = 0, fe
                         <stop offset="0%"   stopColor="#ffe600" stopOpacity="0.35" />
                         <stop offset="100%" stopColor="#ffe600" stopOpacity="0" />
                     </linearGradient>
-                    <filter id={`${uid}-glow`} x="-20%" y="-50%" width="140%" height="200%">
-                        <feDropShadow dx="0" dy="0" stdDeviation="2.5" floodColor="#ffe600" floodOpacity="0.5" />
-                    </filter>
                 </defs>
 
                 {/* Barras de ADS (sky) — só quando há investimento */}
@@ -66,10 +63,10 @@ export default function SparkSemanal({ semanas = [], total = 0, totalAds = 0, fe
                     );
                 })}
 
-                {/* Área + linha neon de faturamento */}
+                {/* Área + linha de faturamento */}
                 <path d={areaPath} fill={`url(#${uid}-fill)`} />
                 <path d={linePath} fill="none" stroke="#ffe600" strokeWidth="2" strokeLinejoin="round"
-                      strokeLinecap="round" filter={`url(#${uid}-glow)`} />
+                      strokeLinecap="round" />
 
                 {/* Pontos com halo */}
                 {pts.map((p, i) => (
