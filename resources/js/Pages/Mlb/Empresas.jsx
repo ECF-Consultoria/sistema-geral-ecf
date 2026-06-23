@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { useForm, router, usePage, Link } from '@inertiajs/react';
 
 import { useState, useEffect, useRef } from 'react';
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, RefreshCw, X, PlusCircle, AlertTriangle, ExternalLink, Clock, Link2, BookUser } from 'lucide-react';
+import { Plus, Pencil, Trash2, RefreshCw, X, PlusCircle, AlertTriangle, ExternalLink, Clock, Link2, BookUser } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import ComboInput from '@/Components/ComboInput';
 import { cn } from '@/lib/utils';
@@ -28,6 +28,72 @@ function ProgressBar({ ok, total }) {
             </div>
             <span className="text-white/40 text-[11px] shrink-0">{ok}/{total}</span>
         </div>
+    );
+}
+
+// Stepper de etapas (E1/E2/E3) — mostra em qual estágio a empresa está
+// Bolinha: ● feito (verde) · ◉ em andamento (amarelo) · ○ a fazer · vermelho = vencido
+function StageStepper({ stages, ok, total, pct }) {
+    const stateOf = (s) => {
+        if (s.total === 0)     return 'empty';
+        if (s.vencido)         return 'vencido';
+        if (s.done >= s.total) return 'done';
+        if (s.done > 0)        return 'current';
+        return 'todo';
+    };
+    const dotCls = {
+        done:    'border-emerald-500 bg-emerald-500',
+        current: 'border-ecf-yellow bg-ecf-yellow/30',
+        todo:    'border-white/25',
+        empty:   'border-white/10',
+        vencido: 'border-red-500 bg-red-500/30',
+    };
+    const lblCls = {
+        done:    'text-emerald-400',
+        current: 'text-ecf-yellow',
+        todo:    'text-white/35',
+        empty:   'text-white/20',
+        vencido: 'text-red-400',
+    };
+    return (
+        <div className="flex items-center gap-3">
+            <div className="flex items-center flex-1 min-w-0 px-1">
+                {stages.map((s, i) => {
+                    const st = stateOf(s);
+                    const prev = stages[i - 1];
+                    const prevDone = i > 0 && prev.total > 0 && prev.done >= prev.total;
+                    return (
+                        <div key={s.stage} className={cn('flex items-center', i === 0 ? 'shrink-0' : 'flex-1 min-w-0')}>
+                            {i > 0 && <div className={cn('h-px flex-1 mx-1.5', prevDone ? 'bg-emerald-500/50' : 'bg-white/10')} />}
+                            <div className="flex flex-col items-center gap-1 shrink-0"
+                                title={`Estágio ${s.stage}: ${s.done}/${s.total}${s.vencido ? ' — vencido' : ''}`}>
+                                <span className={cn('w-3.5 h-3.5 rounded-full border-2', dotCls[st])} />
+                                <span className={cn('text-[9px] font-semibold leading-none', lblCls[st])}>E{s.stage}</span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            <div className="text-right shrink-0 leading-tight">
+                <div className="tabular-nums text-[13px] font-bold"
+                    style={{ color: pct === 100 ? '#22c55e' : pct >= 50 ? '#eab308' : '#8b5cf6' }}>{pct}%</div>
+                <div className="tabular-nums text-[10px] text-white/35">{ok}/{total} SKUs</div>
+            </div>
+        </div>
+    );
+}
+
+// Chip de saúde da conta (alerta) — só acende quando há sinal; cor por severidade
+function SaudeChip({ tone, icon: Icon, title, children }) {
+    const tones = {
+        red:     'bg-red-500/15 text-red-400 border-red-500/30',
+        orange:  'bg-orange-500/15 text-orange-400 border-orange-500/30',
+        neutral: 'bg-white/[0.03] text-white/40 border-white/[0.08]',
+    };
+    return (
+        <span title={title} className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap', tones[tone])}>
+            <Icon size={9} /> {children}
+        </span>
     );
 }
 
@@ -488,7 +554,6 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
 
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [expanded, setExpanded] = useState(null);
     const [busca, setBusca] = useState('');
     const [filtroResp, setFiltroResp] = useState('');
     const [filtroEstagio, setFiltroEstagio] = useState('');
@@ -497,6 +562,7 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
     const [syncEmpresa, setSyncEmpresa] = useState(null);
     const [flashMsg, setFlashMsg] = useState(null);
     const [problemaEmpresa, setProblemaEmpresa] = useState(null);
+    const [skusEmpresa, setSkusEmpresa] = useState(null); // empresa cujo popup de SKUs está aberto
     const [ativarPendente, setAtivarPendente] = useState(null); // company pendente a ser ativada
 
     useEffect(() => {
@@ -538,261 +604,288 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
     }
 
     function renderEmpresa(e) {
-        const isExp = expanded === e.id;
         const { ok, total, pct } = e.progresso;
         const temProblemaMLBs = (e.problemas_count ?? 0) > 0;
-        const temProblemaConha = !!e.problema;
-        const temQualquerProblema = temProblemaConha || temProblemaMLBs;
+        const temProblemaConta = !!e.problema;
+        const temQualquerProblema = temProblemaConta || temProblemaMLBs;
         const vencidos    = stagesVencidos(e);
         const temAtrasado = [1,2,3].some(s => (e[`skus_estagio${s}`] ?? []).some(sk => sk.atrasado));
+        const isConcluida = e.estagio === 'Concluido';
+
+        // ok/total por estágio — mesma lógica do expandido, derivada aqui pro header colapsado
+        const stagesData = [1, 2, 3].map(stage => {
+            const filled = (e[`skus_estagio${stage}`] ?? []).filter(s => (s.sku ?? '').trim() !== '');
+            const done   = filled.filter(s => s.ok).length;
+            return { stage, done, total: filled.length, vencido: vencidos.includes(stage) };
+        });
+
+        // Chip de prazo: estágio vencido mais antigo (vermelho) ou próximo em andamento (neutro)
+        const prazoChip = (() => {
+            const hoje = new Date();
+            if (vencidos.length) {
+                const stage = vencidos[0];
+                const d = Math.ceil((new Date(e[`prazo_estagio${stage}`] + 'T00:00:00') - hoje) / 86400000);
+                return { label: `E${stage} venceu ${d}d`, vencido: true };
+            }
+            const prox = stagesData.find(s => s.done < s.total && e[`prazo_estagio${s.stage}`]);
+            if (!prox) return null;
+            const d = Math.ceil((new Date(e[`prazo_estagio${prox.stage}`] + 'T00:00:00') - hoje) / 86400000);
+            return { label: `E${prox.stage} faltam ${d}d`, vencido: false };
+        })();
 
         return (
             <div key={e.id} className={cn(
-                'card-ecf rounded-2xl overflow-hidden transition-all',
-                e.estagio === 'Concluido' && 'opacity-60',
+                'card-ecf rounded-2xl overflow-hidden transition-all flex flex-col',
+                isConcluida && 'opacity-60',
                 temQualquerProblema && 'ring-1 ring-red-500/30'
             )}>
-                {/* Header */}
-                <div className="flex items-center gap-3 p-4 cursor-pointer hover:bg-white/[0.02]" onClick={() => setExpanded(isExp ? null : e.id)}>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-white font-semibold text-[14px]">{e.nome}</span>
-                            {e.cust_id && <span className="text-white/30 text-[11px] font-mono">{e.cust_id}</span>}
-                            {/* Badge: problema na conta */}
-                            {temProblemaConha && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-red-500/20 text-red-400 border-red-500/40">
-                                    <AlertTriangle size={9} /> Conta c/ problema
-                                </span>
-                            )}
-                            {/* Badge: problemas em MLBs */}
-                            {temProblemaMLBs && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-orange-500/15 text-orange-400 border-orange-500/30">
-                                    <AlertTriangle size={9} /> {e.problemas_count} MLB(s) c/ problema
-                                </span>
-                            )}
-                            {/* Estágio */}
-                            {e.estagio && (
-                                <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border',
-                                    e.estagio === 'Concluido'
-                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                                        : 'bg-purple-500/15 text-purple-400 border-purple-500/30'
-                                )}>{e.estagio}</span>
-                            )}
-                            {/* Status (antiga "Fase") */}
-                            {e.fase && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/15 text-sky-400 border-sky-500/30">
-                                    {e.fase}
-                                </span>
-                            )}
-                            {/* Projeto */}
-                            {e.projeto && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/15 text-amber-400 border-amber-500/30">
-                                    {e.projeto}
-                                </span>
-                            )}
-                            {e.prioridade && <span className={cn('text-[11px] font-medium', prioColor[e.prioridade])}>{e.prioridade}</span>}
-                            {vencidos.length > 0 && (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border bg-red-500/15 text-red-400 border-red-500/30">
-                                    <Clock size={9} /> {vencidos.length} estágio{vencidos.length > 1 ? 's' : ''} vencido{vencidos.length > 1 ? 's' : ''}
-                                </span>
-                            )}
-                            {temAtrasado && (
-                                <span title="Possui SKU(s) concluído(s) fora do prazo"
-                                    className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold border bg-orange-500/10 border-orange-500/25 text-orange-400">
-                                    <Clock size={9} /> Atrasado
-                                </span>
-                            )}
+                {/* Conteúdo do card — clique abre o popup de SKUs (somente leitura) */}
+                <div className="p-3.5 flex flex-col gap-2.5 flex-1 cursor-pointer hover:bg-white/[0.02]"
+                    onClick={() => setSkusEmpresa(e)}>
+                    {/* Identidade */}
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <span className="text-white font-semibold text-[14px] truncate" title={e.nome}>{e.nome}</span>
+                            {e.prioridade && <span className={cn('text-[10px] font-medium shrink-0', prioColor[e.prioridade])}>{e.prioridade}</span>}
                         </div>
-                        <div className="flex items-center gap-4 mt-1.5">
-                            <div className="flex-1 max-w-[220px]">
-                                <ProgressBar ok={ok} total={total} />
-                            </div>
-                            {e.responsavel_nome && (
-                                <span className="text-white/40 text-[11px]">→ {e.responsavel_nome}</span>
-                            )}
-                            {e.polo && <span className="text-white/30 text-[11px]">📍 {e.polo}</span>}
-                        </div>
+                        <span className="text-white/30 text-[11px] font-mono tabular-nums">{e.cust_id || '— sem Cust ID —'}</span>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                        {/* Links de implementação */}
-                        {e.implementacao_token && (
-                            <>
-                                <a
-                                    href={`${appUrl}/implementacao/${e.implementacao_token}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={ev => ev.stopPropagation()}
-                                    title="Link do Cliente (Onboarding)"
-                                    className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors"
-                                >
-                                    <Link2 size={14} />
-                                </a>
-                                <a
-                                    href={`${appUrl}/implementacao/${e.implementacao_token}/publicador`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    onClick={ev => ev.stopPropagation()}
-                                    title="Link do Publicador"
-                                    className="p-1.5 rounded-lg text-white/30 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
-                                >
-                                    <BookUser size={14} />
-                                </a>
-                            </>
+
+                    {/* Classificação */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                        {e.estagio && (
+                            <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border',
+                                isConcluida
+                                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                                    : 'bg-purple-500/15 text-purple-400 border-purple-500/30'
+                            )}>{e.estagio}</span>
                         )}
-                        {/* Botão problema da conta */}
-                        <button
-                            onClick={ev => { ev.stopPropagation(); setProblemaEmpresa(e); }}
-                            title={temProblemaConha ? `Problema: ${e.problema_nota}` : 'Reportar problema na conta'}
-                            className={cn(
-                                'p-1.5 rounded-lg transition-colors',
-                                temProblemaConha
-                                    ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20'
-                                    : 'text-white/30 hover:text-red-400 hover:bg-red-500/10'
-                            )}>
-                            <AlertTriangle size={14} />
-                        </button>
-                        {e.cust_id && (
-                            <button
-                                onClick={ev => { ev.stopPropagation(); setSyncEmpresa(e); }}
-                                title="Sincronizar vendas via Adman"
-                                className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors">
-                                <RefreshCw size={14} />
-                            </button>
+                        {e.fase && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/15 text-sky-400 border-sky-500/30">{e.fase}</span>
                         )}
-                        <button onClick={ev => { ev.stopPropagation(); setEditing(e); setOpen(true); }}
-                            className="p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.05] transition-colors">
-                            <Pencil size={14} />
-                        </button>
-                        <button onClick={ev => { ev.stopPropagation(); handleDelete(e.id); }}
-                            className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors">
-                            <Trash2 size={14} />
-                        </button>
-                        {isExp ? <ChevronUp size={16} className="text-white/30" /> : <ChevronDown size={16} className="text-white/30" />}
+                        {e.projeto && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-amber-500/15 text-amber-400 border-amber-500/30">{e.projeto}</span>
+                        )}
+                    </div>
+
+                    {/* Operação — stepper de estágios (E1/E2/E3) + progresso geral */}
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+                        <StageStepper stages={stagesData} ok={ok} total={total} pct={pct} />
+                    </div>
+
+                    {/* Saúde da conta */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                        {temProblemaConta && <SaudeChip tone="red" icon={AlertTriangle} title={e.problema_nota}>Conta</SaudeChip>}
+                        {temProblemaMLBs && <SaudeChip tone="orange" icon={AlertTriangle}>{e.problemas_count} MLB</SaudeChip>}
+                        {prazoChip && <SaudeChip tone={prazoChip.vencido ? 'red' : 'neutral'} icon={Clock}>{prazoChip.label}</SaudeChip>}
+                        {temAtrasado && <SaudeChip tone="orange" icon={Clock}>Atrasado</SaudeChip>}
+                        {!temQualquerProblema && !prazoChip && !temAtrasado && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-500/40">✓ conta saudável</span>
+                        )}
+                    </div>
+
+                    {/* Carteira — responsável + polo */}
+                    <div className="flex items-center gap-3 text-[11px] mt-auto pt-0.5 min-w-0">
+                        {e.responsavel_nome
+                            ? <span className="text-white/45 truncate" title={e.responsavel_nome}>→ {e.responsavel_nome}</span>
+                            : <span className="text-amber-400/80 flex items-center gap-1 shrink-0"><AlertTriangle size={10} /> sem resp.</span>}
+                        {e.polo && <span className="text-white/30 truncate">📍 {e.polo}</span>}
                     </div>
                 </div>
 
-                {/* Expanded: SKUs */}
-                {isExp && (
-                    <div className="border-t border-white/[0.06] p-4">
-                        {/* Problema da conta (nível empresa) */}
-                        {temProblemaConha && (
-                            <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="flex items-start gap-2">
-                                        <AlertTriangle size={13} className="text-red-400 shrink-0 mt-0.5" />
-                                        <div>
-                                            <p className="text-red-400 text-[11px] font-bold uppercase tracking-wide mb-0.5">Problema na Conta</p>
-                                            <p className="text-red-300 text-[12px]">{e.problema_nota || 'Sem descrição'}</p>
-                                            {e.problema_em && <p className="text-red-400/50 text-[11px] mt-0.5">Registrado em {e.problema_em}</p>}
-                                        </div>
-                                    </div>
-                                    <button onClick={() => setProblemaEmpresa(e)}
-                                        className="text-red-400/60 hover:text-red-300 text-[11px] underline shrink-0 transition-colors">
-                                        Editar / Remover
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                {/* Rodapé — ações */}
+                <div className="flex items-center justify-end gap-0.5 px-2.5 py-1.5 border-t border-white/[0.05]">
+                    {/* Links de implementação */}
+                    {e.implementacao_token && (
+                        <>
+                            <a
+                                href={`${appUrl}/implementacao/${e.implementacao_token}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Link do Cliente (Onboarding)"
+                                className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors"
+                            >
+                                <Link2 size={14} />
+                            </a>
+                            <a
+                                href={`${appUrl}/implementacao/${e.implementacao_token}/publicador`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Link do Publicador"
+                                className="p-1.5 rounded-lg text-white/30 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+                            >
+                                <BookUser size={14} />
+                            </a>
+                        </>
+                    )}
+                    {/* Botão problema da conta */}
+                    <button
+                        onClick={() => setProblemaEmpresa(e)}
+                        title={temProblemaConta ? `Problema: ${e.problema_nota}` : 'Reportar problema na conta'}
+                        className={cn(
+                            'p-1.5 rounded-lg transition-colors',
+                            temProblemaConta
+                                ? 'text-red-400 bg-red-500/10 hover:bg-red-500/20'
+                                : 'text-white/30 hover:text-red-400 hover:bg-red-500/10'
+                        )}>
+                        <AlertTriangle size={14} />
+                    </button>
+                    {e.cust_id && (
+                        <button
+                            onClick={() => setSyncEmpresa(e)}
+                            title="Sincronizar vendas via Adman"
+                            className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors">
+                            <RefreshCw size={14} />
+                        </button>
+                    )}
+                    <button onClick={() => { setEditing(e); setOpen(true); }}
+                        className="p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.05] transition-colors">
+                        <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDelete(e.id)}
+                        className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-500/10 transition-colors">
+                        <Trash2 size={14} />
+                    </button>
+                </div>
 
-                        {/* Problemas em MLBs reportados pelo publicador */}
-                        {temProblemaMLBs && (
-                            <div className="mb-4 rounded-xl border border-orange-500/25 bg-orange-500/8 p-3">
-                                <p className="text-orange-400 text-[11px] font-bold uppercase tracking-wide mb-2 flex items-center gap-1.5">
-                                    <AlertTriangle size={11} /> Problemas em Anúncios
-                                </p>
-                                <div className="space-y-1.5">
-                                    {(e.problemas ?? []).map(prob => (
-                                        <div key={prob.id} className="flex items-start gap-2 text-[12px]">
-                                            <a href={`https://produto.mercadolivre.com.br/${prob.mlb_code.replace('MLB','MLB-')}`}
-                                                target="_blank" rel="noopener noreferrer"
-                                                className="text-purple-400 font-mono text-[11px] hover:text-purple-300 flex items-center gap-1 shrink-0">
-                                                {prob.mlb_code} <ExternalLink size={8} />
-                                            </a>
-                                            <span className="text-orange-200">{prob.problema_nota || 'Sem descrição'}</span>
-                                            {prob.problema_em && <span className="text-orange-400/40 text-[11px] ml-auto shrink-0">{prob.problema_em}</span>}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {e.contexto && (
-                            <p className="text-white/50 text-[12px] italic mb-4">📝 {e.contexto}</p>
-                        )}
-                        <div className="grid grid-cols-3 gap-4">
-                            {[1, 2, 3].map(stage => {
-                                const skus       = e[`skus_estagio${stage}`] ?? [];
-                                const filled     = skus.filter(s => (s.sku ?? '').trim() !== '');
-                                const done       = filled.filter(s => s.ok);
-                                const isVencido  = vencidos.includes(stage);
-                                const prazo      = e[`prazo_estagio${stage}`];
-                                const pendAtras  = filled.filter(s => !s.ok && isVencido).length;
-
-                                return (
-                                    <div key={stage}>
-                                        <div className={cn(
-                                            'rounded-lg px-2 py-1.5 mb-2',
-                                            isVencido ? 'bg-red-500/10 border border-red-500/20' : ''
-                                        )}>
-                                            <p className={cn('text-[11px] font-semibold uppercase tracking-wide',
-                                                isVencido ? 'text-red-400' : 'text-white/50')}>
-                                                Estágio {stage} · {done.length}/{filled.length}
-                                            </p>
-                                            {prazo && (
-                                                <p className={cn('text-[10px] mt-0.5 flex items-center gap-1',
-                                                    isVencido ? 'text-red-400' : 'text-white/30')}>
-                                                    <Clock size={9} />
-                                                    {isVencido ? 'Vencido em ' : 'Prazo: '}
-                                                    {new Date(prazo + 'T00:00:00').toLocaleDateString('pt-BR')}
-                                                    {isVencido && pendAtras > 0 && (
-                                                        <span className="font-bold"> · {pendAtras} pendente{pendAtras > 1 ? 's' : ''}</span>
-                                                    )}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            {filled.length === 0
-                                                ? <p className="text-white/20 text-[12px] italic">— sem SKUs —</p>
-                                                : skus.map((s, i) => (s.sku ?? '').trim() ? (
-                                                    <div key={i} className={cn(
-                                                        'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px]',
-                                                        s.ok
-                                                            ? s.atrasado ? 'bg-red-500/8 text-red-300' : 'bg-emerald-500/10 text-emerald-400'
-                                                            : isVencido ? 'bg-red-500/5 text-red-300 border border-red-500/15' : 'bg-white/[0.03] text-white/70'
-                                                    )}>
-                                                        <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 text-[10px]',
-                                                            s.ok
-                                                                ? s.atrasado ? 'bg-red-500 border-red-500 text-white' : 'bg-emerald-500 border-emerald-500 text-white'
-                                                                : isVencido ? 'border-red-500/30' : 'border-white/20')}>
-                                                            {s.ok ? '✓' : ''}
-                                                        </span>
-                                                        <div className="flex-1 min-w-0">
-                                                            <span className="truncate block">{s.sku}</span>
-                                                            {s.ok && s.concluido_em && (
-                                                                <span className={cn('text-[9px]', s.atrasado ? 'text-red-400' : 'text-white/25')}>
-                                                                    {s.atrasado ? '⚠ Atrasado · ' : ''}
-                                                                    {new Date(s.concluido_em).toLocaleDateString('pt-BR')}
-                                                                </span>
-                                                            )}
-                                                            {!s.ok && isVencido && (
-                                                                <span className="text-[9px] text-red-400">Não concluído no prazo</span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ) : null)
-                                            }
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
+                {/* Detalhes de SKUs por estágio: ver/editar no botão "Editar" (sem accordion no card) */}
             </div>
         );
     }
 
     // ─── Modal: Ativar empresa pendente como POLO ou Assessoria ──────────────────
+    // ─── Modal: SKUs por estágio (somente leitura) — abre ao clicar no card ──────
+    function SkusModal({ empresa, onClose }) {
+        const e = empresa;
+        const venc = stagesVencidos(e);
+        const badge = (txt, cls) => <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold border', cls)}>{txt}</span>;
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
+                <div className="card-ecf rounded-2xl w-full max-w-2xl max-h-[88vh] overflow-y-auto p-6" onClick={ev => ev.stopPropagation()}>
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-3 mb-4">
+                        <div className="min-w-0">
+                            <h2 className="text-white font-bold text-base truncate">{e.nome}</h2>
+                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                {e.cust_id && <span className="text-white/30 text-[11px] font-mono">{e.cust_id}</span>}
+                                {e.estagio && badge(e.estagio, e.estagio === 'Concluido' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' : 'bg-purple-500/15 text-purple-400 border-purple-500/30')}
+                                {e.fase && badge(e.fase, 'bg-sky-500/15 text-sky-400 border-sky-500/30')}
+                                {e.projeto && badge(e.projeto, 'bg-amber-500/15 text-amber-400 border-amber-500/30')}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                            <button onClick={() => { onClose(); setEditing(e); setOpen(true); }}
+                                title="Editar SKUs"
+                                className="p-1.5 rounded-lg text-white/30 hover:text-ecf-yellow hover:bg-ecf-yellow/10 transition-colors">
+                                <Pencil size={15} />
+                            </button>
+                            <button onClick={onClose}
+                                className="p-1.5 rounded-lg text-white/30 hover:text-white/70 transition-colors">
+                                <X size={16} />
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Problema da conta */}
+                    {e.problema && (
+                        <div className="mb-4 rounded-xl border border-red-500/40 bg-red-500/10 p-3">
+                            <p className="text-red-400 text-[11px] font-bold uppercase tracking-wide mb-0.5 flex items-center gap-1.5">
+                                <AlertTriangle size={12} /> Problema na Conta
+                            </p>
+                            <p className="text-red-300 text-[12px]">{e.problema_nota || 'Sem descrição'}</p>
+                            {e.problema_em && <p className="text-red-400/50 text-[11px] mt-0.5">Registrado em {e.problema_em}</p>}
+                        </div>
+                    )}
+
+                    {/* Problemas em anúncios */}
+                    {(e.problemas_count ?? 0) > 0 && (
+                        <div className="mb-4 rounded-xl border border-orange-500/25 bg-orange-500/8 p-3">
+                            <p className="text-orange-400 text-[11px] font-bold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                <AlertTriangle size={11} /> Problemas em Anúncios
+                            </p>
+                            <div className="space-y-1.5">
+                                {(e.problemas ?? []).map(prob => (
+                                    <div key={prob.id} className="flex items-start gap-2 text-[12px]">
+                                        <a href={`https://produto.mercadolivre.com.br/${prob.mlb_code.replace('MLB','MLB-')}`}
+                                            target="_blank" rel="noopener noreferrer"
+                                            className="text-purple-400 font-mono text-[11px] hover:text-purple-300 flex items-center gap-1 shrink-0">
+                                            {prob.mlb_code} <ExternalLink size={8} />
+                                        </a>
+                                        <span className="text-orange-200">{prob.problema_nota || 'Sem descrição'}</span>
+                                        {prob.problema_em && <span className="text-orange-400/40 text-[11px] ml-auto shrink-0">{prob.problema_em}</span>}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {e.contexto && (
+                        <p className="text-white/50 text-[12px] italic mb-4">📝 {e.contexto}</p>
+                    )}
+
+                    {/* SKUs por estágio (somente leitura) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {[1, 2, 3].map(stage => {
+                            const skus      = e[`skus_estagio${stage}`] ?? [];
+                            const filled    = skus.filter(s => (s.sku ?? '').trim() !== '');
+                            const done      = filled.filter(s => s.ok);
+                            const isVencido = venc.includes(stage);
+                            const prazo     = e[`prazo_estagio${stage}`];
+                            const pendAtras = filled.filter(s => !s.ok && isVencido).length;
+                            return (
+                                <div key={stage}>
+                                    <div className={cn('rounded-lg px-2 py-1.5 mb-2', isVencido ? 'bg-red-500/10 border border-red-500/20' : 'bg-white/[0.03]')}>
+                                        <p className={cn('text-[11px] font-semibold uppercase tracking-wide', isVencido ? 'text-red-400' : 'text-white/50')}>
+                                            Estágio {stage} · {done.length}/{filled.length}
+                                        </p>
+                                        {prazo && (
+                                            <p className={cn('text-[10px] mt-0.5 flex items-center gap-1', isVencido ? 'text-red-400' : 'text-white/30')}>
+                                                <Clock size={9} />
+                                                {isVencido ? 'Vencido em ' : 'Prazo: '}
+                                                {new Date(prazo + 'T00:00:00').toLocaleDateString('pt-BR')}
+                                                {isVencido && pendAtras > 0 && <span className="font-bold"> · {pendAtras} pendente{pendAtras > 1 ? 's' : ''}</span>}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {filled.length === 0
+                                            ? <p className="text-white/20 text-[12px] italic">— sem SKUs —</p>
+                                            : skus.map((s, i) => (s.sku ?? '').trim() ? (
+                                                <div key={i} className={cn(
+                                                    'flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[12px]',
+                                                    s.ok
+                                                        ? s.atrasado ? 'bg-red-500/8 text-red-300' : 'bg-emerald-500/10 text-emerald-400'
+                                                        : isVencido ? 'bg-red-500/5 text-red-300 border border-red-500/15' : 'bg-white/[0.03] text-white/70'
+                                                )}>
+                                                    <span className={cn('w-4 h-4 rounded border flex items-center justify-center shrink-0 text-[10px]',
+                                                        s.ok
+                                                            ? s.atrasado ? 'bg-red-500 border-red-500 text-white' : 'bg-emerald-500 border-emerald-500 text-white'
+                                                            : isVencido ? 'border-red-500/30' : 'border-white/20')}>
+                                                        {s.ok ? '✓' : ''}
+                                                    </span>
+                                                    <div className="flex-1 min-w-0">
+                                                        <span className="truncate block">{s.sku}</span>
+                                                        {s.ok && s.concluido_em && (
+                                                            <span className={cn('text-[9px]', s.atrasado ? 'text-red-400' : 'text-white/25')}>
+                                                                {s.atrasado ? '⚠ Atrasado · ' : ''}
+                                                                {new Date(s.concluido_em).toLocaleDateString('pt-BR')}
+                                                            </span>
+                                                        )}
+                                                        {!s.ok && isVencido && <span className="text-[9px] text-red-400">Não concluído no prazo</span>}
+                                                    </div>
+                                                </div>
+                                            ) : null)
+                                        }
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     function ModalAtivarPendente({ company, onClose }) {
         const { data, setData, post, processing } = useForm({ tipo: '' });
 
@@ -1047,8 +1140,12 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                 </div>
             )}
 
-            <div className="space-y-3">
-                {pendentes.map(renderEmpresa)}
+            <div className="space-y-4">
+                {pendentes.length > 0 && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                        {pendentes.map(renderEmpresa)}
+                    </div>
+                )}
                 {concluidas.length > 0 && (
                     <>
                         <div className="flex items-center gap-2 py-2">
@@ -1056,7 +1153,9 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                             <span className="text-white/20 text-[11px] uppercase tracking-wider">Concluídas ({concluidas.length})</span>
                             <div className="h-px flex-1 bg-white/[0.06]" />
                         </div>
-                        {concluidas.map(renderEmpresa)}
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+                            {concluidas.map(renderEmpresa)}
+                        </div>
                     </>
                 )}
             </div>
@@ -1074,6 +1173,14 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                 <ProblemaEmpresaModal
                     empresa={problemaEmpresa}
                     onClose={() => setProblemaEmpresa(null)}
+                />
+            )}
+
+            {/* Modal SKUs por estágio (somente leitura) */}
+            {skusEmpresa && (
+                <SkusModal
+                    empresa={skusEmpresa}
+                    onClose={() => setSkusEmpresa(null)}
                 />
             )}
 
