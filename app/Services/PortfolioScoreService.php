@@ -307,10 +307,12 @@ class PortfolioScoreService
             'score'            => $score,
             'classificacao'    => $classif,
             'periodo' => [
-                'from'          => $atualFrom,
-                'to'            => $atualTo,
-                'from_anterior' => $anteriorFrom,
-                'to_anterior'   => $anteriorTo,
+                'from'   => $atualFrom,
+                'to'     => $atualTo,
+                // half1=0-15d, half2=15-30d (usado em recuperacao + execucao).
+                'half1_from' => $half1From,
+                'half2_from' => $half2From,
+                'half2_to'   => $half2To,
             ],
         ];
     }
