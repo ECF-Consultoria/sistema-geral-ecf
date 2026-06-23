@@ -156,16 +156,47 @@ class PortfolioScoreService
             : 0.0;
 
         // ── 4. Atingimento da meta da carteira ──
+        // Prioridade: PortfolioGoal de revenue ativo (meta da carteira inteira).
+        // Fallback (hotfix 260623): se nao houver PortfolioGoal revenue, soma
+        // as metas individuais ativas (Goal.metric=revenue) das empresas da
+        // carteira. Realizado = soma do revenue das empresas QUE TEM meta
+        // (compara like-for-like). Assim, basta cadastrar uma meta numa
+        // empresa qualquer pra a categoria aparecer no score.
         $metaModel = PortfolioGoal::where('user_id', $user->id)
             ->where('metric', 'revenue')
             ->active()
             ->orderByDesc('id')
             ->first();
-        $metaTarget    = $metaModel?->target_value !== null ? (float) $metaModel->target_value : null;
-        $metaRealizado = (float) $totalAtual;
-        $metaAtingidaPct = ($metaTarget && $metaTarget > 0)
-            ? round(($metaRealizado / $metaTarget) * 100, 1)
-            : null;
+
+        $metaTarget       = null;
+        $metaRealizado    = null;
+        $metaAtingidaPct  = null;
+        $metaOrigem       = null;
+
+        if ($metaModel?->target_value !== null) {
+            // Caminho A: meta de carteira (target absoluto, realizado = total da carteira).
+            $metaTarget    = (float) $metaModel->target_value;
+            $metaRealizado = (float) $totalAtual;
+            $metaOrigem    = 'portfolio';
+        } else {
+            // Caminho B: soma das metas de empresas individuais.
+            $goalsIndividuais = \App\Models\Goal::where('active', true)
+                ->where('metric', 'revenue')
+                ->whereIn('company_id', $companyIds)
+                ->get(['company_id', 'target_value']);
+            if ($goalsIndividuais->isNotEmpty()) {
+                $targets = $goalsIndividuais->mapWithKeys(fn ($g) => [$g->company_id => (float) $g->target_value]);
+                $metaTarget    = (float) $targets->sum();
+                $metaRealizado = (float) $companies
+                    ->filter(fn ($c) => $targets->has($c->id))
+                    ->sum(fn ($c) => $revAtual[$c->id] ?? 0);
+                $metaOrigem    = 'empresas:' . $goalsIndividuais->count();
+            }
+        }
+
+        if ($metaTarget !== null && $metaTarget > 0) {
+            $metaAtingidaPct = round(($metaRealizado / $metaTarget) * 100, 1);
+        }
 
         // ── 5. Recuperação de empresas em queda ──
         // Hotfix 260623: sem historico >30d, comparamos as 2 metades da janela
@@ -205,23 +236,20 @@ class PortfolioScoreService
             ? round(($recuperadasCount / $emQuedaIds->count()) * 100, 1)
             : null;
 
-        // ── 6. Execução: empresas que ativaram Ads ──
-        // Hotfix 260623: usa half2 (15-30d atras) como "anterior" e half1
-        // (0-15d) como "atual". Sem Ads no half2 + com Ads no half1 = ativou.
-        $semAdsAnterior = $companies->filter(function ($c) use ($sumHalf2, $revAnterior) {
-            $row = $sumHalf2->get($c->id);
-            $ads = (float) ($row->ads ?? 0);
-            $rev = (float) ($revAnterior[$c->id] ?? 0);
-            return $ads <= 0 && $rev > 0;
-        });
-
-        $ativaramAds = $semAdsAnterior->filter(function ($c) use ($sumHalf1) {
-            $row = $sumHalf1->get($c->id);
+        // ── 6. Cobertura de Ads — % empresas elegíveis com ad_spend > 0 ──
+        // Hotfix 260623 v2: a metrica original ("ativaram Ads no periodo")
+        // dava 0/N pra carteiras que ja trabalham com Ads em 100% das
+        // empresas — caso da maioria dos analistas ECF. Substituida por
+        // "% de empresas elegiveis com Ads ATIVO nos ultimos 30d", que e
+        // util como indicador operacional: idealmente 100% pra quem cobra
+        // gestao de Ads. Quem tem <100% tem oportunidade clara de ativacao.
+        $comAdsAtivosCount = $eligiveis->filter(function ($c) use ($sumAtual) {
+            $row = $sumAtual->get($c->id);
             return ((float) ($row->ads ?? 0)) > 0;
         })->count();
 
-        $execucaoPct = $semAdsAnterior->count() > 0
-            ? round(($ativaramAds / $semAdsAnterior->count()) * 100, 1)
+        $execucaoPct = $eligiveis->count() > 0
+            ? round(($comAdsAtivosCount / $eligiveis->count()) * 100, 1)
             : null;
 
         // ── 7. Qualidade ──
@@ -282,6 +310,7 @@ class PortfolioScoreService
                     'pct'            => $metaAtingidaPct,
                     'target_value'   => $metaTarget,
                     'realized_value' => $metaRealizado,
+                    'origem'         => $metaOrigem, // 'portfolio' | 'empresas:N' | null
                 ],
                 'recuperacao' => [
                     'recuperadas'   => $recuperadasCount,
@@ -289,9 +318,9 @@ class PortfolioScoreService
                     'pct'           => $recuperacaoPct,
                 ],
                 'execucao_ads' => [
-                    'ativaram'      => $ativaramAds,
-                    'oportunidades' => $semAdsAnterior->count(),
-                    'pct'           => $execucaoPct,
+                    'com_ads_ativos' => $comAdsAtivosCount,
+                    'total'          => $eligiveis->count(),
+                    'pct'            => $execucaoPct,
                 ],
                 'qualidade' => [
                     'avg_nps'        => $avgNps,
@@ -318,42 +347,6 @@ class PortfolioScoreService
     }
 
     /**
-     * Revenue por empresa numa janela. Prioriza cache Adman gross (mesma
-     * estratégia do PortfolioController pós hotfix cust_id) com fallback SUM DB.
-     * O cache só funciona pra janela 0-30d (mês atual); janelas históricas
-     * usam SUM DB direto.
-     *
-     * @return array<int, float>
-     */
-    private function revenuePorEmpresa(Collection $companies, array $custIds, string $from, string $to, Collection $companyIds): array
-    {
-        // SUM DB (sempre, pra ter fallback)
-        $sumDb = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereBetween('reference_date', [$from, $to])
-            ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
-            ->groupBy('company_id')
-            ->pluck('total', 'company_id');
-
-        // Cache só se for a janela atual (com custIds passado)
-        $cache = !empty($custIds)
-            ? $this->adman->getCachedGrossBillingsMany($custIds, $from, $to)
-            : [];
-
-        $out = [];
-        foreach ($companies as $c) {
-            $rev = null;
-            if ($c->cust_id && isset($cache[$c->cust_id]['value']) && $cache[$c->cust_id]['value'] !== null) {
-                $rev = (float) $cache[$c->cust_id]['value'];
-            }
-            if ($rev === null) {
-                $rev = (float) ($sumDb[$c->id] ?? 0);
-            }
-            $out[$c->id] = $rev;
-        }
-        return $out;
-    }
-
     /**
      * Crescimento ajustado → pontos. Linear com cap em ±20%.
      * -20% → 0; 0% → 50; +20% → 100. Valores fora do range são clamped.

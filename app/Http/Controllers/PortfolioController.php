@@ -117,6 +117,7 @@ class PortfolioController extends Controller
 
             $totalRevenue = 0.0;
             $totalAdSpend = 0.0;
+            $tacosPorEmpresa = [];
             foreach ($companies as $c) {
                 $row = $sumDb->get($c->id);
 
@@ -139,16 +140,31 @@ class PortfolioController extends Controller
                     $ads = (float) ($row->ads ?? 0);
                 }
                 $totalAdSpend += $ads;
+
+                // TACOS desta empresa: prioriza cache (mais preciso), fallback DB.
+                $tacosEmpresa = null;
+                if ($c->cust_id && isset($account[$c->cust_id]['value']['tacos'])) {
+                    $tacosEmpresa = (float) $account[$c->cust_id]['value']['tacos'];
+                } elseif ($rev > 0) {
+                    $tacosEmpresa = ($ads / $rev) * 100;
+                }
+                if ($tacosEmpresa !== null) {
+                    $tacosPorEmpresa[] = $tacosEmpresa;
+                }
             }
 
             // Margem media via DB (cache nao expoe margem por empresa de forma
             // estavel; SUM DB ja era a fonte do campo aqui).
             $avgMargin = $sumDb->avg('margem');
 
-            // TACOS REAL da carteira: razão dos totais. Null sem revenue
-            // pra não exibir 0% artificial em quem só vende fora dos ads.
-            $tacosCarteira = $totalRevenue > 0
-                ? round(($totalAdSpend / $totalRevenue) * 100, 2)
+            // TACOS médio da carteira: média SIMPLES dos TACOS per-empresa
+            // (mesma estratégia do DashboardController::adminDashboard, pra que
+            // /portfolio e /dashboard mostrem o mesmo número pro mesmo user).
+            // Hotfix 2026-06-23 — antes usava razão dos totais (ad_spend/rev),
+            // matematicamente mais correto como "TACOS efetivo agregado" mas
+            // divergia do Dashboard. Pragmaticamente: alinhar pra evitar dúvida.
+            $tacosCarteira = !empty($tacosPorEmpresa)
+                ? round(array_sum($tacosPorEmpresa) / count($tacosPorEmpresa), 2)
                 : null;
 
             return [
@@ -626,13 +642,32 @@ class PortfolioController extends Controller
         // alerta acionavel (grants expirando, em queda, sem ad spend). Top 3 NAO
         // entra (e ranking positivo). Distinct evita inflar count quando a mesma
         // empresa cai em 2 alertas.
-        $idsAcionaveis = collect()
-            ->merge(collect($alertas['grants_expirando_30d'])->pluck('id'))
-            ->merge(collect($alertas['empresas_em_queda'])->pluck('id'))
-            ->merge(collect($alertas['empresas_sem_ad_spend'])->pluck('id'))
-            ->unique()
-            ->values();
-        $prioridadeDoDia = $idsAcionaveis->count();
+        //
+        // Hotfix 260623 — expõe LISTA detalhada (não só count) pra UI mostrar
+        // quais empresas exigem ação. Cada item: {id, name, motivo}. Quando a
+        // mesma empresa cai em 2 motivos, junta com " · ".
+        $motivosPorId = [];
+        foreach ($alertas['grants_expirando_30d'] as $a) {
+            $motivosPorId[$a['id']]['name'] = $a['name'];
+            $motivosPorId[$a['id']]['motivos'][] = 'Grant vence em ' . ($a['grant_days_remaining'] ?? '?') . 'd';
+        }
+        foreach ($alertas['empresas_em_queda'] as $a) {
+            $motivosPorId[$a['id']]['name'] = $a['name'];
+            $motivosPorId[$a['id']]['motivos'][] = 'Queda ' . round($a['queda_pct'] ?? 0, 1) . '%';
+        }
+        foreach ($alertas['empresas_sem_ad_spend'] as $a) {
+            $motivosPorId[$a['id']]['name'] = $a['name'];
+            $motivosPorId[$a['id']]['motivos'][] = 'Sem Ads';
+        }
+        $prioridadeListaDetalhada = collect($motivosPorId)
+            ->map(fn ($v, $id) => [
+                'id'      => $id,
+                'name'    => $v['name'],
+                'motivos' => $v['motivos'],
+            ])
+            ->values()
+            ->all();
+        $prioridadeDoDia = count($prioridadeListaDetalhada);
 
         // Limpa flags internos (_grant_ok / _ad_spend_num) antes do payload.
         $companies = $companies->map(function ($c) {
@@ -772,6 +807,7 @@ class PortfolioController extends Controller
             ],
             'periodo_amostra'     => $periodoAmostra,
             'prioridade_do_dia'   => $prioridadeDoDia,
+            'prioridade_lista'    => $prioridadeListaDetalhada,
             // Quick 260623 redesign performance — substitui comparacao_equipe antigo.
             'performance_profissional' => $performanceProfissional,
             'comparacao_contextual'    => $comparacaoContextual,

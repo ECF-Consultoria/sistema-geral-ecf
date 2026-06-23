@@ -71,18 +71,44 @@ const CLASSIF_BG = {
     critico:   'bg-red-500/10 border-red-500/30',
 };
 
+// Explicações curtas pra tooltip de cada métrica (hover no card).
+const METRIC_HELP = {
+    score: 'Score 0-100 ponderado: 30% crescimento ajustado + 20% empresas crescendo + 20% atingimento de meta + 15% recuperação + 10% cobertura Ads + 5% qualidade (NPS+reuniões). Categorias sem dado têm o peso redistribuído.',
+    crescimento_ajustado: 'Crescimento dos últimos 30d vs os 30d anteriores. Calculado pela soma diária de revenue × revenue_prev_period (Adman) — sem depender de cache histórico do nosso DB.',
+    empresas_crescendo: 'Quantas das empresas elegíveis tiveram revenue atual > revenue do período anterior (segundo o revenue_prev_period reportado pela Adman).',
+    meta: 'Atingimento da meta da carteira. Prioridade: PortfolioGoal de revenue ativo. Se não houver, soma das metas individuais (Goal de revenue por empresa) ativas — basta cadastrar 1 meta numa empresa pra entrar.',
+    recuperacao: 'Das empresas que estavam em queda nos 15-30d anteriores (revenue < revenue_prev_period), quantas voltaram a crescer nos últimos 15d.',
+    execucao_ads: '% das empresas elegíveis que tiveram ad_spend > 0 nos últimos 30d. Métrica operacional — ideal é 100% pra quem cobra gestão de Ads.',
+    qualidade: 'NPS médio das respostas dos últimos 30d (escala 1-5) + número de reuniões realizadas + % absenteísmo (consultor ou estrategista ausente).',
+    prioridade_do_dia: 'Empresas que aparecem em pelo menos 1 alerta acionável (grant expirando ≤30d, em queda MoM, ou sem Ads). Distinct.',
+    investimento_ads: 'Total de ad_spend nas empresas da carteira nos últimos 30d. Vem do cache Adman (chave investment) com fallback SUM DB.',
+    meta_carteira_kpi: 'Atingimento da meta de revenue da carteira inteira (PortfolioGoal). Se não tem PortfolioGoal mas tem metas individuais, o widget Performance abaixo soma as metas das empresas.',
+    empresas_kpi: 'Total de empresas ATIVAS vinculadas a você (consultor ou estrategista) na carteira.',
+    faturamento_total: 'Soma do revenue das empresas da carteira nos últimos 30d (mês vigente). Vem do cache Adman gross com fallback SUM DB.',
+};
+
 // ── KPI compacto ─────────────────────────────────────────────────────────────
 
-function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white/85' }) {
+function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white/85', help, onClick, children }) {
+    const clickable = !!onClick;
     return (
-        <Card className="bg-ecf-card/60 border-white/[0.06]">
+        <Card
+            className={cn(
+                'bg-ecf-card/60 border-white/[0.06]',
+                clickable && 'cursor-pointer hover:border-white/20 transition-colors'
+            )}
+            onClick={onClick}
+            title={help}
+        >
             <CardContent className="p-4">
                 <div className="flex items-center gap-2 text-white/50 text-[11px] uppercase tracking-wide">
                     {Icon && <Icon size={12} />}
                     {label}
+                    {help && <span className="text-white/30 text-[9px] cursor-help">ⓘ</span>}
                 </div>
                 <div className={cn('mt-1.5 text-2xl font-bold tabular-nums', accent)}>{value}</div>
                 {sub && <div className="text-white/40 text-[11px] mt-0.5">{sub}</div>}
+                {children}
             </CardContent>
         </Card>
     );
@@ -136,7 +162,9 @@ function PerformanceSection({ data, comparacao }) {
                 <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
                         <Award size={16} className={CLASSIF_CLS[data.classificacao]} />
-                        <h3 className="text-white text-sm font-semibold">Performance do profissional</h3>
+                        <h3 className="text-white text-sm font-semibold cursor-help" title={METRIC_HELP.score}>
+                            Performance do profissional <span className="text-white/30 text-[10px]">ⓘ</span>
+                        </h3>
                     </div>
                     <div className="text-right">
                         <div className={cn('text-[11px] font-semibold', CLASSIF_CLS[data.classificacao])}>
@@ -235,33 +263,39 @@ function PerformanceSection({ data, comparacao }) {
                             ? `${m.crescimento_ajustado_pct >= 0 ? '+' : ''}${m.crescimento_ajustado_pct.toFixed(1)}%`
                             : '—'}
                         sub="30d vs 30d-prev"
+                        help={METRIC_HELP.crescimento_ajustado}
                     />
                     <MiniMetric
                         label="Crescendo"
                         value={`${m.empresas_em_crescimento.count}/${m.empresas_em_crescimento.total}`}
                         sub={`${m.empresas_em_crescimento.pct.toFixed(0)}% da carteira`}
+                        help={METRIC_HELP.empresas_crescendo}
                     />
                     <MiniMetric
                         label="Meta"
                         value={m.atingimento_meta.pct !== null ? `${m.atingimento_meta.pct.toFixed(0)}%` : '—'}
                         sub={m.atingimento_meta.pct !== null
-                            ? `${formatCurrencyCompact(m.atingimento_meta.realized_value)} / ${formatCurrencyCompact(m.atingimento_meta.target_value)}`
+                            ? `${formatCurrencyCompact(m.atingimento_meta.realized_value)} / ${formatCurrencyCompact(m.atingimento_meta.target_value)}${m.atingimento_meta.origem?.startsWith('empresas') ? ' (metas individuais)' : ''}`
                             : 'sem meta'}
+                        help={METRIC_HELP.meta}
                     />
                     <MiniMetric
                         label="Recuperação"
                         value={m.recuperacao.pct !== null ? `${m.recuperacao.recuperadas}/${m.recuperacao.em_queda}` : '—'}
                         sub={m.recuperacao.pct !== null ? `${m.recuperacao.pct.toFixed(0)}% recuperadas` : 'nenhuma em queda'}
+                        help={METRIC_HELP.recuperacao}
                     />
                     <MiniMetric
-                        label="Execução Ads"
-                        value={m.execucao_ads.pct !== null ? `${m.execucao_ads.ativaram}/${m.execucao_ads.oportunidades}` : '—'}
-                        sub={m.execucao_ads.pct !== null ? `${m.execucao_ads.pct.toFixed(0)}% ativados` : 'sem oport.'}
+                        label="Cobertura Ads"
+                        value={m.execucao_ads.pct !== null ? `${m.execucao_ads.com_ads_ativos ?? 0}/${m.execucao_ads.total ?? 0}` : '—'}
+                        sub={m.execucao_ads.pct !== null ? `${m.execucao_ads.pct.toFixed(0)}% com Ads ativos` : 'sem empresas'}
+                        help={METRIC_HELP.execucao_ads}
                     />
                     <MiniMetric
                         label="NPS"
                         value={m.qualidade.avg_nps !== null ? `${m.qualidade.avg_nps.toFixed(1)}/5` : '—'}
                         sub={`${m.qualidade.meetings} reun. · ${m.qualidade.absenteismo_pct ?? 0}% abs.`}
+                        help={METRIC_HELP.qualidade}
                     />
                 </div>
 
@@ -283,10 +317,13 @@ function clamp01to100(value, min, max) {
     return ((v - min) / (max - min)) * 100;
 }
 
-function MiniMetric({ label, value, sub }) {
+function MiniMetric({ label, value, sub, help }) {
     return (
-        <div className="rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2">
-            <div className="text-white/45 text-[10px] uppercase tracking-wide">{label}</div>
+        <div className="rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2 group relative" title={help}>
+            <div className="text-white/45 text-[10px] uppercase tracking-wide flex items-center gap-1">
+                {label}
+                {help && <span className="text-white/30 text-[9px] cursor-help">ⓘ</span>}
+            </div>
             <div className="text-white/90 text-base font-bold tabular-nums leading-tight mt-0.5">{value}</div>
             <div className="text-white/35 text-[10px] mt-0.5">{sub}</div>
         </div>
@@ -395,6 +432,7 @@ export default function PortfolioShow({
     meta_carteira = { target_value: null, realized_value: 0, achieved_pct: null, restante: null, has_goal: false },
     periodo_amostra = { from_label: '—', to_label: '—', mes_label: '—', is_mes_atual: true },
     prioridade_do_dia = 0,
+    prioridade_lista = [],
     performance_profissional = null,
     comparacao_contextual = null,
 }) {
@@ -405,6 +443,7 @@ export default function PortfolioShow({
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('revenue');
     const [sortDir, setSortDir] = useState('desc');
+    const [prioridadeOpen, setPrioridadeOpen] = useState(false);
 
     // ── Forms admin (criar/editar/remover meta carteira) ──
     const [goalOpen, setGoalOpen] = useState(false);
@@ -562,7 +601,7 @@ export default function PortfolioShow({
 
                             {/* Faturamento em destaque */}
                             <div className="text-right md:text-right">
-                                <div className="text-white/60 text-[12px] uppercase tracking-wide">Faturamento</div>
+                                <div className="text-white/60 text-[12px] uppercase tracking-wide cursor-help" title={METRIC_HELP.faturamento_total}>Faturamento ⓘ</div>
                                 <div className="text-white text-4xl md:text-5xl font-bold tabular-nums leading-tight mt-1">
                                     {formatCurrencyCompact(summary?.total_revenue ?? 0)}
                                 </div>
@@ -608,6 +647,7 @@ export default function PortfolioShow({
                         value={summary?.total_companies ?? 0}
                         sub="na carteira"
                         icon={Building2}
+                        help={METRIC_HELP.empresas_kpi}
                     />
                     <KpiCard
                         label="Meta da carteira"
@@ -623,19 +663,41 @@ export default function PortfolioShow({
                             : meta_carteira.achieved_pct !== null && meta_carteira.achieved_pct < 50
                                 ? 'text-red-300'
                                 : 'text-white/85'}
+                        help={METRIC_HELP.meta_carteira_kpi}
                     />
                     <KpiCard
                         label="Prioridade do dia"
                         value={prioridade_do_dia}
-                        sub={prioridade_do_dia === 0 ? 'tudo em ordem' : 'exigem ação'}
+                        sub={prioridade_do_dia === 0
+                            ? 'tudo em ordem'
+                            : (prioridadeOpen ? 'clique pra recolher' : 'clique pra ver lista')}
                         icon={AlertTriangle}
                         accent={prioridade_do_dia === 0 ? 'text-emerald-300' : 'text-amber-300'}
-                    />
+                        help={METRIC_HELP.prioridade_do_dia}
+                        onClick={prioridade_do_dia > 0 ? () => setPrioridadeOpen(o => !o) : undefined}
+                    >
+                        {prioridadeOpen && prioridade_lista.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-white/[0.06] space-y-1 max-h-40 overflow-y-auto">
+                                {prioridade_lista.map(p => (
+                                    <Link
+                                        key={p.id}
+                                        href={route('companies.show', p.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="block text-[11px] hover:text-ecf-yellow"
+                                    >
+                                        <span className="text-white/80 truncate inline-block max-w-[120px] align-middle">{p.name}</span>
+                                        <span className="text-amber-300/70 ml-1 text-[10px]">{(p.motivos || []).join(' · ')}</span>
+                                    </Link>
+                                ))}
+                            </div>
+                        )}
+                    </KpiCard>
                     <KpiCard
                         label="Investimento Ads"
                         value={formatCurrencyCompact(summary?.total_ad_spend ?? 0)}
                         sub={`${adCoveragePct}% das empresas`}
                         icon={ShoppingCart}
+                        help={METRIC_HELP.investimento_ads}
                     />
                 </div>
 

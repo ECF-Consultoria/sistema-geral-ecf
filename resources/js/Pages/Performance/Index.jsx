@@ -206,14 +206,14 @@ function RankingConsultoria({ ranking }) {
             <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_4.5rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
                 <span>#</span>
                 <span>Nome</span>
-                <span className="text-right">Empresas</span>
-                <span>Score</span>
-                <span className="text-right">Cresc.</span>
-                <span className="text-right">Crescendo</span>
-                <span className="text-right">Meta</span>
-                <span className="text-right">Execução</span>
-                <span className="text-right">NPS</span>
-                <span>Tend.</span>
+                <span className="text-right cursor-help" title="Empresas elegíveis (revenue > 0 no período atual ou anterior) / total de empresas ativas na carteira.">Empresas ⓘ</span>
+                <span className="cursor-help" title="Score 0-100 ponderado: 30% crescimento ajustado + 20% empresas crescendo + 20% atingimento de meta + 15% recuperação + 10% cobertura Ads + 5% qualidade (NPS+reuniões). Categorias sem dado têm o peso redistribuído.">Score ⓘ</span>
+                <span className="text-right cursor-help" title="Crescimento ajustado da carteira: revenue dos últimos 30d vs revenue_prev_period reportado pela Adman pra mesma janela.">Cresc. ⓘ</span>
+                <span className="text-right cursor-help" title="% de empresas elegíveis que tiveram revenue atual > revenue do período anterior.">Crescendo ⓘ</span>
+                <span className="text-right cursor-help" title="Atingimento da meta: usa PortfolioGoal de revenue ativo, ou soma das metas individuais (Goal de revenue por empresa) ativas se não houver meta de carteira.">Meta ⓘ</span>
+                <span className="text-right cursor-help" title="Cobertura Ads: % de empresas elegíveis com ad_spend > 0 nos últimos 30d. Ideal 100% pra carteiras que cobram gestão de Ads.">Cobertura ⓘ</span>
+                <span className="text-right cursor-help" title="NPS médio das respostas dos últimos 30d (escala 1-5).">NPS ⓘ</span>
+                <span className="cursor-help" title="Tendência baseada no crescimento ajustado: ≥+5% subindo, ≤-5% descendo, no meio estável.">Tend. ⓘ</span>
                 <span />
             </div>
 
