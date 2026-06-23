@@ -83,22 +83,68 @@ class PortfolioController extends Controller
         $todos = $analistas->map(fn($u) => ['user' => $u, 'tipo' => 'analista'])
             ->concat($estrategistas->map(fn($u) => ['user' => $u, 'tipo' => 'estrategista']));
 
-        $portfolios = $todos->map(function ($item) use ($since) {
+        // Hotfix 2026-06-23 — Carteiras consolidadas divergia do /portfolio/show:
+        // somava só AdmanMetric.revenue/ad_spend (DB local incompleto), enquanto
+        // o renderPortfolio individual usa cache Adman gross + investment (mais
+        // completo). Ex.: Ana Julia mostrava R$ 16,8M aqui vs R$ 20,6M no
+        // individual. Mesma estrategia do hotfix cust_id aplicada antes.
+        $dateFrom = $since->toDateString();
+        $dateTo   = now()->toDateString();
+
+        $portfolios = $todos->map(function ($item) use ($dateFrom, $dateTo) {
             $u    = $item['user'];
             $tipo = $item['tipo'];
 
-            $companyIds = ($tipo === 'estrategista')
-                ? $u->estrategistaCompanies()->where('active', true)->pluck('companies.id')
-                : $u->consultorCompanies()->where('active', true)->pluck('companies.id');
+            $companies = ($tipo === 'estrategista')
+                ? $u->estrategistaCompanies()->where('active', true)->get(['companies.id', 'companies.adman_account_id', 'companies.ml_store_id'])
+                : $u->consultorCompanies()->where('active', true)->get(['companies.id', 'companies.adman_account_id', 'companies.ml_store_id']);
 
-            if ($companyIds->isEmpty()) return null;
+            if ($companies->isEmpty()) return null;
 
-            $uMetrics = AdmanMetric::whereIn('company_id', $companyIds)
-                ->where('reference_date', '>=', $since->toDateString())
-                ->get();
+            $companyIds = $companies->pluck('id');
+            $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
 
-            $totalRevenue  = (float) $uMetrics->sum('revenue');
-            $totalAdSpend  = (float) $uMetrics->sum('ad_spend');
+            // SUM DB (fallback completo) + cache Adman pra empresas com custId.
+            $sumDb = AdmanMetric::whereIn('company_id', $companyIds)
+                ->where('reference_date', '>=', $dateFrom)
+                ->selectRaw('company_id, SUM(revenue) as rev, SUM(ad_spend) as ads, AVG(contribution_margin_pct) as margem')
+                ->groupBy('company_id')
+                ->get()
+                ->keyBy('company_id');
+
+            $gross   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+            $account = $this->adman->getCachedAccountMetricsMany($custIds, $dateFrom, $dateTo);
+
+            $totalRevenue = 0.0;
+            $totalAdSpend = 0.0;
+            foreach ($companies as $c) {
+                $row = $sumDb->get($c->id);
+
+                // Revenue: cache gross com fallback DB
+                $rev = null;
+                if ($c->cust_id && isset($gross[$c->cust_id]['value']) && $gross[$c->cust_id]['value'] !== null) {
+                    $rev = (float) $gross[$c->cust_id]['value'];
+                }
+                if ($rev === null) {
+                    $rev = (float) ($row->rev ?? 0);
+                }
+                $totalRevenue += $rev;
+
+                // Ad spend: cache investment com fallback DB
+                $ads = null;
+                if ($c->cust_id && isset($account[$c->cust_id]['value']['investment'])) {
+                    $ads = (float) $account[$c->cust_id]['value']['investment'];
+                }
+                if ($ads === null) {
+                    $ads = (float) ($row->ads ?? 0);
+                }
+                $totalAdSpend += $ads;
+            }
+
+            // Margem media via DB (cache nao expoe margem por empresa de forma
+            // estavel; SUM DB ja era a fonte do campo aqui).
+            $avgMargin = $sumDb->avg('margem');
+
             // TACOS REAL da carteira: razão dos totais. Null sem revenue
             // pra não exibir 0% artificial em quem só vende fora dos ads.
             $tacosCarteira = $totalRevenue > 0
@@ -112,9 +158,9 @@ class PortfolioController extends Controller
                 'role'            => $u->role,
                 'companies_count' => $companyIds->count(),
                 'avg_tacos'       => $tacosCarteira,
-                'total_revenue'   => $totalRevenue,
-                'avg_margin'      => $uMetrics->count() > 0 ? round($uMetrics->avg('contribution_margin_pct'), 2) : null,
-                'total_ad_spend'  => $totalAdSpend,
+                'total_revenue'   => round($totalRevenue, 2),
+                'avg_margin'      => $avgMargin !== null ? round((float) $avgMargin, 2) : null,
+                'total_ad_spend'  => round($totalAdSpend, 2),
             ];
         })->filter()->sortBy('name')->values();
 

@@ -16,6 +16,8 @@ import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
     CartesianGrid, Legend,
+    RadialBarChart, RadialBar, PolarAngleAxis,
+    RadarChart, Radar, PolarGrid, PolarRadiusAxis,
 } from 'recharts';
 
 /**
@@ -102,7 +104,196 @@ function Chip({ children, tone = 'neutral' }) {
     );
 }
 
-// ── Card de métrica de performance ───────────────────────────────────────────
+// ── Section completa de performance com Radial + Radar ──────────────────────
+
+const SCORE_COLOR = {
+    excelente: '#10b981',
+    bom:       '#3b82f6',
+    atencao:   '#f59e0b',
+    critico:   '#ef4444',
+};
+
+function PerformanceSection({ data, comparacao }) {
+    const m = data.metricas;
+    const cor = SCORE_COLOR[data.classificacao] ?? '#3b82f6';
+
+    // Pontuações 0-100 por dimensão pra alimentar o radar
+    const dimensoes = [
+        { dim: 'Crescimento', valor: clamp01to100(m.crescimento_ajustado_pct, -20, 20), bruto: m.crescimento_ajustado_pct, sufixo: '%' },
+        { dim: 'Empresas crescendo', valor: m.empresas_em_crescimento.pct, bruto: m.empresas_em_crescimento.pct, sufixo: '%' },
+        { dim: 'Meta',        valor: m.atingimento_meta.pct !== null ? Math.min(100, m.atingimento_meta.pct) : 0, bruto: m.atingimento_meta.pct, sufixo: '%' },
+        { dim: 'Recuperação', valor: m.recuperacao.pct ?? 0, bruto: m.recuperacao.pct, sufixo: '%' },
+        { dim: 'Execução',    valor: m.execucao_ads.pct ?? 0, bruto: m.execucao_ads.pct, sufixo: '%' },
+        { dim: 'Qualidade',   valor: m.qualidade.avg_nps !== null ? (m.qualidade.avg_nps / 5) * 100 : 0, bruto: m.qualidade.avg_nps, sufixo: '/5' },
+    ];
+
+    // Dado pra Radial (apenas 1 valor — o score)
+    const radialData = [{ name: 'Score', value: data.score, fill: cor }];
+
+    return (
+        <Card className={cn('border', CLASSIF_BG[data.classificacao] ?? 'border-white/[0.06]')}>
+            <CardContent className="p-4 md:p-5">
+                <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                        <Award size={16} className={CLASSIF_CLS[data.classificacao]} />
+                        <h3 className="text-white text-sm font-semibold">Performance do profissional</h3>
+                    </div>
+                    <div className="text-right">
+                        <div className={cn('text-[11px] font-semibold', CLASSIF_CLS[data.classificacao])}>
+                            {comparacao && `${comparacao.classificacao_top} de ${comparacao.tamanho_amostra} ${comparacao.cargo_label.toLowerCase()}s`}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Grid principal: Radial (score) + Radar (6 dimensões) */}
+                <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
+                    {/* Radial score */}
+                    <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.04] p-3 flex items-center justify-center">
+                        <div className="h-56 w-full relative">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <RadialBarChart
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius="70%"
+                                    outerRadius="100%"
+                                    barSize={18}
+                                    data={radialData}
+                                    startAngle={90}
+                                    endAngle={-270}
+                                >
+                                    <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                                    <RadialBar
+                                        dataKey="value"
+                                        cornerRadius={10}
+                                        background={{ fill: 'rgba(255,255,255,0.05)' }}
+                                    />
+                                </RadialBarChart>
+                            </ResponsiveContainer>
+                            {/* texto centralizado */}
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <div className={cn('text-5xl font-extrabold tabular-nums leading-none', CLASSIF_CLS[data.classificacao])}>
+                                    {Math.round(data.score)}
+                                </div>
+                                <div className="text-white/40 text-[11px] mt-0.5">de 100 pts</div>
+                                <div className={cn('text-[12px] font-semibold mt-1.5', CLASSIF_CLS[data.classificacao])}>
+                                    {CLASSIF_LABEL[data.classificacao]}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Radar das 6 dimensões */}
+                    <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
+                        <div className="h-56 w-full">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <RadarChart data={dimensoes} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                                    <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                                    <PolarAngleAxis
+                                        dataKey="dim"
+                                        tick={{ fill: 'rgba(255,255,255,0.55)', fontSize: 10 }}
+                                    />
+                                    <PolarRadiusAxis
+                                        domain={[0, 100]}
+                                        tick={false}
+                                        axisLine={false}
+                                    />
+                                    <Radar
+                                        name="Pontuação"
+                                        dataKey="valor"
+                                        stroke={cor}
+                                        fill={cor}
+                                        fillOpacity={0.35}
+                                        dot={{ r: 3, fill: cor }}
+                                    />
+                                    <Tooltip
+                                        cursor={false}
+                                        contentStyle={{
+                                            backgroundColor: 'rgba(15,16,22,0.95)',
+                                            border: '1px solid rgba(255,255,255,0.12)',
+                                            borderRadius: 8,
+                                            fontSize: 12,
+                                        }}
+                                        formatter={(value, name, props) => {
+                                            const bruto = props?.payload?.bruto;
+                                            const suf   = props?.payload?.sufixo;
+                                            if (bruto === null || bruto === undefined) return ['sem dado', 'Valor'];
+                                            return [`${typeof bruto === 'number' ? bruto.toFixed(1) : bruto}${suf} (${Math.round(value)} pts)`, 'Valor'];
+                                        }}
+                                        labelStyle={{ color: 'rgba(255,255,255,0.9)' }}
+                                    />
+                                </RadarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Cards detalhados embaixo */}
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
+                    <MiniMetric
+                        label="Cresc. ajustado"
+                        value={m.crescimento_ajustado_pct !== null
+                            ? `${m.crescimento_ajustado_pct >= 0 ? '+' : ''}${m.crescimento_ajustado_pct.toFixed(1)}%`
+                            : '—'}
+                        sub="30d vs 30d-prev"
+                    />
+                    <MiniMetric
+                        label="Crescendo"
+                        value={`${m.empresas_em_crescimento.count}/${m.empresas_em_crescimento.total}`}
+                        sub={`${m.empresas_em_crescimento.pct.toFixed(0)}% da carteira`}
+                    />
+                    <MiniMetric
+                        label="Meta"
+                        value={m.atingimento_meta.pct !== null ? `${m.atingimento_meta.pct.toFixed(0)}%` : '—'}
+                        sub={m.atingimento_meta.pct !== null
+                            ? `${formatCurrencyCompact(m.atingimento_meta.realized_value)} / ${formatCurrencyCompact(m.atingimento_meta.target_value)}`
+                            : 'sem meta'}
+                    />
+                    <MiniMetric
+                        label="Recuperação"
+                        value={m.recuperacao.pct !== null ? `${m.recuperacao.recuperadas}/${m.recuperacao.em_queda}` : '—'}
+                        sub={m.recuperacao.pct !== null ? `${m.recuperacao.pct.toFixed(0)}% recuperadas` : 'nenhuma em queda'}
+                    />
+                    <MiniMetric
+                        label="Execução Ads"
+                        value={m.execucao_ads.pct !== null ? `${m.execucao_ads.ativaram}/${m.execucao_ads.oportunidades}` : '—'}
+                        sub={m.execucao_ads.pct !== null ? `${m.execucao_ads.pct.toFixed(0)}% ativados` : 'sem oport.'}
+                    />
+                    <MiniMetric
+                        label="NPS"
+                        value={m.qualidade.avg_nps !== null ? `${m.qualidade.avg_nps.toFixed(1)}/5` : '—'}
+                        sub={`${m.qualidade.meetings} reun. · ${m.qualidade.absenteismo_pct ?? 0}% abs.`}
+                    />
+                </div>
+
+                {!data.tem_base_comparativa && (
+                    <p className="mt-3 text-white/40 text-[11px]">
+                        <AlertTriangle size={10} className="inline mr-1" />
+                        Carteira com menos de 5 empresas elegíveis — score calculado mas comparação com pares pode ser instável.
+                    </p>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
+// Clamp + normalize (ex: crescimento -20% → 0pts, 0% → 50, +20% → 100)
+function clamp01to100(value, min, max) {
+    if (value === null || value === undefined) return 0;
+    const v = Math.max(min, Math.min(max, value));
+    return ((v - min) / (max - min)) * 100;
+}
+
+function MiniMetric({ label, value, sub }) {
+    return (
+        <div className="rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2">
+            <div className="text-white/45 text-[10px] uppercase tracking-wide">{label}</div>
+            <div className="text-white/90 text-base font-bold tabular-nums leading-tight mt-0.5">{value}</div>
+            <div className="text-white/35 text-[10px] mt-0.5">{sub}</div>
+        </div>
+    );
+}
+
+// ── Card de métrica de performance (legado — mantido pra fallback) ───────────
 
 function PerformanceCard({ label, value, sub, tone = 'neutral' }) {
     const toneCls = {
@@ -448,108 +639,13 @@ export default function PortfolioShow({
                     />
                 </div>
 
-                {/* ── 3.5 Performance do profissional ─────────────────────────────
-                    Quick 260623 — 6 cards conforme metodologia-desempenho-carteira.md.
-                    Mede evolução + execução, NÃO faturamento bruto. */}
+                {/* ── 3.5 Performance do profissional (redesign visual 2026-06-23)
+                    Radial chart (score 0-100) + Radar (6 dimensões) + cards menores. */}
                 {performance_profissional && (
-                    <Card className={cn('border', CLASSIF_BG[performance_profissional.classificacao] ?? 'border-white/[0.06]')}>
-                        <CardContent className="p-4 md:p-5">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Award size={16} className={CLASSIF_CLS[performance_profissional.classificacao]} />
-                                    <h3 className="text-white text-sm font-semibold">Performance do profissional</h3>
-                                </div>
-                                <div className="text-right">
-                                    <div className={cn('text-2xl font-bold tabular-nums leading-none', CLASSIF_CLS[performance_profissional.classificacao])}>
-                                        {performance_profissional.score} <span className="text-[10px] text-white/40 font-normal">pts</span>
-                                    </div>
-                                    <div className={cn('text-[11px] font-semibold', CLASSIF_CLS[performance_profissional.classificacao])}>
-                                        {CLASSIF_LABEL[performance_profissional.classificacao]}
-                                        {comparacao_contextual && ` · ${comparacao_contextual.classificacao_top} de ${comparacao_contextual.tamanho_amostra} ${comparacao_contextual.cargo_label.toLowerCase()}s`}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* 6 cards */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                                <PerformanceCard
-                                    label="Crescimento ajustado"
-                                    value={performance_profissional.metricas.crescimento_ajustado_pct !== null
-                                        ? `${performance_profissional.metricas.crescimento_ajustado_pct >= 0 ? '+' : ''}${performance_profissional.metricas.crescimento_ajustado_pct.toFixed(1)}%`
-                                        : '—'}
-                                    sub="30d vs 30d anteriores"
-                                    tone={performance_profissional.metricas.crescimento_ajustado_pct !== null
-                                        ? (performance_profissional.metricas.crescimento_ajustado_pct >= 5 ? 'good'
-                                            : performance_profissional.metricas.crescimento_ajustado_pct >= -5 ? 'neutral' : 'bad')
-                                        : 'neutral'}
-                                />
-                                <PerformanceCard
-                                    label="Empresas em crescimento"
-                                    value={`${performance_profissional.metricas.empresas_em_crescimento.count}/${performance_profissional.metricas.empresas_em_crescimento.total}`}
-                                    sub={`${performance_profissional.metricas.empresas_em_crescimento.pct.toFixed(0)}% da carteira`}
-                                    tone={performance_profissional.metricas.empresas_em_crescimento.pct >= 60 ? 'good'
-                                        : performance_profissional.metricas.empresas_em_crescimento.pct >= 40 ? 'neutral' : 'bad'}
-                                />
-                                <PerformanceCard
-                                    label="Atingimento de meta"
-                                    value={performance_profissional.metricas.atingimento_meta.pct !== null
-                                        ? `${performance_profissional.metricas.atingimento_meta.pct.toFixed(0)}%`
-                                        : '—'}
-                                    sub={performance_profissional.metricas.atingimento_meta.pct !== null
-                                        ? `${formatCurrencyCompact(performance_profissional.metricas.atingimento_meta.realized_value)} / ${formatCurrencyCompact(performance_profissional.metricas.atingimento_meta.target_value)}`
-                                        : 'sem meta cadastrada'}
-                                    tone={performance_profissional.metricas.atingimento_meta.pct !== null
-                                        ? (performance_profissional.metricas.atingimento_meta.pct >= 80 ? 'good'
-                                            : performance_profissional.metricas.atingimento_meta.pct >= 50 ? 'neutral' : 'bad')
-                                        : 'neutral'}
-                                />
-                                <PerformanceCard
-                                    label="Empresas recuperadas"
-                                    value={performance_profissional.metricas.recuperacao.pct !== null
-                                        ? `${performance_profissional.metricas.recuperacao.recuperadas}/${performance_profissional.metricas.recuperacao.em_queda}`
-                                        : '—'}
-                                    sub={performance_profissional.metricas.recuperacao.pct !== null
-                                        ? `${performance_profissional.metricas.recuperacao.pct.toFixed(0)}% recuperadas`
-                                        : 'nenhuma estava em queda'}
-                                    tone={performance_profissional.metricas.recuperacao.pct !== null
-                                        ? (performance_profissional.metricas.recuperacao.pct >= 60 ? 'good'
-                                            : performance_profissional.metricas.recuperacao.pct >= 30 ? 'neutral' : 'bad')
-                                        : 'neutral'}
-                                />
-                                <PerformanceCard
-                                    label="Ações executadas"
-                                    value={performance_profissional.metricas.execucao_ads.pct !== null
-                                        ? `${performance_profissional.metricas.execucao_ads.ativaram}/${performance_profissional.metricas.execucao_ads.oportunidades}`
-                                        : '—'}
-                                    sub={performance_profissional.metricas.execucao_ads.pct !== null
-                                        ? `${performance_profissional.metricas.execucao_ads.pct.toFixed(0)}% Ads ativados`
-                                        : 'nenhuma oportunidade'}
-                                    tone={performance_profissional.metricas.execucao_ads.pct !== null
-                                        ? (performance_profissional.metricas.execucao_ads.pct >= 60 ? 'good'
-                                            : performance_profissional.metricas.execucao_ads.pct >= 30 ? 'neutral' : 'bad')
-                                        : 'neutral'}
-                                />
-                                <PerformanceCard
-                                    label="Qualidade (NPS)"
-                                    value={performance_profissional.metricas.qualidade.avg_nps !== null
-                                        ? `${performance_profissional.metricas.qualidade.avg_nps.toFixed(1)}/5`
-                                        : '—'}
-                                    sub={`${performance_profissional.metricas.qualidade.meetings} reuniões · ${performance_profissional.metricas.qualidade.absenteismo_pct ?? 0}% absent.`}
-                                    tone={performance_profissional.metricas.qualidade.avg_nps !== null
-                                        ? (performance_profissional.metricas.qualidade.avg_nps >= 4 ? 'good'
-                                            : performance_profissional.metricas.qualidade.avg_nps >= 3 ? 'neutral' : 'bad')
-                                        : 'neutral'}
-                                />
-                            </div>
-
-                            {!performance_profissional.tem_base_comparativa && (
-                                <p className="mt-3 text-white/40 text-[11px]">
-                                    <AlertTriangle size={10} className="inline mr-1" />
-                                    Carteira com menos de 5 empresas elegíveis — score calculado mas comparação com pares pode ser instável.
-                                </p>
-                            )}
-                        </CardContent>
-                    </Card>
+                    <PerformanceSection
+                        data={performance_profissional}
+                        comparacao={comparacao_contextual}
+                    />
                 )}
 
                 {/* ── 4. Gráfico de evolução ─────────────────────────────────── */}
