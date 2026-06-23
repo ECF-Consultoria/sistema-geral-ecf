@@ -673,16 +673,15 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                         <StageStepper stages={stagesData} ok={ok} total={total} pct={pct} />
                     </div>
 
-                    {/* Saúde da conta */}
-                    <div className="flex items-center gap-1 flex-wrap">
-                        {temProblemaConta && <SaudeChip tone="red" icon={AlertTriangle} title={e.problema_nota}>Conta</SaudeChip>}
-                        {temProblemaMLBs && <SaudeChip tone="orange" icon={AlertTriangle}>{e.problemas_count} MLB</SaudeChip>}
-                        {prazoChip && <SaudeChip tone={prazoChip.vencido ? 'red' : 'neutral'} icon={Clock}>{prazoChip.label}</SaudeChip>}
-                        {temAtrasado && <SaudeChip tone="orange" icon={Clock}>Atrasado</SaudeChip>}
-                        {!temQualquerProblema && !prazoChip && !temAtrasado && (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-500/40">✓ conta saudável</span>
-                        )}
-                    </div>
+                    {/* Saúde da conta — só aparece quando há algum alerta */}
+                    {(temProblemaConta || temProblemaMLBs || prazoChip || temAtrasado) && (
+                        <div className="flex items-center gap-1 flex-wrap">
+                            {temProblemaConta && <SaudeChip tone="red" icon={AlertTriangle} title={e.problema_nota}>Conta</SaudeChip>}
+                            {temProblemaMLBs && <SaudeChip tone="orange" icon={AlertTriangle}>{e.problemas_count} MLB</SaudeChip>}
+                            {prazoChip && <SaudeChip tone={prazoChip.vencido ? 'red' : 'neutral'} icon={Clock}>{prazoChip.label}</SaudeChip>}
+                            {temAtrasado && <SaudeChip tone="orange" icon={Clock}>Atrasado</SaudeChip>}
+                        </div>
+                    )}
 
                     {/* Carteira — responsável + polo */}
                     <div className="flex items-center gap-3 text-[11px] mt-auto pt-0.5 min-w-0">
@@ -817,10 +816,6 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                                 ))}
                             </div>
                         </div>
-                    )}
-
-                    {e.contexto && (
-                        <p className="text-white/50 text-[12px] italic mb-4">📝 {e.contexto}</p>
                     )}
 
                     {/* SKUs por estágio (somente leitura) */}
