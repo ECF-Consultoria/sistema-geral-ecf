@@ -391,23 +391,85 @@ function ListagemCard({ listagem }) {
 }
 
 function AlertasCard({ alertas }) {
+    const [aberto, setAberto] = useState(null); // 'empresas' | 'anuncios' | null
     if (!alertas || (alertas.empresas === 0 && alertas.anuncios === 0)) return null;
+
+    const empresasLista = alertas.empresas_lista ?? [];
+    const anunciosLista = alertas.anuncios_lista ?? [];
+    const temEmpresas   = empresasLista.length > 0;
+    const temAnuncios   = anunciosLista.length > 0;
+
     return (
-        <div className="rounded-2xl border border-red-500/25 bg-red-500/[0.04] px-5 py-4 mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="flex items-center gap-2 shrink-0">
-                <AlertTriangle size={15} className="text-red-400" />
-                <span className="text-red-400 font-semibold text-sm">Alertas de Problemas</span>
-            </div>
-            <div className="flex items-center gap-4 flex-wrap">
-                <div className="flex items-center gap-2.5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2">
-                    <span className="text-red-400 font-extrabold text-xl leading-none">{alertas.empresas}</span>
-                    <span className="text-red-400/70 text-[12px] leading-tight">conta{alertas.empresas !== 1 ? 's' : ''}<br/>com problema</span>
+        <div className="rounded-2xl border border-red-500/25 bg-red-500/[0.04] px-5 py-4 mb-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                <div className="flex items-center gap-2 shrink-0">
+                    <AlertTriangle size={15} className="text-red-400" />
+                    <span className="text-red-400 font-semibold text-sm">Alertas de Problemas</span>
                 </div>
-                <div className="flex items-center gap-2.5 rounded-xl border border-orange-500/20 bg-orange-500/10 px-4 py-2">
-                    <span className="text-orange-400 font-extrabold text-xl leading-none">{alertas.anuncios}</span>
-                    <span className="text-orange-400/70 text-[12px] leading-tight">anúncio{alertas.anuncios !== 1 ? 's' : ''}<br/>com problema</span>
+                <div className="flex items-center gap-4 flex-wrap">
+                    <button
+                        type="button"
+                        onClick={() => temEmpresas && setAberto(aberto === 'empresas' ? null : 'empresas')}
+                        className={cn(
+                            'flex items-center gap-2.5 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-2 transition-colors',
+                            temEmpresas ? 'hover:bg-red-500/20 cursor-pointer' : 'cursor-default'
+                        )}
+                    >
+                        <span className="text-red-400 font-extrabold text-xl leading-none">{alertas.empresas}</span>
+                        <span className="text-red-400/70 text-[12px] leading-tight text-left">conta{alertas.empresas !== 1 ? 's' : ''}<br/>com problema</span>
+                        {temEmpresas && <span className="text-red-400/40 text-[10px] ml-0.5">{aberto === 'empresas' ? '▲' : '▼'}</span>}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => temAnuncios && setAberto(aberto === 'anuncios' ? null : 'anuncios')}
+                        className={cn(
+                            'flex items-center gap-2.5 rounded-xl border border-orange-500/20 bg-orange-500/10 px-4 py-2 transition-colors',
+                            temAnuncios ? 'hover:bg-orange-500/20 cursor-pointer' : 'cursor-default'
+                        )}
+                    >
+                        <span className="text-orange-400 font-extrabold text-xl leading-none">{alertas.anuncios}</span>
+                        <span className="text-orange-400/70 text-[12px] leading-tight text-left">anúncio{alertas.anuncios !== 1 ? 's' : ''}<br/>com problema</span>
+                        {temAnuncios && <span className="text-orange-400/40 text-[10px] ml-0.5">{aberto === 'anuncios' ? '▲' : '▼'}</span>}
+                    </button>
                 </div>
             </div>
+
+            {/* Lista de contas com problema */}
+            {aberto === 'empresas' && temEmpresas && (
+                <div className="mt-4 rounded-xl border border-red-500/15 bg-red-500/[0.03] p-3">
+                    <p className="text-red-400/60 text-[11px] font-semibold uppercase tracking-wide mb-2">Contas com problema</p>
+                    <div className="flex flex-col gap-1.5">
+                        {empresasLista.map((e, i) => (
+                            <div key={i} className="flex items-start gap-2 text-[12px]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-red-400 mt-1.5 shrink-0" />
+                                <div>
+                                    <span className="text-white/80 font-medium">{e.nome}</span>
+                                    {e.nota && <span className="text-white/40"> — {e.nota}</span>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Lista de anúncios com problema */}
+            {aberto === 'anuncios' && temAnuncios && (
+                <div className="mt-4 rounded-xl border border-orange-500/15 bg-orange-500/[0.03] p-3">
+                    <p className="text-orange-400/60 text-[11px] font-semibold uppercase tracking-wide mb-2">Anúncios com problema</p>
+                    <div className="flex flex-col gap-1.5">
+                        {anunciosLista.map((a, i) => (
+                            <div key={i} className="flex items-start gap-2 text-[12px]">
+                                <span className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-1.5 shrink-0" />
+                                <div>
+                                    <span className="text-white/80 font-medium">{a.empresa || 'Sem empresa'}</span>
+                                    {a.mlb_code && <span className="text-white/40"> · {a.mlb_code}</span>}
+                                    {a.nota && <span className="text-white/40"> — {a.nota}</span>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

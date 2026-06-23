@@ -370,9 +370,29 @@ class MlbController extends Controller
         ];
 
         // Alertas de problemas — conta TODAS as empresas com problema, independente da fase
+        $empresasProblema = MlbEmpresa::where('problema', true)
+            ->orderBy('nome')
+            ->get(['nome', 'problema_nota'])
+            ->map(fn($e) => ['nome' => $e->nome, 'nota' => $e->problema_nota])
+            ->values()
+            ->toArray();
+
+        $anunciosProblema = Publicacao::where('problema', true)
+            ->orderBy('empresa')
+            ->get(['empresa', 'mlb_code', 'problema_nota'])
+            ->map(fn($p) => [
+                'empresa'  => $p->empresa,
+                'mlb_code' => $p->mlb_code,
+                'nota'     => $p->problema_nota,
+            ])
+            ->values()
+            ->toArray();
+
         $alertas = [
-            'empresas' => MlbEmpresa::where('problema', true)->count(),
-            'anuncios' => Publicacao::where('problema', true)->count(),
+            'empresas'       => count($empresasProblema),
+            'anuncios'       => count($anunciosProblema),
+            'empresas_lista' => $empresasProblema,
+            'anuncios_lista' => $anunciosProblema,
         ];
 
         // Distribuição por estágio — agrupa pelo COALESCE para unir NULLs com 'Não Listado'
