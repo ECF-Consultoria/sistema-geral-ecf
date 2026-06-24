@@ -440,6 +440,8 @@ Route::middleware(['auth', 'verified', 'role:admin,consultor,mentor'])
 Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(function () {
     Route::get('/dashboard',      [MlbController::class, 'dashboard'])->name('dashboard');
     Route::get('/projetos',       [MlbController::class, 'projetos'])->name('projetos');
+    // Visão de empresas POLOS agrupadas por fase M (grid de cards, item do grupo Polos no menu)
+    Route::get('/polos-empresas', [MlbController::class, 'polosEmpresas'])->name('polos-empresas');
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
     Route::put('/treinamentos/{treinamento}',    [MlbController::class, 'updateTreinamento'])->name('treinamentos.update');

@@ -1420,6 +1420,69 @@ class MlbController extends Controller
     }
 
     /**
+     * Visão de empresas POLOS agrupadas por fase M (M0–M4) com grid de cards.
+     * Reaproveita a mesma lógica de agrupamento do método projetos(),
+     * mas retorna apenas os dados de POLOS para a nova página dedicada.
+     *
+     * @return array{
+     *   grupos: array<string, array>,
+     *   contagens: array<string, int>,
+     *   totalPolos: int
+     * }
+     */
+    public function polosEmpresas(Request $request): Response
+    {
+        $this->checkPubAccess('projetos');
+
+        $ordenPolos = ['M0', 'M1', 'M2', 'M3', 'M4'];
+
+        // Carrega empresas com mesmo mapeamento de projetos()
+        $todas = MlbEmpresa::with(['responsavel:id,name', 'implementacao'])
+            ->orderBy('nome')
+            ->get()
+            ->map(fn($e) => [
+                'id'                  => $e->id,
+                'nome'                => $e->nome,
+                'fase'                => $e->fase,
+                'estagio'             => $e->estagio,
+                'prioridade'          => $e->prioridade,
+                'responsavel_nome'    => $e->responsavel?->name,
+                'progresso'           => $e->progresso(),
+                'problema'            => $e->problema,
+                'implementacao_token' => $e->implementacao?->token,
+                // Campo canônico no banco; cai para mapeamento por fase como fallback
+                // (compatibilidade com empresas antigas onde projeto ainda não foi preenchido)
+                'projeto'             => $e->getAttributes()['projeto']
+                                        ?? (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null),
+            ]);
+
+        // Filtra apenas empresas do projeto POLOS e agrupa por fase M0..M4
+        $polos = $todas->filter(fn($e) => $e['projeto'] === 'POLOS');
+
+        $gruposPolos = [];
+        foreach ($ordenPolos as $m) {
+            $grupo = $polos->filter(fn($e) => $e['fase'] === $m)->values()->toArray();
+            if (!empty($grupo)) {
+                $gruposPolos[$m] = $grupo;
+            }
+        }
+
+        // Contagens para todas as fases (inclusive as com zero empresas)
+        $contagens = [];
+        foreach ($ordenPolos as $m) {
+            $contagens[$m] = count($gruposPolos[$m] ?? []);
+        }
+
+        $totalPolos = $polos->count();
+
+        return Inertia::render('Polos/EmpresasPorM', [
+            'grupos'     => $gruposPolos,
+            'contagens'  => $contagens,
+            'totalPolos' => $totalPolos,
+        ]);
+    }
+
+    /**
      * Persiste uma nova opção customizada de campo antes de salvar a empresa.
      * Permite que a opção apareça em outros formulários mesmo antes do primeiro uso.
      */
