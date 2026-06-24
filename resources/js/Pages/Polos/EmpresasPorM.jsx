@@ -2,15 +2,7 @@ import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { usePage } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, Link2, BookUser, Search } from 'lucide-react';
-
-// ─── Mapa de cores de prioridade (replicado de Mlb/Projetos.jsx) ─────────────
-const PRIORIDADE_COR = {
-    '1 Urgente': 'text-red-400',
-    '2 Alto':    'text-orange-400',
-    '3 Média':   'text-yellow-400',
-    '4 Baixa':   'text-white/30',
-};
+import { Link2, BookUser, Search } from 'lucide-react';
 
 // Ordem fixa das fases M (mesma do backend)
 const ORDEM_M = ['M0', 'M1', 'M2', 'M3', 'M4'];
@@ -28,7 +20,7 @@ function EmpresaCard({ e, appUrl }) {
             temProblema && 'ring-1 ring-red-500/30'
         )}>
             <div className="p-3.5 flex flex-col gap-2.5 flex-1">
-                {/* Identidade: nome + prioridade */}
+                {/* Identidade: nome */}
                 <div className="flex items-center gap-2 min-w-0">
                     <span
                         className="text-white font-semibold text-[14px] truncate flex-1"
@@ -36,11 +28,6 @@ function EmpresaCard({ e, appUrl }) {
                     >
                         {e.nome}
                     </span>
-                    {e.prioridade && (PRIORIDADE_COR[e.prioridade] != null) && (
-                        <span className={cn('shrink-0 text-[10px] font-bold', PRIORIDADE_COR[e.prioridade])}>
-                            {e.prioridade}
-                        </span>
-                    )}
                 </div>
 
                 {/* Classificação: M (fase) em destaque + estágio */}
@@ -62,13 +49,12 @@ function EmpresaCard({ e, appUrl }) {
                     )}
                 </div>
 
-                {/* Saúde — exibe somente quando há problema */}
+                {/* Saúde — exibe somente quando há problema (sem ícone) */}
                 {temProblema && (
                     <div
-                        className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20"
+                        className="px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20"
                         title={e.problema}
                     >
-                        <AlertTriangle size={11} className="text-red-400 shrink-0" />
                         <span className="text-red-300 text-[10px] truncate">{e.problema}</span>
                     </div>
                 )}
