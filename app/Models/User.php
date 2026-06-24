@@ -139,6 +139,16 @@ class User extends Authenticatable
 
         if ($this->isLider()) {
             $keys = array_values(array_unique(array_merge($keys, Permissions::AUTO_LIDERANCA)));
+
+            // Quick 260623 — pacote extra pra líder do setor Performance:
+            // dashboard ECF + empresas + metas + desempenho + carteira (visão
+            // consolidada da equipe). Detecta pelo slug do setor liderado.
+            $lideraPerformance = $this->setoresLiderados()
+                ->where('setores.slug', 'performance')
+                ->exists();
+            if ($lideraPerformance) {
+                $keys = array_values(array_unique(array_merge($keys, Permissions::AUTO_LIDERANCA_PERFORMANCE)));
+            }
         }
 
         return $this->effectivePermissionsCache = $keys;

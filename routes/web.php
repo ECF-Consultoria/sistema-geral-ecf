@@ -255,6 +255,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Carteira (portfólio) — cada usuário vê a própria
     Route::get('/portfolio', [PortfolioController::class, 'own'])->name('portfolio.own');
+    // Quick 260623 — portfolio.show acessível pra admin (todos) e líder de setor
+    // (apenas users do setor liderado). Autorização granular no controller.
+    Route::get('/admin/users/{user}/portfolio', [PortfolioController::class, 'show'])->name('portfolio.show');
 
     // ─── Sugadores ──────────────────────────────────────────────────────────
     // Leitura/escrita gated por SugadorPolicy (admin/gestor/lider veem global;
@@ -306,8 +309,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/grants/{grant}', [GrantController::class, 'destroy'])->name('grants.destroy');
         Route::post('/grants/{grant}/regrant', [GrantController::class, 'regrant'])->name('grants.regrant');
 
-        // Carteira por profissional (admin)
-        Route::get('/admin/users/{user}/portfolio', [PortfolioController::class, 'show'])->name('portfolio.show');
+        // Carteira por profissional (admin) — CRUD de PortfolioGoals fica restrito
+        // ao grupo admin; portfolio.show (a tela em si) foi movida pra fora porque
+        // líder de setor também precisa acessar carteira de membros do seu setor
+        // (quick 260623). A autorização granular acontece em PortfolioController::show.
         Route::post('/admin/users/{user}/portfolio-goals', [PortfolioController::class, 'storeGoal'])->name('portfolio.goals.store');
         Route::put('/portfolio-goals/{goal}', [PortfolioController::class, 'updateGoal'])->name('portfolio.goals.update');
         Route::delete('/portfolio-goals/{goal}', [PortfolioController::class, 'destroyGoal'])->name('portfolio.goals.destroy');

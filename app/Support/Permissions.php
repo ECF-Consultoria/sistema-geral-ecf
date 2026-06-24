@@ -95,6 +95,24 @@ class Permissions
     ];
 
     /**
+     * Quick 260623 — permissões automáticas ESPECÍFICAS pro líder do setor
+     * Performance. Concedidas em adição ao AUTO_LIDERANCA padrão quando o
+     * user é líder do setor cujo slug == 'performance'. Outros líderes (Polos,
+     * Publicações) NÃO ganham esse pacote.
+     *
+     * Motivo: líder de Performance precisa ver/atuar nos dashboards ECF,
+     * cadastro de empresas, metas e ranking de desempenho — porque a equipe
+     * dele opera nessas áreas. Outros setores têm domínios diferentes.
+     */
+    public const AUTO_LIDERANCA_PERFORMANCE = [
+        self::CORE_DASHBOARD,
+        self::CORE_EMPRESAS,
+        self::CORE_CARTEIRA,
+        self::CORE_METAS,
+        self::CORE_PERFORMANCE,
+    ];
+
+    /**
      * Catálogo agrupado por módulo com label legível em pt-BR.
      * Usado pela tela admin de permissões e pra normalizar a lista no frontend.
      *

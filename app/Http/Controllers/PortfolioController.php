@@ -21,20 +21,42 @@ class PortfolioController extends Controller
         private PortfolioScoreService $scoreService,
     ) {}
 
-    // Admin vê a carteira de qualquer profissional
+    // Carteira individual de um profissional. Acesso (quick 260623):
+    //  - Admin: qualquer user (compat).
+    //  - Líder de setor: somente users vinculados (user_setores) ao(s) setor(es)
+    //    que ele lidera. Líder de Performance vê a carteira da equipe Performance,
+    //    líder de Polos vê a equipe Polos, etc.
+    //  - Próprio user (auto-visualização também funciona).
     public function show(Request $request, User $user)
     {
+        $atual = $request->user();
+        $autorizado = $atual->isAdmin()
+            || $atual->id === $user->id
+            || (
+                $atual->isLider()
+                && DB::table('user_setores as us')
+                    ->whereIn('us.setor_id', $atual->setoresLiderados()->pluck('setores.id'))
+                    ->where('us.user_id', $user->id)
+                    ->exists()
+            );
+        abort_unless($autorizado, 403);
+
         return $this->renderPortfolio($request, $user);
     }
 
-    // Aba "Carteira" no sidebar — bifurca por papel (quick 260610-lj6):
+    // Aba "Carteira" no sidebar — bifurca por papel (quick 260610-lj6 + 260623):
     //  - admin → visão consolidada de TODOS analistas/estrategistas (cards)
+    //  - líder de setor → visão consolidada FILTRADA pelos setores que ele lidera
     //  - profissional → carteira pessoal (Portfolio/Show)
     public function own(Request $request)
     {
         $user = $request->user();
         if ($user->isAdmin()) {
             return $this->renderCarteirasConsolidadas($request);
+        }
+        if ($user->isLider()) {
+            $setoresIds = $user->setoresLiderados()->pluck('setores.id')->all();
+            return $this->renderCarteirasConsolidadas($request, $setoresIds);
         }
         return $this->renderPortfolio($request, $user);
     }
@@ -49,7 +71,7 @@ class PortfolioController extends Controller
      * implementada no DashboardController (quick 260610-f69) e migrada pra cá
      * no quick 260610-lj6 — bifurcação admin/não-admin na aba Carteira.
      */
-    private function renderCarteirasConsolidadas(Request $request): \Inertia\Response
+    private function renderCarteirasConsolidadas(Request $request, ?array $setoresFiltro = null): \Inertia\Response
     {
         $period = $request->get('period', '30');
         $days   = match ($period) {
@@ -60,22 +82,34 @@ class PortfolioController extends Controller
         };
         $since = now()->subDays($days);
 
+        // Quick 260623 — quando $setoresFiltro != null, restringe analistas e
+        // estrategistas àqueles vinculados aos setores informados. Usado pra
+        // líder de setor ver consolidação só dos membros do(s) setor(es) que
+        // ele lidera. Admin chama sem filtro = vê todos.
+        $aplicarFiltroSetor = function ($q) use ($setoresFiltro) {
+            if (!empty($setoresFiltro)) {
+                $q->whereIn('us.setor_id', $setoresFiltro);
+            }
+        };
+
         $analistas = User::where('active', 1)
-            ->whereExists(function ($q) {
+            ->whereExists(function ($q) use ($aplicarFiltroSetor) {
                 $q->from('user_setores as us')
                   ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
                   ->whereColumn('us.user_id', 'users.id')
                   ->where('c.slug', 'analista');
+                $aplicarFiltroSetor($q);
             })
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
 
         $estrategistas = User::where('active', 1)
-            ->whereExists(function ($q) {
+            ->whereExists(function ($q) use ($aplicarFiltroSetor) {
                 $q->from('user_setores as us')
                   ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
                   ->whereColumn('us.user_id', 'users.id')
                   ->where('c.slug', 'estrategista');
+                $aplicarFiltroSetor($q);
             })
             ->orderBy('name')
             ->get(['id', 'name', 'role']);
