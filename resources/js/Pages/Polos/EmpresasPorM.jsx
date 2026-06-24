@@ -11,14 +11,10 @@ const ORDEM_M = ['M0', 'M1', 'M2', 'M3', 'M4'];
 // Apenas identidade/classificação — sem barra de progresso. A fase (M) fica em
 // destaque para deixar claro em qual M a empresa está.
 function EmpresaCard({ e, appUrl }) {
-    const concluida   = e.estagio === 'Concluido';
-    const temProblema = !!e.problema;
+    const concluida = e.estagio === 'Concluido';
 
     return (
-        <div className={cn(
-            'card-ecf rounded-2xl overflow-hidden flex flex-col transition-all',
-            temProblema && 'ring-1 ring-red-500/30'
-        )}>
+        <div className="card-ecf rounded-2xl overflow-hidden flex flex-col transition-all">
             <div className="p-3.5 flex flex-col gap-2.5 flex-1">
                 {/* Identidade: nome */}
                 <div className="flex items-center gap-2 min-w-0">
@@ -48,16 +44,6 @@ function EmpresaCard({ e, appUrl }) {
                         </span>
                     )}
                 </div>
-
-                {/* Saúde — exibe somente quando há problema (sem ícone) */}
-                {temProblema && (
-                    <div
-                        className="px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20"
-                        title={e.problema}
-                    >
-                        <span className="text-red-300 text-[10px] truncate">{e.problema}</span>
-                    </div>
-                )}
 
                 {/* Responsável */}
                 {e.responsavel_nome && (
