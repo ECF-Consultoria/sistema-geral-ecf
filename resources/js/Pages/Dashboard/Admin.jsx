@@ -431,12 +431,14 @@ export default function AdminDashboard({
                                                 border: '1px solid rgba(255,255,255,0.12)',
                                                 borderRadius: 8,
                                                 fontSize: 12,
+                                                color: 'rgba(255,255,255,0.9)',
                                             }}
+                                            labelStyle={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, marginBottom: 4 }}
+                                            itemStyle={{ color: 'rgba(255,255,255,0.85)' }}
                                             formatter={(value, _name, props) => {
                                                 const c = props?.payload?.classificacao ?? '';
                                                 return [`${Math.round(value)} pts · ${c}`, 'Score'];
                                             }}
-                                            labelStyle={{ color: 'rgba(255,255,255,0.9)' }}
                                         />
                                         <Bar
                                             dataKey="score"
