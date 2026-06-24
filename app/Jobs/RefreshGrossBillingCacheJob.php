@@ -54,6 +54,24 @@ class RefreshGrossBillingCacheJob implements ShouldQueue, ShouldBeUnique
         return 720;
     }
 
+    /**
+     * Despacha o warm-up apenas quando há fila real (worker em background).
+     *
+     * Em QUEUE_CONNECTION=sync (ambiente de dev) o dispatch() executaria este
+     * job DENTRO da request HTTP que o chamou. Como o handle() faz usleep(~7s)
+     * por empresa (rate limit da Adman), isso estoura o max_execution_time do
+     * PHP (30s) e derruba a página com FatalError. O warm-up é só uma
+     * otimização de cache "fire-and-forget" para a próxima request — então em
+     * sync simplesmente pulamos. Em produção (queue database + worker) o
+     * dispatch enfileira normalmente, sem alteração de comportamento.
+     */
+    public static function dispatchIfQueued(): void
+    {
+        if (config('queue.default') !== 'sync') {
+            self::dispatch();
+        }
+    }
+
     public function handle(AdmanService $adman): void
     {
         // Phase 18 W4-T2: Defesa em profundidade contra concorrencia interna.

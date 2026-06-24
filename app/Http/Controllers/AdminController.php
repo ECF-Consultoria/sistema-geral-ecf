@@ -371,7 +371,7 @@ class AdminController extends Controller
         // Cache cold pra alguma empresa? Dispara o job pra preencher na
         // próxima request. ShouldBeUnique evita dispatches em paralelo.
         if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatchIfQueued();
         }
 
         // Phase 14 (Frente B): catálogo de serviços ativos para popular o select
@@ -743,7 +743,7 @@ class AdminController extends Controller
         }
 
         if ($missingCache) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatchIfQueued();
         }
 
         return view('admin.relatorio-geral', [

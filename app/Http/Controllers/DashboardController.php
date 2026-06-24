@@ -211,7 +211,7 @@ class DashboardController extends Controller
         // Observação W2-T3: o Job só pré-aquece range 30d, então para
         // $period != '30' o cache continua frio mesmo após o warm-up.
         if (!$grossCacheCompleto || !$accountCacheCompleto) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatchIfQueued();
         }
 
         // Revenue por empresa no $period:
@@ -714,7 +714,7 @@ class DashboardController extends Controller
         }
 
         if (!$grossCacheCompleto || !$accountCacheCompleto) {
-            \App\Jobs\RefreshGrossBillingCacheJob::dispatch();
+            \App\Jobs\RefreshGrossBillingCacheJob::dispatchIfQueued();
         }
 
         $revenue30dByCompany = [];
