@@ -146,8 +146,8 @@ const NAV_TREE = [
         icon: ListChecks,
         children: [
             { label: 'Onboarding',     routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao',   icon: ListChecks,   permission: 'mlb.implementacao' },
-            // Nova visão de empresas Polos agrupadas por fase M, em grid de cards
-            { label: 'Empresas por M', routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM',  icon: Building2,    permission: 'mlb.projetos' },
+            // Empresas Polos por fase M (M0–M4) — grid de cards com filtro e contagem por M
+            { label: 'Empresas',       routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM',  icon: Building2,    permission: 'mlb.projetos' },
             // Phase 38 — Faturamento por Polo vs Meta (admin-only, dados ECF Drive)
             { label: 'Faturamento Polos', routeName: 'polos.index', page: 'Polos/Index', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],

@@ -1,7 +1,8 @@
+import { useMemo, useState } from 'react';
 import AppLayout from '@/Layouts/AppLayout';
 import { usePage } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, Building2, Link2, BookUser } from 'lucide-react';
+import { AlertTriangle, Link2, BookUser, Search } from 'lucide-react';
 
 // ─── Mapa de cores de prioridade (replicado de Mlb/Projetos.jsx) ─────────────
 const PRIORIDADE_COR = {
@@ -11,23 +12,14 @@ const PRIORIDADE_COR = {
     '4 Baixa':   'text-white/30',
 };
 
-// ─── Barra de progresso compacta (mesmo visual de Mlb/Projetos.jsx) ──────────
-function ProgressBar({ ok, total }) {
-    const pct   = total > 0 ? Math.round(ok / total * 100) : 0;
-    const color = pct === 100 ? '#22c55e' : pct >= 50 ? '#eab308' : '#8b5cf6';
-    return (
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div style={{ width: `${pct}%`, background: color }} className="h-full rounded-full" />
-            </div>
-            <span className="text-white/30 text-[10px] shrink-0 tabular-nums">{ok}/{total}</span>
-        </div>
-    );
-}
+// Ordem fixa das fases M (mesma do backend)
+const ORDEM_M = ['M0', 'M1', 'M2', 'M3', 'M4'];
 
 // ─── Card compacto de empresa POLOS ──────────────────────────────────────────
+// Apenas identidade/classificação — sem barra de progresso. A fase (M) fica em
+// destaque para deixar claro em qual M a empresa está.
 function EmpresaCard({ e, appUrl }) {
-    const concluida  = e.estagio === 'Concluido';
+    const concluida   = e.estagio === 'Concluido';
     const temProblema = !!e.problema;
 
     return (
@@ -51,8 +43,13 @@ function EmpresaCard({ e, appUrl }) {
                     )}
                 </div>
 
-                {/* Classificação: estágio + fase */}
+                {/* Classificação: M (fase) em destaque + estágio */}
                 <div className="flex items-center gap-1.5 flex-wrap">
+                    {e.fase && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/30">
+                            {e.fase}
+                        </span>
+                    )}
                     {e.estagio && (
                         <span className={cn(
                             'px-2 py-0.5 rounded-full text-[10px] font-bold border',
@@ -63,17 +60,6 @@ function EmpresaCard({ e, appUrl }) {
                             {e.estagio}
                         </span>
                     )}
-                    {e.fase && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold border bg-sky-500/15 text-sky-400 border-sky-500/30">
-                            {e.fase}
-                        </span>
-                    )}
-                </div>
-
-                {/* Progresso de implantação */}
-                <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 flex items-center gap-2">
-                    <span className="text-white/30 text-[10px] shrink-0">Progresso</span>
-                    <ProgressBar ok={e.progresso.ok} total={e.progresso.total} />
                 </div>
 
                 {/* Saúde — exibe somente quando há problema */}
@@ -120,72 +106,106 @@ function EmpresaCard({ e, appUrl }) {
     );
 }
 
-// ─── Seção de cada fase M ─────────────────────────────────────────────────────
-function SecaoM({ m, empresas, appUrl }) {
-    const numMes = m.replace('M', '');
-    return (
-        <div className="space-y-3">
-            {/* Cabeçalho da seção */}
-            <div className="flex items-center gap-3">
-                <span className="text-ecf-yellow font-bold text-base">{m}</span>
-                <span className="text-white/40 text-[12px]">= Mês {numMes}</span>
-                <span className="px-2 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow text-[11px] font-semibold border border-ecf-yellow/20">
-                    {empresas.length} empresa{empresas.length !== 1 ? 's' : ''}
-                </span>
-            </div>
-
-            {/* Grid de cards compacto */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                {empresas.map(e => (
-                    <EmpresaCard key={e.id} e={e} appUrl={appUrl} />
-                ))}
-            </div>
-        </div>
-    );
-}
-
 // ─── Página principal ─────────────────────────────────────────────────────────
 export default function EmpresasPorM({ grupos, contagens, totalPolos }) {
     const { asset_url } = usePage().props;
     // URL base para links de implementação (mesmo padrão de EmpresaRow em Mlb/Projetos.jsx)
     const appUrl = asset_url ?? '';
 
-    const temGrupos = grupos && Object.keys(grupos).length > 0;
+    // Lista achatada de todas as empresas POLOS (cada uma já carrega .fase = M)
+    const todas = useMemo(() => Object.values(grupos ?? {}).flat(), [grupos]);
+
+    // Filtros: por fase M (chips) e por nome (busca)
+    const [filtroM, setFiltroM] = useState('todas'); // 'todas' | 'M0'..'M4'
+    const [busca, setBusca]     = useState('');
+
+    const filtradas = useMemo(() => {
+        const q = busca.trim().toLowerCase();
+        return todas.filter((e) => {
+            if (filtroM !== 'todas' && e.fase !== filtroM) return false;
+            if (q && !(e.nome ?? '').toLowerCase().includes(q)) return false;
+            return true;
+        });
+    }, [todas, filtroM, busca]);
+
+    // Chips de filtro: "Todas" + M0..M4 com a contagem de cada M
+    // (contagens cobre todos os M, inclusive os com 0 empresas)
+    const chips = [
+        { key: 'todas', label: 'Todas', n: totalPolos ?? todas.length },
+        ...ORDEM_M.map((m) => ({ key: m, label: m, n: contagens?.[m] ?? 0 })),
+    ];
 
     return (
-        <AppLayout title="Empresas por M">
+        <AppLayout title="Empresas">
             <div className="space-y-5">
-                {/* Cabeçalho da página */}
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                        <h2 className="text-white font-display font-bold text-xl leading-tight">
-                            Empresas por M
-                        </h2>
-                        <p className="text-white/40 text-[13px] mt-1">
-                            Empresas do projeto Polos agrupadas por fase de implantação (M0–M4)
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-ecf-yellow/10 border border-ecf-yellow/20">
-                            <Building2 size={13} className="text-ecf-yellow" />
-                            <span className="text-ecf-yellow font-semibold text-[13px]">
-                                {totalPolos} empresa{totalPolos !== 1 ? 's' : ''}
-                            </span>
-                        </div>
+                {/* Cabeçalho */}
+                <div>
+                    <h2 className="text-white font-display font-bold text-xl leading-tight">
+                        Empresas
+                    </h2>
+                    <p className="text-white/40 text-[13px] mt-1">
+                        Empresas do projeto Polos por fase de implantação (M0–M4)
+                    </p>
+                </div>
+
+                {/* Barra de filtros: chips por M (com contagem) + busca por nome */}
+                <div className="flex flex-wrap items-center gap-2">
+                    {chips.map((c) => {
+                        const ativo = filtroM === c.key;
+                        const vazio = c.n === 0 && c.key !== 'todas';
+                        return (
+                            <button
+                                key={c.key}
+                                type="button"
+                                disabled={vazio}
+                                onClick={() => setFiltroM(c.key)}
+                                className={cn(
+                                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold transition',
+                                    ativo
+                                        ? 'bg-ecf-yellow text-black'
+                                        : vazio
+                                            ? 'bg-white/[0.02] text-white/20 cursor-default'
+                                            : 'bg-white/[0.05] text-white/70 hover:bg-white/[0.1]'
+                                )}
+                            >
+                                {c.label}
+                                <span className={cn(
+                                    'tabular-nums rounded-full px-1.5 text-[10px]',
+                                    ativo ? 'bg-black/15' : 'bg-white/10'
+                                )}>
+                                    {c.n}
+                                </span>
+                            </button>
+                        );
+                    })}
+
+                    {/* Busca por nome */}
+                    <div className="relative ml-auto">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input
+                            type="text"
+                            value={busca}
+                            onChange={(ev) => setBusca(ev.target.value)}
+                            placeholder="Buscar empresa…"
+                            className="w-52 rounded-full border border-white/[0.1] bg-ecf-card pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40"
+                        />
                     </div>
                 </div>
 
-                {/* Estado vazio */}
-                {!temGrupos && (
+                {/* Grid de cards (ou estado vazio) */}
+                {filtradas.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                        {filtradas.map((e) => (
+                            <EmpresaCard key={e.id} e={e} appUrl={appUrl} />
+                        ))}
+                    </div>
+                ) : (
                     <div className="card-ecf rounded-2xl p-12 text-center text-white/20">
-                        Nenhuma empresa Polos com fase definida.
+                        {todas.length === 0
+                            ? 'Nenhuma empresa Polos com fase definida.'
+                            : 'Nenhuma empresa neste filtro.'}
                     </div>
                 )}
-
-                {/* Seções M0–M4 na ordem vinda do backend */}
-                {temGrupos && Object.entries(grupos).map(([m, empresas]) => (
-                    <SecaoM key={m} m={m} empresas={empresas} appUrl={appUrl} />
-                ))}
             </div>
         </AppLayout>
     );
