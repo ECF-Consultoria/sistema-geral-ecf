@@ -517,7 +517,12 @@ class DashboardController extends Controller
         // Funciona como carteira: selecionar mostra só as empresas daquele grupo.
         $grupos = \App\Models\CompanyGroup::orderBy('name')->get(['id', 'name']);
 
-        $ranking = $this->buildRanking($users, $since);
+        // Quick 260623 — buildRanking() ainda existe pra back-compat (callers
+        // possiveis), mas o widget "Ranking Analistas e Mentores" foi removido
+        // do Dashboard/Admin.jsx em favor do "Desempenho da equipe" (BarChart
+        // por score, alimentado por performance_equipe acima). $ranking nao e
+        // mais incluido no payload Inertia — economiza 1 query agregada por
+        // request.
 
         // ─── Carteira por profissional — MOVIDA pra aba "Carteira" (quick 260610-lj6) ───
         //
@@ -654,7 +659,9 @@ class DashboardController extends Controller
             'combinacoes'    => $combinacoes,
             'companies_list' => $allCompanies,
             'grupos_list'    => $grupos,
-            'ranking'         => $ranking->take(5)->values(),
+            // 'ranking' removido (quick 260623) — widget legado substituido por
+            // 'performance_equipe' (BarChart score). Ver comentario perto da
+            // chamada do buildRanking() acima.
             'companies_performance' => $companies->map(fn($c) => [
                 'id'       => $c->id,
                 'name'     => $c->name,

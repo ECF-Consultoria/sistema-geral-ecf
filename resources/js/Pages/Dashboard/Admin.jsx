@@ -522,61 +522,10 @@ export default function AdminDashboard({
                     </div>
                 </div>
 
-                {/* Ranking individual */}
-                {ranking.length > 0 && (
-                    <div className="card-ecf rounded-2xl overflow-hidden">
-                        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.06]">
-                            <div className="flex items-center gap-2.5">
-                                <Trophy size={15} className="text-ecf-yellow/70" />
-                                <div>
-                                    <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase">Desempenho</p>
-                                    <p className="text-white font-display font-extrabold text-base tracking-tight">Ranking Analistas e Mentores</p>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => router.visit(route('performance.index'))}
-                                className="flex items-center gap-1 text-white/30 hover:text-white/60 text-xs transition-colors"
-                            >
-                                Ver todos <ChevronRight size={13} />
-                            </button>
-                        </div>
-                        <div className="p-5">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                {ranking.map((u, idx) => {
-                                    const medalColor = idx === 0
-                                        ? 'text-ecf-yellow border-ecf-yellow/30 bg-ecf-yellow/10'
-                                        : idx === 1
-                                        ? 'text-white/70 border-white/20 bg-white/[0.05]'
-                                        : idx === 2
-                                        ? 'text-orange-400 border-orange-400/30 bg-orange-400/10'
-                                        : 'text-white/30 border-white/10 bg-transparent';
-                                    const npsColor = u.avg_nps === null ? 'text-white/25'
-                                        : u.avg_nps >= 9 ? 'text-emerald-400'
-                                        : u.avg_nps >= 7 ? 'text-ecf-yellow'
-                                        : 'text-red-400';
-                                    return (
-                                        <div key={u.id} className={cn('flex items-center gap-3 rounded-xl border p-4', medalColor)}>
-                                            <span className="font-display font-extrabold text-2xl w-7 shrink-0 text-center opacity-60">
-                                                {idx + 1}
-                                            </span>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-white font-semibold text-[13px] truncate">{u.name}</p>
-                                                <p className="text-white/30 text-[11px]">{roleLabel[u.role]} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''}</p>
-                                            </div>
-                                            <div className="text-right shrink-0">
-                                                <p className={cn('font-display font-extrabold text-xl', npsColor)}>
-                                                    {u.avg_nps !== null ? u.avg_nps : '—'}
-                                                </p>
-                                                <p className="text-white/25 text-[10px]">{u.nps_responses} resp.</p>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    </div>
-                )}
-
+                {/* Quick 260623 — "Ranking Analistas e Mentores" removido: widget
+                    legado usava avg_nps como métrica única; substituído pelo
+                    "Desempenho da equipe" (BarChart por score acima). Cobertura
+                    completa do ranking continua disponível em /performance. */}
 
             </div>
         </AppLayout>
