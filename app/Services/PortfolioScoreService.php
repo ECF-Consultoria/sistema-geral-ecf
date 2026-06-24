@@ -236,21 +236,18 @@ class PortfolioScoreService
             ? round(($recuperadasCount / $emQuedaIds->count()) * 100, 1)
             : null;
 
-        // ── 6. Cobertura de Ads — % empresas elegíveis com ad_spend > 0 ──
-        // Hotfix 260623 v2: a metrica original ("ativaram Ads no periodo")
-        // dava 0/N pra carteiras que ja trabalham com Ads em 100% das
-        // empresas — caso da maioria dos analistas ECF. Substituida por
-        // "% de empresas elegiveis com Ads ATIVO nos ultimos 30d", que e
-        // util como indicador operacional: idealmente 100% pra quem cobra
-        // gestao de Ads. Quem tem <100% tem oportunidade clara de ativacao.
-        $comAdsAtivosCount = $eligiveis->filter(function ($c) use ($sumAtual) {
-            $row = $sumAtual->get($c->id);
-            return ((float) ($row->ads ?? 0)) > 0;
-        })->count();
-
-        $execucaoPct = $eligiveis->count() > 0
-            ? round(($comAdsAtivosCount / $eligiveis->count()) * 100, 1)
-            : null;
+        // ── 6. Categoria 'execucao_ads' DESCONTINUADA (quick 260623 v3) ──
+        // Premissa errada: o sistema marca "sem Ads" baseado em cache Adman
+        // investment + SUM DB ad_spend. Quando ambos retornam 0 (cache MISS
+        // + sync nao rodou), gera falso positivo pra empresas que ATIVAMENTE
+        // tem Ads na Adman mas o nosso lado nao sincronizou. Como a ECF
+        // gerencia Ads em 100% das empresas, qualquer "sem Ads" reportado
+        // tendia a ser ruido. Categoria fica null aqui — o peso de 10% e
+        // redistribuido automaticamente pelas outras 5 categorias via
+        // scoreFinal(). Mantida a chave 'execucao_ads' no retorno por
+        // compat com codigos que leem (todos null pra UI esconder).
+        $comAdsAtivosCount = null;
+        $execucaoPct       = null;
 
         // ── 7. Qualidade ──
         $surveys = NpsSurvey::with('response')

@@ -78,7 +78,6 @@ const METRIC_HELP = {
     empresas_crescendo: 'Quantas das empresas elegíveis tiveram revenue atual > revenue do período anterior (segundo o revenue_prev_period reportado pela Adman).',
     meta: 'Atingimento da meta da carteira. Prioridade: PortfolioGoal de revenue ativo. Se não houver, soma das metas individuais (Goal de revenue por empresa) ativas — basta cadastrar 1 meta numa empresa pra entrar.',
     recuperacao: 'Das empresas que estavam em queda nos 15-30d anteriores (revenue < revenue_prev_period), quantas voltaram a crescer nos últimos 15d.',
-    execucao_ads: '% das empresas elegíveis que tiveram ad_spend > 0 nos últimos 30d. Métrica operacional — ideal é 100% pra quem cobra gestão de Ads.',
     qualidade: 'NPS médio das respostas dos últimos 30d (escala 1-5) + número de reuniões realizadas + % absenteísmo (consultor ou estrategista ausente).',
     prioridade_do_dia: 'Empresas que aparecem em pelo menos 1 alerta acionável (grant expirando ≤30d, em queda MoM, ou sem Ads). Distinct.',
     investimento_ads: 'Total de ad_spend nas empresas da carteira nos últimos 30d. Vem do cache Adman (chave investment) com fallback SUM DB.',
@@ -144,12 +143,14 @@ function PerformanceSection({ data, comparacao }) {
     const cor = SCORE_COLOR[data.classificacao] ?? '#3b82f6';
 
     // Pontuações 0-100 por dimensão pra alimentar o radar
+    // Quick 260623 v3: dimensão "Execução" (cobertura Ads) descontinuada —
+    // dados de "sem Ads" eram ruidosos (cache MISS gerava falso positivo)
+    // e premissa errada na carteira ECF (que sempre tem Ads em 100%).
     const dimensoes = [
         { dim: 'Crescimento', valor: clamp01to100(m.crescimento_ajustado_pct, -20, 20), bruto: m.crescimento_ajustado_pct, sufixo: '%' },
         { dim: 'Empresas crescendo', valor: m.empresas_em_crescimento.pct, bruto: m.empresas_em_crescimento.pct, sufixo: '%' },
         { dim: 'Meta',        valor: m.atingimento_meta.pct !== null ? Math.min(100, m.atingimento_meta.pct) : 0, bruto: m.atingimento_meta.pct, sufixo: '%' },
         { dim: 'Recuperação', valor: m.recuperacao.pct ?? 0, bruto: m.recuperacao.pct, sufixo: '%' },
-        { dim: 'Execução',    valor: m.execucao_ads.pct ?? 0, bruto: m.execucao_ads.pct, sufixo: '%' },
         { dim: 'Qualidade',   valor: m.qualidade.avg_nps !== null ? (m.qualidade.avg_nps / 5) * 100 : 0, bruto: m.qualidade.avg_nps, sufixo: '/5' },
     ];
 
@@ -284,12 +285,6 @@ function PerformanceSection({ data, comparacao }) {
                         value={m.recuperacao.pct !== null ? `${m.recuperacao.recuperadas}/${m.recuperacao.em_queda}` : '—'}
                         sub={m.recuperacao.pct !== null ? `${m.recuperacao.pct.toFixed(0)}% recuperadas` : 'nenhuma em queda'}
                         help={METRIC_HELP.recuperacao}
-                    />
-                    <MiniMetric
-                        label="Cobertura Ads"
-                        value={m.execucao_ads.pct !== null ? `${m.execucao_ads.com_ads_ativos ?? 0}/${m.execucao_ads.total ?? 0}` : '—'}
-                        sub={m.execucao_ads.pct !== null ? `${m.execucao_ads.pct.toFixed(0)}% com Ads ativos` : 'sem empresas'}
-                        help={METRIC_HELP.execucao_ads}
                     />
                     <MiniMetric
                         label="NPS"
@@ -950,16 +945,6 @@ export default function PortfolioShow({
                                                 ? `${comparacao_contextual.medianas.atingimento_meta_pct.toFixed(0)}%`
                                                 : '—'}
                                         />
-                                        <ComparacaoLinha
-                                            label="Execução Ads"
-                                            status={comparacao_contextual.relativo.execucao_ads_pct}
-                                            valor={performance_profissional.metricas.execucao_ads.pct !== null
-                                                ? `${performance_profissional.metricas.execucao_ads.pct.toFixed(0)}%`
-                                                : '—'}
-                                            media={comparacao_contextual.medianas.execucao_ads_pct !== null
-                                                ? `${comparacao_contextual.medianas.execucao_ads_pct.toFixed(0)}%`
-                                                : '—'}
-                                        />
                                     </div>
                                 </CardContent>
                             </Card>
@@ -984,15 +969,8 @@ export default function PortfolioShow({
                                             <span className="text-red-300 font-semibold tabular-nums">{alertas.empresas_em_queda.length}</span>
                                         </div>
                                     )}
-                                    {alertas.empresas_sem_ad_spend.length > 0 && (
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-white/70">Sem Ads (oportunidade)</span>
-                                            <span className="text-sky-300 font-semibold tabular-nums">{alertas.empresas_sem_ad_spend.length}</span>
-                                        </div>
-                                    )}
                                     {alertas.grants_expirando_30d.length === 0 &&
-                                     alertas.empresas_em_queda.length === 0 &&
-                                     alertas.empresas_sem_ad_spend.length === 0 && (
+                                     alertas.empresas_em_queda.length === 0 && (
                                         <p className="text-emerald-300/70 text-[12px]">Nenhuma pendência crítica.</p>
                                     )}
                                 </div>

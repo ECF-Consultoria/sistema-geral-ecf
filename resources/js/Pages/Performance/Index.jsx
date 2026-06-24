@@ -134,7 +134,7 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                 {/* Legend — quick 260623 ranking por score */}
                 {!isPolos && (
                     <div className="flex flex-wrap gap-4 text-[11px] text-white/30">
-                        <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Score: 30% cresc. ajustado + 20% empresas crescendo + 20% meta + 15% recuperação + 10% execução + 5% qualidade</span>
+                        <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Score: 30% cresc. ajustado + 20% empresas crescendo + 20% meta + 15% recuperação + 5% qualidade · pesos redistribuem quando faltam dados</span>
                         <span>Click na linha → carteira individual com detalhe da nota</span>
                     </div>
                 )}
@@ -203,15 +203,14 @@ function Tendencia({ value }) {
 function RankingConsultoria({ ranking }) {
     return (
         <div className="card-ecf rounded-2xl overflow-hidden">
-            <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_4.5rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
+            <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
                 <span>#</span>
                 <span>Nome</span>
                 <span className="text-right cursor-help" title="Empresas elegíveis (revenue > 0 no período atual ou anterior) / total de empresas ativas na carteira.">Empresas ⓘ</span>
-                <span className="cursor-help" title="Score 0-100 ponderado: 30% crescimento ajustado + 20% empresas crescendo + 20% atingimento de meta + 15% recuperação + 10% cobertura Ads + 5% qualidade (NPS+reuniões). Categorias sem dado têm o peso redistribuído.">Score ⓘ</span>
+                <span className="cursor-help" title="Score 0-100 ponderado: 30% crescimento ajustado + 20% empresas crescendo + 20% atingimento de meta + 15% recuperação + 5% qualidade (NPS+reuniões). Cobertura Ads descontinuada — peso redistribuído. Categorias sem dado também redistribuem automaticamente.">Score ⓘ</span>
                 <span className="text-right cursor-help" title="Crescimento ajustado da carteira: revenue dos últimos 30d vs revenue_prev_period reportado pela Adman pra mesma janela.">Cresc. ⓘ</span>
                 <span className="text-right cursor-help" title="% de empresas elegíveis que tiveram revenue atual > revenue do período anterior.">Crescendo ⓘ</span>
                 <span className="text-right cursor-help" title="Atingimento da meta: usa PortfolioGoal de revenue ativo, ou soma das metas individuais (Goal de revenue por empresa) ativas se não houver meta de carteira.">Meta ⓘ</span>
-                <span className="text-right cursor-help" title="Cobertura Ads: % de empresas elegíveis com ad_spend > 0 nos últimos 30d. Ideal 100% pra carteiras que cobram gestão de Ads.">Cobertura ⓘ</span>
                 <span className="text-right cursor-help" title="NPS médio das respostas dos últimos 30d (escala 1-5).">NPS ⓘ</span>
                 <span className="cursor-help" title="Tendência baseada no crescimento ajustado: ≥+5% subindo, ≤-5% descendo, no meio estável.">Tend. ⓘ</span>
                 <span />
@@ -223,7 +222,7 @@ function RankingConsultoria({ ranking }) {
                         key={u.id}
                         onClick={() => router.visit(route('portfolio.show', u.id))}
                         className={cn(
-                            'grid grid-cols-[2.5rem_1fr_5rem_8rem_4.5rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
+                            'grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
                             idx === 0 && u.tem_base_comparativa && 'bg-ecf-yellow/[0.03]',
                             !u.tem_base_comparativa && 'opacity-60'
                         )}
@@ -252,7 +251,6 @@ function RankingConsultoria({ ranking }) {
                         <div className="text-right"><GrowthTone value={u.crescimento_ajustado_pct} /></div>
                         <div className="text-right"><PctTone value={u.empresas_em_crescimento_pct} good={60} okay={40} /></div>
                         <div className="text-right"><PctTone value={u.atingimento_meta_pct} good={80} okay={50} /></div>
-                        <div className="text-right"><PctTone value={u.execucao_ads_pct} good={60} okay={30} /></div>
 
                         <div className="text-right">
                             {u.avg_nps !== null && u.avg_nps !== undefined

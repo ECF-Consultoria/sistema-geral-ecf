@@ -404,18 +404,15 @@ class PortfolioController extends Controller
                 $status = 'atencao';
             }
 
-            // Regras de acao priorizada:
+            // Regras de acao priorizada (quick 260623 v3 — "Ativar Ads" removido):
             //   1) Renovar grant       (grant expira em <=15d)
-            //   2) Ativar Ads          (revenue>0 e ad_spend=0)
-            //   3) Atingir meta        (achieved < 50%)
-            //   4) Recuperar queda     (queda MoM >= 10%)
-            //   5) Manter ritmo        (saudavel)
-            //   6) —                   (nenhum acionavel claro)
+            //   2) Atingir meta        (achieved < 50%)
+            //   3) Recuperar queda     (queda MoM >= 10%)
+            //   4) Manter ritmo        (saudavel)
+            //   5) —                   (nenhum acionavel claro)
             $acao = '—';
             if ($c['grant_days_remaining'] !== null && $c['grant_days_remaining'] <= 15) {
                 $acao = 'Renovar grant';
-            } elseif (($c['revenue'] ?? 0) > 0 && $c['_ad_spend_num'] <= 0) {
-                $acao = 'Ativar Ads';
             } elseif ($metaAchievedPct !== null && $metaAchievedPct < 50) {
                 $acao = 'Atingir meta';
             } elseif ($c['queda_mom_pct'] !== null && $c['queda_mom_pct'] <= -10) {
@@ -527,19 +524,11 @@ class PortfolioController extends Controller
                 ->values()
                 ->all(),
 
-            // Empresas com revenue > 0 mas sem ad spend (oportunidade de venda de servico Ads).
-            'empresas_sem_ad_spend' => $companies
-                ->filter(fn($c) => ($c['ad_spend'] === null || $c['ad_spend'] == 0)
-                    && $c['revenue'] !== null
-                    && $c['revenue'] > 0)
-                ->sortByDesc('revenue')
-                ->values()
-                ->map(fn($c) => [
-                    'id' => $c['id'],
-                    'name' => $c['name'],
-                    'revenue' => $c['revenue'],
-                ])
-                ->all(),
+            // Quick 260623 v3 — alerta 'empresas_sem_ad_spend' DESCONTINUADO.
+            // Premissa errada (cache Adman MISS + sync ainda nao rodou geravam
+            // falso positivo). ECF gerencia Ads em 100% das empresas. Frontend
+            // ja foi removido; chave fica como array vazio pra compat.
+            'empresas_sem_ad_spend' => [],
 
             // Top 3 empresas por faturamento no periodo.
             'top_3_revenue' => $companies
@@ -655,10 +644,7 @@ class PortfolioController extends Controller
             $motivosPorId[$a['id']]['name'] = $a['name'];
             $motivosPorId[$a['id']]['motivos'][] = 'Queda ' . round($a['queda_pct'] ?? 0, 1) . '%';
         }
-        foreach ($alertas['empresas_sem_ad_spend'] as $a) {
-            $motivosPorId[$a['id']]['name'] = $a['name'];
-            $motivosPorId[$a['id']]['motivos'][] = 'Sem Ads';
-        }
+        // Quick 260623 v3 — motivo "Sem Ads" descontinuado junto com o alerta.
         $prioridadeListaDetalhada = collect($motivosPorId)
             ->map(fn ($v, $id) => [
                 'id'      => $id,
