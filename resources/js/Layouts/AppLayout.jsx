@@ -118,6 +118,8 @@ const NAV_TREE = [
             // Sem permission_key dedicado: defesa em profundidade no controller
             // via grupo de rotas role:admin.
             { label: 'HubSpot Line Items', routeName: 'sistema.hubspot-line-items.index', page: 'Sistema/HubspotLineItems', icon: Link2, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Item "Projetos" movido do grupo Polos para o Comercial (mesma rota/page/permission)
+            { label: 'Projetos', routeName: 'mlb.projetos', page: 'Mlb/Projetos', icon: FolderKanban, permission: 'mlb.projetos' },
         ],
     },
 
@@ -143,8 +145,9 @@ const NAV_TREE = [
         group: 'Polos',
         icon: ListChecks,
         children: [
-            { label: 'Onboarding',    routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks,   permission: 'mlb.implementacao' },
-            { label: 'Projetos',      routeName: 'mlb.projetos',            page: 'Mlb/Projetos',      icon: FolderKanban, permission: 'mlb.projetos' },
+            { label: 'Onboarding',     routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao',   icon: ListChecks,   permission: 'mlb.implementacao' },
+            // Nova visão de empresas Polos agrupadas por fase M, em grid de cards
+            { label: 'Empresas por M', routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM',  icon: Building2,    permission: 'mlb.projetos' },
             // Phase 38 — Faturamento por Polo vs Meta (admin-only, dados ECF Drive)
             { label: 'Faturamento Polos', routeName: 'polos.index', page: 'Polos/Index', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
