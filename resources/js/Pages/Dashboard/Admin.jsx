@@ -3,10 +3,10 @@ import { router } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
 } from 'recharts';
 import {
-    Star, Users,
+    Star, Users, Award,
     DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, TrendingUp
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
@@ -96,6 +96,7 @@ export default function AdminDashboard({
     revenue_chart = [],
     tacos_chart = [],
     nps_distribution = { promotores: 0, neutros: 0, detratores: 0 },
+    performance_equipe = [],
     period = '30',
     filters = {},
     users = [],
@@ -384,24 +385,84 @@ export default function AdminDashboard({
                         )}
                     </div>
 
-                    {/* NPS Pie */}
+                    {/* Performance da equipe (substituiu NPS Distribuição em 2026-06-23).
+                        BarChart horizontal: 1 barra por membro do setor Performance,
+                        comprimento proporcional ao score 0-100. Click leva pra carteira
+                        individual. Cores por classificação (excelente/bom/atenção/crítico). */}
                     <div className="card-ecf rounded-2xl p-6">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1">NPS</p>
+                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1 flex items-center gap-1.5">
+                            <Award size={12} /> Desempenho da equipe
+                        </p>
                         <div className="flex items-baseline gap-2 mb-5">
-                            <p className="text-white font-display font-extrabold text-lg tracking-tight">Distribuição</p>
-                            <span className={cn('font-display font-extrabold text-xl', npsScore >= 50 ? 'text-green-400' : npsScore >= 0 ? 'text-ecf-yellow' : 'text-red-400')}>
-                                {npsTotal > 0 ? npsScore : '—'}
+                            <p className="text-white font-display font-extrabold text-lg tracking-tight">Score por membro</p>
+                            <span className="text-white/40 text-[11px]">
+                                · {performance_equipe.length} {performance_equipe.length === 1 ? 'pessoa' : 'pessoas'}
                             </span>
                         </div>
-                        <ResponsiveContainer width="100%" height={200}>
-                            <PieChart>
-                                <Pie data={npsDataFilled} cx="50%" cy="50%" innerRadius="42%" outerRadius="72%" dataKey="value" strokeWidth={0}>
-                                    {npsDataFilled.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                </Pie>
-                                {npsTotal > 0 && <Tooltip {...chartStyle.tooltip} />}
-                                {npsTotal > 0 && <Legend wrapperStyle={{ fontSize: 11, color: '#9ba0aa' }} />}
-                            </PieChart>
-                        </ResponsiveContainer>
+                        {performance_equipe.length === 0 ? (
+                            <div className="h-[260px] flex items-center justify-center">
+                                <p className="text-white/20 text-sm">Sem dados de score</p>
+                            </div>
+                        ) : (
+                            <div style={{ height: Math.max(200, performance_equipe.length * 36) }}>
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <BarChart
+                                        data={performance_equipe}
+                                        layout="vertical"
+                                        margin={{ top: 5, right: 50, left: 0, bottom: 5 }}
+                                        onClick={(e) => {
+                                            const id = e?.activePayload?.[0]?.payload?.id;
+                                            if (id) router.visit(route('portfolio.show', id));
+                                        }}
+                                    >
+                                        <XAxis type="number" domain={[0, 100]} hide />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="name"
+                                            width={130}
+                                            tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
+                                            axisLine={false}
+                                            tickLine={false}
+                                        />
+                                        <Tooltip
+                                            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+                                            contentStyle={{
+                                                backgroundColor: 'rgba(15,16,22,0.95)',
+                                                border: '1px solid rgba(255,255,255,0.12)',
+                                                borderRadius: 8,
+                                                fontSize: 12,
+                                            }}
+                                            formatter={(value, _name, props) => {
+                                                const c = props?.payload?.classificacao ?? '';
+                                                return [`${Math.round(value)} pts · ${c}`, 'Score'];
+                                            }}
+                                            labelStyle={{ color: 'rgba(255,255,255,0.9)' }}
+                                        />
+                                        <Bar
+                                            dataKey="score"
+                                            radius={[4, 4, 4, 4]}
+                                            cursor="pointer"
+                                        >
+                                            {performance_equipe.map((m, i) => (
+                                                <Cell key={i} fill={
+                                                    m.classificacao === 'excelente' ? '#10b981'
+                                                    : m.classificacao === 'bom'       ? '#3b82f6'
+                                                    : m.classificacao === 'atencao'   ? '#f59e0b'
+                                                    : '#ef4444'
+                                                } />
+                                            ))}
+                                            <LabelList
+                                                dataKey="score"
+                                                position="right"
+                                                fill="rgba(255,255,255,0.85)"
+                                                fontSize={11}
+                                                formatter={(v) => Math.round(v)}
+                                            />
+                                        </Bar>
+                                    </BarChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
                     </div>
                 </div>
 

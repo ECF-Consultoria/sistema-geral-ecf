@@ -235,12 +235,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/google/sync', [GoogleCalendarController::class, 'sync'])->name('google.sync');
     Route::delete('/google/disconnect', [GoogleCalendarController::class, 'disconnect'])->name('google.disconnect');
 
-    // Ranking de desempenho (admin apenas)
+    // Ranking de desempenho — quick 260623 — agora gated por permission
+    // core.performance (admin tem implicito; lider de Performance via
+    // AUTO_LIDERANCA_PERFORMANCE). Antes era role:admin estrito.
     Route::get('/performance', [PerformanceController::class, 'index'])
-        ->middleware('role:admin')
+        ->middleware('permission:core.performance')
         ->name('performance.index');
     Route::get('/performance/{user}', [PerformanceController::class, 'show'])
-        ->middleware('role:admin')
+        ->middleware('permission:core.performance')
         ->name('performance.show');
 
     // Adman: leitura do ultimo sync (admin apenas).
@@ -258,6 +260,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Quick 260623 — portfolio.show acessível pra admin (todos) e líder de setor
     // (apenas users do setor liderado). Autorização granular no controller.
     Route::get('/admin/users/{user}/portfolio', [PortfolioController::class, 'show'])->name('portfolio.show');
+
+    // Quick 260623 — GET /companies + /companies/{c} agora gateados por
+    // permission core.empresas (antes role:admin). Lider de Performance ganha
+    // a permission via AUTO_LIDERANCA_PERFORMANCE; admin tem implicito.
+    // Mutations (PUT/DELETE/POST) ficam no grupo role:admin abaixo.
+    Route::middleware('permission:core.empresas')->group(function () {
+        Route::get('/companies',            [CompanyController::class, 'index'])->name('companies.index');
+        Route::get('/companies/{company}',  [CompanyController::class, 'show'])->name('companies.show');
+    });
 
     // ─── Sugadores ──────────────────────────────────────────────────────────
     // Leitura/escrita gated por SugadorPolicy (admin/gestor/lider veem global;
@@ -324,9 +335,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
         Route::delete('/users/{id}/force', [UserController::class, 'forceDestroy'])->name('users.force-destroy');
 
-        Route::get('/companies', [CompanyController::class, 'index'])->name('companies.index');
+        // GET /companies + /companies/{c} migrados pra grupo permission:core.empresas
+        // acima (quick 260623) — lider de Performance precisa acessar.
         // Cadastro de empresa removido de /companies — entrada é exclusiva por /comercial/empresas.
-        Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
         Route::put('/companies/{company}', [CompanyController::class, 'update'])->name('companies.update');
         Route::delete('/companies/{company}', [CompanyController::class, 'destroy'])->name('companies.destroy');
         // Reativa empresa desativada pelo Comercial (active=false → true)

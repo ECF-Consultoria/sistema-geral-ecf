@@ -50,6 +50,14 @@ class DashboardController extends Controller
             return $this->adminDashboard($request, $since, $period);
         }
 
+        // Quick 260623 — Lider de setor (Performance) tambem ve adminDashboard.
+        // A permission core.dashboard ja foi concedida via AUTO_LIDERANCA_PERFORMANCE,
+        // mas o layout do dashboard precisa ser o consolidado (admin), nao o
+        // userDashboard de carteira propria.
+        if ($user->isLider() && $user->hasPermission('core.dashboard')) {
+            return $this->adminDashboard($request, $since, $period);
+        }
+
         return $this->userDashboard($user, $since, $period);
     }
 
@@ -567,6 +575,40 @@ class DashboardController extends Controller
             && ($cacheHitsCount === $custIdsValidos)
             && ($investHitsCount === $custIdsValidos);
 
+        // Quick 260623 — Performance da equipe: 1 score por membro do setor
+        // Performance (analistas + estrategistas via cargo slug). Lider de setor
+        // ve so a equipe que ele lidera; admin ve todos. Alimenta o widget que
+        // substituiu NPS Distribuicao em Dashboard/Admin.jsx.
+        $scoreService = app(\App\Services\PortfolioScoreService::class);
+        $perfMembrosQuery = User::where('active', true)
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->whereIn('c.slug', ['analista', 'estrategista']);
+            });
+        $atual = $request->user();
+        if (!$atual->isAdmin() && $atual->isLider()) {
+            $setoresIds = $atual->setoresLiderados()->pluck('setores.id');
+            $perfMembrosQuery->whereExists(function ($q) use ($setoresIds) {
+                $q->from('user_setores as us2')
+                  ->whereColumn('us2.user_id', 'users.id')
+                  ->whereIn('us2.setor_id', $setoresIds);
+            });
+        }
+        $perfMembros = $perfMembrosQuery->orderBy('name')->get(['id', 'name'])
+            ->map(function ($u) use ($scoreService) {
+                $r = $scoreService->compute($u);
+                return [
+                    'id'            => $u->id,
+                    'name'          => $u->name,
+                    'score'         => (float) $r['score'],
+                    'classificacao' => $r['classificacao'],
+                ];
+            })
+            ->sortByDesc('score')
+            ->values();
+
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
                 'total_companies'          => $companies->count(),
@@ -588,6 +630,9 @@ class DashboardController extends Controller
             'revenue_chart'  => $revenueChart,
             'tacos_chart'    => $tacosChart,
             'nps_distribution' => $npsDistribution,
+            // Quick 260623 — alimenta widget "Performance da equipe" que
+            // substituiu NPS Distribuicao no Dashboard/Admin.jsx.
+            'performance_equipe' => $perfMembros,
             'period'         => $period,
             // Phase 18 (W1-T1) — chaves em snake_case alinhadas com os query params lidos
             // nas linhas 68-70 (mesma fonte de verdade). Antes usava compact() que produzia
