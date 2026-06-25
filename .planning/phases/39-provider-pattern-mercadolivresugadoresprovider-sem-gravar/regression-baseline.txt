@@ -1,0 +1,146 @@
+# Baseline de regressão Sugador — pré-refactor Plan 39-04
+# Capturado em: 2026-06-25
+# Esperado pós-refactor: mesmo número de verdes, mesmas falhas pré-existentes
+# Total tests: 49
+# Verdes: 49
+# Falhas (pré-existentes — preservar): 0
+# Assertions: 415
+# Duration: ~27-41s
+#
+# Suites cobertas:
+#   - Tests\Unit\Phase39\AdmanSugadoresProviderTest (8 tests)
+#   - Tests\Unit\Phase39\AdgroupMlbMapRepositoryTest (8 tests)
+#   - Tests\Unit\Phase39\MercadoLivreSugadoresProviderTest (10 tests)
+#   - Tests\Unit\Phase39\SugadoresAdsProviderFactoryTest (6 tests)
+#   - Tests\Feature\Phase19\LimparOrfaosSugadoresTest (4 tests)
+#   - Tests\Feature\Phase19\SugadoresVistaDefaultTest (4 tests)
+#   - Tests\Feature\Phase30\ThrottledAdmanQueueTest (1 test relacionado a Sugador)
+#   - Tests\Feature\Sugadores\AutoResolveTest (5 tests)
+#   - Tests\Feature\Sugadores\SugadoresIndexTest (11 tests, considerando outras suites filtradas pelo nome Sugador no Tests::SugadoresPanel)
+#
+# GATE de aceitação Plan 39-04 Task 2 (GREEN):
+#   php artisan test --filter=Sugador  ==>  Tests: 49 passed (mesmo count)
+#
+# === SAÍDA ORIGINAL ===
+
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Unit\MlColetaServiceTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Unit\MlKeywordMinerTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Unit\MlbColetaJobTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Unit\MlbImplementacaoProgressoTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase13ComercialTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase13MigrationTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase14AdminControllerCobrancaTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase14BladeRefactorTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase14FechamentoUiTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase14MigrationTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase14MlbControllerFiltroTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase17ColetaTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\AuditBillingDivergenceTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\CompaniesCustIdFilterTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\DashboardCacheHybridTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\DashboardFiltersTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\DashboardPeriodRangeTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\DiagnoseCustIdTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18\MarkCustIdStatusTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18_5\AdmanServiceMarketplaceTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase18_5\ImportMarketplaceFromCsvTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase33OnboardingFichaTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase35OnboardingPrazoTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase36\MlbDadosMlControllerTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase37ServicoSetorTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;43;1m WARN [39;49;22m Metadata found in doc-comment for class Tests\Feature\Phase37\MlbDadosMlReputacaoTest. Metadata in doc-comments is deprecated and will no longer be supported in PHPUnit 12. Update your test code to use attributes instead.
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Phase39\AdmanSugadoresProviderTest[39m
+  [32;1m✓[39;22m[90m [39m[90msupports returns true when company has adman account id[39m[90m                                                     [39m [90m0.21s[39m  
+  [32;1m✓[39;22m[90m [39m[90msupports returns false when company has no adman account id[39m[90m                                                 [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mname returns adman string[39m[90m                                                                                   [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroups metrics delegates to adman service and returns normalized contract[39m[90m                           [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroups metrics applies safe div when cpc acos null[39m[90m                                                  [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch campaigns metrics delegates to fetch campaigns range[39m[90m                                                  [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch campaigns delegates to fetch all campaigns and normalizes[39m[90m                                             [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroup mlbs returns empty array when adman path used[39m[90m                                                 [39m [90m0.03s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Phase39\MercadoLivreSugadoresProviderTest[39m
+  [32;1m✓[39;22m[90m [39m[90msupports returns true when company has active ml token[39m[90m                                                      [39m [90m0.49s[39m  
+  [32;1m✓[39;22m[90m [39m[90msupports returns false when company has no ml token[39m[90m                                                         [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90msupports returns false when ml token inactive[39m[90m                                                               [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mname returns ml string[39m[90m                                                                                      [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroups metrics normalizes ml payload to contract keys[39m[90m                                               [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroups metrics returns empty when advertiser id null[39m[90m                                                [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch campaigns returns normalized list via list campaigns[39m[90m                                                  [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch campaigns metrics returns normalized list with period[39m[90m                                                 [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroup mlbs extracts mlb ids from ads payload[39m[90m                                                        [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfetch adgroups metrics applies safe div when metrics calc fields missing[39m[90m                                    [39m [90m0.04s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Phase39\SugadoresAdsProviderFactoryTest[39m
+  [32;1m✓[39;22m[90m [39m[90mfor with force name adman returns adman provider[39m[90m                                                            [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfor with no force falls back to adman when company has adman account id[39m[90m                                     [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfor with force name ml returns ml provider[39m[90m                                                                  [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfor throws runtimeexception when no provider supports company[39m[90m                                               [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfor default prefers adman when both providers support[39m[90m                                                       [39m [90m0.03s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfor default falls back to ml when only ml supports[39m[90m                                                          [39m [90m0.03s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Phase19\LimparOrfaosSugadoresTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdry run nao aplica mudancas[39m[90m                                                                                 [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mapply marca antigos como auto resolvido[39m[90m                                                                     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstatus travados nao sao tocados[39m[90m                                                                             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mhoje nao e tocado[39m[90m                                                                                           [39m [90m0.04s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Phase19\SugadoresVistaDefaultTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdefault view filtra hoje e pendente[39m[90m                                                                         [39m [90m1.67s[39m  
+  [32;1m✓[39;22m[90m [39m[90minclude old inclui anteriores[39m[90m                                                                               [39m [90m1.62s[39m  
+  [32;1m✓[39;22m[90m [39m[90mreference date explicito override default[39m[90m                                                                   [39m [90m1.68s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcompanies summary inclui sincronizou hoje[39m[90m                                                                   [39m [90m1.59s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Phase30\ThrottledAdmanQueueTest[39m
+  [32;1m✓[39;22m[90m [39m[90manalyze company sugadores job aplica middleware adman api[39m[90m                                                   [39m [90m0.03s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Sugadores\AutoResolveTest[39m
+  [32;1m✓[39;22m[90m [39m[90mpendente antigo nao redetectado vira auto resolvido[39m[90m                                                         [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpendente antigo redetectado permanece pendente[39m[90m                                                              [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstatus travado nao eh tocado[39m[90m                                                                                [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpendente de hoje nao eh auto resolvido[39m[90m                                                                      [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdryrun nao auto resolve[39m[90m                                                                                     [39m [90m0.03s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Feature\Sugadores\SugadoresIndexTest[39m
+  [32;1m✓[39;22m[90m [39m[90mindex retorna companies summary como array[39m[90m                                                                  [39m [90m1.63s[39m  
+  [32;1m✓[39;22m[90m [39m[90mempresa sem sugadores aparece com counts zerados[39m[90m                                                            [39m [90m1.59s[39m  
+  [32;1m✓[39;22m[90m [39m[90mordenacao count hoje desc total desc nome asc[39m[90m                                                               [39m [90m1.65s[39m  
+  [32;1m✓[39;22m[90m [39m[90mauto resolvido nao conta em count hoje nem total pendentes[39m[90m                                                  [39m [90m1.63s[39m  
+  [32;1m✓[39;22m[90m [39m[90mview mode default eh cards[39m[90m                                                                                  [39m [90m1.59s[39m  
+  [32;1m✓[39;22m[90m [39m[90mview mode aceita list via query string[39m[90m                                                                      [39m [90m1.68s[39m  
+  [32;1m✓[39;22m[90m [39m[90mview mode invalido volta para cards[39m[90m                                                                         [39m [90m1.66s[39m  
+  [32;1m✓[39;22m[90m [39m[90manalisado hoje true quando log de sucesso hoje[39m[90m                                                              [39m [90m1.67s[39m  
+  [32;1m✓[39;22m[90m [39m[90manalisado hoje false sem log hoje[39m[90m                                                                           [39m [90m1.67s[39m  
+  [32;1m✓[39;22m[90m [39m[90manalisado hoje false quando log hoje com erro[39m[90m                                                               [39m [90m1.63s[39m  
+  [32;1m✓[39;22m[90m [39m[90magregacao nao dispara n mais um[39m[90m                                                                             [39m [90m1.65s[39m  
+
+  [90mTests:[39m    [32;1m49 passed[39;22m[90m (415 assertions)[39m
+  [90mDuration:[39m [39m26.79s[39m
+
