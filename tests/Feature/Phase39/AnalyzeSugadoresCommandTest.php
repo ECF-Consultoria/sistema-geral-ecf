@@ -259,14 +259,26 @@ class AnalyzeSugadoresCommandTest extends TestCase
     {
         $company = $this->makeCompanyWithConfig();
 
-        $this->artisan('sugadores:analyze', [
-            '--company'  => $company->id,
-            '--provider' => 'invalid',
-            '--dry-run'  => true,
-        ])
-            ->expectsOutputToContain("Provider inválido: 'invalid'")
-            ->expectsOutputToContain('adman, ml')
-            ->assertExitCode(1);
+        // Captura output bruto via Kernel para validar a linha INTEIRA da
+        // mensagem (que inclui "Provider inválido: 'invalid'. Valores
+        // aceitos: adman, ml"). expectsOutputToContain do PendingCommand do
+        // Laravel não casa bem strings curtas duplicadas no mesmo error line;
+        // usar BufferedOutput é mais robusto e cobre o contrato real.
+        $out  = new \Symfony\Component\Console\Output\BufferedOutput();
+        $exit = $this->app->make(\Illuminate\Contracts\Console\Kernel::class)->call(
+            'sugadores:analyze',
+            [
+                '--company'  => $company->id,
+                '--provider' => 'invalid',
+                '--dry-run'  => true,
+            ],
+            $out
+        );
+
+        $this->assertSame(1, $exit, 'Provider inválido deve retornar exit code 1');
+        $output = $out->fetch();
+        $this->assertStringContainsString("Provider inválido: 'invalid'", $output);
+        $this->assertStringContainsString('adman, ml', $output);
     }
 
     // ─────────── Test 8: signature do command declara opção --provider ───────────
