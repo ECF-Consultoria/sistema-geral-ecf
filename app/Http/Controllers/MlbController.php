@@ -237,10 +237,20 @@ class MlbController extends Controller
      */
     private function publicadores(): Collection
     {
+        // Filtra pelo cargo REAL do user no pivot (user_setores.cargo_id).
+        // Cuidado: `whereHas('cargos')` dentro de `setores` consulta o CATÁLOGO
+        // de cargos do setor (Setor::cargos() é hasMany), que sempre contém
+        // 'publicador'/'lider-de-publicacao' — isso fazia a query retornar TODOS
+        // os membros do setor Publicação (gestores, analistas, etc.), inflando a
+        // Meta da Equipe (soma das metas individuais). Amarramos ao pivot.
         return User::query()
-            ->whereHas('setores', function ($q) {
-                $q->where('setores.slug', 'publicacao')
-                  ->whereHas('cargos', fn($qc) => $qc->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']));
+            ->whereExists(function ($q) {
+                $q->from('user_setores')
+                  ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+                  ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+                  ->whereColumn('user_setores.user_id', 'users.id')
+                  ->where('setores.slug', 'publicacao')
+                  ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']);
             })
             ->orderBy('name')
             ->get(['id', 'name']);
