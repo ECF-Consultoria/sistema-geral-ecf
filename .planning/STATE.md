@@ -3,16 +3,15 @@ gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
 status: executing
-stopped_at: "Phase 38 Plan 38-02 PARTIALLY_COMPLETE — comando sugadores:ml-smoke + 4/4 tests Http::fake verdes; smoke real (Tarefa 3) DEFERIDO por corrupção do MariaDB local de dev pós-fix do aria_log_control. Phase 38: 1 plan complete (38-01), 1 plan partially_complete (38-02) aguardando recovery via quick task dev:reparar-mariadb-local. Phase 39 BLOQUEADA (execução) até smoke real verde."
-last_updated: "2026-06-25T20:00:00.000Z"
-last_activity: 2026-06-25
+stopped_at: "Phase 39 Plan 39-01 COMPLETO — contract App\\Contracts\\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada."
+last_updated: "2026-06-25T19:30:00.000Z"
+last_activity: 2026-06-25 -- Phase 39 Plan 39-01 fechado (provider pattern fundação)
 progress:
-  total_phases: 9
-  completed_phases: 3
-  total_plans: 19
-  completed_plans: 18
-  partially_complete_plans: 1
-  percent: 33
+  total_phases: 38
+  completed_phases: 21
+  total_plans: 61
+  completed_plans: 52
+  percent: 55
 ---
 
 # Project State
@@ -22,16 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 38 — smoke-ml-piloto-bymobile
+**Current focus:** Phase 39 — provider-pattern-mercadolivresugadoresprovider-sem-gravar
 
 ## Current Position
 
-Phase: 38 (smoke-ml-piloto-bymobile) — EXECUTING
-Plan: 2 of 2 — PARTIALLY_COMPLETE
-Status: Plan 38-01 complete; Plan 38-02 partially_complete (Tarefas 1+2 ✅ commitadas + 4/4 tests verdes; Tarefa 3 deferida — smoke real bloqueado por corrupção MariaDB local de dev)
-Last activity: 2026-06-25
+Phase: 39 (provider-pattern-mercadolivresugadoresprovider-sem-gravar) — EXECUTING
+Plan: 2 of 5
+Status: Wave 1 fechada; aguardando início Wave 2 (Plans 39-02 + 39-03 em paralelo)
+Last activity: 2026-06-25 -- Phase 39 Plan 39-01 fechado (provider pattern fundação)
 Blockers:
-  - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local` (a ser criada). Bloqueia Tarefa 3 do Plan 38-02 e execução da Phase 39.
+
+  - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local`. NÃO bloqueia Phase 39 (tests Mockery + SQLite em-memory — Plan 39-01 confirmou viabilidade).
 
 ## Performance Metrics
 
@@ -96,6 +96,8 @@ Blockers:
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P07 | 28min | 4 commits (TDD) | 5 files |
 | Phase 38 P01 | 4min | - tasks | - files |
 | Phase 38 P02 (partially_complete — Tarefa 3 deferida) | 12min | 2/3 tasks (RED+GREEN commitados; smoke real pendente) | 3 files |
+| Phase 39 P01 | 25min | 2 tasks (TDD RED+GREEN) | 5 files |
+| Phase 39 P01 | 25min | - tasks | - files |
 
 ## Accumulated Context
 
@@ -442,6 +444,19 @@ Blockers:
 - **Suite Phase 33 com 8 cases** (Rule 2 deviation) — Plan nao pediu explicitamente, mas adicionei para garantir contratos de validacao dinamica + snapshot + CRUD + reorder. Combina com 19 Phase 31 totalizando 27 verdes.
 - **CRITICO**: NAO fazer deploy do Plan 33-01 sozinho — schema/endpoints ja funcionam mas a UI admin (Plan 33-02), UI cliente (Plan 33-03) e modal lista (Plan 33-04) ainda nao existem. Agrupar deploy dos 4 plans da Phase 33.
 
+### Decisões do Plan 39-01 (registradas)
+
+- **Composição (constructor promoted) ao invés de herança** — AdmanSugadoresProvider recebe `private AdmanService $adman` via DI. Zero modificação no AdmanService legado. Alinhado com decisão arquitetural travada em 2026-06-25 (`feedback_sugadores_provider_pattern.md`: provider pattern, não mirror service).
+- **Sub-namespace `App\Services\Sugadores\`** para providers + factory — mesmo namespace já usado pelo MercadoLivreAdsService da Phase 38, mantendo coerência.
+- **Interface PHP padrão em `App\Contracts\SugadoresAdsProvider`** — convenção Laravel para contracts; sem anotações custom. 6 métodos: supports, name, fetchCampaigns, fetchCampaignsMetrics, fetchAdgroupsMetrics, fetchAdgroupMlbs.
+- **`fetchAdgroupMlbs` retorna `[]` no AdmanProvider** — adgroup→MLB no path Adman vem do Job separado `SyncCompanyAdgroupMlbsJob` (tabela `adman_adgroup_mlbs`); o provider Adman NÃO repopula esse cache. Provider ML (Plan 39-02) extrairá direto do `/product_ads/items`.
+- **`safe_div` como método privado estático** dentro do provider — escopo limitado ao módulo, sem helper global. Plan 39-02 pode promover a trait se houver necessidade compartilhada com MercadoLivreSugadoresProvider.
+- **Factory minimal lança `RuntimeException` em `forceName='ml'`** com mensagem citando Plan 39-02 — evita comportamento silencioso quando callers tentam usar provider ML antes de existir. Plan 39-02 substitui o `throw` pela linha de retorno do MercadoLivreSugadoresProvider.
+- **`ctr` preservado null quando ausente** — provider não calcula ctr via safe_div (clicks/impressions*100) porque o SugadorAnalysisService atual já trata ctr nullable e o cálculo idiomático varia entre providers. Decisão herdada para Plan 39-02.
+- **Tests Unit puros Mockery (sem RefreshDatabase)** — Company instanciada via `new Company()` + `setRawAttributes()` sem persistir. Evita dependência do MariaDB local (caído desde quick task `260625-mrd`) e do SQLite em-memory para um teste que só lê 2 atributos do model.
+- **Mockery sobre Http::fake** — provider delega ao AdmanService que já tem cobertura HTTP completa (Phase 16/18.5/30). Testar provider com Mockery foca o test no contrato de adaptação, não na camada de rede.
+- **Zero modificação confirmada via `git diff --name-only HEAD~2 HEAD app/Services/AdmanService.php app/Services/SugadorAnalysisService.php`** (vazio) antes do commit GREEN.
+
 ### Pending Todos
 
 None.
@@ -517,8 +532,26 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-25T17:00:19.957Z
-Stopped at: Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome (RED→GREEN). Wave 2 COMPLETA.
+Last session: 2026-06-25T19:30:00.000Z
+Stopped at: Phase 39 Plan 39-01 COMPLETO — contract App\Contracts\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada.
+
+**Estado para próxima sessão retomar (Phase 39 Wave 2):**
+
+- SUMMARY: `.planning/phases/39-provider-pattern-mercadolivresugadoresprovider-sem-gravar/39-01-SUMMARY.md`
+- Plan 39-01 entregue (commits `122451c` RED + `b69030d` GREEN):
+  - `app/Contracts/SugadoresAdsProvider.php` — interface PHP 6 métodos canônicos
+  - `app/Services/Sugadores/AdmanSugadoresProvider.php` — implements via composição AdmanService
+  - `app/Services/Sugadores/SugadoresAdsProviderFactory.php` — factory minimal (só Adman; branch ML throws apontando Plan 39-02)
+  - `tests/Unit/Phase39/AdmanSugadoresProviderTest.php` — 8 tests Mockery
+  - `tests/Unit/Phase39/SugadoresAdsProviderFactoryTest.php` — 4 tests
+- 12/12 tests Phase 39 verdes (65 assertions, 1.47s); 37/37 suite Sugador continua verde (324 assertions, 52.65s)
+- Wave 2 LIBERADA — Plans 39-02 e 39-03 podem rodar em paralelo:
+  - **Plan 39-02** (MercadoLivreSugadoresProvider): consome MercadoLivreAdsService da Phase 38; Http::fake speculative pre-smoke; estende factory adicionando segundo constructor arg e substitui o `throw` da branch `'ml'`
+  - **Plan 39-03** (AdgroupMlbMapRepository): independente; abstrai tabela `adman_adgroup_mlbs`
+- Wave 3 aguarda Wave 2:
+  - **Plan 39-04** (refactor SugadorAnalysisService) depende do factory completo
+  - **Plan 39-05** (comando `sugadores:analyze --provider= --dry-run`) depende de 39-04
+- HEAD: `b69030d` feat(39-01): implementa AdmanSugadoresProvider + factory (GREEN)
 
 **Estado para próxima sessão retomar:**
 

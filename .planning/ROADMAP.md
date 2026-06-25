@@ -866,7 +866,7 @@ Plans:
   - REQ-39-07 — Comando `php artisan sugadores:analyze --company={id} --provider={adman|ml} --dry-run` retorna motivos sem upsert; `--provider=ml` sem `--dry-run` aborta com exit 1 (proteção pré-Phase 42)
   - REQ-39-08 — Suite de testes (Unit + Feature) cobrindo: AdmanProvider (Mockery), MlProvider (Http::fake speculative), Repository (SQLite), Factory (resolução), SugadorAnalysisService refactor (regressão), command (dry-run + guard); zero regressão na suite Sugador existente
 **Success Criteria**: provider ML entrega exatamente o contrato §2.3 do plano; `evaluateMetrics()` não sabe a origem; comando dry-run retorna mesma estrutura de motivos do path Adman para Bymobile.
-**Plans:** 5
+**Plans:** 1/5 plans executed
   - 39-01-PLAN.md — Wave 1: Contract + AdmanSugadoresProvider + Factory minimal + Unit tests
   - 39-02-PLAN.md — Wave 2: MercadoLivreSugadoresProvider + factory branch ml + Http::fake speculative tests
   - 39-03-PLAN.md — Wave 2: AdgroupMlbMapRepository neutro + legacy proxy preserva compat + Unit tests
