@@ -881,8 +881,33 @@ Plans:
 **Mode:** mvp
 **Goal:** Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado. Alvo paridade ≥95% de motivos. Exige 1+ empresa Adman+ML para validar paridade (Bymobile sozinha não basta).
 **Depends on:** Phase 39 (provider pattern operando dry-run)
-**Plans:** TBD
-**UI hint**: no (relatório CLI; UI admin opcional)
+**Requirements:**
+- REQ-40-01 — Migration cria `sugador_provider_runs` (10 colunas) + `sugador_provider_items` (8 colunas) + índices compostos (`idx_company_ref_provider`, `idx_run_tipo`); FKs com cascadeOnDelete; idempotente; Models Eloquent `SugadorProviderRun` + `SugadorProviderItem` com casts e relações
+- REQ-40-02 — `App\Services\Sugadores\ShadowRunService` orquestra 2 runs por (empresa+data) — uma com `forceProvider='adman'` e outra com `forceProvider='ml'`, ambas via `SugadorAnalysisService::analyzeCompany($company, $ref, dryRun=true, $provider)`; persiste runs+items; **GATE CRÍTICO:** ZERO gravação em `sugadores`; falha de um provider não interrompe o outro
+- REQ-40-03 — `App\Services\Sugadores\ProviderComparisonService` classifica items em 6 buckets (matched, metrics_diff, motivo_diff, apenas_adman, apenas_ml, quarentena_diff) + calcula `paridade_motivos_pct`; tolerâncias §7 do plano-migracao (dinheiro ≤1% OU ≤R$0,10; percentuais ≤0,5pp; inteiros igualdade); 2 métodos públicos `compareRuns` + `compareWindow`
+- REQ-40-04 — Comando `php artisan sugadores:shadow-ml --company={id|all} [--days=N]` dispara `ShadowRunService` inline; respeita `config('sugadores.ml_shadow_companies')` quando `--company=all`; clamp `--days` em [1,90]
+- REQ-40-05 — Comando `php artisan sugadores:compare-providers --company={id} --from=YYYY-MM-DD --to=YYYY-MM-DD [--format=table|json]` imprime relatório; exit 0 se paridade ≥95%, exit 1 caso contrário (automatável em CI)
+- REQ-40-06 — Scheduler em `routes/console.php` adiciona entrada `sugadores:shadow-ml --company=all --days=1` rodando `->dailyAt('13:00')->timezone('America/Sao_Paulo')->onOneServer()->withoutOverlapping()`; entradas existentes (Adman 12h, cleanup 12:30) inalteradas
+- REQ-40-07 — Env `SUGADORES_ML_SHADOW_COMPANIES` documentada em `.env.example`; arquivo NOVO `config/sugadores.php` expõe `ml_shadow_companies` lendo CSV; comando aborta com mensagem clara em pt-BR ("Nenhuma empresa elegível — defina SUGADORES_ML_SHADOW_COMPANIES") quando env vazia + `--company=all`
+- REQ-40-08 — Suite de testes cobrindo: schema migration (8 tests), ShadowRunService Mockery com gate zero gravação (9 tests), ProviderComparisonService com 15 cenários de divergência, ambos comandos CLI (17 tests — exit codes + format json/table + abort cases); zero regressão na suite Sugador acumulada (>= 65 verdes baseline Phase 39)
+
+**Success Criteria** (what must be TRUE):
+  1. `php artisan migrate` cria as 2 tabelas com índices compostos e FKs cascade
+  2. `ShadowRunService` grava em `sugador_provider_runs`+`sugador_provider_items` mas NUNCA em `sugadores` (validado por `assertDatabaseCount('sugadores', $initial)` antes==depois)
+  3. `ProviderComparisonService::compareWindow` retorna paridade % calculável; tolerâncias §7 aplicadas como constantes
+  4. `php artisan sugadores:shadow-ml --company={id}` e `php artisan sugadores:compare-providers ...` rodam sem fatal e retornam exit code apropriado
+  5. Scheduler agendado para 13h BRT visível em `php artisan schedule:list` com nome `sugadores-shadow-ml-daily`
+  6. Suite Phase 40 acumulada >= 49 tests verdes; suite Sugador continua sem regressão (>= 65 verdes legados)
+  7. Smoke real (rodar contra MariaDB com 1+ empresa que tenha tanto Adman quanto ML) DEFERIDO até MariaDB local voltar (quick task `dev:reparar-mariadb-local`)
+  8. Phase 41 (onboarding ML) destravada — Phase 40 entrega a infra de medição que Phase 41 vai expor visualmente
+
+**Plans:** 4 plans em 3 waves
+- [ ] 40-01-PLAN.md — Wave 1: Migration 2 tabelas + 2 Models Eloquent + 1 test schema (REQ-40-01)
+- [ ] 40-02-PLAN.md — Wave 2: ShadowRunService + tests Feature com Mockery (REQ-40-02, gate zero gravação)
+- [ ] 40-03-PLAN.md — Wave 2: ProviderComparisonService + tests Unit com 15 cenários (REQ-40-03)
+- [ ] 40-04-PLAN.md — Wave 3: 2 comandos Artisan + config/sugadores.php + .env.example + scheduler 13h BRT + tests Feature (REQ-40-04, REQ-40-05, REQ-40-06, REQ-40-07, REQ-40-08 parte)
+
+**UI hint**: no (relatório CLI; UI admin opcional fica para Phase 41)
 
 ### Phase 41: Onboarding ML por empresa
 
