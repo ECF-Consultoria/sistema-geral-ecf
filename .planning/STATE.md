@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
-status: executing
-stopped_at: "Phase 40 Plan 40-04 COMPLETO — PHASE 40 INTEIRA FECHADA (4/4 plans). 2 comandos Artisan (sugadores:shadow-ml + sugadores:compare-providers) + config/sugadores.php (CSV via SUGADORES_ML_SHADOW_COMPANIES) + scheduler diario 13h BRT + env documentada. 17/17 tests novos verdes; Phase 40 acumulado 52/52; Sugador 92/92; Phase 39 48/48 — zero regressao. Wave 3 FECHADA. REQ-40-04..08 fechados. Pronto para deploy. Phase 41 (UI shadow runs + aprovacao manual) destravada."
-last_updated: "2026-06-25T21:24:19.541Z"
+status: ready_to_plan
+stopped_at: Phase 41 complete (5/5) — ready to discuss Phase 42
+last_updated: 2026-06-25T23:42:13.951Z
 last_activity: 2026-06-25 -- Phase 41 execution started
 progress:
   total_phases: 38
   completed_phases: 23
   total_plans: 70
-  completed_plans: 60
+  completed_plans: 79
   percent: 61
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 41 — onboarding-ml-por-empresa
+**Current focus:** Phase 42 — cut over por empresa (ml_primary)
 
 ## Current Position
 
-Phase: 41 (onboarding-ml-por-empresa) — EXECUTING
-Plan: 1 of 5
-Status: Executing Phase 41
-Last activity: 2026-06-25 -- Phase 41 execution started
+Phase: 42
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-06-25
 Blockers:
 
   - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local`. NÃO bloqueia Phase 39 (tests Mockery + SQLite em-memory — Plan 39-01 confirmou viabilidade).
@@ -37,7 +37,7 @@ Blockers:
 
 **Velocity:**
 
-- Total plans completed: 18
+- Total plans completed: 23
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -56,6 +56,7 @@ Blockers:
 | 12. Criação Manual, Permissão na UI de Setores e Cleanup | 0/? | - | - |
 | 14 | 7 | - | - |
 | 17 | 5 | - | - |
+| 41 | 5 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
