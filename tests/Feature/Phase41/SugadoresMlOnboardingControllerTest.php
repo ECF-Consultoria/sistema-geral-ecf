@@ -97,6 +97,7 @@ class SugadoresMlOnboardingControllerTest extends TestCase
 
         $attrs = [
             'company_id'    => $company->id,
+            'ml_user_id'    => 'fake-ml-user-' . $company->id,
             'access_token'  => 'fake-access-token',
             'refresh_token' => 'fake-refresh-token',
             'status'        => 'active',
@@ -150,6 +151,8 @@ class SugadoresMlOnboardingControllerTest extends TestCase
             'company_id'     => $c->id,
             'provider'       => $provider,
             'reference_date' => now()->toDateString(),
+            'periodo_inicio' => now()->subDays(7)->toDateString(),
+            'periodo_fim'    => now()->toDateString(),
             'status'         => 'completed',
             'summary'        => ['campanhas' => 0, 'adgroups' => 0, 'items' => 0],
             'started_at'     => now()->subMinutes(2),
