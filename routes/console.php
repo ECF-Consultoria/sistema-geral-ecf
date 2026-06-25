@@ -152,3 +152,13 @@ Schedule::call(function () {
         \App\Jobs\EnviarRelatorioFechamentoJob::dispatch($agora->format('Y-m'), null);
     }
 })->everyMinute()->name('checa-envio-relatorio-fechamento');
+
+// Phase 40 — Shadow mode ML diário às 13h BRT (1h depois do sugadores:analyze das 12h).
+// Só dispara pras empresas em SUGADORES_ML_SHADOW_COMPANIES (config/sugadores.php).
+// NÃO escreve em `sugadores` — apenas em sugador_provider_runs/items (gate REQ-40-02).
+Schedule::command('sugadores:shadow-ml --company=all --days=1')
+    ->dailyAt('13:00')
+    ->timezone('America/Sao_Paulo')
+    ->name('sugadores-shadow-ml-daily')
+    ->onOneServer()
+    ->withoutOverlapping();
