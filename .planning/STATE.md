@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
 status: executing
-stopped_at: Phase 39 Plan 39-01 COMPLETO — contract App\Contracts\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada.
-last_updated: "2026-06-25T20:27:56.906Z"
+stopped_at: Phase 40 Plan 40-03 COMPLETO — ProviderComparisonService (app/Services/Sugadores/) com 2 metodos publicos (compareRuns, compareWindow) classifica items em 6 buckets (matched/metrics_diff/motivo_diff/apenas_adman/apenas_ml/quarentena_diff) + calcula paridade_motivos_pct. Tolerancias §7 hardcoded como constantes (dinheiro 1% OU R$0,10; percentual 0,5pp; inteiro estrito). 18/18 tests Feature verdes; Phase 40 acumulado 35/35; Sugador 75/75; Phase 39 48/48 — zero regressao. Wave 2 (Plans 40-02 + 40-03) FECHADA — Wave 3 (Plan 40-04 comandos+scheduler) liberada.
+last_updated: "2026-06-25T20:40:38.517Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 38
   completed_phases: 22
   total_plans: 65
-  completed_plans: 58
+  completed_plans: 59
   percent: 58
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 40 (shadow-mode-tabelas-de-compara-o) — EXECUTING
-Plan: 3 of 4
+Plan: 4 of 4
 Status: Ready to execute
 Last activity: 2026-06-25
 Blockers:
@@ -103,6 +103,7 @@ Blockers:
 | Phase 39 P05 | 20min | 2 tasks (TDD RED+GREEN) | 2 files |
 | Phase 40 P01 | 25min | 2 tasks | 4 files |
 | Phase 40 P02 | 22min | 2 tasks | 2 files |
+| Phase 40 P03 | 7min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -542,7 +543,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-25T20:27:49.695Z
+Last session: 2026-06-25T20:40:06.685Z
 Stopped at: Phase 39 Plan 39-01 COMPLETO — contract App\Contracts\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada.
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**

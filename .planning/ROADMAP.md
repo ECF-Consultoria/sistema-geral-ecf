@@ -901,10 +901,10 @@ Plans:
   7. Smoke real (rodar contra MariaDB com 1+ empresa que tenha tanto Adman quanto ML) DEFERIDO até MariaDB local voltar (quick task `dev:reparar-mariadb-local`)
   8. Phase 41 (onboarding ML) destravada — Phase 40 entrega a infra de medição que Phase 41 vai expor visualmente
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 - [x] 40-01-PLAN.md — Wave 1: Migration 2 tabelas + 2 Models Eloquent + 1 test schema (REQ-40-01)
 - [x] 40-02-PLAN.md — Wave 2: ShadowRunService + tests Feature com Mockery (REQ-40-02, gate zero gravação)
-- [ ] 40-03-PLAN.md — Wave 2: ProviderComparisonService + tests Unit com 15 cenários (REQ-40-03)
+- [x] 40-03-PLAN.md — Wave 2: ProviderComparisonService + tests Unit com 15 cenários (REQ-40-03)
 - [ ] 40-04-PLAN.md — Wave 3: 2 comandos Artisan + config/sugadores.php + .env.example + scheduler 13h BRT + tests Feature (REQ-40-04, REQ-40-05, REQ-40-06, REQ-40-07, REQ-40-08 parte)
 
 **UI hint**: no (relatório CLI; UI admin opcional fica para Phase 41)
