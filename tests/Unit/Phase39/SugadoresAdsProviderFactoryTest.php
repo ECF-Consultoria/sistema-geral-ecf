@@ -1,14 +1,20 @@
 <?php
 
-// Phase 39 Plan 39-01 — Testes Unit do SugadoresAdsProviderFactory.
-// Valida a resolução por (forceName) e por capability detection via supports().
-// Plan 39-02 expandirá o factory para incluir MercadoLivreSugadoresProvider.
+// Phase 39 Plan 39-01 (criação) + Plan 39-02 (expansão branch ml).
+// Testes Unit do SugadoresAdsProviderFactory cobrindo:
+//   - Resolução por forceName ('adman' | 'ml')
+//   - Capability detection via supports() — preferência Adman até Phase 42
+//   - Fallback para ML quando apenas ML suporta
+//   - RuntimeException quando nenhum provider suporta
 
 namespace Tests\Unit\Phase39;
 
 use App\Models\Company;
 use App\Services\AdmanService;
+use App\Services\MercadoLivreService;
 use App\Services\Sugadores\AdmanSugadoresProvider;
+use App\Services\Sugadores\MercadoLivreAdsService;
+use App\Services\Sugadores\MercadoLivreSugadoresProvider;
 use App\Services\Sugadores\SugadoresAdsProviderFactory;
 use Mockery;
 use Tests\TestCase;
@@ -23,7 +29,10 @@ class SugadoresAdsProviderFactoryTest extends TestCase
 
     /**
      * Cria uma Company sem persistir no banco — suficiente para os métodos do
-     * factory que só leem $company->adman_account_id via AdmanSugadoresProvider::supports().
+     * factory que só leem atributos via supports() dos providers.
+     *
+     * Para os tests do branch ml usamos Mockery parcial em Company (override
+     * de getIsMlDrivenAttribute / mlToken) para evitar dependência de DB.
      */
     private function makeCompany(array $attrs = []): Company
     {
@@ -33,12 +42,34 @@ class SugadoresAdsProviderFactoryTest extends TestCase
         return $company;
     }
 
+    /**
+     * Cria uma Company "mockada" cujo supports(ML) retorne true — usado quando
+     * precisamos simular mlToken active sem persistir MlToken no DB.
+     *
+     * Estratégia: cria a Company in-memory e injeta uma relação mlToken via
+     * setRelation() apontando para um MlToken stub com status='active'.
+     */
+    private function makeCompanyWithMlTokenStub(array $attrs = [], string $tokenStatus = 'active'): Company
+    {
+        $company = $this->makeCompany($attrs);
+
+        $token = new \App\Models\MlToken();
+        $token->setRawAttributes(['status' => $tokenStatus]);
+        $company->setRelation('mlToken', $token);
+
+        return $company;
+    }
+
     private function makeFactory(): SugadoresAdsProviderFactory
     {
-        // Composição real do AdmanSugadoresProvider em torno de um Mockery do AdmanService.
+        // Composição real dos providers em torno de Mockery dos services consumidos.
         $adman         = Mockery::mock(AdmanService::class);
         $admanProvider = new AdmanSugadoresProvider($adman);
-        return new SugadoresAdsProviderFactory($admanProvider);
+
+        $ml            = Mockery::mock(MercadoLivreAdsService::class);
+        $mlProvider    = new MercadoLivreSugadoresProvider($ml);
+
+        return new SugadoresAdsProviderFactory($admanProvider, $mlProvider);
     }
 
     // ─────────── Test 1: for(company, 'adman') retorna AdmanProvider ───────────
@@ -66,29 +97,59 @@ class SugadoresAdsProviderFactoryTest extends TestCase
         $this->assertInstanceOf(AdmanSugadoresProvider::class, $provider);
     }
 
-    // ─────────── Test 3: for(company, 'ml') lança RuntimeException no Plan 39-01 ───────────
+    // ─────────── Test 3: for(company, 'ml') retorna MlProvider (Plan 39-02) ───────────
 
-    public function test_for_with_force_name_ml_throws_runtimeexception_in_plan_39_01(): void
+    public function test_for_with_force_name_ml_returns_ml_provider(): void
     {
         $factory = $this->makeFactory();
-        $company = $this->makeCompany();
+        $company = $this->makeCompanyWithMlTokenStub();
 
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Plan 39-02');
+        $provider = $factory->for($company, 'ml');
 
-        $factory->for($company, 'ml');
+        $this->assertInstanceOf(MercadoLivreSugadoresProvider::class, $provider);
+        $this->assertSame('ml', $provider->name());
     }
 
-    // ─────────── Test 4: for(company) lança RuntimeException quando empresa sem provider compatível ───────────
+    // ─────────── Test 4: for(company) sem provider compatível lança RuntimeException ───────────
 
     public function test_for_throws_runtimeexception_when_no_provider_supports_company(): void
     {
         $factory = $this->makeFactory();
+        // Sem adman_account_id E sem mlToken — nenhum provider suporta.
         $company = $this->makeCompany(['adman_account_id' => null]);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('sem provider compatível');
 
         $factory->for($company);
+    }
+
+    // ─────────── Test 5 (Plan 39-02): default prefere Adman quando ambos suportam ───────────
+
+    public function test_for_default_prefers_adman_when_both_providers_support(): void
+    {
+        $factory = $this->makeFactory();
+        // Empresa com adman_account_id E mlToken active — ambos suportam.
+        $company = $this->makeCompanyWithMlTokenStub(['adman_account_id' => '12345']);
+
+        $provider = $factory->for($company);
+
+        // Regra travada: até Phase 42, Adman ganha quando ambos suportam.
+        $this->assertInstanceOf(AdmanSugadoresProvider::class, $provider);
+        $this->assertSame('adman', $provider->name());
+    }
+
+    // ─────────── Test 6 (Plan 39-02): fallback para ML quando só ML suporta ───────────
+
+    public function test_for_default_falls_back_to_ml_when_only_ml_supports(): void
+    {
+        $factory = $this->makeFactory();
+        // Empresa SEM adman_account_id, com mlToken active.
+        $company = $this->makeCompanyWithMlTokenStub(['adman_account_id' => null]);
+
+        $provider = $factory->for($company);
+
+        $this->assertInstanceOf(MercadoLivreSugadoresProvider::class, $provider);
+        $this->assertSame('ml', $provider->name());
     }
 }
