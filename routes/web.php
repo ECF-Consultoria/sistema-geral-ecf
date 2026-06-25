@@ -15,6 +15,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\LiderancaController;
@@ -307,6 +308,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Re-sync manual de empresa Adman via diagnóstico (admin only)
         Route::post('/dev/resync', [DevController::class, 'resyncCompany'])
             ->name('dev.resync');
+
+        // Phase 41 Plan 41-05 — UI admin de onboarding ML por empresa.
+        // 4 rotas (1 GET + 3 POST). Acoes inline disparam comandos async via
+        // Artisan::queue (sugadores:ml-smoke, sugadores:shadow-ml) e toggle do
+        // shadow_enabled em sugador_ml_company_config (Plan 41-01).
+        Route::prefix('dev/sugadores-ml-onboarding')->name('dev.sugadores_ml_onboarding.')->group(function () {
+            Route::get('/',                       [SugadoresMlOnboardingController::class, 'index'])->name('index');
+            Route::post('/{company}/smoke',          [SugadoresMlOnboardingController::class, 'runSmoke'])->name('smoke');
+            Route::post('/{company}/shadow',         [SugadoresMlOnboardingController::class, 'runShadow'])->name('shadow');
+            Route::post('/{company}/toggle-shadow',  [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
+        });
 
         Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
