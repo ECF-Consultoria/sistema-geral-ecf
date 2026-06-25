@@ -111,7 +111,7 @@ Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via *
 - [x] **Phase 39: Provider pattern + MercadoLivreSugadoresProvider (sem gravar)** *(completed 2026-06-25 — 5/5 plans: 39-01 ✓ + 39-02 ✓ + 39-03 ✓ + 39-04 ✓ + 39-05 ✓; todas as 4 waves verdes; 48/48 Phase 39 tests; 65/65 Sugador acumulada — zero regressão)* - `SugadoresAdsProvider` contract + `AdmanSugadoresProvider` encapsulando lógica atual + `MercadoLivreSugadoresProvider` + `MercadoLivreAdsService` (retries, paginação, refresh token). Repositório `AdgroupMlbMapRepository` para esconder `adman_adgroup_mlbs`. `SugadorAnalysisService` refatorado pra resolver provider via DI (zero regressão validada por baseline). Comando `sugadores:analyze --provider={adman|ml} --company={id} --dry-run` retornando motivos sem upsert; guard ml_primary aborta `--provider=ml` sem `--dry-run` com exit 1 (proteção pré-Phase 42). Testes unitários de normalização com fixtures especulativas + Feature tests cobrindo command. Critério: `evaluateMetrics()` não sabe a origem.
 - [x] **Phase 40: Shadow mode + tabelas de comparação** - Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado, não toca scheduler Adman. Alvo de paridade: >= 95% de motivos. Conectar 1+ empresa Adman+ML para validar paridade (Bymobile não basta sozinha).
  (completed 2026-06-25)
-- [ ] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403.
+- [x] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403. (completed 2026-06-25)
 - [ ] **Phase 42: Cut-over por empresa (ml_primary)** - Envs `SUGADORES_PROVIDER_MODE` (default `adman`), `SUGADORES_ML_SHADOW_COMPANIES`, `SUGADORES_ML_PRIMARY_COMPANIES`. Modo `ml_primary` grava em `sugadores` via ML; Adman vira fallback diagnóstico. Cut-over: empresa com 7d shadow aprovado entra em primary, mantém shadow Adman por +7d só pra comparação. Rollback automático se divergência crítica. Critério: 17 testes Feature passando, ByMobile em primary, paridade >= 95% por 7d, FSM/quarentena/auto-resolve/drilldown inalterados.
 - [ ] **Phase 43: Remoção da Adman (Sugadores)** - Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
 
@@ -918,7 +918,7 @@ Plans:
 **Goal:** Tela admin: empresas ativas com `mlToken` válido / expirado / ausente / erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global). Backoff 429/5xx/401/403 conforme plano §3.
 **Depends on:** Phase 40 (shadow funcional, paridade medida)
 **Requirements:** REQ-41-01, REQ-41-02, REQ-41-03, REQ-41-04, REQ-41-05, REQ-41-06, REQ-41-07, REQ-41-08, REQ-41-09, REQ-41-10
-**Plans:** 4/5 plans executed
+**Plans:** 5/5 plans complete
 
 Plans:
 
@@ -931,7 +931,7 @@ Plans:
 
 **Wave 3** *(blocked on Wave 2)*
 - [x] 41-04-PLAN.md — Estende `ShadowRunService` (Plan 40-02) para mesclar `ml_metrics` no `summary` JSON da run quando provider=ml + tests (REQ-41-06 finalização)
-- [ ] 41-05-PLAN.md — UI admin `/dev/sugadores-ml-onboarding`: Controller (4 actions) + 4 rotas role:admin + página React (tabela 6 colunas + filtros + ações inline) + item de sidebar Sistema + `npm run build` + tests Feature (REQ-41-08, REQ-41-09, REQ-41-10)
+- [x] 41-05-PLAN.md — UI admin `/dev/sugadores-ml-onboarding`: Controller (4 actions) + 4 rotas role:admin + página React (tabela 6 colunas + filtros + ações inline) + item de sidebar Sistema + `npm run build` + tests Feature (REQ-41-08, REQ-41-09, REQ-41-10)
 
 Cross-cutting constraints:
 - pt-BR em todos os artefatos e comentários (CLAUDE.md mandate)
