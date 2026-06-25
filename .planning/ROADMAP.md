@@ -918,7 +918,7 @@ Plans:
 **Goal:** Tela admin: empresas ativas com `mlToken` válido / expirado / ausente / erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global). Backoff 429/5xx/401/403 conforme plano §3.
 **Depends on:** Phase 40 (shadow funcional, paridade medida)
 **Requirements:** REQ-41-01, REQ-41-02, REQ-41-03, REQ-41-04, REQ-41-05, REQ-41-06, REQ-41-07, REQ-41-08, REQ-41-09, REQ-41-10
-**Plans:** 3/5 plans executed
+**Plans:** 4/5 plans executed
 
 Plans:
 
@@ -930,7 +930,7 @@ Plans:
 - [x] 41-03-PLAN.md — Refactor comando `sugadores:shadow-ml --company=all` priorizando `SugadorMlCompanyConfig::where('shadow_enabled', true)` + fallback env CSV preservado + tests config table vs env (REQ-41-07)
 
 **Wave 3** *(blocked on Wave 2)*
-- [ ] 41-04-PLAN.md — Estende `ShadowRunService` (Plan 40-02) para mesclar `ml_metrics` no `summary` JSON da run quando provider=ml + tests (REQ-41-06 finalização)
+- [x] 41-04-PLAN.md — Estende `ShadowRunService` (Plan 40-02) para mesclar `ml_metrics` no `summary` JSON da run quando provider=ml + tests (REQ-41-06 finalização)
 - [ ] 41-05-PLAN.md — UI admin `/dev/sugadores-ml-onboarding`: Controller (4 actions) + 4 rotas role:admin + página React (tabela 6 colunas + filtros + ações inline) + item de sidebar Sistema + `npm run build` + tests Feature (REQ-41-08, REQ-41-09, REQ-41-10)
 
 Cross-cutting constraints:
