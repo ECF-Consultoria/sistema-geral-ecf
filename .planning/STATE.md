@@ -1,16 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v10.0
-milestone_name: Pesquisa de Satisfação 2.0
+milestone: v11.0
+milestone_name: Migração Sugadores Adman → ML
 status: executing
-stopped_at: "Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome (RED→GREEN). Wave 2 COMPLETA."
-last_updated: "2026-06-25T17:00:24.901Z"
+stopped_at: "Phase 38 Plan 38-02 PARTIALLY_COMPLETE — comando sugadores:ml-smoke + 4/4 tests Http::fake verdes; smoke real (Tarefa 3) DEFERIDO por corrupção do MariaDB local de dev pós-fix do aria_log_control. Phase 38: 1 plan complete (38-01), 1 plan partially_complete (38-02) aguardando recovery via quick task dev:reparar-mariadb-local. Phase 39 BLOQUEADA (execução) até smoke real verde."
+last_updated: "2026-06-25T20:00:00.000Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 9
   completed_phases: 3
-  total_plans: 18
-  completed_plans: 17
+  total_plans: 19
+  completed_plans: 18
+  partially_complete_plans: 1
   percent: 33
 ---
 
@@ -26,9 +27,11 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 38 (smoke-ml-piloto-bymobile) — EXECUTING
-Plan: 2 of 2
-Status: Ready to execute
+Plan: 2 of 2 — PARTIALLY_COMPLETE
+Status: Plan 38-01 complete; Plan 38-02 partially_complete (Tarefas 1+2 ✅ commitadas + 4/4 tests verdes; Tarefa 3 deferida — smoke real bloqueado por corrupção MariaDB local de dev)
 Last activity: 2026-06-25
+Blockers:
+  - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local` (a ser criada). Bloqueia Tarefa 3 do Plan 38-02 e execução da Phase 39.
 
 ## Performance Metrics
 
@@ -92,11 +95,13 @@ Last activity: 2026-06-25
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P06 | 18min | 3 commits (TDD) | 4 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P07 | 28min | 4 commits (TDD) | 5 files |
 | Phase 38 P01 | 4min | - tasks | - files |
+| Phase 38 P02 (partially_complete — Tarefa 3 deferida) | 12min | 2/3 tasks (RED+GREEN commitados; smoke real pendente) | 3 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-06-25 — **Phase 38 Plan 38-02 PARTIALLY_COMPLETE**. Comando Artisan `sugadores:ml-smoke --company={id} --days=30` entregue em `app/Console/Commands/SugadoresMlSmoke.php` (orquestra MercadoLivreAdsService do Plan 01 em 4 etapas: discoverAdvertiser → listCampaigns → listAds → tryFetchAdsMetrics; grava fixture JSON em `storage/app/sugadores/ml-smoke/{id}-{date}.json`; imprime relatório CLI com seções `endpoints_ok`/`endpoints_failed`/`contract_fields_present`/`contract_fields_missing`/`blockers`; clamp `--days` em [1,90] contra T-38-08; `(int)` cast contra T-38-07; zero ocorrências de `access_token`/`refresh_token` no código contra T-38-06). Suite Feature `tests/Feature/Phase38/MlSmokeCommandTest.php` com 4 tests Http::fake (31 assertions, 1.51s) — 4/4 verdes. Commits `984f3bc` (RED) + `45e986c` (GREEN). **Tarefa 3 (smoke real Bymobille) DEFERIDA** — tentativa de execução bloqueada por corrupção do MariaDB local de dev: handle órfão no `aria_log_control` (errno 9 Windows Defender) → tentativa de fix renomeando para `.bak` corrompeu catálogo de sistema (`mysql.db` "Incorrect file format" + logs Aria inconsistentes) → restore do `.bak` e reboot não desfizeram dano. Recovery vai virar quick task `dev:reparar-mariadb-local` separada. Plan fechado como `partially_complete`; código 100% pronto, falta apenas validação manual pós-recovery. Phase 39 BLOQUEADA na execução (planning preliminar pode começar). Critério de destravamento: rodar `php artisan sugadores:ml-smoke --company=<id_bymobille> --days=30` com fixture válida + grep anti-token-leak == 0 + operador anota `aprovado`. 6 falhas pré-existentes em `Phase38\PolosControllerTest` (outro escopo, dev paralelo) documentadas em `.planning/phases/38-smoke-ml-piloto-bymobile/deferred-items.md` (SCOPE BOUNDARY).
 - 2026-06-18 — **Phase 37 Plan 37-07: UI admin HubSpot Line Items + sidebar reorg final — PHASE 37 INTEIRA FECHADA**. Plan 37-07 entrega o CRUD admin de mapeamentos HubSpot via `/sistema/hubspot-line-items` (4 rotas role:admin no namespace `Sistema\` + Inertia page com modal Dialog para create/edit + delete confirmation + busca client-side + dark theme com tokens ecf-*); REQ-37-02 fechado (admin cadastra novos line items sem deploy). Sidebar reorganizada (REQ-37-09): item "Serviços" removido do nível raiz, grupo "Comercial" agora consolida 5 sub-itens — Empresas (todos os setores), Cadastrar empresa, Grupos, Serviços, HubSpot Line Items (este último excludeRoles=admin-only). 13/13 testes `Phase37HubspotLineItemMappingAdminTest` verdes (45 assertions) cobrindo render Inertia, CRUD completo, validações (unique line_item_name + servico_id ativo via Rule::exists), activity_log em pt-BR (log_name='sistema') e autorização role:admin nas 4 rotas. **Phase 37 inteira (Plans 37-01..07) PRONTA para deploy AGRUPADO**: 124/124 testes verdes combinado Phase 34/35/36/37 (607 assertions); zero regressão. Próximo: `/gsd:complete-phase 37` + decisão sobre encerramento v10.0 ou continuação.
 - 2026-06-18 — **Phase 37 Plan 37-06: /companies refoca em Performance** entregue. `CompanyController::index` agora aplica `whereHas('contratosServico', ativo=true)->whereHas('servico', setor='performance')` apos o `whereDoesntHave('mlbEmpresa')` existente — empresas com contratos APENAS em Publicacao/Outros migram para `/comercial/empresas/listagem` (Plan 37-05). Pendencia `sem_servico` removida do payload + 5 cards na aba Pendencias (era 6). Aba Grupos da UI removida (migrou tambem para o Comercial). 12/12 testes `Phase37CompaniesPerformanceFilterTest` verdes (17 assertions); 105/105 combinado Phase 34/35/37 (537 assertions). 4 testes Phase 34 ajustados via Rule 1 (helper attachPerformanceContract — Rule 1 test obsoleto por mudanca de contrato). Proximo: Plan 37-07 (UI admin mapeamentos + reorg final sidebar).
 - 2026-06-18 — **Phase 37: Onboarding Comercial Unificado via HubSpot Line Items** adicionada ao v10.0 (continuação 34→35→36). Goal: quando deal vira "Fechado Ganho" no HubSpot, empresa entra com serviço+valor+setor preenchidos automaticamente via line items (`GET /crm/v3/objects/deals/{dealId}/associations/line_items`); pendências comerciais (sem_servico, sem_valor, servico_nao_reconhecido) isoladas em nova listagem `/comercial/empresas/listagem` (todos os setores, filtros empilháveis); `/companies` refoca em Performance (Gestão+Mentoria) via `servicos.setor='performance'`; grupos e menu Serviços migram pro Comercial. Decisões: phase única (mega) com 5-7 plans em waves; filtro Performance via catálogo (nova coluna `servicos.setor`); empresas legacy não geram pendência comercial (só origem HubSpot via `hubspot_eventos.company_id_criada`); `hubspot_line_item_mapping` editável no admin pra novos mapeamentos sem deploy. Próximo: `/gsd-plan-phase 37`.
