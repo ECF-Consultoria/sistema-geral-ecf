@@ -244,6 +244,25 @@ class Company extends Model
     }
 
     /**
+     * Phase 41 Plan 41-01 — Cache de advertiser ML (advertiser_id/seller_id/site_id).
+     * Populado pelo MercadoLivreAdsService::discoverAdvertiser (Plan 41-02).
+     */
+    public function mlAdvertiser()
+    {
+        return $this->hasOne(MlAdvertiser::class);
+    }
+
+    /**
+     * Phase 41 Plan 41-01 — Config shadow/primary do path ML por empresa.
+     * UI admin do Plan 41-05 escreve aqui; comando sugadores:shadow-ml
+     * do Plan 41-03 le esta tabela (com fallback pro env CSV legacy).
+     */
+    public function sugadorMlConfig()
+    {
+        return $this->hasOne(SugadorMlCompanyConfig::class);
+    }
+
+    /**
      * Empresa MLB associada (Polos/Assessoria/Incubadora/Publicacao).
      *
      * Phase 35 Plan 35-01 (D-03) — usada pelo CompanyController::index para
