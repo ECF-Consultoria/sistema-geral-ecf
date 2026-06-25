@@ -856,9 +856,22 @@ Plans:
 **Mode:** mvp
 **Goal:** Implementar `SugadoresAdsProvider` contract + `AdmanSugadoresProvider` (encapsula `AdmanService` atual) + `MercadoLivreSugadoresProvider` + `MercadoLivreAdsService` (com retries, paginação, refresh token). Refatorar `SugadorAnalysisService` para resolver provider via DI. Criar `AdgroupMlbMapRepository` para esconder `adman_adgroup_mlbs` (decisão §5 do plano). Comando `sugadores:analyze --provider=ml --company={id} --dry-run` retorna motivos sem upsert. NÃO grava em `sugadores`.
 **Depends on:** Phase 38 (smoke verde com fixtures reais), Phase 20 (MlToken + MercadoLivreService)
-**Requirements:** REQ-39-01 a REQ-39-08 *(detalhar no discuss/plan — provider contract, normalização §2.3 do plano, repository, dry-run command, testes unitários de normalização com fixtures reais anonimizadas)*
+**Requirements:**
+  - REQ-39-01 — Contract `App\Contracts\SugadoresAdsProvider` com 6 métodos (supports/name/fetchCampaigns/fetchCampaignsMetrics/fetchAdgroupsMetrics/fetchAdgroupMlbs) + PHPDoc descrevendo cada chave do contrato normalizado §2.3
+  - REQ-39-02 — `App\Services\Sugadores\AdmanSugadoresProvider` implementando o contract via composição de `AdmanService` (sem modificá-lo)
+  - REQ-39-03 — `App\Services\Sugadores\MercadoLivreSugadoresProvider` implementando o contract via composição de `MercadoLivreAdsService` (Phase 38); normalização ML→§2.3; comentários `// CANDIDATO — revalidar após smoke real` em campos especulativos
+  - REQ-39-04 — `App\Repositories\AdgroupMlbMapRepository` (3 métodos: getMlbsForAdgroup, setMlbsForAdgroup, bulkSetFromProvider) escondendo nome legado `adman_adgroup_mlbs`; legacy `AdmanAdgroupMlbsRepository` preservado para compat com SugadorController + SyncCompanyAdgroupMlbsJob
+  - REQ-39-05 — `App\Services\Sugadores\SugadoresAdsProviderFactory` resolvendo provider por (forceName ou capability detection); regra default "prefere Adman até Phase 42"
+  - REQ-39-06 — `SugadorAnalysisService` refatorado para receber factory via DI; analyzeCompany aceita `?string $forceProvider`; lógica de detecção (evaluateMetrics, buildRow, STATUS_TRAVADOS, auto-resolve, quarentena) IDÊNTICA — zero regressão
+  - REQ-39-07 — Comando `php artisan sugadores:analyze --company={id} --provider={adman|ml} --dry-run` retorna motivos sem upsert; `--provider=ml` sem `--dry-run` aborta com exit 1 (proteção pré-Phase 42)
+  - REQ-39-08 — Suite de testes (Unit + Feature) cobrindo: AdmanProvider (Mockery), MlProvider (Http::fake speculative), Repository (SQLite), Factory (resolução), SugadorAnalysisService refactor (regressão), command (dry-run + guard); zero regressão na suite Sugador existente
 **Success Criteria**: provider ML entrega exatamente o contrato §2.3 do plano; `evaluateMetrics()` não sabe a origem; comando dry-run retorna mesma estrutura de motivos do path Adman para Bymobile.
-**Plans:** TBD
+**Plans:** 5
+  - 39-01-PLAN.md — Wave 1: Contract + AdmanSugadoresProvider + Factory minimal + Unit tests
+  - 39-02-PLAN.md — Wave 2: MercadoLivreSugadoresProvider + factory branch ml + Http::fake speculative tests
+  - 39-03-PLAN.md — Wave 2: AdgroupMlbMapRepository neutro + legacy proxy preserva compat + Unit tests
+  - 39-04-PLAN.md — Wave 3: Refactor SugadorAnalysisService para usar factory; lógica detecção INALTERADA; baseline + refactor tests
+  - 39-05-PLAN.md — Wave 4: Estende command sugadores:analyze com --provider + guard ml_primary + Feature tests
 **UI hint**: no
 
 ### Phase 40: Shadow mode + tabelas de comparação
