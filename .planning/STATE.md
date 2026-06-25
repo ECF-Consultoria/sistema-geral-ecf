@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
 status: executing
-stopped_at: "Phase 39 Plan 39-01 COMPLETO — contract App\\Contracts\\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada."
-last_updated: "2026-06-25T19:30:00.000Z"
-last_activity: 2026-06-25 -- Phase 39 Plan 39-01 fechado (provider pattern fundação)
+stopped_at: "Phase 39 Plan 39-02 COMPLETO — MercadoLivreSugadoresProvider implementa o contract via composição do MercadoLivreAdsService Phase 38; factory ganhou branch 'ml' funcional com regra 'prefere Adman quando ambos suportam' até Phase 42. Normalização ML→contrato §2.3 baseada em hipótese pre-smoke (Phase 38 Tarefa 3 DEFERIDA por bloqueio MariaDB) com comentários CANDIDATO em código e fixtures. 24/24 testes Phase 39 verdes (156 assertions); 49/49 suite Sugador verde (zero regressão). Zero modificação em AdmanService/SugadorAnalysisService/MercadoLivreService/MercadoLivreAdsService. Wave 2 destravada para Plans 39-04 (refactor analysis service) — 39-03 (AdgroupMlbMapRepository) ainda pode rodar em paralelo se desejado."
+last_updated: "2026-06-25T20:18:00.000Z"
+last_activity: 2026-06-25 -- Phase 39 Plan 39-02 fechado (MlProvider + factory ml branch)
 progress:
   total_phases: 38
   completed_phases: 21
   total_plans: 61
-  completed_plans: 52
-  percent: 55
+  completed_plans: 53
+  percent: 56
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 39 (provider-pattern-mercadolivresugadoresprovider-sem-gravar) — EXECUTING
-Plan: 2 of 5
-Status: Wave 1 fechada; aguardando início Wave 2 (Plans 39-02 + 39-03 em paralelo)
-Last activity: 2026-06-25 -- Phase 39 Plan 39-01 fechado (provider pattern fundação)
+Plan: 3 of 5
+Status: Wave 2 parcialmente fechada (39-02 done); aguardando início 39-03 (AdgroupMlbMapRepository) ou direto 39-04 (refactor SugadorAnalysisService)
+Last activity: 2026-06-25 -- Phase 39 Plan 39-02 fechado (MlProvider + factory ml branch)
 Blockers:
 
   - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local`. NÃO bloqueia Phase 39 (tests Mockery + SQLite em-memory — Plan 39-01 confirmou viabilidade).
@@ -97,12 +97,13 @@ Blockers:
 | Phase 38 P01 | 4min | - tasks | - files |
 | Phase 38 P02 (partially_complete — Tarefa 3 deferida) | 12min | 2/3 tasks (RED+GREEN commitados; smoke real pendente) | 3 files |
 | Phase 39 P01 | 25min | 2 tasks (TDD RED+GREEN) | 5 files |
-| Phase 39 P01 | 25min | - tasks | - files |
+| Phase 39 P02 | 18min | 2 tasks (TDD RED+GREEN) | 4 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-06-25 — **Phase 39 Plan 39-02 COMPLETO** (Wave 2 parcial — v11.0). `MercadoLivreSugadoresProvider` implementa o contract `SugadoresAdsProvider` (Plan 39-01) via composição do `MercadoLivreAdsService` Phase 38 — zero modificação no service Phase 38. Normalização ML→contrato §2.3 cobrindo todas as 20 chaves: `cost→investment`, `total_amount→revenue`, `units_quantity→sold_quantity`, `prints→impressions`, `item_id→mlb_id`, `title→adgroup_name+mlb_titulo`, `type→adgroup_type`. `safe_div` privado estático cobre fallback de `cpc/ctr/acos/roas` quando payload não os pré-calcula. `fetchAdgroupMlbs` extrai mapping direto `adgroup→item_id` com dedupe via `array_unique` (oposto do path Adman que depende de Job separado). `organic_amount`/`organic_units` retornam null (Mercado Ads não expõe receita orgânica no endpoint product_ads — deferred). `SugadoresAdsProviderFactory` expandido: constructor agora recebe `MercadoLivreSugadoresProvider $mlProvider`, branch `'ml'` retorna o provider real (substitui throw do Plan 39-01), default cai em ML quando Adman não suporta. Regra "prefere Adman quando ambos suportam" explicitada no código e testada — vale até Phase 42 introduzir cut-over por empresa. **Estado pre-smoke documentado**: Phase 38 Tarefa 3 (smoke real Bymobille) segue DEFERIDA por bloqueio MariaDB local; mapeamento ML→contrato é hipótese baseada em §2.3 + `MercadoLivreAdsService::DEFAULT_METRICS` + doc oficial. Marcado com 5 ocorrências `// CANDIDATO — revalidar após smoke real Phase 38 Tarefa 3` no provider + 7 no test + 5 ocorrências `FIXTURE ESPECULATIVA` no test. **Anti-leak T-39-02-01 confirmado**: zero referência funcional a `access_token`/`refresh_token` no provider (única ocorrência é comentário declarando explicitamente que provider NUNCA toca o token). 24/24 testes Unit Phase 39 verdes (156 assertions, 1.56s) — 8 AdmanProvider (Plan 39-01) + 10 MlProvider (Plan 39-02) + 6 Factory (Plan 39-01 mantidos + 3 novos do branch ml). Suite Sugador 49/49 verde (415 assertions) — zero regressão. Commits `43208d1` (RED) + `6da011c` (GREEN). Wave 2 parcial: Plan 39-03 (AdgroupMlbMapRepository) ainda pode rodar em paralelo se desejado; alternativamente partir direto para Plan 39-04 (refactor SugadorAnalysisService) que agora tem factory completo com 2 providers.
 - 2026-06-25 — **Phase 38 Plan 38-02 PARTIALLY_COMPLETE**. Comando Artisan `sugadores:ml-smoke --company={id} --days=30` entregue em `app/Console/Commands/SugadoresMlSmoke.php` (orquestra MercadoLivreAdsService do Plan 01 em 4 etapas: discoverAdvertiser → listCampaigns → listAds → tryFetchAdsMetrics; grava fixture JSON em `storage/app/sugadores/ml-smoke/{id}-{date}.json`; imprime relatório CLI com seções `endpoints_ok`/`endpoints_failed`/`contract_fields_present`/`contract_fields_missing`/`blockers`; clamp `--days` em [1,90] contra T-38-08; `(int)` cast contra T-38-07; zero ocorrências de `access_token`/`refresh_token` no código contra T-38-06). Suite Feature `tests/Feature/Phase38/MlSmokeCommandTest.php` com 4 tests Http::fake (31 assertions, 1.51s) — 4/4 verdes. Commits `984f3bc` (RED) + `45e986c` (GREEN). **Tarefa 3 (smoke real Bymobille) DEFERIDA** — tentativa de execução bloqueada por corrupção do MariaDB local de dev: handle órfão no `aria_log_control` (errno 9 Windows Defender) → tentativa de fix renomeando para `.bak` corrompeu catálogo de sistema (`mysql.db` "Incorrect file format" + logs Aria inconsistentes) → restore do `.bak` e reboot não desfizeram dano. Recovery vai virar quick task `dev:reparar-mariadb-local` separada. Plan fechado como `partially_complete`; código 100% pronto, falta apenas validação manual pós-recovery. Phase 39 BLOQUEADA na execução (planning preliminar pode começar). Critério de destravamento: rodar `php artisan sugadores:ml-smoke --company=<id_bymobille> --days=30` com fixture válida + grep anti-token-leak == 0 + operador anota `aprovado`. 6 falhas pré-existentes em `Phase38\PolosControllerTest` (outro escopo, dev paralelo) documentadas em `.planning/phases/38-smoke-ml-piloto-bymobile/deferred-items.md` (SCOPE BOUNDARY).
 - 2026-06-18 — **Phase 37 Plan 37-07: UI admin HubSpot Line Items + sidebar reorg final — PHASE 37 INTEIRA FECHADA**. Plan 37-07 entrega o CRUD admin de mapeamentos HubSpot via `/sistema/hubspot-line-items` (4 rotas role:admin no namespace `Sistema\` + Inertia page com modal Dialog para create/edit + delete confirmation + busca client-side + dark theme com tokens ecf-*); REQ-37-02 fechado (admin cadastra novos line items sem deploy). Sidebar reorganizada (REQ-37-09): item "Serviços" removido do nível raiz, grupo "Comercial" agora consolida 5 sub-itens — Empresas (todos os setores), Cadastrar empresa, Grupos, Serviços, HubSpot Line Items (este último excludeRoles=admin-only). 13/13 testes `Phase37HubspotLineItemMappingAdminTest` verdes (45 assertions) cobrindo render Inertia, CRUD completo, validações (unique line_item_name + servico_id ativo via Rule::exists), activity_log em pt-BR (log_name='sistema') e autorização role:admin nas 4 rotas. **Phase 37 inteira (Plans 37-01..07) PRONTA para deploy AGRUPADO**: 124/124 testes verdes combinado Phase 34/35/36/37 (607 assertions); zero regressão. Próximo: `/gsd:complete-phase 37` + decisão sobre encerramento v10.0 ou continuação.
 - 2026-06-18 — **Phase 37 Plan 37-06: /companies refoca em Performance** entregue. `CompanyController::index` agora aplica `whereHas('contratosServico', ativo=true)->whereHas('servico', setor='performance')` apos o `whereDoesntHave('mlbEmpresa')` existente — empresas com contratos APENAS em Publicacao/Outros migram para `/comercial/empresas/listagem` (Plan 37-05). Pendencia `sem_servico` removida do payload + 5 cards na aba Pendencias (era 6). Aba Grupos da UI removida (migrou tambem para o Comercial). 12/12 testes `Phase37CompaniesPerformanceFilterTest` verdes (17 assertions); 105/105 combinado Phase 34/35/37 (537 assertions). 4 testes Phase 34 ajustados via Rule 1 (helper attachPerformanceContract — Rule 1 test obsoleto por mudanca de contrato). Proximo: Plan 37-07 (UI admin mapeamentos + reorg final sidebar).
