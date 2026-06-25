@@ -27,7 +27,18 @@ findings:
   warning: 7
   info: 5
   total: 14
-status: issues_found
+status: critical_fixed
+fixes_applied:
+  - id: CR-01
+    commit: 7b29dc6
+    note: MercadoLivreAdsService::class registrado como singleton em AppServiceProvider::register(). Teste de regressao adicionado (mercadoLivreAdsService_e_singleton_no_container).
+  - id: CR-02
+    commit: 7b29dc6
+    note: SugadoresShadowMl::handle() conta 2 falhas no catch de Throwable (1 Adman + 1 ML nao executados). Teste de regressao adicionado (shadow_run_lanca_throwable_conta_2_falhas).
+remaining:
+  warning: 7
+  info: 5
+  triage: backlog (resolvido em phase de polish posterior)
 ---
 
 # Phase 41: Code Review Report
