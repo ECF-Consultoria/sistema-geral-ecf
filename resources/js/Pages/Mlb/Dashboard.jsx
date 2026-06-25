@@ -480,15 +480,12 @@ function AtrasoChart({ relatorioAtrasos }) {
     const total = concluidos_atrasados + pendentes_atrasados;
     if (total === 0) return null;
 
-    const chartData = por_empresa.map(e => ({
-        nome:       e.nome.length > 16 ? e.nome.slice(0, 16) + '…' : e.nome,
-        concluidos: e.concluidos,
-        pendentes:  e.pendentes,
-    }));
+    // Mais crítico no topo: ordena por pendentes em atraso, depois pelo total.
+    const linhas = [...por_empresa].sort((a, b) => b.pendentes - a.pendentes || b.total - a.total);
 
     return (
         <div className="card-ecf rounded-2xl p-5 mb-6">
-            <div className="flex items-start justify-between mb-5">
+            <div className="flex items-start justify-between mb-4">
                 <div>
                     <p className="text-white font-semibold text-sm">Relatório de Atrasos de SKU</p>
                     <p className="text-white/30 text-[11px] mt-0.5">SKUs com prazo vencido — concluídos em atraso vs ainda pendentes</p>
@@ -506,29 +503,39 @@ function AtrasoChart({ relatorioAtrasos }) {
                 </div>
             </div>
 
-            {chartData.length > 0 && (
-                <ResponsiveContainer width="100%" height={Math.max(chartData.length * 24, 80)}>
-                    <BarChart
-                        data={chartData}
-                        layout="vertical"
-                        barSize={10}
-                        margin={{ top: 0, right: 24, left: 4, bottom: 0 }}
-                    >
-                        <CartesianGrid stroke="rgba(255,255,255,0.04)" horizontal={false} />
-                        <XAxis type="number" allowDecimals={false}
-                            tick={{ fill:'#6a6f79', fontSize:10 }} axisLine={false} tickLine={false} />
-                        <YAxis type="category" dataKey="nome" width={105}
-                            tick={{ fill:'rgba(255,255,255,0.55)', fontSize:10 }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                            contentStyle={{ background:'#0f1116', border:'1px solid rgba(255,255,255,0.08)', borderRadius:10, fontSize:11 }}
-                            labelStyle={{ color:'rgba(255,255,255,0.6)' }}
-                        />
-                        <Legend iconSize={8} wrapperStyle={{ fontSize:10, color:'rgba(255,255,255,0.35)', paddingTop:6 }} />
-                        <Bar dataKey="concluidos" name="Concluídos c/ atraso" fill="#f97316" radius={[0,2,2,0]} stackId="a" />
-                        <Bar dataKey="pendentes"  name="Pendentes em atraso"  fill="#ef4444" radius={[0,2,2,0]} stackId="a" />
-                    </BarChart>
-                </ResponsiveContainer>
-            )}
+            {/* Tabela por empresa — mais críticos no topo */}
+            <table className="w-full text-[13px]">
+                <thead>
+                    <tr className="text-[10px] uppercase tracking-wide text-white/30 border-b border-white/[0.08]">
+                        <th className="text-left  font-medium py-2 pr-2 w-7">#</th>
+                        <th className="text-left  font-medium py-2 pr-3">Empresa</th>
+                        <th className="text-right font-medium py-2 px-3 text-orange-400/70 whitespace-nowrap">Concl. c/ atraso</th>
+                        <th className="text-right font-medium py-2 px-3 text-red-400/70 whitespace-nowrap">Pendentes</th>
+                        <th className="text-right font-medium py-2 pl-3 w-14">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {linhas.map((e, i) => (
+                        <tr key={i} className="border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02]">
+                            <td className="py-2.5 pr-2 text-white/25 tabular-nums">{i + 1}</td>
+                            <td className="py-2.5 pr-3 text-white/80">
+                                <span className="block truncate max-w-[280px]" title={e.nome}>{e.nome}</span>
+                            </td>
+                            <td className="py-2.5 px-3 text-right tabular-nums">
+                                {e.concluidos > 0
+                                    ? <span className="text-orange-400 font-semibold">{e.concluidos}</span>
+                                    : <span className="text-white/15">—</span>}
+                            </td>
+                            <td className="py-2.5 px-3 text-right tabular-nums">
+                                {e.pendentes > 0
+                                    ? <span className="text-red-400 font-semibold">{e.pendentes}</span>
+                                    : <span className="text-white/15">—</span>}
+                            </td>
+                            <td className="py-2.5 pl-3 text-right tabular-nums text-white font-bold">{e.total}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
         </div>
     );
 }
