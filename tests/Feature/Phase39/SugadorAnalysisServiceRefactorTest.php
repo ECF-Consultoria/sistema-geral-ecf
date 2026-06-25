@@ -20,16 +20,12 @@ use App\Models\Company;
 use App\Models\SugadorConfig;
 use App\Services\AdmanService;
 use App\Services\SugadorAnalysisService;
-use App\Services\Sugadores\AdmanSugadoresProvider;
-use App\Services\Sugadores\MercadoLivreAdsService;
-use App\Services\Sugadores\MercadoLivreSugadoresProvider;
 use App\Services\Sugadores\SugadoresAdsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Mockery;
 use Mockery\MockInterface;
 use ReflectionClass;
-use ReflectionMethod;
 use Tests\TestCase;
 
 class SugadorAnalysisServiceRefactorTest extends TestCase
@@ -169,6 +165,9 @@ class SugadorAnalysisServiceRefactorTest extends TestCase
 
         $service = $this->app->make(SugadorAnalysisService::class);
         $service->analyzeCompany($company, $this->hoje, true, 'adman');
+
+        // Mockery::close() no tearDown valida a expectativa ->once() com 'adman'.
+        $this->assertTrue(true, "factory.for(\$company, 'adman') foi invocado");
     }
 
     // ─────────── Test 4: factory recebe null quando forceProvider omitido ───────────
@@ -194,6 +193,9 @@ class SugadorAnalysisServiceRefactorTest extends TestCase
 
         $service = $this->app->make(SugadorAnalysisService::class);
         $service->analyzeCompany($company, $this->hoje, true);
+
+        // Mockery::close() no tearDown valida a expectativa ->once() com null.
+        $this->assertTrue(true, 'factory.for($company, null) foi invocado quando forceProvider omitido');
     }
 
     // ─────────── Test 5: analyzeCompany chama provider->fetchAdgroupsMetrics quando incluir_anuncios=true ───────────
@@ -238,6 +240,9 @@ class SugadorAnalysisServiceRefactorTest extends TestCase
 
         $service = $this->app->make(SugadorAnalysisService::class);
         $service->analyzeCompany($company, $this->hoje, true);
+
+        // Mockery::close() no tearDown valida a expectativa ->once() em fetchCampaignsMetrics.
+        $this->assertTrue(true, 'provider->fetchCampaignsMetrics foi invocado quando incluir_campanhas=true');
     }
 
     // ─────────── Test 7: analyzeCompany NÃO chama AdmanService::fetchAdsMetrics direto ───────────

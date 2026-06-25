@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Contracts\SugadoresAdsProvider;
 use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
 use App\Models\SugadorConfig;
+use App\Services\Sugadores\SugadoresAdsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -22,7 +24,20 @@ use Illuminate\Support\Facades\Log;
  */
 class SugadorAnalysisService
 {
-    public function __construct(private AdmanService $adman) {}
+    /**
+     * Phase 39 Plan 39-04: constructor passa a receber o factory de providers.
+     *
+     * - $providers: resolve qual provider (Adman ou Mercado Livre) atende cada empresa.
+     *   Substitui as chamadas diretas a $this->adman dentro de analyzeCompany.
+     * - $adman: PRESERVADO para uso interno de loadCampaignsInfo legacy (consumida
+     *   por CleanupSugadoresQuarentena, que NÃO faz parte do refactor Phase 39).
+     *   Será removido em Phase 42+ quando todos os call-sites migrarem para o
+     *   AdgroupMlbMapRepository / provider ML.
+     */
+    public function __construct(
+        private SugadoresAdsProviderFactory $providers,
+        private AdmanService $adman,
+    ) {}
 
     /**
      * Campanhas de "quarentena" — onde analistas movem adgroups já tratados.
@@ -36,8 +51,12 @@ class SugadorAnalysisService
     /**
      * Analisa todas as empresas ativas com config ativa.
      * Retorna estatísticas globais.
+     *
+     * Phase 39 Plan 39-04: aceita $forceProvider opcional que é propagado a
+     * analyzeCompany → factory.for(). Comando sugadores:analyze (Plan 39-05)
+     * usa esse caminho para forçar --provider=adman|ml.
      */
-    public function analyzeAll(?Carbon $referenceDate = null, bool $dryRun = false): array
+    public function analyzeAll(?Carbon $referenceDate = null, bool $dryRun = false, ?string $forceProvider = null): array
     {
         $companies = Company::with('sugadorConfig')
             ->where('active', true)
@@ -62,7 +81,7 @@ class SugadorAnalysisService
 
         foreach ($companies as $company) {
             try {
-                $result = $this->analyzeCompany($company, $referenceDate, $dryRun);
+                $result = $this->analyzeCompany($company, $referenceDate, $dryRun, $forceProvider);
                 if ($result['skipped']) {
                     $totals['companies_skipped']++;
                 } else {
@@ -90,24 +109,26 @@ class SugadorAnalysisService
      *   'detalhes'   => array,          // lista pra UI: [['tipo', 'id', 'motivos', 'novo' => bool], ...]
      * ]
      */
-    public function analyzeCompany(Company $company, ?Carbon $referenceDate = null, bool $dryRun = false): array
+    public function analyzeCompany(Company $company, ?Carbon $referenceDate = null, bool $dryRun = false, ?string $forceProvider = null): array
     {
         $referenceDate = $referenceDate ?? now()->startOfDay();
-        // A detecção de sugadores consulta a API Adman ao vivo — preferir o ID
-        // Adman (adman_account_id). Antes usava ml_store_id ?: adman_account_id,
-        // o que, em empresa com vínculo ML, passava o Seller ID do ML para a
-        // Adman (que não o reconhece) e quebrava a análise. Detecção via ML é
-        // follow-up separado.
-        $custId        = $company->adman_account_id ?: $company->ml_store_id;
-
-        // Phase 18.5: marketplace dinamico por empresa (default 'meli').
-        $marketplace = $company->marketplace ?? 'meli';
 
         $skip = function (string $reason) {
             return ['skipped' => true, 'reason' => $reason, 'campanhas' => 0, 'adgroups' => 0, 'detalhes' => []];
         };
 
-        if (!$custId) return $skip('sem adman_account_id');
+        // Phase 39 Plan 39-04: resolução de provider via factory.
+        // - factory.for() escolhe AdmanSugadoresProvider (default até Phase 42) ou
+        //   MercadoLivreSugadoresProvider, baseado em capability detection ou em
+        //   $forceProvider ('adman'|'ml') passado pelo command (Plan 39-05).
+        // - Se nenhum provider suporta a empresa, factory lança RuntimeException —
+        //   convertemos em skip estruturado para preservar o retorno semântico
+        //   antigo (analyzeAll trata skip como companies_skipped, não failed).
+        try {
+            $provider = $this->providers->for($company, $forceProvider);
+        } catch (\RuntimeException $e) {
+            return $skip('sem provider compatível: ' . $e->getMessage());
+        }
 
         $config = SugadorConfig::forCompany($company);
         if (!$config->ativo) return $skip('config inativa');
@@ -121,7 +142,8 @@ class SugadorAnalysisService
         // Lookup campaignId → {name, status} pra descartar adgroups que o analista
         // já moveu pra campanha de quarentena (SGI/Sugador/Sugadores) ou cuja
         // campanha está pausada/encerrada — esses já foram tratados.
-        $campaignsInfo = $this->loadCampaignsInfo($custId, $marketplace);
+        // Phase 39 Plan 39-04: lookup vem do provider (era $this->adman direto).
+        $campaignsInfo = $this->buildCampaignsInfoFromProvider($provider, $company);
 
         // Pré-fetch dos sugadores já existentes para esta empresa+data → evita SELECT por item
         $existingMap = $dryRun ? collect() : Sugador::where('company_id', $company->id)
@@ -140,8 +162,10 @@ class SugadorAnalysisService
         // ─── Análise de anúncios (adgroup-level) ────────────────────────────
         if ($config->incluir_anuncios) {
             try {
-                // Phase 18.5: marketplace dinamico (default 'meli').
-                $ads = $this->adman->fetchAdsMetrics($custId, $dateFrom, $dateTo, 50, $marketplace);
+                // Phase 39 Plan 39-04: substitui $this->adman->fetchAdsMetrics
+                // por $provider->fetchAdgroupsMetrics — provider sabe extrair
+                // adman_account_id (Adman) ou advertiser_id ML internamente.
+                $ads = $provider->fetchAdgroupsMetrics($company, $periodoInicio, $periodoFim);
 
                 foreach ($ads as $ad) {
                     $cId = $ad['campaign_id'];
@@ -214,8 +238,10 @@ class SugadorAnalysisService
         // ─── Análise de campanhas ────────────────────────────────────────────
         if ($config->incluir_campanhas) {
             try {
-                // Phase 18.5: marketplace dinamico.
-                $campaigns = $this->adman->fetchCampaignsRange($custId, $dateFrom, $dateTo, $marketplace);
+                // Phase 39 Plan 39-04: substitui $this->adman->fetchCampaignsRange
+                // por $provider->fetchCampaignsMetrics — assinatura recebe Carbon
+                // ao invés de strings de data.
+                $campaigns = $provider->fetchCampaignsMetrics($company, $periodoInicio, $periodoFim);
 
                 foreach ($campaigns as $camp) {
                     $cId    = $camp['campaign_id'];
@@ -521,11 +547,18 @@ class SugadorAnalysisService
     }
 
     /**
-     * Lookup `campaignId => ['name', 'status']` da Adman. Usado pra filtrar
-     * campanhas de quarentena (SGI/Sugadores) e pausadas/encerradas. Fail-open:
-     * se a chamada falha, retorna array vazio e a análise segue sem o filtro.
+     * LEGACY Phase 30 — Lookup `campaignId => ['name', 'status']` consumindo
+     * AdmanService::fetchAllCampaigns direto. Preservado para callers externos
+     * (CleanupSugadoresQuarentena command line) que passam $custId puro.
      *
-     * Público pra reuso pelo CleanupSugadoresQuarentena.
+     * Phase 39 Plan 39-04: o fluxo novo de analyzeCompany usa
+     * {@see self::buildCampaignsInfoFromProvider()} — vai pelo provider
+     * resolvido pela factory ao invés do AdmanService direto. Este método
+     * permanece intocado funcionalmente para não quebrar
+     * CleanupSugadoresQuarentena (fora de escopo Phase 39).
+     *
+     * Fail-open: se a chamada falha, retorna array vazio e a análise segue
+     * sem o filtro.
      */
     public function loadCampaignsInfo(string $custId, string $marketplace = 'meli'): array
     {
@@ -546,6 +579,40 @@ class SugadorAnalysisService
             $lookup[$id] = [
                 'name'   => $c['name']   ?? null,
                 'status' => $c['status'] ?? null,
+            ];
+        }
+        return $lookup;
+    }
+
+    /**
+     * Phase 39 Plan 39-04: monta lookup `campaign_id => ['name', 'status']` via
+     * provider (substitui chamada direta ao AdmanService::fetchAllCampaigns
+     * que ainda vive em {@see self::loadCampaignsInfo()} legacy).
+     *
+     * O contrato {@see SugadoresAdsProvider::fetchCampaigns()} já retorna o
+     * payload normalizado com chaves campaign_id/campaign_name/campaign_status,
+     * portanto este método apenas indexa por campaign_id. Fail-open: se o
+     * provider falha, retorna [] e a análise segue sem o filtro de quarentena.
+     */
+    private function buildCampaignsInfoFromProvider(SugadoresAdsProvider $provider, Company $company): array
+    {
+        try {
+            $campaigns = $provider->fetchCampaigns($company);
+        } catch (\Throwable $e) {
+            Log::warning(
+                "[Sugadores] Não conseguiu listar campanhas via provider '{$provider->name()}' "
+                . "para empresa {$company->id} pro filtro de quarentena: " . $e->getMessage()
+            );
+            return [];
+        }
+
+        $lookup = [];
+        foreach ($campaigns as $c) {
+            $id = (string) ($c['campaign_id'] ?? '');
+            if ($id === '') continue;
+            $lookup[$id] = [
+                'name'   => $c['campaign_name']   ?? null,
+                'status' => $c['campaign_status'] ?? null,
             ];
         }
         return $lookup;
