@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
 status: executing
-stopped_at: Phase 40 Plan 40-01 COMPLETO — migration `2026_06_25_400001_create_sugador_provider_runs_and_items_tables.php` cria as 2 tabelas auxiliares de shadow mode com índices compostos `idx_company_ref_provider`/`idx_run_tipo` e FKs cascadeOnDelete; Models Eloquent `SugadorProviderRun` e `SugadorProviderItem` com casts (date/immutable_datetime/array) e relações company()/items()/run() prontos. 8/8 tests Feature `Phase40\\CreateSugadorProviderTables` verdes (23 assertions, 1.33s); suite Sugador acumulada 73/73 verde (era 65 baseline Phase 39 +8 desta plan); suite Phase 39 48/48 verde — zero regressão. Zero modificação em Sugador/SugadorConfig/SugadorAcao/SugadorAnalysisService/providers/factory/AdmanService/MercadoLivreService/MercadoLivreAdsService/AnalyzeCompanySugadoresJob/AnalyzeSugadores command/routes/console.php/config/sugadores.php. Smoke real contra MariaDB deferido (bloqueio conhecido — quick task `dev:reparar-mariadb-local`). REQ-40-01 fechado. Wave 1 FECHADA — Wave 2 (Plans 40-02 ShadowRunService + 40-03 ProviderComparisonService) LIBERADA pra execução paralela. Commits `3107df5` (RED) + `7abd364` (GREEN).
-last_updated: "2026-06-25T20:17:14.911Z"
+stopped_at: Phase 39 Plan 39-01 COMPLETO — contract App\Contracts\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada.
+last_updated: "2026-06-25T20:27:56.906Z"
 last_activity: 2026-06-25
 progress:
   total_phases: 38
   completed_phases: 22
   total_plans: 65
-  completed_plans: 57
+  completed_plans: 58
   percent: 58
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 ## Current Position
 
 Phase: 40 (shadow-mode-tabelas-de-compara-o) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-06-25
 Blockers:
@@ -102,6 +102,7 @@ Blockers:
 | Phase 39 P04 | 35min | 3 tasks (BASELINE chore + RED test + GREEN refactor) | 3 files |
 | Phase 39 P05 | 20min | 2 tasks (TDD RED+GREEN) | 2 files |
 | Phase 40 P01 | 25min | 2 tasks | 4 files |
+| Phase 40 P02 | 22min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -541,7 +542,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-25T20:17:01.618Z
+Last session: 2026-06-25T20:27:49.695Z
 Stopped at: Phase 39 Plan 39-01 COMPLETO — contract App\Contracts\SugadoresAdsProvider (6 métodos §2.2/§2.3) + AdmanSugadoresProvider via composição AdmanService + SugadoresAdsProviderFactory minimal. 12/12 testes Unit Phase 39 verdes; 37/37 suite Sugador continua verde. Zero modificação em AdmanService/SugadorAnalysisService. Wave 1 (single-plan) FECHADA — Wave 2 (Plans 39-02 + 39-03) liberada.
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
