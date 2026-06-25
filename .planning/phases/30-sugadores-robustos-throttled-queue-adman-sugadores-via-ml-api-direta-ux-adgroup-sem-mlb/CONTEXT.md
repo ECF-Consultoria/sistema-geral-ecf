@@ -1,10 +1,21 @@
-# Phase 30: Sugadores Robustos
+# Phase 30: Sugadores Robustos (W1 shipped • W2/W3/W4 SUPERSEDED)
 
-**Status:** Planning
+**Status:** W1 shipped 2026-06-08 • W2/W3/W4 **SUPERSEDED por Milestone v11.0** (decisão 2026-06-25)
 **Mode:** mvp
 **Iniciada:** 2026-06-08
 **Depende de:** Phase 4 (`SugadorAnalysisService` Adman), Phase 18 (cache híbrido Adman + cust_id), Phase 19 (UI `/sugadores` consolidada), Phase 20 (`ml_token` integração + grants)
 **Milestone:** v9.5 — Sugadores Robustos
+
+> ## ⚠️ Decisão arquitetural 2026-06-25 — W2/W3/W4 SUPERSEDED
+>
+> Importação do `plano-migracao-sugadores-ml-direto.md` via `/gsd-import` revelou conflito com as decisões D-05 (mirror service `SugadorAnalysisServiceMl`) e D-06 (branching `is_ml_driven` no controller). Após AskUserQuestion, decidido:
+>
+> - **Arquitetura:** **provider pattern** (`SugadoresAdsProvider` contract + `AdmanSugadoresProvider` + `MercadoLivreSugadoresProvider`), NÃO mirror service. Um único `SugadorAnalysisService` recebe provider por DI, controlado por env `SUGADORES_PROVIDER_MODE` (`adman | ml_shadow | ml_primary`).
+> - **Slicing:** Phase 30 W2/W3/W4 (plans 30-02/30-03/30-04) **não são mais para executar**. Substituídas pelas Phases 38-43 da nova **Milestone v11.0 — Migração Sugadores Adman → ML (Fontes Unificadas Fase 1)**.
+> - **Plan 30-01** (W1 throttled queue Adman) **permanece em prod** — rate limiter global `adman-api` continua válido e é base do path Adman dentro do novo provider.
+> - **Decisão D-08 do plano:** rate limit ML é separado (`ml-api:{seller_id}`), não conflita com `adman-api` shippado.
+>
+> Razão da troca: provider pattern habilita shadow mode + cut-over por empresa + comparação de paridade (Fase 2/3/4 do plano), que mirror service não suporta sem retrabalho. Veja `plano-migracao-sugadores-ml-direto.md` (raiz) para o plano técnico completo e `.planning/research/sugadores-ml-direto/` para a referência canônica importada.
 
 ## Goal
 

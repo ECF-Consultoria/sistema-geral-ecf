@@ -46,6 +46,17 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(8)->by('global');
         });
 
+        // Phase 41 — Rate limiter ML por seller (NAO global). 60 req/min por seller_id
+        // alinha com §3 do plano de migracao Sugadores Adman→ML ("Comecar conservador,
+        // 60 req/min por seller"). Bucket dinamico via Limit::by($sellerId) — workers
+        // concorrentes batem no MESMO bucket por seller via cache backend.
+        // Aplicado por MercadoLivreAdsService::withRateLimit antes de cada chamada
+        // HTTP a Mercado Ads. Excedeu → RuntimeException (NAO 429 delayed: o job
+        // sugadores ML eh idempotente e deve abortar/relogar, nao acumular delay).
+        RateLimiter::for('ml-api', function (Request $request, $sellerId = 'unknown') {
+            return Limit::perMinute(60)->by($sellerId);
+        });
+
         Event::listen(Login::class, function (Login $event) {
             activity('auth')
                 ->causedBy($event->user)

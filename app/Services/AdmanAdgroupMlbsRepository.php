@@ -12,6 +12,12 @@ use Illuminate\Support\Collection;
  * Substitui o caminho legacy `AdmanMcpService::fetchMlbsByCampaign` que varria
  * a Adman MCP em tempo de request. Agora o drilldown lê instantaneamente do
  * banco local populado pelo sync agendado 03h BRT.
+ *
+ * PHASE 39 — este Repository (Phase 30) permanece para compat com
+ * `SugadorController::mlbs` e `SyncCompanyAdgroupMlbsJob`. Novo código deve
+ * usar `App\Repositories\AdgroupMlbMapRepository` (API neutra que esconde o
+ * nome legado da tabela). Phase 43 vai consolidar em um único Repository
+ * quando `adman_adgroup_mlbs` for renomeada para `sugador_adgroup_mlbs`.
  */
 class AdmanAdgroupMlbsRepository
 {

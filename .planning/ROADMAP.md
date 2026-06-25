@@ -99,15 +99,27 @@ Módulo de Sugadores (detecção de adgroups que consomem orçamento sem retorno
 2. **Paginação truncada** — "8 de 189 páginas lidas" porque o job estoura timeout antes de varrer tudo. Adgroups dos finais da paginação somem do resultado.
 3. **Empresas ML-only não funcionam** — Bymobile teste (e futura maioria) sem `adman_account_id` vê "Empresa sem adman_account_id" ao clicar em "Carregar MLBs". Sugadores não consegue rodar.
 
-v9.5 é uma costura cirúrgica que prepara o terreno pro v10.0 (Fontes Unificadas) sem esperar o redesign completo. Resolve dor de prod hoje + valida pattern de "Sugadores via ML API direta" com Bymobile como piloto.
+v9.5 entrega só W1 (throttled queue Adman, já em prod). W2 (`SugadorAnalysisServiceMl` espelho) e W3/W4 foram **superseded pela Milestone v11.0** em 2026-06-25 após decisão arquitetural de adotar **provider pattern** ao invés de mirror service (ver `plano-migracao-sugadores-ml-direto.md`).
 
-- [ ] **Phase 30: Sugadores Robustos — throttled queue Adman + Sugadores via ML API direta + UX adgroup sem MLB** - W1: Job throttled (10 req/min, distribui chamadas dentro da janela, evita 429 zero-cost) com retry inteligente preservando progresso da paginação parcial. W2: `SugadorAnalysisServiceMl` espelhando a lógica do Adman mas consumindo `/items/search` + `/insights/orders` da API ML direta — destrava Bymobile imediatamente e vira base de aprendizado pro v10.0. W3: UI permite analista pausar adgroup mesmo sem MLBs no período (botão "marcar como sugador" não condicionado a MLB encontrado). Mantém compatibilidade total com Sugadores Adman existente.
+- [~] **Phase 30: Sugadores Robustos** — W1 throttled queue Adman shipped (30-01, commit `faf1a9a` 2026-06-08). W2/W3/W4 (plans 30-02/03/04) **superseded** pela v11.0 — destrava Bymobile via provider pattern com shadow + cut-over, não via mirror service.
 
-### Milestone v10.0 — Fontes Unificadas (placeholder)
+### Milestone v11.0 — Migração Sugadores Adman → ML (Fontes Unificadas Fase 1)
 
-Sistema hoje tem 3 fontes de dados (ECF Drive, Adman API, ML API direta) usadas inconsistentemente: Dashboard puxa Adman 30d, Painel Executivo puxa ECF Drive mês corrente, Sugadores puxa Adman MCP, ECF Drive duplica algumas métricas. v10.0 estabelece **precedência por empresa**: se empresa tem `ml_store_id` → fonte oficial é ML API direta; se só tem `adman_account_id` → Adman; ECF Drive vira fonte de signals/grants/relatórios apenas. Sugadores migra de Adman MCP pra ML API. Definição de "Faturamento Bruto único" com janela unificada. Trabalho grande (estimado 3-5 phases).
+Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via **provider pattern** (`SugadoresAdsProvider` contract + `AdmanSugadoresProvider` + `MercadoLivreSugadoresProvider`). Adman vira fallback até cut-over por empresa estar validado. Preserva 100% da UI, FSM de status, schema de `sugadores`/`sugador_configs`/`sugador_acoes` e contrato normalizado de `evaluateMetrics`. Bymobile teste é piloto da Fase 0 (smoke). Origem técnica: `plano-migracao-sugadores-ml-direto.md` (importado via /gsd-import 2026-06-25, decisão "provider pattern" + slicing "nova milestone substituindo Phase 30 W2/W3").
 
-- [ ] **Phase 32+ TBD** — escopo final a definir após v9.0 fechar
+- [~] **Phase 38: Smoke ML (piloto Bymobile)** *(partially_complete — código pronto + tests verdes; smoke real deferido por MariaDB local corrompido)* - Comando `sugadores:ml-smoke --company={id} --days=30` resolve `mlToken` (com refresh), descobre `advertiser_id`, lista campanhas e ads, tenta métricas no período, grava fixture JSON anonimizável em `storage/app/sugadores/ml-smoke/`. Critério de aceite: relatório curto com endpoints que funcionaram, campos disponíveis vs ausentes, equivalência com contrato normalizado, blockers de permissão/token. NÃO grava em `sugadores`. Bloqueia avanço pra Phase 39 se não estiver verde (BLOQUEIO ATIVO).
+- [x] **Phase 39: Provider pattern + MercadoLivreSugadoresProvider (sem gravar)** *(completed 2026-06-25 — 5/5 plans: 39-01 ✓ + 39-02 ✓ + 39-03 ✓ + 39-04 ✓ + 39-05 ✓; todas as 4 waves verdes; 48/48 Phase 39 tests; 65/65 Sugador acumulada — zero regressão)* - `SugadoresAdsProvider` contract + `AdmanSugadoresProvider` encapsulando lógica atual + `MercadoLivreSugadoresProvider` + `MercadoLivreAdsService` (retries, paginação, refresh token). Repositório `AdgroupMlbMapRepository` para esconder `adman_adgroup_mlbs`. `SugadorAnalysisService` refatorado pra resolver provider via DI (zero regressão validada por baseline). Comando `sugadores:analyze --provider={adman|ml} --company={id} --dry-run` retornando motivos sem upsert; guard ml_primary aborta `--provider=ml` sem `--dry-run` com exit 1 (proteção pré-Phase 42). Testes unitários de normalização com fixtures especulativas + Feature tests cobrindo command. Critério: `evaluateMetrics()` não sabe a origem.
+- [x] **Phase 40: Shadow mode + tabelas de comparação** - Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado, não toca scheduler Adman. Alvo de paridade: >= 95% de motivos. Conectar 1+ empresa Adman+ML para validar paridade (Bymobile não basta sozinha).
+ (completed 2026-06-25)
+- [ ] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403.
+- [ ] **Phase 42: Cut-over por empresa (ml_primary)** - Envs `SUGADORES_PROVIDER_MODE` (default `adman`), `SUGADORES_ML_SHADOW_COMPANIES`, `SUGADORES_ML_PRIMARY_COMPANIES`. Modo `ml_primary` grava em `sugadores` via ML; Adman vira fallback diagnóstico. Cut-over: empresa com 7d shadow aprovado entra em primary, mantém shadow Adman por +7d só pra comparação. Rollback automático se divergência crítica. Critério: 17 testes Feature passando, ByMobile em primary, paridade >= 95% por 7d, FSM/quarentena/auto-resolve/drilldown inalterados.
+- [ ] **Phase 43: Remoção da Adman (Sugadores)** - Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
+
+### Milestone v12.0 — Fontes Unificadas Fase 2 (placeholder)
+
+Após v11.0 fechar, generaliza o pattern de provider/precedência para Dashboard + Painel Executivo + outras leituras de métrica. Define "Faturamento Bruto único" com janela unificada e remove cache híbrido Adman cust_id (Phase 18). Escopo final TBD.
+
+- [ ] **Phase 44+ TBD** — escopo final a definir após v11.0 fechar
 
 ## Phase Details
 
@@ -668,19 +680,20 @@ Plans:
 - **Zero mudança no frontend** — sino do header (Phase 10) lê automaticamente via polling do shared prop
 - Webhook payload da Phase 26 agora dispara notif real (antes só `Log::channel('ecf-webhooks')`)
 
-### Phase 30: Sugadores Robustos — throttled queue Adman + Sugadores via ML API direta + UX adgroup sem MLB
+### Phase 30: Sugadores Robustos — throttled queue Adman (W1 shipped, W2/W3/W4 superseded)
 
 **Milestone:** v9.5 — Sugadores Robustos
-**Status:** In Progress
-**Goal:** Eliminar as 4 dores em prod do módulo Sugadores: (1) rate limit 429 da Adman, (2) paginação truncada, (3) empresas ML-only sem análise, (4) drilldown "MLBs do adgroup" inviável (varre 198 pages pra filtrar local). Resolve dor hoje + valida pattern Sugadores-via-ML que vira base do v10.0.
+**Status:** Partially Shipped (W1 em prod) + W2/W3/W4 **SUPERSEDED by Milestone v11.0** (2026-06-25)
+**Goal original:** Eliminar 4 dores em prod do módulo Sugadores. **Realizado:** apenas dor 1 (rate limit 429 Adman) resolvida via W1.
+**Decisão arquitetural 2026-06-25:** W2 (mirror service `SugadorAnalysisServiceMl`) foi superseded pelo **provider pattern** decidido na importação do `plano-migracao-sugadores-ml-direto.md` via /gsd-import. ML provider, shadow mode, cut-over por empresa e remoção da Adman passaram a ser o escopo da Milestone v11.0 (Phases 38-43). Plans 30-02/30-03/30-04 NÃO devem ser executados como estavam.
 **Depends on:** Phase 4/19 (`SugadorAnalysisService` Adman + UI `/sugadores`), Phase 18 (cache híbrido Adman), Phase 20 (ml_token integração)
-**Plans:** 1/4 plans complete
+**Plans:** 1/4 — 30-01 shipped; 30-02/03/04 superseded
 
 Plans:
 - [x] 30-01 — W1 throttled queue Adman + checkpoint paginação (RateLimiter global 8/min + Fix D catch 429 upstream) **deployed 2026-06-08**
-- [ ] 30-02 — W2 `SugadorAnalysisServiceMl` espelhando lógica em cima da API ML direta (destrava Bymobile)
-- [ ] 30-03 — W3 UX adgroup sem MLB no período (analista pausa mesmo assim)
-- [ ] 30-04 — W4 Sync agendado 03h BRT + tabela local `adman_adgroup_mlbs` + drilldown instantâneo + botão "Forçar atualização" (resolve dor 4: drilldown inviável em contas grandes)
+- [~] 30-02 — **SUPERSEDED por Phase 39 (v11.0)**: arquitetura mudou para provider pattern; mirror service `SugadorAnalysisServiceMl` foi descartada antes de implementar
+- [~] 30-03 — **SUPERSEDED por Phase 39/41 (v11.0)**: UX adgroup sem MLB integrada ao novo provider pattern (decisão de quando criar Sugador manual fica no provider)
+- [~] 30-04 — **SUPERSEDED por Phase 39 (v11.0)**: tabela local `adman_adgroup_mlbs` permanece (decisão §5 do plano), mas acessada via `AdgroupMlbMapRepository` que esconde o nome legado; sync agendado e botão "Forçar atualização" reaproveitados pelo provider ML quando aplicável
 
 ### Milestone v10.0 — Pesquisa de Satisfação 2.0
 
@@ -795,3 +808,156 @@ Plans:
 
 **UI hint**: yes
 **Autonomous**: false (checkpoint humano após plan do webhook + após reorg de menu)
+
+### Phase 38: Smoke ML (piloto Bymobile)
+
+**Milestone:** v11.0 — Migração Sugadores Adman → ML (Fontes Unificadas Fase 1)
+**Status:** Partially Complete (Plan 38-01 ✅; Plan 38-02 código pronto + tests verdes, smoke real bloqueado por MariaDB local corrompido — recovery via quick task `dev:reparar-mariadb-local`)
+**Mode:** mvp
+**Goal:** Descobrir o shape real da API oficial do Mercado Livre Mercado Ads / Product Ads para empresa `ByMobille - Teste` (única empresa com OAuth ML direto hoje) **sem tocar no fluxo de produção do módulo Sugadores**. Entrega: comando Artisan `sugadores:ml-smoke --company={id} --days=30` que resolve `mlToken` (com refresh se necessário), descobre `advertiser_id`, lista campanhas e ads, tenta métricas no período, grava fixture JSON anonimizável em `storage/app/sugadores/ml-smoke/{company_id}-{date}.json` e imprime relatório curto. Gate obrigatório antes de Phase 39 (provider pattern) — se smoke não estiver verde, plano técnico bloqueia avanço ("Não avance para substituir a Adman antes desse smoke estar verde").
+**Depends on:** Phase 20 (MlToken + MercadoLivreService + refresh token), Phase 30 W1 (RateLimiter global `adman-api` já em prod — referência de pattern). Não depende de Phase 39+ (esta é o gate de entrada da v11.0).
+**Requirements:**
+- REQ-38-01 — Comando `sugadores:ml-smoke --company={id} --days=30` resolve `mlToken` ativo da empresa, faz refresh se expirado, falha cedo com mensagem clara se ausente/inválido
+- REQ-38-02 — Comando descobre `advertiser_id` via `GET /advertising/advertisers` (ou endpoint atualizado da doc oficial), persiste em cache de sessão (não tabela ainda — Phase 41)
+- REQ-38-03 — Comando lista campanhas Product Ads do advertiser e imprime status HTTP, contagem e shape do primeiro payload (campos disponíveis)
+- REQ-38-04 — Comando lista ads/anúncios e tenta obter métricas (custo, receita, unidades, cliques, impressões, CPC, CTR, ACOS, ROAS, item/MLB, thumbnail, status) no período de `--days`
+- REQ-38-05 — Comando grava JSON de amostra (anonimizável — sem PII de cliente final) em `storage/app/sugadores/ml-smoke/{company_id}-{YYYY-MM-DD}.json`
+- REQ-38-06 — Comando imprime relatório curto: endpoints que funcionaram, campos disponíveis vs ausentes, equivalência com contrato normalizado §2.3 do plano, blockers de permissão/scope/token
+- REQ-38-07 — Comando NÃO grava em `sugadores`, `sugador_configs`, `sugador_acoes` nem em qualquer tabela de produção; é puramente diagnóstico
+
+**Success Criteria** (what must be TRUE):
+  1. `php artisan sugadores:ml-smoke --company={id_bymobille} --days=30` roda no host de dev sem precisar de mock — chama API ML real com token real
+  2. Comando lista pelo menos uma campanha Product Ads OU retorna erro claro de permissão/scope/token (não silencia falhas)
+  3. Comando lista pelo menos um anúncio (Product Ad/item) OU explica por quê não conseguiu (advertiser sem ads, scope ausente, etc)
+  4. Comando tenta endpoint de métricas e imprime quais campos do contrato normalizado §2.3 do plano estão presentes/ausentes no payload real (custo, receita, unidades, cliques, impressões, CPC, CTR, ACOS, ROAS, item/MLB, thumbnail, status)
+  5. Arquivo `storage/app/sugadores/ml-smoke/{company_id}-{date}.json` existe após execução com amostras dos payloads (capacidade de revisar offline)
+  6. Relatório final do comando lista explicitamente: (a) endpoints que retornaram 2xx; (b) endpoints que retornaram 4xx/5xx + razão; (c) campos do contrato normalizado presentes; (d) campos ausentes (precisam de fallback ou nullable); (e) blockers para Phase 39
+  7. `grep -r "sugadores"` no fluxo de Sugadores prod confirma que nenhuma tabela/job/controller de prod foi alterado — comando é stand-alone
+  8. Próxima Phase 39 só pode começar depois do operador (usuário) revisar o relatório e aprovar — `autonomous: false` no plan principal
+
+**Plans:** 1/2 complete + 1/2 partially_complete (smoke real deferido)
+- [x] 38-01-PLAN.md — MercadoLivreAdsService (wrapper ML Mercado Ads) + diretorio storage versionado + 4 tests Http::fake (Wave 1, autonomous)
+- [~] 38-02-PLAN.md — Comando Artisan `sugadores:ml-smoke` + 4 tests Feature Http::fake (✅ 4/4 verde, commits `984f3bc` RED + `45e986c` GREEN) + smoke real Bymobille (❌ DEFERIDO — bloqueado por corrupção do MariaDB local, recovery via quick task `dev:reparar-mariadb-local`). Wave 2, autonomous=false.
+
+**Cross-cutting constraints:**
+- pt-BR em comentários e mensagens (CLAUDE.md mandate)
+- Não modificar `SugadorAnalysisService`, `SugadorController`, `AnalyzeCompanySugadoresJob`, `FetchAdmanMlbsByCampaignJob` (Adman path) — gate é "smoke não toca prod"
+- Reusar `MercadoLivreService` (Phase 20) para autenticação/refresh; se faltar método específico (advertisers, product ads), adicionar via novo `MercadoLivreAdsService` em namespace separado (`App\Services\MercadoLivre\AdsService` ou `App\Services\Sugadores\MercadoLivreAdsService`)
+- Endpoints ML são **candidatos a validar** contra a doc oficial (`https://developers.mercadolivre.com.br/`) — comando deve imprimir URL chamada + status para facilitar correção se nome do endpoint mudou
+- Rate limit ML é separado da Adman (plano §3): não usar RateLimiter `adman-api`; ML não exige throttle agressivo (~8k req/dia por app)
+- Fixture JSON pode ser usada depois em testes da Phase 39 — formato deve ser estável o suficiente
+
+**UI hint**: no (comando Artisan, sem UI)
+**Autonomous**: false (após smoke, gate humano para revisar relatório e autorizar Phase 39)
+
+### Phase 39: Provider pattern + MercadoLivreSugadoresProvider (sem gravar)
+
+**Milestone:** v11.0
+**Status:** Completed (2026-06-25)
+**Mode:** mvp
+**Goal:** Implementar `SugadoresAdsProvider` contract + `AdmanSugadoresProvider` (encapsula `AdmanService` atual) + `MercadoLivreSugadoresProvider` + `MercadoLivreAdsService` (com retries, paginação, refresh token). Refatorar `SugadorAnalysisService` para resolver provider via DI. Criar `AdgroupMlbMapRepository` para esconder `adman_adgroup_mlbs` (decisão §5 do plano). Comando `sugadores:analyze --provider=ml --company={id} --dry-run` retorna motivos sem upsert. NÃO grava em `sugadores`.
+**Depends on:** Phase 38 (smoke verde com fixtures reais), Phase 20 (MlToken + MercadoLivreService)
+**Requirements:**
+  - REQ-39-01 — Contract `App\Contracts\SugadoresAdsProvider` com 6 métodos (supports/name/fetchCampaigns/fetchCampaignsMetrics/fetchAdgroupsMetrics/fetchAdgroupMlbs) + PHPDoc descrevendo cada chave do contrato normalizado §2.3
+  - REQ-39-02 — `App\Services\Sugadores\AdmanSugadoresProvider` implementando o contract via composição de `AdmanService` (sem modificá-lo)
+  - REQ-39-03 — `App\Services\Sugadores\MercadoLivreSugadoresProvider` implementando o contract via composição de `MercadoLivreAdsService` (Phase 38); normalização ML→§2.3; comentários `// CANDIDATO — revalidar após smoke real` em campos especulativos
+  - REQ-39-04 — `App\Repositories\AdgroupMlbMapRepository` (3 métodos: getMlbsForAdgroup, setMlbsForAdgroup, bulkSetFromProvider) escondendo nome legado `adman_adgroup_mlbs`; legacy `AdmanAdgroupMlbsRepository` preservado para compat com SugadorController + SyncCompanyAdgroupMlbsJob
+  - REQ-39-05 — `App\Services\Sugadores\SugadoresAdsProviderFactory` resolvendo provider por (forceName ou capability detection); regra default "prefere Adman até Phase 42"
+  - REQ-39-06 — `SugadorAnalysisService` refatorado para receber factory via DI; analyzeCompany aceita `?string $forceProvider`; lógica de detecção (evaluateMetrics, buildRow, STATUS_TRAVADOS, auto-resolve, quarentena) IDÊNTICA — zero regressão
+  - REQ-39-07 — Comando `php artisan sugadores:analyze --company={id} --provider={adman|ml} --dry-run` retorna motivos sem upsert; `--provider=ml` sem `--dry-run` aborta com exit 1 (proteção pré-Phase 42)
+  - REQ-39-08 — Suite de testes (Unit + Feature) cobrindo: AdmanProvider (Mockery), MlProvider (Http::fake speculative), Repository (SQLite), Factory (resolução), SugadorAnalysisService refactor (regressão), command (dry-run + guard); zero regressão na suite Sugador existente
+**Success Criteria**: provider ML entrega exatamente o contrato §2.3 do plano; `evaluateMetrics()` não sabe a origem; comando dry-run retorna mesma estrutura de motivos do path Adman para Bymobile.
+**Plans:** 5/5 plans executed
+  - 39-01-PLAN.md — Wave 1: Contract + AdmanSugadoresProvider + Factory minimal + Unit tests ✓ (122451c RED + b69030d GREEN)
+  - 39-02-PLAN.md — Wave 2: MercadoLivreSugadoresProvider + factory branch ml + Http::fake speculative tests ✓ (43208d1 RED + 6da011c GREEN)
+  - 39-03-PLAN.md — Wave 2: AdgroupMlbMapRepository neutro + legacy compat preserva call-sites + Unit tests ✓ (a3c0bf9 RED + 20e6cd3 GREEN)
+  - 39-04-PLAN.md — Wave 3: Refactor SugadorAnalysisService para usar factory; lógica detecção INALTERADA; baseline + refactor tests ✓ (09cd274 BASELINE + 14eb676 RED + f23ba31 GREEN)
+  - 39-05-PLAN.md — Wave 4: Estende command sugadores:analyze com --provider + guard ml_primary + Feature tests ✓ (4318d9a RED + e605397 GREEN)
+**UI hint**: no
+
+### Phase 40: Shadow mode + tabelas de comparação
+
+**Milestone:** v11.0
+**Status:** Pending
+**Mode:** mvp
+**Goal:** Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado. Alvo paridade ≥95% de motivos. Exige 1+ empresa Adman+ML para validar paridade (Bymobile sozinha não basta).
+**Depends on:** Phase 39 (provider pattern operando dry-run)
+**Requirements:**
+- REQ-40-01 — Migration cria `sugador_provider_runs` (10 colunas) + `sugador_provider_items` (8 colunas) + índices compostos (`idx_company_ref_provider`, `idx_run_tipo`); FKs com cascadeOnDelete; idempotente; Models Eloquent `SugadorProviderRun` + `SugadorProviderItem` com casts e relações
+- REQ-40-02 — `App\Services\Sugadores\ShadowRunService` orquestra 2 runs por (empresa+data) — uma com `forceProvider='adman'` e outra com `forceProvider='ml'`, ambas via `SugadorAnalysisService::analyzeCompany($company, $ref, dryRun=true, $provider)`; persiste runs+items; **GATE CRÍTICO:** ZERO gravação em `sugadores`; falha de um provider não interrompe o outro
+- REQ-40-03 — `App\Services\Sugadores\ProviderComparisonService` classifica items em 6 buckets (matched, metrics_diff, motivo_diff, apenas_adman, apenas_ml, quarentena_diff) + calcula `paridade_motivos_pct`; tolerâncias §7 do plano-migracao (dinheiro ≤1% OU ≤R$0,10; percentuais ≤0,5pp; inteiros igualdade); 2 métodos públicos `compareRuns` + `compareWindow`
+- REQ-40-04 — Comando `php artisan sugadores:shadow-ml --company={id|all} [--days=N]` dispara `ShadowRunService` inline; respeita `config('sugadores.ml_shadow_companies')` quando `--company=all`; clamp `--days` em [1,90]
+- REQ-40-05 — Comando `php artisan sugadores:compare-providers --company={id} --from=YYYY-MM-DD --to=YYYY-MM-DD [--format=table|json]` imprime relatório; exit 0 se paridade ≥95%, exit 1 caso contrário (automatável em CI)
+- REQ-40-06 — Scheduler em `routes/console.php` adiciona entrada `sugadores:shadow-ml --company=all --days=1` rodando `->dailyAt('13:00')->timezone('America/Sao_Paulo')->onOneServer()->withoutOverlapping()`; entradas existentes (Adman 12h, cleanup 12:30) inalteradas
+- REQ-40-07 — Env `SUGADORES_ML_SHADOW_COMPANIES` documentada em `.env.example`; arquivo NOVO `config/sugadores.php` expõe `ml_shadow_companies` lendo CSV; comando aborta com mensagem clara em pt-BR ("Nenhuma empresa elegível — defina SUGADORES_ML_SHADOW_COMPANIES") quando env vazia + `--company=all`
+- REQ-40-08 — Suite de testes cobrindo: schema migration (8 tests), ShadowRunService Mockery com gate zero gravação (9 tests), ProviderComparisonService com 15 cenários de divergência, ambos comandos CLI (17 tests — exit codes + format json/table + abort cases); zero regressão na suite Sugador acumulada (>= 65 verdes baseline Phase 39)
+
+**Success Criteria** (what must be TRUE):
+  1. `php artisan migrate` cria as 2 tabelas com índices compostos e FKs cascade
+  2. `ShadowRunService` grava em `sugador_provider_runs`+`sugador_provider_items` mas NUNCA em `sugadores` (validado por `assertDatabaseCount('sugadores', $initial)` antes==depois)
+  3. `ProviderComparisonService::compareWindow` retorna paridade % calculável; tolerâncias §7 aplicadas como constantes
+  4. `php artisan sugadores:shadow-ml --company={id}` e `php artisan sugadores:compare-providers ...` rodam sem fatal e retornam exit code apropriado
+  5. Scheduler agendado para 13h BRT visível em `php artisan schedule:list` com nome `sugadores-shadow-ml-daily`
+  6. Suite Phase 40 acumulada >= 49 tests verdes; suite Sugador continua sem regressão (>= 65 verdes legados)
+  7. Smoke real (rodar contra MariaDB com 1+ empresa que tenha tanto Adman quanto ML) DEFERIDO até MariaDB local voltar (quick task `dev:reparar-mariadb-local`)
+  8. Phase 41 (onboarding ML) destravada — Phase 40 entrega a infra de medição que Phase 41 vai expor visualmente
+
+**Plans:** 4/4 plans complete
+- [x] 40-01-PLAN.md — Wave 1: Migration 2 tabelas + 2 Models Eloquent + 1 test schema (REQ-40-01)
+- [x] 40-02-PLAN.md — Wave 2: ShadowRunService + tests Feature com Mockery (REQ-40-02, gate zero gravação)
+- [x] 40-03-PLAN.md — Wave 2: ProviderComparisonService + tests Unit com 15 cenários (REQ-40-03)
+- [x] 40-04-PLAN.md — Wave 3: 2 comandos Artisan + config/sugadores.php + .env.example + scheduler 13h BRT + tests Feature (REQ-40-04, REQ-40-05, REQ-40-06, REQ-40-07, REQ-40-08 parte)
+
+**UI hint**: no (relatório CLI; UI admin opcional fica para Phase 41)
+
+### Phase 41: Onboarding ML por empresa
+
+**Milestone:** v11.0
+**Status:** Pending
+**Mode:** mvp
+**Goal:** Tela admin: empresas ativas com `mlToken` válido / expirado / ausente / erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global). Backoff 429/5xx/401/403 conforme plano §3.
+**Depends on:** Phase 40 (shadow funcional, paridade medida)
+**Requirements:** REQ-41-01, REQ-41-02, REQ-41-03, REQ-41-04, REQ-41-05, REQ-41-06, REQ-41-07, REQ-41-08, REQ-41-09, REQ-41-10
+**Plans:** 3/5 plans executed
+
+Plans:
+
+**Wave 1**
+- [x] 41-01-PLAN.md — 2 migrations (`ml_advertisers` + `sugador_ml_company_config`) + 2 Models + relações Company (`mlAdvertiser`, `sugadorMlConfig`) + tests schema/FK cascade (REQ-41-01, REQ-41-02)
+
+**Wave 2** *(blocked on Wave 1; 41-02 e 41-03 paralelizáveis — sem overlap de arquivos)*
+- [x] 41-02-PLAN.md — Refactor `MercadoLivreAdsService`: `callWithBackoff` (429/5xx/401/403) + cache advertiser 7d + rate limiter `ml-api:{seller_id}` (60/min) registrado em `AppServiceProvider` + métricas operacionais via `getLastRunMetrics` + tests Http::fake (REQ-41-03, REQ-41-04, REQ-41-05, REQ-41-06)
+- [x] 41-03-PLAN.md — Refactor comando `sugadores:shadow-ml --company=all` priorizando `SugadorMlCompanyConfig::where('shadow_enabled', true)` + fallback env CSV preservado + tests config table vs env (REQ-41-07)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 41-04-PLAN.md — Estende `ShadowRunService` (Plan 40-02) para mesclar `ml_metrics` no `summary` JSON da run quando provider=ml + tests (REQ-41-06 finalização)
+- [ ] 41-05-PLAN.md — UI admin `/dev/sugadores-ml-onboarding`: Controller (4 actions) + 4 rotas role:admin + página React (tabela 6 colunas + filtros + ações inline) + item de sidebar Sistema + `npm run build` + tests Feature (REQ-41-08, REQ-41-09, REQ-41-10)
+
+Cross-cutting constraints:
+- pt-BR em todos os artefatos e comentários (CLAUDE.md mandate)
+- `npm run build` obrigatório após edição JSX (Plan 41-05)
+- Phase NÃO grava em `sugadores` (gate REQ-40-02 preservado pelos services Plan 40-02/41-04)
+- Tests rodam SQLite em-memory + Http::fake + Mockery (bloqueio MariaDB local não impacta)
+- Smoke real (clicar "Rodar smoke agora" no painel) deferido até MariaDB voltar + smoke Phase 38-02 destravar
+
+**UI hint**: yes
+
+### Phase 42: Cut-over por empresa (ml_primary)
+
+**Milestone:** v11.0
+**Status:** Pending
+**Mode:** mvp
+**Goal:** Envs `SUGADORES_PROVIDER_MODE` (default `adman`), `SUGADORES_ML_SHADOW_COMPANIES`, `SUGADORES_ML_PRIMARY_COMPANIES`. Modo `ml_primary` grava em `sugadores` via ML; Adman vira fallback diagnóstico. Cut-over: empresa com 7d shadow aprovado entra em primary, mantém shadow Adman por +7d só pra comparação. Rollback automático se divergência crítica (remove empresa do primary no próximo run). Critério: 17 testes Feature passando, ByMobille em primary, paridade ≥95% por 7d, FSM/quarentena/auto-resolve/drilldown inalterados.
+**Depends on:** Phase 41 (onboarding pronto para selecionar empresas)
+**Plans:** TBD
+**UI hint**: no (config via env + scheduler)
+
+### Phase 43: Remoção da Adman (Sugadores)
+
+**Milestone:** v11.0
+**Status:** Pending
+**Mode:** mvp
+**Goal:** Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
+**Depends on:** Phase 42 (primary estável em todas empresas relevantes)
+**Plans:** TBD
+**UI hint**: no
