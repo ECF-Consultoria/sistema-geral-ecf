@@ -493,4 +493,28 @@ class MercadoLivreAdsServiceBackoffTest extends TestCase
             'listCampaigns deve incrementar pages_read em cada iteracao do do-while.',
         );
     }
+
+    /**
+     * Test 13 — CR-01 regressao: MercadoLivreAdsService DEVE ser singleton no container.
+     *
+     * Sem singleton, ShadowRunService recebe instancia DIFERENTE da usada pelo
+     * MercadoLivreSugadoresProvider — getLastRunMetrics() devolve zeros em producao.
+     * Esse test NAO usa $this->app->instance(...) (que esconderia o bug); usa
+     * resolucao real via container pra garantir que AppServiceProvider::register()
+     * tenha o binding singleton.
+     */
+    #[Test]
+    public function mercadoLivreAdsService_e_singleton_no_container(): void
+    {
+        $a = $this->app->make(MercadoLivreAdsService::class);
+        $b = $this->app->make(MercadoLivreAdsService::class);
+
+        $this->assertSame(
+            $a,
+            $b,
+            'MercadoLivreAdsService DEVE ser singleton em AppServiceProvider::register() — '
+            . 'caso contrario ShadowRunService::run() le getLastRunMetrics() de instancia '
+            . 'distinta da usada pelo MercadoLivreSugadoresProvider e summary.ml_metrics fica zerado.',
+        );
+    }
 }

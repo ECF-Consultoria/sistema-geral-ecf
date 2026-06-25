@@ -244,4 +244,35 @@ class SugadoresShadowMlCommandConfigTableTest extends TestCase
         $this->assertEquals(1, $exit, 'Exit esperado: 1 (DB sem shadow_enabled=true e env vazio).');
         $this->assertStringContainsString('Nenhuma empresa elegível', $output);
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Test 6 — CR-02 regressao: orquestracao lanca → conta 2 falhas
+    // (1 Adman + 1 ML nao executados, preserva invariante do sumario)
+    // ──────────────────────────────────────────────────────────────────────
+
+    #[Test]
+    public function shadow_run_lanca_throwable_conta_2_falhas(): void
+    {
+        $company = $this->makeCompany(name: 'Empresa Orquestracao Erro');
+        $this->enableShadowFor($company);
+
+        // Mock que lanca em vez de retornar — simula falha de orquestracao
+        // (ex: SugadorConfig::forCompany lanca antes do loop dos providers).
+        /** @var MockInterface&ShadowRunService $mock */
+        $mock = Mockery::mock(ShadowRunService::class);
+        $mock->shouldReceive('run')
+            ->once()
+            ->andThrow(new \RuntimeException('SugadorConfig nao encontrado'));
+        $this->app->instance(ShadowRunService::class, $mock);
+
+        $exit   = Artisan::call('sugadores:shadow-ml', ['--company' => 'all', '--days' => 1]);
+        $output = Artisan::output();
+
+        $this->assertEquals(0, $exit, 'Exit 0 mesmo com erro — comando captura e continua.');
+        $this->assertStringContainsString('Erro orquestracao', $output);
+        // Invariante: admanOk + mlOk + falhas == 2 * days * len(companies) == 2 * 1 * 1 == 2
+        $this->assertStringContainsString('0 runs Adman ok', $output);
+        $this->assertStringContainsString('0 runs ML ok', $output);
+        $this->assertStringContainsString('2 falhas', $output, 'CR-02: falhas deve ser 2 (Adman+ML nao executados).');
+    }
 }

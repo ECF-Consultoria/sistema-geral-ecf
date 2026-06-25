@@ -22,6 +22,15 @@ class AppServiceProvider extends ServiceProvider
                 config('services.ecf.key'),
             );
         });
+
+        // Phase 41-04 CR-01 — MercadoLivreAdsService PRECISA ser singleton porque
+        // ShadowRunService::run() le getLastRunMetrics() de uma instancia que tem
+        // que ser a MESMA usada pelo MercadoLivreSugadoresProvider durante
+        // analyzeCompany(provider='ml'). Sem singleton, Laravel resolve 2
+        // instancias distintas via DI: a do provider acumula metricas reais,
+        // a do ShadowRunService devolve zeros — quebrando o objetivo do Plan 41-04
+        // (telemetria ml_metrics no summary JSON usada pelo cut-over Phase 42).
+        $this->app->singleton(\App\Services\Sugadores\MercadoLivreAdsService::class);
     }
 
     public function boot(): void

@@ -92,8 +92,12 @@ class SugadoresShadowMl extends Command
                 try {
                     $result = $this->shadow->run($company, $refDate);
                 } catch (\Throwable $e) {
-                    $falhas++;
-                    $this->error("  Erro: " . $e->getMessage());
+                    // CR-02 Phase 41 — Quando run() lanca antes dos providers rodarem
+                    // (ex: SugadorConfig::forCompany lanca), 2 providers (Adman+ML) NAO
+                    // foram processados. Conta 2 falhas para preservar a invariante
+                    // admanOk + mlOk + falhas == 2 * days * len(companies) no sumario.
+                    $falhas += 2;
+                    $this->error("  Erro orquestracao (2 providers nao executados): " . $e->getMessage());
                     continue;
                 }
 
