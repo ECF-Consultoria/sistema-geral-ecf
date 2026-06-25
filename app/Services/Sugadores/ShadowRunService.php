@@ -7,6 +7,7 @@ use App\Models\SugadorProviderItem;
 use App\Models\SugadorProviderRun;
 use App\Models\SugadorConfig;
 use App\Services\SugadorAnalysisService;
+use App\Services\Sugadores\MercadoLivreAdsService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -34,8 +35,20 @@ use Illuminate\Support\Facades\Log;
  */
 class ShadowRunService
 {
+    /**
+     * Construtor.
+     *
+     * @param SugadorAnalysisService $analysis  Analyzer canônico (Phase 39).
+     * @param ?MercadoLivreAdsService $mlAds    Phase 41-04 — INJEÇÃO OPCIONAL.
+     *        Quando disponível via DI, suas métricas operacionais (getLastRunMetrics)
+     *        são mescladas no `summary` JSON das rows do provider 'ml'. Nullable
+     *        para preservar testes Plan 40-02 que mockam apenas SugadorAnalysisService
+     *        (Mockery não precisa configurar expectativas no MercadoLivreAdsService
+     *        nesses testes). Em produção o container Laravel resolve automaticamente.
+     */
     public function __construct(
         private SugadorAnalysisService $analysis,
+        private ?MercadoLivreAdsService $mlAds = null,
     ) {}
 
     /**
@@ -121,16 +134,33 @@ class ShadowRunService
                 $items++;
             }
 
+            $summary = [
+                'campanhas' => (int) ($result['campanhas'] ?? 0),
+                'adgroups'  => (int) ($result['adgroups']  ?? 0),
+                'items'     => $items,
+                'skipped'   => (bool) ($result['skipped'] ?? false),
+                'reason'    => $result['reason'] ?? null,
+            ];
+
+            // Phase 41-04 — mescla métricas operacionais ML no summary apenas quando
+            // provider='ml' e MercadoLivreAdsService está disponível via DI. Coleta
+            // defensiva: exceção em getLastRunMetrics NÃO interrompe a run (apenas
+            // emite warning no log). Mantém status='completed' e summary sem
+            // ml_metrics em caso de falha — UI Plan 41-05 lida com chave ausente.
+            if ($providerName === 'ml' && $this->mlAds !== null) {
+                try {
+                    $summary['ml_metrics'] = $this->mlAds->getLastRunMetrics();
+                } catch (\Throwable $e) {
+                    Log::warning(
+                        "[Sugadores Shadow] Falha ao coletar ml_metrics empresa {$company->id}: " . $e->getMessage()
+                    );
+                }
+            }
+
             $run->update([
                 'status'      => 'completed',
                 'finished_at' => now(),
-                'summary'     => [
-                    'campanhas' => (int) ($result['campanhas'] ?? 0),
-                    'adgroups'  => (int) ($result['adgroups']  ?? 0),
-                    'items'     => $items,
-                    'skipped'   => (bool) ($result['skipped'] ?? false),
-                    'reason'    => $result['reason'] ?? null,
-                ],
+                'summary'     => $summary,
             ]);
 
             return ['run_id' => $run->id, 'status' => 'completed'];
