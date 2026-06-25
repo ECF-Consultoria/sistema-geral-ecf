@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
-status: verifying
+status: executing
 stopped_at: "Phase 40 Plan 40-04 COMPLETO — PHASE 40 INTEIRA FECHADA (4/4 plans). 2 comandos Artisan (sugadores:shadow-ml + sugadores:compare-providers) + config/sugadores.php (CSV via SUGADORES_ML_SHADOW_COMPANIES) + scheduler diario 13h BRT + env documentada. 17/17 tests novos verdes; Phase 40 acumulado 52/52; Sugador 92/92; Phase 39 48/48 — zero regressao. Wave 3 FECHADA. REQ-40-04..08 fechados. Pronto para deploy. Phase 41 (UI shadow runs + aprovacao manual) destravada."
-last_updated: "2026-06-25T20:52:51.467Z"
-last_activity: 2026-06-25
+last_updated: "2026-06-25T21:24:19.541Z"
+last_activity: 2026-06-25 -- Phase 41 execution started
 progress:
   total_phases: 38
   completed_phases: 23
-  total_plans: 65
+  total_plans: 70
   completed_plans: 60
   percent: 61
 ---
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 40 — shadow-mode-tabelas-de-compara-o
+**Current focus:** Phase 41 — onboarding-ml-por-empresa
 
 ## Current Position
 
-Phase: 40 (shadow-mode-tabelas-de-compara-o) — COMPLETE (4/4 plans)
-Plan: 4 of 4 — entregue
-Status: Phase complete — ready for verification + deploy
-Last activity: 2026-06-25
+Phase: 41 (onboarding-ml-por-empresa) — EXECUTING
+Plan: 1 of 5
+Status: Executing Phase 41
+Last activity: 2026-06-25 -- Phase 41 execution started
 Blockers:
 
   - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local`. NÃO bloqueia Phase 39 (tests Mockery + SQLite em-memory — Plan 39-01 confirmou viabilidade).
