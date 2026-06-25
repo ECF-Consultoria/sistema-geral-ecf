@@ -11,7 +11,6 @@ namespace Tests\Unit\Phase39;
 
 use App\Models\Company;
 use App\Services\AdmanService;
-use App\Services\MercadoLivreService;
 use App\Services\Sugadores\AdmanSugadoresProvider;
 use App\Services\Sugadores\MercadoLivreAdsService;
 use App\Services\Sugadores\MercadoLivreSugadoresProvider;
@@ -117,6 +116,9 @@ class SugadoresAdsProviderFactoryTest extends TestCase
         $factory = $this->makeFactory();
         // Sem adman_account_id E sem mlToken — nenhum provider suporta.
         $company = $this->makeCompany(['adman_account_id' => null]);
+        // Eager-set a relação como null para evitar lazy-load no SQLite em-memory
+        // sem tabela ml_tokens (test Unit não usa RefreshDatabase).
+        $company->setRelation('mlToken', null);
 
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('sem provider compatível');
