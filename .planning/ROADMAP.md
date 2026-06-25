@@ -834,8 +834,8 @@ Plans:
   7. `grep -r "sugadores"` no fluxo de Sugadores prod confirma que nenhuma tabela/job/controller de prod foi alterado — comando é stand-alone
   8. Próxima Phase 39 só pode começar depois do operador (usuário) revisar o relatório e aprovar — `autonomous: false` no plan principal
 
-**Plans:** 2 plans (Wave 1 service + Wave 2 comando com checkpoint humano)
-- [ ] 38-01-PLAN.md — MercadoLivreAdsService (wrapper ML Mercado Ads) + diretorio storage versionado + 4 tests Http::fake (Wave 1, autonomous)
+**Plans:** 1/2 plans executed
+- [x] 38-01-PLAN.md — MercadoLivreAdsService (wrapper ML Mercado Ads) + diretorio storage versionado + 4 tests Http::fake (Wave 1, autonomous)
 - [ ] 38-02-PLAN.md — Comando Artisan sugadores:ml-smoke + 4 tests Feature + smoke real Bymobille com checkpoint humano (Wave 2, autonomous=false)
 
 **Cross-cutting constraints:**

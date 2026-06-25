@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v10.0
 milestone_name: Pesquisa de Satisfação 2.0
 status: executing
-stopped_at: Phase 37 Plan 37-07 completo — CRUD admin /sistema/hubspot-line-items (HubspotLineItemMappingController em namespace Sistema\ + 4 rotas role:admin + Sistema/HubspotLineItems.jsx com modal Dialog) + sidebar reorg (Servicos removido do raiz; grupo Comercial agora com 5 sub-itens: Empresas/Cadastrar/Grupos/Servicos/HubSpot Line Items); 13/13 testes Phase37HubspotLineItemMappingAdminTest verdes (45 assertions); zero regressao Phase 34/35/36/37 (124/124 — 607 assertions); Phase 37 inteira pronta para deploy AGRUPADO (Plans 37-01..07)
-last_updated: "2026-06-18T21:43:00Z"
-last_activity: 2026-06-22 -- Quick 260622-cq0: persistência + sync diário do Faturamento por Polo (/polos não zera mais na VPS)
+stopped_at: "Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome (RED→GREEN). Wave 2 COMPLETA."
+last_updated: "2026-06-25T17:00:24.901Z"
+last_activity: 2026-06-25
 progress:
-  total_phases: 32
-  completed_phases: 19
-  total_plans: 54
-  completed_plans: 49
-  percent: 70
+  total_phases: 9
+  completed_phases: 3
+  total_plans: 18
+  completed_plans: 17
+  percent: 33
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 22 — wrapper-expandido-ecfdriveservice-todos-endpoints-auth-files
+**Current focus:** Phase 38 — smoke-ml-piloto-bymobile
 
 ## Current Position
 
-Phase: 37 (onboarding-comercial-unificado-via-hubspot-line-items) — Wave 3 CONCLUÍDA — **PHASE 37 INTEIRA FECHADA (7/7 plans)**
-Plan: 37-07 (UI admin /sistema/hubspot-line-items + reorg final sidebar — Servicos+Grupos+HubSpot Line Items migrados para grupo Comercial) **DONE** — 4 commits (364b99b test RED → 03409fe controller GREEN → 94a1aec JSX → 67701cc sidebar), 13/13 testes Phase37HubspotLineItemMappingAdminTest verdes (45 assertions), zero regressao Phase 34/35/36/37 (124/124 — 607 assertions)
-Status: Phase 37 inteira em produção. Branch `deploy/precificacao-onboarding` reconcilia Phase 37 (origin/main) + quick tasks 260618 (l4u/m0g/n25/of1) para deploy agrupado.
-Last activity: 2026-06-24 — Fast: redesign da página Polos "Empresas" (ex "Empresas por M") por feedback — remove barra de progresso, adiciona filtro por M com contagem (chips) + busca por nome sobre grid de cards; backend inalterado; build verde; commit d4a2564
+Phase: 38 (smoke-ml-piloto-bymobile) — EXECUTING
+Plan: 2 of 2
+Status: Ready to execute
+Last activity: 2026-06-25
 
 ## Performance Metrics
 
@@ -91,6 +91,7 @@ Last activity: 2026-06-24 — Fast: redesign da página Polos "Empresas" (ex "Em
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P05 | 22min | 3 commits (TDD) | 6 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P06 | 18min | 3 commits (TDD) | 4 files |
 | Phase 37-onboarding-comercial-unificado-via-hubspot-line-items P07 | 28min | 4 commits (TDD) | 5 files |
+| Phase 38 P01 | 4min | - tasks | - files |
 
 ## Accumulated Context
 
@@ -511,7 +512,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-18T19:06:06Z
+Last session: 2026-06-25T17:00:19.957Z
 Stopped at: Phase 37 Plan 37-04 completo — HubspotWebhookController consome line items + materializa ContratoServico via HubspotLineItemMapping::paraNome (RED→GREEN). Wave 2 COMPLETA.
 
 **Estado para próxima sessão retomar:**
