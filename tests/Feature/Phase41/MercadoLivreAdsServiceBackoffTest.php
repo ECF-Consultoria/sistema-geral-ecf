@@ -55,6 +55,7 @@ class MercadoLivreAdsServiceBackoffTest extends TestCase
             RateLimiter::clear("ml-api:{$seller}");
         }
 
+        $this->cachedService = null;
         Carbon::setTestNow();
         Mockery::close();
         parent::tearDown();
@@ -89,9 +90,20 @@ class MercadoLivreAdsServiceBackoffTest extends TestCase
         return $company->fresh();
     }
 
+    /**
+     * Resolve o service via DI e cacheia no container pra que chamadas subsequentes
+     * a $this->service() retornem A MESMA instancia — necessario pra ler getLastRunMetrics
+     * apos a chamada que populou as metricas.
+     */
+    private ?MercadoLivreAdsService $cachedService = null;
+
     private function service(): MercadoLivreAdsService
     {
-        return $this->app->make(MercadoLivreAdsService::class);
+        if ($this->cachedService === null) {
+            $this->cachedService = $this->app->make(MercadoLivreAdsService::class);
+            $this->app->instance(MercadoLivreAdsService::class, $this->cachedService);
+        }
+        return $this->cachedService;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
