@@ -232,15 +232,41 @@ class MlbController extends Controller
     }
 
     /**
+     * Meta CADASTRADA na página Metas, vigente no mês (YYYY-MM), SEM fallback.
+     * Retorna null quando o publicador não tem registro em mlb_meta_historico.
+     * Usada na "Meta da Equipe", que soma apenas o que está definido em Metas.
+     */
+    private function metaCadastrada(int $userId, string $mes): ?int
+    {
+        $registro = DB::table('mlb_meta_historico')
+            ->where('user_id', $userId)
+            ->where('mes_inicio', '<=', $mes)
+            ->orderByDesc('mes_inicio')
+            ->value('meta');
+
+        return $registro !== null ? (int) $registro : null;
+    }
+
+    /**
      * Retorna a coleção de usuários que publicam (cargo "publicador" ou
      * "lider-de-publicacao" no setor Publicação).
      */
     private function publicadores(): Collection
     {
+        // Filtra pelo cargo REAL do user no pivot (user_setores.cargo_id).
+        // Cuidado: `whereHas('cargos')` dentro de `setores` consulta o CATÁLOGO
+        // de cargos do setor (Setor::cargos() é hasMany), que sempre contém
+        // 'publicador'/'lider-de-publicacao' — isso fazia a query retornar TODOS
+        // os membros do setor Publicação (gestores, analistas, etc.), inflando a
+        // Meta da Equipe (soma das metas individuais). Amarramos ao pivot.
         return User::query()
-            ->whereHas('setores', function ($q) {
-                $q->where('setores.slug', 'publicacao')
-                  ->whereHas('cargos', fn($qc) => $qc->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']));
+            ->whereExists(function ($q) {
+                $q->from('user_setores')
+                  ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+                  ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+                  ->whereColumn('user_setores.user_id', 'users.id')
+                  ->where('setores.slug', 'publicacao')
+                  ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']);
             })
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -273,7 +299,10 @@ class MlbController extends Controller
         $meses  = $this->mesesDisponiveis();
 
         $publicadores = $this->publicadores();
-        $metaGeral   = max($publicadores->sum(fn($p) => $this->metaParaMes($p->id, $mesRef)), 1);
+        // Meta da Equipe = soma APENAS das metas cadastradas na página Metas
+        // (mlb_meta_historico). Publicador sem registro conta 0 — não usa o
+        // fallback de cargo/220 ("puxar de acordo com o que está em Metas").
+        $metaGeral   = max($publicadores->sum(fn($p) => $this->metaCadastrada($p->id, $mesRef) ?? 0), 1);
 
         $kpisGerais = $this->calcularKpis(null, $ref, $metaGeral);
 
