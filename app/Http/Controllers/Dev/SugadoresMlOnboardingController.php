@@ -150,7 +150,19 @@ class SugadoresMlOnboardingController extends Controller
     }
 
     /**
-     * Calcula o estado canonico do MlToken (4 valores).
+     * Calcula o estado canonico do MlToken.
+     *
+     * IMPORTANTE: a fonte de verdade e o campo `status` no banco — NAO a
+     * expiracao por `expires_at`. O MercadoLivreService faz refresh automatico
+     * em runtime quando o token venceu mas `status='active'`. O painel
+     * /ml-oauth confia em `status`, e essa tela precisa fazer o mesmo (caso
+     * contrario empresa funcional aparece como "expirada" — bug reportado pelo
+     * operador na ByMobille-Teste).
+     *
+     * Estados retornados:
+     *  - 'missing'       → sem MlToken
+     *  - 'error_refresh' → status in [error_refresh, revoked] (precisa reautorizar)
+     *  - 'active'        → status='active' (token vai ser refrescado se precisar)
      */
     private function resolveTokenState(?MlToken $token): string
     {
@@ -159,9 +171,6 @@ class SugadoresMlOnboardingController extends Controller
         }
         if (in_array($token->status, ['error_refresh', 'revoked'], true)) {
             return 'error_refresh';
-        }
-        if ($token->isExpired()) {
-            return 'expired';
         }
         return 'active';
     }

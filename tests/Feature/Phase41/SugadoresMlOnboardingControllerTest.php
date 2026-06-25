@@ -234,14 +234,20 @@ class SugadoresMlOnboardingControllerTest extends TestCase
         );
     }
 
-    /** T4: token_state derivado corretamente para os 4 estados canonicos. */
+    /** T4: token_state derivado corretamente para os 3 estados canonicos.
+     *
+     * Bug fix Phase 41 polish: token com expires_at no passado mas status='active'
+     * agora reporta 'active' (nao 'expired') pra alinhar com /ml-oauth — o
+     * MercadoLivreService faz refresh automatico em runtime. Estado 'expired'
+     * isolado foi removido — quem nao consegue mais usar o token cai em
+     * 'error_refresh' ou 'revoked' via status. */
     #[Test]
     public function index_token_state_calculado_corretamente(): void
     {
         $this->actingAsAdmin();
 
         $this->makeCompanyWithToken('missing',       'Empresa Missing');
-        $this->makeCompanyWithToken('expired',       'Empresa Expired');
+        $this->makeCompanyWithToken('expired',       'Empresa Expired ExpiresAt');
         $this->makeCompanyWithToken('error_refresh', 'Empresa ErrorRefresh');
         $this->makeCompanyWithToken('active',        'Empresa Active');
 
@@ -253,7 +259,9 @@ class SugadoresMlOnboardingControllerTest extends TestCase
             $byName = $companies->keyBy('name');
 
             $this->assertSame('missing',       $byName['Empresa Missing']['token_state']);
-            $this->assertSame('expired',       $byName['Empresa Expired']['token_state']);
+            // Token com expires_at no passado mas status='active' → 'active'.
+            // O sistema faz refresh em runtime; bloquear na UI confunde operador.
+            $this->assertSame('active',        $byName['Empresa Expired ExpiresAt']['token_state']);
             $this->assertSame('error_refresh', $byName['Empresa ErrorRefresh']['token_state']);
             $this->assertSame('active',        $byName['Empresa Active']['token_state']);
         });

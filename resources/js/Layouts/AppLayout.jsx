@@ -83,7 +83,7 @@ const NAV_TREE = [
             { label: 'Desenvolvimento', routeName: 'dev.desenvolvimento', page: 'Dev/Desenvolvimento', icon: Code2,     permission: 'sistema.desenvolvimento' },
             // Phase 41 Plan 41-05 — UI admin de onboarding ML por empresa.
             // excludeRoles preserva o gate apenas-admin (sem criar permission_key novo).
-            { label: 'Sugadores ML Onboarding', routeName: 'dev.sugadores_ml_onboarding.index', page: 'Dev/SugadoresMlOnboarding/Index', icon: Activity, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            { label: 'Onboarding ML', routeName: 'dev.sugadores_ml_onboarding.index', page: 'Dev/SugadoresMlOnboarding/Index', icon: Activity, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
             { label: 'ML OAuth',       routeName: 'ml.oauth.index',      page: 'MlOAuth/Index',       icon: Link2,     permission: 'sistema.ml_oauth' },
         ],
     },

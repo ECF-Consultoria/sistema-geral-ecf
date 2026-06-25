@@ -6,6 +6,7 @@ import {
     Activity,
     AlertTriangle,
     Check,
+    HelpCircle,
     RefreshCw,
     Search,
     ToggleLeft,
@@ -15,12 +16,17 @@ import {
 import { useMemo, useState } from 'react';
 
 // ─── Constantes / labels ────────────────────────────────────────────────────
+//
+// Os valores backend (adman_only / ml_shadow / ml_primary_candidate / ml_primary)
+// permanecem inalterados — apenas os labels visiveis foram traduzidos pra
+// linguagem operacional. Backend continua usando os mesmos identificadores
+// internos (sem migracao / sem quebra de contrato com testes / sem mudanca de payload).
 
 const STATUS_LABELS = {
-    adman_only:           'Adman apenas',
-    ml_shadow:            'ML em shadow',
-    ml_primary_candidate: 'Candidato a primary',
-    ml_primary:           'ML primary',
+    adman_only:           'So Adman',
+    ml_shadow:            'Comparando em paralelo',
+    ml_primary_candidate: 'Pronta pra migrar',
+    ml_primary:           'Migrada pro ML',
 };
 
 const STATUS_BADGE = {
@@ -31,17 +37,19 @@ const STATUS_BADGE = {
 };
 
 const TOKEN_LABELS = {
-    active:        'Token ativo',
-    expired:       'Expirado',
-    error_refresh: 'Erro refresh',
-    missing:       'Ausente',
+    active:        'Conectado',
+    error_refresh: 'Reautorizar',
+    missing:       'Sem conexao',
+    // Mantido como fallback caso backend antigo ainda retorne 'expired' antes
+    // do deploy do controller fix (defensive coding em rolling deploys).
+    expired:       'Conectado',
 };
 
 const TOKEN_BADGE = {
     active:        'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
-    expired:       'text-amber-300 bg-amber-400/10 border-amber-400/20',
     error_refresh: 'text-red-300 bg-red-400/10 border-red-400/20',
     missing:       'text-white/40 bg-white/[0.04] border-white/[0.08]',
+    expired:       'text-emerald-300 bg-emerald-400/10 border-emerald-400/20',
 };
 
 // Formata ISO → 'dd/MM HH:mm' (null-safe)
@@ -178,53 +186,130 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
         );
     }
 
+    // Card explicativo — fica fechado por padrao (operador ja familiar nao precisa rolar).
+    const [glossarioAberto, setGlossarioAberto] = useState(false);
+
     return (
-        <AppLayout title="Sugadores ML — Onboarding">
+        <AppLayout title="Onboarding ML por empresa">
             <div className="max-w-7xl mx-auto space-y-6">
                 {/* Header / contexto */}
                 <DevCard
                     icon={Activity}
-                    title="Sugadores ML — Onboarding por empresa"
-                    subtitle="Estado da migracao Adman → ML por empresa: token, advertiser, smoke, paridade shadow e acoes inline."
+                    title="Onboarding Mercado Livre por empresa"
+                    subtitle="Acompanha cada empresa migrando do Adman para o Mercado Livre: conexao, anunciante, ultimo teste e comparacao paralela."
                 >
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                        <KpiCard label="Total"            value={kpis.total} hint="empresas ativas" />
-                        <KpiCard label="Sem token"        value={kpis.semToken} hint="precisam OAuth" />
-                        <KpiCard label="Shadow ativo"     value={kpis.shadowAtivo} hint="rodando paralelo" />
-                        <KpiCard label="Candidatos"       value={kpis.candidatosPrimary} hint="paridade ≥ 95%" />
-                        <KpiCard label="ML primary"       value={kpis.mlPrimary} hint="cut-over feito" />
+                        <KpiCard label="Total"             value={kpis.total} hint="empresas ativas" />
+                        <KpiCard label="Sem conexao"       value={kpis.semToken} hint="precisam autorizar ML" />
+                        <KpiCard label="Comparando"        value={kpis.shadowAtivo} hint="ML rodando paralelo" />
+                        <KpiCard label="Prontas pra migrar" value={kpis.candidatosPrimary} hint="ML bate ≥ 95% com Adman" />
+                        <KpiCard label="Ja migradas"       value={kpis.mlPrimary} hint="ML virou fonte oficial" />
                     </div>
                 </DevCard>
 
+                {/* Glossario / como funciona — colapsavel */}
+                <DevCard
+                    icon={HelpCircle}
+                    title="O que cada coluna significa"
+                    subtitle={glossarioAberto ? 'Clique no botao a direita pra esconder.' : 'Clique pra abrir as explicacoes de cada termo.'}
+                >
+                    <div className="flex justify-end -mt-2 mb-2">
+                        <button
+                            type="button"
+                            onClick={() => setGlossarioAberto((v) => !v)}
+                            className="text-[12px] text-white/60 hover:text-white px-2 py-1 rounded border border-white/[0.08] hover:bg-white/[0.05]"
+                        >
+                            {glossarioAberto ? 'Esconder' : 'Abrir'}
+                        </button>
+                    </div>
+                    {glossarioAberto && (
+                        <div className="space-y-3 text-[13px] text-white/75 leading-relaxed">
+                            <p>
+                                Esta tela acompanha a transicao das empresas do <b>Adman</b> (fornecedor antigo de
+                                metricas de campanhas) para o <b>Mercado Livre</b> (fonte oficial direto da API do ML).
+                                A migracao acontece em 3 fases controladas por empresa:
+                            </p>
+                            <ul className="list-disc list-inside space-y-1.5 pl-2">
+                                <li>
+                                    <b>So Adman:</b> empresa ainda usa Adman para gerar os sugadores
+                                    (alertas de anuncios com problema). Mercado Livre ainda nao foi ligado.
+                                </li>
+                                <li>
+                                    <b>Comparando em paralelo:</b> Adman continua sendo a fonte oficial,
+                                    mas o sistema tambem chama o Mercado Livre e guarda os resultados para
+                                    comparar quao parecidos sao. Nada visivel para o cliente final.
+                                </li>
+                                <li>
+                                    <b>Pronta pra migrar:</b> nos ultimos 7 dias o Mercado Livre acertou
+                                    pelo menos 95% dos mesmos alertas que o Adman gerou. Pronto pra
+                                    inverter — quem manda passa a ser o ML.
+                                </li>
+                                <li>
+                                    <b>Migrada pro ML:</b> a empresa ja roda em Mercado Livre como fonte
+                                    oficial. Adman fica apenas como historico/fallback diagnostico.
+                                </li>
+                            </ul>
+                            <p>
+                                <b>Acoes na tabela:</b>
+                            </p>
+                            <ul className="list-disc list-inside space-y-1.5 pl-2">
+                                <li>
+                                    <b>Testar conexao:</b> dispara um diagnostico rapido que chama a API do
+                                    ML, valida token, busca o anunciante e grava o JSON de resposta em
+                                    arquivo (sem alterar dados de producao). Use pra ver se a API
+                                    responde corretamente.
+                                </li>
+                                <li>
+                                    <b>Rodar comparacao:</b> roda o Adman e o ML em paralelo agora,
+                                    grava ambos os resultados em tabelas separadas e calcula a paridade.
+                                    Tambem nao altera a tabela de sugadores oficial.
+                                </li>
+                                <li>
+                                    <b>Ligar/Desligar comparacao:</b> liga ou desliga essa rotina diaria de
+                                    comparacao paralela para a empresa. Quando ligada, todo dia o
+                                    agendador roda tanto Adman quanto ML pra ela e mede paridade.
+                                </li>
+                            </ul>
+                            <p>
+                                <b>Estados da conexao Mercado Livre:</b>
+                            </p>
+                            <ul className="list-disc list-inside space-y-1.5 pl-2">
+                                <li><b>Conectado:</b> token OK, sistema usa normalmente (faz refresh automatico quando precisa).</li>
+                                <li><b>Reautorizar:</b> token deu erro e nao volta sozinho — operador precisa abrir o painel "ML OAuth" e gerar novo link pro cliente.</li>
+                                <li><b>Sem conexao:</b> cliente nunca autorizou ainda. Abrir "ML OAuth" e enviar link.</li>
+                            </ul>
+                        </div>
+                    )}
+                </DevCard>
+
                 {/* Filtros + busca */}
-                <DevCard icon={Search} title="Filtros" subtitle="Refina a lista por status, estado do token ou nome.">
+                <DevCard icon={Search} title="Filtros" subtitle="Refina a lista por fase, conexao ou nome.">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <div>
-                            <label className="block text-white/40 text-[11px] uppercase tracking-wider mb-1">Status</label>
+                            <label className="block text-white/40 text-[11px] uppercase tracking-wider mb-1">Fase da migracao</label>
                             <select
                                 value={statusFilt}
                                 onChange={(e) => setStatusFilt(e.target.value)}
                                 className="w-full rounded-md bg-black/40 border border-white/[0.08] px-3 py-2 text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40"
                             >
-                                <option value="todos">Todos</option>
-                                <option value="adman_only">Adman apenas</option>
-                                <option value="ml_shadow">ML em shadow</option>
-                                <option value="ml_primary_candidate">Candidato a primary</option>
-                                <option value="ml_primary">ML primary</option>
+                                <option value="todos">Todas</option>
+                                <option value="adman_only">So Adman</option>
+                                <option value="ml_shadow">Comparando em paralelo</option>
+                                <option value="ml_primary_candidate">Pronta pra migrar</option>
+                                <option value="ml_primary">Migrada pro ML</option>
                             </select>
                         </div>
                         <div>
-                            <label className="block text-white/40 text-[11px] uppercase tracking-wider mb-1">Token ML</label>
+                            <label className="block text-white/40 text-[11px] uppercase tracking-wider mb-1">Conexao ML</label>
                             <select
                                 value={tokenFilt}
                                 onChange={(e) => setTokenFilt(e.target.value)}
                                 className="w-full rounded-md bg-black/40 border border-white/[0.08] px-3 py-2 text-[13px] text-white focus:outline-none focus:border-ecf-yellow/40"
                             >
-                                <option value="todos">Todos</option>
-                                <option value="active">Ativo</option>
-                                <option value="expired">Expirado</option>
-                                <option value="error_refresh">Erro refresh</option>
-                                <option value="missing">Ausente</option>
+                                <option value="todos">Todas</option>
+                                <option value="active">Conectado</option>
+                                <option value="error_refresh">Reautorizar</option>
+                                <option value="missing">Sem conexao</option>
                             </select>
                         </div>
                         <div>
@@ -256,11 +341,11 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                                 <thead className="text-white/40 text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
                                     <tr>
                                         <th className="text-left px-3 py-2">Empresa</th>
-                                        <th className="text-left px-3 py-2">Token ML</th>
-                                        <th className="text-left px-3 py-2">Advertiser</th>
-                                        <th className="text-left px-3 py-2">Smoke</th>
-                                        <th className="text-left px-3 py-2">Shadow 7d</th>
-                                        <th className="text-left px-3 py-2">Status</th>
+                                        <th className="text-left px-3 py-2" title="Estado da conexao OAuth com Mercado Livre">Conexao ML</th>
+                                        <th className="text-left px-3 py-2" title="Se o anunciante (advertiser_id) do Mercado Ads ja foi descoberto e cacheado">Anunciante</th>
+                                        <th className="text-left px-3 py-2" title="Quando foi o ultimo teste de conexao (gera JSON de diagnostico)">Ultimo teste</th>
+                                        <th className="text-left px-3 py-2" title="Quanto o ML acertou em relacao ao Adman nos ultimos 7 dias (>= 95% libera migracao)">Concordancia 7d</th>
+                                        <th className="text-left px-3 py-2">Fase</th>
                                         <th className="text-right px-3 py-2">Acoes</th>
                                     </tr>
                                 </thead>
@@ -315,10 +400,10 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                                                                     ? 'bg-white/[0.05] hover:bg-white/[0.1] text-white/70 border-white/[0.08]'
                                                                     : 'bg-white/[0.02] text-white/20 border-white/[0.04] cursor-not-allowed',
                                                             )}
-                                                            title="Dispara sugadores:ml-smoke async via queue"
+                                                            title="Faz um diagnostico rapido na API do Mercado Livre (sem alterar sugadores). Gera arquivo JSON com a resposta."
                                                         >
                                                             {acao === 'smoke' ? <RefreshCw size={12} className="animate-spin" /> : <Zap size={12} />}
-                                                            Smoke
+                                                            Testar conexao
                                                         </button>
                                                         <button
                                                             type="button"
@@ -336,10 +421,10 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                                                                     ? 'bg-white/[0.05] hover:bg-white/[0.1] text-white/70 border-white/[0.08]'
                                                                     : 'bg-white/[0.02] text-white/20 border-white/[0.04] cursor-not-allowed',
                                                             )}
-                                                            title="Dispara sugadores:shadow-ml --days=1 async"
+                                                            title="Roda Adman e ML em paralelo agora, grava em tabelas separadas e calcula a paridade (sem alterar a tabela oficial de sugadores)."
                                                         >
                                                             {acao === 'shadow' ? <RefreshCw size={12} className="animate-spin" /> : <Activity size={12} />}
-                                                            Shadow
+                                                            Rodar comparacao
                                                         </button>
                                                         <button
                                                             type="button"
@@ -359,14 +444,16 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                                                                         : 'bg-white/[0.05] hover:bg-white/[0.1] text-white/70 border-white/[0.08]'
                                                                     : 'bg-white/[0.02] text-white/20 border-white/[0.04] cursor-not-allowed',
                                                             )}
-                                                            title="Alterna shadow_enabled em sugador_ml_company_config"
+                                                            title="Liga ou desliga a rotina diaria de comparacao paralela (Adman + ML) pra esta empresa. Quando ligada, o agendador roda ambos todo dia."
                                                         >
                                                             {acao === 'toggle'
                                                                 ? <RefreshCw size={12} className="animate-spin" />
                                                                 : (row.status === 'ml_shadow' || row.status === 'ml_primary_candidate')
                                                                     ? <ToggleRight size={12} />
                                                                     : <ToggleLeft size={12} />}
-                                                            Toggle
+                                                            {(row.status === 'ml_shadow' || row.status === 'ml_primary_candidate')
+                                                                ? 'Desligar comparacao'
+                                                                : 'Ligar comparacao'}
                                                         </button>
                                                     </div>
                                                 </td>
@@ -378,13 +465,13 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                         </div>
                     )}
 
-                    {/* Aviso de erro: empresas sem token */}
+                    {/* Aviso: empresas sem conexao */}
                     {kpis.semToken > 0 && (
                         <div className="mt-4 flex items-start gap-2 rounded-lg bg-amber-400/[0.06] border border-amber-400/20 px-3 py-2.5 text-[12px] text-amber-200">
                             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
                             <div>
-                                {kpis.semToken} empresa{kpis.semToken === 1 ? '' : 's'} sem MlToken: complete o OAuth ML pelo painel
-                                "ML OAuth" antes de habilitar smoke/shadow.
+                                {kpis.semToken} empresa{kpis.semToken === 1 ? '' : 's'} sem conexao Mercado Livre: abra o painel
+                                "ML OAuth", gere o link de autorizacao e envie pro cliente antes de testar/comparar.
                             </div>
                         </div>
                     )}
