@@ -44,6 +44,8 @@ class SugadorConfigController extends Controller
             'gasto_minimo_logic'              => 'nullable|in:required,optional',
             'cpc_maximo'                      => 'nullable|numeric|min:0',
             'cpc_maximo_logic'                => 'nullable|in:required,optional',
+            // Phase 42 D-01: gate opcional de cliques minimos para validar CPC alto (briefing §8 Opcao B)
+            'cpc_minimo_cliques'              => 'nullable|integer|min:0',
             'acos_maximo_pct'                 => 'nullable|numeric|min:0|max:1000',
             'acos_maximo_logic'               => 'nullable|in:required,optional',
             'cliques_minimos_sem_venda'       => 'nullable|integer|min:0',
