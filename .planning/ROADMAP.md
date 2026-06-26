@@ -976,12 +976,12 @@ Cross-cutting constraints:
   9. Item sidebar "Onboarding ML" não aparece para nenhum usuário; rota `/dev/sugadores-ml-onboarding` continua respondendo via URL direta (admin)
  10. Todos os testes Feature de Sugadores existentes passam
 
-**Plans:** 6 plans
+**Plans:** 1/6 plans executed
 
 Plans:
 
 **Wave 1**
-- [ ] 42-01-PLAN.md — Migration cpc_minimo_cliques + logica composta no evaluator (REQ-42-04 backend, TDD)
+- [x] 42-01-PLAN.md — Migration cpc_minimo_cliques + logica composta no evaluator (REQ-42-04 backend, TDD)
 
 **Wave 2** *(blocked on Wave 1; 42-02 e 42-03 paralelos)*
 - [ ] 42-02-PLAN.md — UI campo cpc_minimo_cliques em /sugadores/configs/{company} (REQ-42-04 frontend)
