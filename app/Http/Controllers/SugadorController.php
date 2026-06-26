@@ -7,6 +7,7 @@ use App\Jobs\FetchAdmanMlbsByCampaignJob;
 use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
+use App\Repositories\AdgroupMlbMapRepository;
 use App\Services\AdmanMcpService;
 use App\Services\AdmanService;
 use App\Services\SugadorAnalysisService;
@@ -23,6 +24,7 @@ class SugadorController extends Controller
         private SugadorAnalysisService $service,
         private AdmanMcpService $mcp,
         private AdmanService $adman,
+        private AdgroupMlbMapRepository $adgroupMlbMap,
     ) {}
 
     /**
@@ -266,11 +268,20 @@ class SugadorController extends Controller
 
         $sugador->load(['company:id,name,adman_account_id', 'resolvidoPor:id,name', 'movidoPor:id,name', 'acoes.user:id,name']);
 
+        // Quick task 260626-qgf — array com TODOS os MLBs do adgroup. Vazio para
+        // sugadores Adman sem entry no cache, para tipo=campanha, ou quando a
+        // analise ML ainda nao rodou pos-deploy desta feature; nesses casos a UI
+        // cai no fallback `mlb_id` singular (MlbHighlight).
+        $mlbs = $sugador->tipo === Sugador::TIPO_ADGROUP && $sugador->adgroup_id !== ''
+            ? $this->adgroupMlbMap->getMlbsForAdgroup($sugador->company_id, (string) $sugador->adgroup_id)
+            : [];
+
         return Inertia::render('Sugadores/Show', [
             'sugador'      => $sugador,
             'url_anuncio'  => $sugador->urlAnuncioML(),
             'url_ads'      => $sugador->linkAdsML(),
             'can_update'   => Gate::allows('update', $sugador),
+            'mlbs'         => $mlbs,
         ]);
     }
 

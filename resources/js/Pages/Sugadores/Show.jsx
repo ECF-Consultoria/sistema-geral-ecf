@@ -124,8 +124,18 @@ function Metric({ icon: Icon, label, value, color = 'white' }) {
     );
 }
 
-export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_update }) {
+export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_update, mlbs = [] }) {
     const [showMoveModal, setShowMoveModal] = useState(false);
+
+    // Quick task 260626-qgf — `mlbs` vem do controller via AdgroupMlbMapRepository,
+    // contendo TODOS os MLBs do adgroup do sugador. Quando vazio (Adman legado,
+    // tipo=campanha, ou analise ML ainda nao rodou pos-deploy), cai no `mlb_id`
+    // singular do proprio sugador. `showList` controla qual UI usar — chips
+    // multiplos (MlbsList) vs. singular (MlbHighlight legacy).
+    const allMlbs = Array.isArray(mlbs) && mlbs.length > 0
+        ? mlbs
+        : (sugador.mlb_id ? [sugador.mlb_id] : []);
+    const showList = allMlbs.length > 1;
 
     const { data, setData, patch, processing, errors, reset } = useForm({
         status:      sugador.status === 'pendente' ? 'em_acao' : sugador.status,
@@ -225,7 +235,9 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             ganha badge + copiar + link direto; campaign/adgroup escondidos
                             num <details>. */}
                         <div className="mt-3 space-y-2">
-                            {sugador.mlb_id ? (
+                            {showList ? (
+                                <MlbsList mlbs={allMlbs} />
+                            ) : sugador.mlb_id ? (
                                 <MlbHighlight mlbId={sugador.mlb_id} url={url_anuncio} />
                             ) : (
                                 <p className="text-[11px] text-white/40">
@@ -828,6 +840,81 @@ function MlbRow({ mlb }) {
                 )}
             </div>
         </li>
+    );
+}
+
+// Quick task 260626-qgf — helper para extrair so os digitos do mlb_id e montar a
+// URL canonica do ML (formato MLB-1234567890). Espelha Sugador::urlAnuncioML()
+// no PHP, mantido aqui pra evitar trip extra ao backend so pra resolver URLs.
+const mlbUrl = (mlbId) => {
+    if (!mlbId) return null;
+    const digits = String(mlbId).replace(/\D/g, '');
+    if (!digits) return null;
+    return `https://produto.mercadolivre.com.br/MLB-${digits}`;
+};
+
+/**
+ * Quick task 260626-qgf — chips com TODOS os MLBs do adgroup quando o provider
+ * ML coletou >1 MLB. Para sugadores legados Adman (sem entry em
+ * `adman_adgroup_mlbs`) ou tipo=campanha, o pai cai no MlbHighlight singular
+ * abaixo via `showList === false`.
+ *
+ * Padrao visual replicado do MlbHighlight (mesma paleta amarela, font-mono,
+ * Copy/Check/ExternalLink). Botao "Copiar todos" usa copyToClipboard com
+ * fallback intranet (mesmo helper que o MlbsDoAdgroup ja usa).
+ */
+function MlbsList({ mlbs }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopyAll = async () => {
+        const ok = await copyToClipboard(mlbs.join(','));
+        if (ok) {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    return (
+        <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-ecf-yellow/70 text-[10px] font-bold uppercase tracking-wider">
+                    {mlbs.length} MLB{mlbs.length !== 1 ? 's' : ''} neste adgroup
+                </span>
+                <button
+                    type="button"
+                    onClick={handleCopyAll}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12] text-[10px] font-semibold uppercase tracking-wider"
+                    title={`Copia ${mlbs.length} MLBs separados por vírgula`}
+                >
+                    {copied ? <Check size={10} /> : <Copy size={10} />}
+                    {copied ? 'Copiado!' : 'Copiar todos'}
+                </button>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+                {mlbs.map((mlbId) => {
+                    const url = mlbUrl(mlbId);
+                    return (
+                        <div
+                            key={mlbId}
+                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-ecf-yellow/[0.08] border border-ecf-yellow/30"
+                        >
+                            <span className="text-ecf-yellow font-mono font-bold text-[12px] select-all">{mlbId}</span>
+                            {url && (
+                                <a
+                                    href={url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-ecf-yellow/60 hover:text-ecf-yellow border-l border-ecf-yellow/20 pl-1.5"
+                                    title="Abrir anúncio no Mercado Livre"
+                                >
+                                    <ExternalLink size={10} />
+                                </a>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
     );
 }
 
