@@ -212,8 +212,7 @@ function EvolucaoBadge({ evolucao }) {
 function RecebidoToggle({ empresa, mesSelecionado }) {
     const [loading, setLoading] = useState(false);
 
-    // Filhas não têm toggle individual — pagamento é feito pelo pai
-    if (empresa.estado !== 'ok' || empresa.is_filha) return null;
+    if (empresa.estado !== 'ok') return null;
 
     function toggle(e) {
         e.stopPropagation();
@@ -242,14 +241,49 @@ function RecebidoToggle({ empresa, mesSelecionado }) {
     );
 }
 
+// Quick 260626-ddp — toggle de recebido em nível de GRUPO (CompanyGroup).
+// Marca/desmarca todos os membros do grupo no mês via rota financeiro.grupo.recebido.
+function GrupoRecebidoToggle({ grupo, mesSelecionado }) {
+    const [loading, setLoading] = useState(false);
+
+    function toggle(e) {
+        e.stopPropagation();
+        setLoading(true);
+        router.post(
+            route('admin.financeiro.grupo.recebido', grupo.grupo_id),
+            { mes: mesSelecionado },
+            { preserveScroll: true, onFinish: () => setLoading(false) }
+        );
+    }
+
+    return (
+        <button
+            onClick={toggle}
+            disabled={loading}
+            title={grupo.recebido ? 'Desmarcar recebido (grupo inteiro)' : 'Marcar grupo como recebido'}
+            className={cn(
+                'shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all',
+                grupo.recebido
+                    ? 'border-emerald-400 bg-emerald-400/20 text-emerald-400'
+                    : 'border-white/20 text-transparent hover:border-white/40 hover:text-white/20'
+            )}
+        >
+            <Check size={11} />
+        </button>
+    );
+}
+
+// Cobrança de uma linha do Fechamento: grupo (consolidado) ou empresa avulsa.
+const cobrancaDaLinha = (e) => Number((e.is_grupo ? e.cobranca_mensal_grupo : e.cobranca_mensal) ?? 0);
+
 function TotalConsolidado({ empresas }) {
-    // Filhas não entram no total — valor já está no pai via cobranca_mensal_grupo
-    const contam        = empresas.filter(e => e.conta_no_total !== false && (e.cobranca_mensal_grupo ?? 0) > 0);
+    // Quick 260626-ddp: cada linha = 1 pagador (grupo consolidado OU empresa avulsa).
+    const contam        = empresas.filter(e => cobrancaDaLinha(e) > 0);
     const recebidas     = contam.filter(e => e.recebido);
     const inadimplentes = contam.filter(e => !e.recebido);
-    const totalAReceber = contam.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
-    const totalRecebido = recebidas.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
-    const totalPendente = inadimplentes.reduce((s, e) => s + Number(e.cobranca_mensal_grupo ?? e.cobranca_mensal ?? 0), 0);
+    const totalAReceber = contam.reduce((s, e) => s + cobrancaDaLinha(e), 0);
+    const totalRecebido = recebidas.reduce((s, e) => s + cobrancaDaLinha(e), 0);
+    const totalPendente = inadimplentes.reduce((s, e) => s + cobrancaDaLinha(e), 0);
     const temDados      = contam.length > 0;
 
     return (
@@ -454,16 +488,6 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                     <span className="text-white font-semibold text-[13px] truncate">{empresa.name}</span>
-                    {empresa.filhas?.length > 0 && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20 shrink-0">
-                            Grupo · {empresa.filhas.length + 1}
-                        </span>
-                    )}
-                    {empresa.is_filha && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-white/[0.05] text-white/40 border border-white/[0.08] shrink-0">
-                            Vinculada · {empresa.nome_pai}
-                        </span>
-                    )}
                 </div>
                 {empresa.estado === 'ok' && (
                     <span className="text-white/40 text-[12px] mt-0.5 block">
@@ -475,10 +499,9 @@ function FechamentoRow({ empresa, expandida, onToggle, mesSelecionado }) {
             <EvolucaoBadge evolucao={empresa.evolucao} />
             <ServiceBadge servicos_contratados={empresa.servicos_contratados} />
             {!empresa.has_adman && <IntegrationBadge />}
-            {(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal) != null && (
-                <span className={cn('text-[13px] font-semibold font-mono shrink-0',
-                    empresa.is_filha ? 'text-white/25' : 'text-emerald-400')}>
-                    {fmtBRL(empresa.cobranca_mensal_grupo ?? empresa.cobranca_mensal)}
+            {empresa.cobranca_mensal != null && (
+                <span className="text-[13px] font-semibold font-mono shrink-0 text-emerald-400">
+                    {fmtBRL(empresa.cobranca_mensal)}
                     <span className="text-white/30 font-normal text-[11px]">/mês</span>
                 </span>
             )}
@@ -587,8 +610,8 @@ function ContratosSection({ empresa, onAdicionar, onEditar, onDesativar }) {
     );
 }
 
+// Conteúdo expandido de uma empresa AVULSA (sem grupo). Grupos usam GrupoAccordion.
 function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
-    const temGrupo = empresa.filhas?.length > 0;
     const [modalAberto, setModalAberto] = useState(false);
 
     return (
@@ -613,31 +636,7 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
                         )}
                     </div>
 
-                    {/* Breakdown de grupo (pai + filhas) */}
-                    {temGrupo && (
-                        <div className="mb-3 rounded-lg border border-white/[0.06] overflow-hidden">
-                            <div className="px-3 py-1.5 bg-white/[0.02] border-b border-white/[0.04]">
-                                <span className="text-[11px] uppercase tracking-wider text-white/40">Composição do grupo</span>
-                            </div>
-                            {[empresa, ...empresa.filhas].map((e, i) => (
-                                <div key={e.id} className={cn('flex items-center justify-between px-3 py-2', i > 0 && 'border-t border-white/[0.03]')}>
-                                    <span className="text-white/60 text-[12px]">
-                                        {i === 0 ? `${e.name} (este)` : `↳ ${e.name}`}
-                                    </span>
-                                    <span className="text-white/50 text-[12px] font-mono">
-                                        {e.cobranca_mensal != null ? fmtBRL(e.cobranca_mensal) : '—'}
-                                    </span>
-                                </div>
-                            ))}
-                            <div className="flex items-center justify-between px-3 py-2 border-t border-white/[0.06] bg-white/[0.02]">
-                                <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
-                                <span className="text-emerald-400 text-[13px] font-bold font-mono">{fmtBRL(empresa.cobranca_mensal_grupo)}</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Mensalidade individual ou grupo */}
-                    {!temGrupo && empresa.cobranca_mensal != null && (
+                    {empresa.cobranca_mensal != null && (
                         <div className="flex items-center justify-between py-2 mb-2 border-b border-white/[0.04]">
                             <span className="text-[11px] uppercase tracking-wider text-white/40">Mensalidade a cobrar</span>
                             <span className="text-emerald-400 text-[15px] font-bold font-mono">
@@ -647,19 +646,17 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
                     )}
                 </>
             )}
-            {!empresa.is_filha && (
-                <div className="flex justify-end mb-3">
-                    <a
-                        href={route('admin.financeiro.relatorio', { company: empresa.id, mes: mesSelecionado })}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
-                    >
-                        <FileText size={13} />
-                        Gerar relatório PDF
-                    </a>
-                </div>
-            )}
+            <div className="flex justify-end mb-3">
+                <a
+                    href={route('admin.financeiro.relatorio', { company: empresa.id, mes: mesSelecionado })}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                >
+                    <FileText size={13} />
+                    Gerar relatório PDF
+                </a>
+            </div>
             {/* Contratos de servico gerenciados pelo modal da pagina. */}
             <div className="border-t border-white/[0.04] pt-4">
                 <ContratosSection
@@ -673,12 +670,134 @@ function FechamentoAccordion({ empresa, mesSelecionado, onClose, onAdicionarCont
     );
 }
 
-function FechamentoList({ empresas, mesSelecionado, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
-    const [aberta, setAberta] = useState(null);
+// ─── Linha de GRUPO (CompanyGroup) — Quick 260626-ddp ─────────────────────────
+// Uma linha consolidada por grupo do Comercial: nome+cor, "Grupo · N", soma de
+// faturamento/cobrança dos membros e um único toggle de recebido do grupo.
+function GrupoRow({ grupo, expandida, onToggle, mesSelecionado }) {
+    return (
+        <div
+            onClick={onToggle}
+            className={cn(
+                'flex items-center gap-4 px-4 py-3 cursor-pointer transition-colors',
+                expandida ? 'bg-white/[0.05]' : 'hover:bg-white/[0.03]'
+            )}
+        >
+            <ChevronDown
+                size={14}
+                className={cn('transition-transform duration-200 shrink-0', expandida ? 'rotate-180 text-ecf-yellow' : 'text-white/40')}
+            />
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: grupo.color }} />
+                    <span className="text-white font-semibold text-[13px] truncate">{grupo.name}</span>
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/20 shrink-0">
+                        Grupo · {grupo.num_membros}
+                    </span>
+                </div>
+                {grupo.faturamento_grupo != null && (
+                    <span className="text-white/40 text-[12px] mt-0.5 block">
+                        Faturamento do grupo {fmtBRL(grupo.faturamento_grupo)}
+                    </span>
+                )}
+            </div>
+            {grupo.cobranca_mensal_grupo != null && (
+                <span className="text-[13px] font-semibold font-mono shrink-0 text-emerald-400">
+                    {fmtBRL(grupo.cobranca_mensal_grupo)}
+                    <span className="text-white/30 font-normal text-[11px]">/mês</span>
+                </span>
+            )}
+            <GrupoRecebidoToggle grupo={grupo} mesSelecionado={mesSelecionado} />
+        </div>
+    );
+}
 
-    function toggleEmpresa(id) {
-        setAberta(prev => prev === id ? null : id);
-    }
+// Empresa-membro dentro de um grupo: expansível para gestão de contratos
+// (reaproveita o modal de contrato global da página) + relatório por empresa.
+function MembroRow({ membro, mesSelecionado, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+    const [aberta, setAberta] = useState(false);
+    return (
+        <div className="rounded-lg border border-white/[0.06] overflow-hidden bg-white/[0.02]">
+            <div
+                onClick={() => setAberta(v => !v)}
+                className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-white/[0.03]"
+            >
+                <ChevronDown size={13} className={cn('transition-transform shrink-0', aberta ? 'rotate-180 text-ecf-yellow' : 'text-white/40')} />
+                <div className="flex-1 min-w-0">
+                    <span className="text-white/80 text-[13px] truncate block">{membro.name}</span>
+                    {membro.estado === 'ok' && (
+                        <span className="text-white/35 text-[11px] block">{fmtBRL(membro.faturamento)}</span>
+                    )}
+                </div>
+                {!membro.has_adman && <IntegrationBadge />}
+                {membro.recebido && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-400/15 text-emerald-400 border border-emerald-400/25 shrink-0">
+                        recebido
+                    </span>
+                )}
+                {membro.cobranca_mensal != null && (
+                    <span className="text-[12px] font-semibold font-mono text-emerald-400/90 shrink-0">{fmtBRL(membro.cobranca_mensal)}</span>
+                )}
+            </div>
+            {aberta && (
+                <div className="px-3 py-3 border-t border-white/[0.04] bg-black/20 space-y-3">
+                    {membro.estado === 'ok' && <FaixaProgresso faturamento={membro.faturamento} faixa={membro.faixa} />}
+                    <div className="flex justify-end">
+                        <a
+                            href={route('admin.financeiro.relatorio', { company: membro.id, mes: mesSelecionado })}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[12px] text-white/40 hover:text-white/70 border border-white/[0.08] hover:border-white/20 px-3 h-8 rounded-lg transition-colors"
+                        >
+                            <FileText size={13} /> Gerar relatório PDF
+                        </a>
+                    </div>
+                    <ContratosSection
+                        empresa={membro}
+                        onAdicionar={onAdicionarContrato}
+                        onEditar={onEditarContrato}
+                        onDesativar={onDesativarContrato}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Conteúdo expandido de um grupo: composição (membros) + total. O "recebido" é do
+// grupo inteiro (toggle na linha); aqui cada membro é só leitura/gestão de contrato.
+function GrupoAccordion({ grupo, mesSelecionado, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+    return (
+        <div className="px-4 py-4 bg-black/30 border-t border-white/[0.04] space-y-3">
+            <div className="flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wider text-white/40">
+                    Composição do grupo · {grupo.num_membros} empresa{grupo.num_membros !== 1 ? 's' : ''}
+                </span>
+                <span className="text-white/30 text-[11px]">Recebido é do grupo inteiro</span>
+            </div>
+            <div className="space-y-2">
+                {grupo.membros.map(m => (
+                    <MembroRow
+                        key={m.id}
+                        membro={m}
+                        mesSelecionado={mesSelecionado}
+                        onAdicionarContrato={onAdicionarContrato}
+                        onEditarContrato={onEditarContrato}
+                        onDesativarContrato={onDesativarContrato}
+                    />
+                ))}
+            </div>
+            <div className="flex items-center justify-between px-3 py-2 rounded-lg border border-white/[0.06] bg-white/[0.02]">
+                <span className="text-[11px] uppercase tracking-wider text-white/50 font-semibold">Total do grupo</span>
+                <span className="text-emerald-400 text-[14px] font-bold font-mono">{fmtBRL(grupo.cobranca_mensal_grupo)}</span>
+            </div>
+        </div>
+    );
+}
+
+function FechamentoList({ empresas, mesSelecionado, onAdicionarContrato, onEditarContrato, onDesativarContrato }) {
+    // Chave de expansão única por linha: grupo (g<id>) ou empresa avulsa (c<id>).
+    const [aberta, setAberta] = useState(null);
+    const toggle = (key) => setAberta(prev => prev === key ? null : key);
 
     if (empresas.length === 0) {
         return (
@@ -692,26 +811,53 @@ function FechamentoList({ empresas, mesSelecionado, onAdicionarContrato, onEdita
 
     return (
         <div className="divide-y divide-white/[0.04]">
-            {empresas.map(empresa => (
-                <div key={empresa.id}>
-                    <FechamentoRow
-                        empresa={empresa}
-                        expandida={aberta === empresa.id}
-                        onToggle={() => toggleEmpresa(empresa.id)}
-                        mesSelecionado={mesSelecionado}
-                    />
-                    {aberta === empresa.id && (
-                        <FechamentoAccordion
+            {empresas.map(empresa => {
+                const key = empresa.is_grupo ? `g${empresa.grupo_id}` : `c${empresa.id}`;
+                const expandida = aberta === key;
+
+                if (empresa.is_grupo) {
+                    return (
+                        <div key={key}>
+                            <GrupoRow
+                                grupo={empresa}
+                                expandida={expandida}
+                                onToggle={() => toggle(key)}
+                                mesSelecionado={mesSelecionado}
+                            />
+                            {expandida && (
+                                <GrupoAccordion
+                                    grupo={empresa}
+                                    mesSelecionado={mesSelecionado}
+                                    onAdicionarContrato={onAdicionarContrato}
+                                    onEditarContrato={onEditarContrato}
+                                    onDesativarContrato={onDesativarContrato}
+                                />
+                            )}
+                        </div>
+                    );
+                }
+
+                return (
+                    <div key={key}>
+                        <FechamentoRow
                             empresa={empresa}
+                            expandida={expandida}
+                            onToggle={() => toggle(key)}
                             mesSelecionado={mesSelecionado}
-                            onClose={() => setAberta(null)}
-                            onAdicionarContrato={onAdicionarContrato}
-                            onEditarContrato={onEditarContrato}
-                            onDesativarContrato={onDesativarContrato}
                         />
-                    )}
-                </div>
-            ))}
+                        {expandida && (
+                            <FechamentoAccordion
+                                empresa={empresa}
+                                mesSelecionado={mesSelecionado}
+                                onClose={() => setAberta(null)}
+                                onAdicionarContrato={onAdicionarContrato}
+                                onEditarContrato={onEditarContrato}
+                                onDesativarContrato={onDesativarContrato}
+                            />
+                        )}
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -752,9 +898,9 @@ function GerarRelatoriosBtn({ mesSelecionado, companies }) {
     const [enviando, setEnviando]   = useState(false);
     const [feedback, setFeedback]   = useState(null); // { tipo: 'success'|'error', msg: string } | null
 
-    const totalPrincipais = companies.filter(e => !e.is_filha).length;
-    const totalRecebidos  = companies.filter(e => !e.is_filha && e.recebido).length;
-    const totalPendentes  = companies.filter(e => !e.is_filha && !e.recebido).length;
+    const totalPrincipais = companies.length;
+    const totalRecebidos  = companies.filter(e => e.recebido).length;
+    const totalPendentes  = companies.filter(e => !e.recebido).length;
 
     function urlGeral(filtroRecebido = '') {
         const params = { mes: mesSelecionado };
@@ -945,23 +1091,36 @@ function FiltroBarra({ filtros, onChange, total, filtrado, servicosNomes }) {
 export default function Financeiro({ companies, mes_selecionado, servicos_disponiveis = [] }) {
     const [filtros, setFiltros] = useState(FILTROS_INICIAL);
 
-    // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS do dataset
-    // de contratos ativos para popular o dropdown do filtro.
-    const servicosNomes = useMemo(
-        () => [...new Set(
-            companies.flatMap(c => (c.servicos_contratados || []).map(s => s.servico_nome).filter(Boolean))
-        )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    // Quick 260626-ddp: `companies` agora são LINHAS (grupos + avulsas). Para os
+    // gráficos e o dropdown de serviços, achatamos os membros dos grupos numa
+    // lista de empresas individuais.
+    const empresasFlat = useMemo(
+        () => companies.flatMap(e => (e.is_grupo ? e.membros : [e])),
         [companies],
     );
 
+    // Phase 14 (Frente B): nomes únicos de serviços DERIVADOS dos contratos ativos.
+    const servicosNomes = useMemo(
+        () => [...new Set(
+            empresasFlat.flatMap(c => (c.servicos_contratados || []).map(s => s.servico_nome).filter(Boolean))
+        )].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        [empresasFlat],
+    );
+
+    // Filtro por linha: para grupos, casa contra QUALQUER membro (busca/serviço/estado);
+    // recebido é do grupo. Para avulsas, casa contra a própria empresa.
     const filtradas = useMemo(() => companies.filter(e => {
-        if (filtros.busca && !e.name.toLowerCase().includes(filtros.busca.toLowerCase())) return false;
-        // Filtro por NOME do serviço — derivado do contrato (Phase 14)
+        const membros = e.is_grupo ? e.membros : [e];
+        if (filtros.busca) {
+            const q = filtros.busca.toLowerCase();
+            const hit = e.name.toLowerCase().includes(q) || membros.some(m => m.name.toLowerCase().includes(q));
+            if (!hit) return false;
+        }
         if (filtros.servico_nome
-            && !(e.servicos_contratados || []).some(s => s.servico_nome === filtros.servico_nome)) {
+            && !membros.some(m => (m.servicos_contratados || []).some(s => s.servico_nome === filtros.servico_nome))) {
             return false;
         }
-        if (filtros.estado && e.estado !== filtros.estado) return false;
+        if (filtros.estado && !membros.some(m => m.estado === filtros.estado)) return false;
         if (filtros.recebido === 'sim' && !e.recebido) return false;
         if (filtros.recebido === 'nao' && e.recebido) return false;
         return true;
@@ -1074,14 +1233,16 @@ export default function Financeiro({ companies, mes_selecionado, servicos_dispon
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                             <SyncFaturamentoBtn mesSelecionado={mes_selecionado} />
-                            <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={companies} />
+                            {/* Quick 260626-ddp: contagens do dropdown por empresa individual (os PDFs listam empresa-a-empresa). */}
+                            <GerarRelatoriosBtn mesSelecionado={mes_selecionado} companies={empresasFlat} />
                             <MesSeletor mesSelecionado={mes_selecionado} />
                         </div>
                     </div>
                     <div className="grid grid-cols-3 gap-4">
-                        <GraficoServico empresas={companies} />
-                        <GraficoCobranca empresas={companies} />
-                        <GraficoFaixas empresas={companies} />
+                        {/* Gráficos por empresa individual (membros achatados dos grupos). */}
+                        <GraficoServico empresas={empresasFlat} />
+                        <GraficoCobranca empresas={empresasFlat} />
+                        <GraficoFaixas empresas={empresasFlat} />
                     </div>
                     <TotalConsolidado empresas={companies} />
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02]">
