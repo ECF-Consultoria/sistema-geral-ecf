@@ -353,11 +353,16 @@ class SugadorController extends Controller
             );
         }
 
-        AnalyzeCompanySugadoresJob::dispatch($company);
+        // Phase 42 polish — botao individual da UI usa queue 'high' pra furar
+        // a fila do scheduler diario (analyzeAll enfileira ~140 jobs na queue
+        // 'default'). Operador que altera config e clica em "Rodar analise"
+        // ve resultado em segundos em vez de esperar 80min na fila.
+        // Supervisor: --queue=high,default (processa high primeiro).
+        AnalyzeCompanySugadoresJob::dispatch($company)->onQueue('high');
 
         return back()->with(
             'success',
-            "Análise enfileirada para {$company->name}. Os sugadores aparecem na listagem em alguns minutos."
+            "Análise enfileirada (prioritária) para {$company->name}. Sugadores aparecem em ~30s."
         );
     }
 
