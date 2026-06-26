@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Sugador;
 use App\Models\SugadorAcao;
 use App\Models\SugadorConfig;
+use App\Repositories\AdgroupMlbMapRepository;
 use App\Services\Sugadores\SugadoresAdsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -26,17 +27,24 @@ class SugadorAnalysisService
 {
     /**
      * Phase 39 Plan 39-04: constructor passa a receber o factory de providers.
+     * Quick task 260626-qgf: adiciona AdgroupMlbMapRepository para persistir o
+     * mapeamento adgroup->[MLB IDs] durante a analise ML.
      *
      * - $providers: resolve qual provider (Adman ou Mercado Livre) atende cada empresa.
      *   Substitui as chamadas diretas a $this->adman dentro de analyzeCompany.
      * - $adman: PRESERVADO para uso interno de loadCampaignsInfo legacy (consumida
-     *   por CleanupSugadoresQuarentena, que NÃO faz parte do refactor Phase 39).
-     *   Será removido em Phase 42+ quando todos os call-sites migrarem para o
+     *   por CleanupSugadoresQuarentena, que NAO faz parte do refactor Phase 39).
+     *   Sera removido em Phase 42+ quando todos os call-sites migrarem para o
      *   AdgroupMlbMapRepository / provider ML.
+     * - $adgroupMlbMap: usado APENAS no path ML para persistir adgroup->[MLB IDs]
+     *   no cache `adman_adgroup_mlbs`, alimentando o drilldown do Show.jsx.
+     *   Provider Adman tem Job dedicado (SyncCompanyAdgroupMlbsJob — Phase 30);
+     *   duplicar aqui criaria double-write desnecessario.
      */
     public function __construct(
         private SugadoresAdsProviderFactory $providers,
         private AdmanService $adman,
+        private AdgroupMlbMapRepository $adgroupMlbMap,
     ) {}
 
     /**
@@ -339,6 +347,30 @@ class SugadorAnalysisService
                 'organic_amount', 'organic_units',
                 'motivos', 'raw_data', 'status', 'updated_at',
             ]);
+        }
+
+        // ─── Persistencia adgroup -> [MLB IDs] (quick task 260626-qgf) ────────
+        // Phase 30 (Adman) tem Job dedicado de sync (SyncCompanyAdgroupMlbsJob);
+        // provider ML expoe o mapa direto no payload de ads (fetchAdgroupMlbs).
+        // Persistimos aqui para o drilldown do Show.jsx ler instantaneamente via
+        // AdgroupMlbMapRepository::getMlbsForAdgroup, sem nova chamada a API.
+        // Fail-open: erro no fetch nao derruba a analise (cache complementar).
+        if (!$dryRun && $provider->name() === 'ml') {
+            try {
+                $map = $provider->fetchAdgroupMlbs($company, $periodoInicio, $periodoFim);
+                if (!empty($map)) {
+                    $count = $this->adgroupMlbMap->bulkSetFromProvider($company->id, $map);
+                    Log::info(
+                        "[Sugadores] Empresa {$company->id} ({$company->name}): "
+                        . "{$count} pares (adgroup, MLB) persistidos em adman_adgroup_mlbs (provider ML)."
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning(
+                    "[Sugadores] Empresa {$company->id} ({$company->name}): "
+                    . 'falha ao persistir mapa adgroup->MLB via provider ML: ' . $e->getMessage()
+                );
+            }
         }
 
         // ─── Auto-resolução (Phase 15 + polish Phase 42) ──────────────────────
