@@ -433,7 +433,14 @@ class MercadoLivreAdsService
                 [
                     'date_from'        => $dateFrom,
                     'date_to'          => $dateTo,
-                    'aggregation_type' => 'total',
+                    // BUG fix Phase 42 polish — confirmado via direct call em prod
+                    // (ByMobille - Teste #298, advertiser 620095): o endpoint
+                    // /product_ads/items NAO aceita aggregation_type=total. Retorna
+                    // 500 internal_error "No enum constant AggregationTypeItemAdGroupEnum.TOTAL".
+                    // Sem aggregation_type, o endpoint retorna as metricas agregadas
+                    // por item ao longo da janela [date_from, date_to] (564 items + paging.total).
+                    // listCampaigns continua usando aggregation_type=CAMPAIGN (valor valido
+                    // do enum CampaignAggregationTypeEnum — ja confirmado 200 OK).
                     'metrics'          => self::DEFAULT_METRICS,
                     'limit'            => self::PAGE_LIMIT,
                     'offset'           => $offset,

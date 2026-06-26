@@ -175,7 +175,13 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
             // Só logamos o ID da empresa — nunca payload bruto, nunca token (T-39-02-01).
             $err = $wrap['error']['message'] ?? 'erro desconhecido';
             Log::warning("[MercadoLivreSugadoresProvider] empresa {$company->id} falha em tryFetchAdsMetrics: {$err}");
-            return [];
+            // Phase 42 polish — surface failure pro operador NAO confundir "API
+            // ML caiu" com "conta limpa sem ads". Lanca RuntimeException com a
+            // causa raiz; o caller (analyzeCompany ou comando Artisan) loga +
+            // alerta o operador via output do comando.
+            throw new \RuntimeException(
+                "[Sugadores ML] tryFetchAdsMetrics falhou para empresa {$company->id}: {$err}"
+            );
         }
 
         $results = $wrap['data']['results'] ?? [];
