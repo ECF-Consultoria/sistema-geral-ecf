@@ -525,4 +525,157 @@ class CutOverMlPrimaryTest extends TestCase
         $this->assertSame(2, Sugador::where('company_id', $company->id)->count(),
             'Re-analise nao duplica linhas (chave canonica)');
     }
+
+    // ──────────── T10 (polish Phase 42): config AFROUXA (90 -> 20) e
+    //              sugadores auto_resolvido voltam a bater criterio →
+    //              devem RECICLAR para pendente (auto_resolvido nao eh
+    //              decisao humana, NAO precisa preservacao perpetua).
+    // ──────────────────────────────────────────────────────────────────────
+
+    #[Test]
+    public function auto_resolvido_recicla_quando_config_afrouxa_e_ad_volta_a_bater_criterio(): void
+    {
+        $company = $this->makeMlCompany(configAttrs: [
+            // Config restritivo: so gasto >= 90 bate.
+            'gasto_minimo_sem_venda' => 90.00,
+            'gasto_minimo_logic'     => SugadorConfig::LOGIC_OPTIONAL,
+        ]);
+        $refDate = Carbon::create(2026, 6, 25)->startOfDay();
+
+        // 1a analise com config 90: AD1 cost=50 NAO bate. AD2 cost=100 bate.
+        $this->httpFakeMlAds(
+            campaignsResults: [['id' => 'C1', 'name' => 'Camp', 'status' => 'active']],
+            adsResults: [
+                ['id' => 'AD1', 'title' => 'Medio', 'campaign_id' => 'C1', 'item_id' => 'MLB1',
+                 'metrics' => ['cost' => 50.0, 'units_quantity' => 0, 'clicks' => 5, 'prints' => 100]],
+                ['id' => 'AD2', 'title' => 'Alto', 'campaign_id' => 'C1', 'item_id' => 'MLB2',
+                 'metrics' => ['cost' => 100.0, 'units_quantity' => 0, 'clicks' => 10, 'prints' => 200]],
+            ],
+        );
+
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $service->analyzeCompany($company, $refDate, dryRun: false, forceProvider: 'ml');
+
+        // 1a analise: so AD2 (cost=100>=90) vira sugador pendente. AD1 (50) nao.
+        $this->assertSame(1, Sugador::where('company_id', $company->id)->count(),
+            '1a analise: 1 sugador (AD2 cost=100)');
+
+        // Simulamos o sugador AD1 ter sido criado por config anterior MAIS frouxa
+        // e depois resolvido automaticamente (cenario real: gasto antes era 20,
+        // AD1 estava pendente; admin apertou pra 90, AD1 virou auto_resolvido).
+        // IMPORTANTE: usamos DB::insert direto (sem Eloquent cast) pra que o
+        // reference_date fique como string DATE '2026-06-25' (e nao datetime).
+        // O upsert real do service tambem grava via query builder direto, entao
+        // pra simular fielmente a row pre-existente precisamos do mesmo formato.
+        \Illuminate\Support\Facades\DB::table('sugadores')->insert([
+            'company_id'           => $company->id,
+            'reference_date'       => $refDate->toDateString(),
+            'tipo'                 => Sugador::TIPO_ADGROUP,
+            'campaign_id'          => 'C1',
+            'adgroup_id'           => 'AD1',
+            'periodo_inicio'       => '2026-05-27',
+            'periodo_fim'          => '2026-06-24',
+            'investimento_periodo' => 50.00,
+            'faturamento_periodo'  => 0,
+            'vendas_periodo'       => 0,
+            'cliques'              => 5,
+            'impressoes'           => 100,
+            'motivos'              => json_encode([]),
+            'status'               => Sugador::STATUS_AUTO_RESOLVIDO,
+            'resolvido_em'         => now()->toDateTimeString(),
+            'created_at'           => now()->toDateTimeString(),
+            'updated_at'           => now()->toDateTimeString(),
+        ]);
+        $sugAd1 = Sugador::where('company_id', $company->id)->where('adgroup_id', 'AD1')->first();
+
+        $this->assertSame(Sugador::STATUS_AUTO_RESOLVIDO, $sugAd1->fresh()->status);
+        $this->assertSame(2, Sugador::where('company_id', $company->id)->count(),
+            'Setup: 1 pendente (AD2) + 1 auto_resolvido (AD1)');
+
+        // Admin AFROUXA config: gasto 90 -> 20. Salva.
+        $company->sugadorConfig->update(['gasto_minimo_sem_venda' => 20.00]);
+
+        // Avanca clock e re-roda — mesmo payload (AD1 cost=50 agora bate com 20).
+        Carbon::setTestNow(Carbon::create(2026, 6, 25, 12, 5, 0));
+        $this->httpFakeMlAds(
+            campaignsResults: [['id' => 'C1', 'name' => 'Camp', 'status' => 'active']],
+            adsResults: [
+                ['id' => 'AD1', 'title' => 'Medio', 'campaign_id' => 'C1', 'item_id' => 'MLB1',
+                 'metrics' => ['cost' => 50.0, 'units_quantity' => 0, 'clicks' => 5, 'prints' => 100]],
+                ['id' => 'AD2', 'title' => 'Alto', 'campaign_id' => 'C1', 'item_id' => 'MLB2',
+                 'metrics' => ['cost' => 100.0, 'units_quantity' => 0, 'clicks' => 10, 'prints' => 200]],
+            ],
+        );
+
+        $service->analyzeCompany($company, $refDate, dryRun: false, forceProvider: 'ml');
+
+        // AD1 deve RECICLAR para PENDENTE (cost=50 agora bate >= 20).
+        // AD2 continua pendente.
+        $sugAd1Refresh = Sugador::where('company_id', $company->id)
+            ->where('adgroup_id', 'AD1')->first();
+        $sugAd2Refresh = Sugador::where('company_id', $company->id)
+            ->where('adgroup_id', 'AD2')->first();
+
+        $this->assertSame(
+            Sugador::STATUS_PENDENTE,
+            $sugAd1Refresh->status,
+            'AD1 auto_resolvido deve VOLTAR para pendente quando config afrouxa e ad volta a bater criterio (Phase 42 polish — auto_resolvido nao eh decisao humana)'
+        );
+        $this->assertSame(Sugador::STATUS_PENDENTE, $sugAd2Refresh->status);
+        $this->assertSame(2, Sugador::where('company_id', $company->id)->where('status', 'pendente')->count(),
+            'Apos afrouxar config: 2 pendentes (ambos batem >= 20)');
+    }
+
+    // ──────────── T11: status TRAVADOS por DECISAO HUMANA continuam
+    //              preservados mesmo quando config afrouxa.
+    // ──────────────────────────────────────────────────────────────────────
+
+    #[Test]
+    public function status_humano_em_acao_ignorado_preservados_mesmo_quando_config_afrouxa(): void
+    {
+        $company = $this->makeMlCompany(configAttrs: [
+            'gasto_minimo_sem_venda' => 20.00,
+            'gasto_minimo_logic'     => SugadorConfig::LOGIC_OPTIONAL,
+        ]);
+        $refDate = Carbon::create(2026, 6, 25)->startOfDay();
+
+        // Cria 2 sugadores manuais: 1 em_acao + 1 ignorado.
+        $sugEmAcao = Sugador::create([
+            'company_id' => $company->id, 'reference_date' => $refDate->toDateString(),
+            'tipo' => Sugador::TIPO_ADGROUP, 'campaign_id' => 'C1', 'adgroup_id' => 'AD1',
+            'periodo_inicio' => '2026-05-27', 'periodo_fim' => '2026-06-24',
+            'investimento_periodo' => 50.00, 'faturamento_periodo' => 0, 'vendas_periodo' => 0,
+            'cliques' => 5, 'impressoes' => 100, 'motivos' => ['gasto_sem_venda'],
+            'status' => Sugador::STATUS_EM_ACAO,
+        ]);
+        $sugIgnorado = Sugador::create([
+            'company_id' => $company->id, 'reference_date' => $refDate->toDateString(),
+            'tipo' => Sugador::TIPO_ADGROUP, 'campaign_id' => 'C1', 'adgroup_id' => 'AD2',
+            'periodo_inicio' => '2026-05-27', 'periodo_fim' => '2026-06-24',
+            'investimento_periodo' => 100.00, 'faturamento_periodo' => 0, 'vendas_periodo' => 0,
+            'cliques' => 10, 'impressoes' => 200, 'motivos' => ['gasto_sem_venda'],
+            'status' => Sugador::STATUS_IGNORADO,
+        ]);
+
+        // Re-roda analise — ambos ads batem criterio (50 e 100 >= 20).
+        $this->httpFakeMlAds(
+            campaignsResults: [['id' => 'C1', 'name' => 'Camp', 'status' => 'active']],
+            adsResults: [
+                ['id' => 'AD1', 'title' => 'EmAcao', 'campaign_id' => 'C1', 'item_id' => 'MLB1',
+                 'metrics' => ['cost' => 50.0, 'units_quantity' => 0, 'clicks' => 5, 'prints' => 100]],
+                ['id' => 'AD2', 'title' => 'Ignorado', 'campaign_id' => 'C1', 'item_id' => 'MLB2',
+                 'metrics' => ['cost' => 100.0, 'units_quantity' => 0, 'clicks' => 10, 'prints' => 200]],
+            ],
+        );
+        Carbon::setTestNow(Carbon::create(2026, 6, 25, 12, 5, 0));
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $service->analyzeCompany($company, $refDate, dryRun: false, forceProvider: 'ml');
+
+        // DECISAO HUMANA preservada — em_acao e ignorado NAO mexem.
+        $this->assertSame(Sugador::STATUS_EM_ACAO, $sugEmAcao->fresh()->status,
+            'em_acao (decisao humana) preservado em re-analise');
+        $this->assertSame(Sugador::STATUS_IGNORADO, $sugIgnorado->fresh()->status,
+            'ignorado (decisao humana) preservado em re-analise');
+    }
 }

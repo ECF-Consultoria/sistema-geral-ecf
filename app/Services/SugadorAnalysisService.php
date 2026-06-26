@@ -430,10 +430,25 @@ class SugadorAnalysisService
         $mapKey   = "{$data['tipo']}|{$data['campaign_id']}|{$data['adgroup_id']}";
         $existing = $existingMap[$mapKey] ?? null;
 
-        // Phase 42 D-06: STATUS_TRAVADOS preservado — re-análise via ML NÃO sobrescreve
-        // status de sugador já em em_acao/resolvido/ignorado/movido/auto_resolvido.
-        // Métricas (cliques, cpc, acos, etc.) e raw_data atualizam normalmente.
-        $status   = ($existing && in_array($existing->status, Sugador::STATUS_TRAVADOS, true))
+        // Phase 42 D-06: status TRAVADOS por DECISAO HUMANA — em_acao, resolvido,
+        // ignorado, movido — sao preservados em re-analise (nao voltam a pendente).
+        //
+        // EXCECAO (polish Phase 42 — relato operador): `auto_resolvido` NAO eh
+        // decisao humana — eh autoresolucao automatica quando o ad deixou de
+        // bater os criterios. Quando o admin AFROUXA a config (gasto 90 -> 20)
+        // e os ads voltam a bater criterios, eles chegam a este buildRow
+        // (motivos != []). Nesse caso, o auto_resolvido foi obsoleto pela
+        // mudanca de config — restaurar pra pendente pra reaparecer na listagem.
+        //
+        // STATUS_TRAVADOS originais (em_acao/resolvido/ignorado/movido)
+        // continuam preservados — analista decidiu manualmente, sistema respeita.
+        $statusTravadoHumano = [
+            Sugador::STATUS_EM_ACAO,
+            Sugador::STATUS_RESOLVIDO,
+            Sugador::STATUS_IGNORADO,
+            Sugador::STATUS_MOVIDO,
+        ];
+        $status = ($existing && in_array($existing->status, $statusTravadoHumano, true))
             ? $existing->status
             : Sugador::STATUS_PENDENTE;
 
