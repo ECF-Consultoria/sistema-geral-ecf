@@ -114,6 +114,20 @@ class AnalyzeCompanyMlWindowQuarantineTest extends TestCase
     private function httpFakeMlEndpoints(array $campaignsResults, array $adsResults): void
     {
         Http::fake([
+            // Ordem importa — Http::fake testa padroes em ordem e o primeiro que
+            // bate ganha. listAds usa `/advertising/advertisers/{id}/product_ads/items`
+            // e listCampaigns usa `/marketplace/advertising/MLB/advertisers/{id}/product_ads/campaigns/search`.
+            // O padrao mais especifico tem que vir antes do generico de discoverAdvertiser
+            // (`/advertising/advertisers?...`) — senao o fallback captura tudo e
+            // retorna o payload de advertisers quando o codigo queria items.
+            '*/product_ads/items*' => Http::response([
+                'results' => $adsResults,
+                'paging'  => ['total' => count($adsResults)],
+            ], 200),
+            '*/product_ads/campaigns/search*' => Http::response([
+                'results' => $campaignsResults,
+                'paging'  => ['total' => count($campaignsResults)],
+            ], 200),
             // discoverAdvertiser — fallback caso MlAdvertiser cache nao bata (nao deve usar).
             '*/advertising/advertisers*' => Http::response([
                 'advertisers' => [[
@@ -121,14 +135,6 @@ class AnalyzeCompanyMlWindowQuarantineTest extends TestCase
                     'site_id'       => 'MLB',
                     'seller_id'     => '465723451',
                 ]],
-            ], 200),
-            '*/product_ads/campaigns/search*' => Http::response([
-                'results' => $campaignsResults,
-                'paging'  => ['total' => count($campaignsResults)],
-            ], 200),
-            '*/product_ads/items*' => Http::response([
-                'results' => $adsResults,
-                'paging'  => ['total' => count($adsResults)],
             ], 200),
         ]);
     }
@@ -277,18 +283,9 @@ class AnalyzeCompanyMlWindowQuarantineTest extends TestCase
         $company = $this->makeCompanyWithMlToken();
 
         Http::fake([
-            '*/advertising/advertisers*' => Http::response([
-                'advertisers' => [[
-                    'advertiser_id' => 71098,
-                    'site_id'       => 'MLB',
-                    'seller_id'     => '465723451',
-                ]],
-            ], 200),
-            // listCampaigns sempre 500 → MercadoLivreAdsService::callWithBackoff
-            // esgota MAX_ATTEMPTS=5 e lanca RuntimeException; provider tem try/catch
-            // \Throwable que captura e segue com $campaignNames=[].
-            '*/product_ads/campaigns/search*' => Http::response(['error' => 'srv'], 500),
-            // listAds funciona normalmente
+            // Ordem importa — `*/advertising/advertisers*` e generico demais e
+            // captura tambem `/advertising/advertisers/{id}/product_ads/items`.
+            // Padroes especificos primeiro:
             '*/product_ads/items*' => Http::response([
                 'results' => [[
                     'id'          => 'AD1',
@@ -298,6 +295,18 @@ class AnalyzeCompanyMlWindowQuarantineTest extends TestCase
                     'metrics'     => ['cost' => 50, 'units_quantity' => 0, 'clicks' => 5, 'prints' => 100],
                 ]],
                 'paging' => ['total' => 1],
+            ], 200),
+            // listCampaigns sempre 500 → MercadoLivreAdsService::callWithBackoff
+            // esgota MAX_ATTEMPTS=5 e lanca RuntimeException; provider tem try/catch
+            // \Throwable que captura e segue com $campaignNames=[].
+            '*/product_ads/campaigns/search*' => Http::response(['error' => 'srv'], 500),
+            // Generico no final (fallback caso MlAdvertiser cache nao bata):
+            '*/advertising/advertisers*' => Http::response([
+                'advertisers' => [[
+                    'advertiser_id' => 71098,
+                    'site_id'       => 'MLB',
+                    'seller_id'     => '465723451',
+                ]],
             ], 200),
         ]);
 
@@ -324,16 +333,23 @@ class AnalyzeCompanyMlWindowQuarantineTest extends TestCase
         $company = $this->makeCompanyWithMlToken();
 
         // Espionar provider para capturar from/to passados pelo service.
-        /** @var Mockery\MockInterface&SugadoresAdsProvider $providerSpy */
-        $providerSpy = Mockery::mock(SugadoresAdsProvider::class);
+        // IMPORTANTE: o container injeta a classe CONCRETA `MercadoLivreSugadoresProvider`
+        // na `SugadoresAdsProviderFactory` (type hint estrito), entao o mock precisa
+        // ser da classe concreta — Mockery::mock(Interface) nao satisfaz o type hint.
+        /** @var Mockery\MockInterface&MercadoLivreSugadoresProvider $providerSpy */
+        $providerSpy = Mockery::mock(MercadoLivreSugadoresProvider::class);
         $providerSpy->shouldReceive('name')->andReturn('ml')->byDefault();
         $providerSpy->shouldReceive('supports')->andReturn(true)->byDefault();
         $providerSpy->shouldReceive('fetchCampaigns')->andReturn([])->byDefault();
+        // Datas conforme briefing §4 e implementacao em SugadorAnalysisService:
+        //   periodoFim    = referenceDate - 1 dia  = 2026-06-24
+        //   periodoInicio = periodoFim - 29 dias   = 2026-05-26
+        // Total: 30 dias fechados (briefing exemplo "26/05/2026 -> 24/06/2026").
         $providerSpy->shouldReceive('fetchAdgroupsMetrics')
             ->once()
             ->with(
                 Mockery::on(fn($c) => $c instanceof Company && $c->id === $company->id),
-                Mockery::on(fn($from) => $from instanceof Carbon && $from->toDateString() === '2026-05-27'),
+                Mockery::on(fn($from) => $from instanceof Carbon && $from->toDateString() === '2026-05-26'),
                 Mockery::on(fn($to)   => $to   instanceof Carbon && $to->toDateString()   === '2026-06-24'),
             )
             ->andReturn([]);
