@@ -90,6 +90,11 @@ class SugadoresAdsProviderFactoryTest extends TestCase
     {
         $factory = $this->makeFactory();
         $company = $this->makeCompany(['adman_account_id' => '12345']);
+        // Phase 42 Plan 42-04: factory agora consulta mlToken ANTES de Adman
+        // (cut-over D-05 — ML preferido). Como este Unit test nao usa
+        // RefreshDatabase, eager-set mlToken=null para evitar lazy-load
+        // contra tabela inexistente.
+        $company->setRelation('mlToken', null);
 
         $provider = $factory->for($company);
 

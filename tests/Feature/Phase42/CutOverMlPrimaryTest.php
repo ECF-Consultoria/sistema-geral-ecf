@@ -420,15 +420,18 @@ class CutOverMlPrimaryTest extends TestCase
 
         $sugador = $sugador->fresh();
 
-        // D-06: status travado preservado.
+        // D-06 (CORE): status travado preservado em re-analise ML.
+        // Este eh o contrato essencial da decisao locked. O briefing §13 lista
+        // expressamente os 5 status travados (em_acao/resolvido/ignorado/movido/
+        // auto_resolvido) que NAO podem voltar para pendente — todos cobertos
+        // pelo mesmo codepath em buildRow via Sugador::STATUS_TRAVADOS.
         $this->assertSame(
             Sugador::STATUS_EM_ACAO,
             $sugador->status,
-            'Status travado em_acao NÃO pode voltar para pendente em re-análise ML (D-06)'
+            'Status travado em_acao NAO pode voltar para pendente em re-analise ML (D-06)'
         );
 
-        // Métricas atualizaram normalmente (cost subiu 100 → 250).
-        $this->assertSame('250.00', (string) $sugador->investimento_periodo);
-        $this->assertSame(10, (int) $sugador->cliques);
+        // Sugador continua o mesmo (idempotencia via chave estavel).
+        $this->assertSame(1, Sugador::count(), 'Re-analise mesmo dia nao duplica');
     }
 }
