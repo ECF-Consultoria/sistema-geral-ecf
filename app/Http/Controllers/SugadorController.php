@@ -359,16 +359,9 @@ class SugadorController extends Controller
         // ve resultado em segundos em vez de esperar 80min na fila.
         // Supervisor: --queue=high,default (processa high primeiro).
         //
-        // Locks orfaos do ShouldBeUnique: jobs antigos enfileirados antes do
-        // uniqueFor=1800 ficavam SEM TTL no Redis. Dispatch posterior era
-        // silenciosamente ignorado pelo Laravel (lock parecia ativo). Fix:
-        // sempre limpar a chave de lock dessa empresa ANTES de dispatch. Se
-        // ja havia job legitimo na fila, ele continua sendo processado — so
-        // o lock e que e descartado. uniqueFor=1800 do Job garante que o
-        // novo lock criado pelo dispatch tem TTL valido.
-        $lockKey = 'laravel_unique_job:' . AnalyzeCompanySugadoresJob::class . $company->id;
-        \Illuminate\Support\Facades\Cache::forget($lockKey);
-
+        // Job NAO usa mais ShouldBeUnique — causava locks orfaos sem TTL no
+        // Redis bloqueando dispatches silenciosamente. Idempotencia ja eh
+        // garantida pela chave canonica do upsert (unique index no schema).
         AnalyzeCompanySugadoresJob::dispatch($company)->onQueue('high');
 
         return back()->with(

@@ -5,7 +5,6 @@ namespace App\Jobs;
 use App\Models\Company;
 use App\Services\SugadorAnalysisService;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -20,11 +19,15 @@ use Illuminate\Support\Facades\Log;
  * (CAMILLO tem 2389 adgroups ≈ 48 páginas + retry em 429), o que estoura
  * o timeout do nginx/php-fpm.
  *
- * `ShouldBeUnique` evita o duplicate UUID em failed_jobs quando os 2 workers
- * (ecf-worker_00/01) competem pelo mesmo job da mesma empresa — agora a chave
- * é o company_id e o segundo worker simplesmente não pega o job duplicado.
+ * Phase 42 polish — ShouldBeUnique REMOVIDO. Causava locks orfaos no Redis
+ * sem TTL valido quando workers crashavam, bloqueando silenciosamente
+ * dispatchs futuros (relato operador 6x). A idempotencia ja eh garantida
+ * pela chave canonica do upsert em SugadorAnalysisService (company_id +
+ * reference_date + tipo + campaign_id + adgroup_id eh UNIQUE no schema),
+ * entao 2 jobs simultaneos para a mesma empresa nao causam duplicacao —
+ * apenas processam metricas 2x (idempotente).
  */
-class AnalyzeCompanySugadoresJob implements ShouldQueue, ShouldBeUnique
+class AnalyzeCompanySugadoresJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -52,26 +55,6 @@ class AnalyzeCompanySugadoresJob implements ShouldQueue, ShouldBeUnique
     {
         return [180, 900, 1800, 3600];
     }
-
-    /**
-     * Chave de unicidade: company_id. Garante que se a fila já tem 1 job
-     * pendente pra empresa X, um segundo dispatch (cron + click manual,
-     * por exemplo) não enfileira duplicata.
-     */
-    public function uniqueId(): string
-    {
-        return (string) $this->company->id;
-    }
-
-    /**
-     * TTL do lock ShouldBeUnique (segundos). Phase 42 polish — sem TTL o lock
-     * persiste no Redis ate o handle() terminar, mas se o worker travar/morrer
-     * o lock fica orfao e bloqueia novos dispatchs SILENCIOSAMENTE. Operador
-     * via click em 'Rodar analise' nada acontecia. 30min cobre handle() de
-     * contas grandes + margem; depois disso o lock expira e novo dispatch
-     * volta a funcionar.
-     */
-    public int $uniqueFor = 1800;
 
     /**
      * Phase 30 D-01 — Aplica throttle global Adman 'adman-api' (8/min).
