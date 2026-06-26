@@ -976,7 +976,23 @@ Cross-cutting constraints:
   9. Item sidebar "Onboarding ML" não aparece para nenhum usuário; rota `/dev/sugadores-ml-onboarding` continua respondendo via URL direta (admin)
  10. Todos os testes Feature de Sugadores existentes passam
 
-**Plans:** TBD (criar via `/gsd:plan-phase 42`)
+**Plans:** 6 plans
+
+Plans:
+
+**Wave 1**
+- [ ] 42-01-PLAN.md — Migration cpc_minimo_cliques + logica composta no evaluator (REQ-42-04 backend, TDD)
+
+**Wave 2** *(blocked on Wave 1; 42-02 e 42-03 paralelos)*
+- [ ] 42-02-PLAN.md — UI campo cpc_minimo_cliques em /sugadores/configs/{company} (REQ-42-04 frontend)
+- [ ] 42-03-PLAN.md — Normalizer ML contrato §3 completo + comentario janela 30d + quarentena SGI por nome+status (REQ-42-01, REQ-42-03, REQ-42-05)
+
+**Wave 3** *(blocked on Wave 2)*
+- [ ] 42-04-PLAN.md — Cut-over factory (ML preferido) + remove guard ml_primary + controller aceita empresas ML-only (REQ-42-02, REQ-42-06, REQ-42-08)
+
+**Wave 4** *(blocked on Wave 3; 42-05 e 42-06 paralelos)*
+- [ ] 42-05-PLAN.md — Sidebar esconde Onboarding ML + linkAdsML deep link Mercado Ads (REQ-42-07, REQ-42-09)
+- [ ] 42-06-PLAN.md — Suite aceite E2E ByMobille + guard de regressao Sugadores legados (REQ-42-08, REQ-42-10)
 **UI hint**: yes (campo novo em /sugadores/config/{company} + esconder item sidebar)
 
 ### Phase 43: Remoção da Adman (Sugadores)
