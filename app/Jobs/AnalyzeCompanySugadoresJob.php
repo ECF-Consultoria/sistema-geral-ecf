@@ -64,6 +64,16 @@ class AnalyzeCompanySugadoresJob implements ShouldQueue, ShouldBeUnique
     }
 
     /**
+     * TTL do lock ShouldBeUnique (segundos). Phase 42 polish — sem TTL o lock
+     * persiste no Redis ate o handle() terminar, mas se o worker travar/morrer
+     * o lock fica orfao e bloqueia novos dispatchs SILENCIOSAMENTE. Operador
+     * via click em 'Rodar analise' nada acontecia. 30min cobre handle() de
+     * contas grandes + margem; depois disso o lock expira e novo dispatch
+     * volta a funcionar.
+     */
+    public int $uniqueFor = 1800;
+
+    /**
      * Phase 30 D-01 — Aplica throttle global Adman 'adman-api' (8/min).
      * Bucket compartilhado entre todos os workers via cache Redis. Quando o
      * limite estoura, Laravel reagenda o Job em delayed sem marcar falha.
