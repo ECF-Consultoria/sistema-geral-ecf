@@ -133,6 +133,12 @@ class SugadorAnalysisService
         $config = SugadorConfig::forCompany($company);
         if (!$config->ativo) return $skip('config inativa');
 
+        // Phase 42 D-03 (briefing §4): janela de 30 dias FECHADOS por padrao.
+        // periodoFim = ontem (referenceDate - 1 dia); periodoInicio = ontem - 29 dias.
+        // Total: 30 dias, exclui o dia em curso. Comportamento ja vigente via
+        // dias_analise=30 (DEFAULT); este comentario apenas explicita a regra
+        // pra rastreabilidade. Override `$config->dias_analise != 30` muda apenas
+        // o tamanho da janela — `periodoFim = referenceDate - 1 dia` permanece fixo.
         $periodoFim    = $referenceDate->copy()->subDay();
         $periodoInicio = $periodoFim->copy()->subDays($config->dias_analise - 1);
         $dateFrom      = $periodoInicio->toDateString();
