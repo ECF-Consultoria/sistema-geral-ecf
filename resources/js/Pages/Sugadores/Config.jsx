@@ -135,6 +135,8 @@ export default function SugadoresConfig({ company, config }) {
         gasto_minimo_logic:              config?.gasto_minimo_logic ?? 'optional',
         cpc_maximo:                      config?.cpc_maximo ?? null,
         cpc_maximo_logic:                config?.cpc_maximo_logic ?? 'optional',
+        // Phase 42 D-01: gate opcional — quando preenchido, CPC alto so flagra com X cliques minimos
+        cpc_minimo_cliques:              config?.cpc_minimo_cliques ?? null,
         acos_maximo_pct:                 config?.acos_maximo_pct ?? null,
         acos_maximo_logic:               config?.acos_maximo_logic ?? 'optional',
         cliques_minimos_sem_venda:       config?.cliques_minimos_sem_venda ?? null,
@@ -278,6 +280,24 @@ export default function SugadoresConfig({ company, config }) {
                                 error={errors.cpc_maximo}
                             />
                         </CriterioField>
+
+                        {/* Phase 42 D-01: modificador opcional do criterio cpc_alto (briefing §8 Opcao B) */}
+                        {/* NAO eh criterio novo — eh gate de cliques minimos que reforca o CPC alto. */}
+                        {/* Sem LogicToggle: campo simples (Field), nao CriterioField. */}
+                        <Field
+                            icon={MousePointer}
+                            label="Cliques minimos para validar CPC"
+                            hint="Vazio = sem gate. Quando preenchido, CPC alto so eh flagado se o anuncio tiver pelo menos X cliques no periodo (briefing Opcao B)."
+                        >
+                            <NumberInput
+                                value={data.cpc_minimo_cliques}
+                                onChange={v => setData('cpc_minimo_cliques', v ? parseInt(v, 10) : null)}
+                                placeholder="ex: 5"
+                                step="1"
+                                error={errors.cpc_minimo_cliques}
+                            />
+                            {errors.cpc_minimo_cliques && <p className="text-red-400 text-xs mt-1">{errors.cpc_minimo_cliques}</p>}
+                        </Field>
 
                         <CriterioField
                             icon={Percent}
