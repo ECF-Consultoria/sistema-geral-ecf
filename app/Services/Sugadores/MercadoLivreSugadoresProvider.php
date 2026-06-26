@@ -140,6 +140,36 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
             return [];
         }
 
+        // Phase 42 Plan 42-03 (REQ-42-01 + REQ-42-05): resolvemos `campaign_name` +
+        // `campaign_status` localmente via merge interno com listCampaigns ANTES
+        // de iterar os adgroups. Motivo: o filtro de quarentena SGI do briefing
+        // §12 (e do CONTEXT D-07) skipa campanhas pelo NOME ("SGI", "Sugador",
+        // "Sugadores") — sem o nome disponivel no payload do adgroup, a
+        // quarentena nunca dispararia pela origem ML. O contrato §3 do briefing
+        // exige `campaign_name` e `campaign_status` na lista normalizada de
+        // adgroups (mesmo que null). Cache de 10min em MercadoLivreAdsService
+        // (Phase 41-02) evita 2 chamadas duplicadas quando
+        // buildCampaignsInfoFromProvider() roda em seguida no service.
+        // Fail-open: se listCampaigns quebra, adgroups ainda fluem com
+        // campaign_name=null (T-42-03-02 — quarentena por nome NAO dispara, mas
+        // a analise nao trava).
+        $campaignNames = [];
+        try {
+            $rawCampaigns = $this->ads->listCampaigns($company, $advertiserId, $from->toDateString(), $to->toDateString());
+            foreach (($rawCampaigns['results'] ?? []) as $c) {
+                $cId = (string) ($c['id'] ?? $c['campaign_id'] ?? '');
+                if ($cId === '') continue;
+                $campaignNames[$cId] = [
+                    'name'   => $c['name']   ?? null,
+                    'status' => $c['status'] ?? null,
+                ];
+            }
+        } catch (\Throwable $e) {
+            // So company_id no log — nunca payload, nunca token (T-39-02-01).
+            Log::warning("[MercadoLivreSugadoresProvider] empresa {$company->id} falha em listCampaigns (merge campaign_name): " . $e->getMessage());
+            // $campaignNames continua [] — fail-open documentado.
+        }
+
         $wrap = $this->ads->tryFetchAdsMetrics($company, $advertiserId, $from->toDateString(), $to->toDateString());
         if (!($wrap['ok'] ?? false)) {
             // Só logamos o ID da empresa — nunca payload bruto, nunca token (T-39-02-01).
@@ -167,10 +197,17 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
             $acos = isset($metrics['acos']) ? (float) $metrics['acos'] : self::safe_div(($cost !== null ? $cost * 100 : null), $totalAmount);
             $roas = isset($metrics['roas']) ? (float) $metrics['roas'] : self::safe_div($totalAmount, $cost);
 
+            $campaignIdAdg = (string) ($r['campaign_id'] ?? '');
+
             $out[] = [
                 'adgroup_id'      => (string) ($r['id'] ?? ''),
                 'adgroup_name'    => $r['title'] ?? null,
-                'campaign_id'     => (string) ($r['campaign_id'] ?? ''),
+                'campaign_id'     => $campaignIdAdg,
+                // CANDIDATO — revalidar pos-smoke Phase 38 Tarefa 3.
+                // Phase 42 Plan 42-03 (REQ-42-01 + REQ-42-05): campaign_name/status
+                // resolvidos via merge com listCampaigns acima. Null se nao bate.
+                'campaign_name'   => $campaignNames[$campaignIdAdg]['name']   ?? null,
+                'campaign_status' => $campaignNames[$campaignIdAdg]['status'] ?? null,
                 'thumbnail'       => $r['thumbnail'] ?? null,
                 'adgroup_type'    => $r['type'] ?? null,
                 'catalog_listing' => (bool) ($r['catalog_listing'] ?? false),
