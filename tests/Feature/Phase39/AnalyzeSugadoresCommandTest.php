@@ -101,18 +101,38 @@ class AnalyzeSugadoresCommandTest extends TestCase
         return $admanMock;
     }
 
-    // ─────────── Test 1: --provider=ml sem --dry-run aborta com exit 1 ───────────
+    // ─────────── Test 1 (Phase 42 Plan 42-04 cut-over): guard ml_primary removido ───────────
+    // Antes da Phase 42, --provider=ml sem --dry-run abortava com FAILURE.
+    // Após o cut-over de Plan 42-04 (D-05), o command propaga `--provider=ml` para
+    // o serviço normalmente (forceProvider='ml', dryRun=false). Teste atualizado.
 
-    public function test_command_with_provider_ml_without_dryrun_aborts_with_exit_1(): void
+    public function test_command_with_provider_ml_without_dryrun_propagates_force_provider_after_cutover(): void
     {
         $company = $this->makeCompanyWithConfig();
+
+        /** @var MockInterface&SugadorAnalysisService $serviceMock */
+        $serviceMock = Mockery::mock(SugadorAnalysisService::class);
+        $serviceMock->shouldReceive('analyzeCompany')
+            ->once()
+            ->with(
+                Mockery::on(fn($c) => $c instanceof Company && $c->id === $company->id),
+                Mockery::any(),
+                false,  // dryRun=false (cut-over autorizado)
+                'ml'    // forceProvider propagado
+            )
+            ->andReturn([
+                'skipped'   => false,
+                'reason'    => null,
+                'campanhas' => 0,
+                'adgroups'  => 0,
+                'detalhes'  => [],
+            ]);
+        $this->app->instance(SugadorAnalysisService::class, $serviceMock);
 
         $this->artisan('sugadores:analyze', [
             '--company'  => $company->id,
             '--provider' => 'ml',
-        ])
-            ->expectsOutputToContain('Modo ml_primary só disponível em Phase 42')
-            ->assertExitCode(1);
+        ])->assertExitCode(0);
     }
 
     // ─────────── Test 2: --provider=ml + --dry-run propaga 'ml' para analyzeCompany ───────────

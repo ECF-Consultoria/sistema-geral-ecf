@@ -126,9 +126,12 @@ class SugadoresAdsProviderFactoryTest extends TestCase
         $factory->for($company);
     }
 
-    // ─────────── Test 5 (Plan 39-02): default prefere Adman quando ambos suportam ───────────
+    // ─────────── Test 5 (Plan 39-02 → Phase 42 Plan 42-04 cut-over): default prefere ML ───────────
+    // Antes da Phase 42, Adman ganhava quando ambos suportam (regra travada).
+    // Após o cut-over de Plan 42-04 (D-05), ML passa a ser preferido quando empresa
+    // tem mlToken active — Adman vira fallback. Teste atualizado para refletir nova realidade.
 
-    public function test_for_default_prefers_adman_when_both_providers_support(): void
+    public function test_for_default_prefers_ml_when_both_providers_support(): void
     {
         $factory = $this->makeFactory();
         // Empresa com adman_account_id E mlToken active — ambos suportam.
@@ -136,9 +139,9 @@ class SugadoresAdsProviderFactoryTest extends TestCase
 
         $provider = $factory->for($company);
 
-        // Regra travada: até Phase 42, Adman ganha quando ambos suportam.
-        $this->assertInstanceOf(AdmanSugadoresProvider::class, $provider);
-        $this->assertSame('adman', $provider->name());
+        // Phase 42 D-05: ML ganha quando ambos suportam.
+        $this->assertInstanceOf(MercadoLivreSugadoresProvider::class, $provider);
+        $this->assertSame('ml', $provider->name());
     }
 
     // ─────────── Test 6 (Plan 39-02): fallback para ML quando só ML suporta ───────────
