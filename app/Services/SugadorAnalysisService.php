@@ -341,12 +341,22 @@ class SugadorAnalysisService
             ]);
         }
 
-        // ─── Auto-resolução (Phase 15) ──────────────────────────────────────
-        // Pendentes históricos cuja chave (tipo|campaign_id|adgroup_id) não foi
-        // re-detectada hoje deixaram de bater os critérios — não acumular fila.
-        // Usa reference_date < hoje (estritamente menor) para proteger contra
-        // rerun manual no mesmo dia. STATUS_TRAVADOS NÃO são tocados (filtro
-        // pelo status='pendente' no where já garante isso).
+        // ─── Auto-resolução (Phase 15 + polish Phase 42) ──────────────────────
+        // Pendentes cuja chave (tipo|campaign_id|adgroup_id) não foi re-detectada
+        // hoje deixaram de bater os critérios — não acumular fila.
+        //
+        // Phase 42 polish: agora usa `reference_date <= hoje` (antes era `<`).
+        // A regra antiga assumia que config era estatico no dia; em producao o
+        // admin altera SugadorConfig (gasto_minimo, cpc_maximo etc) e re-roda
+        // analise no mesmo dia — sugadores criados em runs anteriores com
+        // criterios mais frouxos precisam ser re-avaliados. Sem este `=`, os
+        // antigos do mesmo dia ficavam orfaos como `pendente` mesmo quando o
+        // ad nao bate mais nos criterios novos.
+        //
+        // STATUS_TRAVADOS continuam protegidos pelo filtro status='pendente'.
+        // Sugadores que ainda batem (mesmo apos config mudar) foram marcados
+        // em $chavesHoje pelo upsert acima, entao NAO entram em
+        // $idsAutoResolvidos — preservacao do status pendente legitimo.
         $autoResolvidosCount = 0;
         if (!$dryRun) {
             // Set de chaves detectadas hoje a partir do upsert
@@ -357,7 +367,7 @@ class SugadorAnalysisService
 
             $pendentesAntigos = Sugador::where('company_id', $company->id)
                 ->where('status', Sugador::STATUS_PENDENTE)
-                ->where('reference_date', '<', $refDateStr)
+                ->where('reference_date', '<=', $refDateStr)
                 ->get(['id', 'tipo', 'campaign_id', 'adgroup_id']);
 
             $idsAutoResolvidos = [];

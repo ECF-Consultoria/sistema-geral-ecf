@@ -449,4 +449,80 @@ class CutOverMlPrimaryTest extends TestCase
         // Sugador continua o mesmo (idempotencia via chave estavel).
         $this->assertSame(1, Sugador::count(), 'Re-analise mesmo dia nao duplica');
     }
+
+    // ──────────── T9 (polish Phase 42): config mudou no MESMO dia →
+    //              sugadores criados com config antiga que NAO batem mais
+    //              os criterios viram auto_resolvido (nao ficam orfaos).
+    // ──────────────────────────────────────────────────────────────────────
+
+    #[Test]
+    public function reanalise_mesmo_dia_com_config_relaxada_depois_apertada_auto_resolve(): void
+    {
+        $company = $this->makeMlCompany(configAttrs: [
+            // Config inicial frouxa — qualquer gasto > R$ 1 vira sugador.
+            'gasto_minimo_sem_venda' => 1.00,
+            'gasto_minimo_logic'     => SugadorConfig::LOGIC_OPTIONAL,
+        ]);
+        $refDate = Carbon::create(2026, 6, 25)->startOfDay();
+
+        // 1a analise: 2 ads, ambos com cost > 1 → ambos flagados.
+        $this->httpFakeMlAds(
+            campaignsResults: [['id' => 'C1', 'name' => 'Camp', 'status' => 'active']],
+            adsResults: [
+                ['id' => 'AD1', 'title' => 'Cost baixo', 'campaign_id' => 'C1', 'item_id' => 'MLB1',
+                 'metrics' => ['cost' => 1.25, 'units_quantity' => 0, 'clicks' => 1, 'prints' => 50]],
+                ['id' => 'AD2', 'title' => 'Cost alto', 'campaign_id' => 'C1', 'item_id' => 'MLB2',
+                 'metrics' => ['cost' => 50.0, 'units_quantity' => 0, 'clicks' => 10, 'prints' => 200]],
+            ],
+        );
+
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $service->analyzeCompany($company, $refDate, dryRun: false, forceProvider: 'ml');
+
+        $this->assertSame(2, Sugador::where('company_id', $company->id)->where('status', 'pendente')->count(),
+            '1a analise: 2 sugadores pendentes com config frouxa');
+
+        // Operador altera config: gasto_minimo_sem_venda 1 → 20. Salva.
+        $company->sugadorConfig->update(['gasto_minimo_sem_venda' => 20.00]);
+
+        // Avanca clock 5min — admin re-roda analise no MESMO dia.
+        Carbon::setTestNow(Carbon::create(2026, 6, 25, 12, 5, 0));
+
+        // Mesmos 2 ads no payload (situacao real: ads nao mudam, so config muda).
+        $this->httpFakeMlAds(
+            campaignsResults: [['id' => 'C1', 'name' => 'Camp', 'status' => 'active']],
+            adsResults: [
+                ['id' => 'AD1', 'title' => 'Cost baixo', 'campaign_id' => 'C1', 'item_id' => 'MLB1',
+                 'metrics' => ['cost' => 1.25, 'units_quantity' => 0, 'clicks' => 1, 'prints' => 50]],
+                ['id' => 'AD2', 'title' => 'Cost alto', 'campaign_id' => 'C1', 'item_id' => 'MLB2',
+                 'metrics' => ['cost' => 50.0, 'units_quantity' => 0, 'clicks' => 10, 'prints' => 200]],
+            ],
+        );
+
+        $service->analyzeCompany($company, $refDate, dryRun: false, forceProvider: 'ml');
+
+        // AD1 (cost=1.25): NAO bate mais o criterio (1.25 < 20). Vira auto_resolvido.
+        // AD2 (cost=50):   continua batendo. Permanece pendente.
+        $sugAd1 = Sugador::where('company_id', $company->id)->where('adgroup_id', 'AD1')->first();
+        $sugAd2 = Sugador::where('company_id', $company->id)->where('adgroup_id', 'AD2')->first();
+
+        $this->assertNotNull($sugAd1, 'AD1 linha continua existindo (auto-resolvida)');
+        $this->assertSame(
+            Sugador::STATUS_AUTO_RESOLVIDO,
+            $sugAd1->status,
+            'AD1 (cost=1.25) NAO bate criterio (>=20) — deve virar auto_resolvido apos re-analise mesmo dia (Phase 42 polish)'
+        );
+
+        $this->assertNotNull($sugAd2);
+        $this->assertSame(
+            Sugador::STATUS_PENDENTE,
+            $sugAd2->status,
+            'AD2 (cost=50) continua batendo criterio — permanece pendente'
+        );
+
+        // Sanidade: idempotencia preservada — sem duplicacao.
+        $this->assertSame(2, Sugador::where('company_id', $company->id)->count(),
+            'Re-analise nao duplica linhas (chave canonica)');
+    }
 }
