@@ -13,6 +13,7 @@ use App\Models\MlbTreinamento;
 use App\Models\Publicacao;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\PublicadorScoreService;
 use App\Services\VendasSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -275,7 +276,8 @@ class MlbController extends Controller
     /** Lista de meses disponíveis (com dados), garantindo o mês atual. */
     private function mesesDisponiveis(?int $userId = null): array
     {
-        $query = Publicacao::selectRaw("DATE_FORMAT(data, '%Y-%m') as mes")
+        // substr(data,1,7) extrai 'YYYY-MM' — portável entre MySQL (prod) e SQLite (testes).
+        $query = Publicacao::selectRaw("substr(data, 1, 7) as mes")
             ->distinct()
             ->orderByDesc('mes');
         if ($userId) $query->where('user_id', $userId);
@@ -534,10 +536,20 @@ class MlbController extends Controller
 
         $user   = $request->user();
         $mesRef = $request->get('mes', now()->format('Y-m'));
+        // Valida o formato YYYY-MM (entrada do usuário) antes de Carbon::createFromFormat — evita exceção.
+        if (!preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
+            $mesRef = now()->format('Y-m');
+        }
         $meta   = $this->metaParaMes($user->id, $mesRef);
         $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
         $meses  = $this->mesesDisponiveis($user->id);
         $kpis   = $this->calcularKpis($user->id, $ref, $meta);
+
+        // Fase 38 — score 0-100 + 5 eixos do publicador (Painel do Publicador).
+        // feito/vendas/meta vêm de calcularKpis()/metaParaMes() — o Service não recalcula.
+        $scoreData = (new PublicadorScoreService())->compute(
+            $user->id, $mesRef, (int) $kpis['feito'], (int) $kpis['vendas'], (int) $meta
+        );
 
         $primeiro = $ref->copy()->startOfMonth()->toDateString();
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
@@ -608,7 +620,7 @@ class MlbController extends Controller
         // Ticket médio: evolução mensal + valor do mês atual
         $ticketEvolucao = Publicacao::where('user_id', $user->id)
             ->whereNotNull('net_billing')->where('vendido', true)->where('vendas_qty', '>', 0)
-            ->selectRaw("DATE_FORMAT(data, '%Y-%m') as mes, SUM(net_billing) as bill, SUM(vendas_qty) as qty")
+            ->selectRaw("substr(data, 1, 7) as mes, SUM(net_billing) as bill, SUM(vendas_qty) as qty")
             ->groupBy('mes')->orderBy('mes')->limit(12)->get()
             ->map(fn($r) => [
                 'mes'    => $r->mes,
@@ -622,6 +634,27 @@ class MlbController extends Controller
             ->whereBetween('data', [$primeiro, $ultimo])
             ->selectRaw('SUM(net_billing) as bill, SUM(vendas_qty) as qty')->first();
         $ticketAtual = ($ticketMes && $ticketMes->qty > 0) ? round($ticketMes->bill / $ticketMes->qty, 2) : 0;
+
+        // Fase 38 — faturamento do mês (SUM net_billing, protegido contra null).
+        $faturamentoMes = (float) (Publicacao::where('user_id', $user->id)
+            ->whereBetween('data', [$primeiro, $ultimo])
+            ->where('tipo', '!=', 'variacao')
+            ->sum('net_billing') ?? 0);
+
+        // Fase 38 — evolução acumulada do faturamento por dia (net_billing).
+        $acumulado = 0.0;
+        $netBillingTimeseries = Publicacao::where('user_id', $user->id)
+            ->whereBetween('data', [$primeiro, $ultimo])
+            ->where('tipo', '!=', 'variacao')
+            ->whereNotNull('net_billing')
+            ->selectRaw('data, SUM(net_billing) as billing_dia')
+            ->groupBy('data')
+            ->orderBy('data')
+            ->get()
+            ->map(function ($r) use (&$acumulado) {
+                $acumulado += (float) $r->billing_dia;
+                return ['date' => Carbon::parse($r->data)->format('Y-m-d'), 'realizado' => round($acumulado, 2)];
+            });
 
         return Inertia::render('Mlb/MeuPainel', [
             'kpis'            => $kpis,
@@ -637,6 +670,12 @@ class MlbController extends Controller
             ],
             'ticketEvolucao'  => $ticketEvolucao,
             'ticketAtual'     => $ticketAtual,
+            // Fase 38 — Painel do Publicador (score + radar + KPIs + evolução do faturamento)
+            'score_publicador'       => $scoreData,
+            'faturamento_mes'        => $faturamentoMes,
+            'anuncios_feitos'        => $kpis['feito'],
+            'vendas_mes'             => $kpis['vendas'],
+            'net_billing_timeseries' => $netBillingTimeseries,
         ]);
     }
 
