@@ -485,11 +485,16 @@ class SugadorAnalysisService
         }
 
         // Critério 2: CPC alto sem vender
+        // Phase 42 D-01: gating composto opcional via cpc_minimo_cliques (briefing §8 Opcao B).
+        // Quando cpc_minimo_cliques eh null, comportamento legacy preservado (CPC > limite + zero vendas).
+        // Quando preenchido, exige tambem clicks >= cpc_minimo_cliques pra marcar hit.
         if ($config->cpc_maximo !== null && $cpc !== null) {
             $threshold = (float) $config->cpc_maximo;
             $criteria[] = [
                 'key'   => 'cpc_alto',
-                'hit'   => $vendas === 0 && (float) $cpc > $threshold,
+                'hit'   => $vendas === 0
+                            && (float) $cpc > $threshold
+                            && ($config->cpc_minimo_cliques === null || $clicks >= (int) $config->cpc_minimo_cliques),
                 'logic' => $config->cpc_maximo_logic ?? SugadorConfig::LOGIC_OPTIONAL,
             ];
         }
