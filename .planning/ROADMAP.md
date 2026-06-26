@@ -112,7 +112,7 @@ Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via *
 - [x] **Phase 40: Shadow mode + tabelas de comparação** - Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado, não toca scheduler Adman. Alvo de paridade: >= 95% de motivos. Conectar 1+ empresa Adman+ML para validar paridade (Bymobile não basta sozinha).
  (completed 2026-06-25)
 - [x] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403. (completed 2026-06-25)
-- [ ] **Phase 42: Cut-over por empresa (ml_primary)** - Envs `SUGADORES_PROVIDER_MODE` (default `adman`), `SUGADORES_ML_SHADOW_COMPANIES`, `SUGADORES_ML_PRIMARY_COMPANIES`. Modo `ml_primary` grava em `sugadores` via ML; Adman vira fallback diagnóstico. Cut-over: empresa com 7d shadow aprovado entra em primary, mantém shadow Adman por +7d só pra comparação. Rollback automático se divergência crítica. Critério: 17 testes Feature passando, ByMobile em primary, paridade >= 95% por 7d, FSM/quarentena/auto-resolve/drilldown inalterados.
+- [ ] **Phase 42: Sugadores via API ML (troca de motor + esconder UI Dev paralela)** - Reorientação 2026-06-26 baseada em briefing do usuário (`fix-melhorias-sugadores-api-mercado-livre.md`). Migração ML deixa de ser feature visual paralela e vira troca silenciosa de motor: API ML alimenta o mesmo contrato normalizado (adgroup_id/campaign_id/investment/revenue/sold_quantity/clicks/impressions/cpc/ctr/acos/roas) que a Adman alimentava, mesmo `SugadorAnalysisService`, mesma tabela `sugadores`, mesma `/sugadores`, mesma `/sugadores/config/{company}`. Janela 30d fechados (ontem-29d → ontem). Sidebar item "Onboarding ML" da Phase 41 escondido (rota permanece como ferramenta técnica admin). Adiciona `cpc_minimo_cliques` em `sugador_configs` (Opção B do briefing §8). Preserva quarentena SGI, idempotência por chave estável e status travados (em_acao/resolvido/ignorado/movido/auto_resolvido). Piloto: ByMobille - Teste (#298). Detalhes locked em `.planning/phases/42-sugadores-api-ml/42-CONTEXT.md`.
 - [ ] **Phase 43: Remoção da Adman (Sugadores)** - Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
 
 ### Milestone v12.0 — Fontes Unificadas Fase 2 (placeholder)
@@ -942,15 +942,42 @@ Cross-cutting constraints:
 
 **UI hint**: yes
 
-### Phase 42: Cut-over por empresa (ml_primary)
+### Phase 42: Sugadores via API ML (troca de motor + esconder UI Dev paralela)
 
 **Milestone:** v11.0
 **Status:** Pending
 **Mode:** mvp
-**Goal:** Envs `SUGADORES_PROVIDER_MODE` (default `adman`), `SUGADORES_ML_SHADOW_COMPANIES`, `SUGADORES_ML_PRIMARY_COMPANIES`. Modo `ml_primary` grava em `sugadores` via ML; Adman vira fallback diagnóstico. Cut-over: empresa com 7d shadow aprovado entra em primary, mantém shadow Adman por +7d só pra comparação. Rollback automático se divergência crítica (remove empresa do primary no próximo run). Critério: 17 testes Feature passando, ByMobille em primary, paridade ≥95% por 7d, FSM/quarentena/auto-resolve/drilldown inalterados.
-**Depends on:** Phase 41 (onboarding pronto para selecionar empresas)
-**Plans:** TBD
-**UI hint**: no (config via env + scheduler)
+**Reorientada em:** 2026-06-26 (briefing do usuário `fix-melhorias-sugadores-api-mercado-livre.md`, salvo em `.planning/phases/42-sugadores-api-ml/42-CONTEXT.md`)
+**Goal:** Trocar a fonte de dados dos sugadores do Adman para a API oficial do Mercado Livre SEM criar novas telas, menus ou fluxos paralelos. A `/sugadores`, `/sugadores/{id}` e `/sugadores/config/{company}` continuam sendo as únicas telas operacionais. A API ML alimenta o mesmo contrato normalizado, o mesmo `SugadorAnalysisService` e a mesma tabela `sugadores`. Janela 30d fechados (ontem-29d → ontem). Item sidebar "Onboarding ML" (Phase 41) escondido — rota permanece como ferramenta técnica admin acessível por URL direta.
+
+**Depends on:** Phase 41 (mlToken + advertiser cache + rate limiter + backoff + métricas operacionais já entregues)
+
+**Requirements:**
+- REQ-42-01 — `MercadoLivreSugadoresProvider` (ou equivalente) normaliza payload da API ML para o contrato canônico (§3 do briefing): `adgroup_id`, `campaign_id`, `investment`, `revenue`, `sold_quantity`, `clicks`, `impressions`, `cpc`, `ctr`, `acos`, `roas`, `organic_amount`, `organic_units`, `raw`
+- REQ-42-02 — `SugadorAnalysisService::analyzeCompany($company, $referenceDate, $dryRun=false, $forceProvider='ml')` grava em `sugadores` via ML com mesma idempotência (chave: `company_id|reference_date|tipo|campaign_id|adgroup_id`)
+- REQ-42-03 — Janela default: `reference_date=hoje`, `periodo_fim=ontem`, `periodo_inicio=ontem-29d` (30 dias fechados). Vale para cron e análise manual sem override
+- REQ-42-04 — Adiciona `cpc_minimo_cliques` (nullable int) em `sugador_configs` + UI em `/sugadores/config/{company}` + lógica composta em `cpc_alto`: `sold_quantity==0 && cpc > cpc_maximo && (cpc_minimo_cliques === null || clicks >= cpc_minimo_cliques)`
+- REQ-42-05 — Quarentena SGI preservada: pular campanhas com nome contendo `SGI`/`Sugadores`/`Sugador`/pausadas/encerradas (mesma regra hoje aplicada ao Adman)
+- REQ-42-06 — Status travados (`em_acao`/`resolvido`/`ignorado`/`movido`/`auto_resolvido`) NÃO podem voltar para `pendente` em re-análise via ML. Métricas e `raw_data` atualizam, status persiste
+- REQ-42-07 — Item sidebar "Onboarding ML" REMOVIDO de `AppLayout.jsx`. Rota `/dev/sugadores-ml-onboarding` permanece (acesso via URL direta, role:admin). Phase 41 fica preservada como ferramenta técnica
+- REQ-42-08 — ByMobille - Teste (#298) é o piloto: roda análise ML, gera sugadores em `/sugadores`, valida que aparecem com os mesmos cards de métricas (investimento, vendas, faturamento, ACOS, cliques, impressões, CPC médio, ROAS)
+- REQ-42-09 — Botão "Painel de Ads" em `/sugadores/{id}` abre o painel correto do Mercado Livre usando `campaign_id`/`ad_id`/`item_id` (não Adman) para sugadores de origem ML
+- REQ-42-10 — Testes Feature existentes em `tests/Feature/Sugadores*` continuam passando sem alteração (analista não percebe a troca de motor)
+
+**Success Criteria** (must-haves verificáveis):
+  1. `/sugadores` continua sendo a única tela operacional do analista; nenhum item novo na sidebar
+  2. `/sugadores/config/{company}` mostra o novo campo `cpc_minimo_cliques` ao lado de `cpc_maximo` + `cpc_maximo_logic`
+  3. Roda análise de ByMobille - Teste via comando manual; sugadores aparecem em `/sugadores` com origem ML transparente
+  4. Janela exibida no detalhe do sugador (`/sugadores/{id}`): `26/05/2026 → 24/06/2026` quando rodado em 25/06/2026 (exemplo do briefing §4)
+  5. Configurar `gasto_minimo_sem_venda=20` modo OU e rodar análise: sugador com gasto >= R$20 e zero vendas vira `pendente`
+  6. Configurar `cpc_maximo=4` modo OU + `cpc_minimo_cliques=5` e rodar análise: sugador só flaga quando CPC > 4 E cliques >= 5 E zero vendas
+  7. Campanha com nome `SGI - Lentes` é pulada da análise ML (quarentena §12)
+  8. Sugador em `em_acao`/`resolvido` permanece nesse status após re-análise ML do mesmo dia
+  9. Item sidebar "Onboarding ML" não aparece para nenhum usuário; rota `/dev/sugadores-ml-onboarding` continua respondendo via URL direta (admin)
+ 10. Todos os testes Feature de Sugadores existentes passam
+
+**Plans:** TBD (criar via `/gsd:plan-phase 42`)
+**UI hint**: yes (campo novo em /sugadores/config/{company} + esconder item sidebar)
 
 ### Phase 43: Remoção da Adman (Sugadores)
 
