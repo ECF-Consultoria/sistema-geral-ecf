@@ -112,7 +112,7 @@ Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via *
 - [x] **Phase 40: Shadow mode + tabelas de comparação** - Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado, não toca scheduler Adman. Alvo de paridade: >= 95% de motivos. Conectar 1+ empresa Adman+ML para validar paridade (Bymobile não basta sozinha).
  (completed 2026-06-25)
 - [x] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403. (completed 2026-06-25)
-- [ ] **Phase 42: Sugadores via API ML (troca de motor + esconder UI Dev paralela)** - Reorientação 2026-06-26 baseada em briefing do usuário (`fix-melhorias-sugadores-api-mercado-livre.md`). Migração ML deixa de ser feature visual paralela e vira troca silenciosa de motor: API ML alimenta o mesmo contrato normalizado (adgroup_id/campaign_id/investment/revenue/sold_quantity/clicks/impressions/cpc/ctr/acos/roas) que a Adman alimentava, mesmo `SugadorAnalysisService`, mesma tabela `sugadores`, mesma `/sugadores`, mesma `/sugadores/config/{company}`. Janela 30d fechados (ontem-29d → ontem). Sidebar item "Onboarding ML" da Phase 41 escondido (rota permanece como ferramenta técnica admin). Adiciona `cpc_minimo_cliques` em `sugador_configs` (Opção B do briefing §8). Preserva quarentena SGI, idempotência por chave estável e status travados (em_acao/resolvido/ignorado/movido/auto_resolvido). Piloto: ByMobille - Teste (#298). Detalhes locked em `.planning/phases/42-sugadores-api-ml/42-CONTEXT.md`.
+- [x] **Phase 42: Sugadores via API ML (troca de motor + esconder UI Dev paralela)** - Reorientação 2026-06-26 baseada em briefing do usuário (`fix-melhorias-sugadores-api-mercado-livre.md`). Migração ML deixa de ser feature visual paralela e vira troca silenciosa de motor: API ML alimenta o mesmo contrato normalizado (adgroup_id/campaign_id/investment/revenue/sold_quantity/clicks/impressions/cpc/ctr/acos/roas) que a Adman alimentava, mesmo `SugadorAnalysisService`, mesma tabela `sugadores`, mesma `/sugadores`, mesma `/sugadores/config/{company}`. Janela 30d fechados (ontem-29d → ontem). Sidebar item "Onboarding ML" da Phase 41 escondido (rota permanece como ferramenta técnica admin). Adiciona `cpc_minimo_cliques` em `sugador_configs` (Opção B do briefing §8). Preserva quarentena SGI, idempotência por chave estável e status travados (em_acao/resolvido/ignorado/movido/auto_resolvido). Piloto: ByMobille - Teste (#298). Detalhes locked em `.planning/phases/42-sugadores-api-ml/42-CONTEXT.md`. (completed 2026-06-26)
 - [ ] **Phase 43: Remoção da Adman (Sugadores)** - Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
 
 ### Milestone v12.0 — Fontes Unificadas Fase 2 (placeholder)
@@ -976,7 +976,7 @@ Cross-cutting constraints:
   9. Item sidebar "Onboarding ML" não aparece para nenhum usuário; rota `/dev/sugadores-ml-onboarding` continua respondendo via URL direta (admin)
  10. Todos os testes Feature de Sugadores existentes passam
 
-**Plans:** 4/6 plans executed
+**Plans:** 6/6 plans complete
 
 Plans:
 
@@ -991,8 +991,8 @@ Plans:
 - [x] 42-04-PLAN.md — Cut-over factory (ML preferido) + remove guard ml_primary + controller aceita empresas ML-only (REQ-42-02, REQ-42-06, REQ-42-08)
 
 **Wave 4** *(blocked on Wave 3; 42-05 e 42-06 paralelos)*
-- [ ] 42-05-PLAN.md — Sidebar esconde Onboarding ML + linkAdsML deep link Mercado Ads (REQ-42-07, REQ-42-09)
-- [ ] 42-06-PLAN.md — Suite aceite E2E ByMobille + guard de regressao Sugadores legados (REQ-42-08, REQ-42-10)
+- [x] 42-05-PLAN.md — Sidebar esconde Onboarding ML + linkAdsML deep link Mercado Ads (REQ-42-07, REQ-42-09)
+- [x] 42-06-PLAN.md — Suite aceite E2E ByMobille + guard de regressao Sugadores legados (REQ-42-08, REQ-42-10)
 **UI hint**: yes (campo novo em /sugadores/config/{company} + esconder item sidebar)
 
 ### Phase 43: Remoção da Adman (Sugadores)
