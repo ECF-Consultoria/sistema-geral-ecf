@@ -317,6 +317,13 @@ class SugadorAnalysisService
             }
         }
 
+        // Phase 42 D-05 (briefing §10.2 + §13): fluxo final é API ML → normalizer →
+        // SugadorAnalysisService → tabela sugadores → /sugadores. Idempotência por
+        // chave estável (company_id, reference_date, tipo, campaign_id, adgroup_id)
+        // garante que re-análise atualiza métricas sem duplicar linhas. Status travados
+        // (D-06: em_acao/resolvido/ignorado/movido/auto_resolvido) são preservados
+        // em buildRow via STATUS_TRAVADOS — comportamento válido para ambos providers.
+
         // Bulk upsert: 1 query para todos os sugadores desta empresa (em vez de 2N)
         if (!$dryRun && !empty($toUpsert)) {
             Sugador::upsert($toUpsert, ['company_id', 'reference_date', 'tipo', 'campaign_id', 'adgroup_id'], [
@@ -409,6 +416,10 @@ class SugadorAnalysisService
     {
         $mapKey   = "{$data['tipo']}|{$data['campaign_id']}|{$data['adgroup_id']}";
         $existing = $existingMap[$mapKey] ?? null;
+
+        // Phase 42 D-06: STATUS_TRAVADOS preservado — re-análise via ML NÃO sobrescreve
+        // status de sugador já em em_acao/resolvido/ignorado/movido/auto_resolvido.
+        // Métricas (cliques, cpc, acos, etc.) e raw_data atualizam normalmente.
         $status   = ($existing && in_array($existing->status, Sugador::STATUS_TRAVADOS, true))
             ? $existing->status
             : Sugador::STATUS_PENDENTE;

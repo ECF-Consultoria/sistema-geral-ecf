@@ -340,8 +340,17 @@ class SugadorController extends Controller
     {
         Gate::authorize('manage', Sugador::class);
 
-        if (!$company->adman_account_id) {
-            return back()->with('warning', 'Empresa sem adman_account_id — análise pulada.');
+        // Phase 42 D-05: aceita empresas ML-driven (mlToken active) sem adman_account_id.
+        // ByMobille - Teste (#298) é a primeira empresa ML-only — destravada neste cut-over.
+        // Mantemos rejeição apenas para empresas sem nenhum provider compatível.
+        $company->loadMissing('mlToken');
+        $hasAdman = !empty($company->adman_account_id);
+        $hasMl    = optional($company->mlToken)->status === 'active';
+        if (!$hasAdman && !$hasMl) {
+            return back()->with(
+                'warning',
+                "Empresa {$company->name} sem adman_account_id nem mlToken ativo — análise pulada."
+            );
         }
 
         AnalyzeCompanySugadoresJob::dispatch($company);
@@ -363,9 +372,15 @@ class SugadorController extends Controller
     {
         Gate::authorize('analyze', Sugador::class);
 
+        // Phase 42 D-05: inclui empresas ML-driven (mlToken active) além de Adman.
+        // Cobre ByMobille (#298, sem adman_account_id) e empresas onboardadas via ML
+        // futuramente. Auto-detection do factory escolhe o provider correto por empresa.
         $companies = Company::where('active', true)
-            ->whereNotNull('adman_account_id')
-            ->where('adman_account_id', '!=', '')
+            ->where(function ($q) {
+                $q->where(function ($q2) {
+                    $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', '');
+                })->orWhereHas('mlToken', fn($q2) => $q2->where('status', 'active'));
+            })
             ->where(function ($q) {
                 $q->whereHas('sugadorConfig', fn($q) => $q->where('ativo', true))
                   ->orWhereDoesntHave('sugadorConfig');
