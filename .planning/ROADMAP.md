@@ -795,3 +795,28 @@ Plans:
 
 **UI hint**: yes
 **Autonomous**: false (checkpoint humano após plan do webhook + após reorg de menu)
+
+### Phase 38: Painel do Publicador (evoluir Meu Painel para formato score + radar)
+
+**Goal:** Evoluir o "Meu Painel" do publicador (`/mlb/meu-painel`) para o formato visual da
+Carteira dos analistas — score 0–100, radar de 5 eixos (Meta · Produtividade · Pontualidade ·
+Conversão · Qualidade), KPIs grandes (Faturamento · Anúncios Feitos · Vendas no Mês) e
+evolução do faturamento — usando dados que já existem (`mlb_publicacoes`, `mlb_empresas`,
+`mlb_meta_historico`). Visão só individual; sem nova rota e sem migration. Contexto travado em `CONTEXT.md`.
+**Requirements**: PUB-01, PUB-02, PUB-03, PUB-04, PUB-05, PUB-06 (requisitos de validação Nyquist — definidos em 38-VALIDATION.md)
+**Depends on:** Phase 37
+**Plans:** 4 plans
+
+Plans:
+
+**Wave 0** *(stubs de teste RED — Nyquist primeiro)*
+- [ ] 38-01-PLAN.md — Stubs PublicadorScoreServiceTest (Unit) + MeuPainelControllerTest (Feature, namespace Phase38Publicador) em RED (PUB-01..06)
+
+**Wave 1** *(blocked on Wave 0)*
+- [ ] 38-02-PLAN.md — PublicadorScoreService (5 eixos + scoreFinal/classificar verbatim do PortfolioScoreService) → suíte Unit GREEN (PUB-01, PUB-02, PUB-03)
+
+**Wave 2** *(blocked on Wave 1)*
+- [ ] 38-03-PLAN.md — MlbController@meuPainel props expandidas (score_publicador, faturamento_mes, net_billing_timeseries) + validação \$mesRef → suíte Feature GREEN (PUB-04, PUB-05, PUB-06)
+
+**Wave 3** *(blocked on Wave 2; checkpoint humano)*
+- [ ] 38-04-PLAN.md — MeuPainel.jsx reformulado (score + radar + KPIs + evolução espelhando Show.jsx) + npm run build + verificação visual (PUB-04, PUB-05)
