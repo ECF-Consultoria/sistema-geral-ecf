@@ -203,8 +203,11 @@ class SugadorAnalysisService
                         'thumbnail'            => $ad['thumbnail']       ?? null,
                         'adgroup_type'         => $ad['adgroup_type']    ?? null,
                         'catalog_listing'      => (bool) ($ad['catalog_listing'] ?? false),
-                        'mlb_id'               => null,
-                        'mlb_titulo'           => null,
+                        // Phase 42 Plan 42-06 — provider ML retorna mlb_id (do item_id)
+                        // e mlb_titulo no contrato §3. Antes hardcodado null por estar
+                        // assumindo path Adman; agora propaga quando origem ML expoe.
+                        'mlb_id'               => $ad['mlb_id']     ?? null,
+                        'mlb_titulo'           => $ad['mlb_titulo'] ?? null,
                         'periodo_inicio'       => $dateFrom,
                         'periodo_fim'          => $dateTo,
                         'investimento_periodo' => $ad['investment']    ?? 0,

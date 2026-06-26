@@ -163,6 +163,21 @@ class CutOverMlPrimaryTest extends TestCase
      */
     private function httpFakeMlAds(array $campaignsResults, array $adsResults): void
     {
+        // Http::fake([...]) em Laravel ACUMULA stubs (nao substitui). Quando uma
+        // suite roda multiplos cenarios em sequencia (1a analise + 2a analise no
+        // mesmo teste, p.ex.), o stub antigo continua ativo e ganha o "first
+        // match" — a 2a chamada recebe o payload da 1a. Fix: limpar
+        // stubCallbacks via reflection no Factory singleton antes de adicionar
+        // novos fakes.
+        $factory = Http::getFacadeRoot();
+        $ref = new \ReflectionClass($factory);
+        if ($ref->hasProperty('stubCallbacks')) {
+            $prop = $ref->getProperty('stubCallbacks');
+            $prop->setAccessible(true);
+            $prop->setValue($factory, collect());
+        }
+        Http::preventStrayRequests();
+
         Http::fake([
             '*/product_ads/items*' => Http::response([
                 'results' => $adsResults,
