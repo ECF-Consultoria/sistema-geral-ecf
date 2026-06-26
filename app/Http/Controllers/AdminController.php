@@ -163,13 +163,14 @@ class AdminController extends Controller
             ->get(['company_id', 'year_month', 'gross_revenue'])
             ->groupBy('company_id');
 
-        // Passo 1 — carrega empresas ativas com relações de grupo + contratos ativos
-        // Phase 14 (Frente B): eager loading de contratosServico.servico evita N+1
-        // ao calcular cobrança_mensal via CobrancaCalculator::novo (Pitfall 2 RESEARCH).
+        // Passo 1 — carrega empresas ativas com contratos ativos.
+        // Quick 260626-ddp: o Fechamento passou a consolidar por GRUPO nomeado do
+        // Comercial (CompanyGroup / company_group_id), não mais por hierarquia
+        // pai/filhas (parent_company_id). Por isso não eager-carregamos mais
+        // filhas/pai aqui. Phase 14: contratosServico.servico evita N+1 no cálculo
+        // de cobrança via CobrancaCalculator::novo (Pitfall 2 RESEARCH).
         $rawCompanies = Company::where('active', true)
             ->with([
-                'filhas' => fn($q) => $q->where('active', true)->select('id', 'name', 'parent_company_id'),
-                'pai'    => fn($q) => $q->select('id', 'name'),
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
             ])
             ->orderBy('name')
@@ -290,8 +291,6 @@ class AdminController extends Controller
                 $faixaAntProg = $fdProg['faixa'];
             }
 
-            $filhaIds = $c->filhas->pluck('id')->toArray();
-
             // Phase 14 (Frente B): cobranca_mensal agora calculada via CobrancaCalculator::novo
             // (faixa + SUM contratos ativos mensais). Preserva semântica "null quando vazio"
             // via `?: null` no caller. Per CONTEXT.md D-03.
@@ -304,10 +303,8 @@ class AdminController extends Controller
             $dadosPorId[$c->id] = [
                 'id'                 => $c->id,
                 'name'               => $c->name,
-                'parent_company_id'  => $c->parent_company_id,
-                'nome_pai'           => $c->pai?->name,
-                'filha_ids'          => $filhaIds,
-                'is_filha'           => $c->parent_company_id !== null,
+                // Quick 260626-ddp: grupo nomeado do Comercial (substitui pai/filhas).
+                'company_group_id'   => $c->company_group_id,
                 // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
                 // ─── Chave nova (modelo N:N de contratos) ────────────────
                 'servicos_contratados' => $c->contratosServico->where('ativo', true)->map(fn($ct) => [
@@ -334,39 +331,64 @@ class AdminController extends Controller
             ];
         }
 
-        // Passo 3 — agrega totais de grupo e define conta_no_total
-        foreach ($dadosPorId as $id => &$dados) {
-            $filhaIds = $dados['filha_ids'];
+        // Passo 3 — consolida por GRUPO nomeado do Comercial (CompanyGroup).
+        // Quick 260626-ddp: cada grupo vira UMA linha somando faturamento/cobrança
+        // dos membros, com um único "recebido" (= todos os membros recebidos no mês).
+        // Empresas sem grupo ficam avulsas (linha individual, como antes). Quem define
+        // os grupos é o Comercial (aba "Grupos") — o admin não monta mais grupos aqui.
+        $grupos = \App\Models\CompanyGroup::orderBy('name')
+            ->get(['id', 'name', 'color'])
+            ->keyBy('id');
 
-            if (!empty($filhaIds)) {
-                $grupoValor    = (float) ($dados['valor_mensal']    ?? 0);
-                $grupoCobranca = (float) ($dados['cobranca_mensal'] ?? 0);
-                $grupoFat      = (float) ($dados['faturamento']     ?? 0);
-                $filhasArray   = [];
-
-                foreach ($filhaIds as $filhaId) {
-                    if (isset($dadosPorId[$filhaId])) {
-                        $grupoValor    += (float) ($dadosPorId[$filhaId]['valor_mensal']    ?? 0);
-                        $grupoCobranca += (float) ($dadosPorId[$filhaId]['cobranca_mensal'] ?? 0);
-                        $grupoFat      += (float) ($dadosPorId[$filhaId]['faturamento']     ?? 0);
-                        $filhasArray[]  = $dadosPorId[$filhaId];
-                    }
-                }
-
-                $dados['valor_mensal_grupo']   = $grupoValor    ?: null;
-                $dados['cobranca_mensal_grupo'] = $grupoCobranca ?: null;
-                $dados['faturamento_grupo']     = $grupoFat      ?: null;
-                $dados['filhas']               = $filhasArray;
+        $porGrupo = [];
+        $avulsas  = [];
+        foreach ($dadosPorId as $dados) {
+            $gid = $dados['company_group_id'] ?? null;
+            if ($gid !== null && isset($grupos[$gid])) {
+                $porGrupo[$gid][] = $dados;
             } else {
-                $dados['valor_mensal_grupo']   = $dados['valor_mensal'];
-                $dados['cobranca_mensal_grupo'] = $dados['cobranca_mensal'];
-                $dados['faturamento_grupo']     = $dados['faturamento'];
-                $dados['filhas']               = [];
+                $dados['is_grupo']       = false;
+                $dados['conta_no_total'] = true;
+                $avulsas[] = $dados;
+            }
+        }
+
+        $rows = [];
+        foreach ($porGrupo as $gid => $membros) {
+            $grupo = $grupos[$gid];
+
+            $somaFat        = 0.0;
+            $somaCobranca   = 0.0;
+            $temFat         = false;
+            $todosRecebidos = true;
+            foreach ($membros as $m) {
+                if ($m['faturamento'] !== null) {
+                    $somaFat += (float) $m['faturamento'];
+                    $temFat   = true;
+                }
+                $somaCobranca += (float) ($m['cobranca_mensal'] ?? 0);
+                if (! $m['recebido']) {
+                    $todosRecebidos = false;
+                }
             }
 
-            $dados['conta_no_total'] = $dados['parent_company_id'] === null;
+            $rows[] = [
+                'is_grupo'              => true,
+                'grupo_id'              => $gid,
+                'name'                  => $grupo->name,
+                'color'                 => $grupo->color,
+                'num_membros'           => count($membros),
+                'membros'               => $membros,
+                'faturamento_grupo'     => $temFat ? $somaFat : null,
+                'cobranca_mensal_grupo' => $somaCobranca ?: null,
+                'recebido'              => count($membros) > 0 && $todosRecebidos,
+                'conta_no_total'        => true,
+            ];
         }
-        unset($dados);
+
+        // Junta grupos + avulsas e ordena por nome (case-insensitive).
+        $rows = array_merge($rows, $avulsas);
+        usort($rows, fn($a, $b) => strcasecmp($a['name'], $b['name']));
 
         // Cache cold pra alguma empresa? Dispara o job pra preencher na
         // próxima request. ShouldBeUnique evita dispatches em paralelo.
@@ -382,7 +404,8 @@ class AdminController extends Controller
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
         return Inertia::render('Admin/Financeiro', [
-            'companies'            => array_values($dadosPorId),
+            // Quick 260626-ddp: linhas consolidadas por grupo (CompanyGroup) + avulsas.
+            'companies'            => array_values($rows),
             'mes_selecionado'      => $mesSelecionado,
             'servicos_disponiveis' => $servicosDisponiveis,
         ]);
@@ -447,6 +470,47 @@ class AdminController extends Controller
                 'mes'         => $mes,
                 'recebido_em' => now(),
             ]);
+        }
+
+        return back();
+    }
+
+    /**
+     * Quick 260626-ddp — toggle de "recebido" em nível de GRUPO (CompanyGroup).
+     *
+     * O Fechamento consolida grupos do Comercial numa única linha; o "recebido"
+     * é do grupo inteiro. Aqui marcamos/desmarcamos o FechamentoRecebido de TODOS
+     * os membros ativos no mês:
+     *  - se todos já estão recebidos → desmarca todos;
+     *  - caso contrário → marca os que ainda faltam (sem duplicar).
+     */
+    public function toggleRecebidoGrupo(Request $request, \App\Models\CompanyGroup $group)
+    {
+        $mes = $request->input('mes', Carbon::now()->format('Y-m'));
+
+        $membroIds = $group->companies()->where('active', true)->pluck('id');
+        if ($membroIds->isEmpty()) {
+            return back();
+        }
+
+        $jaRecebidos = FechamentoRecebido::where('mes', $mes)
+            ->whereIn('company_id', $membroIds)
+            ->pluck('company_id');
+
+        if ($jaRecebidos->count() === $membroIds->count()) {
+            // Grupo inteiro recebido → desmarca todos.
+            FechamentoRecebido::where('mes', $mes)
+                ->whereIn('company_id', $membroIds)
+                ->delete();
+        } else {
+            // Marca os membros que ainda faltam (evita violar a unique company_id+mes).
+            foreach ($membroIds->diff($jaRecebidos) as $companyId) {
+                FechamentoRecebido::create([
+                    'company_id'  => $companyId,
+                    'mes'         => $mes,
+                    'recebido_em' => now(),
+                ]);
+            }
         }
 
         return back();

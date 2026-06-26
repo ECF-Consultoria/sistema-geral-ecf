@@ -546,6 +546,9 @@ Route::middleware(['auth', 'verified', 'role:admin'])->prefix('administrativo')-
     Route::post('/financeiro/relatorio-geral/enviar', [AdminController::class, 'enviarRelatorioGeral'])->name('financeiro.relatorio.enviar');
     Route::post('/financeiro/sync-faturamento',       [AdminController::class, 'syncFaturamento'])->name('financeiro.sync');
     Route::patch('/financeiro/{company}',             [AdminController::class, 'updateFechamento'])->name('financeiro.update');
+    // Quick 260626-ddp: toggle de recebido em nível de grupo (CompanyGroup). Rota
+    // específica ANTES de /financeiro/{company}/recebido para evitar colisão.
+    Route::post('/financeiro/grupo/{group}/recebido', [AdminController::class, 'toggleRecebidoGrupo'])->name('financeiro.grupo.recebido');
     Route::post('/financeiro/{company}/recebido',     [AdminController::class, 'toggleRecebido'])->name('financeiro.recebido');
     Route::get('/financeiro/{company}/relatorio',     [AdminController::class, 'gerarRelatorio'])->name('financeiro.relatorio');
     Route::get('/inventario',              [AdminController::class, 'inventario'])->name('inventario');
