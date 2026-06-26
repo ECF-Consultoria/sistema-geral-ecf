@@ -91,10 +91,32 @@ class MlbController extends Controller
     private function userHasPubCargo($user, string $cargoSlug): bool
     {
         if ($user->isAdmin()) return false; // admin não tem cargo específico — usa flag dedicada
-        return $user->setores()
-            ->where('slug', 'publicacao')
-            ->whereHas('cargos', fn($q) => $q->where('slug', $cargoSlug))
+
+        // Amarra ao cargo REAL do user no pivot (user_setores.cargo_id).
+        // CUIDADO: `whereHas('cargos')` consultava o CATÁLOGO de cargos do setor
+        // (Setor::cargos() é hasMany e sempre contém gestor/lider/publicador),
+        // então retornava true pra QUALQUER membro do setor Publicação — bug que
+        // trocava os papeis (publicador virava gestor em vendas/dashboard, e
+        // qualquer membro resolvia comentário/gerenciava treinamentos de outros).
+        return DB::table('user_setores')
+            ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+            ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+            ->where('user_setores.user_id', $user->id)
+            ->where('setores.slug', 'publicacao')
+            ->where('cargos.slug', $cargoSlug)
             ->exists();
+    }
+
+    /**
+     * True se o user enxerga a visão consolidada da equipe de Publicação.
+     * Admin, Gestor e Líder de Publicação veem todos os publicadores;
+     * publicador/analista veem apenas os próprios dados.
+     */
+    private function podeVerTodosPub($user): bool
+    {
+        return $user->isAdmin()
+            || $this->userHasPubCargo($user, 'gestor-de-publicacao')
+            || $this->userHasPubCargo($user, 'lider-de-publicacao');
     }
 
     /**
@@ -295,18 +317,28 @@ class MlbController extends Controller
     {
         $this->checkPubAccess('dashboard');
 
-        $user   = $request->user();
+        $user     = $request->user();
+        // Publicador/analista veem só os próprios dados; admin/gestor/líder a equipe.
+        $verTodos = $this->podeVerTodosPub($user);
+        $scopeId  = $verTodos ? null : $user->id;
+
         $mesRef = $request->get('mes', now()->format('Y-m'));
         $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
-        $meses  = $this->mesesDisponiveis();
+        $meses  = $this->mesesDisponiveis($scopeId);
 
-        $publicadores = $this->publicadores();
+        $publicadores = $verTodos
+            ? $this->publicadores()
+            : User::whereKey($user->id)->get(['id', 'name']);
         // Meta da Equipe = soma APENAS das metas cadastradas na página Metas
         // (mlb_meta_historico). Publicador sem registro conta 0 — não usa o
         // fallback de cargo/220 ("puxar de acordo com o que está em Metas").
-        $metaGeral   = max($publicadores->sum(fn($p) => $this->metaCadastrada($p->id, $mesRef) ?? 0), 1);
+        // Na visão individual usa a meta do próprio publicador (com fallback de
+        // cargo, igual ao Meu Painel) para o card não ficar zerado.
+        $metaGeral = $verTodos
+            ? max($publicadores->sum(fn($p) => $this->metaCadastrada($p->id, $mesRef) ?? 0), 1)
+            : max($this->metaParaMes($user->id, $mesRef), 1);
 
-        $kpisGerais = $this->calcularKpis(null, $ref, $metaGeral);
+        $kpisGerais = $this->calcularKpis($scopeId, $ref, $metaGeral);
 
         $primeiro = $ref->copy()->startOfMonth()->toDateString();
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
@@ -329,6 +361,7 @@ class MlbController extends Controller
 
         $evolucaoDiaria = Publicacao::whereBetween('data', [$primeiro, $ultimo])
             ->where('tipo', '!=', 'variacao')
+            ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->selectRaw('data, COUNT(*) as total')
             ->groupBy('data')
             ->orderBy('data')
@@ -336,6 +369,7 @@ class MlbController extends Controller
             ->map(fn($r) => ['data' => Carbon::parse($r->data)->format('d/m'), 'total' => (int) $r->total]);
 
         $evolucaoMensal = Publicacao::where('tipo', '!=', 'variacao')
+            ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->selectRaw("DATE_FORMAT(data, '%Y-%m') as mes, COUNT(*) as total, SUM(vendido) as vendas")
             ->groupBy('mes')
             ->orderBy('mes')
@@ -350,7 +384,9 @@ class MlbController extends Controller
         $todasEmpresas      = MlbEmpresa::where(function ($q) use ($fasesAtivasDash, $projetosValidos) {
             $q->whereIn('projeto', $projetosValidos)
               ->orWhereIn('fase', $fasesAtivasDash);
-        })->get();
+        })
+        ->when(!$verTodos, fn($q) => $q->where('responsavel_id', $user->id))
+        ->get();
         $totalEmpresasDash  = $todasEmpresas->count();
         $projetosGraficoDash = ['POLOS', 'Assessoria', 'Incubadora', 'Implantação'];
         $distribDash = [];
@@ -402,6 +438,7 @@ class MlbController extends Controller
 
         // Alertas de problemas — conta TODAS as empresas com problema, independente da fase
         $empresasProblema = MlbEmpresa::where('problema', true)
+            ->when(!$verTodos, fn($q) => $q->where('responsavel_id', $user->id))
             ->orderBy('nome')
             ->get(['nome', 'problema_nota'])
             ->map(fn($e) => ['nome' => $e->nome, 'nota' => $e->problema_nota])
@@ -409,6 +446,7 @@ class MlbController extends Controller
             ->toArray();
 
         $anunciosProblema = Publicacao::where('problema', true)
+            ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->orderBy('empresa')
             ->get(['empresa', 'mlb_code', 'problema_nota'])
             ->map(fn($p) => [
@@ -427,15 +465,17 @@ class MlbController extends Controller
         ];
 
         // Distribuição por estágio — agrupa pelo COALESCE para unir NULLs com 'Não Listado'
-        $totalTodasEmpresas = MlbEmpresa::count();
+        $totalTodasEmpresas = MlbEmpresa::when(!$verTodos, fn($q) => $q->where('responsavel_id', $user->id))->count();
 
         $empresasPorEstagio = DB::table('mlb_empresas')
+            ->when(!$verTodos, fn($q) => $q->where('responsavel_id', $user->id))
             ->select('nome', DB::raw("COALESCE(estagio, 'Não Listado') as estagio"))
             ->orderBy('nome')
             ->get()
             ->groupBy('estagio');
 
         $estagiosDistrib = DB::table('mlb_empresas')
+            ->when(!$verTodos, fn($q) => $q->where('responsavel_id', $user->id))
             ->selectRaw("COALESCE(estagio, 'Não Listado') as estagio, COUNT(*) as total")
             ->groupByRaw("COALESCE(estagio, 'Não Listado')")
             ->orderByDesc('total')
@@ -454,7 +494,8 @@ class MlbController extends Controller
         $totalPendAtr  = 0;
         $porEmpresaAtr = [];
 
-        MlbEmpresa::get([
+        MlbEmpresa::when(!$verTodos, fn($q) => $q->where('responsavel_id', $user->id))
+            ->get([
             'id','nome','responsavel_id',
             'skus_estagio1','skus_estagio2','skus_estagio3',
             'prazo_estagio1','prazo_estagio2','prazo_estagio3',
@@ -494,6 +535,7 @@ class MlbController extends Controller
         $ticketRows = Publicacao::whereNotNull('net_billing')
             ->where('vendido', true)->where('vendas_qty', '>', 0)
             ->whereBetween('data', [$primeiro, $ultimo])
+            ->when(!$verTodos, fn($q) => $q->where('user_id', $user->id))
             ->selectRaw('user_id, SUM(net_billing) as bill, SUM(vendas_qty) as qty')
             ->groupBy('user_id')->get();
 
@@ -527,6 +569,7 @@ class MlbController extends Controller
             'ticketPorPub'       => $ticketPorPub,
             'ticketGeral'        => $ticketGeral,
             'relatorioAtrasos'   => $relatorioAtrasos,
+            'isGeral'            => $verTodos,
         ]);
     }
 
@@ -688,9 +731,8 @@ class MlbController extends Controller
         $this->checkPubAccess('vendas');
 
         $user     = $request->user();
-        $isAdmin  = $user->isAdmin();
-        $isGestor = $this->userHasPubCargo($user, 'gestor-de-publicacao');
-        $verTodos = $isAdmin || $isGestor;
+        // Admin/Gestor/Líder veem a equipe inteira; publicador/analista só o próprio.
+        $verTodos = $this->podeVerTodosPub($user);
 
         $mesRef = $request->get('mes', now()->format('Y-m'));
         $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
@@ -1606,6 +1648,9 @@ class MlbController extends Controller
         $this->checkPubAccess('empresas');
 
         $user        = $request->user();
+        // Publicador/analista só enxergam empresas das quais são responsáveis;
+        // admin/gestor/líder veem todas (com filtro opcional "minhas").
+        $verTodos    = $this->podeVerTodosPub($user);
         $filtEstagio = $request->get('estagio', '');
         $filtFase    = $request->get('fase', '');
         $filtProjeto = $request->get('projeto', '');
@@ -1618,7 +1663,11 @@ class MlbController extends Controller
         if ($filtEstagio) $query->where('estagio', $filtEstagio);
         if ($filtFase)    $query->where('fase', $filtFase);
         if ($filtProjeto) $query->where('projeto', $filtProjeto);
-        if ($filtMeu)     $query->where('responsavel_id', $user->id);
+        if (!$verTodos) {
+            $query->where('responsavel_id', $user->id);
+        } elseif ($filtMeu) {
+            $query->where('responsavel_id', $user->id);
+        }
 
         $empresas = $query->get()->map(function ($e) {
                 $problemasCount = Publicacao::where('mlb_empresa_id', $e->id)->where('problema', true)->count();
@@ -1727,6 +1776,7 @@ class MlbController extends Controller
             'excluidos'         => $excluidos,
             'filters'           => compact('filtEstagio', 'filtFase', 'filtProjeto', 'filtMeu'),
             'empresas_pendentes' => $empresasPendentes,
+            'isGeral'           => $verTodos,
         ]);
     }
 

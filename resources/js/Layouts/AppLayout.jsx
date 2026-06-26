@@ -199,13 +199,30 @@ export default function AppLayout({ children, title }) {
     const mainRole    = user?.role;
     const permissions = auth?.permissions ?? [];
 
+    // Conjunto de "papeis efetivos" do user: a role legacy (admin/consultor/mentor)
+    // MAIS os cargos de PUBLICAÇÃO, mapeados pro short-form usado na NAV_TREE.
+    // Sem isso, excludeRoles com cargos de publicação ('publicador','gestor',
+    // 'lider','analista') nunca pegava — porque user.role é sempre consultor/
+    // mentor/admin —, e telas como "Alertas Estratégicos" (grupo Dados
+    // Estratégicos) vazavam pro publicador (que é role 'consultor').
+    const CARGO_SHORT = {
+        'gestor-de-publicacao': 'gestor',
+        'lider-de-publicacao':  'lider',
+        'publicador':           'publicador',
+        'analista':             'analista',
+    };
+    const pubCargos = (auth?.setores ?? [])
+        .map(s => CARGO_SHORT[s.cargo_slug] ?? s.cargo_slug)
+        .filter(Boolean);
+    const effectiveRoles = new Set([mainRole, ...pubCargos].filter(Boolean));
+
     /**
-     * Regra de visibilidade de um item de menu (idêntica ao gating anterior).
-     * Retorna false se a role do usuário está em excludeRoles, ou se a permission
-     * requerida não consta na lista de permissions do usuário.
+     * Regra de visibilidade de um item de menu.
+     * Retorna false se QUALQUER papel efetivo do user está em excludeRoles, ou se
+     * a permission requerida não consta na lista de permissions do usuário.
      */
     const itemVisivel = (item) => {
-        if (item.excludeRoles?.includes(mainRole)) return false;
+        if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
         return item.permission ? permissions.includes(item.permission) : true;
     };
 
@@ -227,7 +244,7 @@ export default function AppLayout({ children, title }) {
             }
             return acc;
         }, []);
-    }, [mainRole, permissions]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [mainRole, permissions, pubCargos.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * Estado de expansão dos grupos. Restaura os grupos abertos da sessão (para
