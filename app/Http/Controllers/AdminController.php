@@ -69,19 +69,11 @@ class AdminController extends Controller
                 ])->values()->toArray(),
             ]);
 
-        $servicosDisponiveis = \App\Models\Servico::active()
-            ->orderBy('nome')
-            ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
-
-        // Grupos nomeados (company_groups) — mesmo sistema de /companies.
-        $grupos = \App\Models\CompanyGroup::withCount('companies')
-            ->orderBy('name')
-            ->get(['id', 'name', 'color']);
-
+        // Quick 260626-ddp: a aba "Grupos" (GruposManager) saiu do admin — grupos de
+        // empresas são definidos SOMENTE no Comercial. A listagem só mostra o badge
+        // do grupo (read-only) via a chave `grupo` de cada empresa acima.
         return Inertia::render('Admin/Empresas', [
             'companies' => $companies,
-            'servicos_disponiveis' => $servicosDisponiveis,
-            'grupos' => $grupos,
         ]);
     }
 
