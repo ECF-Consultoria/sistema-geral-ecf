@@ -758,22 +758,22 @@ if (!preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
 
 ---
 
-## Perguntas em Aberto
+## Perguntas em Aberto (RESOLVED)
 
 1. **Pesos dos eixos estão corretos?**
    - O que sabemos: Meta 35%, Produtividade 25%, Pontualidade 20%, Conversão 10%, Qualidade 10% foram derivados por analogia com o PortfolioScoreService e a relevância operacional de cada eixo.
    - O que está incerto: o usuário pode querer pesos diferentes (ex: Meta=40%, Produtividade=20%).
-   - Recomendação: implementar com os pesos acima e disponibilizar como constantes no Service para fácil ajuste.
+   - RESOLVED: implementar com os pesos acima como CONSTANTES no Service para fácil ajuste futuro (refletido no plano 38-02).
 
 2. **Produtividade vs meta: o publicador quer ver seu volume comparado com a equipe?**
    - O que sabemos: a tela é individual; não há acesso à média dos pares nesta fase.
    - O que está incerto: se o usuário quiser ver "você fez X, a média da equipe foi Y" — isso exigiria uma query adicional.
-   - Recomendação: v1 usa a meta como baseline; comparação com pares fica para v2.
+   - RESOLVED: v1 usa a meta como baseline; comparação com pares fica para v2 (fora do escopo desta fase).
 
 3. **Manter `TicketIndividualChart` ou remover?**
    - O que sabemos: o componente existe em `@/Components/TicketMedioChart.jsx` e é passado via `ticketEvolucao` e `ticketAtual`.
    - O que está incerto: o CONTEXT.md não menciona explicitamente manter ou remover.
-   - Recomendação: manter como seção colapsável abaixo do gráfico de faturamento, para não perder dados que o publicador já usa.
+   - RESOLVED: manter como seção secundária abaixo do gráfico de faturamento, para não perder dados que o publicador já usa (refletido no plano 38-04).
 
 ---
 
