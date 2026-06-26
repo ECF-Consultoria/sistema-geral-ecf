@@ -13,9 +13,9 @@ class AnalyzeSugadores extends Command
         {--company=  : Analisa apenas uma empresa específica (ID)}
         {--date=     : Força reference_date (YYYY-MM-DD, padrão: hoje)}
         {--dry-run   : Mostra quem seria flagado sem gravar no banco}
-        {--provider= : Força provider de dados (adman|ml). Default = capability detection. ml sem --dry-run aborta (Phase 39 — gravação ML disponível em Phase 42).}';
+        {--provider= : Força provider de dados (adman|ml). Default = capability detection (ML preferido após Phase 42).}';
 
-    protected $description = 'Detecta adgroups (e opcionalmente campanhas) "sugadores" que drenam investimento sem retorno via provider de anúncios (Adman ou Mercado Livre)';
+    protected $description = 'Detecta adgroups e campanhas "sugadores" que drenam investimento sem retorno — usa Mercado Livre por padrão (Phase 42), Adman como fallback (legacy)';
 
     public function handle(SugadorAnalysisService $service): int
     {
@@ -32,13 +32,11 @@ class AnalyzeSugadores extends Command
             return self::FAILURE;
         }
 
-        // Guard ml_primary: até Phase 42, gravar via path ML é proibido.
-        // --provider=ml só é permitido em conjunto com --dry-run (T-39-05-01:
-        // gravação acidental ML path).
-        if ($provider === 'ml' && !$dryRun) {
-            $this->error('Modo ml_primary só disponível em Phase 42 — use --dry-run para testar leitura sem gravação.');
-            return self::FAILURE;
-        }
+        // Phase 42 D-05: guard ml_primary removido — cut-over autorizado.
+        // Antes da Phase 42, `--provider=ml` sem `--dry-run` abortava com FAILURE
+        // (Plan 39-05 T-39-05-01). Após o cut-over de Phase 42, gravar via path
+        // ML é o comportamento esperado — auto-detection do factory também já
+        // prefere ML quando empresa tem mlToken active (SugadoresAdsProviderFactory).
 
         $referenceDate = $dateStr ? Carbon::parse($dateStr)->startOfDay() : now()->startOfDay();
 
@@ -65,8 +63,8 @@ class AnalyzeSugadores extends Command
             try {
                 // Phase 39 Plan 39-05: 4º param $forceProvider propaga para
                 // SugadorAnalysisService → SugadoresAdsProviderFactory::for().
-                // Default null = factory escolhe via capability detection (Adman
-                // preferido quando ambos suportam, regra travada até Phase 42).
+                // Default null = factory escolhe via capability detection.
+                // Phase 42 D-05 cut-over: ML preferido quando ambos suportam.
                 $r = $service->analyzeCompany($company, $referenceDate, $dryRun, $provider);
             } catch (\Throwable $e) {
                 $this->error("Erro: {$e->getMessage()}");
