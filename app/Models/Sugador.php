@@ -181,14 +181,76 @@ class Sugador extends Model
 
     /**
      * Link profundo para o painel de Ads do Mercado Livre.
-     * Ainda sem certeza do formato exato — ajustar quando confirmado com a Adman.
+     *
+     * Phase 42 Plan 42-05 (REQ-42-09): roteia por origem do sugador. Sugadores
+     * vindos do provider ML (MercadoLivreSugadoresProvider — Phase 42-03) tem
+     * `raw_data` com a estrutura caracteristica do Mercado Ads (chave
+     * `metrics` aninhada, OU `item_id` + `type` no nivel raiz). Para esses,
+     * geramos deep link Mercado Ads no formato:
+     *
+     *   https://www.mercadolivre.com.br/anuncios/product-ads/anuncios?campaignId={X}
+     *
+     * **CANDIDATO**: o formato `?campaignId=` foi inferido pos-Phase 38 smoke
+     * (briefing §14) — revalidar com smoke real Bymobille pos-deploy. Se ML
+     * usar `/campaigns/{id}/edit` ou outra rota canonica, ajustar isOrigemMl()
+     * + base URL aqui (fix incremental de 1 linha).
+     *
+     * Sugadores Adman antigos (raw_data ausente ou sem chaves Mercado Ads)
+     * mantem o comportamento legacy: /anuncios/campanhas/{campaign_id}.
+     * Backward compatibility: sugador antigo sem raw_data cai no path Adman.
      */
     public function linkAdsML(): string
     {
+        if ($this->isOrigemMl()) {
+            // Phase 42 REQ-42-09: deep link Mercado Ads para sugador origem ML.
+            $base = 'https://www.mercadolivre.com.br/anuncios/product-ads/anuncios';
+            if ($this->campaign_id) {
+                return $base . '?campaignId=' . urlencode((string) $this->campaign_id);
+            }
+            return 'https://www.mercadolivre.com.br/anuncios/product-ads';
+        }
+
+        // Mantem comportamento existente Adman (zero regressao para sugadores legacy).
         $base = 'https://www.mercadolivre.com.br/anuncios';
         if ($this->campaign_id) {
             return $base . '/campanhas/' . $this->campaign_id;
         }
         return $base;
+    }
+
+    /**
+     * Heuristica de deteccao de sugador originado pelo provider ML.
+     *
+     * Decisao via raw_data: o MercadoLivreSugadoresProvider (Phase 42-03)
+     * persiste o payload completo do endpoint Mercado Ads em `raw_data`,
+     * tipicamente com a chave `metrics` aninhada (cost/clicks/prints/etc.)
+     * OU com `item_id` + `type` no nivel raiz. Provider Adman antigo nao
+     * gera essa estrutura — entao a presenca dessas chaves eh sinal seguro.
+     *
+     * Cast defensivo: raw_data eh cast=array via $casts; se valor for
+     * malformado/null retornamos false (cai no path Adman, sem quebrar).
+     *
+     * Threat T-42-05-02 (mitigado): usamos CONJUNCAO `item_id` + `type`
+     * ou presenca de `metrics` como array — payload Adman legacy nao tem
+     * essa combinacao caracteristica.
+     */
+    private function isOrigemMl(): bool
+    {
+        $raw = $this->raw_data;
+        if (!is_array($raw)) {
+            return false;
+        }
+
+        // Sinal forte: chave `metrics` aninhada (estrutura Mercado Ads).
+        if (isset($raw['metrics']) && is_array($raw['metrics'])) {
+            return true;
+        }
+
+        // Sinal alternativo: pair `item_id` + `type` no nivel raiz (Mercado Ads adgroup).
+        if (isset($raw['item_id']) && isset($raw['type'])) {
+            return true;
+        }
+
+        return false;
     }
 }
