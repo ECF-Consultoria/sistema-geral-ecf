@@ -7,7 +7,9 @@ use App\Models\Company;
 use App\Models\MlAdvertiser;
 use App\Models\MlToken;
 use App\Models\SugadorMlCompanyConfig;
+use App\Models\SugadorProviderItem;
 use App\Models\SugadorProviderRun;
+use App\Services\AdmanAdgroupMlbsRepository;
 use App\Services\Sugadores\ProviderComparisonService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -62,6 +64,123 @@ class SugadoresMlOnboardingController extends Controller
 
         return Inertia::render('Dev/SugadoresMlOnboarding/Index', [
             'companies' => $companies,
+        ]);
+    }
+
+    /**
+     * Drilldown por empresa: lista os adgroups/campanhas detectados pela
+     * ultima run shadow ML completa, com motivos + metricas. Os MLBs por
+     * adgroup sao buscados via AdmanAdgroupMlbsRepository (sync Adman ja
+     * sincroniza todos os MLBs por adgroup_id, independente do provider).
+     *
+     * Quando a empresa nao tem nenhuma run ML completed, retorna a pagina
+     * Show com `empty_state='no_runs'` (UI explica o estado).
+     */
+    public function show(Company $company): Response
+    {
+        $company->load(['mlToken', 'mlAdvertiser', 'sugadorMlConfig']);
+
+        // Ultima run ML completa (qualquer data dentro da janela shadow)
+        $run = SugadorProviderRun::where('company_id', $company->id)
+            ->where('provider', 'ml')
+            ->where('status', 'completed')
+            ->orderByDesc('finished_at')
+            ->first();
+
+        $emptyState = null;
+        $adgroups   = [];
+
+        if ($run === null) {
+            $emptyState = 'no_runs';
+        } else {
+            // Carrega adgroups + campanhas da run (ordenado por adgroup_id pra estabilidade visual)
+            $items = SugadorProviderItem::where('run_id', $run->id)
+                ->whereIn('tipo', ['adgroup', 'campanha'])
+                ->orderBy('tipo')
+                ->orderBy('campaign_id')
+                ->orderBy('adgroup_id')
+                ->get();
+
+            $adgroups = $items->map(fn (SugadorProviderItem $i) => [
+                'id'           => $i->id,
+                'tipo'         => $i->tipo,
+                'campaign_id'  => $i->campaign_id,
+                'adgroup_id'   => $i->adgroup_id,
+                'mlb_id'       => $i->mlb_id,
+                'motivos'      => (array) $i->motivos,
+                'metrics_json' => (array) $i->metrics_json,
+            ])->values()->all();
+
+            if (empty($adgroups)) {
+                $emptyState = 'empty_run';
+            }
+        }
+
+        // Buildrow reaproveita a logica do index (mesmas chaves consumidas no JS)
+        $row = $this->buildRow($company, $this->resolveShadowStats($company));
+
+        return Inertia::render('Dev/SugadoresMlOnboarding/Show', [
+            'company'     => $row,
+            'run'         => $run === null ? null : [
+                'id'              => $run->id,
+                'reference_date'  => $run->reference_date?->toDateString(),
+                'periodo_inicio'  => $run->periodo_inicio?->toDateString(),
+                'periodo_fim'     => $run->periodo_fim?->toDateString(),
+                'finished_at'     => $run->finished_at?->toIso8601String(),
+                'summary'         => (array) ($run->summary ?? []),
+            ],
+            'adgroups'    => $adgroups,
+            'empty_state' => $emptyState,
+        ]);
+    }
+
+    /**
+     * Endpoint JSON: MLBs dentro de um adgroup especifico. Reusa o
+     * AdmanAdgroupMlbsRepository (mesmo backend de /sugadores/{id}/mlbs)
+     * porque os MLBs sao sincronizados pela Adman e nao mudam por provider.
+     *
+     * Em produto de shadow puro ML (futuro), uma fonte ML-nativa de MLBs
+     * pode substituir essa chamada. Por ora, e o caminho mais direto pra
+     * dar ao operador a visao "MLBs dentro desse adgroup" sem retrabalho.
+     */
+    public function adgroupMlbs(Company $company, string $adgroupId, AdmanAdgroupMlbsRepository $repo)
+    {
+        $custId = $company->adman_account_id;
+
+        if (! $custId) {
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'Empresa sem adman_account_id. Sync Adman de MLBs nao disponivel.',
+            ], 422);
+        }
+
+        $lastSync = $repo->lastSyncForCompany($custId);
+
+        if ($lastSync === null) {
+            return response()->json([
+                'mlbs'           => [],
+                'total'          => 0,
+                'last_synced_at' => null,
+                'is_fresh'       => false,
+                'empty_state'    => 'never_synced',
+            ]);
+        }
+
+        $isFresh = $lastSync->gt(now()->subHours(30));
+
+        // Janela conservadora: 30 dias atras ate hoje (alinha com pattern
+        // de /sugadores/{id}/mlbs que tambem usa janela ampla pra cobrir
+        // sync de Adman em diferentes periodos).
+        $periodTo   = now()->toDateString();
+        $periodFrom = now()->subDays(30)->toDateString();
+        $mlbs       = $repo->findByAdgroupId($custId, $adgroupId, $periodFrom, $periodTo);
+
+        return response()->json([
+            'mlbs'           => $mlbs->values()->all(),
+            'total'          => $mlbs->count(),
+            'last_synced_at' => $lastSync->toIso8601String(),
+            'is_fresh'       => $isFresh,
+            'empty_state'    => $mlbs->isEmpty() ? 'no_mlbs' : null,
         ]);
     }
 

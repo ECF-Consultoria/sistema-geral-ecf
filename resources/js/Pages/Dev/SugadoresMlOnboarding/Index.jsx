@@ -352,13 +352,16 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                                 <tbody>
                                     {linhas.map((row) => {
                                         const acao = emAcao[row.id];
+                                        const irParaDrilldown = () => router.visit(route('dev.sugadores_ml_onboarding.show', { company: row.id }));
                                         return (
                                             <tr
                                                 key={row.id}
-                                                className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors"
+                                                className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors cursor-pointer"
+                                                onClick={irParaDrilldown}
+                                                title="Ver adgroups detectados pelo Mercado Livre nesta empresa"
                                             >
                                                 <td className="px-3 py-3">
-                                                    <div className="font-medium text-white">{row.name}</div>
+                                                    <div className="font-medium text-white hover:text-ecf-yellow transition-colors">{row.name}</div>
                                                     <div className="text-white/40 text-[11px] mt-0.5">#{row.id}</div>
                                                 </td>
                                                 <td className="px-3 py-3">
@@ -382,7 +385,7 @@ export default function SugadoresMlOnboardingIndex({ companies = [] }) {
                                                 <td className="px-3 py-3">
                                                     <StatusBadge status={row.status} />
                                                 </td>
-                                                <td className="px-3 py-3">
+                                                <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                                                     <div className="flex items-center justify-end gap-1.5">
                                                         <button
                                                             type="button"

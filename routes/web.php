@@ -314,10 +314,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Artisan::queue (sugadores:ml-smoke, sugadores:shadow-ml) e toggle do
         // shadow_enabled em sugador_ml_company_config (Plan 41-01).
         Route::prefix('dev/sugadores-ml-onboarding')->name('dev.sugadores_ml_onboarding.')->group(function () {
-            Route::get('/',                       [SugadoresMlOnboardingController::class, 'index'])->name('index');
-            Route::post('/{company}/smoke',          [SugadoresMlOnboardingController::class, 'runSmoke'])->name('smoke');
-            Route::post('/{company}/shadow',         [SugadoresMlOnboardingController::class, 'runShadow'])->name('shadow');
-            Route::post('/{company}/toggle-shadow',  [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
+            Route::get('/',                                       [SugadoresMlOnboardingController::class, 'index'])->name('index');
+            Route::get('/{company}',                              [SugadoresMlOnboardingController::class, 'show'])->name('show');
+            Route::get('/{company}/adgroups/{adgroupId}/mlbs',    [SugadoresMlOnboardingController::class, 'adgroupMlbs'])->name('adgroup_mlbs');
+            Route::post('/{company}/smoke',                       [SugadoresMlOnboardingController::class, 'runSmoke'])->name('smoke');
+            Route::post('/{company}/shadow',                      [SugadoresMlOnboardingController::class, 'runShadow'])->name('shadow');
+            Route::post('/{company}/toggle-shadow',               [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
         });
 
         Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
