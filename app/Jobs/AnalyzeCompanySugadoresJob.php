@@ -42,8 +42,17 @@ class AnalyzeCompanySugadoresJob implements ShouldQueue
     /** 15 min — Adman paginada pode chegar perto disso pra contas com 5k+ adgroups */
     public int $timeout = 900;
 
+    /**
+     * @param ?string $forceProvider Phase 42 polish — quando 'ml', forca o
+     *                provider ML no analyzeCompany (bypass auto-detection da
+     *                factory). Quando null, factory escolhe (Phase 42 D-05
+     *                prefere ML se mlToken active; senao Adman fallback).
+     *                UI dispatcha 'ml' explicitamente pra alinhar com a
+     *                decisao de produto 'sugadores so via ML'.
+     */
     public function __construct(
         public readonly Company $company,
+        public readonly ?string $forceProvider = null,
     ) {}
 
     /**
@@ -68,7 +77,12 @@ class AnalyzeCompanySugadoresJob implements ShouldQueue
 
     public function handle(SugadorAnalysisService $service): void
     {
-        $r = $service->analyzeCompany($this->company);
+        $r = $service->analyzeCompany(
+            $this->company,
+            referenceDate: null,
+            dryRun: false,
+            forceProvider: $this->forceProvider,
+        );
 
         Log::info(sprintf(
             '[Sugadores] Empresa %d (%s): %s',

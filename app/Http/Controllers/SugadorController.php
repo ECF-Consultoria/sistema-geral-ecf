@@ -340,33 +340,28 @@ class SugadorController extends Controller
     {
         Gate::authorize('manage', Sugador::class);
 
-        // Phase 42 D-05: aceita empresas ML-driven (mlToken active) sem adman_account_id.
-        // ByMobille - Teste (#298) é a primeira empresa ML-only — destravada neste cut-over.
-        // Mantemos rejeição apenas para empresas sem nenhum provider compatível.
+        // Phase 42 polish (decisao operador 2026-06-26): "sugadores so via ML".
+        // Botoes da UI rejeitam empresas sem mlToken active — nao caem mais em
+        // Adman fallback. Adman continua disponivel via comando Artisan
+        // (--provider=adman) pra diagnostico, mas a UI ja nao expoe.
         $company->loadMissing('mlToken');
-        $hasAdman = !empty($company->adman_account_id);
-        $hasMl    = optional($company->mlToken)->status === 'active';
-        if (!$hasAdman && !$hasMl) {
+        $hasMl = optional($company->mlToken)->status === 'active';
+        if (!$hasMl) {
             return back()->with(
                 'warning',
-                "Empresa {$company->name} sem adman_account_id nem mlToken ativo — análise pulada."
+                "Empresa {$company->name} sem mlToken ativo — autorize o Mercado Livre primeiro (painel 'ML OAuth')."
             );
         }
 
-        // Phase 42 polish — botao individual da UI usa queue 'high' pra furar
-        // a fila do scheduler diario (analyzeAll enfileira ~140 jobs na queue
-        // 'default'). Operador que altera config e clica em "Rodar analise"
-        // ve resultado em segundos em vez de esperar 80min na fila.
-        // Supervisor: --queue=high,default (processa high primeiro).
-        //
-        // Job NAO usa mais ShouldBeUnique — causava locks orfaos sem TTL no
-        // Redis bloqueando dispatches silenciosamente. Idempotencia ja eh
-        // garantida pela chave canonica do upsert (unique index no schema).
-        AnalyzeCompanySugadoresJob::dispatch($company)->onQueue('high');
+        // Queue 'high' + worker dedicado pulam a fila do scheduler diario.
+        // Job NAO usa ShouldBeUnique — locks orfaos travavam dispatch
+        // silenciosamente. Idempotencia preservada pela chave canonica do
+        // upsert (unique index no schema).
+        AnalyzeCompanySugadoresJob::dispatch($company, 'ml')->onQueue('high');
 
         return back()->with(
             'success',
-            "Análise enfileirada (prioritária) para {$company->name}. Sugadores aparecem em ~30s."
+            "Análise ML enfileirada (prioritária) para {$company->name}. Sugadores aparecem em ~30s."
         );
     }
 
@@ -381,28 +376,36 @@ class SugadorController extends Controller
     {
         Gate::authorize('analyze', Sugador::class);
 
-        // Phase 42 D-05: inclui empresas ML-driven (mlToken active) além de Adman.
-        // Cobre ByMobille (#298, sem adman_account_id) e empresas onboardadas via ML
-        // futuramente. Auto-detection do factory escolhe o provider correto por empresa.
+        // Phase 42 polish (decisao operador 2026-06-26): "sugadores so via ML".
+        // Filtra apenas empresas com mlToken active. Empresas Adman-only nao
+        // entram mais nesse fluxo da UI (continuam disponiveis via Artisan
+        // --provider=adman pra diagnostico).
         $companies = Company::where('active', true)
-            ->where(function ($q) {
-                $q->where(function ($q2) {
-                    $q2->whereNotNull('adman_account_id')->where('adman_account_id', '!=', '');
-                })->orWhereHas('mlToken', fn($q2) => $q2->where('status', 'active'));
-            })
+            ->whereHas('mlToken', fn($q) => $q->where('status', 'active'))
             ->where(function ($q) {
                 $q->whereHas('sugadorConfig', fn($q) => $q->where('ativo', true))
                   ->orWhereDoesntHave('sugadorConfig');
             })
             ->get();
 
+        if ($companies->isEmpty()) {
+            return back()->with(
+                'warning',
+                "Nenhuma empresa com mlToken ativo. Conecte empresas ao Mercado Livre via 'ML OAuth' primeiro."
+            );
+        }
+
+        // Queue 'high' + worker dedicado pra todos os jobs (decisao operador:
+        // UI deve responder rapido). Como filtro reduz drasticamente o numero
+        // de empresas (so com mlToken active — atualmente ~1-5 vs ~140 antes),
+        // a queue high comporta sem saturar.
         foreach ($companies as $company) {
-            AnalyzeCompanySugadoresJob::dispatch($company);
+            AnalyzeCompanySugadoresJob::dispatch($company, 'ml')->onQueue('high');
         }
 
         return back()->with(
             'success',
-            "Análise enfileirada para {$companies->count()} empresa(s). Os resultados aparecem na listagem conforme cada empresa termina."
+            "Análise ML enfileirada (prioritária) para {$companies->count()} empresa(s). Resultados em ~30s por empresa."
         );
     }
 
