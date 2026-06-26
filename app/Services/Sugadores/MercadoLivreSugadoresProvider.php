@@ -206,7 +206,14 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
             $campaignIdAdg = (string) ($r['campaign_id'] ?? '');
 
             $out[] = [
-                'adgroup_id'      => (string) ($r['id'] ?? ''),
+                // quick 260626-qgf — payload real do /product_ads/items expoe a chave
+                // 'ad_group_id' (snake_case com underscore). Smoke direto na empresa 298
+                // (ByMobille - Teste, advertiser 620095) confirmou: nao existe 'id' no
+                // nivel raiz do item; o que existe e ad_group_id, item_id, campaign_id.
+                // Antes desta correcao, todos os sugadores tipo=adgroup eram persistidos
+                // com adgroup_id='' (string vazia) e a tabela adman_adgroup_mlbs caia
+                // no mesmo bucket vazio, inviabilizando o lookup do drilldown.
+                'adgroup_id'      => (string) ($r['ad_group_id'] ?? ''),
                 'adgroup_name'    => $r['title'] ?? null,
                 'campaign_id'     => $campaignIdAdg,
                 // CANDIDATO — revalidar pos-smoke Phase 38 Tarefa 3.
@@ -253,11 +260,13 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
             return [];
         }
 
-        // CANDIDATO — mapeamento depende das chaves 'id' (adgroup) e 'item_id' (MLB)
-        // virem com esses nomes exatos no payload Mercado Ads. Revalidar pós-smoke.
+        // quick 260626-qgf — payload real do /product_ads/items usa 'ad_group_id'
+        // (snake_case), nao 'id'. Confirmado via direct call em prod (advertiser 620095).
+        // Antes desta correcao, todos os pares (adgroup, MLB) caiam num bucket unico
+        // de adgroup_id='' e o lookup getMlbsForAdgroup nunca encontrava match.
         $map = [];
         foreach (($wrap['data']['results'] ?? []) as $r) {
-            $adgroupId = (string) ($r['id'] ?? '');
+            $adgroupId = (string) ($r['ad_group_id'] ?? '');
             $mlbId     = $r['item_id'] ?? null;
             if ($adgroupId === '' || $mlbId === null) continue;
 
