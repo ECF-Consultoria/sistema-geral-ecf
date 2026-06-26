@@ -543,7 +543,7 @@ function ProblemaEmpresaModal({ empresa, onClose }) {
     );
 }
 
-export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, polosDb, projetosDb, excluidos = {}, empresas_pendentes = [] }) {
+export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, polosDb, projetosDb, excluidos = {}, empresas_pendentes = [], isGeral = true }) {
     const { props } = usePage();
     const flash           = props.flash ?? {};
     const pubRole         = props.auth?.user?.publication_role;
@@ -1074,16 +1074,20 @@ export default function Empresas({ empresas, publicadores, estagiosDb, fasesDb, 
                 <input type="text" value={busca} onChange={e => setBusca(e.target.value)}
                     placeholder="Buscar por nome ou Cust ID…"
                     className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none placeholder:text-white/20 min-w-[200px]" />
-                <Select value={filtroResp || '__none__'} onValueChange={v => setFiltroResp(v === '__none__' ? '' : v)}>
-                    <SelectTrigger className="h-9 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 w-44">
-                        <SelectValue placeholder="Responsável" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="__none__">Todos os responsáveis</SelectItem>
-                        <SelectItem value="0">Sem responsável</SelectItem>
-                        {publicadores.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.nome}</SelectItem>)}
-                    </SelectContent>
-                </Select>
+                {/* Filtro por responsável só faz sentido na visão de equipe (admin/gestor/líder).
+                    Publicador/analista já veem apenas as próprias empresas. */}
+                {isGeral && (
+                    <Select value={filtroResp || '__none__'} onValueChange={v => setFiltroResp(v === '__none__' ? '' : v)}>
+                        <SelectTrigger className="h-9 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 w-44">
+                            <SelectValue placeholder="Responsável" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__none__">Todos os responsáveis</SelectItem>
+                            <SelectItem value="0">Sem responsável</SelectItem>
+                            {publicadores.map(p => <SelectItem key={p.id} value={String(p.id)}>{p.nome}</SelectItem>)}
+                        </SelectContent>
+                    </Select>
+                )}
                 {estagiosDb.length > 0 && (
                     <Select value={filtroEstagio || '__none__'} onValueChange={v => setFiltroEstagio(v === '__none__' ? '' : v)}>
                         <SelectTrigger className="h-9 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 w-36">

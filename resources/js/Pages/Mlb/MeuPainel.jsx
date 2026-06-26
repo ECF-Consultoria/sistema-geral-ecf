@@ -1,9 +1,15 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
 import { TicketIndividualChart } from '@/Components/TicketMedioChart';
-import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { Target, CheckCircle, Clock, TrendingUp, MessageSquare, ShoppingCart, Package, CheckCheck, AlertTriangle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import {
+    AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+    RadialBarChart, RadialBar, PolarAngleAxis, RadarChart, Radar, PolarGrid, PolarRadiusAxis,
+} from 'recharts';
+import {
+    CheckCircle, MessageSquare, ShoppingCart,
+    CheckCheck, AlertTriangle, DollarSign, Award,
+} from 'lucide-react';
+import { cn, formatCurrencyCompact } from '@/lib/utils';
 
 const MESES_PT = {
     '01':'Janeiro','02':'Fevereiro','03':'Março','04':'Abril',
@@ -19,7 +25,42 @@ function nomeMes(ym) {
 
 function fmt(n) { return Number(n ?? 0).toLocaleString('pt-BR'); }
 function fmtDec(n) { return Number(n ?? 0).toFixed(1).replace('.', ','); }
+function pct0(n) { return n === null || n === undefined ? '—' : `${Number(n).toFixed(0)}%`; }
 
+// ── Lookup tables de classificação (espelhadas de Portfolio/Show.jsx) ─────────
+const CLASSIF_LABEL = { excelente:'Excelente', bom:'Bom', atencao:'Atenção', critico:'Crítico' };
+const CLASSIF_CLS   = { excelente:'text-emerald-300', bom:'text-sky-300', atencao:'text-amber-300', critico:'text-red-300' };
+const CLASSIF_BG    = {
+    excelente:'bg-emerald-500/10 border-emerald-500/30',
+    bom:'bg-sky-500/10 border-sky-500/30',
+    atencao:'bg-amber-500/10 border-amber-500/30',
+    critico:'bg-red-500/10 border-red-500/30',
+};
+const SCORE_COLOR   = { excelente:'#10b981', bom:'#38bdf8', atencao:'#f59e0b', critico:'#ef4444' };
+
+// Explicações curtas para o tooltip de cada eixo/minimétrica do publicador.
+const METRIC_HELP = {
+    score: 'Score 0-100 ponderado: 35% Meta + 25% Produtividade + 20% Pontualidade + 10% Conversão + 10% Qualidade. Eixos sem dado têm o peso redistribuído.',
+    meta: 'Atingimento da meta de anúncios do mês (feito ÷ meta).',
+    produtividade: 'Volume de anúncios em relação à meta (0%→0, 100%→80, ≥130%→100 pts).',
+    pontualidade: 'SKUs entregues sem atraso nas empresas onde você é o responsável.',
+    conversao: 'Anúncios que geraram pelo menos uma venda no mês (vendidos ÷ feitos).',
+    qualidade: 'Anúncios sem problema (60%) + feedbacks do líder resolvidos (40%).',
+};
+
+const chartCfg = {
+    tooltip: { contentStyle: { background:'#0f1116', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, fontSize:12 }, labelStyle: { color:'#9ba0aa' } },
+    axis:    { tick: { fill:'#6a6f79', fontSize:11 } },
+};
+
+const PRIORIDADE_STYLE = {
+    '1 Urgente': 'bg-red-500/20 text-red-400 border-red-500/30',
+    '2 Alto':    'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    '3 Média':   'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+    '4 Baixa':   'bg-white/5 text-white/40 border-white/10',
+};
+
+// ── KPI grande ────────────────────────────────────────────────────────────────
 function KpiCard({ title, value, sub, icon: Icon, color = 'yellow' }) {
     const colors = {
         yellow: { text:'text-ecf-yellow', bg:'bg-ecf-yellow/10', border:'border-ecf-yellow/20' },
@@ -44,18 +85,153 @@ function KpiCard({ title, value, sub, icon: Icon, color = 'yellow' }) {
     );
 }
 
-const chartCfg = {
-    tooltip: { contentStyle: { background:'#0f1116', border:'1px solid rgba(255,255,255,0.07)', borderRadius:10, fontSize:12 }, labelStyle: { color:'#9ba0aa' } },
-    grid:    { stroke:'rgba(255,255,255,0.04)', strokeDasharray:'4 4' },
-    axis:    { tick: { fill:'#6a6f79', fontSize:11 } },
-};
+// ── Mini-métrica de detalhe (espelhada de Show.jsx) ──────────────────────────
+function MiniMetric({ label, value, sub, help }) {
+    return (
+        <div className="rounded-lg bg-white/[0.04] border border-white/[0.06] px-3 py-2" title={help}>
+            <div className="text-white/45 text-[10px] uppercase tracking-wide flex items-center gap-1">
+                {label}
+                {help && <span className="text-white/30 text-[9px] cursor-help">ⓘ</span>}
+            </div>
+            <div className="text-white/90 text-base font-bold tabular-nums leading-tight mt-0.5">{value}</div>
+            <div className="text-white/35 text-[10px] mt-0.5">{sub}</div>
+        </div>
+    );
+}
 
-const PRIORIDADE_STYLE = {
-    '1 Urgente': 'bg-red-500/20 text-red-400 border-red-500/30',
-    '2 Alto':    'bg-orange-500/20 text-orange-400 border-orange-500/30',
-    '3 Média':   'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-    '4 Baixa':   'bg-white/5 text-white/40 border-white/10',
-};
+// ── Section de desempenho: Radial (score) + Radar (5 eixos) ──────────────────
+function PerformanceSection({ data }) {
+    const pts = data.pontos_categoria ?? {};
+    const m   = data.metricas ?? {};
+    const cor = SCORE_COLOR[data.classificacao] ?? '#3b82f6';
+
+    const dimensoes = [
+        { dim: 'Meta',          valor: pts.meta?.valor ?? 0,          bruto: m.meta?.pct,                  sufixo: '%' },
+        { dim: 'Produtividade', valor: pts.produtividade?.valor ?? 0, bruto: m.produtividade?.pct,         sufixo: '%' },
+        { dim: 'Pontualidade',  valor: pts.pontualidade?.valor ?? 0,  bruto: m.pontualidade?.pct_no_prazo, sufixo: '%' },
+        { dim: 'Conversão',     valor: pts.conversao?.valor ?? 0,     bruto: m.conversao?.pct,             sufixo: '%' },
+        { dim: 'Qualidade',     valor: pts.qualidade?.valor ?? 0,     bruto: m.qualidade?.pct_sem_problema, sufixo: '%' },
+    ];
+    const radialData = [{ name: 'Score', value: data.score, fill: cor }];
+    const semDados = !data.score;
+
+    return (
+        <div className={cn('rounded-2xl border p-4 md:p-5 mb-6', CLASSIF_BG[data.classificacao] ?? 'border-white/[0.06] bg-ecf-card/60')}>
+            <div className="flex items-center gap-2 mb-3">
+                <Award size={16} className={CLASSIF_CLS[data.classificacao]} />
+                <h3 className="text-white text-sm font-semibold cursor-help" title={METRIC_HELP.score}>
+                    Desempenho do Publicador <span className="text-white/30 text-[10px]">ⓘ</span>
+                </h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
+                {/* Radial score */}
+                <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.04] p-3 flex items-center justify-center">
+                    <div className="h-56 w-full relative">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <RadialBarChart cx="50%" cy="50%" innerRadius="70%" outerRadius="100%" barSize={18}
+                                data={radialData} startAngle={90} endAngle={-270}>
+                                <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
+                                <RadialBar dataKey="value" cornerRadius={10} background={{ fill: 'rgba(255,255,255,0.05)' }} />
+                            </RadialBarChart>
+                        </ResponsiveContainer>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                            <div className={cn('text-5xl font-extrabold tabular-nums leading-none', CLASSIF_CLS[data.classificacao])}>
+                                {Math.round(data.score)}
+                            </div>
+                            <div className="text-white/40 text-[11px] mt-0.5">de 100 pts</div>
+                            <div className={cn('text-[12px] font-semibold mt-1.5', CLASSIF_CLS[data.classificacao])}>
+                                {CLASSIF_LABEL[data.classificacao]}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Radar das 5 dimensões */}
+                <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
+                    <div className="h-56 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <RadarChart data={dimensoes} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
+                                <PolarGrid stroke="rgba(255,255,255,0.08)" />
+                                <PolarAngleAxis dataKey="dim" tick={{ fill: 'rgba(255,255,255,0.55)', fontSize: 10 }} />
+                                <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
+                                <Radar name="Pontuação" dataKey="valor" stroke={cor} fill={cor} fillOpacity={0.35} dot={{ r: 3, fill: cor }} />
+                                <Tooltip
+                                    cursor={false}
+                                    contentStyle={{ backgroundColor:'rgba(15,16,22,0.95)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, fontSize:12 }}
+                                    formatter={(value, name, props) => {
+                                        const bruto = props?.payload?.bruto;
+                                        const suf   = props?.payload?.sufixo;
+                                        if (bruto === null || bruto === undefined) return ['sem dado', 'Valor'];
+                                        return [`${typeof bruto === 'number' ? bruto.toFixed(1) : bruto}${suf} (${Math.round(value)} pts)`, 'Valor'];
+                                    }}
+                                    labelStyle={{ color: 'rgba(255,255,255,0.9)' }}
+                                />
+                            </RadarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            </div>
+
+            {/* Cards detalhados (substituem Cresc.ajustado/Crescendo/Meta/Recuperação/NPS da Carteira) */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
+                <MiniMetric
+                    label="Atingimento da meta"
+                    value={pct0(m.meta?.pct)}
+                    sub={`${fmt(m.meta?.feito)}/${fmt(m.meta?.alvo)} anúncios`}
+                    help={METRIC_HELP.meta}
+                />
+                <MiniMetric
+                    label="Produtividade"
+                    value={pts.produtividade?.valor !== null && pts.produtividade?.valor !== undefined ? `${Math.round(pts.produtividade.valor)} pts` : '—'}
+                    sub={m.produtividade?.pct !== null && m.produtividade?.pct !== undefined ? `${m.produtividade.pct.toFixed(0)}% da meta` : 'sem meta'}
+                    help={METRIC_HELP.produtividade}
+                />
+                <MiniMetric
+                    label="Entregas com atraso"
+                    value={`${fmt(m.pontualidade?.atrasados)}/${fmt(m.pontualidade?.total_skus)}`}
+                    sub={m.pontualidade?.pct_no_prazo !== null && m.pontualidade?.pct_no_prazo !== undefined ? `${m.pontualidade.pct_no_prazo.toFixed(0)}% no prazo` : 'sem SKUs'}
+                    help={METRIC_HELP.pontualidade}
+                />
+                <MiniMetric
+                    label="Conversão"
+                    value={pct0(m.conversao?.pct)}
+                    sub={`${fmt(m.conversao?.vendidos)}/${fmt(m.conversao?.feito)} vendidos`}
+                    help={METRIC_HELP.conversao}
+                />
+                <MiniMetric
+                    label="Qualidade"
+                    value={pct0(m.qualidade?.pct_sem_problema)}
+                    sub={m.qualidade?.pct_feedbacks_resolvidos !== null && m.qualidade?.pct_feedbacks_resolvidos !== undefined ? `${m.qualidade.pct_feedbacks_resolvidos.toFixed(0)}% feedbacks ok` : 'sem feedbacks'}
+                    help={METRIC_HELP.qualidade}
+                />
+            </div>
+
+            {semDados && (
+                <p className="mt-3 text-white/40 text-[11px]">
+                    <AlertTriangle size={10} className="inline mr-1" />
+                    Sem dados suficientes no período — o score aparece conforme você publica e recebe vendas/feedbacks.
+                </p>
+            )}
+        </div>
+    );
+}
+
+// ── Tooltip do gráfico de faturamento (só o realizado acumulado) ─────────────
+function FaturamentoTooltip({ active, payload, label }) {
+    if (!active || !payload?.length) return null;
+    const ponto = payload[0]?.payload ?? {};
+    const dateLabel = label ? label.slice(8, 10) + '/' + label.slice(5, 7) : '';
+    return (
+        <div className="rounded-lg border border-white/15 bg-ecf-bg/95 backdrop-blur px-3 py-2 text-[12px] shadow-xl">
+            <div className="text-white/90 font-semibold mb-1">{dateLabel}</div>
+            <div className="flex items-center justify-between gap-4">
+                <span className="text-emerald-300">Faturamento acum.</span>
+                <span className="text-white/90 tabular-nums">{formatCurrencyCompact(ponto.realizado)}</span>
+            </div>
+        </div>
+    );
+}
 
 function ProblemasSection({ problemas, onResolverAnuncio }) {
     if (!problemas) return null;
@@ -76,7 +252,6 @@ function ProblemasSection({ problemas, onResolverAnuncio }) {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Contas */}
                 {empresas?.length > 0 && (
                     <div>
                         <p className="text-white/30 text-[10px] font-semibold tracking-widest uppercase mb-2">
@@ -103,7 +278,6 @@ function ProblemasSection({ problemas, onResolverAnuncio }) {
                     </div>
                 )}
 
-                {/* Anúncios */}
                 {anuncios?.length > 0 && (
                     <div>
                         <p className="text-white/30 text-[10px] font-semibold tracking-widest uppercase mb-2">
@@ -149,7 +323,13 @@ function ProblemasSection({ problemas, onResolverAnuncio }) {
     );
 }
 
-export default function MeuPainel({ kpis, evolucaoDiaria, topEmpresas, feedbacks, meta, mesRef, meses, problemas, ticketEvolucao = [], ticketAtual = 0 }) {
+export default function MeuPainel({
+    kpis, evolucaoDiaria, topEmpresas, feedbacks, meta, mesRef, meses, problemas,
+    ticketEvolucao = [], ticketAtual = 0,
+    // Fase 38 — Painel do Publicador
+    score_publicador = null, faturamento_mes = 0, anuncios_feitos = 0, vendas_mes = 0,
+    net_billing_timeseries = [],
+}) {
     const k = kpis ?? {};
 
     const handleMes = (e) => {
@@ -166,13 +346,14 @@ export default function MeuPainel({ kpis, evolucaoDiaria, topEmpresas, feedbacks
 
     const statusColors = { above:'#22c55e', ontrack:'#eab308', below:'#ef4444' };
     const barColor = statusColors[k.status_classe] || '#8b5cf6';
+    const temFaturamento = (net_billing_timeseries ?? []).length > 0;
 
     return (
-        <AppLayout title="Meu Painel">
+        <AppLayout title="Painel do Publicador">
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h1 className="text-white font-display font-bold text-2xl">Meu Painel</h1>
-                    <p className="text-white/40 text-sm mt-0.5">Acompanhe sua produtividade em tempo real</p>
+                    <h1 className="text-white font-display font-bold text-2xl">Painel do Publicador</h1>
+                    <p className="text-white/40 text-sm mt-0.5">Seu desempenho do mês — score, metas e faturamento</p>
                 </div>
                 <select
                     value={mesRef}
@@ -185,19 +366,73 @@ export default function MeuPainel({ kpis, evolucaoDiaria, topEmpresas, feedbacks
                 </select>
             </div>
 
-            {/* KPIs */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-                <KpiCard title="Meta do Mês"       value={fmt(k.meta)}                           sub="anúncios esperados"              icon={Target}      color="yellow" />
-                <KpiCard title="Feito"             value={fmt(k.feito)}                          sub={`${fmtDec(k.percentual)}% da meta`} icon={CheckCircle} color="green" />
-                <KpiCard title="Faltam"            value={fmt(k.faltantes)}                      sub={`${k.dias_uteis_restantes} dias úteis`} icon={Clock}  color="orange" />
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                <KpiCard title="Anúncios Vendidos" value={fmt(k.vendas)}                         sub={`${fmtDec(k.conversao_vendas)}% conversão`} icon={ShoppingCart} color="blue" />
-                <KpiCard title="Unidades Vendidas" value={fmt(k.vendas_qty)}                     sub="total de peças vendidas"         icon={Package}     color="teal" />
-                <KpiCard title="Ritmo Necessário"  value={`${fmtDec(k.media_diaria_alvo)}/dia`} sub="para bater a meta"               icon={TrendingUp}  color="purple" />
+            {/* KPIs grandes */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <KpiCard
+                    title="Faturamento"
+                    value={formatCurrencyCompact(faturamento_mes)}
+                    sub="anúncios vendidos no mês"
+                    icon={DollarSign}
+                    color="green"
+                />
+                <KpiCard
+                    title="Anúncios Feitos"
+                    value={fmt(anuncios_feitos || k.feito)}
+                    sub={`${fmtDec(k.percentual)}% da meta (${fmt(meta)})`}
+                    icon={CheckCircle}
+                    color="yellow"
+                />
+                <KpiCard
+                    title="Vendas no Mês"
+                    value={fmt(vendas_mes || k.vendas)}
+                    sub={`${fmtDec(k.conversao_vendas)}% conversão · ${fmt(k.vendas_qty)} peças`}
+                    icon={ShoppingCart}
+                    color="blue"
+                />
             </div>
 
-            {/* Progresso */}
+            {/* Desempenho: score + radar de 5 eixos */}
+            {score_publicador && <PerformanceSection data={score_publicador} />}
+
+            {/* Evolução do faturamento */}
+            <div className="card-ecf rounded-2xl p-5 mb-6">
+                <div className="flex items-center justify-between mb-3">
+                    <div>
+                        <p className="text-white font-semibold text-sm">Evolução do faturamento</p>
+                        <p className="text-white/40 text-[11px] mt-0.5">Realizado acumulado · {nomeMes(mesRef)}</p>
+                    </div>
+                    <span className="text-emerald-300 font-display font-extrabold text-lg tabular-nums">
+                        {formatCurrencyCompact(faturamento_mes)}
+                    </span>
+                </div>
+                {temFaturamento ? (
+                    <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={net_billing_timeseries} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
+                                <XAxis
+                                    dataKey="date"
+                                    tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
+                                    tickFormatter={(d) => d ? d.slice(8, 10) + '/' + d.slice(5, 7) : ''}
+                                    stroke="rgba(255,255,255,0.1)"
+                                />
+                                <YAxis
+                                    tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10 }}
+                                    tickFormatter={(v) => formatCurrencyCompact(v)}
+                                    stroke="rgba(255,255,255,0.1)"
+                                    width={52}
+                                />
+                                <Tooltip content={<FaturamentoTooltip />} />
+                                <Line type="monotone" dataKey="realizado" name="Realizado" stroke="#10b981" strokeWidth={2.5} dot={false} activeDot={{ r: 5 }} />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    </div>
+                ) : (
+                    <p className="text-white/25 text-sm text-center py-12">Sem faturamento registrado neste período</p>
+                )}
+            </div>
+
+            {/* Progresso da Meta */}
             <div className="card-ecf rounded-2xl p-5 mb-6">
                 <div className="flex items-center justify-between mb-2">
                     <div>
@@ -230,7 +465,7 @@ export default function MeuPainel({ kpis, evolucaoDiaria, topEmpresas, feedbacks
             {/* Problemas em aberto */}
             <ProblemasSection problemas={problemas} onResolverAnuncio={handleResolverAnuncio} />
 
-            {/* Gráfico + Top empresas */}
+            {/* Evolução diária (publicações) + Top empresas */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
                 <div className="card-ecf rounded-2xl p-5 lg:col-span-3">
                     <p className="text-white/50 text-[10px] font-semibold tracking-widest uppercase mb-0.5">Publicações</p>
@@ -276,7 +511,7 @@ export default function MeuPainel({ kpis, evolucaoDiaria, topEmpresas, feedbacks
                 </div>
             </div>
 
-            {/* Ticket Médio */}
+            {/* Ticket Médio (seção secundária mantida) */}
             <div className="mb-6">
                 <TicketIndividualChart evolucao={ticketEvolucao} ticketAtual={ticketAtual} />
             </div>

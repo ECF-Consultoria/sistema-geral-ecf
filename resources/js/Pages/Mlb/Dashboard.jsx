@@ -540,7 +540,7 @@ function AtrasoChart({ relatorioAtrasos }) {
     );
 }
 
-export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evolucaoMensal, metaGeral, mesRef, meses, distribuicao, totalEmpresas, listagem, alertas, estagiosDistrib, totalTodasEmpresas, ticketPorPub = [], ticketGeral = 0, relatorioAtrasos = null }) {
+export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evolucaoMensal, metaGeral, mesRef, meses, distribuicao, totalEmpresas, listagem, alertas, estagiosDistrib, totalTodasEmpresas, ticketPorPub = [], ticketGeral = 0, relatorioAtrasos = null, isGeral = true }) {
     const k = kpisGerais ?? {};
     const [tvMode, setTvMode] = useState(false);
 
@@ -672,7 +672,11 @@ export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evol
             <div className="flex items-center justify-between mb-6">
                 <div>
                     <h1 className="text-white font-display font-bold text-2xl">Controle de Publicações</h1>
-                    <p className="text-white/40 text-sm mt-0.5">Visão consolidada da equipe · Meta total: {fmt(metaGeral)}/mês</p>
+                    <p className="text-white/40 text-sm mt-0.5">
+                        {isGeral
+                            ? `Visão consolidada da equipe · Meta total: ${fmt(metaGeral)}/mês`
+                            : `Seu desempenho individual · Sua meta: ${fmt(metaGeral)}/mês`}
+                    </p>
                 </div>
                 <div className="flex items-center gap-2">
                     <select
@@ -695,7 +699,7 @@ export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evol
 
             {/* KPIs */}
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <KpiCard title="Meta da Equipe"  value={fmt(k.meta)}      sub="soma das metas individuais"               icon={Target}    color="yellow" />
+                <KpiCard title={isGeral ? 'Meta da Equipe' : 'Sua Meta'}  value={fmt(k.meta)}      sub={isGeral ? 'soma das metas individuais' : 'sua meta do mês'}               icon={Target}    color="yellow" />
                 <KpiCard title="Anúncios Feitos"  value={fmt(k.feito)}     sub={`${fmtDec(k.percentual)}% da meta`}       icon={CheckCircle} color="green" />
                 <KpiCard title="Vendas no Mês"    value={fmt(k.vendas)}    sub={`${fmtDec(k.conversao_vendas)}% conversão`} icon={ShoppingBag} color="blue" />
                 <KpiCard title="Faltam"           value={fmt(k.faltantes)} sub={`${k.dias_uteis_restantes} dias úteis`}   icon={Clock}     color="orange" />
@@ -716,7 +720,7 @@ export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evol
             <div className="card-ecf rounded-2xl p-5 mb-6">
                 <div className="flex items-center justify-between mb-2">
                     <div>
-                        <p className="text-white font-semibold text-sm">Progresso da Equipe</p>
+                        <p className="text-white font-semibold text-sm">{isGeral ? 'Progresso da Equipe' : 'Seu Progresso'}</p>
                         <p className="text-white/40 text-xs mt-0.5">
                             Média atual: <b className="text-white">{fmtDec(k.media_diaria_atual)}/dia</b> ·
                             Alvo: <b className="text-white">{fmtDec(k.media_diaria_alvo)}/dia</b>
@@ -755,8 +759,8 @@ export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evol
 
                 {/* Ranking */}
                 <div className="card-ecf rounded-2xl p-5 lg:col-span-2">
-                    <p className="text-white font-semibold text-sm mb-1">Ranking do Mês</p>
-                    <p className="text-white/30 text-xs mb-4">Meta por pessoa</p>
+                    <p className="text-white font-semibold text-sm mb-1">{isGeral ? 'Ranking do Mês' : 'Seu Resumo do Mês'}</p>
+                    <p className="text-white/30 text-xs mb-4">{isGeral ? 'Meta por pessoa' : 'Sua meta no mês'}</p>
                     <div className="space-y-3">
                         {(ranking ?? []).map((r, i) => (
                             <div key={r.id}>
@@ -785,8 +789,8 @@ export default function MlbDashboard({ kpisGerais, ranking, evolucaoDiaria, evol
             {/* Gráfico vendas por publicador */}
             <div className="grid grid-cols-1 lg:grid-cols-8 gap-4 mb-6">
                 <div className="card-ecf rounded-2xl p-5 lg:col-span-3">
-                    <p className="text-white/50 text-[10px] font-semibold tracking-widest uppercase mb-0.5">Equipe</p>
-                    <p className="text-white font-display font-extrabold text-base tracking-tight mb-4">Vendas por Publicador · {nomeMes(mesRef)}</p>
+                    <p className="text-white/50 text-[10px] font-semibold tracking-widest uppercase mb-0.5">{isGeral ? 'Equipe' : 'Você'}</p>
+                    <p className="text-white font-display font-extrabold text-base tracking-tight mb-4">{isGeral ? 'Vendas por Publicador' : 'Suas Vendas'} · {nomeMes(mesRef)}</p>
                     <ResponsiveContainer width="100%" height={220}>
                         <BarChart data={(ranking ?? []).map(r => ({ nome: r.nome.split(' ')[0], feito: r.feito, vendas: r.vendas }))} barSize={18} barCategoryGap="30%" margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                             <CartesianGrid stroke="transparent" />
