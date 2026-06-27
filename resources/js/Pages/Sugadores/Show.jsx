@@ -574,10 +574,13 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
  * em destaque pra ajudar o analista a focar.
  */
 function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
-    // Quick task 260626-qgf — auto-load ao montar (sem botao "Carregar MLBs") +
-    // 1 unico botao "Copiar todos". `mlbsHint` vem do provider ML (lista bruta
-    // de IDs) e serve como prefill visual de contagem ate o fetch de metricas
-    // detalhadas chegar — evita que o operador veja "0 MLBs" durante o spinner.
+    // Quick task 260626-qgf — Fluxo dual de fonte de dados:
+    //   1. mlbsHint (ML, AdgroupMlbMapRepository) e a fonte CANONICA de IDs.
+    //      Sempre disponivel via Inertia prop, instantaneo.
+    //   2. Auto-load Adman MCP (/sugadores/{id}/mlbs) ENRIQUECE com metricas
+    //      detalhadas (investimento, vendas, ACOS, thumbnail) quando o sugador
+    //      e' de empresa com adman_account_id. Empresas ML-only (caso ByMobille
+    //      Teste #298) caem em 422 — supressao silenciosa, lista ML simples.
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
     const [copied, setCopied] = useState(false);
 
@@ -598,17 +601,35 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
         }
     };
 
-    // Auto-load: dispara assim que o componente monta. Operador nao precisa
-    // mais clicar "Carregar MLBs" — ja sai populado.
+    // Auto-load: dispara assim que o componente monta.
     useEffect(() => {
         if (sugadorId) load();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sugadorId]);
 
-    // Phase 30 Plan 30-04 — backend já retorna apenas MLBs do adgroup (filtro
-    // exato por adgroup_name na tabela local). matches_adgroup vem sempre true.
-    const allMlbs = state.data?.mlbs ?? [];
-    const shown   = allMlbs;
+    // Indexa metricas Adman por mlb_id pra lookup O(1) ao montar items canonicos.
+    const admanByMlb = (() => {
+        const map = {};
+        for (const m of (state.data?.mlbs ?? [])) {
+            if (m && m.mlb_id) map[m.mlb_id] = m;
+        }
+        return map;
+    })();
+
+    // IDs canonicos: ML hint quando disponivel, fallback Adman (sugadores legados
+    // sem adgroup_id resolvido ou empresas que ainda nao rodaram analise ML).
+    const idsFromMl    = Array.isArray(mlbsHint) ? mlbsHint.filter(Boolean) : [];
+    const idsFromAdman = Object.keys(admanByMlb);
+    const allIds       = idsFromMl.length > 0 ? idsFromMl : idsFromAdman;
+
+    // Items finais para render: 1 por ID, com metricas Adman se houver, senao
+    // entry minima (so id + URL ML pro link funcionar).
+    const items = allIds.map((id) => admanByMlb[id] ?? {
+        mlb_id:     id,
+        listing_id: id,
+        title:      null,
+        permalink:  mlbUrl(id),
+    });
 
     // Copia lista de MLBs separados por vírgula.
     const handleCopy = async () => {
@@ -620,17 +641,12 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
         }
     };
 
-    // Identificador do MLB no payload do backend (Plan 30-04) é `mlb_id`.
-    // Fallback para `mlbsHint` (lista bruta do provider ML via Inertia) enquanto
-    // o auto-load nao chegou — garante "Copiar todos" funcional desde o 1o frame.
-    const allIds = allMlbs.length > 0
-        ? allMlbs.map(m => m.mlb_id).filter(Boolean)
-        : (Array.isArray(mlbsHint) ? mlbsHint.filter(Boolean) : []);
+    // Sugador ML-only (caso comum pos quick 260626-qgf): API Adman responde 422
+    // "Empresa sem adman_account_id". Nao mostrar como erro — temos lista ML.
+    const isMlOnlyEmpresa = state.error && idsFromMl.length > 0;
 
-    // Quick task 260626-qgf — `hasProvaveis` removido junto com o botao
-    // "Copiar provaveis" (operador pediu apenas 1 botao "Copiar todos").
-
-    // Phase 30 Plan 30-04 — formata "Atualizado em ..." pra UI
+    // Phase 30 Plan 30-04 — formata "Atualizado em ..." pra UI (so usado quando
+    // Adman responde com sucesso e devolve metadado de sync).
     const fmtSyncTime = (iso) => {
         if (!iso) return null;
         try {
@@ -649,9 +665,9 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
                 <div className="flex items-center gap-2">
                     <Package size={14} className="text-white/40" />
                     <h2 className="text-white font-display font-semibold text-base">MLBs neste adgroup</h2>
-                    {/* Contagem instantanea via mlbsHint enquanto o auto-load nao chega. */}
-                    {(state.loaded ? shown.length : allIds.length) > 0 && (
-                        <span className="text-white/40 text-xs">· {state.loaded ? shown.length : allIds.length}</span>
+                    {/* Contagem reflete IDs canonicos (ML hint ou Adman, na ordem). */}
+                    {items.length > 0 && (
+                        <span className="text-white/40 text-xs">· {items.length}</span>
                     )}
                 </div>
 
@@ -703,32 +719,49 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
                 </div>
             )}
 
-            {state.error && (
+            {/* Caixa de erro suprimida quando temos lista ML — empresa ML-only
+                e' caso valido, nao falha (422 esperado). Mostra erro real apenas
+                quando NAO ha mlbsHint pra cair de pe (sugadores 100% Adman). */}
+            {state.error && !isMlOnlyEmpresa && (
                 <div className="flex items-start gap-2 p-3 rounded-lg border border-red-500/20 bg-red-500/[0.05]">
                     <AlertTriangle size={14} className="text-red-400 shrink-0 mt-0.5" />
                     <p className="text-red-300 text-xs leading-relaxed">{state.error}</p>
                 </div>
             )}
 
-            {state.loaded && !state.error && shown.length === 0 && (
+            {state.loaded && !state.error && items.length === 0 && (
                 <p className="text-white/40 text-sm">
-                    {allMlbs.length === 0
-                        ? <>Nenhum MLB encontrado para esta campanha no período {fmtDate(state.data?.periodo_inicio)} → {fmtDate(state.data?.periodo_fim)}.</>
-                        : <>Nenhum MLB com título similar a <b className="text-white/60">"{adgroupName}"</b> encontrado entre os {allMlbs.length} MLBs da campanha. O matching é heurístico (palavras iniciais do título) — confira no painel de Ads.</>
-                    }
+                    Nenhum MLB encontrado neste adgroup no período.
                 </p>
             )}
 
-            {state.loaded && shown.length > 0 && (
+            {items.length > 0 && (
                 <ul className="space-y-3">
-                    {shown.map(m => <MlbRow key={m.listing_id} mlb={m} />)}
+                    {items.map(m => <MlbRow key={m.mlb_id || m.listing_id} mlb={m} />)}
                 </ul>
             )}
         </div>
     );
 }
 
+// Quick task 260626-qgf — helper para gerar URL canonica do anuncio ML a partir
+// do mlb_id (formato MLB-123456). Espelha Sugador::urlAnuncioML() no PHP, mantido
+// no JS para items que vem so do hint ML (sem permalink do Adman).
+const mlbUrl = (mlbId) => {
+    if (!mlbId) return null;
+    const digits = String(mlbId).replace(/\D/g, '');
+    if (!digits) return null;
+    return `https://produto.mercadolivre.com.br/MLB-${digits}`;
+};
+
 function MlbRow({ mlb }) {
+    // Items ML-only nao trazem metricas Adman (investment/ads_revenue/acos etc).
+    // Detecta o caso pra renderizar versao compacta — evita poluir UI com
+    // "R$ 0,00" pra tudo quando o sugador e' de empresa ML-only.
+    const hasAdmanMetrics = mlb.investment != null || mlb.ads_revenue != null
+        || mlb.ads_sold_quantity != null || mlb.clicks != null;
+    const listingId = mlb.mlb_id || mlb.listing_id;
+
     return (
         <li className="flex gap-3 p-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.04] transition-colors">
             {mlb.image_url ? (
@@ -747,9 +780,9 @@ function MlbRow({ mlb }) {
             <div className="flex-1 min-w-0">
                 <div className="flex items-start justify-between gap-2 mb-1">
                     <div className="min-w-0 flex-1">
-                        <p className="text-white/90 text-sm font-medium truncate" title={mlb.title}>{mlb.title || mlb.listing_id}</p>
+                        <p className="text-white/90 text-sm font-medium truncate" title={mlb.title}>{mlb.title || listingId}</p>
                         <p className="text-white/40 text-[11px] font-mono">
-                            {mlb.listing_id}
+                            {listingId}
                             {mlb.sku && <span className="text-white/30"> · SKU {mlb.sku}</span>}
                             {mlb.curve && <span className="text-white/30"> · Curva {mlb.curve}</span>}
                         </p>
@@ -769,19 +802,23 @@ function MlbRow({ mlb }) {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1 text-[11px] mt-1">
-                    <MlbStat label="Invest." value={fmtBRL(mlb.investment)} color="red" />
-                    <MlbStat label="Vendas ads" value={fmtInt(mlb.ads_sold_quantity)} color={mlb.ads_sold_quantity > 0 ? 'green' : 'white'} />
-                    <MlbStat label="Receita ads" value={fmtBRL(mlb.ads_revenue)} color="green" />
-                    <MlbStat label="Direta/Indir." value={`${fmtInt(mlb.ads_sold_direct)} / ${fmtInt(mlb.ads_sold_indirect)}`} />
-                    <MlbStat label="ACOS" value={fmtPct(mlb.acos)} color="yellow" />
-                    <MlbStat label="Cliques" value={fmtInt(mlb.clicks)} />
-                </div>
+                {hasAdmanMetrics && (
+                    <>
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1 text-[11px] mt-1">
+                            <MlbStat label="Invest." value={fmtBRL(mlb.investment)} color="red" />
+                            <MlbStat label="Vendas ads" value={fmtInt(mlb.ads_sold_quantity)} color={mlb.ads_sold_quantity > 0 ? 'green' : 'white'} />
+                            <MlbStat label="Receita ads" value={fmtBRL(mlb.ads_revenue)} color="green" />
+                            <MlbStat label="Direta/Indir." value={`${fmtInt(mlb.ads_sold_direct)} / ${fmtInt(mlb.ads_sold_indirect)}`} />
+                            <MlbStat label="ACOS" value={fmtPct(mlb.acos)} color="yellow" />
+                            <MlbStat label="Cliques" value={fmtInt(mlb.clicks)} />
+                        </div>
 
-                {(mlb.organic_sold_quantity > 0 || mlb.organic_revenue > 0) && (
-                    <p className="text-white/40 text-[10px] mt-1.5">
-                        Orgânico no período: {fmtInt(mlb.organic_sold_quantity)} venda{mlb.organic_sold_quantity === 1 ? '' : 's'} · {fmtBRL(mlb.organic_revenue)}
-                    </p>
+                        {(mlb.organic_sold_quantity > 0 || mlb.organic_revenue > 0) && (
+                            <p className="text-white/40 text-[10px] mt-1.5">
+                                Orgânico no período: {fmtInt(mlb.organic_sold_quantity)} venda{mlb.organic_sold_quantity === 1 ? '' : 's'} · {fmtBRL(mlb.organic_revenue)}
+                            </p>
+                        )}
+                    </>
                 )}
             </div>
         </li>
