@@ -7,8 +7,14 @@ depends_on: []
 files_modified:
   - app/Services/SugadorAnalysisService.php
   - app/Http/Controllers/SugadorController.php
+  - app/Services/Sugadores/MercadoLivreSugadoresProvider.php  # Task 4 retro
   - resources/js/Pages/Sugadores/Show.jsx
 autonomous: false
+post_plan_scope_expansion:
+  - "Task 4 retro: parser ML usa 'ad_group_id' (chute 'id' do CANDIDATO era invalido — descoberto via smoke pos UAT 1). Commit 5ef38e2."
+  - "Task 5 retro: UX unificada na secao 'MLBs neste adgroup' (chips removidos do header, auto-load, 1 botao copiar). Commit db1b918."
+  - "Task 6 retro: ML como fonte canonica de IDs (Adman MCP enriquece, nao define lista — corrige 422 silencioso em empresas ML-only). Commit 49af345."
+  - "Task 7 retro: MlbHighlight do header removido + bloco de freshness Adman so renderiza com state.data presente. Commit ec79124."
 requirements:
   - QGF-260626-01
 must_haves:
