@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
-status: ready_to_plan
-stopped_at: Phase 42 complete (6/6) — ready to discuss Phase 43
-last_updated: 2026-06-26T17:26:56.758Z
-last_activity: 2026-06-26 -- Phase 42 execution started
+status: blocked
+stopped_at: "Phase 44 Plan 44-01 PARCIAL (2/3 tarefas). Tarefas 1 (scope OAuth read write offline_access em MercadoLivreService.php:53) + 2 (SugadoresMlWriteSmoke command + 6/6 testes Phase44 verdes, zero regressao Phase 38) COMMITADAS (e40fce3, 9981f84, eceeb26). Tarefa 3 (smoke real contra Bymobille #298) PENDENTE — operador nao tem acesso a app ECF no DevCenter ML pra ativar permissao Advertising + re-autorizar Bymobille com novo scope. Phase 44 BLOQUEADA: 44-02/03/04 tem depends_on=[44-01] e nao podem comecar sem fixture 5/5 verde + variante POST campaign confirmada (A ou B). Resume signal documentado em .planning/phases/44.../44-01-CHECKPOINT-PENDING.md."
+last_updated: "2026-06-27T02:30:00.000Z"
+last_activity: 2026-06-27 -- Phase 44 Plan 44-01 pausado em checkpoint humano (acesso DevCenter ML)
 progress:
-  total_phases: 38
-  completed_phases: 24
-  total_plans: 76
-  completed_plans: 85
-  percent: 63
+  total_phases: 39
+  completed_phases: 25
+  total_plans: 80
+  completed_plans: 71
+  percent: 64
 ---
 
 # Project State
@@ -21,16 +21,17 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 43 — remoção da adman (sugadores)
+**Current focus:** Phase 44 — mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml
 
 ## Current Position
 
-Phase: 43
-Plan: Not started
-Status: Ready to plan
-Last activity: 2026-06-26 - Phase 44 CONTEXT.md gerado (discuss-phase: política SGI lockada, escopo reduzido pra só "Mover SGI" — "Pausar in-place" virou Phase 44b)
+Phase: 44 (mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml) — BLOCKED no Plan 44-01 Tarefa 3
+Plan: 1 of 4 (parcial — Tarefas 1 e 2 entregues)
+Status: Aguardando operador reconectar Bymobille com novo scope + rodar smoke real
+Last activity: 2026-06-27 -- Plan 44-01 pausado em checkpoint humano (acesso DevCenter ML)
 Blockers:
 
+  - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
   - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local`. NÃO bloqueia Phase 39 (tests Mockery + SQLite em-memory — Plan 39-01 confirmou viabilidade).
 
 ## Performance Metrics
@@ -112,6 +113,7 @@ Blockers:
 
 ### Roadmap Evolution
 
+- 2026-06-27 — **Phase 44 Plan 44-01 PARCIAL — checkpoint humano PENDENTE**. Tarefas 1 (scope OAuth `read write offline_access` em `MercadoLivreService.php:53`) e 2 (`app/Console/Commands/SugadoresMlWriteSmoke.php` + `tests/Feature/Phase44/MlWriteSmokeCommandTest.php` com 6/6 testes verdes via Http::fake) commitadas em sequência TDD: `e40fce3` (T1), `9981f84` (T2-RED — 6 testes falhando), `eceeb26` (T2-GREEN — command implementado, 6/6 testes verdes, suite Phase 38 4/4 mantida — zero regressão). Tarefa 3 (smoke real contra Bymobille #298) NÃO executada: operador respondeu 2026-06-27 "não tenho acesso à app no DevCenter agora — vou dar como pendente". Sem fixture 5/5 verde + variante POST campaign (A ou B) confirmada, plans 44-02 (backend `moverSgi`/`criarSgiEMover`/`desfazerMove`), 44-03 (UI `MoveToSgiModal` + `UndoToast`) e 44-04 (banner re-auth) ficam BLOQUEADOS — `depends_on=[44-01]` em cadeia. Resume marker: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO de destravamento: `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`. Próximo passo quando acesso DevCenter ML voltar: (1) ativar permissão "Advertising" na app ECF, (2) reconectar Bymobille via `/sistema/ml-oauth`, (3) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30`, (4) responder com `approved smoke=5/5 variant={A|B} campaign_id={N}` para liberar Wave 2.
 - 2026-06-26 — **Phase 44 CONTEXT.md lockado via discuss-phase**: escopo reduzido pra APENAS "Mover adgroup pra SGI" (pergunta 3 da discuss). "Pausar in-place" virou **Phase 44b** (deferred no ROADMAP). Decisões locked: combobox com SGIs da conta reusando `QUARANTINE_NAME_REGEX` + botão "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável); aviso não-bloqueante se SGI escolhida está ativa; toast "Desfazer" 10s sem persistência DB (padrão Gmail); confirmação dupla obrigatória. 3 áreas (undo persistente, tratamento erro PATCH, feature flag + OAuth scope) foram para "Claude's Discretion" com defaults documentados. Plan 44-01 obrigatório: smoke do PATCH na API ML antes de qualquer planejamento backend. Context: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
 - 2026-06-26 — **Phase 44 adicionada** ao roadmap: "Mover adgroup-sugador para SGI ou pausar via API ML" — ideia surgida na ideação do quick `260626-qgf` (drilldown de MLBs). Expõe 2 ações destrutivas via API ML Product Ads no `Show.jsx` do sugador: (1) mover adgroup pra campanha SGI (quarentena); (2) pausar adgroup in-place. Seed completo em `.planning/todos/pending/260626-acoes-ml-mover-sgi-pausar-via-api.md` com pré-requisitos a validar antes de planejar (smoke do PATCH na API, escopo OAuth, política SGI) e salvaguardas obrigatórias (confirmação dupla, activity_log, undo, feature flag). Sem urgência operacional — operador hoje resolve via painel ML; ganho é ergonômico. Rodar APÓS Phase 43 (remoção do path Adman) estabilizar. Status: not planned yet.
 - 2026-06-25 — **Phase 40 Plan 40-04 COMPLETO — PHASE 40 INTEIRA FECHADA (4/4 plans)** (v11.0). Wave 3 entregue: 2 comandos Artisan + config + env + scheduler. **`SugadoresShadowMl`** (`app/Console/Commands/SugadoresShadowMl.php`) com signature `sugadores:shadow-ml {--company=ID|all} {--days=1 clamp 1..90}`, constructor injeta `ShadowRunService` via DI, helper privado `resolveCompanies()` aceita 'all' (le `config('sugadores.ml_shadow_companies')`) ou ID numerico isolado, pre-validacao de existencia de TODAS as empresas via `Company::find()` antes de iniciar o shadow (primeira inexistente aborta exit 1 com mensagem pt-BR), loop empresa×dia chama `ShadowRunService::run($company, $refDate)`, contadores `admanOk`/`mlOk`/`falhas` agregam por status, summary final pt-BR. Exit 0 mesmo com falhas individuais. **`SugadoresCompareProviders`** (`app/Console/Commands/SugadoresCompareProviders.php`) com signature `sugadores:compare-providers {--company=ID obrig} {--from=YYYY-MM-DD obrig} {--to=YYYY-MM-DD obrig} {--format=table|json}`, constructor injeta `ProviderComparisonService` via DI, validacoes em cadeia (company/from/to obrigatorios + numerico + format ∈ {table,json} + datas parseaveis via `Carbon::parse` try/catch), render `table` usa `$this->table()` com 7 linhas pt-BR (Coincidencias, Metricas divergentes, Motivos divergentes, Apenas Adman, Apenas ML, Quarentena divergente, TOTAL) + linha final `Paridade de motivos: X,XX% (>=95% APROVADA)` ou `(<95% REPROVADA)`, render `json` usa `json_encode JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE`, exit code derivado de `>= 95.0 ? SUCCESS : FAILURE` (boundary INCLUSIVE — Test 8 valida paridade=95.0 → exit 0). **`config/sugadores.php`** novo arquivo expoe `ml_shadow_companies` como `int[]` a partir da env `SUGADORES_ML_SHADOW_COMPANIES` (pipeline defensivo: `explode → array_map trim → array_filter → array_map intval → array_filter → array_values` garantindo int[] limpo mesmo com lixo na env como `a,,10, 20 ,b` → `[10,20]`). **`.env.example`** ganha bloco SUGADORES_ML_SHADOW_COMPANIES documentado em pt-BR. **Scheduler `sugadores-shadow-ml-daily`** adicionado APENAS no FIM de `routes/console.php` (linhas 155-162) rodando `dailyAt('13:00')` timezone `America/Sao_Paulo` com `onOneServer()` + `withoutOverlapping()` — `git diff routes/console.php` mostra apenas 10 linhas `+` e zero `-` (zero modificacao em entries existentes — gate T-40-04-04 atendido). Comentario pt-BR na entry explica "13h BRT (1h depois do sugadores:analyze das 12h)". **17/17 tests Feature novos verdes** (8 `SugadoresShadowMlCommandTest` + 9 `SugadoresCompareProvidersCommandTest`, 34 assertions, 2.74s) usando RefreshDatabase + Mockery + bind `$this->app->instance(...)` nos services. Cobertura: comando registrado, --company={id|all|invalido|inexistente}, --days N, --format=table|json, --format=invalido, --from=data-invalida, falta --company/--from/--to, paridade 100%/94.99%/95.0 (boundary)/json parseavel. **GATE DE ZERO REGRESSAO ATENDIDO**: suite Phase 40 acumulada **52/52 verdes** (8+9+18+17, 173 assertions, 2.81s); suite Sugador **92/92 verdes** (75 baseline + 17 novos, 509 assertions, 29.07s — zero regressao); suite Phase 39 **48/48 verdes** (208 assertions, 2.45s — refactor analyzer/providers intactos). `php artisan list` confirma 2 comandos novos visiveis junto com 5 existentes do namespace `sugadores:` (analyze, cleanup-quarentena, limpar-orfaos, ml-smoke, sync-adgroup-mlbs). `php artisan schedule:list` confirma entry agendada `0 13 * * *` next due em 19h. `php artisan tinker --execute "config('sugadores.ml_shadow_companies')"` retorna `[]` com env vazia. **REQ-40-04, REQ-40-05, REQ-40-06, REQ-40-07, REQ-40-08 fechados** — **PHASE 40 INTEIRA FECHADA (4/4 plans entregues: 40-01 schema + Models, 40-02 ShadowRunService, 40-03 ProviderComparisonService, 40-04 commands + scheduler)**. ZERO modificacao em ShadowRunService/ProviderComparisonService/SugadorAnalysisService/providers/factory/AnalyzeSugadores/SugadoresMlSmoke/Models/Migration — validado via git diff. 0 deviations auto-fixed (plan executado exatamente como escrito). Commits `44f593c` (test RED 17 tests) + `bd85041` (feat GREEN 5 arquivos novos + 2 modificados). **PHASE 40 PRONTA PARA DEPLOY** — infra de shadow mode completa: 2 tabelas auxiliares, 2 services, 2 comandos CLI, scheduler diario, env+config documentadas. Smoke real contra producao depende apenas do MariaDB local voltar + smoke ML Phase 38-02 destravar (ambos seguem deferidos como quick tasks ja documentadas). **Phase 41 (Onboarding ML — UI admin de shadow runs + tela de aprovacao manual "empresa pronta para primary") DESTRAVADA**; **Phase 42 (cut-over ML) destravada parcialmente** — depende ainda de Phase 41 (UI) + decisao manual com base nos dados medidos pela Phase 40 (paridade real ≥95% por empresa). Proximo: `/gsd:complete-phase 40` ou avancar para Phase 41.
