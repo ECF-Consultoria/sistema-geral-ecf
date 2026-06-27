@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import { useState } from 'react';
 import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -390,15 +390,22 @@ export default function AdminDashboard({
                         comprimento proporcional ao score 0-100. Click leva pra carteira
                         individual. Cores por classificação (excelente/bom/atenção/crítico). */}
                     <div className="card-ecf rounded-2xl p-6">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1 flex items-center gap-1.5">
-                            <Award size={12} /> Desempenho da equipe
-                        </p>
-                        <div className="flex items-baseline gap-2 mb-5">
-                            <p className="text-white font-display font-extrabold text-lg tracking-tight">Score por membro</p>
-                            <span className="text-white/40 text-[11px]">
-                                · {performance_equipe.length} {performance_equipe.length === 1 ? 'pessoa' : 'pessoas'}
-                            </span>
-                        </div>
+                        {/* Cabeçalho clicável — navega para /performance via Inertia Link */}
+                        <Link
+                            href={route('performance.index')}
+                            className="group block mb-5"
+                        >
+                            <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1 flex items-center gap-1.5 group-hover:text-white/70 transition-colors">
+                                <Award size={12} /> Desempenho da equipe
+                            </p>
+                            <div className="flex items-baseline gap-2">
+                                <p className="text-white font-display font-extrabold text-lg tracking-tight group-hover:text-ecf-yellow transition-colors">Score por membro</p>
+                                <span className="text-white/40 text-[11px]">
+                                    · {performance_equipe.length} {performance_equipe.length === 1 ? 'pessoa' : 'pessoas'}
+                                </span>
+                                <ChevronRight size={14} className="text-white/20 group-hover:text-ecf-yellow/60 transition-colors ml-auto self-center" />
+                            </div>
+                        </Link>
                         {performance_equipe.length === 0 ? (
                             <div className="h-[260px] flex items-center justify-center">
                                 <p className="text-white/20 text-sm">Sem dados de score</p>
