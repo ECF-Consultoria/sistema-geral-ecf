@@ -49,8 +49,8 @@ class MercadoLivreService
             'client_id'             => config('services.mercadolivre.client_id'),
             'redirect_uri'          => config('services.mercadolivre.redirect'),
             'state'                 => $state,
-            // read: dados da conta; offline_access: mantém refresh token válido indefinidamente
-            'scope'                 => 'read offline_access',
+            // Phase 44 — read: dados da conta; write: permite PUT/POST em product_ads (mover ad, criar SGI); offline_access: mantém refresh token válido
+            'scope'                 => 'read write offline_access',
             'code_challenge'        => $codeChallenge,
             'code_challenge_method' => 'S256',
         ]);
