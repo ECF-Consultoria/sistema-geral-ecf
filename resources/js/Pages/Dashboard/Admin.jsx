@@ -205,7 +205,7 @@ export default function AdminDashboard({
                 {/* KPIs */}
                 <div className="grid grid-cols-5 gap-3 shrink-0">
                     {[
-                        { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue', sub: 'Carteira ativa Adman' },
+                        { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue', sub: 'Carteira ativa Performance' },
                         { title: 'TACOS Médio', value: formatPercent(s.avg_tacos), icon: BarChart2, color: 'yellow', sub: 'Últimos 30 dias · Adman' },
                         { title: 'NPS Score', value: (s.avg_nps ?? 0).toFixed(2), icon: Star, color: 'green', sub: `Média ${(s.avg_nps ?? 0).toFixed(2)}/5` },
                         { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red', sub: 'Últimos 30 dias · Adman' },
@@ -349,7 +349,7 @@ export default function AdminDashboard({
 
                 {/* KPI Cards — visão geral */}
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <KpiCard title="Empresas" value={s.total_companies} sub="Carteira ativa Adman" icon={Users} color="blue" empty={noData} />
+                    <KpiCard title="Empresas" value={s.total_companies} sub="Carteira ativa Performance" icon={Users} color="blue" empty={noData} />
                     <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} sub="Últimos 30 dias · Adman" icon={BarChart2} color="yellow" empty={noData} />
                     <KpiCard title="NPS Médio" value={(s.avg_nps ?? 0).toFixed(2)} sub={`Média ${(s.avg_nps ?? 0).toFixed(2)}/5`} icon={Star} color="green" empty={noData} />
                     <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} sub="Últimos 30 dias · Adman" icon={TrendingUp} color="red" empty={noData} />
