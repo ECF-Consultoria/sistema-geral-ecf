@@ -114,7 +114,8 @@ Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via *
 - [x] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403. (completed 2026-06-25)
 - [x] **Phase 42: Sugadores via API ML (troca de motor + esconder UI Dev paralela)** - Reorientação 2026-06-26 baseada em briefing do usuário (`fix-melhorias-sugadores-api-mercado-livre.md`). Migração ML deixa de ser feature visual paralela e vira troca silenciosa de motor: API ML alimenta o mesmo contrato normalizado (adgroup_id/campaign_id/investment/revenue/sold_quantity/clicks/impressions/cpc/ctr/acos/roas) que a Adman alimentava, mesmo `SugadorAnalysisService`, mesma tabela `sugadores`, mesma `/sugadores`, mesma `/sugadores/config/{company}`. Janela 30d fechados (ontem-29d → ontem). Sidebar item "Onboarding ML" da Phase 41 escondido (rota permanece como ferramenta técnica admin). Adiciona `cpc_minimo_cliques` em `sugador_configs` (Opção B do briefing §8). Preserva quarentena SGI, idempotência por chave estável e status travados (em_acao/resolvido/ignorado/movido/auto_resolvido). Piloto: ByMobille - Teste (#298). Detalhes locked em `.planning/phases/42-sugadores-api-ml/42-CONTEXT.md`. (completed 2026-06-26)
 - [ ] **Phase 43: Remoção da Adman (Sugadores)** - Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
-- [ ] **Phase 44: Mover adgroup-sugador para SGI ou pausar via API ML** *(adicionada 2026-06-26 a partir do quick `260626-qgf`)* — Expõe 2 ações destrutivas via API ML Product Ads no `Show.jsx` do sugador: mover adgroup pra campanha SGI (quarentena) e pausar adgroup in-place. Elimina os ~5 cliques redundantes no painel ML e dá rastreabilidade no histórico. Depende de Phase 43 estabilizar. Pré-requisitos a validar antes do plan-phase: smoke do `PATCH` na API ML Product Ads, escopo do token OAuth (write), política de campanhas SGI (1 por conta vs N), salvaguardas (confirmação dupla, activity_log, undo 5min, feature flag). Seed completo em `.planning/todos/pending/260626-acoes-ml-mover-sgi-pausar-via-api.md`.
+- [ ] **Phase 44: Mover adgroup-sugador para campanha SGI via API ML** *(adicionada 2026-06-26 a partir do quick `260626-qgf`; escopo reduzido na discuss-phase 2026-06-26 — só "Mover SGI"; "Pausar in-place" virou Phase 44b)* — Expõe ação destrutiva no `Show.jsx`: mover adgroup pra campanha SGI (quarentena pausada). Combobox com SGIs da conta (reusa `QUARANTINE_NAME_REGEX`) + botão "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável). Toast "Desfazer" por 10s sem persistência no DB. Depende de Phase 43 estabilizar. Plan 44-01 obrigatório: smoke do `PATCH` na API ML Product Ads antes de qualquer planejamento backend. Context: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
+- [ ] **Phase 44b (deferred): Pausar adgroup-sugador in-place via API ML** — `PATCH status=paused` sem mudar campanha. Originalmente parte do escopo Phase 44; reduzido na discuss-phase 2026-06-26 ("Mover SGI" é a ação organizacional canônica). Roda depois da Phase 44 estabilizar.
 
 ### Milestone v12.0 — Fontes Unificadas Fase 2 (placeholder)
 
@@ -1006,18 +1007,32 @@ Plans:
 **Plans:** TBD
 **UI hint**: no
 
-### Phase 44: Mover adgroup-sugador para SGI ou pausar via API ML
+### Phase 44: Mover adgroup-sugador para campanha SGI via API ML
 
-**Goal:** Expor 2 ações destrutivas via API ML Product Ads no `Show.jsx` do sugador — mover adgroup pra campanha SGI (quarentena) e pausar adgroup in-place — eliminando os ~5 cliques redundantes no painel do Mercado Ads e dando rastreabilidade ao histórico do sugador.
+**Goal:** Expor 1 ação destrutiva no `Show.jsx` do sugador — mover adgroup-sugador para campanha SGI (quarentena pausada) via `PATCH` na API ML Product Ads. Eliminar os ~5 cliques redundantes no painel do Mercado Ads e dar rastreabilidade no histórico do sugador (`activity_log` + `Sugador.status='movido'`).
 
 **Mode:** standard
 
-**Requirements**: TBD (formalizar pré-requisitos no discuss-phase: smoke do PATCH na API ML, escopo do token OAuth, política de campanhas SGI, salvaguardas — confirmação dupla / activity_log / undo / feature flag)
+**Requirements**: Detalhados em [44-CONTEXT.md](.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md):
+- Combobox com SGIs da conta (reusa `QUARANTINE_NAME_REGEX`) + opção "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável)
+- Modal de confirmação dupla com nome literal do adgroup + nome da SGI destino
+- Toast "Desfazer" por 10s (sem persistência DB)
+- Aviso não-bloqueante se SGI escolhida está ativa
+- Plan 44-01 obrigatório: smoke do PATCH antes de qualquer planejamento
 
 **Depends on:** Phase 43 (path Adman removido — não faz sentido editar adgroup ML enquanto há fallback Adman ativo)
 
-**Origem:** Ideia surgida na ideação do quick `260626-qgf`. Seed completo em `.planning/todos/pending/260626-acoes-ml-mover-sgi-pausar-via-api.md`.
+**Origem:** Ideia surgida na ideação do quick `260626-qgf`. Seed: `.planning/todos/pending/260626-acoes-ml-mover-sgi-pausar-via-api.md`. Context lockado: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
 
-**Plans:** TBD (estimativa 3-5: smoke do PATCH; backend `MercadoLivreAdsService::moveAdgroup`/`pauseAdgroup` + activity_log; UI modal confirmação dupla no `Show.jsx`; undo + feature flag; opcional ações em lote)
+**Plans:** TBD (estimativa 3-4):
+- 44-01: smoke do PATCH na API ML (validação endpoint + token scope + erro por código)
+- 44-02: backend (`MercadoLivreAdsService::moveAdgroupToCampaign` + activity_log + status update)
+- 44-03: UI (modal confirmação + combobox + criar SGI + toast undo no `Show.jsx`)
+- 44-04: feature flag + rollout gradual (admin first)
 
-**UI hint:** sim — modal de confirmação dupla + histórico de ações no `Show.jsx`
+**UI hint:** sim — modal de confirmação dupla com combobox de SGI no `Show.jsx`
+
+**Deferred (originalmente parte da Phase 44, reduzido na discuss):**
+- Pausar adgroup in-place → Phase 44b
+- Ações em lote (selecionar N sugadores no Index) → phase futura
+- Botão "Reverter" permanente (persistir `campaign_id_anterior`) → phase futura
