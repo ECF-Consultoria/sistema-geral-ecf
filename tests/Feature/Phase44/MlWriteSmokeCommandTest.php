@@ -15,7 +15,6 @@ use App\Models\Company;
 use App\Models\MlToken;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -69,65 +68,81 @@ class MlWriteSmokeCommandTest extends TestCase
     }
 
     /**
-     * Http::fake para o happy path completo (Variante A do POST campaign):
+     * Http::fake callback para o happy path completo (Variante A do POST campaign):
      * advertiser → campanhas → ads (1 ad ACTIVE) → POST 201 SGI → PUT 200 mover → PUT 200 reverter.
+     *
+     * Usa callback em vez de padrões estáticos para evitar ambiguidade entre URLs que
+     * compartilham segmentos de path (ex: "advertising/advertisers" está presente tanto
+     * no endpoint de discover quanto no de listAds).
      */
     private function fakeHappyPathVarianteA(int $advertiserId = 71098): void
     {
-        Http::fake([
-            // Etapa 1 — discover advertiser
-            '*/advertising/advertisers*' => Http::response([
-                'advertisers' => [[
-                    'advertiser_id' => $advertiserId,
-                    'site_id'       => 'MLB',
-                    'seller_id'     => '465723451',
-                ]],
-            ], 200),
+        Http::fake(function ($request) use ($advertiserId) {
+            $url    = $request->url();
+            $method = strtoupper($request->method());
 
-            // Etapa 2 — listCampaigns (paginação única)
-            '*/product_ads/campaigns/search*' => Http::response([
-                'results' => [
-                    [
+            // Etapa 1 — discover advertiser: GET /advertising/advertisers?product_id=PADS
+            // URL contém "advertising/advertisers" mas NÃO contém "product_ads"
+            if (str_contains($url, '/advertising/advertisers') && ! str_contains($url, 'product_ads')) {
+                return Http::response([
+                    'advertisers' => [[
+                        'advertiser_id' => $advertiserId,
+                        'site_id'       => 'MLB',
+                        'seller_id'     => '465723451',
+                    ]],
+                ], 200);
+            }
+
+            // Etapa 2a — listCampaigns
+            if (str_contains($url, 'product_ads/campaigns/search')) {
+                return Http::response([
+                    'results' => [[
                         'id'      => 5001,
                         'name'    => 'Campanha Normal',
                         'status'  => 'active',
                         'metrics' => ['cost' => 100.0, 'clicks' => 50],
-                    ],
-                ],
-                'paging' => ['total' => 1],
-            ], 200),
+                    ]],
+                    'paging' => ['total' => 1],
+                ], 200);
+            }
 
-            // Etapa 2 — listAds / product_ads/items (1 ad ACTIVE)
-            '*/product_ads/items*' => Http::response([
-                'results' => [
-                    [
+            // Etapa 2b — listAds: GET /advertising/advertisers/{id}/product_ads/items
+            if (str_contains($url, 'product_ads/items')) {
+                return Http::response([
+                    'results' => [[
                         'item_id'     => 'MLB9999888',
                         'title'       => 'Produto smoke test',
                         'status'      => 'active',
                         'campaign_id' => 5001,
                         'ad_group_id' => 'ADG-TEST-01',
                         'metrics'     => ['cost' => 50.0, 'clicks' => 20],
-                    ],
-                ],
-                'paging' => ['total' => 1],
-            ], 200),
+                    ]],
+                    'paging' => ['total' => 1],
+                ], 200);
+            }
 
-            // Etapa 3 — POST criar SGI (Variante A) → 201 com id=9999
-            '*/marketplace/advertising/*/advertisers/*/product_ads/campaigns*' => Http::response([
-                'id'           => 9999,
-                'name'         => 'SGI-SMOKE-TEST-20260626120000',
-                'status'       => 'paused',
-                'budget'       => 5,
-                'date_created' => '2026-06-26T12:00:00.000Z',
-            ], 201),
+            // Etapa 3 — POST criar SGI (Variante A)
+            if ($method === 'POST' && str_contains($url, 'product_ads/campaigns')) {
+                return Http::response([
+                    'id'           => 9999,
+                    'name'         => 'SGI-SMOKE-TEST-20260626120000',
+                    'status'       => 'paused',
+                    'budget'       => 5,
+                    'date_created' => '2026-06-26T12:00:00.000Z',
+                ], 201);
+            }
 
             // Etapas 4 e 5 — PUT mover + PUT reverter
-            '*/marketplace/advertising/*/product_ads/ads/*' => Http::response([
-                'item_id'     => 'MLB9999888',
-                'campaign_id' => 9999,
-                'status'      => 'active',
-            ], 200),
-        ]);
+            if ($method === 'PUT' && str_contains($url, 'product_ads/ads')) {
+                return Http::response([
+                    'item_id'     => 'MLB9999888',
+                    'campaign_id' => 9999,
+                    'status'      => 'active',
+                ], 200);
+            }
+
+            return Http::response(['error' => 'not_mocked'], 500);
+        });
     }
 
     // ─────────── Test 1: guard scope — token sem 'write' → exit 1 ───────────
@@ -146,7 +161,8 @@ class MlWriteSmokeCommandTest extends TestCase
             ->assertExitCode(1);
 
         // Fixture NÃO deve existir (aborto antes de qualquer chamada HTTP).
-        Storage::disk('local')->assertMissing("sugadores/ml-write-smoke/{$company->id}");
+        $files = Storage::disk('local')->files('sugadores/ml-write-smoke');
+        $this->assertEmpty($files, 'Fixture NÃO deve ser gravada quando scope não tem write');
     }
 
     // ─────────── Test 2: guard mlToken ausente → exit 1 ───────────
@@ -233,49 +249,64 @@ class MlWriteSmokeCommandTest extends TestCase
     {
         $company = $this->seedCompanyComToken();
 
-        Http::fake([
-            '*/advertising/advertisers*' => Http::response([
-                'advertisers' => [[
-                    'advertiser_id' => 71098,
-                    'site_id'       => 'MLB',
-                    'seller_id'     => '465723451',
-                ]],
-            ], 200),
+        Http::fake(function ($request) {
+            $url    = $request->url();
+            $method = strtoupper($request->method());
 
-            '*/product_ads/campaigns/search*' => Http::response([
-                'results' => [['id' => 5001, 'name' => 'Camp B', 'status' => 'active', 'metrics' => []]],
-                'paging'  => ['total' => 1],
-            ], 200),
+            // Etapa 1 — discover advertiser
+            if (str_contains($url, '/advertising/advertisers') && ! str_contains($url, 'product_ads')) {
+                return Http::response([
+                    'advertisers' => [[
+                        'advertiser_id' => 71098,
+                        'site_id'       => 'MLB',
+                        'seller_id'     => '465723451',
+                    ]],
+                ], 200);
+            }
 
-            '*/product_ads/items*' => Http::response([
-                'results' => [[
-                    'item_id'     => 'MLB7777666',
-                    'title'       => 'Produto B',
-                    'status'      => 'active',
-                    'campaign_id' => 5001,
-                ]],
-                'paging' => ['total' => 1],
-            ], 200),
+            // Etapa 2a — listCampaigns
+            if (str_contains($url, 'product_ads/campaigns/search')) {
+                return Http::response([
+                    'results' => [['id' => 5001, 'name' => 'Camp B', 'status' => 'active', 'metrics' => []]],
+                    'paging'  => ['total' => 1],
+                ], 200);
+            }
 
-            // Variante A → 404
-            '*/marketplace/advertising/*/advertisers/*/product_ads/campaigns*' => Http::response(
-                ['message' => 'not_found'], 404
-            ),
+            // Etapa 2b — listAds
+            if (str_contains($url, 'product_ads/items')) {
+                return Http::response([
+                    'results' => [[
+                        'item_id'     => 'MLB7777666',
+                        'title'       => 'Produto B',
+                        'status'      => 'active',
+                        'campaign_id' => 5001,
+                    ]],
+                    'paging' => ['total' => 1],
+                ], 200);
+            }
 
-            // Variante B → 201
-            '*/advertising/product_ads_2/campaigns*' => Http::response([
-                'id'     => 8888,
-                'name'   => 'SGI-SMOKE-TEST-VAR-B',
-                'status' => 'paused',
-                'budget' => 5,
-            ], 201),
+            // Etapa 3 — POST criar SGI Variante A → 404 (triggering fallback)
+            if ($method === 'POST' && str_contains($url, 'marketplace/advertising') && str_contains($url, 'product_ads/campaigns')) {
+                return Http::response(['message' => 'not_found'], 404);
+            }
 
-            // PUTs mover + reverter
-            '*/marketplace/advertising/*/product_ads/ads/*' => Http::response([
-                'item_id'     => 'MLB7777666',
-                'campaign_id' => 8888,
-            ], 200),
-        ]);
+            // Etapa 3 — POST criar SGI Variante B → 201
+            if ($method === 'POST' && str_contains($url, 'product_ads_2/campaigns')) {
+                return Http::response([
+                    'id'     => 8888,
+                    'name'   => 'SGI-SMOKE-TEST-VAR-B',
+                    'status' => 'paused',
+                    'budget' => 5,
+                ], 201);
+            }
+
+            // Etapas 4 e 5 — PUTs mover + reverter
+            if ($method === 'PUT' && str_contains($url, 'product_ads/ads')) {
+                return Http::response(['item_id' => 'MLB7777666', 'campaign_id' => 8888], 200);
+            }
+
+            return Http::response(['error' => 'not_mocked'], 500);
+        });
 
         $this->artisan('sugadores:ml-write-smoke', ['--company' => $company->id])
             ->assertExitCode(0);
@@ -301,41 +332,64 @@ class MlWriteSmokeCommandTest extends TestCase
     {
         $company = $this->seedCompanyComToken();
 
-        Http::fake([
-            '*/advertising/advertisers*' => Http::response([
-                'advertisers' => [[
-                    'advertiser_id' => 71098,
-                    'site_id'       => 'MLB',
-                    'seller_id'     => '465723451',
-                ]],
-            ], 200),
+        // Contador de PUTs para validar que Etapa 5 não foi tentada.
+        $putCount = 0;
 
-            '*/product_ads/campaigns/search*' => Http::response([
-                'results' => [['id' => 5001, 'name' => 'Camp 403', 'status' => 'active', 'metrics' => []]],
-                'paging'  => ['total' => 1],
-            ], 200),
+        Http::fake(function ($request) use (&$putCount) {
+            $url    = $request->url();
+            $method = strtoupper($request->method());
 
-            '*/product_ads/items*' => Http::response([
-                'results' => [[
-                    'item_id'     => 'MLB4440033',
-                    'title'       => 'Produto 403',
-                    'status'      => 'active',
-                    'campaign_id' => 5001,
-                ]],
-                'paging' => ['total' => 1],
-            ], 200),
+            // Etapa 1 — discover advertiser: GET /advertising/advertisers?product_id=PADS
+            // Guarda: NÃO contém 'product_ads' para não confundir com listAds
+            // (.../advertising/advertisers/71098/product_ads/items também contém "/advertising/advertisers")
+            if (str_contains($url, '/advertising/advertisers') && ! str_contains($url, 'product_ads')) {
+                return Http::response([
+                    'advertisers' => [[
+                        'advertiser_id' => 71098,
+                        'site_id'       => 'MLB',
+                        'seller_id'     => '465723451',
+                    ]],
+                ], 200);
+            }
 
-            // POST criar SGI → 201 OK (Etapa 3 ok)
-            '*/marketplace/advertising/*/advertisers/*/product_ads/campaigns*' => Http::response([
-                'id' => 9991, 'name' => 'SGI-SMOKE-403', 'status' => 'paused', 'budget' => 5,
-            ], 201),
+            // Etapa 2a — listCampaigns
+            if (str_contains($url, 'product_ads/campaigns/search')) {
+                return Http::response([
+                    'results' => [['id' => 5001, 'name' => 'Camp 403', 'status' => 'active', 'metrics' => []]],
+                    'paging'  => ['total' => 1],
+                ], 200);
+            }
 
-            // PUT mover → 403 (scope/permissão)
-            '*/marketplace/advertising/*/product_ads/ads/*' => Http::response([
-                'message' => 'forbidden',
-                'error'   => 'Insufficient scope',
-            ], 403),
-        ]);
+            // Etapa 2b — listAds: GET /advertising/advertisers/{id}/product_ads/items
+            if (str_contains($url, 'product_ads/items')) {
+                return Http::response([
+                    'results' => [[
+                        'item_id'     => 'MLB4440033',
+                        'title'       => 'Produto 403',
+                        'status'      => 'active',
+                        'campaign_id' => 5001,
+                    ]],
+                    'paging' => ['total' => 1],
+                ], 200);
+            }
+
+            // Etapa 3 — POST criar SGI (Variante A) → 201
+            if ($method === 'POST' && str_contains($url, 'product_ads/campaigns')) {
+                return Http::response([
+                    'id' => 9991, 'name' => 'SGI-SMOKE-403', 'status' => 'paused', 'budget' => 5,
+                ], 201);
+            }
+
+            // Etapas 4 e 5 — PUT mover/reverter → 403 em AMBOS
+            // (Etapa 5 não deve ser tentada; se for, também retorna 403)
+            if ($method === 'PUT' && str_contains($url, 'product_ads/ads')) {
+                $putCount++;
+                return Http::response(['message' => 'forbidden', 'error' => 'Insufficient scope'], 403);
+            }
+
+            // Fallback inesperado
+            return Http::response(['error' => 'not_mocked'], 500);
+        });
 
         $this->artisan('sugadores:ml-write-smoke', ['--company' => $company->id])
             ->assertExitCode(0);
@@ -347,14 +401,14 @@ class MlWriteSmokeCommandTest extends TestCase
         $this->assertGreaterThanOrEqual(1, $fixture['summary']['endpoints_failed']);
 
         // Blocker deve mencionar PUT 403 ou scope/permissão
-        $blockers       = implode(' ', $fixture['summary']['blockers'] ?? []);
-        $hasBlocker403  = str_contains(strtolower($blockers), '403')
+        $blockers      = implode(' ', $fixture['summary']['blockers'] ?? []);
+        $hasBlocker403 = str_contains(strtolower($blockers), '403')
             || str_contains(strtolower($blockers), 'scope')
             || str_contains(strtolower($blockers), 'permiss');
         $this->assertTrue($hasBlocker403, "Blocker deve mencionar 403 ou scope. Blockers: {$blockers}");
 
-        // Etapa 5 não deve ter sido tentada — PUT só deveria ter sido chamado 1 vez (Etapa 4)
-        Http::assertSentCount(5); // advertiser + campaigns + items + POST SGI + 1x PUT (só Etapa 4)
+        // Etapa 5 não deve ter sido tentada — PUT só deveria ter ocorrido 1 vez (Etapa 4).
+        $this->assertSame(1, $putCount, 'Apenas 1 PUT deve ocorrer — Etapa 5 não deve tentar após 403 na Etapa 4');
     }
 
     // ─────────── Test 6: anti-leak — tokens fake não aparecem em nenhum artefato ───────────
@@ -368,9 +422,6 @@ class MlWriteSmokeCommandTest extends TestCase
     {
         $company = $this->seedCompanyComToken();
         $this->fakeHappyPathVarianteA(71098);
-
-        // Espiona os logs para capturar mensagens escritas durante o comando
-        Log::spy();
 
         $this->artisan('sugadores:ml-write-smoke', ['--company' => $company->id])
             ->assertExitCode(0);
@@ -393,20 +444,11 @@ class MlWriteSmokeCommandTest extends TestCase
             'refresh_token NÃO pode aparecer na fixture JSON (T-44-01-01)'
         );
 
-        // ─── Verificar que Log::warning/error não logaram os tokens (T-44-01-02) ───
-        // Log::spy() captura todas as chamadas; percorre as gravações para checar.
-        $logMessages = [];
-        foreach (['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency'] as $level) {
-            /** @phpstan-ignore-next-line */
-            $calls = Log::getFacadeRoot()->getLogger()->getHandlers();
-            // Abordagem: serializar output do spy via Json e verificar ausência dos tokens.
-            // Log::spy() apenas registra as chamadas — verificar via assertNotLogged não
-            // está disponível em Laravel 12; usamos asserção no conteúdo da fixture (acima)
-            // + garantia estrutural: o command NÃO tem linhas Log::* que passem o token.
-        }
-
-        // Grep no conteúdo da fixture serializado (JSON completo) confirma anti-leak.
-        $decoded = json_decode($fixtureContents, true);
+        // ─── Garantia estrutural anti-leak no JSON completo ───────────────────
+        // A fixture já foi verificada acima via assertStringNotContainsString.
+        // Verificação adicional via round-trip JSON decode/encode para cobrir
+        // valores aninhados que possam ter sido serializados de forma diferente.
+        $decoded    = json_decode($fixtureContents, true);
         $serialized = json_encode($decoded);
 
         $this->assertStringNotContainsString(self::FAKE_ACCESS_TOKEN, $serialized);
