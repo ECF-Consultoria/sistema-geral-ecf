@@ -127,15 +127,12 @@ function Metric({ icon: Icon, label, value, color = 'white' }) {
 export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_update, mlbs = [] }) {
     const [showMoveModal, setShowMoveModal] = useState(false);
 
-    // Quick task 260626-qgf — `mlbs` vem do controller via AdgroupMlbMapRepository,
-    // contendo TODOS os MLBs do adgroup do sugador. Quando vazio (Adman legado,
-    // tipo=campanha, ou analise ML ainda nao rodou pos-deploy), cai no `mlb_id`
-    // singular do proprio sugador. `showList` controla qual UI usar — chips
-    // multiplos (MlbsList) vs. singular (MlbHighlight legacy).
-    const allMlbs = Array.isArray(mlbs) && mlbs.length > 0
-        ? mlbs
-        : (sugador.mlb_id ? [sugador.mlb_id] : []);
-    const showList = allMlbs.length > 1;
+    // Quick task 260626-qgf — `mlbs` vem do controller via AdgroupMlbMapRepository
+    // (todos os MLBs do adgroup do sugador via provider ML). Hoje so' propagado
+    // para o componente MlbsDoAdgroup abaixo (hint pra contagem instantanea sem
+    // esperar o auto-load via API). Header mantem apenas o MlbHighlight singular
+    // do mlb_id principal — chips multiplos foram movidos para a secao
+    // "MLBs neste adgroup" (decisao operador 2026-06-26: evitar duplicar info).
 
     const { data, setData, patch, processing, errors, reset } = useForm({
         status:      sugador.status === 'pendente' ? 'em_acao' : sugador.status,
@@ -235,13 +232,11 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             ganha badge + copiar + link direto; campaign/adgroup escondidos
                             num <details>. */}
                         <div className="mt-3 space-y-2">
-                            {showList ? (
-                                <MlbsList mlbs={allMlbs} />
-                            ) : sugador.mlb_id ? (
+                            {sugador.mlb_id ? (
                                 <MlbHighlight mlbId={sugador.mlb_id} url={url_anuncio} />
                             ) : (
                                 <p className="text-[11px] text-white/40">
-                                    Sugador de adgroup — abra o drilldown abaixo para ver os MLBs.
+                                    Sugador de adgroup — veja todos os MLBs na seção abaixo.
                                 </p>
                             )}
                             <details className="group">
@@ -436,9 +431,16 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                 </div>
             )}
 
-            {/* Drilldown MLBs — via API MCP do Adman (productAds da mesma campanha) */}
+            {/* Drilldown MLBs — auto-load via API MCP do Adman (quick 260626-qgf).
+                `mlbsHint` recebe a lista do controller (provider ML) para mostrar
+                contagem instantanea enquanto o fetch de metricas detalhadas roda. */}
             {sugador.tipo === 'adgroup' && (
-                <MlbsDoAdgroup sugadorId={sugador.id} adgroupName={sugador.adgroup_name} companyId={sugador.company?.id} />
+                <MlbsDoAdgroup
+                    sugadorId={sugador.id}
+                    adgroupName={sugador.adgroup_name}
+                    companyId={sugador.company?.id}
+                    mlbsHint={mlbs}
+                />
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -571,13 +573,13 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
  * O backend marca `matches_adgroup` por heurística de título; mostramos esses
  * em destaque pra ajudar o analista a focar.
  */
-function MlbsDoAdgroup({ sugadorId, adgroupName, companyId }) {
+function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
+    // Quick task 260626-qgf — auto-load ao montar (sem botao "Carregar MLBs") +
+    // 1 unico botao "Copiar todos". `mlbsHint` vem do provider ML (lista bruta
+    // de IDs) e serve como prefill visual de contagem ate o fetch de metricas
+    // detalhadas chegar — evita que o operador veja "0 MLBs" durante o spinner.
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
-    // 'all' | 'provaveis' | null — botão que mostrou o feedback "Copiado!" há <2s.
-    const [copiedTag, setCopiedTag] = useState(null);
-    // Phase 30 Plan 30-04 — Estado do botão "Forçar atualização"
-    const [refreshing, setRefreshing] = useState(false);
-    const [refreshMsg, setRefreshMsg] = useState(null);
+    const [copied, setCopied] = useState(false);
 
     const load = async () => {
         setState(s => ({ ...s, loading: true, error: null }));
@@ -596,54 +598,37 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId }) {
         }
     };
 
-    // Phase 30 Plan 30-04 — Dispara sync sob demanda pra empresa específica.
-    // Job roda em background; analista recarrega o drilldown em ~5min pra ver fresh data.
-    const handleRefresh = async () => {
-        if (!companyId) return;
-        setRefreshing(true);
-        setRefreshMsg(null);
-        try {
-            const res = await fetch(route('sugadores.refresh-adgroup-mlbs'), {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-                },
-                credentials: 'same-origin',
-                body: JSON.stringify({ company_id: companyId }),
-            });
-            const body = await res.json().catch(() => null);
-            if (!res.ok) {
-                throw new Error(body?.message || `HTTP ${res.status}`);
-            }
-            setRefreshMsg({ kind: 'ok', text: body?.message || 'Sincronização iniciada.' });
-        } catch (e) {
-            setRefreshMsg({ kind: 'err', text: e.message || 'Falha ao iniciar sync.' });
-        } finally {
-            setRefreshing(false);
-        }
-    };
+    // Auto-load: dispara assim que o componente monta. Operador nao precisa
+    // mais clicar "Carregar MLBs" — ja sai populado.
+    useEffect(() => {
+        if (sugadorId) load();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sugadorId]);
 
     // Phase 30 Plan 30-04 — backend já retorna apenas MLBs do adgroup (filtro
     // exato por adgroup_name na tabela local). matches_adgroup vem sempre true.
     const allMlbs = state.data?.mlbs ?? [];
     const shown   = allMlbs;
 
-    // Copia lista de MLBs separados por vírgula. tag identifica o botão pra feedback visual.
-    const handleCopy = async (tag, ids) => {
-        if (!ids.length) return;
-        const ok = await copyToClipboard(ids.join(','));
+    // Copia lista de MLBs separados por vírgula.
+    const handleCopy = async () => {
+        if (!allIds.length) return;
+        const ok = await copyToClipboard(allIds.join(','));
         if (ok) {
-            setCopiedTag(tag);
-            setTimeout(() => setCopiedTag(prev => (prev === tag ? null : prev)), 2000);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
         }
     };
 
     // Identificador do MLB no payload do backend (Plan 30-04) é `mlb_id`.
-    const allIds       = allMlbs.map(m => m.mlb_id).filter(Boolean);
-    const provaveisIds = allIds;
-    const hasProvaveis = provaveisIds.length > 0;
+    // Fallback para `mlbsHint` (lista bruta do provider ML via Inertia) enquanto
+    // o auto-load nao chegou — garante "Copiar todos" funcional desde o 1o frame.
+    const allIds = allMlbs.length > 0
+        ? allMlbs.map(m => m.mlb_id).filter(Boolean)
+        : (Array.isArray(mlbsHint) ? mlbsHint.filter(Boolean) : []);
+
+    // Quick task 260626-qgf — `hasProvaveis` removido junto com o botao
+    // "Copiar provaveis" (operador pediu apenas 1 botao "Copiar todos").
 
     // Phase 30 Plan 30-04 — formata "Atualizado em ..." pra UI
     const fmtSyncTime = (iso) => {
@@ -664,53 +649,28 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId }) {
                 <div className="flex items-center gap-2">
                     <Package size={14} className="text-white/40" />
                     <h2 className="text-white font-display font-semibold text-base">MLBs neste adgroup</h2>
-                    {state.loaded && (
-                        <span className="text-white/40 text-xs">· {shown.length}</span>
+                    {/* Contagem instantanea via mlbsHint enquanto o auto-load nao chega. */}
+                    {(state.loaded ? shown.length : allIds.length) > 0 && (
+                        <span className="text-white/40 text-xs">· {state.loaded ? shown.length : allIds.length}</span>
                     )}
                 </div>
 
                 <div className="flex items-center gap-2 flex-wrap">
-                    {/* Botoes de copy — só fazem sentido após a carga dos MLBs. */}
-                    {state.loaded && allIds.length > 0 && (
+                    {/* Quick 260626-qgf — unico botao da secao: copia todos os MLBs
+                        separados por virgula. Visivel desde o 1o render via mlbsHint. */}
+                    {allIds.length > 0 && (
                         <button
                             type="button"
-                            onClick={() => handleCopy('all', allIds)}
+                            onClick={handleCopy}
                             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-xs"
                             title={`Copia ${allIds.length} MLB${allIds.length !== 1 ? 's' : ''} separados por vírgula`}
                         >
-                            {copiedTag === 'all' ? <Check size={12} className="text-emerald-300" /> : <Copy size={12} />}
-                            {copiedTag === 'all' ? 'Copiado!' : `Copiar MLBs (${allIds.length})`}
+                            {copied ? <Check size={12} className="text-emerald-300" /> : <Copy size={12} />}
+                            {copied ? 'Copiado!' : `Copiar todos (${allIds.length})`}
                         </button>
                     )}
-                    {state.loaded && hasProvaveis && (
-                        <button
-                            type="button"
-                            onClick={() => handleCopy('provaveis', provaveisIds)}
-                            className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12] text-xs"
-                            title={`Copia apenas os ${provaveisIds.length} MLB${provaveisIds.length !== 1 ? 's' : ''} prováveis do adgroup`}
-                        >
-                            {copiedTag === 'provaveis' ? <Check size={12} /> : <Copy size={12} />}
-                            {copiedTag === 'provaveis' ? 'Copiado!' : `Copiar prováveis (${provaveisIds.length})`}
-                        </button>
-                    )}
-                    <button
-                        type="button"
-                        onClick={load}
-                        disabled={state.loading}
-                        className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-xs disabled:opacity-50"
-                    >
-                        {state.loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                        {state.loaded ? 'Recarregar' : 'Carregar MLBs'}
-                    </button>
                 </div>
             </div>
-
-            {!state.loaded && !state.loading && (
-                <p className="text-white/40 text-xs leading-relaxed">
-                    Clique em <b className="text-white/70">Carregar MLBs</b> pra ver os anúncios deste adgroup.
-                    Dado lido do banco local (Plan 30-04) — instantâneo. Sincronização automática 1× ao dia às 03h BRT.
-                </p>
-            )}
 
             {state.loading && (
                 <div className="flex items-center gap-2 text-white/50 text-sm py-4">
@@ -739,22 +699,7 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId }) {
                                 )}
                             </p>
                         )}
-                        {refreshMsg && (
-                            <p className={refreshMsg.kind === 'ok' ? 'text-emerald-300 mt-1' : 'text-red-300 mt-1'}>
-                                {refreshMsg.text}
-                            </p>
-                        )}
                     </div>
-                    <button
-                        type="button"
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12] text-[11px] disabled:opacity-50 shrink-0"
-                        title="Dispara sync sob demanda pra esta empresa (Plan 30-04)"
-                    >
-                        {refreshing ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-                        {refreshing ? 'Iniciando...' : 'Forçar atualização'}
-                    </button>
                 </div>
             )}
 
@@ -840,81 +785,6 @@ function MlbRow({ mlb }) {
                 )}
             </div>
         </li>
-    );
-}
-
-// Quick task 260626-qgf — helper para extrair so os digitos do mlb_id e montar a
-// URL canonica do ML (formato MLB-1234567890). Espelha Sugador::urlAnuncioML()
-// no PHP, mantido aqui pra evitar trip extra ao backend so pra resolver URLs.
-const mlbUrl = (mlbId) => {
-    if (!mlbId) return null;
-    const digits = String(mlbId).replace(/\D/g, '');
-    if (!digits) return null;
-    return `https://produto.mercadolivre.com.br/MLB-${digits}`;
-};
-
-/**
- * Quick task 260626-qgf — chips com TODOS os MLBs do adgroup quando o provider
- * ML coletou >1 MLB. Para sugadores legados Adman (sem entry em
- * `adman_adgroup_mlbs`) ou tipo=campanha, o pai cai no MlbHighlight singular
- * abaixo via `showList === false`.
- *
- * Padrao visual replicado do MlbHighlight (mesma paleta amarela, font-mono,
- * Copy/Check/ExternalLink). Botao "Copiar todos" usa copyToClipboard com
- * fallback intranet (mesmo helper que o MlbsDoAdgroup ja usa).
- */
-function MlbsList({ mlbs }) {
-    const [copied, setCopied] = useState(false);
-
-    const handleCopyAll = async () => {
-        const ok = await copyToClipboard(mlbs.join(','));
-        if (ok) {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-        }
-    };
-
-    return (
-        <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-ecf-yellow/70 text-[10px] font-bold uppercase tracking-wider">
-                    {mlbs.length} MLB{mlbs.length !== 1 ? 's' : ''} neste adgroup
-                </span>
-                <button
-                    type="button"
-                    onClick={handleCopyAll}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12] text-[10px] font-semibold uppercase tracking-wider"
-                    title={`Copia ${mlbs.length} MLBs separados por vírgula`}
-                >
-                    {copied ? <Check size={10} /> : <Copy size={10} />}
-                    {copied ? 'Copiado!' : 'Copiar todos'}
-                </button>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-                {mlbs.map((mlbId) => {
-                    const url = mlbUrl(mlbId);
-                    return (
-                        <div
-                            key={mlbId}
-                            className="inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-ecf-yellow/[0.08] border border-ecf-yellow/30"
-                        >
-                            <span className="text-ecf-yellow font-mono font-bold text-[12px] select-all">{mlbId}</span>
-                            {url && (
-                                <a
-                                    href={url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center text-ecf-yellow/60 hover:text-ecf-yellow border-l border-ecf-yellow/20 pl-1.5"
-                                    title="Abrir anúncio no Mercado Livre"
-                                >
-                                    <ExternalLink size={10} />
-                                </a>
-                            )}
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
     );
 }
 
