@@ -128,11 +128,11 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
     const [showMoveModal, setShowMoveModal] = useState(false);
 
     // Quick task 260626-qgf — `mlbs` vem do controller via AdgroupMlbMapRepository
-    // (todos os MLBs do adgroup do sugador via provider ML). Hoje so' propagado
-    // para o componente MlbsDoAdgroup abaixo (hint pra contagem instantanea sem
-    // esperar o auto-load via API). Header mantem apenas o MlbHighlight singular
-    // do mlb_id principal — chips multiplos foram movidos para a secao
-    // "MLBs neste adgroup" (decisao operador 2026-06-26: evitar duplicar info).
+    // (todos os MLBs do adgroup do sugador via provider ML). Propagado para o
+    // componente MlbsDoAdgroup abaixo como fonte canonica de IDs — Adman MCP
+    // enriquece com metricas quando disponivel, mas a lista vive no ML.
+    // Decisao operador 2026-06-26: MLBs aparecem APENAS na secao "MLBs neste
+    // adgroup"; nenhum bloco MLB no header (evita duplicacao visual).
 
     const { data, setData, patch, processing, errors, reset } = useForm({
         status:      sugador.status === 'pendente' ? 'em_acao' : sugador.status,
@@ -231,12 +231,14 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                             dos IDs técnicos quando ficavam todos na mesma linha. Agora MLB
                             ganha badge + copiar + link direto; campaign/adgroup escondidos
                             num <details>. */}
+                        {/* Quick 260626-qgf — MlbHighlight removido do header
+                            (decisao operador 2026-06-26): MLBs vivem na secao
+                            "MLBs neste adgroup" abaixo, sem duplicacao no topo.
+                            Para tipo=campanha o mlb_id ja' era null, sem mudanca. */}
                         <div className="mt-3 space-y-2">
-                            {sugador.mlb_id ? (
-                                <MlbHighlight mlbId={sugador.mlb_id} url={url_anuncio} />
-                            ) : (
+                            {sugador.tipo === 'adgroup' && (
                                 <p className="text-[11px] text-white/40">
-                                    Sugador de adgroup — veja todos os MLBs na seção abaixo.
+                                    Veja todos os MLBs deste adgroup na seção abaixo.
                                 </p>
                             )}
                             <details className="group">
@@ -695,17 +697,21 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
                 </div>
             )}
 
-            {/* Phase 30 Plan 30-04 — Header de freshness + botão "Forçar atualização". */}
-            {state.loaded && companyId && (
+            {/* Quick 260626-qgf — Bloco de freshness so' aparece quando o Adman
+                MCP respondeu OK (state.data presente E syncedAt resolvido).
+                Empresas ML-only caem em 422 — state.data e' null, syncedAt e'
+                null, e a mensagem "Dado defasado" nao tem sentido (info de sync
+                pertence ao Adman, ML traz dado em tempo real direto da API). */}
+            {state.data && syncedAt && companyId && (
                 <div className="flex items-start gap-2 p-2.5 rounded-lg border border-white/[0.06] bg-white/[0.02] mb-3 flex-wrap">
                     <div className="flex-1 min-w-0 text-[11px] leading-relaxed">
                         {state.data?.empty_state === 'never_synced' ? (
                             <p className="text-amber-300">
-                                ⓘ Esta empresa ainda não foi sincronizada. Próximo sync automático: 03h BRT. Ou clique em <b>Forçar atualização</b>.
+                                ⓘ Esta empresa ainda não foi sincronizada (Adman).
                             </p>
                         ) : state.data?.empty_state === 'synced_no_mlbs' ? (
                             <p className="text-white/60">
-                                Nenhum MLB encontrado neste adgroup no período. Talvez o adgroup esteja pausado ou sem anúncios ativos. Última sincronização: <b className="text-white/80">{syncedAt}</b>.
+                                Nenhum MLB encontrado neste adgroup no período (Adman). Última sincronização: <b className="text-white/80">{syncedAt}</b>.
                             </p>
                         ) : (
                             <p className={isFresh ? 'text-emerald-300' : 'text-amber-300'}>
@@ -822,53 +828,6 @@ function MlbRow({ mlb }) {
                 )}
             </div>
         </li>
-    );
-}
-
-/**
- * Bloco do MLB em destaque — badge amarelo + botão copiar + link direto pro ML.
- * Resolve o problema reportado pelo time operacional: antes os IDs (campaign,
- * adgroup, MLB) ficavam todos em texto cinza tamanho 11 na mesma linha, e os
- * analistas não conseguiam distinguir qual era qual para procurar no ML.
- */
-function MlbHighlight({ mlbId, url }) {
-    const [copied, setCopied] = useState(false);
-
-    const handleCopy = async () => {
-        try {
-            await navigator.clipboard.writeText(mlbId);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-        } catch {
-            // navigator.clipboard pode falhar em http (sem TLS) — fallback silencioso
-        }
-    };
-
-    return (
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-ecf-yellow/[0.08] border border-ecf-yellow/30">
-            <span className="text-ecf-yellow/70 text-[10px] font-bold uppercase tracking-wider">MLB</span>
-            <span className="text-ecf-yellow font-mono font-bold text-[13px] select-all">{mlbId}</span>
-            <button
-                type="button"
-                onClick={handleCopy}
-                className="text-ecf-yellow/60 hover:text-ecf-yellow"
-                title="Copiar MLB"
-            >
-                {copied ? <Check size={12} /> : <Copy size={12} />}
-            </button>
-            {url && (
-                <a
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-ecf-yellow/60 hover:text-ecf-yellow text-[11px] border-l border-ecf-yellow/20 pl-2 ml-1"
-                    title="Abrir anúncio no Mercado Livre"
-                >
-                    <ExternalLink size={11} />
-                    Abrir no ML
-                </a>
-            )}
-        </div>
     );
 }
 
