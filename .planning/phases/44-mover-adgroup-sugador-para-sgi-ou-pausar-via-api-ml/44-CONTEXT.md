@@ -1,8 +1,17 @@
 # Phase 44 — Mover adgroup-sugador para SGI via API ML — Context
 
 **Gathered:** 2026-06-26
-**Status:** Ready for research/planning
+**Updated:** 2026-06-26 (pós-research — 3 mudanças críticas marcadas com `[POST-RESEARCH]`)
+**Status:** Ready for planning
 **Escopo revisto na discuss-phase:** Phase 44 foca APENAS em "Mover pra SGI". A ação "Pausar in-place" originalmente proposta no seed virou deferred (Phase 44b/45).
+
+## ⚠ Mudanças críticas descobertas no research (44-RESEARCH.md)
+
+1. **`[POST-RESEARCH]` Não existe endpoint para mover "adgroup" no ML.** A unidade movível é o **ad/item (= MLB)**. `moveAdgroupToCampaign()` é um wrapper sobre **N PUTs** em `PUT /marketplace/advertising/{site_id}/product_ads/ads/{item_id}` (1 por MLB do adgroup) OU 1 PUT coletivo em `PUT .../product_ads/ads` com array. Reusar `AdgroupMlbMapRepository::getMlbsForAdgroup` (já existe — Plan 39-03) pra obter a lista.
+
+2. **`[POST-RESEARCH]` BLOQUEIO OAuth — token atual não tem scope `write`.** `MercadoLivreService.php:53` gera token com `'read offline_access'`. **TODOS os PUT/POST darão 403** sem re-auth. Plan 44-01 começa atualizando o scope na linha 53 + re-autorizando manualmente Bymobille; Plan 44-04 vira responsável pela UX de re-auth global (banner amarelo no `Show.jsx` quando `MlToken.scope` não contém `write`).
+
+3. **`[POST-RESEARCH]` Falha parcial é cenário real.** Se adgroup tem 10 MLBs e 2 falham (ex: 1 em `hold`, 1 com 404), backend trata como **sucesso parcial com warning** — `Sugador.status='movido'` se ≥1 sucesso, activity_log registra counter `(success, failed)`, toast amarelo "Movido 8 de 10". NÃO tentar rollback (pode falhar também e piorar). Decisão tomada em §7.2 do RESEARCH.
 
 <domain>
 ## Domain Boundary
@@ -40,12 +49,18 @@ Eliminar os ~5 cliques redundantes no painel do Mercado Ads e dar rastreabilidad
 3. **Aviso de SGI ativa**: se a campanha escolhida tem `status='active'`, mostra warning não-bloqueante no modal: "⚠ Esta SGI está ATIVA — o adgroup continuará gastando após o move. Pause manualmente no painel ML depois". Operador pode prosseguir conscientemente.
 4. **Confirmação dupla** obrigatória: nome literal do adgroup + nome da SGI destino exibidos no modal; botão "Confirmar mover" vermelho/destacado
 
-### Execução do move
+### Execução do move `[POST-RESEARCH atualizado]`
 
-- Backend: `MercadoLivreAdsService::moveAdgroupToCampaign(int $advertiserId, string $adgroupId, int $newCampaignId)` — chama `PATCH /advertising/.../product_ad_groups/{id}` com `{campaign_id: newCampaignId}` (endpoint exato a confirmar via smoke do plan 44-01)
-- Try/catch em `\Throwable`: se PATCH falhar, **NÃO atualiza** `Sugador.status` (rollback implícito por não persistir)
-- Em caso de sucesso: `Sugador.status = 'movido'`, registra em `activity_log` (Spatie — `log_name='sugadores_acoes'`, descrição em pt-BR: `"moveu adgroup X de campanha Y para SGI Z"`)
-- Refresh da página via Inertia reload para refletir novo status
+- Backend: `MercadoLivreAdsService::moveAdgroupToCampaign(Company $company, string $adgroupId, int $newCampaignId): array` — internamente:
+  1. Resolve `item_ids` (MLBs) do adgroup via `AdgroupMlbMapRepository::getMlbsForAdgroup($company->id, $adgroupId)`
+  2. Para cada `item_id`, chama `PUT /marketplace/advertising/{site_id}/product_ads/ads/{item_id}?channel=marketplace` com body `{campaign_id: newCampaignId}` (header `api-version: 2` — confirmar variante no smoke)
+  3. **Alternativa preferida (se confirmar no smoke):** 1 PUT coletivo `PUT .../product_ads/ads` com body `{ads: [...], campaign_id: ...}` — menos chamadas, mais atômico
+  4. Retorna `['success' => int, 'failed' => int, 'failures' => [...]]` — sem throw em falha parcial
+- Try/catch em `\Throwable` no controller: erro de rede/exception não-HTTP marca `Sugador.status` intacto + toast vermelho
+- **Falha parcial:** `Sugador.status = 'movido'` se `success >= 1`; activity_log obrigatório (`log_name='sugadores_acoes'`, verbo `moveu_para_sgi`, properties `{success, failed, sgi_id, sgi_nome, campaign_id_original}`)
+- **Sucesso total:** toast verde + Desfazer 10s
+- **Sucesso parcial:** toast amarelo "Movido N de M anúncios. K falharam — ver detalhes no painel ML"
+- Refresh da página via Inertia reload (sem `router.reload({only: [...]})` por enquanto — simples)
 
 ### Undo
 
@@ -59,14 +74,21 @@ Eliminar os ~5 cliques redundantes no painel do Mercado Ads e dar rastreabilidad
 - `Sugador.status` muda de `pendente`/`em_acao` para `'movido'` (já existe no enum — sem migration necessária)
 - A próxima re-análise NÃO vai re-detectar o adgroup como sugador porque a SGI está em `QUARANTINE_NAME_REGEX` (filtro `shouldSkipCampaign` já pula adgroups em quarentena — comportamento existente)
 
-### Claude's Discretion
+### Claude's Discretion + Decisões `[POST-RESEARCH]`
 
-Áreas não discutidas na discuss-phase — Claude resolve no plan/research:
-
-- **Feature flag inicial**: usar config `features.sugadores_mover_sgi: bool` (default false em prod no primeiro deploy, switchable via env ou painel `/dev/desenvolvimento`). Habilitar pra `role:admin` primeiro, depois ampliar conforme estabilidade
-- **Escopo do token OAuth**: validar no plan 44-01 (smoke) se o token atual aceita PATCH em adgroup. Se exigir re-auth com novo scope, plan 44-04 trata da UX (banner "Conceda permissão de escrita em /sistema/ml-oauth")
-- **Tratamento de erro PATCH**: 401 → tentar refresh do token + 1 retry; 403 → erro "Token sem permissão de escrita" (action item: re-auth); 404 → erro "Adgroup não existe mais no ML" (atualizar `Sugador.status='resolvido'` com motivo `auto_removido_externamente`); 5xx → backoff curto + 2 retries; timeout (>30s) → aborta com toast vermelho
-- **Confirmação visual de sucesso**: trust HTTP 200 do PATCH (não polling). Se ML refletir o move com delay (~2-5min na UI deles), tudo bem — nosso registro é autoritativo via activity_log
+- **Feature flag inicial**: config `features.sugadores_mover_sgi: bool` (default false). Habilitar pra `role:admin` primeiro, depois ampliar. Frontend lê via prop Inertia
+- **`[POST-RESEARCH]` Escopo OAhttps://** atualizar `MercadoLivreService.php:53` para `'read write offline_access'` no Plan 44-01 Tarefa 2 (code change + re-auth manual Bymobille); Plan 44-04 vira responsável pelo banner amarelo "Reconectar com permissão" em `Show.jsx` quando `MlToken.scope` da empresa não contém `write`
+- **`[POST-RESEARCH]` Tratamento de erro por código HTTP** — mapeamento detalhado em RESEARCH.md §3. Resumo:
+  - 401 → refresh token (já via `callWithBackoff`) + 1 retry transparente; se persistir, toast "Reconectar conta ML"
+  - 403 → NÃO retentar; toast "Token sem permissão de escrita" + botão Reconectar
+  - 404 em PUT → `Sugador.status='auto_resolvido'` motivo `auto_removido_externamente`; toast neutro
+  - 409 → tratar como sucesso silencioso (idempotência defensiva)
+  - 422 → toast vermelho com `message` do ML (ad em `hold`? campaign_id mal formatado?)
+  - 5xx → `callWithBackoff` faz exponencial (max 5); estourou, toast vermelho
+  - Timeout 30s → adicionar `Http::timeout(30)` no service; abort com toast
+- **`[POST-RESEARCH]` Confirmação visual:** trust HTTP 2xx; sem polling. Cache local (combobox SGI no modal) atualizado via `router.reload({only: ['campanhas_sgi']})` após criar nova SGI
+- **`[POST-RESEARCH]` Guard sugador Adman**: `moveAdgroupToCampaign` valida `Sugador::isOrigemMl()` antes de prosseguir; sugadores Adman antigos (raw_data ausente) abortam com 422 "Ação disponível apenas para sugadores Mercado Livre"
+- **`[POST-RESEARCH]` Pegadinha api-version**: smoke 44-01 deve testar `api-version: 2` (minúsculo, valor 2) vs `Api-Version: 1` (atual nos GETs). Documentar qual funcionou
 - **i18n**: tudo pt-BR (decisão de projeto `feedback_gsd_language_pt_br.md`)
 - **Acessibilidade**: modal foca no input do combobox; ESC fecha; Enter confirma só quando combobox preenchido + checkbox de confirmação marcado
 
@@ -101,6 +123,8 @@ O seed `260626-acoes-ml-mover-sgi-pausar-via-api.md` propunha 2 ações (mover S
 <canonical_refs>
 ## Canonical References
 
+- **`44-RESEARCH.md`** — `[POST-RESEARCH]` documenta endpoints, scopes, mapeamento de erro, pegadinhas, recomendação de estrutura dos 4 plans. **Planner MUST ler.**
+- **`44-UI-SPEC.md`** — design contract para o modal (combobox + criar SGI + double-confirm) e toast Desfazer. Decisão central: EVOLUIR `MoveToSgiModal` existente, não substituir
 - `.planning/ROADMAP.md` — Phase 44 entry (linhas ~117 + ~1008)
 - `.planning/todos/pending/260626-acoes-ml-mover-sgi-pausar-via-api.md` — seed original (Tasks 4-7 do quick `260626-qgf`)
 - `.planning/quick/260626-qgf-exibir-todos-mlbs-do-adgroup-sugador-no-/260626-qgf-SUMMARY.md` — contexto da migração ML que precedeu esta phase
@@ -124,15 +148,18 @@ O seed `260626-acoes-ml-mover-sgi-pausar-via-api.md` propunha 2 ações (mover S
 </deferred>
 
 <scope_warnings>
-## Scope Warnings (pré-requisitos validação)
+## Scope Warnings (pré-requisitos validação) `[POST-RESEARCH atualizado]`
 
-Antes de planejar (`/gsd-plan-phase 44`), o **plan 44-01 deve fazer smoke do PATCH na API ML** pra validar:
+O research fechou parcialmente a incerteza original. **Plan 44-01 continua obrigatório como smoke**, mas com escopo concreto vindo do RESEARCH:
 
-1. Endpoint exato e schema do payload do `PATCH` em adgroup (mudar campaign_id)
-2. Endpoint pra criar campanha SGI (`POST /advertising/.../campaigns` com `status=paused`?)
-3. Resposta do ML em 401/403/404/5xx (definir comportamento por código)
-4. Token OAuth atual aceita PATCH ou exige scope adicional (`advertising:write` ou similar)
+1. **OAuth scope (BLOQUEIO)** — atualizar `MercadoLivreService.php:53` de `'read offline_access'` → `'read write offline_access'`; re-autorizar Bymobille manualmente; verificar `MlToken.scope` contém `write`. Sem isso, todos os PUTs darão 403 e o smoke trava
+2. **Endpoint PUT em ad** — confirmar `PUT /marketplace/advertising/{site_id}/product_ads/ads/{item_id}?channel=marketplace` com body `{campaign_id: N}` retorna 2xx; testar header `api-version: 2` vs `Api-Version: 1`
+3. **Endpoint POST campanha** — confirmar Variante A (`/marketplace/.../advertisers/{aid}/product_ads/campaigns`) com `status: paused` direto na criação; se 404, testar Variante B (`/product_ads_2/campaigns`)
+4. **Endpoint coletivo (PUT array)** — opcional: confirmar `PUT .../product_ads/ads` com array de `ads` aceita; se sim, backend usa esse em vez de N PUTs (mais simples)
+5. **Permissão funcional "Advertising" na app no DevCenter ML** — verificar manualmente no painel `developers.mercadolivre.com.br`; se ausente, 403 persiste mesmo com scope=write
 
-**Se o smoke falhar** em qualquer um desses pontos, replanejar a Phase 44 conforme limitações reais. Não planejar tudo no escuro.
+**Plan 44-01 ENTREGA:** comando Artisan `sugadores:ml-write-smoke --company={id}` que executa GET advertiser → POST criar SGI teste → PUT mover ad teste pra SGI → PUT reverter; grava fixture JSON em `storage/app/sugadores/ml-write-smoke/{company_id}-{ts}.json` com headers usados, status codes, payloads, advertiser_id.
+
+**Critério de aprovação plan 44-01:** fixture mostra 5/5 passos verdes. Se falhar, replanejar 44-02/03/04 conforme limitação real (não codar sobre suposição).
 
 </scope_warnings>
