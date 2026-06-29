@@ -6,7 +6,7 @@ import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
-import { Link, router, useForm } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Target, AlertTriangle,
@@ -415,21 +415,24 @@ function ChartTooltip({ active, payload, label }) {
 export default function PortfolioShow({
     portfolio_user,
     companies,
-    portfolio_goals,
     goals,
     summary,
     period,
     available_periods,
     has_metric_data = true,
-    portfolio_goal_metrics,
     alertas = { grants_expirando_30d: [], empresas_em_queda: [], empresas_sem_ad_spend: [], top_3_revenue: [] },
     revenue_timeseries = [],
-    meta_carteira = { target_value: null, realized_value: 0, achieved_pct: null, restante: null, has_goal: false },
+    // meta_carteira removida (Plan 48-01) — usar meta_carteira_calculada baseada em Goals individuais
+    meta_carteira_calculada = { target_value: null, realized_value: 0, achieved_pct: null, restante: null, has_goal: false },
     periodo_amostra = { from_label: '—', to_label: '—', mes_label: '—', is_mes_atual: true },
     prioridade_do_dia = 0,
     prioridade_lista = [],
     performance_profissional = null,
     comparacao_contextual = null,
+    // Props diferenciados por cargo (Plan 48-01)
+    cargo_slug = null,
+    sugador_counters = null,
+    ppa_counters = null,
 }) {
     const isAdmin = portfolio_user.role === 'admin'
         || (typeof window !== 'undefined' && window.location.pathname.includes('/admin/'));
@@ -439,48 +442,6 @@ export default function PortfolioShow({
     const [sortCol, setSortCol] = useState('revenue');
     const [sortDir, setSortDir] = useState('desc');
     const [prioridadeOpen, setPrioridadeOpen] = useState(false);
-
-    // ── Forms admin (criar/editar/remover meta carteira) ──
-    const [goalOpen, setGoalOpen] = useState(false);
-    const [editGoalOpen, setEditGoalOpen] = useState(false);
-    const [editingGoal, setEditingGoal] = useState(null);
-
-    const goalForm = useForm({
-        role: portfolio_user.role !== 'admin' ? portfolio_user.role : 'consultor',
-        metric: 'revenue', target_value: '', value_type: 'currency',
-        aggregation: 'sum', period_type: 'monthly', description: '',
-    });
-    const editGoalForm = useForm({
-        target_value: '', value_type: 'currency',
-        aggregation: 'sum', period_type: 'monthly', description: '',
-    });
-
-    const submitGoal = (e) => {
-        e.preventDefault();
-        goalForm.post(route('portfolio.goals.store', portfolio_user.id), {
-            onSuccess: () => { goalForm.reset(); setGoalOpen(false); },
-        });
-    };
-    const openEditGoal = (g) => {
-        setEditingGoal(g);
-        editGoalForm.setData({
-            target_value: g.target_value, value_type: g.value_type,
-            aggregation: g.aggregation, period_type: g.period_type,
-            description: g.description || '',
-        });
-        setEditGoalOpen(true);
-    };
-    const submitEditGoal = (e) => {
-        e.preventDefault();
-        editGoalForm.put(route('portfolio.goals.update', editingGoal.id), {
-            onSuccess: () => setEditGoalOpen(false),
-        });
-    };
-    const removeGoal = (id) => {
-        if (confirm('Remover esta meta de carteira?')) {
-            router.delete(route('portfolio.goals.destroy', id));
-        }
-    };
 
     // ── Período ──
     const applyPeriod = (p) => {
