@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\AdmanMetric;
 use App\Models\Goal;
 use App\Models\GoalResult;
+use App\Models\NpsSurvey;
+use App\Models\Ppa;
 use App\Models\PortfolioGoal;
+use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\PortfolioScoreService;
@@ -810,6 +813,33 @@ class PortfolioController extends Controller
             }
         }
 
+        // ── Phase 48 — Historico NPS mensal do profissional ──
+        // Agrupa surveys completadas por month_reference, calculando a media do
+        // score do profissional (score_estrategista ou score_analista conforme cargo).
+        // Mesmo criterio de campo ja usado no PortfolioScoreService linha 258.
+        $npsScoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
+        $npsHistory = NpsSurvey::with('response')
+            ->whereIn('company_id', $companyIdsAll)
+            ->where('status', 'completed')
+            ->whereNotNull('completed_at')
+            ->orderBy('month_reference')
+            ->get()
+            ->groupBy(fn ($s) => $s->month_reference?->format('Y-m') ?? $s->completed_at?->format('Y-m'))
+            ->map(function ($rows, $month) use ($npsScoreField) {
+                $scores = $rows
+                    ->map(fn ($s) => $s->response?->$npsScoreField)
+                    ->filter(fn ($v) => $v !== null)
+                    ->values();
+                return [
+                    'month'       => $month,
+                    'avg'         => $scores->isNotEmpty() ? round($scores->avg(), 2) : null,
+                    'count'       => $scores->count(),
+                    'ultima_nota' => $scores->isNotEmpty() ? (int) $scores->last() : null,
+                ];
+            })
+            ->values()
+            ->all();
+
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
@@ -837,6 +867,8 @@ class PortfolioController extends Controller
             // Quick 260623 redesign performance — substitui comparacao_equipe antigo.
             'performance_profissional' => $performanceProfissional,
             'comparacao_contextual'    => $comparacaoContextual,
+            // Phase 48 — props diferenciais por cargo.
+            'nps_history'             => $npsHistory,
         ]);
     }
 
