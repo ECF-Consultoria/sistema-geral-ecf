@@ -761,8 +761,85 @@ export default function PortfolioShow({
                                 </div>
                             </div>
 
-                            {/* Tabela compacta — sem Status/Acao; grant vencido como badge inline na coluna Empresa */}
-                            <div className="overflow-x-auto -mx-1">
+                            {/* ── Cards mobile (< md) — empilhados, sem overflow horizontal ──────── */}
+                            <div className="md:hidden space-y-2">
+                                {empresasView.length === 0 && (
+                                    <p className="text-center text-white/40 py-8">
+                                        Nenhuma empresa encontrada com os filtros.
+                                    </p>
+                                )}
+                                {empresasView.map(c => {
+                                    const grantInativo = c.grant_status !== 'active';
+                                    const grantVencendo = c.grant_status === 'active'
+                                        && c.grant_days_remaining !== null
+                                        && c.grant_days_remaining !== undefined
+                                        && c.grant_days_remaining <= 15;
+                                    return (
+                                        <div
+                                            key={`m-${c.id}`}
+                                            className="p-3 border border-white/[0.06] rounded-lg bg-white/[0.01]"
+                                        >
+                                            {/* Linha 1: nome + status + crescimento */}
+                                            <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                                                <Link
+                                                    href={route('companies.show', c.id)}
+                                                    className="text-white/90 hover:text-ecf-yellow text-[13px] font-medium flex-1 min-w-0 truncate"
+                                                >
+                                                    {c.name}
+                                                </Link>
+                                                {c.status && (
+                                                    <span className={cn(
+                                                        'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0',
+                                                        STATUS_CLS[c.status] ?? 'bg-white/10 text-white/60 border-white/20'
+                                                    )}>
+                                                        {STATUS_LABEL[c.status] ?? c.status}
+                                                    </span>
+                                                )}
+                                                <div className="shrink-0">
+                                                    <SparklineCrescimento queda_mom_pct={c.queda_mom_pct} />
+                                                </div>
+                                                {grantInativo && (
+                                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-red-500/15 text-red-300 border-red-500/25 shrink-0">
+                                                        <AlertTriangle size={9} /> Grant vencido
+                                                    </span>
+                                                )}
+                                                {!grantInativo && grantVencendo && (
+                                                    <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded border bg-amber-500/15 text-amber-300 border-amber-500/25 shrink-0">
+                                                        <AlertTriangle size={9} /> Grant {c.grant_days_remaining}d
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Linha 2: faturamento + meta */}
+                                            <div className="flex items-center gap-3 text-[12px] mb-1">
+                                                <span className="text-white/90 font-semibold tabular-nums">
+                                                    {c.revenue !== null ? formatCurrencyCompact(c.revenue) : '—'}
+                                                </span>
+                                                {c.meta_achieved_pct !== null && (
+                                                    <span className="text-white/50 tabular-nums">
+                                                        Meta {c.meta_achieved_pct.toFixed(0)}%
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Linha 3: margem + ads */}
+                                            <div className="flex items-center gap-3 text-[11px] text-white/50 tabular-nums mb-1">
+                                                {c.contribution_margin_pct !== null && c.contribution_margin_pct !== undefined && (
+                                                    <span>Margem {formatPercent(c.contribution_margin_pct)}</span>
+                                                )}
+                                                <span>Ads {(c.ad_spend ?? 0) > 0 ? formatCurrencyCompact(c.ad_spend) : 'R$ 0,00'}</span>
+                                            </div>
+                                            {/* Linha 4: ação recomendada (texto completo) */}
+                                            {c.acao_recomendada && (
+                                                <p className="text-[11px] text-white/50 leading-snug mt-1">
+                                                    {c.acao_recomendada}
+                                                </p>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {/* ── Tabela desktop (≥ md) — 8 colunas com Status + Ação + Crescimento ── */}
+                            <div className="hidden md:block overflow-x-auto -mx-1">
                                 <table className="w-full text-[13px]">
                                     <thead>
                                         <tr className="text-white/50 text-[11px] uppercase tracking-wide">
