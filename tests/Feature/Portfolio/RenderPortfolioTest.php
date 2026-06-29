@@ -6,11 +6,9 @@ use App\Models\Company;
 use App\Models\Goal;
 use App\Models\NpsSurvey;
 use App\Models\NpsResponse;
-use App\Models\Ppa;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\PortfolioScoreService;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -22,13 +20,16 @@ use Tests\TestCase;
  * Verifica:
  *  1. 'meta_carteira' ausente do payload (removida em Phase 48).
  *  2. 'meta_carteira_calculada' presente com has_goal=false quando sem Goals.
- *  3. achieved_pct correto quando Goals de revenue existem.
+ *  3. has_goal=true e target_value correto com Goals de revenue.
  *  4. sugador_counters preenchido para analista; ppa_counters null.
  *  5. ppa_counters preenchido para estrategista; sugador_counters null.
- *  6. nps_history presente como array (pode ser vazio).
+ *  6. nps_history presente como array com estrutura correta.
  *  7. PortfolioScoreService::compute() nunca retorna metaOrigem='portfolio'.
  *
  * Banco de dados: SQLite in-memory (phpunit.xml).
+ * Nota: SQLite nao executa ALTER ENUM das migrations posteriores, entao
+ * status de sugadores aceita apenas os valores originais do create_table.
+ * Para goals.metric='revenue', desabilitamos CHECK via PRAGMA.
  */
 class RenderPortfolioTest extends TestCase
 {
@@ -36,7 +37,7 @@ class RenderPortfolioTest extends TestCase
 
     // ─── Fixtures ───────────────────────────────────────────────────────────
 
-    /** Cria empresa ativa com adman_account_id e associa ao user via company_users. */
+    /** Cria empresa ativa e associa ao user via company_users. */
     private function criarEmpresaParaUser(User $user, string $role = 'consultor'): Company
     {
         $empresa = Company::create([
@@ -60,9 +61,8 @@ class RenderPortfolioTest extends TestCase
 
     /**
      * Cria setor + cargo com o slug informado e associa ao user via user_setores.
-     * Retorna o cargo_id criado.
      */
-    private function associarCargoAoUser(User $user, string $cargoSlug): int
+    private function associarCargoAoUser(User $user, string $cargoSlug): void
     {
         $setorId = DB::table('setores')->insertGetId([
             'nome'       => 'Setor ' . $cargoSlug . ' ' . uniqid(),
@@ -92,11 +92,9 @@ class RenderPortfolioTest extends TestCase
             'created_at'  => now(),
             'updated_at'  => now(),
         ]);
-
-        return $cargoId;
     }
 
-    /** Cria user analista (role='consultor' no sistema, cargo='analista' em user_setores). */
+    /** Cria user analista (role='consultor', cargo='analista' em user_setores). */
     private function criarAnalista(): User
     {
         $user = User::factory()->create([
@@ -107,7 +105,7 @@ class RenderPortfolioTest extends TestCase
         return $user;
     }
 
-    /** Cria user estrategista (role='mentor' no sistema, cargo='estrategista' em user_setores). */
+    /** Cria user estrategista (role='mentor', cargo='estrategista' em user_setores). */
     private function criarEstrategista(): User
     {
         $user = User::factory()->create([
@@ -116,6 +114,51 @@ class RenderPortfolioTest extends TestCase
         ]);
         $this->associarCargoAoUser($user, 'estrategista');
         return $user;
+    }
+
+    /**
+     * Insere Goal com metric='revenue' contornando o CHECK constraint do SQLite
+     * (o ALTER ENUM que adiciona 'revenue' a lista so executa em MySQL).
+     * Usa PRAGMA ignore_check_constraints=ON temporariamente.
+     */
+    private function criarGoalRevenue(int $companyId, float $target): void
+    {
+        DB::unprepared('PRAGMA ignore_check_constraints=ON');
+        DB::table('goals')->insert([
+            'company_id'  => $companyId,
+            'metric'      => 'revenue',
+            'target_value'=> $target,
+            'value_type'  => 'currency',
+            'period_type' => 'monthly',
+            'active'      => 1,
+            'created_at'  => now(),
+            'updated_at'  => now(),
+        ]);
+        DB::unprepared('PRAGMA ignore_check_constraints=OFF');
+    }
+
+    /**
+     * Insere Sugador com os campos obrigatorios. Em SQLite, so os status
+     * do create_table original sao aceitos pelo CHECK: pendente, em_acao,
+     * resolvido, ignorado.
+     */
+    private function criarSugador(int $companyId, string $status): void
+    {
+        DB::table('sugadores')->insert([
+            'company_id'         => $companyId,
+            'reference_date'     => now()->toDateString(),
+            'tipo'               => Sugador::TIPO_CAMPANHA,
+            'campaign_id'        => 'CAM-' . uniqid(),
+            'campaign_name'      => 'Campanha Teste',
+            'periodo_inicio'     => now()->subDays(30)->toDateString(),
+            'periodo_fim'        => now()->toDateString(),
+            'investimento_periodo'=> 0,
+            'faturamento_periodo' => 0,
+            'motivos'            => json_encode(['tacos_alto']),
+            'status'             => $status,
+            'created_at'         => now(),
+            'updated_at'         => now(),
+        ]);
     }
 
     // ─── Testes ─────────────────────────────────────────────────────────────
@@ -128,18 +171,17 @@ class RenderPortfolioTest extends TestCase
     {
         $user = $this->criarAnalista();
 
-        $this->actingAs($user)
-            ->get(route('portfolio.own'))
-            ->assertOk()
-            ->assertInertia(fn (Assert $page) => $page
-                ->component('Portfolio/Show')
-                ->where('meta_carteira', null) // deve ser null/ausente
-            );
-
-        // Confirmacao adicional via JSON: a chave 'meta_carteira' nao deve existir
         $response = $this->actingAs($user)->get(route('portfolio.own'));
-        $props    = $response->viewData('page')['props'] ?? [];
-        $this->assertArrayNotHasKey('meta_carteira', $props, "Prop 'meta_carteira' nao deve existir no payload (removida em Phase 48)");
+        $response->assertOk();
+
+        // Extrai props do Inertia via dados da view (page.props)
+        $props = $response->viewData('page')['props'] ?? [];
+
+        $this->assertArrayNotHasKey(
+            'meta_carteira',
+            $props,
+            "Prop 'meta_carteira' nao deve existir no payload (removida em Phase 48)"
+        );
     }
 
     /**
@@ -163,24 +205,15 @@ class RenderPortfolioTest extends TestCase
     }
 
     /**
-     * Teste 3 — achieved_pct correto quando Goals de revenue existem.
-     * Com target=R$100.000 e realizado=0 (sem AdmanMetric), achieved_pct deve
-     * ser 0 (ou null se nao ha revenue registrado), mas has_goal=true.
+     * Teste 3 — has_goal=true e target_value correto com Goals de revenue.
+     * Usa PRAGMA para bypassar o CHECK constraint do SQLite.
      */
     public function test_meta_carteira_calculada_has_goal_true_com_goals(): void
     {
         $user    = $this->criarAnalista();
         $empresa = $this->criarEmpresaParaUser($user, 'consultor');
 
-        // Cria Goal de revenue ativo
-        Goal::create([
-            'company_id'  => $empresa->id,
-            'metric'      => 'revenue',
-            'target_value'=> 100000.00,
-            'value_type'  => 'currency',
-            'period_type' => 'monthly',
-            'active'      => true,
-        ]);
+        $this->criarGoalRevenue($empresa->id, 100000.00);
 
         $this->actingAs($user)
             ->get(route('portfolio.own'))
@@ -189,31 +222,24 @@ class RenderPortfolioTest extends TestCase
                 ->component('Portfolio/Show')
                 ->has('meta_carteira_calculada')
                 ->where('meta_carteira_calculada.has_goal', true)
-                ->where('meta_carteira_calculada.target_value', 100000.0)
+                ->where('meta_carteira_calculada.target_value', fn ($v) => (float) $v === 100000.0)
             );
     }
 
     /**
      * Teste 4 — sugador_counters nao null para analista; ppa_counters null.
-     * Cria sugadores com diferentes status e verifica contagem.
+     * Status validos no SQLite: pendente, em_acao, resolvido, ignorado.
      */
     public function test_sugador_counters_para_analista(): void
     {
         $user    = $this->criarAnalista();
         $empresa = $this->criarEmpresaParaUser($user, 'consultor');
 
-        // Cria sugadores: 2 pendentes, 1 resolvido, 1 ignorado
-        foreach (['pendente', 'pendente', 'resolvido', 'ignorado'] as $status) {
-            DB::table('sugadores')->insert([
-                'company_id'   => $empresa->id,
-                'tipo'         => Sugador::TIPO_CAMPANHA,
-                'campaign_id'  => 'CAM-' . uniqid(),
-                'campaign_name'=> 'Campanha Teste',
-                'status'       => $status,
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ]);
-        }
+        // 2 pendentes, 1 resolvido, 1 ignorado
+        $this->criarSugador($empresa->id, 'pendente');
+        $this->criarSugador($empresa->id, 'pendente');
+        $this->criarSugador($empresa->id, 'resolvido');
+        $this->criarSugador($empresa->id, 'ignorado');
 
         $this->actingAs($user)
             ->get(route('portfolio.own'))
@@ -230,7 +256,7 @@ class RenderPortfolioTest extends TestCase
 
     /**
      * Teste 5 — ppa_counters nao null para estrategista; sugador_counters null.
-     * Cria PPAs com diferentes estados e verifica contagem.
+     * Status validos no SQLite: draft, sent, completed (CREATE TABLE original).
      */
     public function test_ppa_counters_para_estrategista(): void
     {
@@ -247,12 +273,12 @@ class RenderPortfolioTest extends TestCase
             'created_at'  => now(),
             'updated_at'  => now(),
         ]);
-        // PPA em andamento
+        // PPA em andamento (status 'draft' = nao concluido)
         DB::table('ppas')->insert([
             'company_id'  => $empresa->id,
             'mentor_id'   => $user->id,
             'title'       => 'PPA Em Andamento',
-            'status'      => 'in_progress',
+            'status'      => 'draft',
             'completed_at'=> null,
             'created_at'  => now(),
             'updated_at'  => now(),
@@ -272,15 +298,15 @@ class RenderPortfolioTest extends TestCase
     }
 
     /**
-     * Teste 6 — nps_history presente como array (pode ser vazio).
-     * Cria survey completada e verifica estrutura [{month, avg, count, ultima_nota}].
+     * Teste 6 — nps_history presente como array com estrutura {month, avg, count, ultima_nota}.
+     * Cria survey completada e verifica que o historico e retornado.
      */
     public function test_nps_history_presente_no_payload(): void
     {
         $user    = $this->criarAnalista();
         $empresa = $this->criarEmpresaParaUser($user, 'consultor');
 
-        // Cria NPS survey completada com resposta
+        // Survey completada com resposta para o mes atual
         $survey = NpsSurvey::create([
             'token'          => 'tok-' . uniqid(),
             'company_id'     => $empresa->id,
@@ -302,7 +328,7 @@ class RenderPortfolioTest extends TestCase
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')
                 ->has('nps_history')
-                // Deve ter pelo menos 1 entrada com o formato correto
+                // Deve ter pelo menos 1 entrada com todos os campos obrigatorios
                 ->has('nps_history.0', fn (Assert $row) => $row
                     ->hasAll(['month', 'avg', 'count', 'ultima_nota'])
                 )
@@ -311,22 +337,15 @@ class RenderPortfolioTest extends TestCase
 
     /**
      * Teste 7 — PortfolioScoreService::compute() nunca retorna metaOrigem='portfolio'.
-     * Garante que o Caminho A foi removido do service.
+     * Garante que o Caminho A (PortfolioGoal) foi removido do service.
      */
     public function test_portfolio_score_service_nao_retorna_meta_origem_portfolio(): void
     {
         $user    = $this->criarAnalista();
         $empresa = $this->criarEmpresaParaUser($user, 'consultor');
 
-        // Cria Goal de revenue pra garantir que Caminho B retorna algo
-        Goal::create([
-            'company_id'  => $empresa->id,
-            'metric'      => 'revenue',
-            'target_value'=> 50000.00,
-            'value_type'  => 'currency',
-            'period_type' => 'monthly',
-            'active'      => true,
-        ]);
+        // Goal de revenue para que Caminho B retorne metaOrigem='empresas:1'
+        $this->criarGoalRevenue($empresa->id, 50000.00);
 
         /** @var PortfolioScoreService $service */
         $service = app(PortfolioScoreService::class);
@@ -337,7 +356,16 @@ class RenderPortfolioTest extends TestCase
         $this->assertNotEquals(
             'portfolio',
             $metaOrigem,
-            "metaOrigem nao deve ser 'portfolio' apos remocao do Caminho A no Phase 48"
+            "metaOrigem nao deve ser 'portfolio' apos remocao do Caminho A (Phase 48)"
         );
+
+        // Com Goal de revenue, metaOrigem deve ser 'empresas:1'
+        if ($metaOrigem !== null) {
+            $this->assertStringStartsWith(
+                'empresas:',
+                $metaOrigem,
+                "metaOrigem deve comecar com 'empresas:' quando ha Goals de revenue"
+            );
+        }
     }
 }
