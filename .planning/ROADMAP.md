@@ -119,16 +119,18 @@ Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via *
 - [ ] **Phase 44: Mover adgroup-sugador para campanha SGI via API ML** *(adicionada 2026-06-26 a partir do quick `260626-qgf`; escopo reduzido na discuss-phase 2026-06-26 — só "Mover SGI"; "Pausar in-place" virou Phase 44b)* — Expõe ação destrutiva no `Show.jsx`: mover adgroup pra campanha SGI (quarentena pausada). Combobox com SGIs da conta (reusa `QUARANTINE_NAME_REGEX`) + botão "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável). Toast "Desfazer" por 10s sem persistência no DB. Depende de Phase 43 estabilizar. Plan 44-01 obrigatório: smoke do `PATCH` na API ML Product Ads antes de qualquer planejamento backend. Context: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
 - [ ] **Phase 44b (deferred): Pausar adgroup-sugador in-place via API ML** — `PATCH status=paused` sem mudar campanha. Originalmente parte do escopo Phase 44; reduzido na discuss-phase 2026-06-26 ("Mover SGI" é a ação organizacional canônica). Roda depois da Phase 44 estabilizar.
 
-### Milestone v12.0 — Fontes Unificadas Fase 2 + Desempenho longitudinal
+### Milestone v12.0 — Fontes Unificadas Fase 2 + Desempenho longitudinal + Redesign Carteira + Gamificação ML
 
-Generaliza o pattern de provider/precedência da v11.0 (Sugadores) para Dashboard + Carteira + Desempenho, garantindo que empresas ML somem nas métricas igual às Adman. Adiciona histórico longitudinal de scores para tornar a comparação de profissionais justa e ampliável com novos parâmetros pós-Phase 44. Pode rodar em paralelo com a finalização da v11.0 — Phases 45/46 são independentes de Phase 44 destravar; só Phase 47 depende.
+Generaliza o pattern de provider/precedência da v11.0 (Sugadores) para Dashboard + Carteira + Desempenho, garantindo que empresas ML somem nas métricas igual às Adman. Adiciona histórico longitudinal de scores, redesigna a carteira individual, separa rankings por função, e gamifica a migração Adman→ML. Pode rodar em paralelo com a finalização da v11.0 — Phases 45/46/48/50 são independentes; 47 e 49 dependem de phases anteriores.
 
-Captura completa do briefing: `.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md`. Briefings auxiliares ainda untracked no root: `briefing-carteira-analistas-ui.md` (redesign UI carteira) e `metodologia-desempenho-carteira.md` (metodologia score justa) — devem ser ingeridos no discuss-phase das Phases 45 e 46 respectivamente.
+Captura inicial: `.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md` (Itens 1-5). Extensão 2026-06-29: `.planning/todos/pending/270629-melhorias-carteira-desempenho-gamificacao-ml.md` (briefing detalhado dos 6 itens novos). Briefings auxiliares ainda untracked no root: `briefing-carteira-analistas-ui.md` (carteira UI — ingerido na Phase 48) e `metodologia-desempenho-carteira.md` (metodologia score justa — ingerido na Phase 46).
 
-- [ ] **Phase 45: Compatibilidade ML em métricas + unificação widget desempenho** — auditar e tornar dashboards/carteiras/desempenho fonte-agnósticos (Adman vs ML). Abstrair leitura via `CompanyMetricsProvider` (factory por empresa, reuso do pattern v11.0 Sugadores). Garantir que empresas ML-only aparecem em: dashboard admin (faturamento, investimento ads, TACOS, gráfico evolução), carteira individual/geral (admin, líder), página de desempenho. Unificar widget "Desempenho da equipe" da dashboard com a página `/desempenho` — hoje classificações divergem. Inclui fix da label "Carteira ativa Adman" (caso quick-task não tenha rodado antes) e link clicável no widget. Independente de Phase 44.
-- [ ] **Phase 46: Histórico longitudinal de scores na página de desempenho** — snapshot diário (`desempenho_score_snapshots`: user_id, ref_date, score, ranking_pos, breakdown_json) via job no scheduler após sync Adman/ML. UI mostra delta vs dia anterior / semana anterior (↑ +0.5) + gráfico de evolução individual. Resolve "classificação muda todo dia, não dá pra decidir quem é realmente o melhor". Ingerir `metodologia-desempenho-carteira.md` no discuss-phase. Independente de Phase 44.
-- [ ] **Phase 47: Novos parâmetros de score balanceados por função** — adiciona pontuação `sugador-resolvido-via-sistema` (analistas) + `PPA-concluído` (estrategistas) ao scoring de desempenho. Garante balanço entre as duas funções no scoring novo. **Depends on Phase 44** (sugador-resolvido via ML precisa do path write ML funcionando).
-- [ ] **Phase 45+ TBD adicional** — escopo final a definir conforme novas necessidades surgirem
+- [x] **Phase 45: Compatibilidade ML em métricas — foco em /desempenho + widget unify** — Caminho B confirmado (smoke 2026-06-29: Bymobille tem dados em adman_metrics). Plans 45-02/03 DEFERRED. Fix do filtro de users em /performance entregue. UAT 45-04 pendente.
+- [ ] **Phase 46: Histórico longitudinal de scores na página de desempenho** — snapshot diário (`desempenho_score_snapshots`: user_id, ref_date, score, ranking_pos, breakdown_json) via job no scheduler. UI mostra delta vs dia anterior / semana anterior + gráfico de evolução individual. Resolve "classificação muda todo dia, não dá pra decidir quem é realmente o melhor". Ingerir `metodologia-desempenho-carteira.md` no discuss-phase. Independente.
+- [ ] **Phase 47: Scoring por função com balanceamento por volume** — adiciona pontuação `sugador-resolvido-via-sistema` (analistas, **scoring negativo por não-resolvido**) + `PPA-concluído` (estrategistas). **Balanceamento crítico:** sugador é diário (recompensa pequena ou penalização) vs PPA mensal (recompensa proporcionalmente maior). Pesos por volume esperado. Depends on Phase 44 + Phase 46.
+- [ ] **Phase 48: Redesign da carteira individual (analista + estrategista)** — modernizar UI da carteira seguindo `briefing-carteira-analistas-ui.md` (hero card com gradiente, KPIs simplificados, gráfico com tooltip, tabela orientada a ação). Adicionar: mini-gráfico de crescimento por empresa na listagem (verde subindo/vermelho descendo/cinza regular), histórico de NPS do dono da carteira, bloco diferenciado por função (sugadores para analista / PPAs para estrategista). **REMOVER meta agregada da carteira** — meta é por empresa (modelo correto). Independente, pode rodar em paralelo.
+- [ ] **Phase 49: Rankings de /desempenho por função + ranking separado de publicação** — adicionar 3 tabs em `/performance` (Geral / Analistas / Estrategistas) + nova rota `/publicacao/desempenho` (ou similar) dentro do dropdown Publicação do menu lateral. Reusa `PortfolioScoreService` com filtro de função. Depends on Phase 47 (score diferenciado).
+- [ ] **Phase 50: Gamificação OAuth ML para Líder Performance + Estrategistas** — nova aba/rota incentivando conexão ML de empresas pendentes. Estrategista vê apenas empresas atribuídas; Líder vê todas. Ranking/badge/score por conexão concluída + status "Em conversa com cliente". Acelera migração Adman→ML. Independente; sinergia com Phases 41/42.
 
 ## Phase Details
 
@@ -1093,23 +1095,102 @@ Plans:
 
 **UI hint:** sim — página /performance ganha indicadores de delta + gráfico de evolução por profissional
 
-### Phase 47: Novos parâmetros de score balanceados por função
+### Phase 47: Scoring por função com balanceamento por volume (sugador + PPA)
 
 **Milestone:** v12.0
 **Status:** Pending
 **Mode:** standard
 
-**Goal:** Ampliar o scoring com novos parâmetros que diferenciam funções (analista vs estrategista) sem desbalancear. Pontuar `sugador-resolvido-via-sistema` para analistas (eles é quem faz função sugadores) + `PPA-concluído` para estrategistas (só estrategistas fazem PPA). Garante que ambas funções tenham score equivalente em vez de só analista ganhar pontos novos.
+**Goal:** Ampliar o scoring com parâmetros que diferenciam funções (analista vs estrategista) RESPEITANDO o volume esperado da atividade. Sugador é diário (alto volume) → recompensa pequena OU penalização por não-resolução. PPA é mensal (baixo volume) → recompensa proporcionalmente maior. Garante incentivo justo em vez de só analista ganhar pontos novos.
 
-**Requirements** (capturados em [.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md](.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md) — Item 5):
+**Requirements** (capturados em [.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md](.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md) Item 5 + briefing 2026-06-29 Item 5):
 
-- Parâmetro novo: contagem de sugadores resolvidos via sistema (`Sugador.status='movido'` via API ML quando feito por aquele user) entra no score do analista
-- Parâmetro novo: contagem de PPAs concluídos por estrategista entra no score do estrategista
-- Pesos balanceados entre as duas funções (a definir em discuss-phase)
-- Funciona em cima do histórico longitudinal da Phase 46 — snapshots mostram impacto do novo scoring
+- **Para analistas — scoring sugador com BALANCEAMENTO POR VOLUME:**
+  - Sugador é atividade DIÁRIA → recompensa por unidade resolvida deve ser pequena
+  - **DECISÃO LOCKED:** scoring NEGATIVO — subtrair pontos por sugador NÃO resolvido na fila do analista (incentiva "limpar" o backlog em vez de só recompensar atividade)
+  - Métrica entra automaticamente quando Phase 44 estiver em prod (resolver sugador via API ML = `Sugador.status='movido'`)
+- **Para estrategistas — scoring PPA com peso PROPORCIONAL:**
+  - PPA é atividade MENSAL ou mais espaçada → recompensa por unidade deve ser maior que a do sugador resolvido
+  - Métrica: contagem de PPAs concluídos por estrategista no período
+- **Princípio geral lockado:** o peso de cada parâmetro novo deve refletir o volume esperado — atividade frequente = recompensa pequena por unidade; atividade rara = recompensa maior por unidade. Evita inflar score de quem faz a função "fácil" (sugador diário) vs penalizar quem tem ciclo longo (PPA).
+- Pesos exatos: definir em discuss-phase com base em volume médio observado em prod
+- Funciona em cima do histórico longitudinal da Phase 46 — snapshots mostram impacto do novo scoring antes/depois
 
-**Depends on:** Phase 44 (sugador-resolvido via ML precisa do path write ML funcionando — caso contrário não há como pontuar resolução), Phase 46 (snapshot diário precisa estar persistindo o novo breakdown)
+**Depends on:** Phase 44 (sugador-resolvido via ML — destrava contabilização automática), Phase 46 (snapshot diário precisa estar persistindo o breakdown). Sinergia com Phase 49 (rankings por função vão usar esse score diferenciado).
 
 **Plans:** TBD
 
-**UI hint:** parcial — provavelmente indicadores no perfil/card de cada profissional mostrando quantos sugadores resolveu / PPAs concluiu no período
+**UI hint:** parcial — indicadores no perfil/card de cada profissional mostrando: para analista (sugadores resolvidos / pendentes / não-resolvidos no período); para estrategista (PPAs concluídos no período). Componentes podem ser reaproveitados na carteira individual (Phase 48 Item 5).
+
+### Phase 48: Redesign da carteira individual (analista + estrategista)
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Modernizar a tela de carteira individual (`/portfolio/{id}` ou equivalente) seguindo o briefing UI do usuário + adicionar visibilidade granular por empresa (crescimento) + histórico NPS do profissional + bloco diferenciado por função (sugadores p/ analista, PPAs p/ estrategista) + REMOVER conceito de meta agregada da carteira (modelo errado — meta é por empresa).
+
+**Requirements** (capturados em [briefing-carteira-analistas-ui.md](briefing-carteira-analistas-ui.md) + briefing 2026-06-29 Items 2/3/4/5):
+
+- **UI modernizada** (briefing-carteira-analistas-ui.md, 237 linhas): hero card com gradiente + faturamento em destaque `R$ X.XXM`, KPIs simplificados, gráfico com tooltip, tabela orientada a ação, painel lateral estratégico, responsividade mobile
+- **Indicador de crescimento por empresa na listagem** (Item 2): mini-gráfico inline em cada linha — verde subindo / vermelho descendo / cinza regular. Sparkline 7-14d via Recharts. Critério: revenue periodo atual vs anterior
+- **Histórico de NPS do dono da carteira** (Item 3): bloco/widget mostrando notas NPS ao longo do tempo recebidas pelo profissional. Reusa tabelas/services Phase 31-33 (NPS mensal automatizado). Visual: gráfico de evolução + média + última nota
+- **REMOVER meta da carteira** (Item 4 — DECISÃO LOCKED): meta agregada da carteira não existe mais. Tirar cards "Meta da carteira", "% atingido", "R$ restante pra meta". Manter meta por empresa (já existe). PortfolioScoreService: categoria "atingimento de meta" vira média ponderada de % de cada empresa individual (não soma agregada vs meta agregada)
+- **Bloco diferenciado por função** (Item 5 UI — backend é Phase 47):
+  - Carteira ANALISTA: bloco de métricas de Sugadores (resolvidos / pendentes / não-resolvidos)
+  - Carteira ESTRATEGISTA: bloco de métricas de PPAs (concluídos no período)
+  - Esses blocos consomem os mesmos counters que a Phase 47 usa no score (consistência)
+
+**Depends on:** Nenhuma (pode rodar antes ou em paralelo). Sinergia: Phase 47 entrega os counters para o bloco diferenciado; se 47 não estiver pronta, 48 mostra placeholder ou usa contagem direta dos models.
+
+**Plans:** TBD
+
+**UI hint:** SIM — redesign completo de página. Reusa tokens `ecf-*`, dark theme, Recharts (já no projeto). Briefing tem mockup HTML estático (`carteira-analistas-ui-proposta.html`) como referência.
+
+### Phase 49: Rankings de /desempenho por função + ranking separado de publicação
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Página `/performance` hoje tem ranking ÚNICO (Geral). Adicionar 4 visualizações: Geral (atual), Analistas (filtro por função), Estrategistas (filtro por função), e Publicação **em rota separada** dentro do dropdown "Publicação" do menu lateral (não em /performance — funções distintas, públicos distintos).
+
+**Requirements** (briefing 2026-06-29 Item 1):
+
+- 3 visualizações em `/performance` (tabs ou seletor): Geral / Analistas / Estrategistas
+- Cada ranking usa o mesmo `PortfolioScoreService` mas com filtro de função no input — DRY
+- Filtro de função reusa o pattern do filtro canônico de users (`user_setores → cargos.slug`) — alinhado com a Phase 45 fix
+- Nova rota `/publicacao/desempenho` (nome a confirmar — pode ser `/publicacao/ranking`) dentro do dropdown Publicação do menu lateral
+- Ranking de publicação usa scoring específico de publicação (provavelmente parâmetros próprios — pode reusar service base ou ter service dedicado se métricas divergirem muito)
+- Sidebar: aba "Desempenho" dentro do dropdown Publicação (excludeRoles=analista/estrategista — só quem é publicação acessa)
+
+**Depends on:** Phase 47 (precisa do filtro de função no score pra Analistas vs Estrategistas terem dados diferenciados). Phase 45 (fix do filtro canônico de users — base).
+
+**Plans:** TBD
+
+**UI hint:** SIM — tabs em `/performance` + nova página em `/publicacao/desempenho` + ajuste no sidebar AppLayout.jsx (nova entry no dropdown Publicação).
+
+### Phase 50: Gamificação OAuth ML para Líder Performance + Estrategistas
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Acelerar migração de empresas de Adman → ML criando incentivo gamificado pra quem tem relação direta com cliente. Conectar empresa ao OAuth ML exige conversa humana (reunião semanal ou mensagem). Líder de Performance + Estrategistas são quem faz essa conversa. Nova aba/rota dedicada mostra empresas pendentes de OAuth com ranking/score por conexão concluída.
+
+**Requirements** (briefing 2026-06-29 Item 6):
+
+- Nova rota no menu lateral (provavelmente em "Dados Estratégicos" ou seção própria — decidir em discuss-phase)
+- Tela mostra empresas com status de OAuth ML: "Pendente" (sem mlToken active) / "Em conversa com cliente" (status manual) / "ML conectado" (mlToken.status='active')
+- **Visão diferenciada por role:**
+  - **Estrategista:** apenas empresas atribuídas a ele via `company_users` (pivot já existe)
+  - **Líder Performance:** TODAS as empresas (visão global)
+- Ranking/badge/score por conexão concluída — incentiva ação proativa. Pode integrar com Phase 47 (parâmetro de score adicional) ou ser ranking standalone
+- Status "Em conversa com cliente" é estado intermediário manual (usuário marca quando inicia conversa) — evita "esquecer" empresa parada
+- Possíveis ganhos secundários: visibilidade pro time saber qual empresa está em qual etapa, accountability
+
+**Depends on:** Nenhuma direta. Sinergia com Phase 41 (Onboarding ML por empresa) — pode reusar models/views se aproximação for similar. Sinergia com Phase 47 (se ranking entrar no score geral).
+
+**Plans:** TBD
+
+**UI hint:** SIM — nova rota + nova entry no sidebar + lista de empresas com filtros por status + indicadores gamificados (badges, ranking).
