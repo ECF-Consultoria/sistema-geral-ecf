@@ -2,15 +2,12 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
-import { Label } from '@/Components/ui/label';
-import { Textarea } from '@/Components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Target, AlertTriangle,
-    Trophy, Briefcase, Building2, Plus, Pencil, Trash2, ShoppingCart, Award, Users, Minus,
+    Trophy, Briefcase, Building2, ShoppingCart, Award, Users, Minus,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import {
@@ -525,11 +522,7 @@ export default function PortfolioShow({
                                 ))}
                             </SelectContent>
                         </Select>
-                        {isAdmin && (
-                            <Button size="sm" variant="outline" onClick={() => setGoalOpen(true)}>
-                                <Plus size={14} className="mr-1" /> Meta
-                            </Button>
-                        )}
+                        {/* Botão de criar meta de carteira removido (Plan 48-01/48-02 — metas são por empresa, não por carteira) */}
                     </div>
                 </div>
 
@@ -951,98 +944,11 @@ export default function PortfolioShow({
                             </CardContent>
                         </Card>
 
-                        {/* Metas (admin) */}
-                        {isAdmin && portfolio_goals?.length > 0 && (
-                            <Card className="bg-ecf-card/60 border-white/[0.06]">
-                                <CardContent className="p-4">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-2 text-white/90 text-sm font-semibold">
-                                            <Target size={14} className="text-ecf-yellow" /> Metas
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {portfolio_goals.map(g => (
-                                            <div key={g.id} className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[12px]">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="text-white/80 truncate">{g.metric_label}</span>
-                                                    <div className="flex items-center gap-1">
-                                                        <button onClick={() => openEditGoal(g)} className="p-1 text-white/40 hover:text-white" title="Editar">
-                                                            <Pencil size={11} />
-                                                        </button>
-                                                        <button onClick={() => removeGoal(g.id)} className="p-1 text-white/40 hover:text-red-400" title="Remover">
-                                                            <Trash2 size={11} />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                <div className="text-white/50 text-[11px] mt-0.5">
-                                                    {g.value_type === 'currency' ? formatCurrencyCompact(g.target_value) : `${g.target_value}%`}
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        )}
+                        {/* Bloco "Metas (admin)" removido — portfolio_goals foi removido do payload (Plan 48-01/48-02) */}
                     </div>
                 </div>
             </main>
 
-            {/* Modal: criar meta (admin) */}
-            <Dialog open={goalOpen} onOpenChange={setGoalOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Nova meta de carteira</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={submitGoal} className="space-y-3">
-                        <div className="space-y-1.5">
-                            <Label>Métrica</Label>
-                            <Select value={goalForm.data.metric} onValueChange={v => goalForm.setData('metric', v)}>
-                                <SelectTrigger><SelectValue placeholder="Selecione…" /></SelectTrigger>
-                                <SelectContent>
-                                    {Object.entries(portfolio_goal_metrics || {}).map(([k, label]) => (
-                                        <SelectItem key={k} value={k}>{label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Valor alvo</Label>
-                            <Input type="number" step="0.01" min="0" value={goalForm.data.target_value} onChange={e => goalForm.setData('target_value', e.target.value)} required />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Descrição (opcional)</Label>
-                            <Textarea rows={2} value={goalForm.data.description} onChange={e => goalForm.setData('description', e.target.value)} />
-                        </div>
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setGoalOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={goalForm.processing}>Criar</Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
-
-            {/* Modal: editar meta (admin) */}
-            <Dialog open={editGoalOpen} onOpenChange={setEditGoalOpen}>
-                <DialogContent className="max-w-md">
-                    <DialogHeader>
-                        <DialogTitle>Editar meta</DialogTitle>
-                    </DialogHeader>
-                    <form onSubmit={submitEditGoal} className="space-y-3">
-                        <div className="space-y-1.5">
-                            <Label>Valor alvo</Label>
-                            <Input type="number" step="0.01" min="0" value={editGoalForm.data.target_value} onChange={e => editGoalForm.setData('target_value', e.target.value)} required />
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label>Descrição (opcional)</Label>
-                            <Textarea rows={2} value={editGoalForm.data.description} onChange={e => editGoalForm.setData('description', e.target.value)} />
-                        </div>
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setEditGoalOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={editGoalForm.processing}>Salvar</Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
         </AppLayout>
     );
 }
