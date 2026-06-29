@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v11.0
 milestone_name: Migração Sugadores Adman → ML
-status: blocked
-stopped_at: "Phase 44 Plan 44-01 PARCIAL (2/3 tarefas). Tarefas 1 (scope OAuth read write offline_access em MercadoLivreService.php:53) + 2 (SugadoresMlWriteSmoke command + 6/6 testes Phase44 verdes, zero regressao Phase 38) COMMITADAS (e40fce3, 9981f84, eceeb26). Tarefa 3 (smoke real contra Bymobille #298) PENDENTE — operador nao tem acesso a app ECF no DevCenter ML pra ativar permissao Advertising + re-autorizar Bymobille com novo scope. Phase 44 BLOQUEADA: 44-02/03/04 tem depends_on=[44-01] e nao podem comecar sem fixture 5/5 verde + variante POST campaign confirmada (A ou B). Resume signal documentado em .planning/phases/44.../44-01-CHECKPOINT-PENDING.md."
-last_updated: "2026-06-27T02:30:00.000Z"
-last_activity: 2026-06-27 -- Phase 44 Plan 44-01 pausado em checkpoint humano (acesso DevCenter ML)
+status: executing
+stopped_at: "Phase 40 Plan 40-04 COMPLETO — PHASE 40 INTEIRA FECHADA (4/4 plans). 2 comandos Artisan (sugadores:shadow-ml + sugadores:compare-providers) + config/sugadores.php (CSV via SUGADORES_ML_SHADOW_COMPANIES) + scheduler diario 13h BRT + env documentada. 17/17 tests novos verdes; Phase 40 acumulado 52/52; Sugador 92/92; Phase 39 48/48 — zero regressao. Wave 3 FECHADA. REQ-40-04..08 fechados. Pronto para deploy. Phase 41 (UI shadow runs + aprovacao manual) destravada."
+last_updated: "2026-06-29T13:33:12.546Z"
+last_activity: 2026-06-29 -- Phase 45 execution started
 progress:
-  total_phases: 39
+  total_phases: 42
   completed_phases: 25
-  total_plans: 80
+  total_plans: 84
   completed_plans: 71
-  percent: 64
+  percent: 60
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 44 — mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml
+**Current focus:** Phase 45 — compatibilidade-ml-em-m-tricas-unifica-o-widget-desempenho
 
 ## Current Position
 
-Phase: 44 (mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml) — BLOCKED no Plan 44-01 Tarefa 3
-Plan: 1 of 4 (parcial — Tarefas 1 e 2 entregues)
-Status: Aguardando operador reconectar Bymobille com novo scope + rodar smoke real
-Last activity: 2026-06-27 -- Plan 44-01 pausado em checkpoint humano (acesso DevCenter ML)
+Phase: 45 (compatibilidade-ml-em-m-tricas-unifica-o-widget-desempenho) — EXECUTING
+Plan: 1 of 4
+Status: Executing Phase 45
+Last activity: 2026-06-29 -- Phase 45 execution started
 Blockers:
 
   - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
