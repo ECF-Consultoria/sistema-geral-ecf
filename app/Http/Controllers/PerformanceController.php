@@ -36,10 +36,16 @@ class PerformanceController extends Controller
             default => now()->subDays(30),
         };
 
+        // Fonte canônica: cargo via user_setores → cargos (desde quick 260610-f69).
+        // Alinhado ao widget "Desempenho da equipe" do DashboardController (Phase 45 fix).
         $users = User::where('active', true)
-            ->whereIn('role', ['consultor', 'mentor'])
-            ->whereNull('publication_role')
-            ->get();
+            ->whereExists(function ($q) {
+                $q->from('user_setores as us')
+                  ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                  ->whereColumn('us.user_id', 'users.id')
+                  ->whereIn('c.slug', ['analista', 'estrategista']);
+            })
+            ->get(['id', 'name', 'role']);
 
         // ── Quick 260623 redesign performance — ranking por SCORE ──
         // Conforme metodologia-desempenho-carteira.md: ranking por score
