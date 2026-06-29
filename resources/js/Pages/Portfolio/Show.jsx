@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import SparklineCrescimento from '@/Components/Carteira/SparklineCrescimento';
+import NpsHistoryWidget from '@/Components/Carteira/NpsHistoryWidget';
+import BlocoFuncionario from '@/Components/Carteira/BlocoFuncionario';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
     CartesianGrid, Legend,
@@ -431,6 +433,8 @@ export default function PortfolioShow({
     cargo_slug = null,
     sugador_counters = null,
     ppa_counters = null,
+    // Histórico NPS mensal do profissional (Plan 48-01) — array de até 12 meses
+    nps_history = [],
 }) {
     const isAdmin = portfolio_user.role === 'admin'
         || (typeof window !== 'undefined' && window.location.pathname.includes('/admin/'));
@@ -1054,6 +1058,19 @@ export default function PortfolioShow({
                                 </div>
                             </CardContent>
                         </Card>
+
+                        {/* Histórico NPS mensal do profissional (Plan 48-04) */}
+                        <NpsHistoryWidget
+                            npsHistory={nps_history}
+                            cargoSlug={cargo_slug}
+                        />
+
+                        {/* Bloco diferenciado por cargo: Sugadores (analista) ou PPAs (estrategista) (Plan 48-04) */}
+                        <BlocoFuncionario
+                            cargoSlug={cargo_slug}
+                            sugadorCounters={sugador_counters}
+                            ppaCounters={ppa_counters}
+                        />
 
                         {/* Bloco "Metas (admin)" removido — portfolio_goals foi removido do payload (Plan 48-01/48-02) */}
                     </div>
