@@ -1125,7 +1125,7 @@ Plans:
 ### Phase 48: Redesign da carteira individual (analista + estrategista)
 
 **Milestone:** v12.0
-**Status:** Pending
+**Status:** ✅ Complete (UAT APROVADO 2026-06-29, deployado em prod)
 **Mode:** standard
 
 **Goal:** Modernizar a tela de carteira individual (`/portfolio/{id}` ou equivalente) seguindo o briefing UI do usuário + adicionar visibilidade granular por empresa (crescimento) + histórico NPS do profissional + bloco diferenciado por função (sugadores p/ analista, PPAs p/ estrategista) + REMOVER conceito de meta agregada da carteira (modelo errado — meta é por empresa).
