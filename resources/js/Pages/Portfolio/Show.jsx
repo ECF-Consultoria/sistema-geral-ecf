@@ -10,6 +10,7 @@ import {
     Trophy, Briefcase, Building2, ShoppingCart, Award, Users, Minus,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
+import SparklineCrescimento from '@/Components/Carteira/SparklineCrescimento';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
     CartesianGrid, Legend,
@@ -766,10 +767,13 @@ export default function PortfolioShow({
                                     <thead>
                                         <tr className="text-white/50 text-[11px] uppercase tracking-wide">
                                             <th className="text-left font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('name')}>Empresa</th>
+                                            <th className="text-left font-medium px-2 py-2">Status</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('revenue')}>Faturamento</th>
                                             <th className="text-right font-medium px-2 py-2">Meta</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('contribution_margin_pct')}>Margem</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('ad_spend')}>Ads</th>
+                                            <th className="text-left font-medium px-2 py-2">Ação</th>
+                                            <th className="text-right font-medium px-2 py-2">Crescimento</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -785,7 +789,7 @@ export default function PortfolioShow({
                                                     <div className="flex items-center gap-2">
                                                         <Link
                                                             href={route('companies.show', c.id)}
-                                                            className="text-white/90 hover:text-ecf-yellow truncate inline-block max-w-[200px] md:max-w-none"
+                                                            className="text-white/90 hover:text-ecf-yellow truncate inline-block max-w-[160px] md:max-w-none"
                                                         >
                                                             {c.name}
                                                         </Link>
@@ -807,6 +811,19 @@ export default function PortfolioShow({
                                                         )}
                                                     </div>
                                                 </td>
+                                                {/* Status — reintroduzido (removido em hotfix 2026-06-19; dado já existia no payload) */}
+                                                <td className="px-2 py-2">
+                                                    {c.status ? (
+                                                        <span className={cn(
+                                                            'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border',
+                                                            STATUS_CLS[c.status] ?? 'bg-white/10 text-white/60 border-white/20'
+                                                        )}>
+                                                            {STATUS_LABEL[c.status] ?? c.status}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-white/30 text-[11px]">—</span>
+                                                    )}
+                                                </td>
                                                 <td className="px-2 py-2 text-right text-white/90 tabular-nums">
                                                     {c.revenue !== null ? formatCurrencyCompact(c.revenue) : '—'}
                                                 </td>
@@ -821,12 +838,29 @@ export default function PortfolioShow({
                                                 <td className="px-2 py-2 text-right text-white/70 tabular-nums">
                                                     {(c.ad_spend ?? 0) > 0 ? formatCurrencyCompact(c.ad_spend) : 'R$ 0,00'}
                                                 </td>
+                                                {/* Ação recomendada — reintroduzida (removida em hotfix 2026-06-19; dado já existia no payload) */}
+                                                <td className="px-2 py-2 max-w-[120px]">
+                                                    {c.acao_recomendada ? (
+                                                        <span
+                                                            title={c.acao_recomendada}
+                                                            className="block truncate text-[11px] text-white/60"
+                                                        >
+                                                            {c.acao_recomendada}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-white/30 text-[11px]">—</span>
+                                                    )}
+                                                </td>
+                                                {/* Crescimento MoM — badge colorido SparklineCrescimento */}
+                                                <td className="px-2 py-2 text-right">
+                                                    <SparklineCrescimento queda_mom_pct={c.queda_mom_pct} />
+                                                </td>
                                             </tr>
                                             );
                                         })}
                                         {empresasView.length === 0 && (
                                             <tr>
-                                                <td colSpan={5} className="text-center text-white/40 py-8">
+                                                <td colSpan={8} className="text-center text-white/40 py-8">
                                                     Nenhuma empresa encontrada com os filtros.
                                                 </td>
                                             </tr>
