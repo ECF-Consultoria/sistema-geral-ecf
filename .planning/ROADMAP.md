@@ -1043,3 +1043,73 @@ Plans:
 - Pausar adgroup in-place → Phase 44b
 - Ações em lote (selecionar N sugadores no Index) → phase futura
 - Botão "Reverter" permanente (persistir `campaign_id_anterior`) → phase futura
+
+### Phase 45: Compatibilidade ML em métricas — foco em /desempenho + widget unify
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Eliminar 2 bugs concretos em `/desempenho` e widgets relacionados, ambos causados pela mistura Adman/ML hoje: (1) a página `/performance` e o widget "Desempenho da equipe" da dashboard mostram classificações **DIFERENTES** pra mesma equipe — preciso ser exatamente igual (widget é preview da página); (2) empresas ML-only (hoje Bymobille #298, futuramente maioria) aparecem zeradas ou ausentes nos scores porque a leitura ainda vai majoritariamente em `adman_metrics`. Phase entrega `CompanyMetricsProvider` (factory por empresa Adman vs ML — pattern v11.0 Sugadores) e unifica a fonte de verdade do scoring/ranking. Itens 1a/1b (compat ML em dashboard métricas e carteira admin/líder) ficam fora — entram via aproveitamento natural do provider novo, mas o ESCOPO crítico é /desempenho.
+
+**Requirements** (capturados em [.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md](.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md) — foco em Itens 1c e 3b):
+
+- Widget "Desempenho da equipe" da dashboard mostra EXATAMENTE a mesma classificação/ranking da página `/performance` (preview resumida, mesma fonte de verdade — hoje divergem)
+- Empresas com fonte ML (sem `adman_account_id` ou só com `ml_store_id`) aparecem corretamente nos scores de quem as gerencia em `/performance` — não mais zeradas
+- Abstração via `CompanyMetricsProvider` (factory por empresa, escolhe Adman vs ML baseado em `mlToken` ativo) reusando pattern v11.0 Sugadores — 2 implementações concretas (`AdmanMetricsProvider`, `MlMetricsProvider`)
+- Service único compartilhado entre widget e página `/performance` (provavelmente `PerformanceScoreService` ou similar)
+
+**Out of scope** (fica pra phases separadas):
+- Item 1a — compat ML em dashboard admin métricas (faturamento total, TACOS médio, gráfico evolução)
+- Item 1b — compat ML em carteira individual/geral (admin, líder)
+- Redesign visual da carteira (briefing-carteira-analistas-ui.md) — vira phase separada quando o usuário decidir
+- Histórico de scores — Phase 46
+- Novos parâmetros de score — Phase 47
+
+**Depends on:** Nenhuma (independente da Phase 44 destravar — pode rodar em paralelo)
+
+**Plans:** TBD
+
+**UI hint:** sim — widget "Desempenho da equipe" em `Dashboard/Admin.jsx` + página `/performance`. Mudanças funcionais (classificação correta) sem redesign visual.
+
+### Phase 46: Histórico longitudinal de scores na página de desempenho
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Resolver "classificação muda todo dia, não consigo decidir quem é realmente o melhor/pior". Adicionar snapshot diário dos scores via job no scheduler (após sync Adman/ML) + UI que mostra delta vs dia anterior / semana anterior + gráfico de evolução individual ao longo do tempo. Permite premiar/bonificar com base em dados longitudinais reais, não em ranking volátil.
+
+**Requirements** (capturados em [.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md](.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md) — Item 4):
+
+- Migration nova: `desempenho_score_snapshots` (user_id, ref_date, score, ranking_pos, breakdown_json) + Model Eloquent
+- Job no scheduler que persiste snapshot diário (executar depois do sync Adman/ML do dia)
+- UI da página /performance mostra: delta vs dia anterior (`↑ +0.5`), delta vs semana anterior, gráfico individual de evolução
+- Briefing auxiliar `metodologia-desempenho-carteira.md` (untracked no root) **deve ser ingerido no discuss-phase** — tem a metodologia de scoring justa pensada pelo usuário (princípios de comparação, ajuste por porte/segmento/maturidade)
+
+**Depends on:** Nenhuma (independente da Phase 44 e 45 — pode rodar em paralelo)
+
+**Plans:** TBD
+
+**UI hint:** sim — página /performance ganha indicadores de delta + gráfico de evolução por profissional
+
+### Phase 47: Novos parâmetros de score balanceados por função
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Ampliar o scoring com novos parâmetros que diferenciam funções (analista vs estrategista) sem desbalancear. Pontuar `sugador-resolvido-via-sistema` para analistas (eles é quem faz função sugadores) + `PPA-concluído` para estrategistas (só estrategistas fazem PPA). Garante que ambas funções tenham score equivalente em vez de só analista ganhar pontos novos.
+
+**Requirements** (capturados em [.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md](.planning/todos/pending/270627-melhorias-dashboard-desempenho-ml-compat.md) — Item 5):
+
+- Parâmetro novo: contagem de sugadores resolvidos via sistema (`Sugador.status='movido'` via API ML quando feito por aquele user) entra no score do analista
+- Parâmetro novo: contagem de PPAs concluídos por estrategista entra no score do estrategista
+- Pesos balanceados entre as duas funções (a definir em discuss-phase)
+- Funciona em cima do histórico longitudinal da Phase 46 — snapshots mostram impacto do novo scoring
+
+**Depends on:** Phase 44 (sugador-resolvido via ML precisa do path write ML funcionando — caso contrário não há como pontuar resolução), Phase 46 (snapshot diário precisa estar persistindo o novo breakdown)
+
+**Plans:** TBD
+
+**UI hint:** parcial — provavelmente indicadores no perfil/card de cada profissional mostrando quantos sugadores resolveu / PPAs concluiu no período
