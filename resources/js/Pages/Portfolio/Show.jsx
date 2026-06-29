@@ -568,14 +568,10 @@ export default function PortfolioShow({
                                             {growthPct >= 0 ? '+' : ''}{growthPct.toFixed(1)}% vs anterior
                                         </Chip>
                                     )}
-                                    {meta_carteira.has_goal && meta_carteira.achieved_pct !== null && (
+                                    {/* Chip de meta baseado nas metas individuais das empresas (meta_carteira_calculada) */}
+                                    {meta_carteira_calculada.has_goal && meta_carteira_calculada.achieved_pct !== null && (
                                         <Chip tone="meta">
-                                            <Target size={11} /> Meta {meta_carteira.achieved_pct.toFixed(0)}%
-                                        </Chip>
-                                    )}
-                                    {meta_carteira.has_goal && meta_carteira.restante !== null && meta_carteira.restante > 0 && (
-                                        <Chip tone="neutral">
-                                            {formatCurrencyCompact(meta_carteira.restante)} restante
+                                            <Target size={11} /> Meta empresas {meta_carteira_calculada.achieved_pct.toFixed(0)}%
                                         </Chip>
                                     )}
                                     {performance_profissional && (
