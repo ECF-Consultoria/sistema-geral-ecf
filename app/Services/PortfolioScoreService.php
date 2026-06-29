@@ -5,9 +5,7 @@ namespace App\Services;
 use App\Models\AdmanMetric;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
-use App\Models\PortfolioGoal;
 use App\Models\User;
-use Illuminate\Support\Collection;
 
 /**
  * Quick 260623 redesign performance — Score 0-100 + 6 métricas justas pra avaliar
@@ -156,42 +154,27 @@ class PortfolioScoreService
             : 0.0;
 
         // ── 4. Atingimento da meta da carteira ──
-        // Prioridade: PortfolioGoal de revenue ativo (meta da carteira inteira).
-        // Fallback (hotfix 260623): se nao houver PortfolioGoal revenue, soma
-        // as metas individuais ativas (Goal.metric=revenue) das empresas da
-        // carteira. Realizado = soma do revenue das empresas QUE TEM meta
-        // (compara like-for-like). Assim, basta cadastrar uma meta numa
-        // empresa qualquer pra a categoria aparecer no score.
-        $metaModel = PortfolioGoal::where('user_id', $user->id)
-            ->where('metric', 'revenue')
-            ->active()
-            ->orderByDesc('id')
-            ->first();
-
+        // Phase 48 — soma das metas individuais ativas (Goal.metric=revenue).
+        // PortfolioGoal revenue descontinuado. Realizado = soma do revenue das
+        // empresas QUE TEM meta ativa (compara like-for-like). metaOrigem
+        // retorna "empresas:N" ou null (nunca mais "portfolio").
         $metaTarget       = null;
         $metaRealizado    = null;
         $metaAtingidaPct  = null;
         $metaOrigem       = null;
 
-        if ($metaModel?->target_value !== null) {
-            // Caminho A: meta de carteira (target absoluto, realizado = total da carteira).
-            $metaTarget    = (float) $metaModel->target_value;
-            $metaRealizado = (float) $totalAtual;
-            $metaOrigem    = 'portfolio';
-        } else {
-            // Caminho B: soma das metas de empresas individuais.
-            $goalsIndividuais = \App\Models\Goal::where('active', true)
-                ->where('metric', 'revenue')
-                ->whereIn('company_id', $companyIds)
-                ->get(['company_id', 'target_value']);
-            if ($goalsIndividuais->isNotEmpty()) {
-                $targets = $goalsIndividuais->mapWithKeys(fn ($g) => [$g->company_id => (float) $g->target_value]);
-                $metaTarget    = (float) $targets->sum();
-                $metaRealizado = (float) $companies
-                    ->filter(fn ($c) => $targets->has($c->id))
-                    ->sum(fn ($c) => $revAtual[$c->id] ?? 0);
-                $metaOrigem    = 'empresas:' . $goalsIndividuais->count();
-            }
+        // Caminho B (agora único): soma das metas de empresas individuais.
+        $goalsIndividuais = \App\Models\Goal::where('active', true)
+            ->where('metric', 'revenue')
+            ->whereIn('company_id', $companyIds)
+            ->get(['company_id', 'target_value']);
+        if ($goalsIndividuais->isNotEmpty()) {
+            $targets = $goalsIndividuais->mapWithKeys(fn ($g) => [$g->company_id => (float) $g->target_value]);
+            $metaTarget    = (float) $targets->sum();
+            $metaRealizado = (float) $companies
+                ->filter(fn ($c) => $targets->has($c->id))
+                ->sum(fn ($c) => $revAtual[$c->id] ?? 0);
+            $metaOrigem    = 'empresas:' . $goalsIndividuais->count();
         }
 
         if ($metaTarget !== null && $metaTarget > 0) {
