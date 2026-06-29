@@ -1047,7 +1047,7 @@ Plans:
 ### Phase 45: Compatibilidade ML em métricas — foco em /desempenho + widget unify
 
 **Milestone:** v12.0
-**Status:** Pending
+**Status:** In Progress (Caminho B confirmado pelo smoke 2026-06-29 — Plans 45-02/03 DEFERRED, aguardando UAT 45-04)
 **Mode:** standard
 
 **Goal:** Eliminar 2 bugs concretos em `/desempenho` e widgets relacionados, ambos causados pela mistura Adman/ML hoje: (1) a página `/performance` e o widget "Desempenho da equipe" da dashboard mostram classificações **DIFERENTES** pra mesma equipe — preciso ser exatamente igual (widget é preview da página); (2) empresas ML-only (hoje Bymobille #298, futuramente maioria) aparecem zeradas ou ausentes nos scores porque a leitura ainda vai majoritariamente em `adman_metrics`. Phase entrega `CompanyMetricsProvider` (factory por empresa Adman vs ML — pattern v11.0 Sugadores) e unifica a fonte de verdade do scoring/ranking. Itens 1a/1b (compat ML em dashboard métricas e carteira admin/líder) ficam fora — entram via aproveitamento natural do provider novo, mas o ESCOPO crítico é /desempenho.
