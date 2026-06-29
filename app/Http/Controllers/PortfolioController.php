@@ -840,6 +840,50 @@ class PortfolioController extends Controller
             ->values()
             ->all();
 
+        // ── Phase 48 — Contadores diferenciais por cargo ──
+        // sugador_counters: apenas para analista (cargo='analista' em user_setores).
+        // ppa_counters    : apenas para estrategista (cargo='estrategista').
+        // Outros cargos e admin recebem null em ambos. cargo_slug expoe o cargo
+        // derivado de user_setores (fonte da verdade; NAO usar users.role).
+        $sugadorCounters = null;
+        $ppaCounters     = null;
+
+        if ($cargoSlug === 'analista') {
+            // Empresas onde o user e consultor (analista) — role='consultor' no pivot.
+            $analystCompanyIds = $user->consultorCompanies()
+                ->where('active', true)
+                ->pluck('companies.id');
+
+            $sugadorCounters = [
+                'resolvidos'     => Sugador::whereIn('company_id', $analystCompanyIds)
+                    ->whereIn('status', [
+                        Sugador::STATUS_RESOLVIDO,
+                        Sugador::STATUS_MOVIDO,
+                        Sugador::STATUS_AUTO_RESOLVIDO,
+                    ])
+                    ->count(),
+                'pendentes'      => Sugador::whereIn('company_id', $analystCompanyIds)
+                    ->whereIn('status', [Sugador::STATUS_PENDENTE, Sugador::STATUS_EM_ACAO])
+                    ->count(),
+                'nao_resolvidos' => Sugador::whereIn('company_id', $analystCompanyIds)
+                    ->where('status', Sugador::STATUS_IGNORADO)
+                    ->count(),
+            ];
+        } elseif ($cargoSlug === 'estrategista') {
+            // PPAs onde este user e o mentor (estrategista responsavel).
+            $ppaCounters = [
+                'concluidos_mes' => Ppa::where('mentor_id', $user->id)
+                    ->whereNotNull('completed_at')
+                    ->whereMonth('completed_at', now()->month)
+                    ->whereYear('completed_at', now()->year)
+                    ->count(),
+                'em_andamento'   => Ppa::where('mentor_id', $user->id)
+                    ->whereNull('completed_at')
+                    ->count(),
+                'total'          => Ppa::where('mentor_id', $user->id)->count(),
+            ];
+        }
+
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
@@ -869,6 +913,9 @@ class PortfolioController extends Controller
             'comparacao_contextual'    => $comparacaoContextual,
             // Phase 48 — props diferenciais por cargo.
             'nps_history'             => $npsHistory,
+            'sugador_counters'        => $sugadorCounters,
+            'ppa_counters'            => $ppaCounters,
+            'cargo_slug'              => $cargoSlug,
         ]);
     }
 
