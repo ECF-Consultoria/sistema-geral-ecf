@@ -593,16 +593,23 @@ class PortfolioController extends Controller
             ->get()
             ->keyBy(fn ($r) => (string) $r->data);
 
-        // Meta de revenue da carteira (PortfolioGoal metric='revenue' ativo).
-        $metaCarteiraModel = PortfolioGoal::where('user_id', $user->id)
+        // Phase 48 — meta_carteira_calculada via soma das metas individuais ativas.
+        // PortfolioGoal revenue foi descontinuado. Usa Goal.metric='revenue' das
+        // empresas da carteira (mesmo criterio do PortfolioScoreService Caminho B).
+        // Realizado = soma do revenue das empresas QUE TEM meta ativa (like-for-like).
+        $goalsRevenue = Goal::where('active', true)
             ->where('metric', 'revenue')
-            ->active()
-            ->orderByDesc('id')
-            ->first();
-        $metaCarteiraTarget    = $metaCarteiraModel?->target_value !== null
-            ? (float) $metaCarteiraModel->target_value
+            ->whereIn('company_id', $companyIds)
+            ->get(['company_id', 'target_value']);
+        $metaCarteiraTarget = $goalsRevenue->isNotEmpty()
+            ? (float) $goalsRevenue->sum('target_value')
             : null;
-        $metaCarteiraRealizado = $totalRevenueAtual;
+        $metaCarteiraTargetsPorEmpresa = $goalsRevenue->pluck('target_value', 'company_id');
+        $metaCarteiraRealizado = $metaCarteiraTarget !== null
+            ? (float) $companies
+                ->filter(fn ($c) => $metaCarteiraTargetsPorEmpresa->has($c['id']))
+                ->sum('revenue')
+            : $totalRevenueAtual;
         $metaCarteiraAchieved  = ($metaCarteiraTarget && $metaCarteiraTarget > 0)
             ? round(($metaCarteiraRealizado / $metaCarteiraTarget) * 100, 1)
             : null;
@@ -806,7 +813,6 @@ class PortfolioController extends Controller
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
-            'portfolio_goals'     => $portfolioGoals,
             'goals'               => $goals,
             'summary'             => $summary,
             'period'              => $period,
@@ -817,13 +823,13 @@ class PortfolioController extends Controller
             'alertas'             => $alertas,
             // Quick 260619 redesign Carteira UI — dados novos pro novo layout.
             'revenue_timeseries'  => $revenueTimeseries,
-            'meta_carteira'       => [
+            // Phase 48 — meta calculada via Goals individuais (PortfolioGoal revenue removido).
+            'meta_carteira_calculada' => [
                 'target_value'   => $metaCarteiraTarget,
                 'realized_value' => $metaCarteiraRealizado,
                 'achieved_pct'   => $metaCarteiraAchieved,
                 'restante'       => $metaCarteiraRestante,
                 'has_goal'       => $metaCarteiraTarget !== null,
-                'goal_id'        => $metaCarteiraModel?->id,
             ],
             'periodo_amostra'     => $periodoAmostra,
             'prioridade_do_dia'   => $prioridadeDoDia,
