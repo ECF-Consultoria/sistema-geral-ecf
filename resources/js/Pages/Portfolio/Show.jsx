@@ -601,22 +601,39 @@ export default function PortfolioShow({
                         icon={Building2}
                         help={METRIC_HELP.empresas_kpi}
                     />
-                    <KpiCard
-                        label="Meta da carteira"
-                        value={meta_carteira.has_goal && meta_carteira.achieved_pct !== null
-                            ? `${meta_carteira.achieved_pct.toFixed(0)}%`
-                            : '—'}
-                        sub={meta_carteira.has_goal
-                            ? `${formatCurrencyCompact(meta_carteira.realized_value)} / ${formatCurrencyCompact(meta_carteira.target_value)}`
-                            : 'sem meta cadastrada'}
-                        icon={Target}
-                        accent={meta_carteira.achieved_pct !== null && meta_carteira.achieved_pct >= 80
-                            ? 'text-emerald-300'
-                            : meta_carteira.achieved_pct !== null && meta_carteira.achieved_pct < 50
-                                ? 'text-red-300'
+                    {/* Bloco diferenciado por cargo:
+                        - analista → Sugadores (pendentes / resolvidos)
+                        - estrategista → PPAs (em andamento / concluídos no mês)
+                        - fallback (admin ou sem cargo) → Score do profissional */}
+                    {cargo_slug === 'analista' && sugador_counters !== null ? (
+                        <KpiCard
+                            label="Sugadores"
+                            value={sugador_counters.pendentes}
+                            sub={`pendentes · ${sugador_counters.resolvidos} resolvidos`}
+                            icon={AlertTriangle}
+                            accent={sugador_counters.pendentes > 0 ? 'text-red-300' : 'text-emerald-300'}
+                        />
+                    ) : cargo_slug === 'estrategista' && ppa_counters !== null ? (
+                        <KpiCard
+                            label="PPAs"
+                            value={ppa_counters.em_andamento}
+                            sub={`em andamento · ${ppa_counters.concluidos_mes} concluídos este mês`}
+                            icon={Briefcase}
+                            accent="text-sky-300"
+                        />
+                    ) : (
+                        <KpiCard
+                            label="Score"
+                            value={performance_profissional?.score ?? '—'}
+                            sub={performance_profissional?.classificacao
+                                ? (CLASSIF_LABEL[performance_profissional.classificacao] ?? performance_profissional.classificacao)
+                                : 'sem dados'}
+                            icon={Award}
+                            accent={performance_profissional?.classificacao
+                                ? CLASSIF_CLS[performance_profissional.classificacao]
                                 : 'text-white/85'}
-                        help={METRIC_HELP.meta_carteira_kpi}
-                    />
+                        />
+                    )}
                     <KpiCard
                         label="Prioridade do dia"
                         value={prioridade_do_dia}
