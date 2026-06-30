@@ -28,6 +28,13 @@ class PerformanceController extends Controller
         }
 
         $period = $request->get('period', '30');
+
+        // Filtro opcional por cargo (analista/estrategista); null = Geral (todos)
+        $cargo = $request->get('cargo');
+        if (!in_array($cargo, ['analista', 'estrategista'], true)) {
+            $cargo = null; // ignora valores inválidos e 'geral'
+        }
+
         $since = match ($period) {
             '7'   => now()->subDays(7),
             '30'  => now()->subDays(30),
@@ -107,10 +114,16 @@ class PerformanceController extends Controller
                 return $r;
             });
 
+        // Filtra por cargo pós-cálculo (cargo_slug já presente em cada item do ranking)
+        if ($cargo !== null) {
+            $ranking = $ranking->filter(fn ($r) => $r['cargo_slug'] === $cargo)->values();
+        }
+
         return Inertia::render('Performance/Index', [
             'ranking' => $ranking,
             'period'  => $period,
             'setor'   => 'consultoria',
+            'cargo'   => $cargo,
         ]);
     }
 

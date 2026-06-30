@@ -131,10 +131,15 @@ class PerformanceCargoFilterTest extends TestCase
 
     /**
      * Extrai o valor 'cargo' das props Inertia do response.
+     * Usa array_key_exists para distinguir chave ausente de chave=null.
      */
     private function cargoDaResposta($response): mixed
     {
-        return $response->viewData('page')['props']['cargo'] ?? 'CHAVE_AUSENTE';
+        $props = $response->viewData('page')['props'] ?? [];
+        if (!array_key_exists('cargo', $props)) {
+            return 'CHAVE_AUSENTE';
+        }
+        return $props['cargo'];
     }
 
     // ═════════════════════════════════════════════════════════════════════════
