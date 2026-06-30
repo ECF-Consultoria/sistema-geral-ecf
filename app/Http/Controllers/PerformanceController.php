@@ -219,7 +219,11 @@ class PerformanceController extends Controller
             ];
         })->sortByDesc('score_final')->values();
 
-        $meses = Publicacao::selectRaw("DATE_FORMAT(data, '%Y-%m') as mes")
+        // Compatibilidade SQLite (testes) vs MySQL (produção).
+        $formatExpr = DB::getDriverName() === 'sqlite'
+            ? "strftime('%Y-%m', data)"
+            : "DATE_FORMAT(data, '%Y-%m')";
+        $meses = Publicacao::selectRaw("{$formatExpr} as mes")
             ->distinct()->orderByDesc('mes')->pluck('mes')->toArray();
         $atual = now()->format('Y-m');
         if (!in_array($atual, $meses)) array_unshift($meses, $atual);
