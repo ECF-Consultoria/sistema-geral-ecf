@@ -162,3 +162,14 @@ Schedule::command('sugadores:shadow-ml --company=all --days=1')
     ->name('sugadores-shadow-ml-daily')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Phase 46 — Snapshot diário do score de desempenho de cada analista/estrategista.
+// Roda às 13:30 BRT, logo após a cascata D-1 terminar (SyncPolosFaturamentoJob 13:00).
+// Lê dados já consolidados do dia + persiste em desempenho_score_snapshots para
+// alimentar deltas (vs ontem / vs semana passada) e gráfico de evolução temporal.
+Schedule::command('desempenho:snapshot-scores')
+    ->dailyAt('13:30')
+    ->timezone('America/Sao_Paulo')
+    ->name('desempenho-snapshot-scores')
+    ->onOneServer()
+    ->withoutOverlapping();

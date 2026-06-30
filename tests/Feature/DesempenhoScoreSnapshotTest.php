@@ -275,14 +275,16 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $this->assertSame(2, DB::table('desempenho_score_snapshots')->count(),
             'Deve criar exatamente 1 snapshot por user elegível (analista/estrategista).');
 
-        $snap1 = DB::table('desempenho_score_snapshots')
+        // Lemos via Model pra que o cast de date normalize o formato (SQLite armazena
+        // como 'YYYY-MM-DD 00:00:00' enquanto a comparação via Eloquent é por Carbon).
+        $snap1 = \App\Models\DesempenhoScoreSnapshot::query()
             ->where('user_id', $u1->id)
-            ->where('ref_date', '2026-06-30')
+            ->whereDate('ref_date', '2026-06-30')
             ->first();
         $this->assertNotNull($snap1, 'Snapshot do analista deve existir.');
         $this->assertSame(72, (int) $snap1->score);
         $this->assertSame('bom', $snap1->classificacao);
-        $this->assertSame(1, (int) $snap1->tem_base_comparativa);
+        $this->assertTrue((bool) $snap1->tem_base_comparativa);
         $this->assertSame(7, (int) $snap1->empresas_carteira);
         $this->assertSame(5, (int) $snap1->empresas_eligiveis);
     }
@@ -299,8 +301,8 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
             ->assertExitCode(0);
 
-        $this->assertSame(1, DB::table('desempenho_score_snapshots')
-            ->where('ref_date', '2026-06-30')->count());
+        // 1 snapshot total (SQLite armazena date como datetime, então whereDate normaliza).
+        $this->assertSame(1, DB::table('desempenho_score_snapshots')->count());
 
         // Segundo run — score atualizado, mas continua 1 linha por (user, data).
         $this->fakeScores = [
@@ -310,14 +312,13 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
             ->assertExitCode(0);
 
-        $this->assertSame(1, DB::table('desempenho_score_snapshots')
-            ->where('ref_date', '2026-06-30')->count(),
+        $this->assertSame(1, DB::table('desempenho_score_snapshots')->count(),
             'Re-run no mesmo dia NÃO deve duplicar — updateOrCreate atualiza.');
 
-        $snap = DB::table('desempenho_score_snapshots')
+        $snap = \App\Models\DesempenhoScoreSnapshot::query()
             ->where('user_id', $u->id)
-            ->where('ref_date', '2026-06-30')
-            ->first();
+            ->whereDate('ref_date', '2026-06-30')
+            ->firstOrFail();
         $this->assertSame(85, (int) $snap->score, 'Score deve refletir o 2º run.');
         $this->assertSame('excelente', $snap->classificacao);
     }
@@ -342,7 +343,8 @@ class DesempenhoScoreSnapshotTest extends TestCase
             'Cast breakdown_json => array deve devolver array PHP.');
         $this->assertArrayHasKey('crescimento_ajustado_pct', $model->breakdown_json);
         $this->assertArrayHasKey('atingimento_meta', $model->breakdown_json);
-        $this->assertSame(82.0, $model->breakdown_json['atingimento_meta']['pct']);
+        // PHP normaliza JSON 82.0 → 82 (int) ao decodificar; usamos comparação numérica.
+        $this->assertEqualsWithDelta(82.0, $model->breakdown_json['atingimento_meta']['pct'], 0.001);
     }
 
     public function test_ranking_pos_ordenado_por_score_desc(): void
@@ -362,11 +364,12 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
             ->assertExitCode(0);
 
-        $snaps = DB::table('desempenho_score_snapshots')
-            ->where('ref_date', '2026-06-30')
-            ->orderBy('user_id')
+        // Lemos via Model + array nativo pra evitar Collection-com-keys-numéricas (offset posicional).
+        $snaps = \App\Models\DesempenhoScoreSnapshot::query()
+            ->whereDate('ref_date', '2026-06-30')
             ->get()
-            ->keyBy('user_id');
+            ->keyBy('user_id')
+            ->all();
 
         $this->assertSame(3, (int) $snaps[$u1->id]->ranking_pos, 'User com score 50 deve ser 3º.');
         $this->assertSame(1, (int) $snaps[$u2->id]->ranking_pos, 'User com score 80 deve ser 1º.');
