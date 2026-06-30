@@ -251,6 +251,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('permission:mlb.dashboard')
         ->name('publicacao.desempenho.index');
 
+    // Phase 46 Plan 46-02 — endpoint JSON da curva de evolucao do score de um user
+    // ao longo dos ultimos N dias (default 30, clamp 7..365). Consumido por fetch
+    // no frontend (drawer/grafico individual entregue na Wave 3). Mesmo gate da
+    // pagina /performance (permission core.performance).
+    Route::get('/api/performance/{user}/evolucao', [PerformanceController::class, 'evolucao'])
+        ->middleware('permission:core.performance')
+        ->name('performance.evolucao');
+
     // Adman: leitura do ultimo sync (admin apenas).
     // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):
     // API Adman e D-1, sync ocorre 1x/dia via scheduler (11h BRT).

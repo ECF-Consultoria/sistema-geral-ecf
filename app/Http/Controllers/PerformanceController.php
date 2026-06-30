@@ -180,6 +180,53 @@ class PerformanceController extends Controller
         return $this->indexPolos($request);
     }
 
+    /**
+     * Phase 46 Plan 46-02 — endpoint JSON com a curva de evolução do score
+     * de um user nos últimos N dias.
+     *
+     * Consumido pelo frontend (drawer/gráfico individual) via fetch — Wave 3.
+     * Mesmo gate de permissão de /performance (`permission:core.performance`),
+     * aplicado na rota em routes/web.php.
+     *
+     * Query params:
+     *   - period: 7..365 (clamp; default 30; valores não-numericos viram 30)
+     *
+     * Payload:
+     *   {
+     *     "user_id": 42,
+     *     "period":  30,
+     *     "serie":   [{"date":"YYYY-MM-DD","score":75,"ranking_pos":2}, ...]
+     *   }
+     *
+     * Série ordenada ASC por date — Recharts consome direto.
+     */
+    public function evolucao(Request $request, User $user): JsonResponse
+    {
+        // Clamp period: aceita 7..365; default 30; valores nao-numericos viram 30.
+        $raw = $request->query('period', 30);
+        $period = is_numeric($raw) ? (int) $raw : 30;
+        $period = max(7, min($period, 365));
+
+        $since = now()->subDays($period)->toDateString();
+
+        $serie = DesempenhoScoreSnapshot::where('user_id', $user->id)
+            ->whereDate('ref_date', '>=', $since)
+            ->orderBy('ref_date', 'asc')
+            ->get(['ref_date', 'score', 'ranking_pos'])
+            ->map(fn ($s) => [
+                'date'        => $s->ref_date->toDateString(),
+                'score'       => (int) $s->score,
+                'ranking_pos' => $s->ranking_pos !== null ? (int) $s->ranking_pos : null,
+            ])
+            ->values();
+
+        return response()->json([
+            'user_id' => $user->id,
+            'period'  => $period,
+            'serie'   => $serie,
+        ]);
+    }
+
     private function indexPolos(Request $request): \Inertia\Response
     {
         $mesRef = $request->get('mes', now()->format('Y-m'));
