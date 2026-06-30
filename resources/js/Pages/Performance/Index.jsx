@@ -1,6 +1,8 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
-import { Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, X } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent, formatCurrency } from '@/lib/utils';
 
 const PERIOD_OPTIONS = [
@@ -79,6 +81,19 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
 
     const isPolos = setor === 'polos';
 
+    // Phase 46-03 — user selecionado abre o EvolucaoDrawer à direita
+    const [userSelecionado, setUserSelecionado] = useState(null);
+
+    // ESC fecha o drawer
+    useEffect(() => {
+        if (!userSelecionado) return;
+        const onKey = (e) => { if (e.key === 'Escape') setUserSelecionado(null); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [userSelecionado]);
+
+    const allRankingIds = ranking.map((r) => r.id);
+
     return (
         <AppLayout title="Desempenho">
             <div className="space-y-5 max-w-[1100px]">
@@ -151,9 +166,18 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                 ) : isPolos ? (
                     <RankingPolos ranking={ranking} />
                 ) : (
-                    <RankingConsultoria ranking={ranking} />
+                    <RankingConsultoria ranking={ranking} onSelectUser={setUserSelecionado} />
                 )}
             </div>
+
+            {/* Phase 46-03 — Drawer de evolução individual */}
+            {userSelecionado && (
+                <EvolucaoDrawer
+                    rankingItem={userSelecionado}
+                    allRankingIds={allRankingIds}
+                    onClose={() => setUserSelecionado(null)}
+                />
+            )}
         </AppLayout>
     );
 }
@@ -222,7 +246,7 @@ function ScoreDelta({ delta, label }) {
     );
 }
 
-function RankingConsultoria({ ranking }) {
+function RankingConsultoria({ ranking, onSelectUser }) {
     return (
         <div className="card-ecf rounded-2xl overflow-hidden">
             <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
@@ -242,9 +266,8 @@ function RankingConsultoria({ ranking }) {
                 {ranking.map((u, idx) => (
                     <div
                         key={u.id}
-                        onClick={() => router.visit(route('portfolio.show', u.id))}
                         className={cn(
-                            'grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
+                            'grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04]',
                             idx === 0 && u.tem_base_comparativa && 'bg-ecf-yellow/[0.03]',
                             !u.tem_base_comparativa && 'opacity-60'
                         )}
@@ -256,7 +279,11 @@ function RankingConsultoria({ ranking }) {
                                 : <span className="text-white/40 font-semibold text-[12px] tabular-nums">{u.posicao}</span>}
                         </div>
 
-                        <div>
+                        {/* Phase 46-03 — Click no nome abre EvolucaoDrawer (não navega para portfolio). */}
+                        <div
+                            onClick={() => onSelectUser?.(u)}
+                            className="cursor-pointer hover:underline"
+                        >
                             <p className="text-white font-semibold text-[13px]">{u.name}</p>
                             <p className="text-white/30 text-[11px]">
                                 {u.cargo_label}
@@ -290,12 +317,201 @@ function RankingConsultoria({ ranking }) {
 
                         <div><Tendencia value={u.tendencia} /></div>
 
+                        {/* Phase 46-03 — ChevronRight preserva acesso ao portfolio individual. */}
                         <div className="flex items-center justify-end">
-                            <ChevronRight size={14} className="text-white/20" />
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); router.visit(route('portfolio.show', u.id)); }}
+                                className="rounded-md p-1 text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                                title="Abrir carteira individual"
+                            >
+                                <ChevronRight size={14} />
+                            </button>
                         </div>
                     </div>
                 ))}
             </div>
+        </div>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Phase 46-03 — EvolucaoDrawer
+// Drawer lateral direito com gráfico Recharts da curva individual de score
+// comparada à mediana do grupo. Faz fetch on-open de:
+//   1. GET /api/performance/{id}/evolucao?period=30 do user selecionado
+//   2. Promise.all dos demais users do ranking (para calcular mediana por data)
+// ═══════════════════════════════════════════════════════════════════════
+function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
+    const [serie, setSerie]                       = useState(null);
+    const [grupoMedianoPorData, setGrupoMediano]  = useState(null);
+    const [loading, setLoading]                   = useState(true);
+
+    useEffect(() => {
+        if (!rankingItem) return;
+        setLoading(true);
+        setSerie(null);
+        setGrupoMediano(null);
+
+        const fetchOpts = {
+            headers:     { 'Accept': 'application/json' },
+            credentials: 'same-origin',
+        };
+
+        // 1. Curva do user selecionado
+        const fetchUser = fetch(route('performance.evolucao', rankingItem.id) + '?period=30', fetchOpts)
+            .then((r) => r.json())
+            .catch(() => ({ serie: [] }));
+
+        // 2. Curva dos demais users — em paralelo, ignora falhas individuais
+        const fetchGrupo = Promise.all(
+            allRankingIds
+                .filter((id) => id !== rankingItem.id)
+                .map((id) =>
+                    fetch(route('performance.evolucao', id) + '?period=30', fetchOpts)
+                        .then((r) => r.json())
+                        .catch(() => ({ serie: [] }))
+                )
+        );
+
+        Promise.all([fetchUser, fetchGrupo]).then(([userData, grupoData]) => {
+            setSerie(userData.serie ?? []);
+
+            // Mediana por data (calculada client-side a partir das séries do grupo)
+            const porData = {};
+            grupoData.forEach((d) => {
+                (d.serie ?? []).forEach((p) => {
+                    if (!porData[p.date]) porData[p.date] = [];
+                    porData[p.date].push(p.score);
+                });
+            });
+            const mediana = {};
+            Object.keys(porData).forEach((date) => {
+                const sorted = [...porData[date]].sort((a, b) => a - b);
+                const mid    = Math.floor(sorted.length / 2);
+                mediana[date] = sorted.length % 2 === 0
+                    ? (sorted[mid - 1] + sorted[mid]) / 2
+                    : sorted[mid];
+            });
+            setGrupoMediano(mediana);
+            setLoading(false);
+        });
+    }, [rankingItem, allRankingIds]);
+
+    // Merge serie user + mediana → formato para Recharts
+    const chartData = (serie ?? []).map((p) => ({
+        date:    p.date,
+        score:   p.score,
+        mediana: grupoMedianoPorData?.[p.date] ?? null,
+    }));
+
+    const delta = rankingItem.delta_vs_ontem;
+
+    return (
+        <div className="fixed inset-0 z-50 flex justify-end">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+
+            <aside className="relative h-full w-full max-w-2xl overflow-y-auto border-l border-white/[0.1] bg-ecf-bg shadow-2xl">
+                {/* Header sticky */}
+                <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/[0.08] bg-ecf-bg/95 px-5 py-4 backdrop-blur">
+                    <div>
+                        <h2 className="text-white font-display font-extrabold text-lg leading-tight">{rankingItem.name}</h2>
+                        <p className="text-white/40 text-xs">
+                            {rankingItem.cargo_label} · Score atual:{' '}
+                            <span className="text-white/70 font-semibold tabular-nums">{rankingItem.score}</span>
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-lg p-1.5 text-white/50 hover:bg-white/[0.06] hover:text-white"
+                        aria-label="Fechar"
+                    >
+                        <X size={18} />
+                    </button>
+                </div>
+
+                {/* KPI cards */}
+                <div className="grid grid-cols-2 gap-2 px-5 py-4 border-b border-white/[0.06]">
+                    <div>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Score hoje</p>
+                        <p className="text-ecf-yellow font-display font-extrabold text-2xl mt-0.5 tabular-nums">{rankingItem.score}</p>
+                    </div>
+                    <div>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">vs ontem</p>
+                        <div className="mt-1 flex items-center gap-2">
+                            {delta === null || delta === undefined ? (
+                                <span className="text-white/30 font-display font-extrabold text-2xl">—</span>
+                            ) : (
+                                <>
+                                    {delta > 1 && <TrendingUp size={18} className="text-emerald-300" />}
+                                    {delta < -1 && <TrendingUp size={18} className="text-red-300 rotate-180" />}
+                                    <span className={cn(
+                                        'font-display font-extrabold text-2xl tabular-nums',
+                                        delta > 1 ? 'text-emerald-300' : delta < -1 ? 'text-red-300' : 'text-white/60'
+                                    )}>
+                                        {delta > 0 ? '+' : ''}{delta.toFixed(1)}
+                                    </span>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Gráfico */}
+                <div className="px-5 py-4">
+                    <h3 className="text-white/60 text-xs uppercase tracking-wider mb-3">Evolução — últimos 30 dias</h3>
+
+                    {loading && (
+                        <div className="flex items-center gap-2 py-12 justify-center">
+                            <div className="h-3 w-3 animate-pulse rounded-full bg-white/30" />
+                            <p className="text-white/40 text-sm">Carregando histórico...</p>
+                        </div>
+                    )}
+
+                    {!loading && chartData.length === 0 && (
+                        <p className="text-white/40 text-sm py-12 text-center">
+                            Sem histórico ainda — snapshots começam a partir do próximo 13:30 BRT.
+                        </p>
+                    )}
+
+                    {!loading && chartData.length > 0 && (
+                        <ResponsiveContainer width="100%" height={280}>
+                            <LineChart data={chartData} margin={{ top: 5, right: 12, left: -8, bottom: 5 }}>
+                                <XAxis dataKey="date" stroke="#666" fontSize={10} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                                <YAxis domain={[0, 100]} stroke="#666" fontSize={10} tickLine={false} axisLine={{ stroke: 'rgba(255,255,255,0.08)' }} />
+                                <Tooltip
+                                    contentStyle={{
+                                        background:   '#0f1116',
+                                        border:       '1px solid rgba(255,255,255,0.1)',
+                                        borderRadius: '8px',
+                                        fontSize:     '12px',
+                                    }}
+                                    labelStyle={{ color: 'rgba(255,255,255,0.6)' }}
+                                />
+                                <Legend wrapperStyle={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }} />
+                                <Line
+                                    type="monotone"
+                                    dataKey="score"
+                                    stroke="#ffe600"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    name={rankingItem.name}
+                                />
+                                <Line
+                                    type="monotone"
+                                    dataKey="mediana"
+                                    stroke="rgba(255,255,255,0.4)"
+                                    strokeDasharray="4 4"
+                                    strokeWidth={1.5}
+                                    dot={false}
+                                    name="Mediana do grupo"
+                                />
+                            </LineChart>
+                        </ResponsiveContainer>
+                    )}
+                </div>
+            </aside>
         </div>
     );
 }
