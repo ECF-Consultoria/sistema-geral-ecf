@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\DesempenhoScoreSnapshot;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
@@ -11,6 +12,7 @@ use App\Models\Publicacao;
 use App\Models\User;
 use App\Services\PortfolioScoreService;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -112,6 +114,48 @@ class PerformanceController extends Controller
                 $r['posicao'] = $idx + 1;
                 return $r;
             });
+
+        // ── Phase 46 Plan 46-02 — enriquece ranking com deltas longitudinais ──
+        // Lê snapshots da tabela `desempenho_score_snapshots` (populada pelo
+        // schedule `desempenho:snapshot-scores` às 13:30 BRT, Wave 1).
+        //   - delta_vs_ontem          = score_hoje − snapshot mais recente STRICTLY < hoje
+        //   - delta_vs_semana_passada = score_hoje − snapshot mais recente <= today-7d
+        // 2 queries totais (sem N+1): pegamos TODOS os snapshots elegíveis dos users
+        // do ranking, agrupamos por user e mantemos só o mais recente.
+        // IMPORTANTE: usar whereDate em vez de where('ref_date', $str) — SQLite (testes)
+        // armazena `date` casted como 'YYYY-MM-DD 00:00:00' e a comparação string falha.
+        // whereDate funciona idêntico em MariaDB prod (DATE(ref_date) = ?).
+        $userIds = $ranking->pluck('id')->all();
+        $ontem          = collect();
+        $semanaPassada  = collect();
+        if (!empty($userIds)) {
+            $hojeStr      = now()->toDateString();
+            $semanaCorte  = now()->subDays(7)->toDateString();
+
+            $snapshotsOntem = DesempenhoScoreSnapshot::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('ref_date', '<', $hojeStr)
+                ->orderBy('ref_date', 'desc')
+                ->get(['user_id', 'ref_date', 'score']);
+            // groupBy + first() mantem 1 por user (mais recente por causa do orderBy DESC).
+            $ontem = $snapshotsOntem->groupBy('user_id')->map(fn ($g) => $g->first());
+
+            $snapshotsSemana = DesempenhoScoreSnapshot::query()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('ref_date', '<=', $semanaCorte)
+                ->orderBy('ref_date', 'desc')
+                ->get(['user_id', 'ref_date', 'score']);
+            $semanaPassada = $snapshotsSemana->groupBy('user_id')->map(fn ($g) => $g->first());
+        }
+
+        $ranking = $ranking->map(function ($r) use ($ontem, $semanaPassada) {
+            $scoreHoje = (float) $r['score'];
+            $sOntem    = $ontem->get($r['id']);
+            $sSemana   = $semanaPassada->get($r['id']);
+            $r['delta_vs_ontem']          = $sOntem  ? round($scoreHoje - (float) $sOntem->score, 1)  : null;
+            $r['delta_vs_semana_passada'] = $sSemana ? round($scoreHoje - (float) $sSemana->score, 1) : null;
+            return $r;
+        });
 
         // Filtra por cargo pós-cálculo (cargo_slug já presente em cada item do ranking)
         if ($cargo !== null) {
