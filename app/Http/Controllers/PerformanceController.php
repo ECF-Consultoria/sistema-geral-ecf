@@ -127,6 +127,16 @@ class PerformanceController extends Controller
         ]);
     }
 
+    /**
+     * Ranking de desempenho do setor de publicação.
+     * Acessível via GET /publicacao/desempenho (permission: mlb.dashboard).
+     * Reutiliza a lógica de indexPolos() — mesma page, setor='polos'.
+     */
+    public function indexPublicacao(Request $request): \Inertia\Response
+    {
+        return $this->indexPolos($request);
+    }
+
     private function indexPolos(Request $request): \Inertia\Response
     {
         $mesRef = $request->get('mes', now()->format('Y-m'));
