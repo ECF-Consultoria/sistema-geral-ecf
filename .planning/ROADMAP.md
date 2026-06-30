@@ -131,6 +131,7 @@ Captura inicial: `.planning/todos/pending/270627-melhorias-dashboard-desempenho-
 - [ ] **Phase 48: Redesign da carteira individual (analista + estrategista)** — modernizar UI da carteira seguindo `briefing-carteira-analistas-ui.md` (hero card com gradiente, KPIs simplificados, gráfico com tooltip, tabela orientada a ação). Adicionar: mini-gráfico de crescimento por empresa na listagem (verde subindo/vermelho descendo/cinza regular), histórico de NPS do dono da carteira, bloco diferenciado por função (sugadores para analista / PPAs para estrategista). **REMOVER meta agregada da carteira** — meta é por empresa (modelo correto). Independente, pode rodar em paralelo.
 - [x] **Phase 49: Rankings de /desempenho por função + ranking separado de publicação** — 3 tabs Geral/Analistas/Estrategistas em `/performance` + rota dedicada `/publicacao/desempenho` no dropdown Publicações. UAT 2026-06-30 exigiu correção: toggle Consultoria|Publicações foi removido (contrato final = rota define o ranking). Independência da Phase 47 confirmada.
 - [ ] **Phase 50: Gamificação OAuth ML para Líder Performance + Estrategistas** — nova aba/rota incentivando conexão ML de empresas pendentes. Estrategista vê apenas empresas atribuídas; Líder vê todas. Ranking/badge/score por conexão concluída + status "Em conversa com cliente". Acelera migração Adman→ML. Independente; sinergia com Phases 41/42.
+- [ ] **Phase 51: Reestruturação /grants com nova API ECF Drive** — consumir `/grants/resumo` (fonte de verdade remota) + `/grants/distribuicao` + persistir 8 campos novos opcionais (programa, iniciativa, nivelSolucion, nombreSolucion, parceiro, localidade, medalhaFechaIn, medalhaFechaOut). Corrigir lógica "Empresas sem grants" — universo correto = empresas com `cust_id` cadastrado OR com OAuth ML ativo (não `company_id`). Card novo de "Divergência ML" (726 sellers em BASE_VENDEDORES sem ContatosCPP). Buckets visuais 7/15/30/60/90 dias. Decisão LOCKED: distribuição por iniciativa/nivel/parceiro/localidade fora do escopo (100% uniforme hoje no ML — flat). Independente.
 
 ## Phase Details
 
@@ -1194,3 +1195,35 @@ Plans:
 **Plans:** TBD
 
 **UI hint:** SIM — nova rota + nova entry no sidebar + lista de empresas com filtros por status + indicadores gamificados (badges, ranking).
+
+### Phase 51: Reestruturação /grants com nova API ECF Drive
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Tornar a página `/grants` 100% certeira ao consumir as novas capacidades da API ECF Drive (deploy do operador em 2026-06-30). Eliminar contagens locais aproximadas, expor divergências invisíveis hoje e capturar campos novos de classificação ML.
+
+**Requirements** (briefing do operador 2026-06-30):
+
+- Wrapper novo em `EcfDriveService`: `grantsResumo()` consumindo `GET /grants/resumo` (totais + buckets 7/15/30/60/90d + comparação CSV bruto vs banco)
+- Wrapper novo `grantsDistribuicao(string $dimensao)` (somente `programa` por enquanto — outras dimensões 100% uniformes hoje)
+- Migration aditiva: 8 colunas opcionais em `company_grants` (`programa`, `iniciativa`, `nivel_solucion`, `nombre_solucion`, `parceiro`, `localidade`, `medalha_fecha_in`, `medalha_fecha_out`) — todas nullable; sem breaking
+- `SyncGrantsFromEcfDrive` (Phase 20) passa a popular os 8 campos novos quando vierem no payload
+- `GrantController::index()` consome `/grants/resumo` como fonte de verdade dos totais; fallback para contagem local quando API offline
+- **Universo "Empresas sem grants" corrigido (LOCKED):** `companies.active=true AND (cust_id IS NOT NULL OR EXISTS ml_token ativo)` AND NOT EXISTS grant ativo. Empresas sem cust_id e sem OAuth ML não entram no número (não é "sem grant", é "não onboardada no ML").
+- Card novo "Divergência ML": mostra contagem de sellers em BASE_VENDEDORES que não estão em ContatosCPP (vem do payload `/grants/resumo`)
+- StatCards reorganizados em buckets de expiração 7/15/30/60/90d com cores progressivas (vermelho → âmbar → cinza)
+- Tabela ganha colunas opcionais `programa`, `nivel_solucion`, `medalha_fecha_in/out` (mostrar somente quando empresa tiver valor distinto do padrão; sem column-bloat)
+
+**Out of scope** (LOCKED):
+
+- Distribuição por iniciativa/nivelSolucion/parceiro/localidade — todos 100% uniformes hoje no ML; nada para mostrar. Voltar quando ML diversificar (seed).
+- Restruturação visual completa da página — manter StatCards atuais; só refinar/adicionar
+- Endpoint próprio para a divergência (não criar `GrantController@divergencia`) — consumir direto do `/grants/resumo`
+
+**Depends on:** Nenhuma. Phase 20 (integração ECF Drive) já fornece base do `EcfDriveService` + `SyncGrantsFromEcfDrive`.
+
+**Plans:** TBD
+
+**UI hint:** parcial — incrementar `Grants/Index.jsx` existente com novo card de divergência + buckets progressivos + colunas opcionais. Sem nova rota.
