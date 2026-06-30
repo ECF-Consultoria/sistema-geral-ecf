@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
-import { Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, Store } from 'lucide-react';
+import { Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight } from 'lucide-react';
 import { cn, formatPercent, formatCurrency } from '@/lib/utils';
 
 const PERIOD_OPTIONS = [
@@ -90,33 +90,7 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Setor selector */}
-                        <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
-                            <button
-                                onClick={() => applyFilter({ setor: 'consultoria', period })}
-                                className={cn(
-                                    'px-3 h-9 text-[13px] font-medium transition-colors',
-                                    !isPolos
-                                        ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
-                                        : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
-                                )}
-                            >
-                                Consultoria
-                            </button>
-                            <div className="w-px bg-white/[0.08]" />
-                            <button
-                                onClick={() => applyFilter({ setor: 'polos', mes: mes ?? new Date().toISOString().slice(0,7) })}
-                                className={cn(
-                                    'px-3 h-9 text-[13px] font-medium transition-colors flex items-center gap-1.5',
-                                    isPolos
-                                        ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
-                                        : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
-                                )}
-                            >
-                                <Store size={13} />
-                                Publicações
-                            </button>
-                        </div>
+                        {/* Toggle Consultoria|Publicações removido — rota define o ranking (Phase 49 UAT 2026-06-30) */}
 
                         {/* Filtro por cargo — só no setor consultoria */}
                         {!isPolos && (

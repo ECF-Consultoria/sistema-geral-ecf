@@ -21,11 +21,10 @@ class PerformanceController extends Controller
 
     public function index(Request $request)
     {
-        $setor = $request->get('setor', 'consultoria');
-
-        if ($setor === 'polos') {
-            return $this->indexPolos($request);
-        }
+        // Phase 49 UAT 2026-06-30: /performance é exclusivamente consultoria.
+        // Publicações tem rota própria /publicacao/desempenho via indexPublicacao().
+        // Param ?setor=polos é IGNORADO aqui — qualquer tentativa retorna ranking de consultoria.
+        $setor = 'consultoria';
 
         $period = $request->get('period', '30');
 
