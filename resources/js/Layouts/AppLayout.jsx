@@ -131,6 +131,7 @@ const NAV_TREE = [
         icon: BarChart2,
         children: [
             { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard' },
+            { label: 'Desempenho',      routeName: 'publicacao.desempenho.index', page: 'Performance', icon: Trophy, permission: 'mlb.dashboard' },
             { label: 'Treinamentos',    routeName: 'mlb.treinamentos', page: 'Mlb/Treinamentos', icon: BookOpen,       permission: 'mlb.treinamento' },
             { label: 'Meu Painel',      routeName: 'mlb.meu-painel',   page: 'Mlb/MeuPainel',    icon: LayoutList,     permission: 'mlb.meu_painel', excludeRoles: ['admin'] },
             { label: 'Publicação',      routeName: 'mlb.publicacoes',  page: 'Mlb/Publicacoes',  icon: PlusCircle,     permission: 'mlb.publicacoes' },
