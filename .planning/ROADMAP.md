@@ -129,7 +129,7 @@ Captura inicial: `.planning/todos/pending/270627-melhorias-dashboard-desempenho-
 - [ ] **Phase 46: Histórico longitudinal de scores na página de desempenho** — snapshot diário (`desempenho_score_snapshots`: user_id, ref_date, score, ranking_pos, breakdown_json) via job no scheduler. UI mostra delta vs dia anterior / semana anterior + gráfico de evolução individual. Resolve "classificação muda todo dia, não dá pra decidir quem é realmente o melhor". Ingerir `metodologia-desempenho-carteira.md` no discuss-phase. Independente.
 - [ ] **Phase 47: Scoring por função com balanceamento por volume** — adiciona pontuação `sugador-resolvido-via-sistema` (analistas, **scoring negativo por não-resolvido**) + `PPA-concluído` (estrategistas). **Balanceamento crítico:** sugador é diário (recompensa pequena ou penalização) vs PPA mensal (recompensa proporcionalmente maior). Pesos por volume esperado. Depends on Phase 44 + Phase 46.
 - [ ] **Phase 48: Redesign da carteira individual (analista + estrategista)** — modernizar UI da carteira seguindo `briefing-carteira-analistas-ui.md` (hero card com gradiente, KPIs simplificados, gráfico com tooltip, tabela orientada a ação). Adicionar: mini-gráfico de crescimento por empresa na listagem (verde subindo/vermelho descendo/cinza regular), histórico de NPS do dono da carteira, bloco diferenciado por função (sugadores para analista / PPAs para estrategista). **REMOVER meta agregada da carteira** — meta é por empresa (modelo correto). Independente, pode rodar em paralelo.
-- [ ] **Phase 49: Rankings de /desempenho por função + ranking separado de publicação** — adicionar 3 tabs em `/performance` (Geral / Analistas / Estrategistas) + nova rota `/publicacao/desempenho` (ou similar) dentro do dropdown Publicação do menu lateral. Reusa `PortfolioScoreService` com filtro de função. Depends on Phase 47 (score diferenciado).
+- [x] **Phase 49: Rankings de /desempenho por função + ranking separado de publicação** — 3 tabs Geral/Analistas/Estrategistas em `/performance` + rota dedicada `/publicacao/desempenho` no dropdown Publicações. UAT 2026-06-30 exigiu correção: toggle Consultoria|Publicações foi removido (contrato final = rota define o ranking). Independência da Phase 47 confirmada.
 - [ ] **Phase 50: Gamificação OAuth ML para Líder Performance + Estrategistas** — nova aba/rota incentivando conexão ML de empresas pendentes. Estrategista vê apenas empresas atribuídas; Líder vê todas. Ranking/badge/score por conexão concluída + status "Em conversa com cliente". Acelera migração Adman→ML. Independente; sinergia com Phases 41/42.
 
 ## Phase Details
@@ -1150,7 +1150,7 @@ Plans:
 ### Phase 49: Rankings de /desempenho por função + ranking separado de publicação
 
 **Milestone:** v12.0
-**Status:** Pending
+**Status:** Complete (2026-06-30)
 **Mode:** standard
 
 **Goal:** Página `/performance` hoje tem ranking ÚNICO (Geral). Adicionar 4 visualizações: Geral (atual), Analistas (filtro por função), Estrategistas (filtro por função), e Publicação **em rota separada** dentro do dropdown "Publicação" do menu lateral (não em /performance — funções distintas, públicos distintos).

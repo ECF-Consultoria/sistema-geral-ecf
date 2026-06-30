@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v11.0
-milestone_name: Migração Sugadores Adman → ML
+milestone: v12.0
+milestone_name: Carteira + Desempenho + Gamificação OAuth ML
 status: executing
-stopped_at: "Phase 40 Plan 40-04 COMPLETO — PHASE 40 INTEIRA FECHADA (4/4 plans). 2 comandos Artisan (sugadores:shadow-ml + sugadores:compare-providers) + config/sugadores.php (CSV via SUGADORES_ML_SHADOW_COMPANIES) + scheduler diario 13h BRT + env documentada. 17/17 tests novos verdes; Phase 40 acumulado 52/52; Sugador 92/92; Phase 39 48/48 — zero regressao. Wave 3 FECHADA. REQ-40-04..08 fechados. Pronto para deploy. Phase 41 (UI shadow runs + aprovacao manual) destravada."
-last_updated: "2026-06-30T11:47:47.727Z"
-last_activity: 2026-06-30 -- Phase 49 execution started
+stopped_at: "Phase 49 FECHADA (3/3 plans). UAT 2026-06-30 aprovado após 1 rodada de correção — toggle Consultoria|Publicações removido de /performance; contrato final = rota define o ranking (/performance = consultoria, /publicacao/desempenho = publicação). Commit 3210ef9 + redeploy bem-sucedido. Próximas phases disponíveis: 46 (histórico longitudinal), 47 (scoring por função, depends 44+46), 50 (gamificação OAuth ML, independente). Phase 44 segue pausada por checkpoint humano (acesso DevCenter ML)."
+last_updated: "2026-06-30"
+last_activity: 2026-06-30 -- Phase 49 fechada com UAT aprovado
 progress:
   total_phases: 45
-  completed_phases: 26
-  total_plans: 92
-  completed_plans: 78
-  percent: 58
+  completed_phases: 27
+  total_plans: 95
+  completed_plans: 81
+  percent: 60
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 49 — rankings-de-desempenho-por-fun-o-ranking-separado-de-publica
+**Current focus:** Phase 49 fechada — escolher próxima entre 46 / 47 / 50
 
 ## Current Position
 
-Phase: 49 (rankings-de-desempenho-por-fun-o-ranking-separado-de-publica) — EXECUTING
-Plan: 1 of 3
-Status: Executing Phase 49
-Last activity: 2026-06-30 -- Phase 49 execution started
+Phase: 49 (rankings-de-desempenho-por-fun-o-ranking-separado-de-publica) — COMPLETE
+Plan: 3 of 3 — UAT APROVADO
+Status: Phase 49 fechada
+Last activity: 2026-06-30 -- UAT aprovado após correção (toggle removido)
 Blockers:
 
   - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
