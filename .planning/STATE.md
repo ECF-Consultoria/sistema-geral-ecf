@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v12.0
 milestone_name: Carteira + Desempenho + Gamificação OAuth ML
 status: executing
-stopped_at: "Phase 49 FECHADA (3/3 plans). UAT 2026-06-30 aprovado após 1 rodada de correção — toggle Consultoria|Publicações removido de /performance; contrato final = rota define o ranking (/performance = consultoria, /publicacao/desempenho = publicação). Commit 3210ef9 + redeploy bem-sucedido. Próximas phases disponíveis: 46 (histórico longitudinal), 47 (scoring por função, depends 44+46), 50 (gamificação OAuth ML, independente). Phase 44 segue pausada por checkpoint humano (acesso DevCenter ML)."
+stopped_at: "Phase 46 FECHADA (4/4 plans). UAT 2026-06-30 aprovado pré-cron — snapshot infra + delta UI + EvolucaoDrawer com Recharts em prod. 1º snapshot real popula 2026-07-01 13:30 BRT. Insight do research: metodologia justa JÁ estava em PortfolioScoreService (quick 260623); Phase 46 só persiste/compara/visualiza. Phase 47 (scoring por função) agora destravada — só falta Phase 44. Próximas phases disponíveis: 47 (depends 44 + 46 — só falta 44), 50 (gamificação OAuth ML, independente). Phase 44 segue pausada por checkpoint humano (acesso DevCenter ML)."
 last_updated: "2026-06-30"
-last_activity: 2026-06-30 -- Phase 49 fechada com UAT aprovado
+last_activity: 2026-06-30 -- Phase 46 fechada com UAT aprovado pré-cron
 progress:
   total_phases: 45
-  completed_phases: 27
-  total_plans: 95
-  completed_plans: 81
-  percent: 60
+  completed_phases: 28
+  total_plans: 99
+  completed_plans: 85
+  percent: 62
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 46 — histórico longitudinal de scores de desempenho
+**Current focus:** Phase 46 fechada — escolher próxima entre 47 (precisa 44) ou 50
 
 ## Current Position
 
-Phase: 46 (historico-longitudinal-scores-desempenho) — EXECUTING
-Plan: 1 of 4
-Status: Iniciando Wave 1 (Plan 46-01)
-Last activity: 2026-06-30 -- Phase 46 execution started
+Phase: 46 (historico-longitudinal-scores-desempenho) — COMPLETE
+Plan: 4 of 4 — UAT APROVADO
+Status: Phase 46 fechada
+Last activity: 2026-06-30 -- UAT aprovado pré-cron; snapshot real popula 2026-07-01 13:30 BRT
 Blockers:
 
   - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
