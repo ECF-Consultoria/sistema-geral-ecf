@@ -246,6 +246,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->middleware('permission:core.performance')
         ->name('performance.show');
 
+    // Phase 49 Wave 2 — Ranking de desempenho do setor Publicações (rota própria no menu)
+    Route::get('/publicacao/desempenho', [PerformanceController::class, 'indexPublicacao'])
+        ->middleware('permission:mlb.dashboard')
+        ->name('publicacao.desempenho.index');
+
     // Adman: leitura do ultimo sync (admin apenas).
     // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):
     // API Adman e D-1, sync ocorre 1x/dia via scheduler (11h BRT).
