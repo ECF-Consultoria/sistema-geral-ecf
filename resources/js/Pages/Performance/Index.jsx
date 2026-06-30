@@ -72,7 +72,7 @@ function formatMesLabel(mes) {
     return `${meses[parseInt(month, 10) - 1]} ${year}`;
 }
 
-export default function PerformanceIndex({ ranking = [], period = '30', setor = 'consultoria', mes, meses = [] }) {
+export default function PerformanceIndex({ ranking = [], period = '30', setor = 'consultoria', cargo = null, mes, meses = [] }) {
     const applyFilter = (params) => {
         router.get(route('performance.index'), params, { preserveState: true });
     };
@@ -117,6 +117,36 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                                 Publicações
                             </button>
                         </div>
+
+                        {/* Filtro por cargo — só no setor consultoria */}
+                        {!isPolos && (
+                            <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
+                                {[
+                                    { label: 'Geral',         value: null },
+                                    { label: 'Analistas',     value: 'analista' },
+                                    { label: 'Estrategistas', value: 'estrategista' },
+                                ].map((opt, i, arr) => (
+                                    <div key={opt.value ?? 'geral'} className="flex">
+                                        <button
+                                            onClick={() => applyFilter(
+                                                opt.value
+                                                    ? { setor: 'consultoria', period, cargo: opt.value }
+                                                    : { setor: 'consultoria', period }
+                                            )}
+                                            className={cn(
+                                                'px-3 h-9 text-[13px] font-medium transition-colors',
+                                                cargo === opt.value
+                                                    ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
+                                                    : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+                                            )}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                        {i < arr.length - 1 && <div className="w-px bg-white/[0.08]" />}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
 
                         {/* Period / Month selector */}
                         {!isPolos ? (
