@@ -323,4 +323,126 @@ class DesempenhoEvolucaoTest extends TestCase
         // delta_vs_semana_passada → null (D-3 não cabe na janela <= today-7d).
         $this->assertNull($item['delta_vs_semana_passada']);
     }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // TAREFA 2 — Endpoint GET /api/performance/{user}/evolucao
+    // ═════════════════════════════════════════════════════════════════════════
+
+    public function test_evolucao_retorna_200_com_permission_core_performance(): void
+    {
+        $this->actingAsAdmin();
+        $u = $this->criarUserComCargo('analista');
+
+        $response = $this->getJson(route('performance.evolucao', $u->id));
+        $response->assertStatus(200);
+
+        $payload = $response->json();
+        $this->assertArrayHasKey('user_id', $payload);
+        $this->assertArrayHasKey('period', $payload);
+        $this->assertArrayHasKey('serie', $payload);
+        $this->assertSame($u->id, $payload['user_id']);
+        $this->assertSame(30, $payload['period'], 'Period default deve ser 30.');
+        $this->assertIsArray($payload['serie']);
+    }
+
+    public function test_evolucao_retorna_403_sem_permission(): void
+    {
+        // User comum (sem permission core.performance e sem isAdmin).
+        $semPerm = User::create([
+            'name'     => 'Sem Perm ' . uniqid(),
+            'email'    => 'sem.perm.' . uniqid() . '@ecf.test',
+            'password' => bcrypt('senha'),
+            'role'     => 'consultor',
+            'active'   => true,
+        ]);
+        $this->actingAs($semPerm);
+
+        $alvo = $this->criarUserComCargo('analista');
+
+        $response = $this->getJson(route('performance.evolucao', $alvo->id));
+        $response->assertStatus(403);
+    }
+
+    public function test_evolucao_serie_ordenada_asc_por_date(): void
+    {
+        $this->actingAsAdmin();
+        $u = $this->criarUserComCargo('analista');
+
+        // Insere em ordem invertida para validar que o ORDER BY no controller é ASC.
+        $this->inserirSnapshot($u->id, now()->subDays(1)->toDateString(), 80.0, 1);
+        $this->inserirSnapshot($u->id, now()->subDays(5)->toDateString(), 60.0, 3);
+        $this->inserirSnapshot($u->id, now()->subDays(3)->toDateString(), 70.0, 2);
+
+        $response = $this->getJson(route('performance.evolucao', $u->id) . '?period=30');
+        $response->assertStatus(200);
+
+        $serie = $response->json('serie');
+        $this->assertCount(3, $serie);
+
+        // Datas devem sair ASC: D-5 → D-3 → D-1.
+        $datas = array_column($serie, 'date');
+        $this->assertSame(now()->subDays(5)->toDateString(), $datas[0]);
+        $this->assertSame(now()->subDays(3)->toDateString(), $datas[1]);
+        $this->assertSame(now()->subDays(1)->toDateString(), $datas[2]);
+
+        // Cada ponto tem chaves date, score, ranking_pos.
+        $this->assertArrayHasKey('date', $serie[0]);
+        $this->assertArrayHasKey('score', $serie[0]);
+        $this->assertArrayHasKey('ranking_pos', $serie[0]);
+        $this->assertSame(60, $serie[0]['score']);
+        $this->assertSame(3, $serie[0]['ranking_pos']);
+    }
+
+    public function test_evolucao_respeita_period_query(): void
+    {
+        $this->actingAsAdmin();
+        $u = $this->criarUserComCargo('analista');
+
+        // 3 snapshots: D-3, D-10, D-20.
+        $this->inserirSnapshot($u->id, now()->subDays(3)->toDateString(), 80.0);
+        $this->inserirSnapshot($u->id, now()->subDays(10)->toDateString(), 70.0);
+        $this->inserirSnapshot($u->id, now()->subDays(20)->toDateString(), 60.0);
+
+        // period=7 → só D-3 entra.
+        $response = $this->getJson(route('performance.evolucao', $u->id) . '?period=7');
+        $response->assertStatus(200);
+        $this->assertCount(1, $response->json('serie'));
+        $this->assertSame(7, $response->json('period'));
+
+        // period=30 → todos os 3 entram.
+        $response = $this->getJson(route('performance.evolucao', $u->id) . '?period=30');
+        $this->assertCount(3, $response->json('serie'));
+        $this->assertSame(30, $response->json('period'));
+    }
+
+    public function test_evolucao_clamp_period(): void
+    {
+        $this->actingAsAdmin();
+        $u = $this->criarUserComCargo('analista');
+
+        // period acima do max → vira 365.
+        $response = $this->getJson(route('performance.evolucao', $u->id) . '?period=999');
+        $response->assertStatus(200);
+        $this->assertSame(365, $response->json('period'));
+
+        // period abaixo do min → vira 7.
+        $response = $this->getJson(route('performance.evolucao', $u->id) . '?period=2');
+        $response->assertStatus(200);
+        $this->assertSame(7, $response->json('period'));
+
+        // period invalido (string) → default 30.
+        $response = $this->getJson(route('performance.evolucao', $u->id) . '?period=abc');
+        $response->assertStatus(200);
+        $this->assertSame(30, $response->json('period'));
+    }
+
+    public function test_evolucao_serie_vazia_quando_sem_snapshots(): void
+    {
+        $this->actingAsAdmin();
+        $u = $this->criarUserComCargo('analista');
+
+        $response = $this->getJson(route('performance.evolucao', $u->id));
+        $response->assertStatus(200);
+        $this->assertSame([], $response->json('serie'));
+    }
 }
