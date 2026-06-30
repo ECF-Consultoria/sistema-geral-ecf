@@ -204,6 +204,24 @@ function Tendencia({ value }) {
     return <span className={cn('text-[11px] font-semibold', cfg.cls)}>{cfg.label}</span>;
 }
 
+// Phase 46-03 — micro-indicador de delta vs snapshot anterior (paleta espelha SparklineCrescimento).
+// Threshold ±1 ponto de score (escala 0..100) e seta Unicode ↑/↓/→.
+function ScoreDelta({ delta, label }) {
+    if (delta === null || delta === undefined) {
+        return <span className="text-white/20 font-semibold tabular-nums text-[10px]">{label ? `${label}: ` : ''}—</span>;
+    }
+    const cls   = delta > 1 ? 'text-emerald-300' : delta < -1 ? 'text-red-300' : 'text-white/40';
+    const arrow = delta > 1 ? '↑' : delta < -1 ? '↓' : '→';
+    const sign  = delta > 0 ? '+' : '';
+    return (
+        <span className={cn('inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums', cls)}>
+            <span aria-hidden="true">{arrow}</span>
+            <span>{sign}{delta.toFixed(1)}</span>
+            {label && <span className="text-white/30 ml-0.5">{label}</span>}
+        </span>
+    );
+}
+
 function RankingConsultoria({ ranking }) {
     return (
         <div className="card-ecf rounded-2xl overflow-hidden">
@@ -250,7 +268,15 @@ function RankingConsultoria({ ranking }) {
                             {u.empresas_eligiveis}/{u.empresas_carteira}
                         </div>
 
-                        <ScorePill score={u.score} classif={u.classificacao} />
+                        {/* Phase 46-03 — Score + micro-deltas vs ontem e vs semana passada */}
+                        <div className="flex flex-col gap-0.5">
+                            <ScorePill score={u.score} classif={u.classificacao} />
+                            <div className="flex items-center gap-1.5">
+                                <ScoreDelta delta={u.delta_vs_ontem}          label="hoje" />
+                                <span className="text-white/15">·</span>
+                                <ScoreDelta delta={u.delta_vs_semana_passada} label="sem." />
+                            </div>
+                        </div>
 
                         <div className="text-right"><GrowthTone value={u.crescimento_ajustado_pct} /></div>
                         <div className="text-right"><PctTone value={u.empresas_em_crescimento_pct} good={60} okay={40} /></div>
