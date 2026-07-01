@@ -18,9 +18,12 @@ const statusColor = {
 };
 const statusLabel = { active: 'Ativo', pending: 'Pendente', expired: 'Expirado' };
 
-function StatCard({ label, value, color = 'text-white', icon: Icon, alert = false }) {
+function StatCard({ label, value, color = 'text-white', icon: Icon, alert = false, tooltip }) {
     return (
-        <div className={cn('card-ecf rounded-2xl p-5 flex items-center gap-4', alert && 'border-red-500/30')}>
+        <div
+            className={cn('card-ecf rounded-2xl p-5 flex items-center gap-4', alert && 'border-red-500/30', tooltip && 'cursor-help')}
+            title={tooltip}
+        >
             <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
                 alert ? 'bg-red-500/10' : 'bg-white/[0.04]')}>
                 <Icon size={18} className={alert ? 'text-red-400' : 'text-white/30'} />
@@ -202,24 +205,23 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                     </div>
                 </div>
 
-                {/* Stats principais — Phase 51 W4 fix (UAT 2026-07-01):
+                {/* Stats principais — Phase 51 W4 UAT (2026-07-01):
                     fonte de verdade = /grants/resumo do ECF Drive (ML).
-                    Card "Empresas totais" removido — não era claro (não batia com
-                    performance/publicação). Card 1 vira "Total no ML" (396) que
-                    é a fonte de verdade. Linha extra de 5 buckets 7/15/30/60/90 removida
-                    per pedido do operador (card "Expirando em 30d" já cobre "expirando em breve"). */}
+                    Tooltips explicativos em cada card (operador pediu no UAT). */}
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <StatCard
                         label="Total no ML"
                         value={stats.total_grants_ml}
                         color="text-white"
                         icon={ShieldCheck}
+                        tooltip="Total de grants (vigentes + expirados) cadastrados no ML — fonte: ContatosCPP do ECF Drive. É a fonte de verdade remota; o número no banco local pode ser menor até o próximo sync (03:00 BRT)."
                     />
                     <StatCard
                         label="Grants vigentes"
                         value={stats.vigentes_ml}
                         color="text-emerald-400"
                         icon={CheckCircle2}
+                        tooltip="Grants ainda dentro do prazo de validade no ML. Estes são os grants operacionalmente ativos hoje."
                     />
                     <StatCard
                         label="Expirando em 30d"
@@ -227,32 +229,33 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                         color="text-ecf-yellow"
                         icon={Clock}
                         alert={stats.expirando_30d > 0}
+                        tooltip="Grants cujo vencimento é dentro dos próximos 30 dias. Atenção operacional — precisam de renovação para não caírem no ML."
                     />
                     <StatCard
                         label="Expirados"
                         value={stats.expirados_ml}
                         color="text-red-400"
                         icon={XCircle}
+                        tooltip="Grants que já venceram e não estão mais ativos no ML. Empresas podem precisar de novo grant se ainda são clientes."
                     />
                     <StatCard
                         label="Sem grant"
                         value={stats.no_grant}
                         color="text-white/70"
                         icon={Building2}
+                        tooltip="Empresas cadastradas no sistema (Performance + Publicação + Polos, com cust_id ou OAuth ML ativo) que NÃO têm grant ativo. Universo unido por cust_id: se a mesma empresa aparece em Company e MlbEmpresa, conta uma vez só."
                     />
                 </div>
 
                 {/* Phase 51 W3 — Divergência ML (informativo). Só renderiza quando tem valor > 0. */}
                 {stats.divergencia_ml !== null && stats.divergencia_ml > 0 && (
-                    <div
-                        className="grid grid-cols-1 sm:grid-cols-5 gap-3"
-                        title="Sellers em BASE_VENDEDORES sem cadastro em ContatosCPP — divergência de cadastro do ML"
-                    >
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
                         <StatCard
                             label="Divergência ML"
                             value={stats.divergencia_ml}
                             color="text-amber-400"
                             icon={Info}
+                            tooltip="Quantos sellers aparecem no CSV BASE_VENDEDORES do ML mas NÃO estão no ContatosCPP. É uma inconsistência de cadastro do próprio Mercado Livre (2 bases de dados independentes) — não é bug nosso. Informativo apenas: nenhuma ação operacional aqui."
                         />
                     </div>
                 )}
