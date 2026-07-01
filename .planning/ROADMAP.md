@@ -132,6 +132,8 @@ Captura inicial: `.planning/todos/pending/270627-melhorias-dashboard-desempenho-
 - [x] **Phase 49: Rankings de /desempenho por função + ranking separado de publicação** — 3 tabs Geral/Analistas/Estrategistas em `/performance` + rota dedicada `/publicacao/desempenho` no dropdown Publicações. UAT 2026-06-30 exigiu correção: toggle Consultoria|Publicações foi removido (contrato final = rota define o ranking). Independência da Phase 47 confirmada.
 - [ ] **Phase 50: Gamificação OAuth ML para Líder Performance + Estrategistas** — nova aba/rota incentivando conexão ML de empresas pendentes. Estrategista vê apenas empresas atribuídas; Líder vê todas. Ranking/badge/score por conexão concluída + status "Em conversa com cliente". Acelera migração Adman→ML. Independente; sinergia com Phases 41/42.
 - [x] **Phase 51: Reestruturação /grants com nova API ECF Drive** — consome `/grants/resumo` (fonte remota) + persistiu 8 campos novos. UAT 2026-07-01 exigiu 3 rodadas de correção: (1) mapping do payload flat (não aninhado como CONTEXT presumia) + labels/cards clareados; (2) universo "sem grant" expandido para UNION Company + MlbEmpresa por cust_id (só 1 dos 202 mlb_empresas tinha company_id linkado); (3) tooltips explicativos + tabela com overflow horizontal. Divergência ML=726 informativo. Débito técnico: gap Grants ML=396 vs Local=61 pode indicar cobertura incompleta do sync — TODO separado.
+- [ ] **Phase 52: Melhorias UI/UX + comportamento /sugadores** — briefing 2026-07-01. (A1) permissão analista falta o botão configurar; (A2) remover nomenclaturas Adman ("Análise OK hoje", "próxima amanhã às 12h"); (A3) card lateral com config de captura na drilldown; (A4) remover coluna empresa redundante na listagem; (A5) bug botão "Copiar MLBs" na listagem retorna vazio; (A6) ação em massa "Copiar MLBs dos selecionados"; (A7) remover botão rodar análise do card empresa; (A8) rodar análise por empresa (não em massa) + cronômetro de progresso; (A9) remover visualização "lista", só cards. Independente.
+- [ ] **Phase 53: Inteligência do detector de sugadores** — briefing 2026-07-01 com 3 casos reais expondo falso-positivos após conexão de mais contas ML. (B1) CAMILLO PARTS — anúncio pausado/indisponível ainda vira sugador (detector não consulta status MLB); (B2) BARAOSHOP — sync ML não traz MLBs do adgroup ("Nenhum MLB encontrado") apesar do anúncio ter 500+ vendas no FULL; (B3) DINMAP — anúncio com vendas dentro do período foi flagged + adgroups em SGI/quarentena devem sair. Requer research profundo em SugadorAnalysisService + sync ML. Depends none (mas sinergia com Phase 44 pausada).
 
 ## Phase Details
 
@@ -1227,3 +1229,52 @@ Plans:
 **Plans:** TBD
 
 **UI hint:** parcial — incrementar `Grants/Index.jsx` existente com novo card de divergência + buckets progressivos + colunas opcionais. Sem nova rota.
+
+### Phase 52: Melhorias UI/UX + comportamento /sugadores
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Limpar nomenclaturas antigas da era Adman + corrigir comportamento de "rodar análise" (hoje roda em MASSA para todas empresas, deveria ser por empresa com cronômetro visível) + polir UX da drilldown (card lateral com config, coluna redundante, ação em massa copiar MLBs). Permissão do analista para configurar sugador (hoje falta).
+
+**Requirements** (briefing 2026-07-01 — capturado em `.planning/todos/pending/270701-melhorias-sugadores-ui-ux-e-detector.md` bloco A):
+
+- **A1** Permissão: cargo `analista` deve ver botão "Configurar sugador" (hoje não aparece)
+- **A2** Remover textos enganosos da era Adman: "Análise OK hoje", "próxima amanhã às 12h" (não existe cron ML de análise diária ainda)
+- **A3** Card lateral na drilldown mostrando config de captura da empresa + botão para configuração
+- **A4** Remover coluna "empresa" da listagem (redundante — já está no subtítulo)
+- **A5** Bug: botão "Copiar MLBs" na listagem retorna "sem MLBs" enquanto o mesmo botão dentro do sugador funciona (props diferentes)
+- **A6** Ação em massa "Copiar MLBs dos selecionados" (checkboxes já existem)
+- **A7** Remover botão "Rodar análise" do card empresa (só ao acessar drilldown)
+- **A8** Botão "Rodar análise" na drilldown deve:
+  - Rodar SÓ para a empresa em questão (não em massa)
+  - Mostrar cronômetro visível na tela (~30s) para dar feedback de progresso
+  - Remover alert do navegador com pergunta ambígua
+- **A9** Remover visualização "lista" de empresas — só cards
+
+**Depends on:** Nenhuma. Trabalha em cima de `SugadorController` + `Sugadores/Index.jsx` + `Sugadores/Show.jsx` existentes.
+
+**Plans:** TBD
+
+**UI hint:** SIM — mudanças em pelo menos 2 páginas React + policy no backend + endpoint novo pra análise per-empresa se ainda não existe.
+
+### Phase 53: Inteligência do detector de sugadores
+
+**Milestone:** v12.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Reduzir falso-positivos do detector expondados após conexão de mais contas ML (antes só Bymobille). 3 casos reais capturados com produto/adgroup específicos para reproduzir e ajustar `SugadorAnalysisService`.
+
+**Requirements** (briefing 2026-07-01 — capturado em `.planning/todos/pending/270701-melhorias-sugadores-ui-ux-e-detector.md` bloco B):
+
+- **B1** CAMILLO PARTS (adgroup 1902557017): anúncio com tag "Este produto está indisponível no momento" ainda foi flagged. Detector deve consultar status do MLB (ativo/pausado/indisponível/inativo) e excluir da lista se estiver não-ativo. Provavelmente já foi resolvido pelo time.
+- **B2** BARAOSHOP VARIEDADES (adgroup 496843010): sync ML mostra "Nenhum MLB encontrado neste adgroup no período" enquanto o anúncio tem 500+ vendas no FULL. Investigar cobertura do sync `SyncAdgroupMlbs` (ou equivalente) na janela.
+- **B3** DINMAP (adgroup 1784220962): anúncio com vendas dentro do período foi flagged. Auditar critério de detecção. Também: adgroups em campanhas SGI/quarentena não devem entrar como sugador (já detectado que empresa tem sugador em SGI resolvido aparecendo).
+
+**Depends on:** Nenhuma direta. Sinergia com Phase 44 (mover adgroup pra SGI via API ML — reforça o critério "adgroup em SGI = resolvido"). Pode rodar antes ou em paralelo à Phase 44.
+
+**Plans:** TBD
+
+**UI hint:** parcial — provavelmente 90% backend (`SugadorAnalysisService` + sync ML) e ajustes pequenos na tela de sugadores (rotular "Pausado no ML" ou similar quando excluir por status).
