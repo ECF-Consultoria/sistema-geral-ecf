@@ -1255,7 +1255,15 @@ Plans:
 
 **Depends on:** Nenhuma. Trabalha em cima de `SugadorController` + `Sugadores/Index.jsx` + `Sugadores/Show.jsx` existentes.
 
-**Plans:** TBD
+**Requirements IDs:** REQ-52-01, REQ-52-02, REQ-52-03, REQ-52-04
+
+**Plans:** 4 plans em 4 waves
+
+Plans:
+- [ ] 52-01-PLAN.md — Wave 1 (backend + policy TDD): SugadorPolicy::manage inclui analista + endpoints mlbs-hint e bulk-copy-mlbs
+- [ ] 52-02-PLAN.md — Wave 2 (UI cleanup): remove textos legacy Adman + botões Rodar análise redundantes + toggle Cards/Lista
+- [ ] 52-03-PLAN.md — Wave 3 (UI features): migra copyMlbsLinha para mlbs-hint + ação em massa Copiar MLBs + ConfigResumoCard + botão análise per-empresa com cronômetro 30s
+- [ ] 52-04-PLAN.md — Wave 4 (UAT humano): deploy + checklist 9 itens A1..A9 + fecha TODO bloco A + PHASE-SUMMARY
 
 **UI hint:** SIM — mudanças em pelo menos 2 páginas React + policy no backend + endpoint novo pra análise per-empresa se ainda não existe.
 
