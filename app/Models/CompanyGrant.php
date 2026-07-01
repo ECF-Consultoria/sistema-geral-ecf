@@ -28,13 +28,19 @@ class CompanyGrant extends Model
     protected $fillable = [
         'company_id', 'ml_grant_token', 'ml_email', 'ml_phone', 'ml_cust_id',
         'segmento',  // Phase 20 — campo vindo da API ECF Drive
+        // Phase 51 — 8 campos opcionais expandidos vindos da API ECF Drive (2026-06-30)
+        'programa', 'iniciativa', 'nivel_solucion', 'nombre_solucion',
+        'parceiro', 'localidade', 'medalha_fecha_in', 'medalha_fecha_out',
         'status', 'granted_at', 'expires_at', 'regranted_at', 'notes',
     ];
 
     protected $casts = [
-        'granted_at'   => 'date',
-        'expires_at'   => 'date',
-        'regranted_at' => 'date',
+        'granted_at'        => 'date',
+        'expires_at'        => 'date',
+        'regranted_at'      => 'date',
+        // Phase 51 — datas de medalha vindas da API ECF Drive
+        'medalha_fecha_in'  => 'date',
+        'medalha_fecha_out' => 'date',
     ];
 
     public function company()
