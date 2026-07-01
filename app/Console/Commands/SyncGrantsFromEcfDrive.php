@@ -187,6 +187,19 @@ class SyncGrantsFromEcfDrive extends Command
             'ml_email'   => $grant['email']    ?: null,
             'ml_phone'   => $grant['telefone'] ?: null,
             'segmento'   => $grant['segmento'] ?: null,
+            // Phase 51 — 8 campos opcionais expandidos vindos da API ECF Drive (2026-06-30).
+            // Payload chega em camelCase; colunas persistem em snake_case.
+            // Ausência dos campos (payload legado Phase 20) preserva NULL — regressão bloqueada.
+            'programa'          => $grant['programa']       ?? null,
+            'iniciativa'        => $grant['iniciativa']     ?? null,
+            'nivel_solucion'    => $grant['nivelSolucion']  ?? null,
+            'nombre_solucion'   => $grant['nombreSolucion'] ?? null,
+            'parceiro'          => $grant['parceiro']       ?? null,
+            'localidade'        => $grant['localidade']     ?? null,
+            // Datas: `! empty()` cobre null e string vazia; Carbon::parse defensivo
+            // caso a API mande formato exótico no futuro.
+            'medalha_fecha_in'  => ! empty($grant['medalhaFechaIn'])  ? Carbon::parse($grant['medalhaFechaIn'])->toDateString()  : null,
+            'medalha_fecha_out' => ! empty($grant['medalhaFechaOut']) ? Carbon::parse($grant['medalhaFechaOut'])->toDateString() : null,
             'granted_at' => $grantInicio?->toDateString(),
             'expires_at' => $grantFim?->toDateString(),
             'status'     => $status,
