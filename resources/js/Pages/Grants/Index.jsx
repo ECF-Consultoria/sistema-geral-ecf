@@ -389,7 +389,7 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                             <p className="text-white/30 text-[11px] mb-2">Empresas sem grant cadastrado ({no_grant.length}):</p>
                             <div className="flex flex-wrap gap-1.5">
                                 {no_grant.map(c => (
-                                    <span key={c.id} className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.04] text-white/40 border border-white/[0.06]">
+                                    <span key={`${c.origem ?? 'legacy'}-${c.id}`} className="text-[11px] px-2 py-0.5 rounded-full bg-white/[0.04] text-white/40 border border-white/[0.06]" title={c.cust_id ? `cust_id: ${c.cust_id}` : ''}>
                                         {c.name}
                                     </span>
                                 ))}

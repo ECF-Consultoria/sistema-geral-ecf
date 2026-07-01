@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyGrant;
+use App\Models\MlbEmpresa;
 use App\Services\EcfDriveService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -65,35 +66,68 @@ class GrantController extends Controller
                 'notes'          => $g->notes,
             ]);
 
-        // Phase 51 — Universo "Empresas sem grants" corrigido pelo operador 2026-06-30:
-        // companies.active=true AND (cust_id IS NOT NULL OR ml_token status='active')
-        //                       AND NOT EXISTS grant ativo.
-        // Empresa sem nenhum dos dois critérios NÃO é "sem grant" — é "não onboardada no ML".
+        // Phase 51 W4 UAT — Universo "Empresas sem grants" expandido 2026-07-01:
+        // UNIÃO por cust_id de dois universos que a operação enxerga como "clientes":
+        //   (a) companies com adman_account_id/ml_store_id OR OAuth ML ativo (Performance)
+        //   (b) mlb_empresas com cust_id preenchido (Publicação + Polos)
+        // Match contra company_grants via ml_cust_id (não company_id) — as tabelas são
+        // praticamente disjuntas (SSH tinker: 202 mlb_empresas com só 1 company_id linkado).
+        // Dedup por cust_id — se aparece em ambos, conta 1 vez.
         //
-        // NOTA: `cust_id` é um accessor no model Company (adman_account_id ?: ml_store_id) —
-        // no SQL precisamos testar as 2 colunas físicas explicitamente (whereNotNull composto).
-        $noGrant = Company::query()
+        // NOTA: `Company::cust_id` é accessor (adman_account_id ?: ml_store_id) — no SQL
+        // fazemos `COALESCE(adman_account_id, ml_store_id)`. MlbEmpresa tem coluna física.
+
+        // (a) Companies elegíveis sem grant ativo (join por cust_id, não company_id)
+        $noGrantCompanies = Company::query()
             ->where('active', true)
             ->where(function ($q) {
-                $q->where(function ($inner) {
-                    $inner->whereNotNull('adman_account_id')
-                          ->orWhereNotNull('ml_store_id');
-                })
-                ->orWhereExists(function ($sub) {
-                    $sub->select(DB::raw(1))
-                        ->from('ml_tokens')
-                        ->whereColumn('ml_tokens.company_id', 'companies.id')
-                        ->where('ml_tokens.status', 'active');
-                });
+                $q->whereNotNull('adman_account_id')
+                  ->orWhereNotNull('ml_store_id')
+                  ->orWhereExists(function ($sub) {
+                      $sub->select(DB::raw(1))
+                          ->from('ml_tokens')
+                          ->whereColumn('ml_tokens.company_id', 'companies.id')
+                          ->where('ml_tokens.status', 'active');
+                  });
             })
             ->whereNotExists(function ($sub) {
                 $sub->select(DB::raw(1))
                     ->from('company_grants')
-                    ->whereColumn('company_grants.company_id', 'companies.id')
+                    ->whereRaw("company_grants.ml_cust_id = COALESCE(companies.adman_account_id, companies.ml_store_id)")
                     ->where('company_grants.status', 'active');
             })
-            ->orderBy('name')
-            ->get(['id', 'name', 'adman_account_id', 'ml_store_id']);
+            ->get(['id', 'name', 'adman_account_id', 'ml_store_id'])
+            ->map(fn ($c) => [
+                'id'      => $c->id,
+                'name'    => $c->name,
+                'cust_id' => $c->cust_id,
+                'origem'  => 'Company',
+            ]);
+
+        // (b) MlbEmpresas com cust_id sem grant ativo
+        $noGrantMlb = MlbEmpresa::query()
+            ->whereNotNull('cust_id')
+            ->where('cust_id', '!=', '')
+            ->whereNotExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('company_grants')
+                    ->whereColumn('company_grants.ml_cust_id', 'mlb_empresas.cust_id')
+                    ->where('company_grants.status', 'active');
+            })
+            ->get(['id', 'nome', 'cust_id', 'projeto'])
+            ->map(fn ($m) => [
+                'id'      => $m->id,
+                'name'    => $m->nome . ($m->projeto ? " ({$m->projeto})" : ''),
+                'cust_id' => $m->cust_id,
+                'origem'  => 'MlbEmpresa',
+            ]);
+
+        // Dedup por cust_id (Company vence quando duplicado — é o registro canônico)
+        $noGrant = $noGrantCompanies
+            ->concat($noGrantMlb)
+            ->unique(fn ($item) => $item['cust_id'] ?: 'sem-cust-'.$item['origem'].'-'.$item['id'])
+            ->sortBy('name')
+            ->values();
 
         // Phase 51 W4 fix (UAT 2026-07-01) — consumo remoto com mapeamento CORRETO do payload real:
         // {

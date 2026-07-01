@@ -8,6 +8,7 @@ namespace Tests\Feature\Phase51;
 
 use App\Models\Company;
 use App\Models\CompanyGrant;
+use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\User;
 use App\Services\EcfDriveService;
@@ -71,16 +72,25 @@ class GrantsResumoTest extends TestCase
         ]);
     }
 
-    private function makeGrant(int $companyId, ?string $expiresAt = null, string $status = 'active'): CompanyGrant
+    private function makeGrant(int $companyId, ?string $expiresAt = null, string $status = 'active', ?string $mlCustId = null): CompanyGrant
     {
         return CompanyGrant::create([
             'company_id' => $companyId,
-            'ml_cust_id' => 'cust-' . $companyId,
+            'ml_cust_id' => $mlCustId ?? ('cust-' . $companyId),
             'segmento'   => 'Moda',
             'status'     => $status,
             'granted_at' => now()->subDays(30)->toDateString(),
             'expires_at' => $expiresAt,
         ]);
+    }
+
+    private function makeMlbEmpresa(array $attrs = []): MlbEmpresa
+    {
+        return MlbEmpresa::create(array_merge([
+            'nome'    => 'MLB ' . uniqid(),
+            'cust_id' => 'MLB-' . uniqid(),
+            'projeto' => 'POLOS',
+        ], $attrs));
     }
 
     private function actingAsAdmin(): User
@@ -245,9 +255,9 @@ class GrantsResumoTest extends TestCase
 
         // A: com cust_id (via adman_account_id), sem grant → ENTRA
         $this->makeCompany(['adman_account_id' => 'CUST-A', 'name' => 'Empresa A']);
-        // B: com cust_id, com grant ativo → NÃO entra
+        // B: com cust_id, com grant ativo (match por ml_cust_id) → NÃO entra
         $b = $this->makeCompany(['adman_account_id' => 'CUST-B', 'name' => 'Empresa B']);
-        $this->makeGrant($b->id, now()->addDays(60)->toDateString(), 'active');
+        $this->makeGrant($b->id, now()->addDays(60)->toDateString(), 'active', 'CUST-B');
         // C: sem cust_id, sem ml_token → NÃO entra (não onboardada)
         $this->makeCompany(['adman_account_id' => null, 'name' => 'Empresa C']);
 
@@ -270,10 +280,10 @@ class GrantsResumoTest extends TestCase
         // E: sem cust_id, com ml_token EXPIRED, sem grant → NÃO entra
         $e = $this->makeCompany(['adman_account_id' => null, 'ml_store_id' => null, 'name' => 'Empresa E']);
         $this->makeMlToken($e->id, 'expired');
-        // F: com cust_id, com ml_token ativo, com grant ativo → NÃO entra
+        // F: com cust_id, com ml_token ativo, com grant ativo (match ml_cust_id) → NÃO entra
         $f = $this->makeCompany(['adman_account_id' => 'CUST-F', 'name' => 'Empresa F']);
         $this->makeMlToken($f->id, 'active');
-        $this->makeGrant($f->id, now()->addDays(60)->toDateString(), 'active');
+        $this->makeGrant($f->id, now()->addDays(60)->toDateString(), 'active', 'CUST-F');
 
         $response = $this->get(route('grants.index'));
 
@@ -281,6 +291,58 @@ class GrantsResumoTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->where('stats.no_grant', 1)
         );
+    }
+
+    // ═══ Phase 51 W4 UAT (2026-07-01) — Universo expandido: MlbEmpresa ══════════
+
+    public function test_index_no_grant_inclui_mlb_empresa_com_cust_id_sem_grant(): void
+    {
+        $this->actingAsAdmin();
+        Http::fake(['*/grants/resumo' => Http::response($this->resumoPayload(), 200)]);
+
+        // MLB-1: cust_id preenchido, sem grant → ENTRA
+        $this->makeMlbEmpresa(['cust_id' => 'MLB-CUST-1', 'nome' => 'Polos A']);
+        // MLB-2: cust_id preenchido, COM grant ativo (match por ml_cust_id) → NÃO entra
+        // O grant em company_grants precisa de company_id (constraint NOT NULL) — usamos
+        // uma Company placeholder qualquer só para permitir o registro; o join é por ml_cust_id.
+        $this->makeMlbEmpresa(['cust_id' => 'MLB-CUST-2', 'nome' => 'Polos B']);
+        $placeholder = $this->makeCompany(['adman_account_id' => null, 'name' => 'Placeholder', 'active' => false]);
+        $this->makeGrant($placeholder->id, now()->addDays(60)->toDateString(), 'active', 'MLB-CUST-2');
+
+        $response = $this->get(route('grants.index'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->where('stats.no_grant', 1));
+    }
+
+    public function test_index_no_grant_exclui_mlb_empresa_sem_cust_id(): void
+    {
+        $this->actingAsAdmin();
+        Http::fake(['*/grants/resumo' => Http::response($this->resumoPayload(), 200)]);
+
+        // MlbEmpresa sem cust_id (nulo ou vazio) — não é "sem grant", é sem identificação ML
+        $this->makeMlbEmpresa(['cust_id' => null, 'nome' => 'Polos Sem Cust']);
+        $this->makeMlbEmpresa(['cust_id' => '',   'nome' => 'Polos Vazio']);
+
+        $response = $this->get(route('grants.index'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->where('stats.no_grant', 0));
+    }
+
+    public function test_index_no_grant_dedup_por_cust_id_entre_company_e_mlb_empresa(): void
+    {
+        $this->actingAsAdmin();
+        Http::fake(['*/grants/resumo' => Http::response($this->resumoPayload(), 200)]);
+
+        // Mesma empresa aparece em ambos os universos com mesmo cust_id, sem grant → conta 1
+        $this->makeCompany(['adman_account_id' => 'DUP-CUST', 'name' => 'Duplicada Company']);
+        $this->makeMlbEmpresa(['cust_id' => 'DUP-CUST', 'nome' => 'Duplicada MLB']);
+
+        $response = $this->get(route('grants.index'));
+
+        $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->where('stats.no_grant', 1));
     }
 
     public function test_index_divergencia_ml_propagada_quando_remoto_ok(): void
