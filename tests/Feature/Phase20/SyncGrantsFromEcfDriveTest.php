@@ -222,4 +222,65 @@ class SyncGrantsFromEcfDriveTest extends TestCase
 
         $this->assertSame('pending', CompanyGrant::first()->status);
     }
+
+    // ─── Phase 51 — 8 novos campos opcionais vindos da API ECF Drive expandida ────────
+    //
+    // A API `/clientes/grants` passou a expor 8 campos opcionais em 2026-06-30:
+    // programa, iniciativa, nivelSolucion, nombreSolucion, parceiro, localidade,
+    // medalhaFechaIn, medalhaFechaOut. Aditivo puro — payload legado (Phase 20)
+    // não pode regredir. Mapping camelCase→snake_case explícito em mapToDb().
+
+    public function test_apply_persiste_campos_metadata_phase51(): void
+    {
+        $c = $this->makeCompany(['adman_account_id' => '999']);
+        $this->fakeGrants([$this->grantPayload([
+            'programa'        => 'CPP',
+            'iniciativa'      => 'Mentor',
+            'nivelSolucion'   => 'Gold',
+            'nombreSolucion'  => 'Acelerador',
+            'parceiro'        => 'ECF',
+            'localidade'      => 'SP',
+            'medalhaFechaIn'  => '2026-01-15',
+            'medalhaFechaOut' => '2026-12-31',
+        ])]);
+
+        Artisan::call('grants:sync-ecf');
+
+        $g = CompanyGrant::where('company_id', $c->id)->first();
+        $this->assertNotNull($g);
+        $this->assertSame('CPP',         $g->programa);
+        $this->assertSame('Mentor',      $g->iniciativa);
+        $this->assertSame('Gold',        $g->nivel_solucion);
+        $this->assertSame('Acelerador',  $g->nombre_solucion);
+        $this->assertSame('ECF',         $g->parceiro);
+        $this->assertSame('SP',          $g->localidade);
+        $this->assertSame('2026-01-15',  $g->medalha_fecha_in?->toDateString());
+        $this->assertSame('2026-12-31',  $g->medalha_fecha_out?->toDateString());
+        // segmento (Phase 20) continua intacto
+        $this->assertSame('Moda', $g->segmento);
+    }
+
+    public function test_apply_sem_campos_metadata_phase51_persiste_null(): void
+    {
+        // Payload legado Phase 20 (sem os 8 campos novos) — regressão não pode acontecer.
+        $c = $this->makeCompany(['adman_account_id' => '999']);
+        $this->fakeGrants([$this->grantPayload()]);
+
+        Artisan::call('grants:sync-ecf');
+
+        $g = CompanyGrant::where('company_id', $c->id)->first();
+        $this->assertNotNull($g);
+        $this->assertNull($g->programa);
+        $this->assertNull($g->iniciativa);
+        $this->assertNull($g->nivel_solucion);
+        $this->assertNull($g->nombre_solucion);
+        $this->assertNull($g->parceiro);
+        $this->assertNull($g->localidade);
+        $this->assertNull($g->medalha_fecha_in);
+        $this->assertNull($g->medalha_fecha_out);
+        // Confirma que o resto do payload continua persistindo normalmente
+        $this->assertSame('Moda',   $g->segmento);
+        $this->assertSame('active', $g->status);
+        $this->assertSame('999',    $g->ml_cust_id);
+    }
 }
