@@ -145,34 +145,11 @@ function CustIdInvalidoBadge({ status }) {
     );
 }
 
-// Phase 19 W2-T1 — Badge de estado de análise por empresa.
-// "sincronizou_hoje" reflete AdmanSyncLog (cron ~11h Adman). Se o sync falhou,
-// sugadores também não rodam — operador entende por que count_hoje pode estar zerado.
-function AnaliseBadge({ sincronizouHoje, custIdStatus }) {
-    if (sincronizouHoje === true) {
-        return (
-            <span
-                title="Sync Adman e análise de sugadores já rodaram hoje"
-                className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 tracking-wide"
-            >
-                Análise OK hoje
-            </span>
-        );
-    }
-    // cust_id_status invalido é causa raiz — badge vermelho mais específico.
-    // Quando inválido, o CustIdInvalidoBadge já aparece; não duplicar badge.
-    if (custIdStatus === 'invalido') return null;
-    return (
-        <span
-            title="Sync Adman não rodou hoje — sugadores podem estar desatualizados"
-            className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-500/10 text-zinc-400 border border-zinc-500/20 tracking-wide"
-        >
-            Sem análise hoje
-        </span>
-    );
-}
+// Phase 52-02 (A2): AnaliseBadge removido — a UI não deve mais alegar
+// "Análise diária" enquanto não existe cron ML equivalente ao antigo Adman D-1.
+// Reintroduzir apenas quando o cron ML de análise (seed futuro) estiver ativo.
 
-function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer, copyingEmpresaId, copiedEmpresaFeedback, onCopyMlbs }) {
+function CompanyCard({ card, onVer, copyingEmpresaId, copiedEmpresaFeedback, onCopyMlbs }) {
     const hasHoje = (card.count_hoje ?? 0) > 0;
     return (
         <div className="card-ecf rounded-xl p-4 flex flex-col gap-3 hover:border-white/[0.12] transition-colors">
@@ -183,8 +160,7 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer, copyin
                 </h3>
                 {/* Phase 18 W5-T4 — Badge "Cust ID Inválido" no header do card */}
                 <CustIdInvalidoBadge status={card.cust_id_status} />
-                {/* Phase 19 W2-T1 — Badge estado análise (OK hoje / sem análise hoje) */}
-                <AnaliseBadge sincronizouHoje={card.sincronizou_hoje} custIdStatus={card.cust_id_status} />
+                {/* Phase 52-02 (A2): AnaliseBadge removido — sem cron ML ativo. */}
             </div>
 
             <div>
@@ -266,17 +242,9 @@ function CompanyCard({ card, canAnalyze, enqueuedAt, onReanalisar, onVer, copyin
                 </p>
             )}
 
-            {card.analisado_hoje && (
-                <p className="text-white/40 text-[11px] -mt-1">
-                    Análise diária já rodou hoje · próxima amanhã às 12h
-                </p>
-            )}
-
-            {enqueuedAt && !card.analisado_hoje && (
-                <p className="text-emerald-300/80 text-[11px] -mt-1">
-                    Enfileirado às {enqueuedAt}
-                </p>
-            )}
+            {/* Phase 52-02 (A2/A7): bloco "Análise diária já rodou hoje" removido,
+                assim como o feedback "Enfileirado às HH:mm" (dependia de enqueuedAt do botão Reanalisar,
+                que também sai nesta wave). */}
         </div>
     );
 }
@@ -577,9 +545,8 @@ export default function SugadoresIndex({
     can_analyze,
     companies_summary = [],
     view_mode = 'cards',
-    // Phase 19 — novas props: default_view e analise_diaria
+    // Phase 19 — nova prop: default_view (analise_diaria foi removida em Phase 52-02, A2).
     default_view = 'hoje',
-    analise_diaria = null,
 }) {
     const [f, setF] = useState({
         company_id:       filters?.company_id || '',
@@ -862,15 +829,8 @@ export default function SugadoresIndex({
                         )}
                     </div>
                     <p className="text-white/40 text-sm mt-1">Adgroups (e opcionalmente campanhas) drenando investimento sem retorno</p>
-                    {/* Banner D-1 da Adman (Phase 19 W2-T1): ampliado com horário real da última execução.
-                        analise_diaria.ultima_execucao_global é o MAX(created_at) dos sugadores,
-                        proxy confiável para "quando a análise rodou pela última vez". */}
-                    <span
-                        className="inline-flex items-center text-white/40 text-xs mt-1"
-                        title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. Análise diária roda às 12h BRT."
-                    >
-                        Análise diária roda às {analise_diaria?.horario_cron ?? '12:00 BRT'} · Última execução: {fmtRelative(analise_diaria?.ultima_execucao_global)}
-                    </span>
+                    {/* Phase 52-02 (A2): banner "Análise diária roda às ... · Última execução ..." removido.
+                        Referenciava cron Adman D-1 que não roda mais; sem cron ML equivalente ainda. */}
                 </div>
 
                 <div className="flex items-center gap-2">
