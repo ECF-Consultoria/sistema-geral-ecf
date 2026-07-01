@@ -154,6 +154,61 @@ class EcfDriveService
         );
     }
 
+    // ─── Grants (Phase 51) ───
+
+    /**
+     * Resumo remoto de grants — fonte de verdade da API ECF Drive.
+     *
+     * Retorna array com totais (ativos/vigentes/expirados), buckets de expiração
+     * (d7/d15/d30/d60/d90) e divergência (sellers em BASE_VENDEDORES sem
+     * ContatosCPP). Estrutura confirmada durante execução — ver 51-02-SUMMARY.md.
+     *
+     * Cache: 5min (TTL=300s) — refresh on view; espelha carteiraResumo().
+     *
+     * @see API-GUIDE.md §4 (GET /grants/resumo) — Phase 51 (2026-06-30)
+     * @throws \RuntimeException quando HTTP != 2xx após retry.
+     */
+    public function grantsResumo(): array
+    {
+        return Cache::remember(
+            $this->cacheKey('/grants/resumo'),
+            300,
+            fn () => $this->get('/grants/resumo'),
+        );
+    }
+
+    /**
+     * Distribuição de grants por dimensão (Phase 51).
+     *
+     * Somente `programa` é aceito nesta phase — outras dimensões (iniciativa,
+     * nivelSolucion, parceiro, localidade) foram lockedas como fora de escopo
+     * (100% uniformes hoje no ML). Ver 51-CONTEXT.md linhas 60-61.
+     *
+     * Cache: 1h (TTL=3600s) — espelha carteiraBreakdown().
+     *
+     * @throws \InvalidArgumentException quando $dimensao não está em ['programa'].
+     * @throws \RuntimeException em HTTP != 2xx.
+     * @see API-GUIDE.md §4 (GET /grants/distribuicao)
+     */
+    public function grantsDistribuicao(string $dimensao): array
+    {
+        $permitidas = ['programa']; // Phase 51 — expandir quando ML diversificar dimensões
+        if (! in_array($dimensao, $permitidas, true)) {
+            throw new \InvalidArgumentException(
+                "grantsDistribuicao: dimensão '{$dimensao}' não suportada nesta phase. "
+                . "Permitidas: " . implode(', ', $permitidas)
+            );
+        }
+
+        $params = ['dimensao' => $dimensao];
+        $path   = '/grants/distribuicao';
+        return Cache::remember(
+            $this->cacheKey($path, $params),
+            3600,
+            fn () => $this->get($path, $params),
+        );
+    }
+
     // ─── Sellers ───
 
     /**
