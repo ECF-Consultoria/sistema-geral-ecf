@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
     PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
-    Settings, Search, LayoutGrid, List, RotateCw, ArrowRight,
+    Settings, Search, LayoutGrid, List, ArrowRight,
     Copy, Check, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -122,12 +122,7 @@ const fmtRelative = (iso) => {
     return new Date(iso).toLocaleDateString('pt-BR');
 };
 
-// Formata HH:mm pra feedback de enfileiramento ("Enfileirado às HH:mm").
-const fmtHHMM = (date) => {
-    const h = String(date.getHours()).padStart(2, '0');
-    const m = String(date.getMinutes()).padStart(2, '0');
-    return `${h}:${m}`;
-};
+// Phase 52-02 (A7): helper fmtHHMM removido junto com o feedback "Enfileirado às HH:mm".
 
 // ─── Card por empresa ──────────────────────────────────────────────────────
 // Componente local — segue convenção de StatusBadge/MotivoBadge no mesmo arquivo.
@@ -211,28 +206,8 @@ function CompanyCard({ card, onVer, copyingEmpresaId, copiedEmpresaFeedback, onC
                     </button>
                 )}
 
-                {canAnalyze && card.can_analyze && (
-                    // Phase 16 SC-6: quando o sync diário Adman já rodou hoje
-                    // ('analisado_hoje'=true), desabilita o botão — reanalisar
-                    // antes do próximo ciclo D-1 não traz dados novos.
-                    <button
-                        type="button"
-                        onClick={() => !card.analisado_hoje && onReanalisar(card.company_id)}
-                        disabled={card.analisado_hoje}
-                        className={cn(
-                            'inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[12px]',
-                            card.analisado_hoje
-                                ? 'opacity-40 cursor-not-allowed text-white/50'
-                                : 'text-white/70 hover:text-white hover:bg-white/[0.05]',
-                        )}
-                        title={card.analisado_hoje
-                            ? 'Análise diária já rodou hoje · próxima amanhã às 12h'
-                            : 'Reanalisar esta empresa agora (job na fila)'}
-                    >
-                        <RotateCw size={11} />
-                        {card.analisado_hoje ? 'Análise diária OK' : 'Reanalisar'}
-                    </button>
-                )}
+                {/* Phase 52-02 (A7): botão "Reanalisar" removido — reanálise per-empresa
+                    passa a viver no drilldown Show.jsx (adicionada em wave posterior). */}
             </div>
 
             {/* Aviso truncado: mais de 20 adgroups, só os 20 primeiros foram copiados */}
@@ -564,9 +539,7 @@ export default function SugadoresIndex({
     const [actionTarget, setActionTarget] = useState(null);
     const [analyzing, setAnalyzing] = useState(false);
 
-    // ─── Estado de feedback do botão "Reanalisar" (por empresa) ───────────────
-    // Map company_id → "HH:mm" do momento do enfileiramento; expira após 10s.
-    const [enqueuedAt, setEnqueuedAt] = useState({});
+    // Phase 52-02 (A7): estado `enqueuedAt` removido junto com o botão Reanalisar do CompanyCard.
 
     // ─── Estado de cópia inline por sugador (W2-T3) ────────────────────────
     // 1 clique do operador — sem entrar no drilldown, sem perder contexto da lista.
@@ -725,24 +698,7 @@ export default function SugadoresIndex({
         });
     }
 
-    // ─── Dispara reanálise de UMA empresa (reusa rota existente) ────────────
-    function reanalisarEmpresa(companyId) {
-        router.post(route('sugadores.analyze-company', companyId), {}, {
-            preserveScroll: true,
-            onSuccess: () => {
-                const hhmm = fmtHHMM(new Date());
-                setEnqueuedAt(prev => ({ ...prev, [companyId]: hhmm }));
-                // Limpa o feedback após ~10s — só uma indicação visual de "deu certo".
-                setTimeout(() => {
-                    setEnqueuedAt(prev => {
-                        const next = { ...prev };
-                        delete next[companyId];
-                        return next;
-                    });
-                }, 10000);
-            },
-        });
-    }
+    // Phase 52-02 (A7): função `reanalisarEmpresa` removida — reanálise migra para o drilldown Show.jsx.
 
     // ─── Limpar chip "Continuar com X" ───────────────────────────────────────
     function dismissContinueChip() {
@@ -957,9 +913,6 @@ export default function SugadoresIndex({
                                 <CompanyCard
                                     key={card.company_id}
                                     card={card}
-                                    canAnalyze={!!can_analyze}
-                                    enqueuedAt={enqueuedAt[card.company_id]}
-                                    onReanalisar={reanalisarEmpresa}
                                     onVer={abrirDrilldown}
                                     onCopyMlbs={copyMlbsEmpresa}
                                     copyingEmpresaId={copyingEmpresaId}
