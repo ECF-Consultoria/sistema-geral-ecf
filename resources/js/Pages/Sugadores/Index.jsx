@@ -3,7 +3,7 @@ import { Link, router, useForm } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import {
     AlertTriangle, Building2, ChevronLeft, ChevronRight,
-    PlayCircle, Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
+    Filter, X, Megaphone, Tag, ListTree, ArrowRightLeft,
     Settings, Search, LayoutGrid, List, ArrowRight,
     Copy, Check, Loader2,
 } from 'lucide-react';
@@ -517,7 +517,8 @@ export default function SugadoresIndex({
     filters,
     total_pendentes,
     can_manage,
-    can_analyze,
+    // Phase 52-02 (A7): can_analyze deixou de ser consumida (botões global e Reanalisar removidos).
+    // Reanálise per-empresa migra pro Show.jsx em wave posterior.
     companies_summary = [],
     view_mode = 'cards',
     // Phase 19 — nova prop: default_view (analise_diaria foi removida em Phase 52-02, A2).
@@ -537,9 +538,8 @@ export default function SugadoresIndex({
     });
     const [showFilters, setShowFilters] = useState(false);
     const [actionTarget, setActionTarget] = useState(null);
-    const [analyzing, setAnalyzing] = useState(false);
 
-    // Phase 52-02 (A7): estado `enqueuedAt` removido junto com o botão Reanalisar do CompanyCard.
+    // Phase 52-02 (A7): estados `analyzing` (botão global) e `enqueuedAt` (Reanalisar) removidos.
 
     // ─── Estado de cópia inline por sugador (W2-T3) ────────────────────────
     // 1 clique do operador — sem entrar no drilldown, sem perder contexto da lista.
@@ -667,14 +667,7 @@ export default function SugadoresIndex({
         router.get(route('sugadores.index'), { view: view_mode }, { preserveState: true });
     }
 
-    function runAnalysis() {
-        if (!confirm('Rodar análise para TODAS as empresas com config ativa? Isso pode levar alguns minutos.')) return;
-        setAnalyzing(true);
-        router.post(route('sugadores.analyze-all'), {}, {
-            preserveScroll: true,
-            onFinish: () => setAnalyzing(false),
-        });
-    }
+    // Phase 52-02 (A7 parte 2): função `runAnalysis` removida — não há mais botão global.
 
     // ─── Toggle entre cards e lista (preserva filtros relevantes) ────────────
     function switchView(nextView) {
@@ -841,16 +834,10 @@ export default function SugadoresIndex({
                             Configurar
                         </button>
                     )}
-                    {can_analyze && (
-                        <button
-                            onClick={runAnalysis}
-                            disabled={analyzing}
-                            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-ecf-yellow text-[#252525] hover:bg-ecf-yellow/90 disabled:opacity-60 text-[13px] font-bold"
-                        >
-                            <PlayCircle size={14} />
-                            {analyzing ? 'Analisando...' : 'Rodar análise'}
-                        </button>
-                    )}
+                    {/* Phase 52-02 (A7 parte 2): botão global "Rodar análise" removido.
+                        Disparava analyze-all em TODAS as empresas via confirm nativo — comportamento
+                        perigoso. Rota backend sugadores.analyze-all fica preservada para Artisan/scripts.
+                        Reanálise passa a ser per-empresa no drilldown Show.jsx (wave posterior). */}
                 </div>
             </div>
 
