@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, router } from '@inertiajs/react';
 import { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Pencil, Trash2, RefreshCw, AlertTriangle, CheckCircle2, Clock, XCircle, Building2, Info, Wifi, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Pencil, Trash2, RefreshCw, AlertTriangle, CheckCircle2, Clock, XCircle, Building2, Info, Wifi, WifiOff, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const statusColor = {
@@ -181,14 +181,25 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                         <Info size={13} />
                         Lista importada do ECF Drive (API HTTP) automaticamente às 03:00.
                     </div>
-                    <button
-                        onClick={syncNow}
-                        disabled={syncing}
-                        className="flex items-center gap-1.5 h-7 px-3 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/20 text-[12px] font-medium transition-all disabled:opacity-40"
-                    >
-                        <RotateCcw size={11} className={syncing ? 'animate-spin' : ''} />
-                        {syncing ? 'Sincronizando...' : 'Sincronizar Agora'}
-                    </button>
+                    <div className="flex items-center gap-2">
+                        {/* Phase 51 W3 — badge "API offline" quando /grants/resumo falha e usa contagem local */}
+                        {stats.source === 'local' && (
+                            <span
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 text-[10px] font-semibold"
+                                title="API /grants/resumo indisponível — estatísticas calculadas localmente a partir do banco"
+                            >
+                                <WifiOff size={10} /> API offline
+                            </span>
+                        )}
+                        <button
+                            onClick={syncNow}
+                            disabled={syncing}
+                            className="flex items-center gap-1.5 h-7 px-3 rounded-lg border border-white/10 text-white/50 hover:text-white hover:border-white/20 text-[12px] font-medium transition-all disabled:opacity-40"
+                        >
+                            <RotateCcw size={11} className={syncing ? 'animate-spin' : ''} />
+                            {syncing ? 'Sincronizando...' : 'Sincronizar Agora'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Stats */}
@@ -198,6 +209,55 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                     <StatCard label="Expirando em 30d" value={stats.expiring_soon} color="text-ecf-yellow" icon={Clock} alert={stats.expiring_soon > 0} />
                     <StatCard label="Expirados" value={stats.expired_grants} color="text-red-400" icon={XCircle} />
                     <StatCard label="Sem grant" value={stats.no_grant} color="text-white/50" icon={ShieldCheck} />
+                </div>
+
+                {/* Phase 51 W3 — Buckets progressivos de expiração (7/15/30/60/90d) — cores RESEARCH §5 */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                    <StatCard
+                        label="Expira em 7d"
+                        value={stats.buckets?.d7 ?? 0}
+                        color="text-red-400"
+                        icon={AlertTriangle}
+                        alert={(stats.buckets?.d7 ?? 0) > 0}
+                    />
+                    <StatCard
+                        label="Expira em 15d"
+                        value={stats.buckets?.d15 ?? 0}
+                        color="text-orange-400"
+                        icon={Clock}
+                        alert={(stats.buckets?.d15 ?? 0) > 0}
+                    />
+                    <StatCard
+                        label="Expira em 30d"
+                        value={stats.buckets?.d30 ?? 0}
+                        color="text-ecf-yellow"
+                        icon={Clock}
+                    />
+                    <StatCard
+                        label="Expira em 60d"
+                        value={stats.buckets?.d60 ?? 0}
+                        color="text-white/60"
+                        icon={Clock}
+                    />
+                    <StatCard
+                        label="Expira em 90d"
+                        value={stats.buckets?.d90 ?? 0}
+                        color="text-white/40"
+                        icon={Clock}
+                    />
+                </div>
+
+                {/* Phase 51 W3 — Divergência ML (informativo, tooltip explicativo) */}
+                <div
+                    className="grid grid-cols-1 sm:grid-cols-5 gap-3"
+                    title="Sellers em BASE_VENDEDORES sem cadastro em ContatosCPP — divergência de cadastro ML"
+                >
+                    <StatCard
+                        label="Divergência ML"
+                        value={stats.divergencia_ml ?? '—'}
+                        color="text-amber-400"
+                        icon={Info}
+                    />
                 </div>
 
                 {/* Expiring soon alert */}
@@ -236,7 +296,7 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
 
                     <div className="divide-y divide-white/[0.04]">
                         {/* Header */}
-                        <div className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_5rem] gap-3 px-5 py-2.5 text-white/30 text-[11px] font-semibold uppercase tracking-wide">
+                        <div className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_6rem_6rem_6rem_6rem_5rem] gap-3 px-5 py-2.5 text-white/30 text-[11px] font-semibold uppercase tracking-wide">
                             <span>Empresa</span>
                             <span>Status</span>
                             <span>E-mail</span>
@@ -244,10 +304,15 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                             <span>Segmento</span>     {/* Phase 20 — via ECF Drive */}
                             <span>Concedido</span>
                             <span>Expira</span>
+                            {/* Phase 51 W3 — colunas opcionais (mostra '—' quando NULL) */}
+                            <span>Programa</span>
+                            <span>Nível</span>
+                            <span>Medalha In</span>
+                            <span>Medalha Out</span>
                             <span className="text-right">Ações</span>
                         </div>
                         {filtered.map(g => (
-                            <div key={g.id} className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_5rem] gap-3 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors">
+                            <div key={g.id} className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_6rem_6rem_6rem_6rem_5rem] gap-3 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors">
                                 <div>
                                     <span className="text-white font-medium text-[13px]">{g.company_name}</span>
                                     {g.days_remaining !== null && (
@@ -269,6 +334,25 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                                 </span>
                                 <span className="text-white/50 text-[12px]">{g.granted_at || '—'}</span>
                                 <span className="text-white/50 text-[12px]">{g.expires_at || '—'}</span>
+                                {/* Phase 51 W3 — colunas opcionais; '—' em text-white/30 quando NULL */}
+                                <span
+                                    className={cn('text-[12px] truncate', g.programa ? 'text-white/50' : 'text-white/30')}
+                                    title={g.programa || ''}
+                                >
+                                    {g.programa || '—'}
+                                </span>
+                                <span
+                                    className={cn('text-[12px] truncate', g.nivel_solucion ? 'text-white/50' : 'text-white/30')}
+                                    title={g.nivel_solucion || ''}
+                                >
+                                    {g.nivel_solucion || '—'}
+                                </span>
+                                <span className={cn('text-[12px]', g.medalha_fecha_in ? 'text-white/50' : 'text-white/30')}>
+                                    {g.medalha_fecha_in || '—'}
+                                </span>
+                                <span className={cn('text-[12px]', g.medalha_fecha_out ? 'text-white/50' : 'text-white/30')}>
+                                    {g.medalha_fecha_out || '—'}
+                                </span>
                                 <div className="flex justify-end gap-1">
                                     {g.status === 'active' && (
                                         <button
