@@ -312,6 +312,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');
     Route::post('/sugadores/{sugador}/move',        [SugadorController::class, 'move'])->name('sugadores.move');
     Route::post('/sugadores/bulk-move',             [SugadorController::class, 'bulkMove'])->name('sugadores.bulk-move');
+    // Phase 52 A6 — acao em massa "Copiar MLBs dos selecionados" via checkboxes.
+    // Autoriza view por item (pattern bulkMove) + agrega via AdgroupMlbMapRepository.
+    Route::post('/sugadores/bulk-copy-mlbs',        [SugadorController::class, 'bulkCopyMlbs'])->name('sugadores.bulk-copy-mlbs');
     Route::post('/sugadores/analyze',               [SugadorController::class, 'analyzeAll'])->name('sugadores.analyze-all');
     Route::post('/sugadores/companies/{company}/analyze', [SugadorController::class, 'analyzeCompany'])->name('sugadores.analyze-company');
     Route::get('/sugadores/companies/{company}/sgi-campaigns', [SugadorController::class, 'sgiCampaigns'])->name('sugadores.sgi-campaigns');

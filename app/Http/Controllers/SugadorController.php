@@ -629,6 +629,76 @@ class SugadorController extends Controller
     }
 
     /**
+     * Phase 52 A6 — ação em massa "Copiar MLBs dos selecionados".
+     *
+     * Recebe `sugador_ids[]` da barra de bulk actions do Index.jsx, autoriza
+     * cada item via `Gate::authorize('view', $s)` (mesmo pattern do bulkMove),
+     * agrega os MLBs via `AdgroupMlbMapRepository::getMlbsForAdgroup` (mesma
+     * fonte que `mlbsHint`), dedupla + ordena e retorna JSON.
+     *
+     * Diferente de `mlbsByCompany`, opera em N sugadores explicitamente
+     * selecionados via checkbox (não em todos os pendentes da empresa).
+     * Sugadores tipo=campanha ou sem adgroup_id são silenciosamente ignorados
+     * (não contam em `sugadores_processados`).
+     *
+     * Return shape: `{mlbs: string[], total: int, sugadores_processados: int}`
+     * — frontend usa `navigator.clipboard.writeText(mlbs.join(','))`.
+     */
+    public function bulkCopyMlbs(Request $request)
+    {
+        $data = $request->validate([
+            'sugador_ids'   => 'required|array|min:1|max:500',
+            'sugador_ids.*' => 'integer',
+        ]);
+
+        $sugadores = Sugador::whereIn('id', $data['sugador_ids'])->get();
+
+        // Nenhum sugador encontrado — 200 com contadores zerados (análogo ao
+        // 'warning' do bulkMove; aqui JSON pra manter shape estável no fetch).
+        if ($sugadores->isEmpty()) {
+            return response()->json([
+                'mlbs'                  => [],
+                'total'                 => 0,
+                'sugadores_processados' => 0,
+            ]);
+        }
+
+        // Autoriza CADA sugador via Policy::view — se algum fora da carteira,
+        // aborta com 403 (mesmo pattern de bulkMove). Admin passa via short-circuit.
+        foreach ($sugadores as $s) {
+            Gate::authorize('view', $s);
+        }
+
+        // Coleta MLBs de cada sugador elegível (tipo=adgroup + adgroup_id preenchido).
+        // Sugadores tipo=campanha ou sem adgroup_id são silenciosamente ignorados —
+        // não contam como processados.
+        $allMlbs     = [];
+        $processados = 0;
+
+        foreach ($sugadores as $s) {
+            if ($s->tipo !== Sugador::TIPO_ADGROUP) continue;
+            if ($s->adgroup_id === null || $s->adgroup_id === '') continue;
+
+            $mlbs = $this->adgroupMlbMap->getMlbsForAdgroup(
+                (int) $s->company_id,
+                (string) $s->adgroup_id
+            );
+            $allMlbs = array_merge($allMlbs, $mlbs);
+            $processados++;
+        }
+
+        // Dedup + sort determinístico (facilita snapshot em testes e UX consistente).
+        $unique = array_values(array_unique($allMlbs));
+        sort($unique);
+
+        return response()->json([
+            'mlbs'                  => $unique,
+            'total'                 => count($unique),
+            'sugadores_processados' => $processados,
+        ]);
+    }
+
+    /**
      * Drilldown: lista os MLBs (productAds) da campanha de um adgroup-sugador no
      * período analisado. Resolve a limitação histórica de que a Adman REST não
      * expõe os MLBs dentro de um adgroup — a MCP retorna métricas MLB-level
