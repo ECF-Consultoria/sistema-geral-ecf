@@ -286,6 +286,49 @@ class SugadorController extends Controller
     }
 
     /**
+     * Phase 52 A5 — endpoint neutro que devolve os MLBs mapeados de um sugador
+     * adgroup lendo `AdgroupMlbMapRepository` diretamente. Substitui a call de
+     * `sugadores.mlbs` no botão "Copiar MLBs" da listagem, resolvendo o 422
+     * quando `adman_account_id` é NULL (empresas ML-only).
+     *
+     * Diferente de `mlbs()` (endpoint drilldown com métricas via Adman MCP),
+     * este NÃO passa pela MCP — é instantâneo, funciona para empresas Adman e
+     * ML-only, e retorna sempre 200 com shape estável `{mlbs, total[, reason]}`.
+     * Nunca retorna 422 (decisão locked no CONTEXT.md §A5).
+     */
+    public function mlbsHint(Sugador $sugador)
+    {
+        Gate::authorize('view', $sugador);
+
+        // Tipo != adgroup: shape estável 200 com reason (não é erro, só não aplicável)
+        if ($sugador->tipo !== Sugador::TIPO_ADGROUP) {
+            return response()->json([
+                'mlbs'   => [],
+                'total'  => 0,
+                'reason' => 'O drilldown de MLBs só está disponível para sugadores do tipo adgroup.',
+            ]);
+        }
+
+        // Sem adgroup_id preenchido: array vazio (sem reason — dado ausente, não regra)
+        if ($sugador->adgroup_id === null || $sugador->adgroup_id === '') {
+            return response()->json(['mlbs' => [], 'total' => 0]);
+        }
+
+        // Fonte local via AdgroupMlbMapRepository — resolve cust_id via
+        // Company::cust_id (adman_account_id ?: ml_store_id), então empresas
+        // ML-only funcionam sem 422.
+        $mlbs = $this->adgroupMlbMap->getMlbsForAdgroup(
+            $sugador->company_id,
+            (string) $sugador->adgroup_id
+        );
+
+        return response()->json([
+            'mlbs'  => $mlbs,
+            'total' => count($mlbs),
+        ]);
+    }
+
+    /**
      * Muda o status de um sugador. Cria entrada em sugador_acoes (audit log).
      * Body: { status, acao_tomada?, observacao? }
      */

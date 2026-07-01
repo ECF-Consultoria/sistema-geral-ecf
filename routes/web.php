@@ -275,13 +275,25 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // (apenas users do setor liderado). Autorização granular no controller.
     Route::get('/admin/users/{user}/portfolio', [PortfolioController::class, 'show'])->name('portfolio.show');
 
-    // Quick 260623 — GET /companies + /companies/{c} agora gateados por
-    // permission core.empresas (antes role:admin). Lider de Performance ganha
-    // a permission via AUTO_LIDERANCA_PERFORMANCE; admin tem implicito.
+    // Detalhe da empresa: admin/lider com core.empresas veem qualquer empresa;
+    // analista/estrategista veem apenas empresas da propria carteira.
+    // A autorizacao fina acontece no controller para nao bloquear carteira no middleware.
+    Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
+
+    // Criacao de meta de empresa: admin ou estrategista vinculado a empresa.
+    // Edicao/remocao continuam restritas ao admin no grupo abaixo.
+    Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
+
+    // ML OAuth: qualquer usuario com acesso ao detalhe da empresa pode gerar
+    // link de conexao; desconectar/sync manual seguem admin-only.
+    Route::post('/companies/{company}/ml/initiate', [MercadoLivreOAuthController::class, 'initiate'])->name('ml.oauth.initiate');
+
+    // Quick 260623 — GET /companies agora gateado por permission core.empresas
+    // (antes role:admin). Lider de Performance ganha a permission via
+    // AUTO_LIDERANCA_PERFORMANCE; admin tem implicito.
     // Mutations (PUT/DELETE/POST) ficam no grupo role:admin abaixo.
     Route::middleware('permission:core.empresas')->group(function () {
         Route::get('/companies',            [CompanyController::class, 'index'])->name('companies.index');
-        Route::get('/companies/{company}',  [CompanyController::class, 'show'])->name('companies.show');
     });
 
     // ─── Sugadores ──────────────────────────────────────────────────────────
@@ -291,6 +303,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/sugadores',                        [SugadorController::class, 'index'])->name('sugadores.index');
     Route::get('/sugadores/{sugador}',              [SugadorController::class, 'show'])->name('sugadores.show');
     Route::get('/sugadores/{sugador}/mlbs',         [SugadorController::class, 'mlbs'])->name('sugadores.mlbs');
+    // Phase 52 A5 — endpoint neutro (fonte local AdgroupMlbMapRepository).
+    // Substitui `sugadores.mlbs` no botao "Copiar MLBs" da listagem — resolve
+    // 422 para empresas ML-only (adman_account_id=NULL). Shape estavel 200.
+    Route::get('/sugadores/{sugador}/mlbs-hint',    [SugadorController::class, 'mlbsHint'])->name('sugadores.mlbs-hint');
     // Phase 30 Plan 30-04 — Botão "Forçar atualização" do drilldown.
     Route::post('/sugadores/refresh-adgroup-mlbs',  [SugadorController::class, 'refreshAdgroupMlbs'])->name('sugadores.refresh-adgroup-mlbs');
     Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');
@@ -335,7 +351,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{company}/toggle-shadow',               [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
         });
 
-        Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
         Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
 
@@ -386,7 +401,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // ML OAuth — painel dedicado + ações por empresa (admin only, herdado do grupo)
         Route::get('/ml-oauth',                            [MercadoLivreOAuthController::class, 'adminIndex'])->name('ml.oauth.index');
-        Route::post('/companies/{company}/ml/initiate',    [MercadoLivreOAuthController::class, 'initiate'])->name('ml.oauth.initiate');
         Route::delete('/companies/{company}/ml/disconnect',[MercadoLivreOAuthController::class, 'disconnect'])->name('ml.oauth.disconnect');
         Route::post('/companies/{company}/ml/sync-now',   [MercadoLivreOAuthController::class, 'syncNow'])->name('ml.sync.now');
         // Sync global: dispara fan-out D-1 de todas as empresas com token ML ativo
@@ -606,4 +620,3 @@ Route::middleware(['auth', 'verified', 'permission:lideranca.dashboard_setor'])-
 });
 
 require __DIR__.'/auth.php';
-
