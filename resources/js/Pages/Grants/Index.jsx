@@ -294,9 +294,11 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                         />
                     </div>
 
-                    <div className="divide-y divide-white/[0.04]">
+                    {/* Phase 51 W4 UAT (2026-07-01) — overflow-x-auto + min-width para nao cortar
+                        colunas em viewports estreitos. Grid interno fixo garante alinhamento. */}
+                    <div className="divide-y divide-white/[0.04] overflow-x-auto">
                         {/* Header */}
-                        <div className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_6rem_6rem_6rem_6rem_5rem] gap-3 px-5 py-2.5 text-white/30 text-[11px] font-semibold uppercase tracking-wide">
+                        <div className="grid grid-cols-[16rem_6rem_11rem_7rem_6rem_6rem_6rem_5rem_5rem_5rem_5rem_5rem] gap-3 px-5 py-2.5 text-white/30 text-[11px] font-semibold uppercase tracking-wide min-w-[92rem]">
                             <span>Empresa</span>
                             <span>Status</span>
                             <span>E-mail</span>
@@ -312,7 +314,7 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                             <span className="text-right">Ações</span>
                         </div>
                         {filtered.map(g => (
-                            <div key={g.id} className="grid grid-cols-[1fr_7rem_8rem_8rem_6rem_7rem_7rem_6rem_6rem_6rem_6rem_5rem] gap-3 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors">
+                            <div key={g.id} className="grid grid-cols-[16rem_6rem_11rem_7rem_6rem_6rem_6rem_5rem_5rem_5rem_5rem_5rem] gap-3 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors min-w-[92rem]">
                                 <div>
                                     <span className="text-white font-medium text-[13px]">{g.company_name}</span>
                                     {g.days_remaining !== null && (
