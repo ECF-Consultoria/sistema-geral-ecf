@@ -4,13 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\CompanyGrant;
+use App\Services\EcfDriveService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class GrantController extends Controller
 {
-    public function index()
+    public function index(EcfDriveService $service)
     {
         $allCompanies = Company::where('active', true)->count();
 
@@ -45,6 +48,15 @@ class GrantController extends Controller
                 'ml_phone'       => $g->ml_phone,
                 'ml_cust_id'     => $g->ml_cust_id,
                 'segmento'       => $g->segmento,    // Phase 20 — campo vindo da API ECF Drive
+                // Phase 51 — 8 campos opcionais expandidos vindos da API ECF Drive
+                'programa'          => $g->programa,
+                'iniciativa'        => $g->iniciativa,
+                'nivel_solucion'    => $g->nivel_solucion,
+                'nombre_solucion'   => $g->nombre_solucion,
+                'parceiro'          => $g->parceiro,
+                'localidade'        => $g->localidade,
+                'medalha_fecha_in'  => $g->medalha_fecha_in?->toDateString(),
+                'medalha_fecha_out' => $g->medalha_fecha_out?->toDateString(),
                 'status'         => $g->status,
                 'granted_at'     => $g->granted_at?->toDateString(),
                 'expires_at'     => $g->expires_at?->toDateString(),
@@ -53,12 +65,61 @@ class GrantController extends Controller
                 'notes'          => $g->notes,
             ]);
 
-        // Empresas sem nenhum grant cadastrado
-        $companiesWithGrant = CompanyGrant::pluck('company_id')->unique();
-        $noGrant = Company::where('active', true)
-            ->whereNotIn('id', $companiesWithGrant)
+        // Phase 51 — Universo "Empresas sem grants" corrigido pelo operador 2026-06-30:
+        // companies.active=true AND (cust_id IS NOT NULL OR ml_token status='active')
+        //                       AND NOT EXISTS grant ativo.
+        // Empresa sem nenhum dos dois critérios NÃO é "sem grant" — é "não onboardada no ML".
+        //
+        // NOTA: `cust_id` é um accessor no model Company (adman_account_id ?: ml_store_id) —
+        // no SQL precisamos testar as 2 colunas físicas explicitamente (whereNotNull composto).
+        $noGrant = Company::query()
+            ->where('active', true)
+            ->where(function ($q) {
+                $q->where(function ($inner) {
+                    $inner->whereNotNull('adman_account_id')
+                          ->orWhereNotNull('ml_store_id');
+                })
+                ->orWhereExists(function ($sub) {
+                    $sub->select(DB::raw(1))
+                        ->from('ml_tokens')
+                        ->whereColumn('ml_tokens.company_id', 'companies.id')
+                        ->where('ml_tokens.status', 'active');
+                });
+            })
+            ->whereNotExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('company_grants')
+                    ->whereColumn('company_grants.company_id', 'companies.id')
+                    ->where('company_grants.status', 'active');
+            })
             ->orderBy('name')
-            ->get(['id', 'name']);
+            ->get(['id', 'name', 'adman_account_id', 'ml_store_id']);
+
+        // Phase 51 — buckets locais (sempre calculados; usados como fallback quando /grants/resumo falha).
+        $bucketsLocal = [
+            'd7'  => CompanyGrant::expiringSoon(7)->count(),
+            'd15' => CompanyGrant::expiringSoon(15)->count(),
+            'd30' => CompanyGrant::expiringSoon(30)->count(),
+            'd60' => CompanyGrant::expiringSoon(60)->count(),
+            'd90' => CompanyGrant::expiringSoon(90)->count(),
+        ];
+
+        // Phase 51 — consumo remoto com fallback gracioso (pattern PolosController:524-528).
+        $source       = 'local';
+        $buckets      = $bucketsLocal;
+        $divergencia  = null;
+        $totaisRemoto = null;
+        try {
+            $resumo       = $service->grantsResumo();
+            $source       = 'remote';
+            $buckets      = $resumo['buckets']     ?? $bucketsLocal;
+            $divergencia  = $resumo['divergencia']['sellers_em_base_sem_contatos_cpp'] ?? null;
+            $totaisRemoto = $resumo['totais']      ?? null;
+        } catch (\Throwable $e) {
+            Log::warning('[Grants] /grants/resumo offline — usando contagem local', [
+                'error' => $e->getMessage(),
+            ]);
+        }
 
         return Inertia::render('Grants/Index', [
             'stats' => [
@@ -67,6 +128,11 @@ class GrantController extends Controller
                 'expiring_soon'     => $expiringSoon->count(),
                 'expired_grants'    => $expiredGrants,
                 'no_grant'          => $noGrant->count(),
+                // Phase 51 — novos campos alimentados pelo /grants/resumo (ou fallback local)
+                'buckets'           => $buckets,
+                'divergencia_ml'    => $divergencia,
+                'source'            => $source,
+                'totais_remoto'     => $totaisRemoto,
             ],
             'grants'        => $grants,
             'expiring_soon' => $expiringSoon,

@@ -237,13 +237,16 @@ class GrantsResumoTest extends TestCase
         $this->actingAsAdmin();
         Http::fake(['*/grants/resumo' => Http::response($this->resumoPayload(), 200)]);
 
-        // A: com cust_id, sem grant → ENTRA
-        $this->makeCompany(['cust_id' => 'CUST-A', 'name' => 'Empresa A']);
+        // NOTA: Company::cust_id é ACCESSOR (adman_account_id ?: ml_store_id) —
+        // testes precisam setar as colunas físicas, não o accessor.
+
+        // A: com cust_id (via adman_account_id), sem grant → ENTRA
+        $this->makeCompany(['adman_account_id' => 'CUST-A', 'name' => 'Empresa A']);
         // B: com cust_id, com grant ativo → NÃO entra
-        $b = $this->makeCompany(['cust_id' => 'CUST-B', 'name' => 'Empresa B']);
+        $b = $this->makeCompany(['adman_account_id' => 'CUST-B', 'name' => 'Empresa B']);
         $this->makeGrant($b->id, now()->addDays(60)->toDateString(), 'active');
         // C: sem cust_id, sem ml_token → NÃO entra (não onboardada)
-        $this->makeCompany(['cust_id' => null, 'name' => 'Empresa C']);
+        $this->makeCompany(['adman_account_id' => null, 'name' => 'Empresa C']);
 
         $response = $this->get(route('grants.index'));
 
@@ -258,14 +261,14 @@ class GrantsResumoTest extends TestCase
         $this->actingAsAdmin();
         Http::fake(['*/grants/resumo' => Http::response($this->resumoPayload(), 200)]);
 
-        // D: sem cust_id, com ml_token ativo, sem grant → ENTRA
-        $d = $this->makeCompany(['cust_id' => null, 'name' => 'Empresa D']);
+        // D: sem cust_id (nem adman_account_id nem ml_store_id), com ml_token ativo, sem grant → ENTRA
+        $d = $this->makeCompany(['adman_account_id' => null, 'ml_store_id' => null, 'name' => 'Empresa D']);
         $this->makeMlToken($d->id, 'active');
         // E: sem cust_id, com ml_token EXPIRED, sem grant → NÃO entra
-        $e = $this->makeCompany(['cust_id' => null, 'name' => 'Empresa E']);
+        $e = $this->makeCompany(['adman_account_id' => null, 'ml_store_id' => null, 'name' => 'Empresa E']);
         $this->makeMlToken($e->id, 'expired');
         // F: com cust_id, com ml_token ativo, com grant ativo → NÃO entra
-        $f = $this->makeCompany(['cust_id' => 'CUST-F', 'name' => 'Empresa F']);
+        $f = $this->makeCompany(['adman_account_id' => 'CUST-F', 'name' => 'Empresa F']);
         $this->makeMlToken($f->id, 'active');
         $this->makeGrant($f->id, now()->addDays(60)->toDateString(), 'active');
 
