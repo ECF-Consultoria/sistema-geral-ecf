@@ -202,63 +202,60 @@ export default function GrantsIndex({ stats, grants, expiring_soon, no_grant, sy
                     </div>
                 </div>
 
-                {/* Stats */}
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <StatCard label="Empresas totais" value={stats.total_companies} icon={Building2} />
-                    <StatCard label="Grants ativos" value={stats.active_grants} color="text-emerald-400" icon={CheckCircle2} />
-                    <StatCard label="Expirando em 30d" value={stats.expiring_soon} color="text-ecf-yellow" icon={Clock} alert={stats.expiring_soon > 0} />
-                    <StatCard label="Expirados" value={stats.expired_grants} color="text-red-400" icon={XCircle} />
-                    <StatCard label="Sem grant" value={stats.no_grant} color="text-white/50" icon={ShieldCheck} />
-                </div>
-
-                {/* Phase 51 W3 — Buckets progressivos de expiração (7/15/30/60/90d) — cores RESEARCH §5 */}
+                {/* Stats principais — Phase 51 W4 fix (UAT 2026-07-01):
+                    fonte de verdade = /grants/resumo do ECF Drive (ML).
+                    Card "Empresas totais" removido — não era claro (não batia com
+                    performance/publicação). Card 1 vira "Total no ML" (396) que
+                    é a fonte de verdade. Linha extra de 5 buckets 7/15/30/60/90 removida
+                    per pedido do operador (card "Expirando em 30d" já cobre "expirando em breve"). */}
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                     <StatCard
-                        label="Expira em 7d"
-                        value={stats.buckets?.d7 ?? 0}
-                        color="text-red-400"
-                        icon={AlertTriangle}
-                        alert={(stats.buckets?.d7 ?? 0) > 0}
+                        label="Total no ML"
+                        value={stats.total_grants_ml}
+                        color="text-white"
+                        icon={ShieldCheck}
                     />
                     <StatCard
-                        label="Expira em 15d"
-                        value={stats.buckets?.d15 ?? 0}
-                        color="text-orange-400"
-                        icon={Clock}
-                        alert={(stats.buckets?.d15 ?? 0) > 0}
+                        label="Grants vigentes"
+                        value={stats.vigentes_ml}
+                        color="text-emerald-400"
+                        icon={CheckCircle2}
                     />
                     <StatCard
-                        label="Expira em 30d"
-                        value={stats.buckets?.d30 ?? 0}
+                        label="Expirando em 30d"
+                        value={stats.expirando_30d}
                         color="text-ecf-yellow"
                         icon={Clock}
+                        alert={stats.expirando_30d > 0}
                     />
                     <StatCard
-                        label="Expira em 60d"
-                        value={stats.buckets?.d60 ?? 0}
-                        color="text-white/60"
-                        icon={Clock}
+                        label="Expirados"
+                        value={stats.expirados_ml}
+                        color="text-red-400"
+                        icon={XCircle}
                     />
                     <StatCard
-                        label="Expira em 90d"
-                        value={stats.buckets?.d90 ?? 0}
-                        color="text-white/40"
-                        icon={Clock}
+                        label="Sem grant"
+                        value={stats.no_grant}
+                        color="text-white/70"
+                        icon={Building2}
                     />
                 </div>
 
-                {/* Phase 51 W3 — Divergência ML (informativo, tooltip explicativo) */}
-                <div
-                    className="grid grid-cols-1 sm:grid-cols-5 gap-3"
-                    title="Sellers em BASE_VENDEDORES sem cadastro em ContatosCPP — divergência de cadastro ML"
-                >
-                    <StatCard
-                        label="Divergência ML"
-                        value={stats.divergencia_ml ?? '—'}
-                        color="text-amber-400"
-                        icon={Info}
-                    />
-                </div>
+                {/* Phase 51 W3 — Divergência ML (informativo). Só renderiza quando tem valor > 0. */}
+                {stats.divergencia_ml !== null && stats.divergencia_ml > 0 && (
+                    <div
+                        className="grid grid-cols-1 sm:grid-cols-5 gap-3"
+                        title="Sellers em BASE_VENDEDORES sem cadastro em ContatosCPP — divergência de cadastro do ML"
+                    >
+                        <StatCard
+                            label="Divergência ML"
+                            value={stats.divergencia_ml}
+                            color="text-amber-400"
+                            icon={Info}
+                        />
+                    </div>
+                )}
 
                 {/* Expiring soon alert */}
                 {expiring_soon.length > 0 && (

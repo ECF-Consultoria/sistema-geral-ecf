@@ -95,26 +95,32 @@ class GrantController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'adman_account_id', 'ml_store_id']);
 
-        // Phase 51 — buckets locais (sempre calculados; usados como fallback quando /grants/resumo falha).
-        $bucketsLocal = [
-            'd7'  => CompanyGrant::expiringSoon(7)->count(),
-            'd15' => CompanyGrant::expiringSoon(15)->count(),
-            'd30' => CompanyGrant::expiringSoon(30)->count(),
-            'd60' => CompanyGrant::expiringSoon(60)->count(),
-            'd90' => CompanyGrant::expiringSoon(90)->count(),
-        ];
-
-        // Phase 51 — consumo remoto com fallback gracioso (pattern PolosController:524-528).
-        $source       = 'local';
-        $buckets      = $bucketsLocal;
-        $divergencia  = null;
-        $totaisRemoto = null;
+        // Phase 51 W4 fix (UAT 2026-07-01) — consumo remoto com mapeamento CORRETO do payload real:
+        // {
+        //   total: int, vigentes: int, expirados: int,
+        //   expirandoEm: { "7d": int, "15d": int, "30d": int, "60d": int, "90d": int },
+        //   fontes: { contatosCpp: {total, ...}, baseVendedores: {total, ...} }
+        // }
+        // Divergência ML = fontes.baseVendedores.total − fontes.contatosCpp.total
+        // (sellers em BASE_VENDEDORES sem cadastro em ContatosCPP — vem do ML, não é bug nosso).
+        $source          = 'local';
+        $expirandoEm30d  = CompanyGrant::expiringSoon(30)->count();
+        $divergencia     = null;
+        $totalGrantsMl   = null;
+        $vigentesMl      = null;
+        $expiradosMl     = null;
         try {
-            $resumo       = $service->grantsResumo();
-            $source       = 'remote';
-            $buckets      = $resumo['buckets']     ?? $bucketsLocal;
-            $divergencia  = $resumo['divergencia']['sellers_em_base_sem_contatos_cpp'] ?? null;
-            $totaisRemoto = $resumo['totais']      ?? null;
+            $resumo         = $service->grantsResumo();
+            $source         = 'remote';
+            $totalGrantsMl  = $resumo['total']     ?? null;
+            $vigentesMl     = $resumo['vigentes']  ?? null;
+            $expiradosMl    = $resumo['expirados'] ?? null;
+            $expirandoEm30d = $resumo['expirandoEm']['30d'] ?? $expirandoEm30d;
+            $baseTotal      = $resumo['fontes']['baseVendedores']['total'] ?? null;
+            $cppTotal       = $resumo['fontes']['contatosCpp']['total']    ?? null;
+            $divergencia    = ($baseTotal !== null && $cppTotal !== null)
+                ? max(0, $baseTotal - $cppTotal)
+                : null;
         } catch (\Throwable $e) {
             Log::warning('[Grants] /grants/resumo offline — usando contagem local', [
                 'error' => $e->getMessage(),
@@ -123,16 +129,20 @@ class GrantController extends Controller
 
         return Inertia::render('Grants/Index', [
             'stats' => [
-                'total_companies'   => $allCompanies,
-                'active_grants'     => $activeGrants,
-                'expiring_soon'     => $expiringSoon->count(),
-                'expired_grants'    => $expiredGrants,
+                // Cards principais — preferem fonte de verdade remota (ML), fallback local
+                'total_grants_ml'   => $totalGrantsMl ?? $activeGrants,
+                'vigentes_ml'       => $vigentesMl    ?? $activeGrants,
+                'expirando_30d'     => $expirandoEm30d,
+                'expirados_ml'      => $expiradosMl   ?? $expiredGrants,
                 'no_grant'          => $noGrant->count(),
-                // Phase 51 — novos campos alimentados pelo /grants/resumo (ou fallback local)
-                'buckets'           => $buckets,
+                // Card informativo
                 'divergencia_ml'    => $divergencia,
                 'source'            => $source,
-                'totais_remoto'     => $totaisRemoto,
+                // Legado (preservado por compat, pode remover depois)
+                'total_companies'   => $allCompanies,
+                'active_grants'     => $activeGrants,
+                'expired_grants'    => $expiredGrants,
+                'expiring_soon'     => $expiringSoon->count(),
             ],
             'grants'        => $grants,
             'expiring_soon' => $expiringSoon,

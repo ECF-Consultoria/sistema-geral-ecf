@@ -99,21 +99,22 @@ class GrantsResumoTest extends TestCase
 
     private function resumoPayload(array $overrides = []): array
     {
+        // Shape real da API ECF Drive /grants/resumo (verificado em prod via
+        // php artisan tinker → EcfDriveService::grantsResumo() 2026-07-01).
         return array_replace_recursive([
-            'totais' => [
-                'ativos'    => 396,
-                'vigentes'  => 345,
-                'expirados' => 51,
+            'total'     => 396,
+            'vigentes'  => 345,
+            'expirados' => 51,
+            'expirandoEm' => [
+                '7d'  => 2,
+                '15d' => 51,
+                '30d' => 73,
+                '60d' => 90,
+                '90d' => 120,
             ],
-            'buckets' => [
-                'd7'  => 2,
-                'd15' => 51,
-                'd30' => 73,
-                'd60' => 90,
-                'd90' => 120,
-            ],
-            'divergencia' => [
-                'sellers_em_base_sem_contatos_cpp' => 726,
+            'fontes' => [
+                'contatosCpp'    => ['descricao' => 'cliente_snapshots.grant_fim', 'total' => 396, 'vigentes' => 345, 'expirados' => 51],
+                'baseVendedores' => ['descricao' => 'seller_medalhas.fecha_out',   'total' => 1122, 'vigentes' => 419, 'expirados' => 703],
             ],
         ], $overrides);
     }
@@ -189,7 +190,7 @@ class GrantsResumoTest extends TestCase
         $this->actingAsAdmin();
         Http::fake([
             '*/grants/resumo' => Http::response($this->resumoPayload([
-                'buckets' => ['d7' => 5, 'd15' => 10, 'd30' => 20, 'd60' => 30, 'd90' => 50],
+                'expirandoEm' => ['7d' => 5, '15d' => 10, '30d' => 20, '60d' => 30, '90d' => 50],
             ]), 200),
         ]);
 
@@ -199,8 +200,10 @@ class GrantsResumoTest extends TestCase
         $response->assertInertia(fn ($page) => $page
             ->component('Grants/Index')
             ->where('stats.source', 'remote')
-            ->where('stats.buckets.d7', 5)
-            ->where('stats.buckets.d90', 50)
+            ->where('stats.total_grants_ml', 396)
+            ->where('stats.vigentes_ml', 345)
+            ->where('stats.expirando_30d', 20)
+            ->where('stats.expirados_ml', 51)
         );
     }
 
@@ -212,18 +215,18 @@ class GrantsResumoTest extends TestCase
             '*/grants/resumo' => Http::response(['erro' => 'offline'], 500),
         ]);
 
-        // 2 grants expirando dentro de 7d
+        // 2 grants expirando dentro de 30d
         $c1 = $this->makeCompany();
         $c2 = $this->makeCompany();
         $this->makeGrant($c1->id, now()->addDays(3)->toDateString());
-        $this->makeGrant($c2->id, now()->addDays(5)->toDateString());
+        $this->makeGrant($c2->id, now()->addDays(20)->toDateString());
 
         $response = $this->get(route('grants.index'));
 
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->where('stats.source', 'local')
-            ->where('stats.buckets.d7', 2)
+            ->where('stats.expirando_30d', 2)
             ->where('stats.divergencia_ml', null)
         );
 
@@ -282,11 +285,10 @@ class GrantsResumoTest extends TestCase
 
     public function test_index_divergencia_ml_propagada_quando_remoto_ok(): void
     {
+        // Divergência ML = fontes.baseVendedores.total (1122) − fontes.contatosCpp.total (396) = 726
         $this->actingAsAdmin();
         Http::fake([
-            '*/grants/resumo' => Http::response($this->resumoPayload([
-                'divergencia' => ['sellers_em_base_sem_contatos_cpp' => 726],
-            ]), 200),
+            '*/grants/resumo' => Http::response($this->resumoPayload(), 200),
         ]);
 
         $response = $this->get(route('grants.index'));
