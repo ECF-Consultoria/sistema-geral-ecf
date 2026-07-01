@@ -12,8 +12,8 @@ use App\Support\Permissions;
  * | Quem                          | Lê        | Muda status | Configura |
  * |-------------------------------|-----------|-------------|-----------|
  * | admin                         | Todos     | Todos       | ✓         |
- * | gestor / lider (publication)  | Todos     | Todos       | ✗         |
- * | analista (publication)        | Carteira  | Carteira    | ✗         |
+ * | gestor / lider (publication)  | Todos     | Todos       | ✓         |
+ * | analista (publication)        | Carteira  | Carteira    | ✓         |
  * | consultor / mentor (sistema)  | Carteira  | Carteira    | ✗         |
  * | publicador (publication)      | —         | —           | —         |
  *
@@ -59,14 +59,22 @@ class SugadorPolicy
      * 2026-05-22: relaxado de admin-only para admin + gestor + lider (publication)
      * — o time operacional precisava acessar a config dos Sugadores sem depender
      * de admin abrir, e a aba "Empresas" não é visível a quem não é admin.
-     * Analistas comuns continuam fora (config é macro, e eles só veem a carteira).
+     *
+     * 2026-07-01 (Phase 52 A1): analista incluso — operacional precisa ajustar
+     * thresholds da própria carteira sem depender de gestor/admin. Autorização
+     * de carteira continua sendo aplicada em `view`/`update` (thresholds afetam
+     * apenas as empresas que ele já vê). Inclui-se `CORE_SUGADORES` (analista)
+     * ao lado de `hasGlobalView` (gestor/lider via CORE_SUGADORES_GLOBAL) —
+     * mesma constante usada em `analyze()`.
      */
     public function manage(User $user): bool
     {
         if ($user->isAdmin()) return true;
 
-        // hasGlobalView replica isGestor / isLiderPub (publication roles com
-        // visão global). Reaproveita o helper privado pra manter coerência.
+        // A1 (2026-07-01): analista com CORE_SUGADORES agora entra.
+        if ($user->hasPermission(Permissions::CORE_SUGADORES)) return true;
+
+        // Gestor/lider continuam via CORE_SUGADORES_GLOBAL (hasGlobalView).
         return $this->hasGlobalView($user);
     }
 
