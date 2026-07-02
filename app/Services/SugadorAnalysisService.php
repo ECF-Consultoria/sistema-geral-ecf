@@ -625,6 +625,29 @@ class SugadorAnalysisService
         foreach ($criteria as $c) {
             if ($c['hit']) $motivos[] = $c['key'];
         }
+
+        // Phase 53-02: filtro venda organica global (fix B2 BARAOSHOP + B3 DINMAP —
+        // research §Caso B2 e §Caso B3). Se motivo 'gasto_sem_venda' bate mas o MLB
+        // vende globalmente >= 10 unidades (FULL organico, busca direta, etc), o
+        // adgroup NAO e sugador — cliente escolheu pausar o ads porque produto
+        // vende sem ele. Threshold 10 LOCKED (research §Assumptions A1 —
+        // configurable e feature futura, DEFERRED).
+        //
+        // sold_global vem do provider ML (Wave 1 fetchItemStatus -> Wave 2 chave
+        // canonica). Path Adman NAO expoe essa chave — sold_global=null preserva
+        // comportamento legacy (fail-open universal).
+        //
+        // Filtro roda DEPOIS da projecao final — nao altera semantica de
+        // required/optional acima. So remove 'gasto_sem_venda' se satisfeito o
+        // filtro; outros motivos (cpc_alto, acos_alto, cliques_sem_conversao)
+        // sao preservados. Se 'gasto_sem_venda' era o unico motivo, retorna []
+        // e o caller nao persiste o sugador (linha 198 do analyzeCompany:
+        // `if (empty($motivos)) continue;`).
+        $soldGlobal = $metrics['sold_global'] ?? null;
+        if ($soldGlobal !== null && (int) $soldGlobal >= 10) {
+            $motivos = array_values(array_filter($motivos, fn($m) => $m !== 'gasto_sem_venda'));
+        }
+
         return $motivos;
     }
 

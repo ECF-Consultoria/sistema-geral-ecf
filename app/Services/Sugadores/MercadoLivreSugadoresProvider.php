@@ -216,6 +216,15 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
             // SKIPA se paused/closed/under_review. Fail-open: mlb_status=null
             // (rate-limit, sem mlb_id, timeout) NAO skipa — preserva volume de
             // analise (Bymobille/casos legitimos nao regridem).
+            //
+            // Phase 53-02 nota B3 (research §Caso B3): observado em prod que
+            // sugador.mlb_id pode divergir do raw_data.item_id em 1 caractere
+            // (heranca de sync antigo — ex.: DINMAP MLB4359551779 vs raw item
+            // MLB4359551777). Aqui usamos $r['item_id'] como fonte-verdade
+            // (item_id vem do payload atual do Ads, nao do banco). Se o upsert
+            // downstream persistir esse mesmo valor via 'mlb_id' => $r['item_id'],
+            // registros novos ficam sincronizados. Registros antigos com mismatch
+            // permanecem — fix retroativo e' bulk-update, DEFERRED desta phase.
             $mlbId = $r['item_id'] ?? null;
             $mlbStatusInfo = $mlbId
                 ? $this->ml->fetchItemStatus($company, (string) $mlbId)
@@ -268,6 +277,13 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
                 'mlb_status'               => $mlbStatus,
                 'mlb_sold_quantity_global' => $mlbStatusInfo['sold_quantity'] ?? null,
                 'mlb_logistic_type'        => $mlbStatusInfo['logistic_type'] ?? null,
+                // Phase 53-02 (B2+B3): vendas globais do MLB. Cliente pode pausar
+                // ads e continuar vendendo via FULL/organico — usamos essa metrica
+                // pra distinguir sugador de anuncio auxiliado por venda organica.
+                // Chave canonica consumida por SugadorAnalysisService::evaluateMetrics.
+                // Alias de mlb_sold_quantity_global (mantida acima pra compat externa).
+                // Fail-open: null quando fetchItemStatus falha OU sem mlb_id.
+                'sold_global'              => $mlbStatusInfo['sold_quantity'] ?? null,
                 'raw'             => $r,
             ];
         }
