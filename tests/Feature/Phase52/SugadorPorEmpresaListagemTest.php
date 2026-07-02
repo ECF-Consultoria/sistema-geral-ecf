@@ -123,9 +123,9 @@ class SugadorPorEmpresaListagemTest extends TestCase
             ->get(route('sugadores.empresa.listagem', $empresa->id));
 
         $response->assertOk();
-        // Inertia page — assertInertia disponivel via testbench-like helpers do projeto?
-        // Como o projeto usa Inertia::render, o response body tem `data-page` JSON.
-        $response->assertSee('Sugadores/EmpresaListagem', false);
+        // Inertia page — inspeciona `component` do data-page JSON.
+        $page = $this->extractInertiaPage($response);
+        $this->assertSame('Sugadores/EmpresaListagem', $page['component']);
     }
 
     /**
