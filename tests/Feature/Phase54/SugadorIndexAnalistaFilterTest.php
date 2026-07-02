@@ -89,7 +89,9 @@ class SugadorIndexAnalistaFilterTest extends TestCase
 
     /**
      * Attach direto na pivot company_users para garantir controle do enum
-     * `role` (analista/consultor/estrategista) sem depender de helpers do model.
+     * `role` (consultor/estrategista). Valores válidos em prod: consultor,
+     * estrategista. "analista" não existe na pivot — o vínculo de analista
+     * é gravado como role='consultor' (memory project_atribuicao_profissionais).
      */
     private function attachCarteira(Company $company, User $user, string $role): void
     {
@@ -100,6 +102,42 @@ class SugadorIndexAnalistaFilterTest extends TestCase
             'assigned_at' => now()->toDateString(),
             'created_at'  => now(),
             'updated_at'  => now(),
+        ]);
+    }
+
+    /**
+     * Fix UAT 2026-07-02 — marca user como analista via CARGO (user_setores →
+     * cargos.slug='analista'). Em prod não existe registro em company_users
+     * com role='analista'; a identificação vem do cargo.
+     */
+    private function marcarComoAnalistaPorCargo(User $user): void
+    {
+        $setorId = DB::table('setores')->insertGetId([
+            'nome' => 'Setor Teste ' . uniqid(),
+            'slug' => 'setor-teste-' . uniqid(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        $cargoId = DB::table('cargos')->where('slug', 'analista')->value('id');
+        if (!$cargoId) {
+            $cargoId = DB::table('cargos')->insertGetId([
+                'setor_id' => $setorId,
+                'nome'     => 'Analista',
+                'slug'     => 'analista',
+                'ordem'    => 0,
+                'active'   => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        DB::table('user_setores')->insert([
+            'user_id'      => $user->id,
+            'setor_id'     => $setorId,
+            'cargo_id'     => $cargoId,
+            'is_principal' => true,
+            'assigned_at'  => now(),
+            'created_at'   => now(),
+            'updated_at'   => now(),
         ]);
     }
 
@@ -132,10 +170,12 @@ class SugadorIndexAnalistaFilterTest extends TestCase
         $userAnalista   = User::factory()->create(['role' => 'consultor', 'name' => 'Ana Analista']);
         $userConsultor  = User::factory()->create(['role' => 'consultor', 'name' => 'Carlos Consultor']);
 
-        // Ana aparece como analista em A E B — só deve entrar 1 vez.
-        $this->attachCarteira($empA, $userAnalista, 'analista');
-        $this->attachCarteira($empB, $userAnalista, 'analista');
-        // Carlos entra como consultor — NÃO deve aparecer na lista de analistas.
+        // Ana tem cargo analista + vinculada em A e B via role=consultor
+        // (pivot company_users não aceita 'analista' — memory project_atribuicao_profissionais).
+        $this->marcarComoAnalistaPorCargo($userAnalista);
+        $this->attachCarteira($empA, $userAnalista, 'consultor');
+        $this->attachCarteira($empB, $userAnalista, 'consultor');
+        // Carlos SEM cargo analista + role=consultor — NÃO deve aparecer na lista.
         $this->attachCarteira($empA, $userConsultor, 'consultor');
 
         $response = $this->actingAs($admin)->get(route('sugadores.index'));
@@ -167,7 +207,8 @@ class SugadorIndexAnalistaFilterTest extends TestCase
         // existindo analistas no banco, o não-admin NÃO os recebe.
         $emp = $this->novaEmpresa('X');
         $outroAnalista = User::factory()->create(['role' => 'consultor']);
-        $this->attachCarteira($emp, $outroAnalista, 'analista');
+        $this->marcarComoAnalistaPorCargo($outroAnalista);
+        $this->attachCarteira($emp, $outroAnalista, 'consultor');
 
         // Usuário logado: consultor com CORE_SUGADORES + carteira própria.
         $meuUser = $this->userComCoreSugadores('meu-consultor');
@@ -200,8 +241,10 @@ class SugadorIndexAnalistaFilterTest extends TestCase
         $analistaX = User::factory()->create(['role' => 'consultor', 'name' => 'X']);
         $analistaY = User::factory()->create(['role' => 'consultor', 'name' => 'Y']);
 
-        $this->attachCarteira($empA, $analistaX, 'analista');
-        $this->attachCarteira($empB, $analistaY, 'analista');
+        $this->marcarComoAnalistaPorCargo($analistaX);
+        $this->marcarComoAnalistaPorCargo($analistaY);
+        $this->attachCarteira($empA, $analistaX, 'consultor');
+        $this->attachCarteira($empB, $analistaY, 'consultor');
 
         $response = $this->actingAs($admin)->get(
             route('sugadores.index', ['analista_id' => $analistaX->id])
@@ -227,9 +270,10 @@ class SugadorIndexAnalistaFilterTest extends TestCase
         $empB = $this->novaEmpresa('B');
         $empC = $this->novaEmpresa('C');
 
-        // Outro analista (X) vinculado como analista em A — não deve interferir.
+        // Outro analista (X) vinculado por cargo + role consultor em A — não deve interferir.
         $analistaX = User::factory()->create(['role' => 'consultor']);
-        $this->attachCarteira($empA, $analistaX, 'analista');
+        $this->marcarComoAnalistaPorCargo($analistaX);
+        $this->attachCarteira($empA, $analistaX, 'consultor');
 
         // Consultor logado tem carteira em A, B e C (como consultor).
         $meuUser = $this->userComCoreSugadores('meu-consultor2');

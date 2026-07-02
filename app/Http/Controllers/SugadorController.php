@@ -131,13 +131,21 @@ class SugadorController extends Controller
 
         // Phase 54 Plan 54-01 (A3) — Lista de analistas para o dropdown de
         // "?analista_id" no header do Index. Só admin recebe (frontend usa
-        // is_admin para renderizar o select). Distinct via whereIn+subquery
-        // com role='analista' — evita repetir user vinculado a N empresas.
+        // is_admin para renderizar o select).
+        //
+        // Fix UAT 2026-07-02: identificar analista via CARGO (user_setores →
+        // cargos.slug='analista'), NÃO via company_users.role. Memory
+        // project_atribuicao_profissionais.md documenta: "Analista = role
+        // 'consultor'" na pivot company_users. Ou seja, o cargo é analista
+        // mas na atribuição de empresa a role gravada é 'consultor'.
+        // Consultar apenas company_users.role='analista' retorna 0 users
+        // (nada existe com essa role — só estrategista e consultor).
         $analistas = $user->isAdmin()
             ? \App\Models\User::whereIn('id', function ($sub) {
-                $sub->select('user_id')
-                    ->from('company_users')
-                    ->where('role', 'analista');
+                $sub->select('user_setores.user_id')
+                    ->from('user_setores')
+                    ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+                    ->where('cargos.slug', 'analista');
             })->orderBy('name')->get(['id', 'name'])
             : collect();
 
@@ -177,9 +185,14 @@ class SugadorController extends Controller
         // itera sobre $companies (linha ~193), não sobre $visibleIds.
         if ($user->isAdmin() && $request->filled('analista_id')) {
             $analistaId = (int) $request->analista_id;
+            // Fix UAT 2026-07-02: role na pivot company_users é 'consultor'
+            // (não 'analista') mesmo para analistas por cargo. Ver comentário
+            // acima em $analistas para o contexto completo. Aceitamos
+            // consultor|estrategista para não excluir estrategistas caso um
+            // dia a UI ganhe filtro de estrategista também.
             $companiesDoAnalista = DB::table('company_users')
                 ->where('user_id', $analistaId)
-                ->where('role', 'analista')
+                ->whereIn('role', ['consultor', 'estrategista'])
                 ->pluck('company_id')
                 ->all();
             $visibleIds = array_values(array_intersect($visibleIds, $companiesDoAnalista));
