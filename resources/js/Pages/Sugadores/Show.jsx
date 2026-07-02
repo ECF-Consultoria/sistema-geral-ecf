@@ -1,12 +1,12 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Link, useForm } from '@inertiajs/react';
+import { Link, router, useForm } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import {
     AlertTriangle, Building2, ExternalLink, ArrowLeft, Megaphone, Tag,
     DollarSign, ShoppingCart, MousePointer, Eye, Percent, TrendingUp,
     Clock, MessageSquare, CheckCircle2, XCircle, PlayCircle, RotateCcw,
     Image as ImageIcon, Layers, Package, Loader2, RefreshCw,
-    Copy, Check, ChevronDown, ArrowRightLeft,
+    Copy, Check, ChevronDown, ArrowRightLeft, Settings, SlidersHorizontal,
 } from 'lucide-react';
 import MoveToSgiModal from '@/Components/MoveToSgiModal';
 import { cn } from '@/lib/utils';
@@ -124,8 +124,68 @@ function Metric({ icon: Icon, label, value, color = 'white' }) {
     );
 }
 
-export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_update, mlbs = [] }) {
+export default function SugadoresShow({
+    sugador,
+    url_anuncio,
+    url_ads,
+    can_update,
+    mlbs = [],
+    // Phase 52-03 (A3) — resumo compacto da SugadorConfig da empresa
+    // (thresholds ativos + ativo/inativo). Pode vir null se a empresa
+    // ainda nao tem config personalizada — nesse caso o card renderiza
+    // estado vazio "usando defaults do sistema".
+    sugador_config = null,
+    // Phase 52-03 (A3) — flag que reflete Gate::allows('manage', Sugador).
+    // Wave 1 (A1) ja incluiu analista nessa policy, entao analistas veem
+    // os botoes Configurar e Rodar analise.
+    can_manage_config = false,
+}) {
     const [showMoveModal, setShowMoveModal] = useState(false);
+
+    // ─── Phase 52-03 (A8) — Botao "Rodar analise" per-empresa + cronometro ──
+    // analyzeCompany enfileira o Job na queue 'high' — o POST volta em ~100ms
+    // mas o job real leva ~30s. Usamos cronometro client-side fixo (30s) que:
+    //   1. mostra progresso visual "Analisando... 12s"
+    //   2. dispara router.reload({ only: ['sugador'] }) ao atingir 30s
+    //   3. reseta o estado idle
+    // NAO usamos onFinish do router.post pra desligar (senao para em <1s).
+    // Se o user fechar/navegar antes dos 30s, o Job continua na fila.
+    const [analyzing, setAnalyzing] = useState(false);
+    const [elapsed, setElapsed] = useState(0);
+
+    useEffect(() => {
+        if (!analyzing) return;
+        const tick = setInterval(() => {
+            setElapsed(prev => {
+                const next = prev + 1;
+                if (next >= 30) {
+                    clearInterval(tick);
+                    // Pega novos sugadores identificados pelo Job.
+                    router.reload({ only: ['sugador'], preserveScroll: true });
+                    setAnalyzing(false);
+                    return 0;
+                }
+                return next;
+            });
+        }, 1000);
+        return () => clearInterval(tick);
+    }, [analyzing]);
+
+    function rodarAnalise() {
+        const companyId = sugador?.company?.id;
+        if (!companyId) return;
+        setAnalyzing(true);
+        setElapsed(0);
+        router.post(route('sugadores.analyze-company', companyId), {}, {
+            preserveScroll: true,
+            // Em caso de erro (empresa sem mlToken active, gate 403 etc), volta idle.
+            onError: () => {
+                setAnalyzing(false);
+                setElapsed(0);
+            },
+            // NAO setar setAnalyzing(false) no onFinish — o cronometro controla o fim.
+        });
+    }
 
     // Quick task 260626-qgf — `mlbs` vem do controller via AdgroupMlbMapRepository
     // (todos os MLBs do adgroup do sugador via provider ML). Propagado para o
@@ -433,16 +493,42 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                 </div>
             )}
 
-            {/* Drilldown MLBs — auto-load via API MCP do Adman (quick 260626-qgf).
-                `mlbsHint` recebe a lista do controller (provider ML) para mostrar
-                contagem instantanea enquanto o fetch de metricas detalhadas roda. */}
-            {sugador.tipo === 'adgroup' && (
-                <MlbsDoAdgroup
-                    sugadorId={sugador.id}
-                    adgroupName={sugador.adgroup_name}
-                    companyId={sugador.company?.id}
-                    mlbsHint={mlbs}
-                />
+            {/* Phase 52-03 (A3+A8) — grid lateral com ConfigResumoCard + botao
+                "Rodar analise" ao lado do MlbsDoAdgroup. Em telas menores empilha
+                (card em cima, MLBs embaixo). Para tipo=campanha (sem MLBs), o
+                card sozinho ocupa a linha inteira. */}
+            {sugador.tipo === 'adgroup' ? (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
+                    <div className="lg:col-span-1 order-first lg:order-last">
+                        <ConfigResumoCard
+                            config={sugador_config}
+                            companyId={sugador.company?.id}
+                            canManage={can_manage_config}
+                            analyzing={analyzing}
+                            elapsed={elapsed}
+                            onRodarAnalise={rodarAnalise}
+                        />
+                    </div>
+                    <div className="lg:col-span-3">
+                        <MlbsDoAdgroup
+                            sugadorId={sugador.id}
+                            adgroupName={sugador.adgroup_name}
+                            companyId={sugador.company?.id}
+                            mlbsHint={mlbs}
+                        />
+                    </div>
+                </div>
+            ) : (
+                <div className="mb-4">
+                    <ConfigResumoCard
+                        config={sugador_config}
+                        companyId={sugador.company?.id}
+                        canManage={can_manage_config}
+                        analyzing={analyzing}
+                        elapsed={elapsed}
+                        onRodarAnalise={rodarAnalise}
+                    />
+                </div>
             )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -565,6 +651,111 @@ export default function SugadoresShow({ sugador, url_anuncio, url_ads, can_updat
                 />
             )}
         </AppLayout>
+    );
+}
+
+/**
+ * Phase 52-03 (A3+A8) — Card lateral compacto com o resumo da SugadorConfig
+ * da empresa + botao "Configurar" (leva pra /sugadores/configs/{company}) +
+ * botao "Rodar analise" (dispara analyzeCompany com cronometro fixo 30s).
+ *
+ * Props:
+ *   config: { ativo, dias_analise, gasto_minimo_sem_venda, cpc_maximo,
+ *             acos_maximo_pct, cliques_minimos_sem_venda } | null
+ *     - null quando a empresa nao tem SugadorConfig personalizada (usa defaults).
+ *   companyId: id da empresa (para as rotas Configurar / Rodar analise).
+ *   canManage: reflete Gate::allows('manage', Sugador). Controla exibicao dos botoes.
+ *   analyzing/elapsed/onRodarAnalise: estado do cronometro herdado do Show
+ *     (mantido no componente pai pra sobreviver a re-renders locais do card).
+ */
+function ConfigResumoCard({ config, companyId, canManage, analyzing, elapsed, onRodarAnalise }) {
+    const hasConfig = config != null;
+    return (
+        <div className="card-ecf rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <SlidersHorizontal size={13} className="text-white/40" />
+                    <h3 className="text-white/90 font-display font-semibold text-sm">Configuração</h3>
+                </div>
+                {hasConfig ? (
+                    config.ativo
+                        ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">ATIVA</span>
+                        : <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-500/15 text-zinc-300 border border-zinc-500/30">INATIVA</span>
+                ) : (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-white/[0.04] text-white/50 border border-white/[0.08]">DEFAULT</span>
+                )}
+            </div>
+
+            {hasConfig ? (
+                <dl className="space-y-1.5 text-[11px]">
+                    {config.dias_analise != null && (
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-white/50">Janela</dt>
+                            <dd className="text-white/80 tabular-nums">{config.dias_analise} dias</dd>
+                        </div>
+                    )}
+                    {config.gasto_minimo_sem_venda != null && (
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-white/50">Gasto mín. s/ venda</dt>
+                            <dd className="text-white/80 tabular-nums">R$ {config.gasto_minimo_sem_venda}</dd>
+                        </div>
+                    )}
+                    {config.cpc_maximo != null && (
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-white/50">CPC máx.</dt>
+                            <dd className="text-white/80 tabular-nums">R$ {config.cpc_maximo}</dd>
+                        </div>
+                    )}
+                    {config.acos_maximo_pct != null && (
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-white/50">ACOS máx.</dt>
+                            <dd className="text-white/80 tabular-nums">{config.acos_maximo_pct}%</dd>
+                        </div>
+                    )}
+                    {config.cliques_minimos_sem_venda != null && (
+                        <div className="flex justify-between gap-2">
+                            <dt className="text-white/50">Cliques mín. s/ venda</dt>
+                            <dd className="text-white/80 tabular-nums">{config.cliques_minimos_sem_venda}</dd>
+                        </div>
+                    )}
+                </dl>
+            ) : (
+                <p className="text-white/40 text-[11px] leading-relaxed">
+                    Nenhuma configuração personalizada — usando defaults do sistema.
+                </p>
+            )}
+
+            {canManage && companyId && (
+                <div className="mt-3 space-y-2 pt-3 border-t border-white/[0.06]">
+                    <button
+                        type="button"
+                        onClick={() => router.visit(route('sugadores.config.show', companyId))}
+                        disabled={analyzing}
+                        className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] disabled:opacity-50 disabled:cursor-not-allowed text-[12px] font-medium"
+                        title="Editar thresholds de detecção para esta empresa"
+                    >
+                        <Settings size={12} />
+                        Configurar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onRodarAnalise}
+                        disabled={analyzing}
+                        className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-lg bg-ecf-yellow/15 text-ecf-yellow border border-ecf-yellow/30 hover:bg-ecf-yellow/25 disabled:opacity-70 disabled:cursor-not-allowed text-[12px] font-semibold"
+                        title="Enfileira analise ML para esta empresa (~30s)"
+                    >
+                        {analyzing
+                            ? <><Loader2 size={12} className="animate-spin" /> Analisando... {elapsed}s</>
+                            : <><PlayCircle size={12} /> Rodar análise</>}
+                    </button>
+                    {analyzing && (
+                        <p className="text-white/40 text-[10px] text-center leading-tight">
+                            Job enfileirado. Resultados atualizam automaticamente.
+                        </p>
+                    )}
+                </div>
+            )}
+        </div>
     );
 }
 
