@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v12.0
 milestone_name: Carteira + Desempenho + Gamificação OAuth ML
 status: executing
-stopped_at: "Phase 51 FECHADA (4/4 plans + 4 fixes UAT). Universo 'sem grant' unido Company+MlbEmpresa por cust_id (era só Company, ignorava 176 POLOS). Mapping do payload real corrigido (era aninhado no CONTEXT, API é flat). Tooltips pt-BR em cada card + tabela com overflow horizontal. 25/25 testes verdes. Debito tecnico: Grants ML=396 vs Local=61 sugere gap de cobertura do sync grants:sync-ecf — investigar apos cron 03:00 BRT de 2026-07-02 se persistir. Proximas phases: 47 (depends 44), 50 (independente). Phase 44 segue pausada."
-last_updated: "2026-07-01"
-last_activity: 2026-07-01 -- Phase 51 fechada com UAT aprovado (3 rodadas de correcao)
+stopped_at: "Phase 52 FECHADA UAT PARCIAL. 9 itens A1-A9 entregues em 4 waves (backend TDD + 2 UI + 1 correcao 3.5). Index.jsx 1415->514 linhas. Nova rota /sugadores/empresa/{id} + endpoints mlbs-hint + bulk-copy-mlbs. Hotfix Megaphone/Tag nao importados (ReferenceError tela branca). Refinamentos UAT identificados (7 itens) roteados para Phase 54 (correcoes+filtros) + Phase 55 (Magic UI/redesign). Debito: analise_diaria/sincronizou_hoje no backend orfaos (Phase 53 limpa). Proximas: 54 (refinamentos rapidos), 53 (detector), 47 (depends 44)."
+last_updated: "2026-07-02"
+last_activity: 2026-07-02 -- Phase 52 fechada UAT parcial; refinamentos capturados em Phase 54 + 55
 progress:
-  total_phases: 46
-  completed_phases: 29
-  total_plans: 103
-  completed_plans: 89
-  percent: 63
+  total_phases: 48
+  completed_phases: 30
+  total_plans: 108
+  completed_plans: 94
+  percent: 65
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 52 — melhorias UI/UX + comportamento /sugadores
+**Current focus:** Phase 52 fechada (UAT parcial) — Phase 54 (refinamentos) próxima
 
 ## Current Position
 
-Phase: 52 (melhorias-ui-ux-comportamento-sugadores) — EXECUTING
-Plan: 1 of 4
-Status: Iniciando Wave 1 (Plan 52-01 backend + policy)
-Last activity: 2026-07-01 -- Phase 52 execution started
+Phase: 52 (melhorias-ui-ux-comportamento-sugadores) — COMPLETE (UAT parcial)
+Plan: 4 of 4 — hotfix Megaphone + refinamentos migrados para Phase 54/55
+Status: Phase 52 fechada
+Last activity: 2026-07-02 -- Phase 52 fechada; refinamentos capturados como Phase 54 + 55
 Blockers:
 
   - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
