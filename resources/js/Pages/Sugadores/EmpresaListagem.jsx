@@ -223,6 +223,18 @@ export default function SugadoresEmpresaListagem({
         });
     }
 
+    // ─── Phase 54-02 (B1) — Filtro de periodo persistido em query string ────
+    // Pattern canonico: Portfolio/Carteiras.jsx:25-30 (applyPeriod + preserveState/preserveScroll).
+    // Backend porEmpresa (Wave 1) recebe ?periodo=hoje|7d|30d|todos e ecoa em periodo + periodo_presets.
+    function aplicarPeriodo(value) {
+        if (!company?.id) return;
+        router.get(
+            route('sugadores.empresa.listagem', company.id),
+            { periodo: value },
+            { preserveState: true, preserveScroll: true },
+        );
+    }
+
     // ─── Estados de feedback por linha (copiar MLBs por sugador — A5) ──────
     const [copyingId, setCopyingId] = useState(null);
     const [copiedFeedback, setCopiedFeedback] = useState({}); // { [sugadorId]: {ok, total, error} }
@@ -370,6 +382,32 @@ export default function SugadoresEmpresaListagem({
                                 </p>
                             </div>
                         </div>
+                    </div>
+
+                    {/* Phase 54-02 (B1) — Filtro de periodo com <select> nativo (research §3/§4).
+                        NAO usar Components/ui/select.jsx: classes shadcn (bg-background border-input)
+                        quebram dark theme. Presets vem da prop periodo_presets do backend (Wave 1). */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                        <label htmlFor="periodo-filter" className="text-white/50 text-xs uppercase tracking-wide">
+                            Período
+                        </label>
+                        <select
+                            id="periodo-filter"
+                            value={periodo}
+                            onChange={e => aplicarPeriodo(e.target.value)}
+                            className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 focus:border-ecf-yellow/40 transition-all cursor-pointer"
+                        >
+                            {periodo_presets.map(p => (
+                                <option key={p.value} value={p.value} className="bg-ecf-card">
+                                    {p.label}
+                                </option>
+                            ))}
+                        </select>
+                        <span className="text-white/30 text-[11px]">
+                            {sugadores.length === 0
+                                ? 'Nenhum sugador no período'
+                                : `${fmtInt(sugadores.length)} no período`}
+                        </span>
                     </div>
 
                     {/* Barra bulk — aparece quando ha selecao ────────────────────────*/}
