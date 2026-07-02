@@ -549,6 +549,14 @@ class PolosController extends Controller
             $mapa[$mes] = ($mapa[$mes] ?? false) || $parcial;
         }
 
+        // O eixo de meses NÃO deve depender do CSV para o mês corrente. A Comercial
+        // publica a linha do mês vigente no ECF Drive com alguns dias de atraso, mas o
+        // faturamento é 100% Adman (cache/snapshot ao vivo). Injeta o mês atual como
+        // parcial para ele aparecer de imediato, alimentado pela Adman, sem esperar o CSV.
+        // (Ativos vêm do MlbEmpresa ao vivo no ramo parcial; localidade fica vazia até o
+        //  CSV do mês chegar — degradação apenas cosmética.)
+        $mapa[now()->format('Ym')] = true; // corrente é sempre parcial (ainda enchendo)
+
         krsort($mapa); // desc → mês mais recente primeiro
 
         $out = [];
