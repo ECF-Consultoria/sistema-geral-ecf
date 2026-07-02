@@ -201,11 +201,18 @@ class SugadorAnalysisService
                         $campanhaStats[$cId]['sugadores']++;
                     }
 
+                    // Phase 53 W4 hotfix UAT 2026-07-02: campaign_name/status eram gravados
+                    // hardcoded null aqui, ignorando o merge com listCampaigns (Wave 1 T1).
+                    // Consequência: 100% dos sugadores criados ficavam com campaign_name=NULL,
+                    // impedindo filtros retroativos (SGI) e cleanups. Fix trivial: usar o
+                    // $campaignsInfo populado pelo path a montante (fail-open preservado —
+                    // se listCampaigns caiu, ambos ficam null como antes).
+                    $campInfo = $campaignsInfo[$cId] ?? null;
                     $toUpsert[] = $this->buildRow($company->id, $refDateStr, $existingMap, [
                         'tipo'                 => Sugador::TIPO_ADGROUP,
                         'campaign_id'          => $cId,
-                        'campaign_name'        => null,
-                        'campaign_status'      => null,
+                        'campaign_name'        => $campInfo['name']   ?? null,
+                        'campaign_status'      => $campInfo['status'] ?? null,
                         'adgroup_id'           => $ad['adgroup_id'],
                         'adgroup_name'         => $ad['adgroup_name'],
                         'thumbnail'            => $ad['thumbnail']       ?? null,

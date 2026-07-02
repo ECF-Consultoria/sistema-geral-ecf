@@ -526,6 +526,16 @@ class SugadorController extends Controller
             (string) $sugador->adgroup_id
         );
 
+        // Phase 53 W4 hotfix UAT 2026-07-02: fallback para $sugador->mlb_id.
+        // Empresas ML-only (WENUS, etc) não têm o mapa populado pelo sync legado
+        // sugadores:sync-adgroup-mlbs (path Adman MCP). Mas o provider ML da
+        // Phase 42 já preenche sugador.mlb_id no upsert. Se o repo veio vazio,
+        // devolvemos o próprio mlb_id do sugador — resolve o "Nenhum MLB
+        // encontrado" no botão Copiar MLBs.
+        if (empty($mlbs) && $sugador->mlb_id) {
+            $mlbs = [(string) $sugador->mlb_id];
+        }
+
         return response()->json([
             'mlbs'  => $mlbs,
             'total' => count($mlbs),
