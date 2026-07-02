@@ -3,7 +3,7 @@ import { Link, router } from '@inertiajs/react';
 import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft, Building2, Tag, Megaphone, Copy, Check, Loader2,
-    PlayCircle, Settings, SlidersHorizontal, ExternalLink, AlertTriangle,
+    PlayCircle, Settings, SlidersHorizontal, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -492,11 +492,20 @@ export default function SugadoresEmpresaListagem({
                                 const isElegivel = s.tipo === 'adgroup';
                                 const fb = copiedFeedback[s.id];
                                 return (
-                                    <tr key={s.id} className={cn(
-                                        'border-b border-white/[0.03] last:border-0 hover:bg-white/[0.02]',
-                                        isSelected && 'bg-ecf-yellow/[0.03]',
-                                    )}>
-                                        <td className="p-3">
+                                    // Phase 54-02 (B2) — Row inteira clicavel navega pro Show.
+                                    // Pattern canonico: Performance/Index.jsx:324 (click row + stopPropagation).
+                                    // hover:bg-white/[0.05] (mais escuro que os [0.02] originais) da affordance
+                                    // visual de row clicavel — research §5.
+                                    <tr
+                                        key={s.id}
+                                        onClick={() => router.visit(route('sugadores.show', s.id))}
+                                        className={cn(
+                                            'border-b border-white/[0.03] last:border-0 hover:bg-white/[0.05] cursor-pointer transition-colors',
+                                            isSelected && 'bg-ecf-yellow/[0.03]',
+                                        )}
+                                    >
+                                        {/* stopPropagation no <td> — clicar no checkbox nao navega. */}
+                                        <td onClick={e => e.stopPropagation()} className="p-3">
                                             <input
                                                 type="checkbox"
                                                 checked={isSelected}
@@ -530,7 +539,11 @@ export default function SugadoresEmpresaListagem({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="p-3 text-right">
+                                        {/* stopPropagation no <td> wrapper — botao "MLBs" nao dispara navegacao.
+                                            <Link "Detalhes"> removido — click-row cobre navegacao (research §5,
+                                            CONTEXT decision discretion linha 65 aprova). min-w-[80px] mantem
+                                            largura estavel quando isElegivel=false (sugadores tipo=campanha). */}
+                                        <td onClick={e => e.stopPropagation()} className="p-3 text-right min-w-[80px]">
                                             <div className="inline-flex items-center gap-1.5 justify-end flex-wrap">
                                                 {isElegivel && (
                                                     <button
@@ -549,14 +562,6 @@ export default function SugadoresEmpresaListagem({
                                                                     : <><Copy size={11} /> MLBs</>}
                                                     </button>
                                                 )}
-                                                <Link
-                                                    href={route('sugadores.show', s.id)}
-                                                    className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md bg-ecf-yellow/15 text-ecf-yellow border border-ecf-yellow/30 hover:bg-ecf-yellow/25 text-[11px] font-semibold"
-                                                    title="Abrir detalhes do sugador"
-                                                >
-                                                    <ExternalLink size={11} />
-                                                    Detalhes
-                                                </Link>
                                             </div>
                                         </td>
                                     </tr>
