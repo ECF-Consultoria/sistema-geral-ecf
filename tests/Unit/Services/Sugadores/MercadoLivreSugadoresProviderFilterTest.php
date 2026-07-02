@@ -26,6 +26,7 @@ use App\Models\SugadorConfig;
 use App\Services\MercadoLivreService;
 use App\Services\Sugadores\MercadoLivreAdsService;
 use App\Services\Sugadores\MercadoLivreSugadoresProvider;
+use App\Services\SugadorAnalysisService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -448,5 +449,170 @@ class MercadoLivreSugadoresProviderFilterTest extends TestCase
         $this->assertCount(1, $result, 'Fail-open: MLB status=null NAO skipa (preserva volume).');
         $this->assertSame('AD1', $result[0]['adgroup_id']);
         $this->assertNull($result[0]['mlb_status']);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    //  Bloco 4: Phase 53-02 — filtro sold_global no evaluateMetrics
+    //  (fix unificado B2 BARAOSHOP + B3 DINMAP — venda organica global)
+    // ═══════════════════════════════════════════════════════════════════
+
+    /**
+     * Helper Phase 53-02: SugadorConfig default para os testes de evaluateMetrics.
+     * Espelha os defaults de SugadorConfig::DEFAULTS + habilita os 4 criterios.
+     * cliques_minimos_sem_venda=15 (usado no teste de preservar cliques_sem_conversao).
+     */
+    private function defaultConfig(): SugadorConfig
+    {
+        $company = $this->makeCompanyWithMlToken(620096); // advertiser distinto pra isolar
+        $config = SugadorConfig::where('company_id', $company->id)->first();
+        // Habilita todos os criterios com valores conhecidos.
+        $config->update([
+            'gasto_minimo_sem_venda'    => 10.00,
+            'gasto_minimo_logic'        => SugadorConfig::LOGIC_OPTIONAL,
+            'cpc_maximo'                => 2.00,
+            'cpc_maximo_logic'          => SugadorConfig::LOGIC_OPTIONAL,
+            'cpc_minimo_cliques'        => null,
+            'acos_maximo_pct'           => 80.00,
+            'acos_maximo_logic'         => SugadorConfig::LOGIC_OPTIONAL,
+            'cliques_minimos_sem_venda' => 15,
+            'cliques_minimos_logic'     => SugadorConfig::LOGIC_OPTIONAL,
+        ]);
+        return $config->fresh();
+    }
+
+    public function test_evaluate_metrics_generates_sugador_when_sold_global_zero(): void
+    {
+        // Baseline: sold_global=0 + gasto_sem_venda bate → gera sugador (hit legitimo).
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 12.22,
+            'sold_quantity' => 0,   // units_ads=0
+            'clicks'        => 4,
+            'cpc'           => 3.05,
+            'acos'          => null,
+            'sold_global'   => 0,   // sem venda organica tambem
+        ], $config);
+
+        $this->assertContains('gasto_sem_venda', $motivos, 'sold_global=0 nao deve filtrar (hit legitimo).');
+    }
+
+    public function test_evaluate_metrics_removes_gasto_sem_venda_when_sold_global_gte_10(): void
+    {
+        // Caso B2 BARAOSHOP: 781 vendas globais + FULL, ads reporta 0.
+        // Filtro Phase 53-02 remove gasto_sem_venda quando sold_global >= 10.
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 12.22,
+            'sold_quantity' => 0,   // units_ads=0
+            'clicks'        => 4,
+            'cpc'           => 3.05,
+            'acos'          => null,
+            'sold_global'   => 781, // vende MUITO organico via FULL
+        ], $config);
+
+        $this->assertNotContains('gasto_sem_venda', $motivos, 'sold_global>=10 deve filtrar gasto_sem_venda (fix B2).');
+    }
+
+    public function test_evaluate_metrics_threshold_exact_10_removes_gasto_sem_venda(): void
+    {
+        // Threshold LOCKED = 10 (research §A1). Exatamente 10 ainda filtra.
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 15.00,
+            'sold_quantity' => 0,
+            'clicks'        => 3,
+            'cpc'           => 5.00,
+            'acos'          => null,
+            'sold_global'   => 10, // limite exato
+        ], $config);
+
+        $this->assertNotContains('gasto_sem_venda', $motivos, 'sold_global=10 (limite exato) deve filtrar.');
+    }
+
+    public function test_evaluate_metrics_keeps_gasto_sem_venda_when_sold_global_below_threshold(): void
+    {
+        // sold_global=9 (abaixo do threshold 10) → NAO filtra, hit legitimo.
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 15.00,
+            'sold_quantity' => 0,
+            'clicks'        => 3,
+            'cpc'           => 5.00,
+            'acos'          => null,
+            'sold_global'   => 9, // abaixo do threshold
+        ], $config);
+
+        $this->assertContains('gasto_sem_venda', $motivos, 'sold_global<10 deve manter hit (baixo volume organico nao invalida).');
+    }
+
+    public function test_evaluate_metrics_keeps_gasto_sem_venda_when_sold_global_null_fail_open(): void
+    {
+        // Fail-open Wave 1: sold_global=null (rate-limit ML, path Adman) preserva comportamento legacy.
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 15.00,
+            'sold_quantity' => 0,
+            'clicks'        => 3,
+            'cpc'           => 5.00,
+            'acos'          => null,
+            'sold_global'   => null, // sem sinal ML
+        ], $config);
+
+        $this->assertContains('gasto_sem_venda', $motivos, 'sold_global=null (fail-open) preserva comportamento legacy.');
+    }
+
+    public function test_evaluate_metrics_preserves_acos_alto_when_sold_global_high(): void
+    {
+        // Outros criterios NAO sao afetados pelo filtro sold_global.
+        // acos_alto exige sold_quantity>0 — sold_global alto nao muda nada.
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 50.00,
+            'sold_quantity' => 5,   // ads converteu 5 — acos avaliavel
+            'clicks'        => 20,
+            'cpc'           => 2.50,
+            'acos'          => 85.00, // acima do threshold 80
+            'sold_global'   => 150, // alto, mas nao afeta acos_alto
+        ], $config);
+
+        $this->assertContains('acos_alto', $motivos, 'acos_alto NAO deve ser afetado por sold_global.');
+    }
+
+    public function test_evaluate_metrics_preserves_cpc_alto_when_sold_global_high(): void
+    {
+        // cpc_alto exige sold_quantity=0. Mesmo com sold_global alto, cpc_alto se mantem.
+        /** @var SugadorAnalysisService $service */
+        $service = $this->app->make(SugadorAnalysisService::class);
+        $config  = $this->defaultConfig();
+
+        $motivos = $service->evaluateMetrics([
+            'investment'    => 50.00,
+            'sold_quantity' => 0,   // ads=0
+            'clicks'        => 10,
+            'cpc'           => 5.00, // acima do threshold 2.00
+            'acos'          => null,
+            'sold_global'   => 100, // alto — filtra gasto_sem_venda mas NAO cpc_alto
+        ], $config);
+
+        $this->assertContains('cpc_alto', $motivos, 'cpc_alto NAO deve ser afetado por sold_global.');
+        $this->assertNotContains('gasto_sem_venda', $motivos, 'gasto_sem_venda deve ser filtrado (validacao cross-criterio).');
     }
 }
