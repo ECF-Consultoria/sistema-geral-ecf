@@ -276,12 +276,31 @@ class SugadorController extends Controller
             ? $this->adgroupMlbMap->getMlbsForAdgroup($sugador->company_id, (string) $sugador->adgroup_id)
             : [];
 
+        // Phase 52 A3 — resumo compacto da SugadorConfig da empresa para o
+        // ConfigResumoCard lateral na drilldown. Apenas os campos relevantes
+        // pro operador ("thresholds ativos") — evita expor todo o schema.
+        // Se a empresa nao tem config personalizada, o card renderiza estado
+        // vazio ("Nenhuma configuracao personalizada — usando defaults").
+        $sugadorConfig = \App\Models\SugadorConfig::firstWhere('company_id', $sugador->company_id);
+
         return Inertia::render('Sugadores/Show', [
             'sugador'      => $sugador,
             'url_anuncio'  => $sugador->urlAnuncioML(),
             'url_ads'      => $sugador->linkAdsML(),
             'can_update'   => Gate::allows('update', $sugador),
             'mlbs'         => $mlbs,
+            // Phase 52 A3 — payload compacto do resumo de config.
+            'sugador_config' => $sugadorConfig ? [
+                'ativo'                     => (bool) $sugadorConfig->ativo,
+                'dias_analise'              => $sugadorConfig->dias_analise,
+                'gasto_minimo_sem_venda'    => $sugadorConfig->gasto_minimo_sem_venda,
+                'cpc_maximo'                => $sugadorConfig->cpc_maximo,
+                'acos_maximo_pct'           => $sugadorConfig->acos_maximo_pct,
+                'cliques_minimos_sem_venda' => $sugadorConfig->cliques_minimos_sem_venda,
+            ] : null,
+            // Phase 52 A1+A3 — analista agora tem `manage=true` (Wave 1); prop
+            // controla exibicao do botao "Configurar" e "Rodar analise" no card.
+            'can_manage_config' => Gate::allows('manage', Sugador::class),
         ]);
     }
 
