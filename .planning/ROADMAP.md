@@ -1285,6 +1285,11 @@ Plans:
 
 **Depends on:** Nenhuma direta. Sinergia com Phase 44 (mover adgroup pra SGI via API ML — reforça o critério "adgroup em SGI = resolvido"). Pode rodar antes ou em paralelo à Phase 44.
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 53-01-PLAN.md — Wave 1 (backend TDD): cache listCampaigns + MercadoLivreService::fetchItemStatus + filtro MLB status paused/closed/under_review (fix B1)
+- [ ] 53-02-PLAN.md — Wave 2 (backend TDD): filtro sold_global>=10 remove motivo gasto_sem_venda (fix B2 BARAOSHOP + B3 DINMAP)
+- [ ] 53-03-PLAN.md — Wave 3 (UAT prod): deploy + cache clear + dry-run em CAMILLO/BARAOSHOP/DINMAP + regressão ByMobille + PHASE-SUMMARY
 
 **UI hint:** parcial — provavelmente 90% backend (`SugadorAnalysisService` + sync ML) e ajustes pequenos na tela de sugadores (rotular "Pausado no ML" ou similar quando excluir por status).
