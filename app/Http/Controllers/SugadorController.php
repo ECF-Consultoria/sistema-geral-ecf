@@ -262,6 +262,102 @@ class SugadorController extends Controller
         ]);
     }
 
+    /**
+     * Phase 52 Wave 3.5 (52-03B) — Listagem "por empresa": drilldown que
+     * substitui a tabela lista global removida na Wave 2 (Opcao Z). Chamado
+     * pelo click no CompanyCard do Index, entrega os sugadores da empresa ja
+     * com contexto fixado (sem coluna "empresa" — A4) e reusa os endpoints
+     * mlbs-hint (A5) + bulk-copy-mlbs (A6) da Wave 1 para acoes por linha e
+     * em massa.
+     *
+     * Autorizacao: viewAny (Gate global) + checagem de carteira quando o user
+     * nao tem visao global (analista/consultor/mentor). Admin/gestor/lider veem
+     * qualquer empresa.
+     */
+    public function porEmpresa(Request $request, Company $company)
+    {
+        Gate::authorize('viewAny', Sugador::class);
+
+        $user          = $request->user();
+        $hasGlobalView = $user->isAdmin() || $user->isGestor() || $user->isLiderPub();
+
+        // Checagem adicional: nao-global so ve empresa se estiver na carteira.
+        // Sem isso um analista poderia listar sugadores de empresa que nao acessa
+        // apenas mudando o {company} da URL.
+        if (!$hasGlobalView) {
+            $inCarteira = $user->companies()->where('companies.id', $company->id)->exists();
+            if (!$inCarteira) {
+                abort(403, 'Sem acesso a esta empresa.');
+            }
+        }
+
+        // Filtra pendentes + em_acao — foco do operador nos sugadores acionaveis.
+        // Resolvidos/ignorados/movidos/auto_resolvidos ficam de fora aqui (podem
+        // ser vistos no drilldown Show individual). Ordena por reference_date
+        // desc para os mais recentes ficarem no topo.
+        $sugadores = Sugador::where('company_id', $company->id)
+            ->whereIn('status', [Sugador::STATUS_PENDENTE, Sugador::STATUS_EM_ACAO])
+            ->orderBy('reference_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get([
+                'id',
+                'tipo',
+                'adgroup_id',
+                'adgroup_name',
+                'campaign_id',
+                'campaign_name',
+                'status',
+                'reference_date',
+                'investimento_periodo',
+                'motivos',
+            ])
+            ->map(function (Sugador $s) {
+                // Dias desde detectado (helper pro frontend renderizar "ha X dias").
+                $ref = $s->reference_date instanceof \Carbon\Carbon
+                    ? $s->reference_date
+                    : \Carbon\Carbon::parse($s->reference_date);
+                $days = (int) $ref->startOfDay()->diffInDays(now()->startOfDay());
+                return [
+                    'id'                   => (int) $s->id,
+                    'tipo'                 => (string) $s->tipo,
+                    'adgroup_id'           => (string) ($s->adgroup_id ?? ''),
+                    'adgroup_name'         => (string) ($s->adgroup_name ?? ''),
+                    'campaign_id'          => (string) ($s->campaign_id ?? ''),
+                    'campaign_name'        => (string) ($s->campaign_name ?? ''),
+                    'status'               => (string) $s->status,
+                    'reference_date'       => $ref->toDateString(),
+                    'days_since_detected'  => $days,
+                    'investimento_periodo' => (float) ($s->investimento_periodo ?? 0),
+                    'motivos'              => is_array($s->motivos) ? $s->motivos : [],
+                ];
+            })
+            ->values()
+            ->all();
+
+        // Resumo compacto da SugadorConfig (mesma shape do show()) para o
+        // ConfigResumoCard lateral.
+        $sugadorConfig = \App\Models\SugadorConfig::firstWhere('company_id', $company->id);
+
+        return Inertia::render('Sugadores/EmpresaListagem', [
+            'company' => [
+                'id'      => (int) $company->id,
+                'name'    => (string) $company->name,
+                'cust_id' => (string) ($company->cust_id ?? ''),
+            ],
+            'sugadores'      => $sugadores,
+            'sugador_config' => $sugadorConfig ? [
+                'ativo'                     => (bool) $sugadorConfig->ativo,
+                'dias_analise'              => $sugadorConfig->dias_analise,
+                'gasto_minimo_sem_venda'    => $sugadorConfig->gasto_minimo_sem_venda,
+                'cpc_maximo'                => $sugadorConfig->cpc_maximo,
+                'acos_maximo_pct'           => $sugadorConfig->acos_maximo_pct,
+                'cliques_minimos_sem_venda' => $sugadorConfig->cliques_minimos_sem_venda,
+            ] : null,
+            'can_manage_config' => Gate::allows('manage', Sugador::class),
+            'can_analyze'       => Gate::allows('analyze', Sugador::class),
+        ]);
+    }
+
     public function show(Request $request, Sugador $sugador)
     {
         Gate::authorize('view', $sugador);

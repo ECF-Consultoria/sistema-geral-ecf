@@ -301,6 +301,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // consultor/mentor/analista veem só carteira). Análise on-demand e config
     // restritas a admin (Policy::manage).
     Route::get('/sugadores',                        [SugadorController::class, 'index'])->name('sugadores.index');
+    // Phase 52 Wave 3.5 (52-03B) — drilldown por empresa. Restaura o alvo do
+    // click no CompanyCard removido na Wave 2 (Opcao Z). IMPORTANTE: declarada
+    // ANTES de /sugadores/{sugador} pra que /sugadores/empresa/{company} nao
+    // seja capturada pelo model binding do sugador (que aceita numerico).
+    Route::get('/sugadores/empresa/{company}',      [SugadorController::class, 'porEmpresa'])->name('sugadores.empresa.listagem');
     Route::get('/sugadores/{sugador}',              [SugadorController::class, 'show'])->name('sugadores.show');
     Route::get('/sugadores/{sugador}/mlbs',         [SugadorController::class, 'mlbs'])->name('sugadores.mlbs');
     // Phase 52 A5 — endpoint neutro (fonte local AdgroupMlbMapRepository).
