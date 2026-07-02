@@ -3,7 +3,7 @@ import { router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import {
     AlertTriangle, Building2,
-    X, Tag,
+    X,
     Settings, Search, ArrowRight,
     Copy, Check, Loader2,
 } from 'lucide-react';
@@ -29,8 +29,10 @@ const STATUS_BADGE = {
     auto_resolvido: 'bg-emerald-500/10 text-emerald-200/70 border-emerald-500/20',
 };
 
-const TIPO_LABELS = { adgroup: 'Adgroup', campanha: 'Campanha' };
-const TIPO_ICONS  = { adgroup: Tag, campanha: Megaphone };
+// Phase 52-04 hotfix (UAT 2026-07-02): TIPO_LABELS/TIPO_ICONS eram consumidos
+// pela tabela lista global removida na Wave 2. Restava `TIPO_ICONS` referenciando
+// `Megaphone` sem import — ReferenceError silencioso que deixava /sugadores em
+// tela branca no browser (Inertia não sobe boundary com erro de módulo).
 
 const MOTIVO_LABELS = {
     gasto_sem_venda:         'Gasto sem venda',
