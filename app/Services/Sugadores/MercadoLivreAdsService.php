@@ -5,6 +5,7 @@ namespace App\Services\Sugadores;
 use App\Models\Company;
 use App\Models\MlAdvertiser;
 use App\Services\MercadoLivreService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -352,50 +353,60 @@ class MercadoLivreAdsService
      */
     public function listCampaigns(Company $company, int $advertiserId, string $dateFrom, string $dateTo): array
     {
-        $this->resetMetrics();
+        // Phase 53-01: cache 10min contra rate-limit ML (639 incidents em prod) —
+        // sem ele campaign_name fica NULL e filtro SGI/paused nunca dispara.
+        // Ver .planning/phases/53-inteligencia-detector-sugadores/53-RESEARCH.md
+        // §Descoberta sistemica. CUIDADO: resetMetrics/callWithBackoff so rodam
+        // no cache miss (dentro do closure). No hit, getLastRunMetrics fica
+        // zerado — comportamento intencional (nao houve request nova).
+        $cacheKey = "ml:campaigns:{$advertiserId}:{$dateFrom}:{$dateTo}";
 
-        $sellerId = MlAdvertiser::where('company_id', $company->id)->value('seller_id');
+        return Cache::remember($cacheKey, 600, function () use ($company, $advertiserId, $dateFrom, $dateTo) {
+            $this->resetMetrics();
 
-        $endpoint        = sprintf(self::ENDPOINT_CAMPAIGNS_SEARCH, $advertiserId);
-        $offset          = 0;
-        $results         = [];
-        $endpointsTried  = [];
-        $firstPagePayload = null;
+            $sellerId = MlAdvertiser::where('company_id', $company->id)->value('seller_id');
 
-        do {
-            $result = $this->callWithBackoff(
-                $company,
-                self::API_BASE . $endpoint,
-                [
-                    'date_from'        => $dateFrom,
-                    'date_to'          => $dateTo,
-                    'aggregation_type' => 'CAMPAIGN',
-                    'metrics'          => self::DEFAULT_METRICS,
-                    'limit'            => self::PAGE_LIMIT,
-                    'offset'           => $offset,
-                ],
-                self::API_VERSION_HEADER,
-                $sellerId,
-            );
-            $page = $result['body'];
-            $this->metrics['pages_read']++;
+            $endpoint        = sprintf(self::ENDPOINT_CAMPAIGNS_SEARCH, $advertiserId);
+            $offset          = 0;
+            $results         = [];
+            $endpointsTried  = [];
+            $firstPagePayload = null;
 
-            // Preserva payload da primeira página para inspeção do relatório do Plan 02.
-            $firstPagePayload ??= $page;
+            do {
+                $result = $this->callWithBackoff(
+                    $company,
+                    self::API_BASE . $endpoint,
+                    [
+                        'date_from'        => $dateFrom,
+                        'date_to'          => $dateTo,
+                        'aggregation_type' => 'CAMPAIGN',
+                        'metrics'          => self::DEFAULT_METRICS,
+                        'limit'            => self::PAGE_LIMIT,
+                        'offset'           => $offset,
+                    ],
+                    self::API_VERSION_HEADER,
+                    $sellerId,
+                );
+                $page = $result['body'];
+                $this->metrics['pages_read']++;
 
-            $results          = array_merge($results, $page['results'] ?? []);
-            $endpointsTried[] = $endpoint . '?offset=' . $offset;
+                // Preserva payload da primeira página para inspeção do relatório do Plan 02.
+                $firstPagePayload ??= $page;
 
-            $total  = $page['paging']['total'] ?? count($results);
-            $offset += self::PAGE_LIMIT;
-        } while ($offset < $total && $offset < self::CAMPAIGNS_MAX_OFFSET);
+                $results          = array_merge($results, $page['results'] ?? []);
+                $endpointsTried[] = $endpoint . '?offset=' . $offset;
 
-        return [
-            'count'           => count($results),
-            'results'         => $results,
-            'raw_first_page'  => $firstPagePayload,
-            'endpoints_tried' => $endpointsTried,
-        ];
+                $total  = $page['paging']['total'] ?? count($results);
+                $offset += self::PAGE_LIMIT;
+            } while ($offset < $total && $offset < self::CAMPAIGNS_MAX_OFFSET);
+
+            return [
+                'count'           => count($results),
+                'results'         => $results,
+                'raw_first_page'  => $firstPagePayload,
+                'endpoints_tried' => $endpointsTried,
+            ];
+        });
     }
 
     /**

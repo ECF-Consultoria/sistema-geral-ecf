@@ -316,6 +316,65 @@ class MercadoLivreService
         return $response->json();
     }
 
+    // ═══ Dados: status individual do MLB (Phase 53-01) ════════════════════════
+
+    /**
+     * Consulta status atual do MLB (active/paused/under_review/closed) para o
+     * detector de sugadores excluir anuncios inativos.
+     *
+     * Phase 53-01 (fix B1 CAMILLO PARTS — 53-RESEARCH §Caso B1):
+     *   - MLB6258261358 estava paused no ML mas o payload de Ads reportava
+     *     raw_data.status=active (status do ADGROUP, nao do MLB) → detector
+     *     nunca ve que o vendedor pausou. Consulta /items/{id} preenche esse gap.
+     *   - Cache TTL 1h — status de MLB muda raramente (assumption A2 do research).
+     *   - FAIL-OPEN: em rate-limit/timeout/404, retorna shape completo com nulls
+     *     + log warning. Provider tratara null como "nao sei, deixa entrar"
+     *     (comportamento atual preservado — nunca regride caso legitimo por
+     *     falha ML). NUNCA propaga exception (nao trava analise).
+     *   - NUNCA loga access_token — apenas company_id e mlb_id (T-39-02-01 anti-leak).
+     *
+     * @return array{
+     *   status: ?string,
+     *   sub_status: array<string>,
+     *   available_quantity: ?int,
+     *   sold_quantity: ?int,
+     *   logistic_type: ?string
+     * }
+     */
+    public function fetchItemStatus(Company $company, string $mlbId): array
+    {
+        $cacheKey = "ml:item-status:{$mlbId}";
+
+        return Cache::remember($cacheKey, 3600, function () use ($company, $mlbId) {
+            try {
+                $body = $this->get($company, "/items/{$mlbId}", [
+                    'attributes' => 'id,status,sub_status,available_quantity,sold_quantity,shipping',
+                ]);
+
+                return [
+                    'status'             => $body['status'] ?? null,
+                    'sub_status'         => is_array($body['sub_status'] ?? null) ? $body['sub_status'] : [],
+                    'available_quantity' => isset($body['available_quantity']) ? (int) $body['available_quantity'] : null,
+                    'sold_quantity'      => isset($body['sold_quantity']) ? (int) $body['sold_quantity'] : null,
+                    'logistic_type'      => $body['shipping']['logistic_type'] ?? null,
+                ];
+            } catch (\Throwable $e) {
+                Log::warning(
+                    "[MercadoLivre] fetchItemStatus falhou para MLB {$mlbId} empresa {$company->id}: "
+                    . $e->getMessage()
+                );
+
+                return [
+                    'status'             => null,
+                    'sub_status'         => [],
+                    'available_quantity' => null,
+                    'sold_quantity'      => null,
+                    'logistic_type'      => null,
+                ];
+            }
+        });
+    }
+
     // ═══ Dados: conta ═════════════════════════════════════════════════════════
 
     /**
