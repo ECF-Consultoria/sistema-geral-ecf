@@ -25,6 +25,7 @@ use App\Models\Sugador;
 use App\Models\SugadorConfig;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\MercadoLivreService;
 use App\Services\SugadorAnalysisService;
 use App\Services\Sugadores\AdmanSugadoresProvider;
 use App\Services\Sugadores\MercadoLivreAdsService;
@@ -100,7 +101,8 @@ class CutOverMlPrimaryTest extends TestCase
         $admanProvider = new AdmanSugadoresProvider($adman);
 
         $ml            = Mockery::mock(MercadoLivreAdsService::class);
-        $mlProvider    = new MercadoLivreSugadoresProvider($ml);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService).
+        $mlProvider    = new MercadoLivreSugadoresProvider($ml, Mockery::mock(MercadoLivreService::class));
 
         return new SugadoresAdsProviderFactory($admanProvider, $mlProvider);
     }

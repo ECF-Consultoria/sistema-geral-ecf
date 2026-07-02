@@ -11,6 +11,7 @@ namespace Tests\Unit\Phase39;
 
 use App\Models\Company;
 use App\Services\AdmanService;
+use App\Services\MercadoLivreService;
 use App\Services\Sugadores\AdmanSugadoresProvider;
 use App\Services\Sugadores\MercadoLivreAdsService;
 use App\Services\Sugadores\MercadoLivreSugadoresProvider;
@@ -66,7 +67,8 @@ class SugadoresAdsProviderFactoryTest extends TestCase
         $admanProvider = new AdmanSugadoresProvider($adman);
 
         $ml            = Mockery::mock(MercadoLivreAdsService::class);
-        $mlProvider    = new MercadoLivreSugadoresProvider($ml);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService).
+        $mlProvider    = new MercadoLivreSugadoresProvider($ml, Mockery::mock(MercadoLivreService::class));
 
         return new SugadoresAdsProviderFactory($admanProvider, $mlProvider);
     }

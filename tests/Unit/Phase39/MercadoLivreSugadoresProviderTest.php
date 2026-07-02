@@ -17,6 +17,7 @@ namespace Tests\Unit\Phase39;
 
 use App\Models\Company;
 use App\Models\MlToken;
+use App\Services\MercadoLivreService;
 use App\Services\Sugadores\MercadoLivreAdsService;
 use App\Services\Sugadores\MercadoLivreSugadoresProvider;
 use Carbon\Carbon;
@@ -86,7 +87,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
     public function test_supports_returns_true_when_company_has_active_ml_token(): void
     {
         $ads      = Mockery::mock(MercadoLivreAdsService::class);
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
 
         $company = $this->makeCompanyWithMlToken('active');
 
@@ -98,7 +101,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
     public function test_supports_returns_false_when_company_has_no_ml_token(): void
     {
         $ads      = Mockery::mock(MercadoLivreAdsService::class);
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
 
         $company = $this->makeCompanyWithoutMlToken();
 
@@ -110,7 +115,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
     public function test_supports_returns_false_when_ml_token_inactive(): void
     {
         $ads      = Mockery::mock(MercadoLivreAdsService::class);
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
 
         $company = $this->makeCompanyWithMlToken('revoked');
 
@@ -122,7 +129,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
     public function test_name_returns_ml_string(): void
     {
         $ads      = Mockery::mock(MercadoLivreAdsService::class);
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
 
         $this->assertSame('ml', $provider->name());
     }
@@ -186,7 +195,16 @@ class MercadoLivreSugadoresProviderTest extends TestCase
                 'error' => null,
             ]);
 
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService) e
+        // agora chama fetchItemStatus por adgroup. Retorna status=active pra NAO
+        // skipar o adgroup no filtro paused/closed/under_review — preserva o assert
+        // de shape do contrato §2.3 desta suite Phase 39.
+        $mlSvc = Mockery::mock(MercadoLivreService::class);
+        $mlSvc->shouldReceive('fetchItemStatus')
+            ->andReturn(['status' => 'active', 'sub_status' => [], 'available_quantity' => 10, 'sold_quantity' => 3, 'logistic_type' => null])
+            ->byDefault();
+
+        $provider = new MercadoLivreSugadoresProvider($ads, $mlSvc);
         $result   = $provider->fetchAdgroupsMetrics($company, $from, $to);
 
         $this->assertCount(1, $result);
@@ -243,7 +261,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
         // tryFetchAdsMetrics NUNCA deve ser chamado nesse caso.
         $ads->shouldNotReceive('tryFetchAdsMetrics');
 
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
         $result   = $provider->fetchAdgroupsMetrics($company, Carbon::parse('2026-05-26'), Carbon::parse('2026-06-25'));
 
         $this->assertSame([], $result);
@@ -281,7 +301,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
                 'endpoints_tried' => [],
             ]);
 
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
         $result   = $provider->fetchCampaigns($company);
 
         $this->assertCount(2, $result);
@@ -347,7 +369,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
                 'endpoints_tried' => [],
             ]);
 
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
         $result   = $provider->fetchCampaignsMetrics($company, $from, $to);
 
         $this->assertCount(1, $result);
@@ -414,7 +438,9 @@ class MercadoLivreSugadoresProviderTest extends TestCase
                 'error' => null,
             ]);
 
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService)
+        // — mock stub sem expectativa (nao usado nos testes de Phase 39).
+        $provider = new MercadoLivreSugadoresProvider($ads, Mockery::mock(MercadoLivreService::class));
         $result   = $provider->fetchAdgroupMlbs($company, $from, $to);
 
         // Esperado: map adgroup_id → [mlb_ids]
@@ -475,7 +501,15 @@ class MercadoLivreSugadoresProviderTest extends TestCase
                 'error' => null,
             ]);
 
-        $provider = new MercadoLivreSugadoresProvider($ads);
+        // Phase 53-01: provider ganhou 2o construtor param (MercadoLivreService) e
+        // agora chama fetchItemStatus por adgroup. Retorna status=active pra NAO
+        // skipar no filtro paused/closed/under_review — preserva calculo safe_div.
+        $mlSvc = Mockery::mock(MercadoLivreService::class);
+        $mlSvc->shouldReceive('fetchItemStatus')
+            ->andReturn(['status' => 'active', 'sub_status' => [], 'available_quantity' => 10, 'sold_quantity' => 3, 'logistic_type' => null])
+            ->byDefault();
+
+        $provider = new MercadoLivreSugadoresProvider($ads, $mlSvc);
         $result   = $provider->fetchAdgroupsMetrics($company, $from, $to);
 
         $row = $result[0];

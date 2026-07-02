@@ -4,6 +4,7 @@ namespace App\Services\Sugadores;
 
 use App\Contracts\SugadoresAdsProvider;
 use App\Models\Company;
+use App\Services\MercadoLivreService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 
@@ -44,7 +45,10 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
      */
     private const DEFAULT_RANGE_DAYS = 30;
 
-    public function __construct(private MercadoLivreAdsService $ads) {}
+    public function __construct(
+        private MercadoLivreAdsService $ads,
+        private MercadoLivreService $ml,
+    ) {}
 
     public function supports(Company $company): bool
     {
@@ -205,6 +209,25 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
 
             $campaignIdAdg = (string) ($r['campaign_id'] ?? '');
 
+            // Phase 53-01 (fix B1 CAMILLO PARTS — 53-RESEARCH §Caso B1):
+            // Detector nao enxergava status do MLB individual — adgroup ativo com
+            // MLB pausado pelo seller era flagged falsamente. Consulta /items/{id}
+            // via MercadoLivreService::fetchItemStatus (cache 1h, fail-open) e
+            // SKIPA se paused/closed/under_review. Fail-open: mlb_status=null
+            // (rate-limit, sem mlb_id, timeout) NAO skipa — preserva volume de
+            // analise (Bymobille/casos legitimos nao regridem).
+            $mlbId = $r['item_id'] ?? null;
+            $mlbStatusInfo = $mlbId
+                ? $this->ml->fetchItemStatus($company, (string) $mlbId)
+                : ['status' => null, 'sub_status' => [], 'available_quantity' => null, 'sold_quantity' => null, 'logistic_type' => null];
+
+            $mlbStatus = $mlbStatusInfo['status'] ?? null;
+            if ($mlbStatus !== null && in_array($mlbStatus, ['paused', 'closed', 'under_review'], true)) {
+                // Adgroup skipado — MLB inativo no ML significa que anunciante ja
+                // lidou (pausou/fechou); nao e mais sugador ativo.
+                continue;
+            }
+
             $out[] = [
                 // quick 260626-qgf — payload real do /product_ads/items expoe a chave
                 // 'ad_group_id' (snake_case com underscore). Smoke direto na empresa 298
@@ -240,6 +263,11 @@ class MercadoLivreSugadoresProvider implements SugadoresAdsProvider
                 // Caso o smoke revele esses campos, substituir por mapeamento direto.
                 'organic_amount'  => null,
                 'organic_units'   => null,
+                // Phase 53-01: expostos pra debug e pra Wave 2 (filtro vendas
+                // organicas B2/B3) consumir. mlb_status pode ser null (fail-open).
+                'mlb_status'               => $mlbStatus,
+                'mlb_sold_quantity_global' => $mlbStatusInfo['sold_quantity'] ?? null,
+                'mlb_logistic_type'        => $mlbStatusInfo['logistic_type'] ?? null,
                 'raw'             => $r,
             ];
         }
