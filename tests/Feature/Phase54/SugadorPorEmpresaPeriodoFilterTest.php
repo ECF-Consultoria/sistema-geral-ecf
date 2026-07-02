@@ -165,7 +165,7 @@ class SugadorPorEmpresaPeriodoFilterTest extends TestCase
         $sAntigo  = $this->criarSugador($emp, $this->hoje->copy()->subDays(10), Sugador::STATUS_PENDENTE, 'ANTIGO');
 
         $response = $this->actingAs($admin)
-            ->get(route('sugadores.empresa.listagem', $emp->id, ['periodo' => '7d']));
+            ->get(route('sugadores.empresa.listagem', ['company' => $emp->id, 'periodo' => '7d']));
         $response->assertOk();
 
         $props = $this->extractInertiaPage($response)['props'];
@@ -191,7 +191,7 @@ class SugadorPorEmpresaPeriodoFilterTest extends TestCase
         $s45d    = $this->criarSugador($emp, $this->hoje->copy()->subDays(45), Sugador::STATUS_PENDENTE, 'D45');
 
         $response = $this->actingAs($admin)
-            ->get(route('sugadores.empresa.listagem', $emp->id, ['periodo' => '30d']));
+            ->get(route('sugadores.empresa.listagem', ['company' => $emp->id, 'periodo' => '30d']));
         $response->assertOk();
 
         $props = $this->extractInertiaPage($response)['props'];
@@ -218,7 +218,7 @@ class SugadorPorEmpresaPeriodoFilterTest extends TestCase
         $s45d   = $this->criarSugador($emp, $this->hoje->copy()->subDays(45), Sugador::STATUS_PENDENTE, 'D45');
 
         $response = $this->actingAs($admin)
-            ->get(route('sugadores.empresa.listagem', $emp->id, ['periodo' => 'todos']));
+            ->get(route('sugadores.empresa.listagem', ['company' => $emp->id, 'periodo' => 'todos']));
         $response->assertOk();
 
         $props = $this->extractInertiaPage($response)['props'];
@@ -257,7 +257,7 @@ class SugadorPorEmpresaPeriodoFilterTest extends TestCase
         }
 
         // 5b — ?periodo=7d → prop periodo === '7d'
-        $r2 = $this->actingAs($admin)->get(route('sugadores.empresa.listagem', $emp->id, ['periodo' => '7d']));
+        $r2 = $this->actingAs($admin)->get(route('sugadores.empresa.listagem', ['company' => $emp->id, 'periodo' => '7d']));
         $r2->assertOk();
         $p2 = $this->extractInertiaPage($r2)['props'];
         $this->assertSame('7d', $p2['periodo']);
@@ -276,7 +276,7 @@ class SugadorPorEmpresaPeriodoFilterTest extends TestCase
         $sAntigo = $this->criarSugador($emp, $this->hoje->copy()->subDays(10), Sugador::STATUS_PENDENTE, 'ANTIGO');
 
         $response = $this->actingAs($admin)
-            ->get(route('sugadores.empresa.listagem', $emp->id, ['periodo' => 'xpto']));
+            ->get(route('sugadores.empresa.listagem', ['company' => $emp->id, 'periodo' => 'xpto']));
         $response->assertOk();
 
         $props = $this->extractInertiaPage($response)['props'];
@@ -302,7 +302,7 @@ class SugadorPorEmpresaPeriodoFilterTest extends TestCase
         $analista = $this->userComCoreSugadores('fora-carteira');
 
         $response = $this->actingAs($analista)
-            ->get(route('sugadores.empresa.listagem', $emp->id, ['periodo' => 'todos']));
+            ->get(route('sugadores.empresa.listagem', ['company' => $emp->id, 'periodo' => 'todos']));
 
         $response->assertStatus(403);
     }

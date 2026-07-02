@@ -264,6 +264,11 @@ class SugadorPorEmpresaListagemTest extends TestCase
 
     /**
      * Cenário 7 — Ordena por reference_date desc (mais recentes no topo).
+     *
+     * Phase 54 Plan 54-01 (B1): o default do porEmpresa mudou para `periodo=hoje`,
+     * então este teste (que valida ordenação cruzando datas de vários dias)
+     * agora precisa passar `?periodo=todos` explicitamente. A ordenação em si
+     * (`reference_date desc, id desc`) permanece inalterada.
      */
     public function test_ordena_por_reference_date_desc(): void
     {
@@ -275,7 +280,7 @@ class SugadorPorEmpresaListagemTest extends TestCase
         $sMedio  = $this->seedSugador($empresa, 'AG-MID', Sugador::STATUS_PENDENTE, $this->hoje->copy()->subDay());
 
         $response = $this->actingAs($admin)
-            ->get(route('sugadores.empresa.listagem', $empresa->id));
+            ->get(route('sugadores.empresa.listagem', ['company' => $empresa->id, 'periodo' => 'todos']));
 
         $props = $this->extractInertiaPage($response)['props'];
         $ids = array_column($props['sugadores'], 'id');

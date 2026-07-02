@@ -129,6 +129,18 @@ class SugadorController extends Controller
             })->orderBy('name')->get(['id', 'name'])
             : collect();
 
+        // Phase 54 Plan 54-01 (A3) — Lista de analistas para o dropdown de
+        // "?analista_id" no header do Index. Só admin recebe (frontend usa
+        // is_admin para renderizar o select). Distinct via whereIn+subquery
+        // com role='analista' — evita repetir user vinculado a N empresas.
+        $analistas = $user->isAdmin()
+            ? \App\Models\User::whereIn('id', function ($sub) {
+                $sub->select('user_id')
+                    ->from('company_users')
+                    ->where('role', 'analista');
+            })->orderBy('name')->get(['id', 'name'])
+            : collect();
+
         // Mapa user_id → [company_ids] para filtro cascata no frontend:
         // ao selecionar responsável, o dropdown de empresa exibe só as suas empresas.
         $userCompanies = $user->isAdmin()
@@ -153,6 +165,26 @@ class SugadorController extends Controller
         // LEFT JOIN lógico em PHP (Collection::map sobre $companies).
         $canAnalyze = Gate::allows('analyze', Sugador::class);
         $visibleIds = $companies->pluck('id')->all();
+
+        // Phase 54 Plan 54-01 (A3) — filtro admin-only "?analista_id=X" reduz
+        // $visibleIds (universo do summary) para APENAS as empresas em que X
+        // aparece na pivot company_users com role='analista'. Aplicado ANTES
+        // do bloco de aggregates para reduzir o SUM/CASE ao mínimo.
+        //
+        // Guard `$user->isAdmin()`: analista/consultor NÃO pode filtrar por
+        // outro analista — evita bypass da carteira alheia (decision A3 locked
+        // no CONTEXT.md). Reusa $companies também porque `$companiesSummary`
+        // itera sobre $companies (linha ~193), não sobre $visibleIds.
+        if ($user->isAdmin() && $request->filled('analista_id')) {
+            $analistaId = (int) $request->analista_id;
+            $companiesDoAnalista = DB::table('company_users')
+                ->where('user_id', $analistaId)
+                ->where('role', 'analista')
+                ->pluck('company_id')
+                ->all();
+            $visibleIds = array_values(array_intersect($visibleIds, $companiesDoAnalista));
+            $companies  = $companies->whereIn('id', $visibleIds)->values();
+        }
 
         if (!empty($visibleIds)) {
             // DATE(reference_date) normaliza valores que vêm como datetime em
@@ -259,6 +291,18 @@ class SugadorController extends Controller
             // Phase 19 — Vista default e metadado da análise diária.
             'default_view'      => $defaultView,
             'analise_diaria'    => $analiseDiaria,
+            // Phase 54 Plan 54-01 (A3) — flag is_admin explícita (can_manage
+            // NÃO substitui, pois analista tem can_manage=true — Phase 52 A1).
+            // Frontend usa is_admin para renderizar o dropdown "Analista".
+            'is_admin'          => $user->isAdmin(),
+            // Lista de analistas (só admin recebe populada; demais recebem
+            // [] via ->toArray de collect() vazio, garantindo shape estável).
+            'analistas'         => $analistas->values()->toArray(),
+            // Echo do param aplicado, para o frontend manter o select estável
+            // ao refresh (Inertia partial reload/preserveState).
+            'analista_id_selecionado' => $user->isAdmin() && $request->filled('analista_id')
+                ? (int) $request->analista_id
+                : null,
         ]);
     }
 
@@ -291,12 +335,34 @@ class SugadorController extends Controller
             }
         }
 
+        // Phase 54 Plan 54-01 (B1) — Filtro de periodo. Presets locked no
+        // CONTEXT §B1: hoje (default), 7d, 30d, todos. Param invalido cai no
+        // default 'hoje' (seguranca contra query manipulation — Common Pitfall
+        // #3 do research). Whitelist estrita: null !== 'todos' (null aciona
+        // default, 'todos' remove WHERE de data).
+        $periodo = $request->input('periodo', 'hoje');
+        if (!in_array($periodo, ['hoje', '7d', '30d', 'todos'], true)) {
+            $periodo = 'hoje';
+        }
+
         // Filtra pendentes + em_acao — foco do operador nos sugadores acionaveis.
         // Resolvidos/ignorados/movidos/auto_resolvidos ficam de fora aqui (podem
         // ser vistos no drilldown Show individual). Ordena por reference_date
         // desc para os mais recentes ficarem no topo.
-        $sugadores = Sugador::where('company_id', $company->id)
-            ->whereIn('status', [Sugador::STATUS_PENDENTE, Sugador::STATUS_EM_ACAO])
+        $sugadoresQuery = Sugador::where('company_id', $company->id)
+            ->whereIn('status', [Sugador::STATUS_PENDENTE, Sugador::STATUS_EM_ACAO]);
+
+        // Aplica filtro de reference_date conforme preset. Mesmo helper
+        // Carbon (today() / now()->subDays()) que o index() ja usa (linha 109)
+        // — zero risco de divergencia de comportamento entre index e drilldown.
+        match ($periodo) {
+            '7d'    => $sugadoresQuery->where('reference_date', '>=', now()->subDays(7)->toDateString()),
+            '30d'   => $sugadoresQuery->where('reference_date', '>=', now()->subDays(30)->toDateString()),
+            'todos' => null, // sem filtro de data — traz todo o historico pendente/em_acao
+            default => $sugadoresQuery->whereDate('reference_date', today()),
+        };
+
+        $sugadores = $sugadoresQuery
             ->orderBy('reference_date', 'desc')
             ->orderBy('id', 'desc')
             ->get([
@@ -355,6 +421,16 @@ class SugadorController extends Controller
             ] : null,
             'can_manage_config' => Gate::allows('manage', Sugador::class),
             'can_analyze'       => Gate::allows('analyze', Sugador::class),
+            // Phase 54 Plan 54-01 (B1) — filtro de periodo. `periodo` eco do
+            // valor efetivamente aplicado (invalido cai para 'hoje'). Presets
+            // com {value, label} para o <select> nativo do frontend.
+            'periodo'           => $periodo,
+            'periodo_presets'   => [
+                ['value' => 'hoje',  'label' => 'Hoje'],
+                ['value' => '7d',    'label' => 'Últimos 7 dias'],
+                ['value' => '30d',   'label' => 'Últimos 30 dias'],
+                ['value' => 'todos', 'label' => 'Todos'],
+            ],
         ]);
     }
 
