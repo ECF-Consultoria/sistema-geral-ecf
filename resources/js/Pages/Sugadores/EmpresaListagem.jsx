@@ -178,6 +178,11 @@ export default function SugadoresEmpresaListagem({
     sugador_config = null,
     can_manage_config = false,
     can_analyze = false,
+    // Phase 54-01 — filtro de periodo enviado pelo backend porEmpresa.
+    // periodo = valor efetivo em uso (default 'hoje' garantido pelo controller).
+    // periodo_presets = [{ value, label }] pronto pro <select> nativo.
+    periodo = 'hoje',
+    periodo_presets = [],
 }) {
     // ─── Selecao multipla (para acoes em massa — A6) ────────────────────────
     const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -343,9 +348,12 @@ export default function SugadoresEmpresaListagem({
                 <span className="text-white/60 truncate">{company?.name || '—'}</span>
             </div>
 
-            {/* Header — nome empresa + ConfigResumoCard lateral ──────────────*/}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 mb-4">
-                <div className="lg:col-span-3">
+            {/* Phase 54-02 (A1) — Layout 2 colunas: main list (col-span-3) + sidebar sticky (col-span-1).
+                Mobile (<lg): grid-cols-1 empilha; sidebar sobe naturalmente pelo grid. `min-w-0` na
+                coluna esquerda e OBRIGATORIO (research §1) — sem ele a tabela empurra o grid. */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+                <div className="lg:col-span-3 min-w-0 space-y-4">
+                    {/* Header — nome empresa + contagem (SEM ConfigResumoCard, foi pra sidebar) */}
                     <div className="card-ecf rounded-xl p-5">
                         <div className="flex items-start justify-between gap-4 flex-wrap">
                             <div className="min-w-0">
@@ -363,21 +371,8 @@ export default function SugadoresEmpresaListagem({
                             </div>
                         </div>
                     </div>
-                </div>
-                <div className="lg:col-span-1">
-                    <ConfigResumoCard
-                        config={sugador_config}
-                        companyId={company?.id}
-                        canManage={can_manage_config}
-                        canAnalyze={can_analyze}
-                        analyzing={analyzing}
-                        elapsed={elapsed}
-                        onRodarAnalise={rodarAnalise}
-                    />
-                </div>
-            </div>
 
-            {/* Barra bulk — aparece quando ha selecao ────────────────────────*/}
+                    {/* Barra bulk — aparece quando ha selecao ────────────────────────*/}
             {selectedCount > 0 && (
                 <div className="sticky top-2 z-30 mb-3 card-ecf rounded-xl p-3 border-ecf-yellow/40 bg-ecf-yellow/[0.06] flex items-center gap-3 flex-wrap">
                     <span className="text-white/80 text-sm font-medium">
@@ -533,6 +528,23 @@ export default function SugadoresEmpresaListagem({
                     </table>
                 </div>
             )}
+                </div>
+
+                {/* Phase 54-02 (A1) — Sidebar sticky com ConfigResumoCard.
+                    lg:sticky lg:top-4 lg:self-start = mantem o card visivel ao rolar a tabela.
+                    Em mobile (grid-cols-1) a aside cai naturalmente pra cima da lista. */}
+                <aside className="lg:col-span-1 lg:sticky lg:top-4 lg:self-start space-y-4">
+                    <ConfigResumoCard
+                        config={sugador_config}
+                        companyId={company?.id}
+                        canManage={can_manage_config}
+                        canAnalyze={can_analyze}
+                        analyzing={analyzing}
+                        elapsed={elapsed}
+                        onRodarAnalise={rodarAnalise}
+                    />
+                </aside>
+            </div>
         </AppLayout>
     );
 }
