@@ -376,13 +376,12 @@ export default function SugadoresIndex({
     // filteredCompanyName, selectedSugadores, lockedCompany, eligibleVisibleCount,
     // allVisibleSelected) removidos junto com a tabela lista completa.
 
-    // ─── Abre drilldown filtrado por empresa ────────────────────────────────
-    // Phase 52-02 (A9): antes navegava para modo lista via {company_id, view: 'list'}.
-    // Modo lista foi descontinuado; agora apenas persiste a última empresa
-    // acessada em localStorage (feed do chip "Continuar com X"). O click acaba
-    // sendo no-op de navegação — os cards já mostram os totais por empresa.
-    // Reanálise per-empresa migra para o drilldown Show.jsx em wave posterior,
-    // ponto em que este handler passará a chamar router.visit(route('sugadores.show', ...)).
+    // ─── Abre drilldown por empresa ─────────────────────────────────────────
+    // Phase 52-03B (Wave 3.5): restaura navegação real. A Wave 2 tinha deixado
+    // este handler como no-op depois de remover a tabela lista global (Opção Z).
+    // Agora navega para a nova página EmpresaListagem que lista os sugadores da
+    // empresa + ConfigResumoCard + cronômetro (feature A4+A5+A6 encaixadas).
+    // Continua persistindo em localStorage pra o chip "Continuar com [X]".
     function abrirDrilldown(companyId) {
         try {
             localStorage.setItem('sugadores:last_company_id', String(companyId));
@@ -390,6 +389,7 @@ export default function SugadoresIndex({
         } catch {
             // localStorage indisponível — segue sem persistir.
         }
+        router.visit(route('sugadores.empresa.listagem', companyId));
     }
 
     // ─── Limpar chip "Continuar com X" ───────────────────────────────────────
