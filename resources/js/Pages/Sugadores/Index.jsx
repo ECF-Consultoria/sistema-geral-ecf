@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
     AlertTriangle, Building2,
     X,
@@ -316,6 +316,14 @@ export default function SugadoresIndex({
     //  - `can_analyze`: alimentava botão global "Rodar análise" + botão Reanalisar (A7).
     //  - `analise_diaria`: alimentava banner "Análise diária roda às ..." (A2).
     companies_summary = [],
+    // Phase 54 (A3) — props do Wave 1:
+    //  - is_admin: gate do dropdown de analista (analistas nao filtram por si mesmos).
+    //  - analistas: lista {id,name} dos users com pivot role='analista'; vazia se nao-admin.
+    //  - analista_id_selecionado: eco do ?analista_id=X aplicado (ou null).
+    // Defaults defensivos: se backend antigo cachear sem essas props, evita crash.
+    is_admin = false,
+    analistas = [],
+    analista_id_selecionado = null,
 }) {
     // Phase 52-02 (A7/A9): estados `f`/`setF`, `showFilters`, `actionTarget`, `analyzing`,
     // `enqueuedAt`, `copyingId`, `copiedFeedback` removidos junto com a tabela lista
@@ -373,6 +381,27 @@ export default function SugadoresIndex({
 
     const [configPickerOpen, setConfigPickerOpen] = useState(false);
 
+    // ─── Phase 54 (A3) — Busca client-side de empresa + filtro server-side por analista ──
+    // Busca é local (useState + useMemo sobre companies_summary por nome case-insensitive
+    // — mesmo pattern do ConfigPickerModal linhas 245-247).
+    // Filtro analista dispara router.get com preserveState/preserveScroll (pattern
+    // Portfolio/Carteiras.jsx:25-30) porque o backend precisa reduzir companies_summary
+    // via pivot company_users role='analista'.
+    const [q, setQ] = useState('');
+    const companiesFiltradas = useMemo(() => {
+        const needle = q.trim().toLowerCase();
+        if (!needle) return companies_summary;
+        return companies_summary.filter(c => (c.name || '').toLowerCase().includes(needle));
+    }, [companies_summary, q]);
+
+    function aplicarFiltroAnalista(value) {
+        router.get(
+            route('sugadores.index'),
+            value ? { analista_id: value } : {},
+            { preserveState: true, preserveScroll: true },
+        );
+    }
+
     // Phase 52-02 (A9): funções applyFilters, clearFilters, switchView, canSelect,
     // toggleOne, toggleAllVisible, clearSelection e derivados (list, meta, hasAnyFilter,
     // filteredCompanyName, selectedSugadores, lockedCompany, eligibleVisibleCount,
@@ -429,24 +458,35 @@ export default function SugadoresIndex({
                         Referenciava cron Adman D-1 que não roda mais; sem cron ML equivalente ainda. */}
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {/* Phase 52-02 (A9): toggle Cards/Lista removido — só visão em cards.
-                        A tabela lista global e o filtro por empresa foram descontinuados;
-                        cards por empresa é a única visão do Index a partir desta wave. */}
-                    {can_manage && (
-                        <button
-                            onClick={() => setConfigPickerOpen(true)}
-                            className="inline-flex items-center gap-2 h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[13px] font-medium"
-                            title="Configurar critérios de detecção por empresa"
+                <div className="flex items-center gap-2 flex-wrap">
+                    {/* Phase 54 (A3): botao "Configurar" removido do header — a config
+                        continua acessivel via drilldown (ConfigResumoCard em EmpresaListagem).
+                        Substituido por busca client-side + filtro server-side por analista. */}
+                    <div className="relative">
+                        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                        <input
+                            type="text"
+                            value={q}
+                            onChange={e => setQ(e.target.value)}
+                            placeholder="Buscar empresa..."
+                            className="w-56 h-9 pl-8 pr-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 placeholder:text-white/30 focus:outline-none focus:border-ecf-yellow/40"
+                        />
+                    </div>
+                    {is_admin && (
+                        <select
+                            value={analista_id_selecionado ?? ''}
+                            onChange={e => aplicarFiltroAnalista(e.target.value)}
+                            className="appearance-none h-9 pl-3 pr-8 rounded-lg border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40"
+                            title="Filtrar empresas por analista atribuido"
                         >
-                            <Settings size={14} />
-                            Configurar
-                        </button>
+                            <option value="" className="bg-ecf-card">Todos analistas</option>
+                            {analistas.map(a => (
+                                <option key={a.id} value={a.id} className="bg-ecf-card">
+                                    {a.name}
+                                </option>
+                            ))}
+                        </select>
                     )}
-                    {/* Phase 52-02 (A7 parte 2): botão global "Rodar análise" removido.
-                        Disparava analyze-all em TODAS as empresas via confirm nativo — comportamento
-                        perigoso. Rota backend sugadores.analyze-all fica preservada para Artisan/scripts.
-                        Reanálise passa a ser per-empresa no drilldown Show.jsx (wave posterior). */}
                 </div>
             </div>
 
@@ -477,19 +517,30 @@ export default function SugadoresIndex({
                 Cards por empresa é a única visão do Index a partir desta wave. */}
 
             {/* ─── Visão em Cards (única visão do Index a partir de Phase 52-02) ─── */}
-            {companies_summary.length === 0 ? (
+            {/* Phase 54 (A3): renderiza `companiesFiltradas` (busca client-side) ao inves
+                de `companies_summary` direto. Mensagem de vazio distingue "busca sem match"
+                / "filtro analista sem empresa" / "carteira vazia". */}
+            {companiesFiltradas.length === 0 ? (
                 <div className="card-ecf rounded-xl p-12 text-center">
                     <Building2 size={32} className="mx-auto text-white/20 mb-3" />
-                    <p className="text-white/60 text-sm font-medium">Nenhuma empresa visível.</p>
+                    <p className="text-white/60 text-sm font-medium">
+                        {q.trim()
+                            ? `Nenhuma empresa encontrada para "${q}".`
+                            : (analista_id_selecionado
+                                ? 'Nenhuma empresa para este analista.'
+                                : 'Nenhuma empresa visível.')}
+                    </p>
                     <p className="text-white/30 text-xs mt-1">
-                        {can_manage
-                            ? 'Configure thresholds em uma empresa e rode a análise.'
-                            : 'Nenhum sugador pendente na sua carteira.'}
+                        {q.trim() || analista_id_selecionado
+                            ? 'Ajuste o filtro para ver mais empresas.'
+                            : (can_manage
+                                ? 'Configure thresholds em uma empresa e rode a análise.'
+                                : 'Nenhum sugador pendente na sua carteira.')}
                     </p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {companies_summary.map(card => (
+                    {companiesFiltradas.map(card => (
                         <CompanyCard
                             key={card.company_id}
                             card={card}
