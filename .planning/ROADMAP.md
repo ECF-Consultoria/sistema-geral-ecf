@@ -1367,6 +1367,13 @@ Plans:
 
 **UI hint:** SIM — rota nova + shells + refactor de `DashboardController` para agregar através de marketplaces.
 
+**Plans:** 3 plans
+
+Plans:
+- [ ] 58-01-PLAN.md — Rotas + DashboardController (4 métodos + filter whitelist ?marketplace=) + feature tests backend (DASH-01/02/03 backend)
+- [ ] 58-02-PLAN.md — Componentes ShopeeShell.jsx + AmazonShell.jsx (mockup KPI cards + CTA para /dashboard/ecf) (DASH-03 UI)
+- [ ] 58-03-PLAN.md — NAV_TREE: ECF Consolidado + rename Dashboard→Mercado Livre + smoke E2E de navegação (DASH-01/02/03 E2E)
+
 ### Phase 59: Desacoplamento de áreas transversais
 
 **Milestone:** v13.0
