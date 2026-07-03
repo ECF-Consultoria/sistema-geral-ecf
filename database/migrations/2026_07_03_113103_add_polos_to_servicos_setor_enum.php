@@ -28,6 +28,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        // Guard: ALTER COLUMN ENUM eh MySQL-only. Em SQLite (usado nos testes)
+        // o driver nao aceita MODIFY COLUMN + a coluna original tem CHECK
+        // constraint que rejeita 'polos'. Skip inteiro em SQLite — testes
+        // que precisam do servico Polos criam via factory diretamente.
+        if (Schema::getConnection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE servicos MODIFY COLUMN setor ENUM('performance','publicacao','polos','outros') NOT NULL DEFAULT 'outros'");
 
         // Atualiza o Servico #2 "Polos" que estava incorretamente como setor='outros'.
@@ -40,6 +48,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (Schema::getConnection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         // Desfaz o update primeiro (senão o rollback do enum viola a constraint).
         DB::table('servicos')->where('setor', 'polos')->update(['setor' => 'outros']);
 

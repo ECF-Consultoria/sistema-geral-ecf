@@ -326,4 +326,120 @@ class Company extends Model
             })->count();
         return round(($absences / $total) * 100, 2);
     }
+
+    // ═══ Helpers Multi-Marketplace (Phase 57 v13.0) ═══════════════════════
+    // Formalizacao do modelo N:N Company <-> Marketplace via tabela pivot
+    // `company_marketplaces`. Consumidores existentes (AdmanService, Sugadores,
+    // comandos de diagnostico) continuam usando `$company->adman_account_id`
+    // e `$company->ml_store_id` sem refactor — accessors abaixo fazem sync
+    // entre a pivot (fonte-de-verdade) e as colunas flat (backup/fallback).
+    //
+    // @see .planning/adrs/DATA-01-multi-marketplace-model.md
+
+    /**
+     * Relacionamento HasMany com a tabela pivot company_marketplaces.
+     */
+    public function marketplaces(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CompanyMarketplace::class);
+    }
+
+    /**
+     * Verifica se a empresa esta em um marketplace ATIVO.
+     */
+    public function isInMarketplace(string $slug): bool
+    {
+        return $this->marketplaces()
+            ->where('marketplace', $slug)
+            ->where('active', true)
+            ->exists();
+    }
+
+    /**
+     * Retorna colecao dos slugs dos marketplaces ativos da empresa.
+     * Use ->toArray() ou ->all() para lista simples.
+     */
+    public function marketplacesAtivos(): \Illuminate\Support\Collection
+    {
+        return $this->marketplaces()
+            ->where('active', true)
+            ->pluck('marketplace');
+    }
+
+    /**
+     * Retorna o slug do marketplace primario da empresa (ex-companies.marketplace).
+     * Fallback pra coluna flat quando pivot vazia (durante migracao gradual).
+     */
+    public function primaryMarketplace(): ?string
+    {
+        $primary = $this->marketplaces()
+            ->where('is_primary', true)
+            ->value('marketplace');
+
+        return $primary ?? ($this->attributes['marketplace'] ?? null);
+    }
+
+    /**
+     * Retorna o store_id (ID nativo do seller) do marketplace especificado.
+     * Retorna null se a empresa nao estiver no marketplace.
+     */
+    public function storeIdFor(string $slug): ?string
+    {
+        return $this->marketplaces()
+            ->where('marketplace', $slug)
+            ->value('store_id');
+    }
+
+    // ═══ Accessors legacy com fallback (Phase 57 v13.0) ═══════════════════
+    // Consumidores existentes leem `$company->adman_account_id` e
+    // `$company->ml_store_id`. Accessor le da pivot (row meli primary);
+    // fallback pra coluna flat quando pivot esta vazia (migracao parcial).
+
+    public function getAdmanAccountIdAttribute(): ?string
+    {
+        if ($this->exists) {
+            $row = $this->marketplaces()->where('marketplace', 'meli')->first();
+            if ($row && $row->adman_id !== null) {
+                return $row->adman_id;
+            }
+        }
+        return $this->attributes['adman_account_id'] ?? null;
+    }
+
+    public function getMlStoreIdAttribute(): ?string
+    {
+        if ($this->exists) {
+            $row = $this->marketplaces()->where('marketplace', 'meli')->first();
+            if ($row && $row->store_id !== null) {
+                return $row->store_id;
+            }
+        }
+        return $this->attributes['ml_store_id'] ?? null;
+    }
+
+    /**
+     * Mutator: escreve em ambos pivot + coluna flat para consistencia.
+     * Guard `$this->exists` evita tentativa de criar pivot antes do save().
+     */
+    public function setAdmanAccountIdAttribute(?string $value): void
+    {
+        $this->attributes['adman_account_id'] = $value;
+        if ($this->exists) {
+            $this->marketplaces()->updateOrCreate(
+                ['marketplace' => 'meli'],
+                ['adman_id' => $value, 'is_primary' => true, 'active' => true]
+            );
+        }
+    }
+
+    public function setMlStoreIdAttribute(?string $value): void
+    {
+        $this->attributes['ml_store_id'] = $value;
+        if ($this->exists) {
+            $this->marketplaces()->updateOrCreate(
+                ['marketplace' => 'meli'],
+                ['store_id' => $value, 'is_primary' => true, 'active' => true]
+            );
+        }
+    }
 }
