@@ -10,8 +10,10 @@
 namespace Tests\Feature\Phase38Publicador;
 
 use App\Models\Publicacao;
+use App\Models\Setor;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
@@ -106,5 +108,75 @@ class MeuPainelControllerTest extends TestCase
                 ->component('Mlb/MeuPainel')
                 ->where('faturamento_mes', fn ($v) => (float) $v === 0.0)
             );
+    }
+
+    // ─── Supervisão: admin com publicadores cadastrados → VISÃO GERAL (grid) ────
+    public function test_admin_com_publicadores_ve_visao_geral(): void
+    {
+        $admin = $this->publicador(); // role admin → vê todos
+
+        [$p1] = $this->criarPublicadores(2);
+        $this->pub($p1->id, ['vendido' => true, 'vendas_qty' => 1, 'net_billing' => 100.0]);
+
+        $this->actingAs($admin)
+            ->get(route('mlb.meu-painel'))
+            ->assertStatus(200)
+            ->assertInertia(fn (Assert $p) => $p
+                ->component('Mlb/MeuPainel')
+                ->where('visaoGeral', true)
+                ->has('cards', 2)
+                ->has('publicadores', 2)
+            );
+    }
+
+    // ─── Supervisão: admin com ?pub=ID → painel INDIVIDUAL daquele publicador ───
+    public function test_admin_com_pub_abre_painel_individual(): void
+    {
+        $admin = $this->publicador();
+
+        [$p1] = $this->criarPublicadores(1);
+        $this->pub($p1->id, ['vendido' => true, 'vendas_qty' => 1, 'net_billing' => 200.0]);
+
+        $this->actingAs($admin)
+            ->get(route('mlb.meu-painel', ['pub' => $p1->id]))
+            ->assertStatus(200)
+            ->assertInertia(fn (Assert $p) => $p
+                ->component('Mlb/MeuPainel')
+                ->where('visaoGeral', false)
+                ->where('pubFiltro', $p1->id)
+                ->where('faturamento_mes', fn ($v) => (float) $v === 200.0)
+            );
+    }
+
+    /**
+     * Cria N publicadores reais (setor 'publicacao' + cargo 'publicador' + vínculo
+     * no pivot user_setores) para que apareçam em MlbController::publicadores().
+     *
+     * @return array<int,User>
+     */
+    private function criarPublicadores(int $n): array
+    {
+        $setor = Setor::firstOrCreate(['slug' => 'publicacao'], ['nome' => 'Publicação', 'active' => true]);
+        $cargo = $setor->cargos()->firstOrCreate(
+            ['slug' => 'publicador'],
+            ['nome' => 'Publicador', 'meta_publicacoes' => 220],
+        );
+
+        $users = [];
+        for ($i = 1; $i <= $n; $i++) {
+            $u = User::factory()->create(['role' => 'consultor', 'email_verified_at' => now()]);
+            DB::table('user_setores')->insert([
+                'user_id'      => $u->id,
+                'setor_id'     => $setor->id,
+                'cargo_id'     => $cargo->id,
+                'is_principal' => true,
+                'assigned_at'  => now(),
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+            $users[] = $u;
+        }
+
+        return $users;
     }
 }

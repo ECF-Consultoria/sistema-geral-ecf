@@ -24,6 +24,7 @@ class MlbImplementacao extends Model
         'listagem',
         'publicacao',
         'decola',
+        'campanha_criada',
         'contextos_logistica',
         'me1',
         'integradora',
@@ -43,6 +44,7 @@ class MlbImplementacao extends Model
         'data_solicitacao' => 'date',
         'grupo_whatsapp'   => 'boolean',
         'decola'           => 'boolean',
+        'campanha_criada'  => 'boolean',
         // Rastreio de envio do link (ONB-ENVIO-LINK)
         'link_enviado_em'  => 'datetime',
     ];

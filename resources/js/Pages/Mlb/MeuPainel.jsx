@@ -323,18 +323,98 @@ function ProblemasSection({ problemas, onResolverAnuncio }) {
     );
 }
 
+// ── Visão geral: grid de cards (1 por publicador) p/ admin/gestor/líder ──────
+// Cada card resume o publicador (score + classificação + KPIs do mês) e abre o
+// painel individual ao clicar. Reusa os lookups de classificação do topo.
+function VisaoGeralPublicadores({ cards = [], onAbrir }) {
+    if (!cards.length) {
+        return (
+            <div className="card-ecf rounded-2xl p-10 text-center text-white/40">
+                Nenhum publicador encontrado.
+            </div>
+        );
+    }
+    return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {cards.map((c) => {
+                const cor = SCORE_COLOR[c.classificacao] ?? '#3b82f6';
+                const metaPct = Math.min(100, Math.max(0, Math.round(c.meta_pct ?? 0)));
+                return (
+                    <button
+                        key={c.id}
+                        onClick={() => onAbrir(c.id)}
+                        className={cn(
+                            'text-left rounded-2xl border p-4 transition hover:border-white/20 hover:bg-white/[0.04]',
+                            CLASSIF_BG[c.classificacao] ?? 'border-white/[0.06] bg-ecf-card/60',
+                        )}
+                    >
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                            <p className="text-white font-semibold text-sm leading-tight truncate">{c.nome}</p>
+                            <span className={cn('text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap', CLASSIF_CLS[c.classificacao])}>
+                                {CLASSIF_LABEL[c.classificacao] ?? '—'}
+                            </span>
+                        </div>
+                        <div className="flex items-baseline gap-1 mb-3">
+                            <span className="font-display font-extrabold text-3xl tabular-nums" style={{ color: cor }}>
+                                {Math.round(c.score ?? 0)}
+                            </span>
+                            <span className="text-white/30 text-xs">/ 100</span>
+                        </div>
+                        <div className="mb-3">
+                            <div className="flex justify-between text-[10px] text-white/40 mb-1">
+                                <span>Meta</span><span>{pct0(c.meta_pct)}</span>
+                            </div>
+                            <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                                <div className="h-full rounded-full" style={{ width: `${metaPct}%`, backgroundColor: cor }} />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                                <div className="text-white/90 text-sm font-bold tabular-nums">
+                                    {fmt(c.feito)}<span className="text-white/30 text-[10px]">/{fmt(c.meta)}</span>
+                                </div>
+                                <div className="text-white/35 text-[9px] uppercase tracking-wide">Anúncios</div>
+                            </div>
+                            <div>
+                                <div className="text-white/90 text-sm font-bold tabular-nums">{fmt(c.vendas)}</div>
+                                <div className="text-white/35 text-[9px] uppercase tracking-wide">Vendas</div>
+                            </div>
+                            <div>
+                                <div className="text-white/90 text-sm font-bold tabular-nums">{formatCurrencyCompact(c.faturamento)}</div>
+                                <div className="text-white/35 text-[9px] uppercase tracking-wide">Fatur.</div>
+                            </div>
+                        </div>
+                        <div className="mt-3 text-[11px] text-ecf-yellow/80">ver painel →</div>
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function MeuPainel({
     kpis, evolucaoDiaria, topEmpresas, feedbacks, meta, mesRef, meses, problemas,
     ticketEvolucao = [], ticketAtual = 0,
     // Fase 38 — Painel do Publicador
     score_publicador = null, faturamento_mes = 0, anuncios_feitos = 0, vendas_mes = 0,
     net_billing_timeseries = [],
+    // Supervisão — seletor de publicador (admin/gestor/líder); publicador/analista veem o próprio
+    publicadores = [], pubFiltro = null, podeFiltrar = false, alvoNome = '',
+    // Visão geral: grid de cards de todos os publicadores (admin/gestor/líder sem publicador selecionado)
+    visaoGeral = false, cards = [],
 }) {
     const k = kpis ?? {};
 
-    const handleMes = (e) => {
-        router.get(route('mlb.meu-painel'), { mes: e.target.value }, { preserveState: true });
+    // Navega preservando o publicador selecionado (modo supervisão).
+    const navegar = (params) => {
+        router.get(
+            route('mlb.meu-painel'),
+            { mes: mesRef, pub: pubFiltro || undefined, ...params },
+            { preserveState: true, preserveScroll: true },
+        );
     };
+    const handleMes = (e) => navegar({ mes: e.target.value });
+    const handlePub = (e) => navegar({ pub: e.target.value || undefined });
 
     function resolverComentario(id) {
         router.patch(route('mlb.resolver', id), {}, { preserveScroll: true });
@@ -348,13 +428,32 @@ export default function MeuPainel({
     const barColor = statusColors[k.status_classe] || '#8b5cf6';
     const temFaturamento = (net_billing_timeseries ?? []).length > 0;
 
-    return (
-        <AppLayout title="Painel do Publicador">
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h1 className="text-white font-display font-bold text-2xl">Painel do Publicador</h1>
-                    <p className="text-white/40 text-sm mt-0.5">Seu desempenho do mês — score, metas e faturamento</p>
-                </div>
+    // Cabeçalho compartilhado (título + seletores) entre a visão geral e o painel individual.
+    const subtitulo = visaoGeral
+        ? `Visão geral da equipe de publicação · ${nomeMes(mesRef)}`
+        : (podeFiltrar && alvoNome
+            ? `Desempenho de ${alvoNome} — score, metas e faturamento`
+            : 'Seu desempenho do mês — score, metas e faturamento');
+
+    const cabecalho = (
+        <div className="flex items-center justify-between mb-6">
+            <div>
+                <h1 className="text-white font-display font-bold text-2xl">Painel do Publicador</h1>
+                <p className="text-white/40 text-sm mt-0.5">{subtitulo}</p>
+            </div>
+            <div className="flex items-center gap-2">
+                {podeFiltrar && (
+                    <select
+                        value={pubFiltro ?? ''}
+                        onChange={handlePub}
+                        className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none cursor-pointer max-w-[220px]"
+                    >
+                        <option value="">Todos (visão geral)</option>
+                        {publicadores.map(p => (
+                            <option key={p.id} value={p.id}>{p.nome}</option>
+                        ))}
+                    </select>
+                )}
                 <select
                     value={mesRef}
                     onChange={handleMes}
@@ -365,6 +464,22 @@ export default function MeuPainel({
                     ))}
                 </select>
             </div>
+        </div>
+    );
+
+    // Admin/Gestor/Líder sem publicador selecionado → grid de cards de toda a equipe.
+    if (visaoGeral) {
+        return (
+            <AppLayout title="Painel do Publicador">
+                {cabecalho}
+                <VisaoGeralPublicadores cards={cards} onAbrir={(id) => navegar({ pub: id })} />
+            </AppLayout>
+        );
+    }
+
+    return (
+        <AppLayout title="Painel do Publicador">
+            {cabecalho}
 
             {/* KPIs grandes */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

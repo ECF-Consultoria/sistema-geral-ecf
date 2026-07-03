@@ -747,9 +747,12 @@ class MlbImplementacaoController extends Controller
             // decola: aceita boolean, '0'/'1' e também strings 'true'/'false'
         ]);
 
-        // Extrair campo boolean com $request->boolean() que aceita 'true', '1', true, etc.
+        // Extrair campos boolean com $request->boolean() que aceita 'true', '1', true, etc.
         if ($request->has('decola')) {
             $validated['decola'] = $request->boolean('decola');
+        }
+        if ($request->has('campanha_criada')) {
+            $validated['campanha_criada'] = $request->boolean('campanha_criada');
         }
 
         $impl->update($validated);

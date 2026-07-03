@@ -13,12 +13,17 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SyncPolosFaturamentoJob;
 use App\Models\Configuracao;
+use App\Models\MlbConfiguracao;
 use App\Models\MlbEmpresa;
+use App\Models\MlbImplementacao;
 use App\Models\PoloFaturamentoSnapshot;
+use App\Models\PoloMetaEntrada;
+use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
 use App\Support\CustId;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -67,6 +72,22 @@ class PolosController extends Controller
      */
     public function index(): \Inertia\Response
     {
+        // Wrapper fino: toda a montagem vive em montarCockpit() para ser reusada
+        // pela aba unificada (painel()) sem duplicar lógica nem divergir de shape.
+        return Inertia::render('Polos/Index', $this->montarCockpit(request('mes')));
+    }
+
+    /**
+     * Monta o pacote completo de props do Cockpit financeiro de Polos — o MESMO que
+     * a página /polos consome. Extraído de index() para ser reusado pelo Painel
+     * unificado (painel()), garantindo cockpit IDÊNTICO ao /polos.
+     *
+     * @param  string|null $mesPedido  YYYYMM solicitado (?mes); null/inválido → mês mais recente.
+     * @return array  polos, statusDist, meses, mesSelecionado, mesRefLabel, parcial,
+     *                fonteFaturamento, adsLimites, m1, erro
+     */
+    public function montarCockpit(?string $mesPedido = null): array
+    {
         try {
             // ─── 1. Descobrir o arquivo POLOS MENSAL ──────────────────────────
             $files = $this->ecf->listFiles(['search' => 'POLOS_MENSAL']);
@@ -78,7 +99,7 @@ class PolosController extends Controller
             $arquivo = $done->first() ?? $cands->sortByDesc('downloadedAt')->first();
 
             if (! $arquivo) {
-                return $this->semDados('Arquivo CSV POLOS MENSAL não encontrado no ECF Drive.');
+                return $this->cockpitVazio('Arquivo CSV POLOS MENSAL não encontrado no ECF Drive.');
             }
 
             // ─── 2. Buscar linhas do CSV (envelope usa 'rows', não 'data') ────
@@ -93,7 +114,7 @@ class PolosController extends Controller
             // ─── 3. Resolver o mês exibido (default: mais recente) ────────────
             $meses     = $this->listarMeses($linhas);
             $valores   = array_column($meses, 'value');
-            $mesPedido = trim((string) request('mes', ''));
+            $mesPedido = trim((string) ($mesPedido ?? ''));
             $mesSel    = in_array($mesPedido, $valores, true)
                 ? $mesPedido
                 : ($valores[0] ?? null); // listarMeses retorna desc → [0] = mais recente
@@ -152,7 +173,7 @@ class PolosController extends Controller
             // status binário (faturando vs não) para o gráfico dedicado de M1.
             $m1 = $this->montarM1($mesSel, $parcial, $linhasMes);
 
-            return Inertia::render('Polos/Index', [
+            return [
                 'polos'            => $polos,
                 'statusDist'       => $statusDist,
                 'meses'            => $meses,
@@ -163,12 +184,389 @@ class PolosController extends Controller
                 'adsLimites'       => $adsLimites,
                 'm1'               => $m1,
                 'erro'             => null,
-            ]);
+            ];
         } catch (\Throwable $e) {
             // Defensiva: ECF Drive offline NÃO quebra a aba
             report($e);
-            return $this->semDados('Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.');
+            return $this->cockpitVazio('Não foi possível buscar dados do ECF Drive. Tente em alguns segundos.');
         }
+    }
+
+    /**
+     * Painel unificado de Polos (aba NOVA e ADITIVA — /polos, /mlb/polos-empresas e
+     * /mlb/implementacao seguem intactas). Modelo "planilha": tabela plana ancorada
+     * em MlbEmpresa projeto=POLOS, com TODOS os campos do onboarding (Acessos/Produtos/
+     * Logística) editáveis INLINE — sem abrir a ficha. O front organiza em "lentes"
+     * (Geral/Acessos/Produtos/Logística/Financeiro) que reusam os blocos da ficha.
+     *
+     * Este método monta SÓ o payload OPERACIONAL (só DB — rápido), para a edição inline
+     * ser instantânea (cada célula salva via a rota do bloco e recarrega só o operacional,
+     * sem tocar o ECF Drive). A camada FINANCEIRA vem separada e sob demanda em
+     * painelFinanceiro() (JSON admin-only) — anti-vazamento + edição inline rápida.
+     *
+     * Gate (RF-8): rota no grupo mlb.* (NÃO no role:admin). Acesso operacional espelha
+     * checkPubAccess('projetos') (admin OU permissão mlb.projetos). NÃO usa
+     * isGestor/isLiderPub/isPublicador (bug whereHas('cargos') os torna over-permissive).
+     */
+    public function painel(Request $request): \Inertia\Response
+    {
+        $user = $request->user();
+
+        // ── Gate operacional (mesma régua de /mlb/polos-empresas) ──
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        // Lista operacional ancorada em MlbEmpresa projeto=POLOS (só DB — sem ECF Drive).
+        $empresas = MlbEmpresa::with([
+                'responsavel:id,name',
+                'implementacao',
+                'implementacao.responsavel:id,name',
+                'implementacao.linkEnviadoPor:id,name',
+            ])
+            ->orderBy('nome')
+            ->get()
+            // Projeto canônico: coluna `projeto`, com fallback por fase (empresas antigas).
+            ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
+            ->map(function ($e) {
+                $impl  = $e->implementacao;
+                $prazo = $impl?->infoPrazo();
+
+                $row = [
+                    'id'                       => $e->id,
+                    'nome'                     => $e->nome,
+                    'fase'                     => $e->fase,
+                    'estagio'                  => $e->estagio,
+                    'polo'                     => $e->polo,
+                    'prioridade'               => $e->prioridade,
+                    'cust_id'                  => $e->cust_id,
+                    // cust normalizado p/ casar com o mapa financeiro (mesmo normaliza do PHP).
+                    'cust_norm'                => CustId::normaliza((string) ($e->cust_id ?? '')),
+                    'contexto'                 => $e->contexto,
+                    'problema'                 => (bool) $e->problema,
+                    'problema_nota'            => $e->problema_nota,
+                    'ads_desligado'            => (bool) $e->ads_desligado,
+                    'progresso_skus'           => $e->progresso(),
+                    'empresa_responsavel_nome' => $e->responsavel?->name,
+                    // ── Onboarding / ficha (implementacao é HasOne nullable: pode não existir) ──
+                    'impl_id'                  => $impl?->id,
+                    'token'                    => $impl?->token,
+                    'onboarding_progresso'     => $impl?->progresso(),
+                    // ── Extras p/ o modal "Ver" (mesma forma que a tela de Onboarding espera) ──
+                    'progresso'                => $impl?->progresso(),
+                    'dados'                    => $impl?->dados,
+                    'ultimo_acesso'            => $impl?->ultimo_acesso?->diffForHumans(),
+                    'status_envio'             => $impl?->statusEnvio(),
+                    'link_enviado_em'          => $impl?->link_enviado_em?->format('d/m/Y'),
+                    'link_enviado_por'         => $impl?->linkEnviadoPor?->name,
+                    'responsavel_id'           => $impl?->responsavel_id,
+                    'responsavel_nome'         => $impl?->responsavel?->name,
+                    'fora_do_prazo'            => $prazo['fora_do_prazo'] ?? null,
+                    'dias_restantes'           => $prazo['dias_restantes'] ?? null,
+                    'dias_decorridos'          => $prazo['dias_decorridos'] ?? null,
+                    // Caminho de edição de Fase/Polo: com ficha → bloco.identificacao (parcial);
+                    // sem ficha → empresas.update (exige payload completo, anexado abaixo).
+                    'fase_endpoint'            => $impl ? 'bloco' : 'empresa',
+                    // ── Valores do onboarding (edição inline tipo planilha; null sem ficha) ──
+                    'acesso_colaborador'       => $impl?->acesso_colaborador,
+                    'gmail_colaborador'        => $impl?->gmail_colaborador,
+                    'grupo_whatsapp'           => $impl ? (bool) $impl->grupo_whatsapp : null,
+                    'planilha_produtos'        => $impl?->planilha_produtos,
+                    'listagem'                 => $impl?->listagem,
+                    'publicacao'               => $impl?->publicacao,
+                    'decola'                   => $impl ? (bool) $impl->decola : null,
+                    'campanha_criada'          => $impl ? (bool) $impl->campanha_criada : null,
+                    'contextos_logistica'      => $impl?->contextos_logistica,
+                    'me1'                      => $impl?->me1,
+                    'integradora'              => $impl?->integradora,
+                    'places'                   => $impl?->places,
+                    'erp'                      => $impl?->erp,
+                    'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
+                ];
+
+                // Sem ficha: anexa o payload COMPLETO que updateEmpresa espera, para a UI
+                // reenviar tudo ao mudar só a Fase/Polo (updateEmpresa zera campos omitidos).
+                if (! $impl) {
+                    $row['payload_empresa'] = [
+                        'nome'           => $e->nome,
+                        'cust_id'        => $e->cust_id,
+                        'polo'           => $e->polo,
+                        'gmail'          => $e->gmail,
+                        'estagio'        => $e->estagio,
+                        'fase'           => $e->fase,
+                        'projeto'        => $e->getAttributes()['projeto'] ?? null,
+                        'prioridade'     => $e->prioridade,
+                        'responsavel_id' => $e->responsavel_id,
+                        'contexto'       => $e->contexto,
+                        'skus_estagio1'  => $e->skus_estagio1,
+                        'skus_estagio2'  => $e->skus_estagio2,
+                        'skus_estagio3'  => $e->skus_estagio3,
+                        'prazo_estagio1' => $e->prazo_estagio1?->format('Y-m-d'),
+                        'prazo_estagio2' => $e->prazo_estagio2?->format('Y-m-d'),
+                        'prazo_estagio3' => $e->prazo_estagio3?->format('Y-m-d'),
+                        'encerramento'   => $e->encerramento?->format('Y-m-d'),
+                    ];
+                }
+
+                return $row;
+            })
+            ->values();
+
+        return Inertia::render('Polos/Painel', [
+            'isAdmin'  => $user->isAdmin(),
+            'empresas' => $empresas,
+            'usuarios' => User::where('active', true)->orderBy('name')->get(['id', 'name']),
+            // Metas de entrantes por região × mês (aba Metas). Alvos cadastrados; realizado
+            // é derivado no front a partir de `empresas` (cust_id + acesso + grupo whatsapp).
+            'metasEntrada' => PoloMetaEntrada::all(['polo', 'mes', 'meta']),
+            // Props do modal "Ver" (mesma fonte da tela de Onboarding — MlbImplementacaoController@index).
+            'checklist'         => MlbImplementacao::CHECKLIST,
+            'erp_opcoes'        => MlbImplementacao::ERP_OPCOES,
+            'integrador_opcoes' => MlbImplementacao::INTEGRADOR_OPCOES,
+            'global_padroes'    => MlbConfiguracao::implementacaoPadroes(),
+            // Opções dos selects inline (espelha as opções da ficha — fonte única no model).
+            'opcoes'   => [
+                'polo'               => MlbImplementacao::ONB_POLO_OPCOES,
+                'fase'               => MlbImplementacao::ONB_FASE_OPCOES,
+                'acesso_colaborador' => MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES,
+                'planilha_produtos'  => MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES,
+                'listagem'           => MlbImplementacao::ONB_LISTAGEM_OPCOES,
+                'publicacao'         => MlbImplementacao::ONB_PUBLICACAO_OPCOES,
+                'me1'                => MlbImplementacao::ONB_ME1_OPCOES,
+                'integradora'        => MlbImplementacao::ONB_INTEGRADORA_OPCOES,
+                'places'             => MlbImplementacao::ONB_PLACES_OPCOES,
+                'erp'                => MlbImplementacao::ONB_ERP_OPCOES,
+            ],
+        ]);
+    }
+
+    /**
+     * Camada financeira do Painel Polos (ADMIN-ONLY) — JSON assíncrono.
+     *
+     * Carregada pelo front após montar e ao trocar de mês, SEPARADA do payload
+     * operacional para: (a) não vazar financeiro a não-admin (nem entra no HTML/props);
+     * (b) manter a edição inline instantânea (operacional recarrega só DB; o ECF Drive
+     * — caro — só é tocado aqui, sob demanda). Mesmo padrão dos cards async do app.
+     *
+     * Retorna o cockpit (idêntico ao /polos) + um mapa cust_norm → financeiro por empresa.
+     */
+    public function painelFinanceiro(Request $request): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+
+        $cockpit = $this->montarCockpit($request->query('mes'));
+
+        // Mapa cust_norm → financeiro: ativos (M2-M4, do agregado por polo) + M1 (binário).
+        $fin = [];
+        foreach ($cockpit['polos'] as $p) {
+            foreach (($p['empresas'] ?? []) as $emp) {
+                $k = CustId::normaliza((string) ($emp['cust_id'] ?? ''));
+                if ($k === '') {
+                    continue;
+                }
+                $fin[$k] = [
+                    'faturamento' => $emp['faturamento'],
+                    'meta'        => $emp['meta'],
+                    'pct'         => $emp['pct'],
+                    'status'      => $emp['status'],
+                    'ads'         => $emp['ads'],
+                    'tipo'        => 'ativo',
+                ];
+            }
+        }
+        foreach (($cockpit['m1']['empresas'] ?? []) as $emp) {
+            $k = CustId::normaliza((string) ($emp['cust_id'] ?? ''));
+            if ($k === '' || isset($fin[$k])) {
+                continue;
+            }
+            $fin[$k] = [
+                'faturamento' => $emp['faturamento'],
+                'faturando'   => $emp['faturando'],
+                'tipo'        => 'm1',
+            ];
+        }
+
+        return response()->json(['cockpit' => $cockpit, 'financeiro' => $fin]);
+    }
+
+    /**
+     * Edição em MASSA do Painel Polos — aplica mudanças a N empresas de uma vez.
+     *
+     * Aceita `items:[{id, changes:{campo:valor}}]` (por-id — usado no "Desfazer") OU
+     * `ids:[int]` + `changes:{campo:valor}` (aplicação uniforme). Reproduz as MESMAS
+     * regras da edição inline: `fase`/`polo` → mlb_empresas; demais campos → ficha
+     * (mlb_implementacoes) — empresas SEM ficha são IGNORADAS p/ esses campos. Tudo numa
+     * transação. Devolve resumo + snapshot ("undo") p/ o front desfazer chamando o mesmo endpoint.
+     */
+    public function painelBulk(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        $data = $request->validate([
+            'items'           => ['sometimes', 'array', 'max:1000'],
+            'items.*.id'      => ['required', 'integer'],
+            'items.*.changes' => ['required', 'array'],
+            'ids'             => ['sometimes', 'array', 'max:1000'],
+            'ids.*'           => ['integer'],
+            'changes'         => ['sometimes', 'array'],
+        ]);
+
+        // Normaliza p/ a forma canônica: lista de {id, changes}.
+        $items = [];
+        if (! empty($data['items'])) {
+            $items = $data['items'];
+        } elseif (! empty($data['ids']) && ! empty($data['changes'])) {
+            foreach ($data['ids'] as $id) {
+                $items[] = ['id' => (int) $id, 'changes' => $data['changes']];
+            }
+        }
+        if (empty($items)) {
+            return response()->json(['message' => 'Nada para aplicar.'], 422);
+        }
+
+        // Campos permitidos e onde cada um mora.
+        $EMPRESA = ['fase', 'polo'];
+        $IMPL    = ['responsavel_id', 'data_solicitacao', 'acesso_colaborador', 'gmail_colaborador',
+                    'grupo_whatsapp', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada',
+                    'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
+                    // Restauração literal do envio (só o "Desfazer" envia estes — snapshot bruto).
+                    'link_enviado_em', 'link_enviado_por'];
+        $BOOL      = ['grupo_whatsapp', 'decola', 'campanha_criada'];
+        $ENVIO     = 'status_envio'; // ação especial (enviado/falta_enviar)
+        $permitidos = array_merge($EMPRESA, $IMPL, [$ENVIO]);
+
+        $aplicadas = 0;
+        $ignoradas = []; // [{id, nome, campos:[], motivo}]
+        $undoItems = []; // [{id, changes:{campo:de}}]
+
+        DB::transaction(function () use ($items, $EMPRESA, $IMPL, $BOOL, $ENVIO, $permitidos, $user, &$aplicadas, &$ignoradas, &$undoItems) {
+            $empresas = MlbEmpresa::with('implementacao')
+                ->whereIn('id', array_column($items, 'id'))
+                ->get()->keyBy('id');
+
+            foreach ($items as $it) {
+                $e = $empresas->get($it['id']);
+                if (! $e) {
+                    $ignoradas[] = ['id' => $it['id'], 'nome' => null, 'campos' => array_keys($it['changes'] ?? []), 'motivo' => 'não encontrada'];
+                    continue;
+                }
+                // Escopo: só edita empresas do projeto POLOS (mesmo predicado do painel()) —
+                // o front só manda ids de POLOS, mas o servidor não confia no cliente.
+                $proj = ($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null);
+                if ($proj !== 'POLOS') {
+                    $ignoradas[] = ['id' => $e->id, 'nome' => $e->nome, 'campos' => array_keys($it['changes'] ?? []), 'motivo' => 'fora do escopo Polos'];
+                    continue;
+                }
+                $impl = $e->implementacao;
+
+                $mudEmpresa = [];
+                $mudImpl    = [];
+                $undo       = [];
+                $semFicha   = [];
+
+                foreach (($it['changes'] ?? []) as $campo => $valor) {
+                    if (! in_array($campo, $permitidos, true)) {
+                        continue;
+                    }
+                    // Vazio → null (exceto booleans).
+                    if (! in_array($campo, $BOOL, true) && $valor === '') {
+                        $valor = null;
+                    }
+
+                    if (in_array($campo, $EMPRESA, true)) {
+                        $undo[$campo]       = $e->{$campo};
+                        $mudEmpresa[$campo] = $valor;
+                    } elseif ($campo === $ENVIO) {
+                        if (! $impl) { $semFicha[] = $campo; continue; }
+                        $atual = $impl->statusEnvio();
+                        if ($atual === 'concluido') {
+                            $ignoradas[] = ['id' => $e->id, 'nome' => $e->nome, 'campos' => [$campo], 'motivo' => 'envio concluído'];
+                            continue;
+                        }
+                        // Só 'enviado'/'falta_enviar' escrevem; outros valores são no-op (sem undo, sem contar).
+                        // Snapshot de undo = valores BRUTOS (restaura quem/quando enviou fielmente).
+                        if ($valor === 'enviado' || $valor === 'falta_enviar') {
+                            $undo['link_enviado_em']  = optional($impl->link_enviado_em)->format('Y-m-d H:i:s');
+                            $undo['link_enviado_por'] = $impl->link_enviado_por;
+                            if ($valor === 'enviado') {
+                                $impl->update(['link_enviado_em' => now(), 'link_enviado_por' => $user->id]);
+                            } else {
+                                $impl->update(['link_enviado_em' => null, 'link_enviado_por' => null]);
+                            }
+                        }
+                    } else { // demais campos → ficha
+                        if (! $impl) { $semFicha[] = $campo; continue; }
+                        if (in_array($campo, $BOOL, true)) {
+                            $valor = filter_var($valor, FILTER_VALIDATE_BOOLEAN);
+                        } elseif ($campo === 'responsavel_id') {
+                            $valor = $valor ? (int) $valor : null;
+                        }
+                        $de = $impl->{$campo};
+                        if ($de instanceof \Carbon\CarbonInterface) {
+                            $de = $de->format('Y-m-d');
+                        }
+                        $undo[$campo]    = $de;
+                        $mudImpl[$campo] = $valor;
+                    }
+                }
+
+                if (! empty($mudEmpresa)) { $e->update($mudEmpresa); }
+                if (! empty($mudImpl) && $impl) { $impl->update($mudImpl); }
+
+                if (! empty($semFicha)) {
+                    $ignoradas[] = ['id' => $e->id, 'nome' => $e->nome, 'campos' => $semFicha, 'motivo' => 'sem ficha'];
+                }
+                if (! empty($undo)) {
+                    $undoItems[] = ['id' => $e->id, 'changes' => $undo];
+                    $aplicadas++;
+                }
+            }
+        });
+
+        activity('polos')
+            ->causedBy($user)
+            ->withProperties(['itens' => count($items), 'aplicadas' => $aplicadas])
+            ->log("[Polos] Edição em massa: {$aplicadas} empresa(s) alterada(s)");
+
+        return response()->json([
+            'aplicadas' => $aplicadas,
+            'ignoradas' => $ignoradas,
+            'undo'      => ['items' => $undoItems],
+        ]);
+    }
+
+    /**
+     * Grava (upsert) a meta de ENTRANTES de uma região num mês (aba Metas).
+     * Mesmo gate operacional do painel; `mes` no formato 'YYYY-MM'.
+     */
+    public function salvarMetaEntrada(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        $data = $request->validate([
+            'polo' => ['required', 'string', \Illuminate\Validation\Rule::in(MlbImplementacao::ONB_POLO_OPCOES)],
+            'mes'  => ['required', 'string', 'regex:/^\d{4}-\d{2}$/'],
+            'meta' => ['required', 'integer', 'min:0', 'max:100000'],
+        ]);
+
+        PoloMetaEntrada::updateOrCreate(
+            ['polo' => $data['polo'], 'mes' => $data['mes']],
+            ['meta' => $data['meta']],
+        );
+
+        return response()->json(['ok' => true]);
     }
 
     /**
@@ -392,9 +790,9 @@ class PolosController extends Controller
      * Centraliza a forma das props para os caminhos de saída defensivos.
      * statusDist zerado: shape consistente mesmo sem dados (D-12).
      */
-    private function semDados(string $mensagem): \Inertia\Response
+    private function cockpitVazio(string $mensagem): array
     {
-        return Inertia::render('Polos/Index', [
+        return [
             'polos'            => [],
             'statusDist'       => ['Sim' => 0, 'Em progresso' => 0, 'Não' => 0, 'Problema' => 0, 'total' => 0],
             'meses'            => [],
@@ -405,7 +803,7 @@ class PolosController extends Controller
             'adsLimites'       => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
             'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
             'erro'             => $mensagem,
-        ]);
+        ];
     }
 
     /**

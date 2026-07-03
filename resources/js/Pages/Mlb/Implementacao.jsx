@@ -5,17 +5,8 @@ import { Link2, Copy, Check, ExternalLink, RefreshCw, X, BookOpen, Eye, Plus, Ar
 import { Link } from '@inertiajs/react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { cn } from '@/lib/utils';
-
-const ESTAGIO_COLORS = {
-    'Não Listado': 'text-white/30 bg-white/[0.04]',
-    'Estágio 1':   'text-blue-300 bg-blue-500/10',
-    'Estágio 2':   'text-violet-300 bg-violet-500/10',
-    'Estágio 3':   'text-amber-300 bg-amber-500/10',
-    'Concluido':   'text-emerald-300 bg-emerald-500/10',
-    'Churn':       'text-red-300 bg-red-500/10',
-    'Finalizado':  'text-white/40 bg-white/[0.04]',
-    'Problema':    'text-red-400 bg-red-500/10',
-};
+// Mapa de estágio extraído para módulo compartilhado (padroniza Onboarding + Painel Polos).
+import { ESTAGIO_COLORS } from '@/Pages/Polos/components/estagioBadge';
 
 // Status do envio do link ao cliente (ONB-ENVIO-LINK)
 const STATUS_ENVIO_LABELS = {

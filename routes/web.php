@@ -515,6 +515,16 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::get('/projetos',       [MlbController::class, 'projetos'])->name('projetos');
     // Visão de empresas POLOS agrupadas por fase M (grid de cards, item do grupo Polos no menu)
     Route::get('/polos-empresas', [MlbController::class, 'polosEmpresas'])->name('polos-empresas');
+    // Painel unificado de Polos (aba ADITIVA): operacional p/ quem tem mlb.projetos;
+    // camada financeira admin-only montada só nas props (gate em PolosController::painel).
+    // Registrado AQUI (grupo mlb.*), NÃO no grupo role:admin do PolosController (RF-1/RF-8).
+    Route::get('/polos-painel', [PolosController::class, 'painel'])->name('polos-painel');
+    // Camada financeira do Painel (JSON assíncrono, admin-only — gate em painelFinanceiro).
+    Route::get('/polos-painel/financeiro', [PolosController::class, 'painelFinanceiro'])->name('polos-painel.financeiro');
+    // Edição em MASSA do Painel (JSON; mesmo gate operacional de painel()).
+    Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
+    // Meta de entrantes por região × mês (aba Metas; JSON; mesmo gate operacional).
+    Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
     Route::put('/treinamentos/{treinamento}',    [MlbController::class, 'updateTreinamento'])->name('treinamentos.update');

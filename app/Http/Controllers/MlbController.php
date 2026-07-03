@@ -577,14 +577,43 @@ class MlbController extends Controller
     {
         $this->checkPubAccess('meu_painel');
 
-        $user   = $request->user();
+        $authUser = $request->user();
+
+        // Admin/Gestor/Líder enxergam a equipe toda: SEM ?pub veem a VISÃO GERAL
+        // (grid de cards de todos os publicadores); com ?pub=ID abrem o painel
+        // completo de um. Publicador/analista veem apenas o próprio painel.
+        $verTodos        = $this->podeVerTodosPub($authUser);
+        $publicadoresCol = $verTodos ? $this->publicadores() : collect();
+
         $mesRef = $request->get('mes', now()->format('Y-m'));
         // Valida o formato YYYY-MM (entrada do usuário) antes de Carbon::createFromFormat — evita exceção.
         if (!preg_match('/^\d{4}-\d{2}$/', $mesRef)) {
             $mesRef = now()->format('Y-m');
         }
+        $ref = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
+
+        // Publicador selecionado: ?pub=ID válido (só p/ quem vê todos); senão null.
+        $pubSel = null;
+        if ($verTodos) {
+            $candidato = $request->integer('pub') ?: null;
+            if ($candidato && $publicadoresCol->contains('id', $candidato)) {
+                $pubSel = $candidato;
+            }
+        }
+
+        // Sem publicador selecionado, podendo ver todos E havendo publicadores → visão
+        // geral (grid). Admin sem nenhum publicador cadastrado cai no próprio painel
+        // (evita grid vazio e preserva a tela individual no ambiente local de demo).
+        if ($verTodos && $pubSel === null && $publicadoresCol->isNotEmpty()) {
+            return $this->meuPainelVisaoGeral($publicadoresCol, $mesRef, $ref);
+        }
+
+        // A partir daqui $user é o PUBLICADOR-ALVO: todo o corpo abaixo (KPIs, score,
+        // gráficos, problemas) é montado sobre os dados dele, não do autenticado.
+        $alvoId = $pubSel ?? $authUser->id;
+        $user   = $verTodos ? (User::find($alvoId) ?? $authUser) : $authUser;
+
         $meta   = $this->metaParaMes($user->id, $mesRef);
-        $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
         $meses  = $this->mesesDisponiveis($user->id);
         $kpis   = $this->calcularKpis($user->id, $ref, $meta);
 
@@ -719,6 +748,59 @@ class MlbController extends Controller
             'anuncios_feitos'        => $kpis['feito'],
             'vendas_mes'             => $kpis['vendas'],
             'net_billing_timeseries' => $netBillingTimeseries,
+            // Supervisão — seletor de publicador (admin/gestor/líder); espelha mlb.vendas
+            'visaoGeral'             => false,
+            'publicadores'           => $publicadoresCol->map(fn($p) => ['id' => $p->id, 'nome' => $p->name])->values(),
+            'pubFiltro'              => $verTodos ? $alvoId : null,
+            'podeFiltrar'            => $verTodos && $publicadoresCol->isNotEmpty(),
+            'alvoNome'               => $user->name,
+        ]);
+    }
+
+    /**
+     * Visão geral da equipe de Publicação: 1 card por publicador com score + KPIs
+     * do mês. Usada por admin/gestor/líder quando nenhum publicador está selecionado.
+     * Cada card linka para o painel individual (?pub=ID).
+     */
+    private function meuPainelVisaoGeral(Collection $publicadoresCol, string $mesRef, Carbon $ref): Response
+    {
+        $scoreService = new PublicadorScoreService();
+        $primeiro     = $ref->copy()->startOfMonth()->toDateString();
+        $ultimo       = $ref->copy()->endOfMonth()->toDateString();
+
+        $cards = $publicadoresCol->map(function ($p) use ($mesRef, $ref, $primeiro, $ultimo, $scoreService) {
+            $meta  = $this->metaParaMes($p->id, $mesRef);
+            $kpis  = $this->calcularKpis($p->id, $ref, $meta);
+            $score = $scoreService->compute($p->id, $mesRef, (int) $kpis['feito'], (int) $kpis['vendas'], (int) $meta);
+
+            $faturamento = (float) (Publicacao::where('user_id', $p->id)
+                ->whereBetween('data', [$primeiro, $ultimo])
+                ->where('tipo', '!=', 'variacao')
+                ->sum('net_billing') ?? 0);
+
+            return [
+                'id'            => $p->id,
+                'nome'          => $p->name,
+                'score'         => $score['score'],
+                'classificacao' => $score['classificacao'],
+                'meta_pct'      => $kpis['percentual'],
+                'feito'         => $kpis['feito'],
+                'meta'          => $meta,
+                'vendas'        => $kpis['vendas'],
+                'faturamento'   => $faturamento,
+            ];
+        })
+        ->sortByDesc('score')
+        ->values();
+
+        return Inertia::render('Mlb/MeuPainel', [
+            'visaoGeral'   => true,
+            'cards'        => $cards,
+            'mesRef'       => $mesRef,
+            'meses'        => $this->mesesDisponiveis(null),
+            'publicadores' => $publicadoresCol->map(fn($p) => ['id' => $p->id, 'nome' => $p->name])->values(),
+            'pubFiltro'    => null,
+            'podeFiltrar'  => true,
         ]);
     }
 

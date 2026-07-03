@@ -63,6 +63,9 @@ const NAV_TREE = [
             // ── Separator visual: Dados Estrategicos | Polos ─────
             { divider: 'Polos' },
             // ── Secao Polos ───────────────────────────────
+            // Painel Polos: aba unificada (operacional + financeiro admin-only) — quick 260630-edm.
+            // Gate por permission (NÃO excludeRoles: bug conhecido esconde itens de admin com cargo de publicação).
+            { label: 'Painel Polos',      routeName: 'mlb.polos-painel',        page: 'Polos/Painel',      icon: LayoutDashboard, permission: 'mlb.projetos' },
             { label: 'Onboarding',        routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks, permission: 'mlb.implementacao' },
             { label: 'Empresas Polos',    routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM', icon: Building2,  permission: 'mlb.projetos' },
             { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
@@ -183,7 +186,8 @@ const NAV_TREE = [
             { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard' },
             { label: 'Desempenho',      routeName: 'publicacao.desempenho.index', page: 'Performance', icon: Trophy, permission: 'mlb.dashboard' },
             { label: 'Treinamentos',    routeName: 'mlb.treinamentos', page: 'Mlb/Treinamentos', icon: BookOpen,       permission: 'mlb.treinamento' },
-            { label: 'Meu Painel',      routeName: 'mlb.meu-painel',   page: 'Mlb/MeuPainel',    icon: LayoutList,     permission: 'mlb.meu_painel', excludeRoles: ['admin'] },
+            // Admin/Gestor/Líder usam esta tela em modo supervisão (seletor de publicador via ?pub=ID); publicador/analista veem o próprio painel.
+            { label: 'Meu Painel',      routeName: 'mlb.meu-painel',   page: 'Mlb/MeuPainel',    icon: LayoutList,     permission: 'mlb.meu_painel' },
             { label: 'Publicação',      routeName: 'mlb.publicacoes',  page: 'Mlb/Publicacoes',  icon: PlusCircle,     permission: 'mlb.publicacoes' },
             { label: 'Vendas',          routeName: 'mlb.vendas',       page: 'Mlb/Vendas',       icon: ShoppingCart,   permission: 'mlb.vendas' },
             { label: 'Histórico',       routeName: 'mlb.historico',    page: 'Mlb/Historico',    icon: Clock,          permission: 'mlb.historico' },

@@ -15,9 +15,7 @@ import StatusDonut from './components/StatusDonut';
 import SparkSemanal from './components/SparkSemanal';
 import AdsCard from './components/AdsCard';
 import M1Card from './components/M1Card';
-
-// Paleta de identidade por polo (ponto de identidade nos chips/ranking). Amarelo ECF primeiro.
-const POLO_PALETTE = ['#ffe600', '#38bdf8', '#22c55e', '#a855f7', '#fb923c', '#f43f5e', '#2dd4bf', '#e879f9'];
+import { montarCorDoPolo } from './components/poloCores';
 
 // Chrome do card de seção do Cockpit (com inner-glow sutil no topo).
 const CARD = cn(
@@ -52,11 +50,7 @@ export default function PolosIndex({
     erro             = null,
 }) {
     // Cor estável por polo (ordem alfabética que o backend já entrega)
-    const corDoPolo = useMemo(() => {
-        const mapa = {};
-        polos.forEach((p, i) => { mapa[p.polo] = POLO_PALETTE[i % POLO_PALETTE.length]; });
-        return mapa;
-    }, [polos]);
+    const corDoPolo = useMemo(() => montarCorDoPolo(polos), [polos]);
 
     // Filtro client-side de polos (default: todos visíveis)
     const [ativos, setAtivos] = useState(() => polos.map((p) => p.polo));
