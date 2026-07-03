@@ -11,10 +11,10 @@
 
 ### Menu Lateral (NAV)
 
-- [ ] **NAV-01**: Sidebar mostra pasta "Mercado Livre" (aberta por padrão) contendo Performance (Dashboard, Desempenho, Empresas, Carteira, Reuniões, Sugadores, Metas, PPA) + Polos
-- [ ] **NAV-02**: Sidebar mostra "Publicação" como setor transversal FORA da pasta ML (atende todos os marketplaces — não introduzir amarração ML nesta seção)
-- [ ] **NAV-03**: Sidebar mostra itens "Shopee" e "Amazon" visíveis; clicar leva para rota `/em-desenvolvimento` (stub, não quebra)
-- [ ] **NAV-04**: Rota `/em-desenvolvimento` renderiza componente placeholder consistente com design system ECF (dark theme + tokens `ecf-*`), com mensagem clara indicando marketplace em desenvolvimento
+- [x] **NAV-01**: Sidebar mostra pasta "Mercado Livre" (aberta por padrão) contendo Performance + Dados Estratégicos + Polos (Reuniões movido para top-level no UAT — transversal)
+- [x] **NAV-02**: Sidebar mostra "Publicação" (singular) como setor transversal FORA da pasta ML
+- [x] **NAV-03**: Sidebar mostra itens "Shopee" e "Amazon" com badge "Em breve" + logos SVG das marcas; clicar leva para rota `/em-desenvolvimento`
+- [x] **NAV-04**: Rota `/em-desenvolvimento` renderiza componente placeholder consistente com design system ECF (Construction icon + botão CTA "Voltar ao Dashboard" + sub-título dinâmico via query param marketplace)
 
 ### Modelo de Dados Multi-Marketplace (DATA)
 
@@ -45,10 +45,10 @@
 
 | Requisito | Fase | Status |
 |-----------|------|--------|
-| NAV-01 | Phase 56 | Pending |
-| NAV-02 | Phase 56 | Pending |
-| NAV-03 | Phase 56 | Pending |
-| NAV-04 | Phase 56 | Pending |
+| NAV-01 | Phase 56 | Complete |
+| NAV-02 | Phase 56 | Complete |
+| NAV-03 | Phase 56 | Complete |
+| NAV-04 | Phase 56 | Complete |
 | DATA-01 | Phase 57 | Pending |
 | DATA-02 | Phase 57 | Pending |
 | DATA-03 | Phase 57 | Pending |

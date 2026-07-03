@@ -150,7 +150,7 @@ Desacopla o sistema da premissa "ML-first" para refletir a realidade da ECF Cons
 
 **Origem:** conversa de briefing 2026-07-03 + audit v12.0 mesmo dia (arquivo `.planning/v12.0-MILESTONE-AUDIT.md`).
 
-- [ ] **Phase 56: Menu lateral multi-marketplace + stubs "em desenvolvimento"** — Reorganizar `AppLayout.jsx`: pasta "Mercado Livre" (aberta por padrão) contendo Performance (Dashboard, Desempenho, Empresas, Carteira, Reuniões, Sugadores, Metas, PPA) + Polos; "Publicação" fora do ML (transversal); "Shopee" e "Amazon" visíveis com stub `/em-desenvolvimento`. Mudança visual imediata, zero risco de dados. Depende de: nada. **Requirements:** NAV-01, NAV-02, NAV-03, NAV-04.
+- [x] **Phase 56: Menu lateral multi-marketplace + stubs "em desenvolvimento"** *(completed 2026-07-03, deployed to prod)* — Reorganizar `AppLayout.jsx`: pasta "Mercado Livre" (aberta) com Performance + Dados Estratégicos + Polos (Dados Estratégicos antecipado no UAT — dados ECF Drive ML-only); Reuniões movido pra top-level (transversal); "Publicação" fora do ML; "Shopee" e "Amazon" com badge "Em breve" + logos SVG das marcas. Rota `/em-desenvolvimento` + página `EmDesenvolvimento.jsx`. Extensões novas em NAV_TREE: `divider`, `badgeText`, `defaultOpen`, `iconSrc`. UAT aprovado em prod após 3 hotfixes visuais.
 - [ ] **Phase 57: Modelo de dados multi-marketplace** — Decidir modelo (ADR): `Company` + N:N `company_marketplaces` vs consolidar flags na `companies` (Phase 18.5 já introduziu `companies.marketplace`). Migration + backfill de 100% das empresas existentes. Auditar acoplamento ML em Company (`adman_account_id`, `ml_store_id`, etc). Cobertura de testes nas consultas críticas (Dashboard, Sugadores, /desempenho). Depende de: Phase 56 (contexto visual). **Requirements:** DATA-01, DATA-02, DATA-03.
 - [ ] **Phase 58: Dashboard ECF agregado + shells por marketplace** — Rota `/dashboard/ecf` (só admin ou expansível) mostra KPIs consolidados (GMV, vendas, ROAS) somando resultados através de marketplaces das empresas atendidas. `/dashboard/mercadolivre` mantém funcionalidade atual do dashboard (renomeada ou aliased). `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento". Depende de: Phase 57 (modelo pronto). **Requirements:** DASH-01, DASH-02, DASH-03.
 - [ ] **Phase 59: Desacoplamento de áreas transversais** — Auditar Usuários, Setores, Comercial, Administrativo, NPS, Notificações: mapear acoplamento ML-only (naming, filtros, defaults) e generalizar. Confirmar Publicação transversal — permissões `pub.*` continuam válidas para todos marketplaces (não introduzir mais amarração ML). Testes de regressão em áreas transversais. Depende de: Phase 57 (modelo pronto). Pode rodar em paralelo com Phase 58. **Requirements:** CROSS-01, CROSS-02, CROSS-03.
@@ -1315,7 +1315,7 @@ Plans:
 ### Phase 56: Menu lateral multi-marketplace + stubs "em desenvolvimento"
 
 **Milestone:** v13.0
-**Status:** Pending
+**Status:** Complete (2026-07-03, deployed)
 **Mode:** standard
 
 **Goal:** Reorganizar o sidebar (`AppLayout.jsx` → constante `NAV_TREE`) para refletir a estrutura multi-marketplace da ECF Consultoria. Mudança visual imediata, zero risco de dados. Habilita phases 57/58/59 mas não depende delas.

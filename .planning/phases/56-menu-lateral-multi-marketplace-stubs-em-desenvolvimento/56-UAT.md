@@ -1,10 +1,32 @@
 ---
 phase: 56
-status: pendente
-tested_at: null
-tested_by: null
-environment: local
+status: aprovado
+tested_at: 2026-07-03
+tested_by: dev.01
+environment: prod
 ---
+
+## Nota de fechamento
+
+UAT feito diretamente em prod (usuário optou por pular local, autorizou deploy imediato).
+Aprovado após 3 hotfixes visuais durante o UAT:
+
+1. **Dados Estratégicos movido pra dentro do grupo Mercado Livre** (commit `31c78ee`)
+   Racional: dados vem do ECF Drive, fonte ML-only. Antecipou uma decisão que estava
+   marcada como Phase 59 no CONTEXT.md.
+
+2. **Reuniões movido pra top-level acima de "Enviar notificação"** (commit `b24c6e2`)
+   Racional: Reuniões é transversal, não específica de ML.
+
+3. **Logos oficiais das marcas em vez de ícones lucide** (commits `bba291a`, `5f914cf`,
+   `7013a28`, `e00adaa`)
+   Novo campo opcional `iconSrc` em NAV_TREE renderiza SVG quando presente. Aplicado
+   em Mercado Livre, Shopee, Amazon. Ícone ML iterado 3x até ficar aprovado.
+
+Além disso, integrado por rebase o commit `cbb9bb7 feat(polos): Painel de Polos unificado`
+de outro dev (adicionou item "Painel Polos" ao NAV_TREE grupo ML) sem conflito.
+
+Zero regressão observada em rotas existentes.
 
 # Phase 56 — UAT Checklist
 
