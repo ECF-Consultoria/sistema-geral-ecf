@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 53 em STAND-BY (observação organica pós-cron 12h) — escolher próxima entre 47/50/55/nova
+**Current focus:** Phase 55 — modernização visual /sugadores (Table shadcn + polish)
 
 ## Current Position
 
-Phase: 53 (inteligencia-detector-sugadores) — STAND-BY
-Plan: Waves 1+2+hotfix Wave 4 em prod (17/17 testes verdes); Wave 3 UAT não aplicável (detector precisa de dias de observação)
-Status: Em observação — detalhes em `.planning/phases/53-inteligencia-detector-sugadores/53-STANDBY.md`
-Last activity: 2026-07-03 -- Phase 53 pausada em stand-by até coletar dados de 3+ dias
+Phase: 55 (modernizacao-visual-sugadores-magic-ui) — EXECUTING
+Plan: 1 of 3
+Status: Iniciando Wave 1 (Table shadcn + Checkbox Radix + Blur Fade)
+Last activity: 2026-07-03 -- Phase 55 execution started
 Blockers:
 
   - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
