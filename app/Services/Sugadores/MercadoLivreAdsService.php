@@ -481,6 +481,61 @@ class MercadoLivreAdsService
     }
 
     /**
+     * Quick 2026-07-03 — retorna métricas Product Ads POR MLB dentro de um adgroup.
+     *
+     * Reusa listAds() que já pagina todos os ads do advertiser na janela e retorna
+     * `metrics` por item (payload validado em prod contra Bymobille: 570 items com
+     * clicks/cost/units_quantity/total_amount/cpc/acos/ctr/roas por item).
+     *
+     * Filtra client-side por `ad_group_id` — endpoint ML NÃO aceita filtro server-side.
+     *
+     * Métricas 100% Product Ads. Não inclui vendas orgânicas.
+     *
+     * @return array<int, array{
+     *   mlb_id: string,
+     *   title: ?string,
+     *   thumbnail: ?string,
+     *   permalink: ?string,
+     *   status: ?string,
+     *   clicks: int,
+     *   cost: float,
+     *   units_quantity: int,
+     *   total_amount: float,
+     *   cpc: float,
+     *   acos: float,
+     *   ctr: float,
+     *   roas: float
+     * }>
+     */
+    public function fetchItemMetricsForAdgroup(Company $company, int $advertiserId, string $adgroupId, string $dateFrom, string $dateTo): array
+    {
+        $data = $this->listAds($company, $advertiserId, $dateFrom, $dateTo);
+        $out  = [];
+        foreach ($data['results'] ?? [] as $item) {
+            if ((string) ($item['ad_group_id'] ?? '') !== $adgroupId) {
+                continue;
+            }
+            $m = $item['metrics'] ?? [];
+            $out[] = [
+                'mlb_id'         => (string) ($item['item_id'] ?? ''),
+                'title'          => $item['title']     ?? null,
+                'thumbnail'      => $item['thumbnail'] ?? null,
+                'permalink'      => $item['permalink'] ?? null,
+                'status'         => $item['status']    ?? null,
+                'clicks'         => (int)   ($m['clicks']         ?? 0),
+                'cost'           => (float) ($m['cost']           ?? 0),
+                'units_quantity' => (int)   ($m['units_quantity'] ?? 0),
+                'total_amount'   => (float) ($m['total_amount']   ?? 0),
+                'cpc'            => (float) ($m['cpc']            ?? 0),
+                'acos'           => (float) ($m['acos']           ?? 0),
+                'ctr'            => (float) ($m['ctr']            ?? 0),
+                'roas'           => (float) ($m['roas']           ?? 0),
+            ];
+        }
+        return $out;
+    }
+
+    /**
      * Wrapper try/catch sobre listAds() — diferencia "endpoint funcionou mas vazio"
      * de "endpoint retornou 404/5xx".
      *

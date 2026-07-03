@@ -312,6 +312,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Substitui `sugadores.mlbs` no botao "Copiar MLBs" da listagem — resolve
     // 422 para empresas ML-only (adman_account_id=NULL). Shape estavel 200.
     Route::get('/sugadores/{sugador}/mlbs-hint',    [SugadorController::class, 'mlbsHint'])->name('sugadores.mlbs-hint');
+    // Quick 2026-07-03 — Métricas Product Ads POR MLB (chips clicks/cost/units na secao "MLBs neste adgroup").
+    Route::get('/sugadores/{sugador}/mlbs-metrics-ml', [SugadorController::class, 'mlbsMetricsMl'])->name('sugadores.mlbs-metrics-ml');
     // Phase 30 Plan 30-04 — Botão "Forçar atualização" do drilldown.
     Route::post('/sugadores/refresh-adgroup-mlbs',  [SugadorController::class, 'refreshAdgroupMlbs'])->name('sugadores.refresh-adgroup-mlbs');
     Route::patch('/sugadores/{sugador}/status',     [SugadorController::class, 'updateStatus'])->name('sugadores.update-status');

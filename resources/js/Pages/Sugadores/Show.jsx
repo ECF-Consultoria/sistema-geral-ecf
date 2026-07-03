@@ -603,6 +603,8 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
     //      e' de empresa com adman_account_id. Empresas ML-only (caso ByMobille
     //      Teste #298) caem em 422 — supressao silenciosa, lista ML simples.
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
+    // Quick 2026-07-03 — métricas Product Ads por MLB via ML (paralelo ao Adman)
+    const [mlMetrics, setMlMetrics] = useState({});
     const [copied, setCopied] = useState(false);
 
     const load = async () => {
@@ -622,9 +624,32 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
         }
     };
 
+    // Quick 2026-07-03 — métricas por MLB via ML Product Ads. Sempre 200
+    // (endpoint retorna {mlbs: [], reason} quando empresa sem OAuth ML).
+    const loadMlMetrics = async () => {
+        try {
+            const res = await fetch(route('sugadores.mlbs-metrics-ml', sugadorId), {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const body = await res.json().catch(() => null);
+            if (!body || !Array.isArray(body.mlbs)) return;
+            const map = {};
+            for (const m of body.mlbs) {
+                if (m?.mlb_id) map[m.mlb_id] = m;
+            }
+            setMlMetrics(map);
+        } catch {
+            // Ignore silently — chips ML são enrichment opcional.
+        }
+    };
+
     // Auto-load: dispara assim que o componente monta.
     useEffect(() => {
-        if (sugadorId) load();
+        if (sugadorId) {
+            load();
+            loadMlMetrics();
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sugadorId]);
 
@@ -762,7 +787,13 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
 
             {items.length > 0 && (
                 <ul className="space-y-3">
-                    {items.map(m => <MlbRow key={m.mlb_id || m.listing_id} mlb={m} />)}
+                    {items.map(m => (
+                        <MlbRow
+                            key={m.mlb_id || m.listing_id}
+                            mlb={m}
+                            mlMetrics={mlMetrics[m.mlb_id] ?? null}
+                        />
+                    ))}
                 </ul>
             )}
         </div>
@@ -779,13 +810,18 @@ const mlbUrl = (mlbId) => {
     return `https://produto.mercadolivre.com.br/MLB-${digits}`;
 };
 
-function MlbRow({ mlb }) {
+function MlbRow({ mlb, mlMetrics = null }) {
     // Items ML-only nao trazem metricas Adman (investment/ads_revenue/acos etc).
     // Detecta o caso pra renderizar versao compacta — evita poluir UI com
     // "R$ 0,00" pra tudo quando o sugador e' de empresa ML-only.
     const hasAdmanMetrics = mlb.investment != null || mlb.ads_revenue != null
         || mlb.ads_sold_quantity != null || mlb.clicks != null;
     const listingId = mlb.mlb_id || mlb.listing_id;
+    // Quick 2026-07-03 — mostra chips ML Product Ads (clicks/cost/units) quando
+    // vier do endpoint mlbs-metrics-ml, mesmo se Adman também tiver métrica.
+    // ML é fonte em tempo real; Adman é sync D-1. UI dá prioridade ao ML.
+    const hasMlMetrics = mlMetrics
+        && (mlMetrics.clicks > 0 || mlMetrics.cost > 0 || mlMetrics.units_quantity > 0);
 
     return (
         <li className="flex gap-3 p-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.04] transition-colors">
@@ -826,6 +862,35 @@ function MlbRow({ mlb }) {
                         )}
                     </div>
                 </div>
+
+                {/* Quick 2026-07-03 — chips ML Product Ads (clicks/cost/units, 30d).
+                    Renderiza SEMPRE quando o endpoint mlbs-metrics-ml devolveu algo
+                    para este mlb_id — inclui casos com métricas Adman também
+                    (ML é fonte em tempo real, útil pra cross-check). */}
+                {hasMlMetrics && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-1">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ecf-yellow/[0.08] border border-ecf-yellow/25 text-ecf-yellow text-[10px] font-medium" title="Cliques em Product Ads nos últimos 30 dias">
+                            👁 {fmtInt(mlMetrics.clicks)} cliques
+                        </span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/[0.08] border border-red-500/25 text-red-300 text-[10px] font-medium" title="Investimento em Product Ads nos últimos 30 dias">
+                            💰 {fmtBRL(mlMetrics.cost)}
+                        </span>
+                        <span className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-medium',
+                            mlMetrics.units_quantity > 0
+                                ? 'bg-emerald-500/[0.08] border-emerald-500/25 text-emerald-300'
+                                : 'bg-white/[0.04] border-white/[0.08] text-white/60',
+                        )} title="Vendas atribuídas a Product Ads nos últimos 30 dias (não inclui orgânico)">
+                            🛒 {fmtInt(mlMetrics.units_quantity)} vendas ads
+                        </span>
+                        {mlMetrics.total_amount > 0 && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-white/70 text-[10px]" title="Receita atribuída a Product Ads (direta + indireta), últimos 30 dias">
+                                📈 {fmtBRL(mlMetrics.total_amount)}
+                            </span>
+                        )}
+                        <span className="text-white/30 text-[10px] italic">ML · 30d</span>
+                    </div>
+                )}
 
                 {hasAdmanMetrics && (
                     <>

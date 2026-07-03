@@ -543,6 +543,73 @@ class SugadorController extends Controller
     }
 
     /**
+     * Quick 2026-07-03 — Métricas Product Ads POR MLB dentro do adgroup do sugador.
+     *
+     * Alimenta a seção "MLBs neste adgroup" no Show.jsx com chips per-item:
+     * clicks + investimento (cost) + vendas (units_quantity). Só empresas com
+     * OAuth ML ativo (MercadoLivreAdsService::fetchItemMetricsForAdgroup).
+     *
+     * Empresas sem OAuth ML (só Adman ou nenhum) recebem 200 vazio + reason —
+     * o frontend cai no path Adman legado (mlbs endpoint) que já expõe métricas
+     * via Adman MCP.
+     *
+     * Janela: últimos 30d (mesma do sync/detector). Cache de listAds já é
+     * gerenciado dentro do MercadoLivreAdsService (Phase 41 patterns).
+     */
+    public function mlbsMetricsMl(Sugador $sugador, \App\Services\Sugadores\MercadoLivreAdsService $ads)
+    {
+        Gate::authorize('view', $sugador);
+
+        if ($sugador->tipo !== Sugador::TIPO_ADGROUP) {
+            return response()->json(['mlbs' => [], 'reason' => 'Somente adgroups têm métricas per-MLB.']);
+        }
+
+        if (!$sugador->adgroup_id) {
+            return response()->json(['mlbs' => [], 'reason' => 'Sugador sem adgroup_id.']);
+        }
+
+        $sugador->loadMissing('company.mlToken');
+        $company = $sugador->company;
+        $token   = $company?->mlToken;
+
+        if (!$token || $token->status !== 'active') {
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'Empresa sem OAuth ML ativo — use o endpoint Adman legado.',
+            ]);
+        }
+
+        try {
+            $adv         = $ads->discoverAdvertiser($company);
+            $advertiser  = $adv['advertiser_id'] ?? null;
+            if (!$advertiser) {
+                return response()->json(['mlbs' => [], 'reason' => 'Advertiser Product Ads não encontrado.']);
+            }
+            $dateTo   = now()->toDateString();
+            $dateFrom = now()->subDays(30)->toDateString();
+            $metrics  = $ads->fetchItemMetricsForAdgroup(
+                $company,
+                (int) $advertiser,
+                (string) $sugador->adgroup_id,
+                $dateFrom,
+                $dateTo,
+            );
+            return response()->json([
+                'mlbs'      => $metrics,
+                'total'     => count($metrics),
+                'window'    => ['from' => $dateFrom, 'to' => $dateTo],
+                'source'    => 'ml',
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning("[SugadorController::mlbsMetricsMl] falhou sugador={$sugador->id}: " . $e->getMessage());
+            return response()->json([
+                'mlbs'   => [],
+                'reason' => 'Falha ao consultar Product Ads: ' . $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
      * Muda o status de um sugador. Cria entrada em sugador_acoes (audit log).
      * Body: { status, acao_tomada?, observacao? }
      */
