@@ -15,6 +15,7 @@ e visibilidade de pendentes nos setores de destino. Cada fase entrega uma capaci
 ## Phases
 
 **Phase Numbering:**
+
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
@@ -76,9 +77,11 @@ Expansão profunda da API ECF Drive (já integrada em Phase 20 apenas pra /grant
 - [x] **Phase 22: Wrapper expandido EcfDriveService** - Expande `EcfDriveService` da Phase 20 com 18 métodos novos cobrindo `/clientes/*`, `/sellers/*`, `/carteira/*`, `/signals/*`, `/relatorios/*`. Cache estratégico por endpoint (5min listas, 1h ranking, 24h relatórios). Validações defensivas (`MET_VALIDAS` no ranking, ≤20 cust_ids em comparar, `dimensoes` não-vazio). **47 testes verdes** (27 Phase 22 + 20 Phase 20 regressão). Smoke W4 validou 4/5 chamadas em prod: `carteiraResumo` R$ 42,8M GMV maio/2026, `ranking` top1 RELOJOARIA WENUS R$ 2,7M, `listSignals` 778 alertas, `relatorioMensal` 202605. `ping()` retorna false (cosmético — `/auth/me` exige user session; follow-up: substituir endpoint). Sem UI por design — habilita Phases 23-28. (completed 2026-06-05, deployed)
 - [x] **Phase 23: Alertas Estratégicos (signals)** - Aba `/alertas-estrategicos` consumindo `/signals` em polling diário (MVP — webhook em Phase 26). Caixa de entrada do comercial com filtros por severidade e tipo (queda GMV, queda visitas, medalha rebaixada, score crítico, oportunidade PADS). Ação "marcar como visto" via `POST /signals/:id/ack`. **778 signals já detectados em prod** (61 críticos), destravando ação comercial imediata. Convive com Sugadores (operacional, adgroup-level) sem substituí-lo.
  (completed 2026-06-05)
+
 - [x] **Phase 24: Painel Executivo Carteira ECF** - Aba `/painel-executivo` com visão estratégica consolidada da carteira inteira ECF (~1238 sellers, R$ 42,8M GMV maio/26). 8 KPI cards com delta MoM colorido (TrendingUp/Down/Minus), gráfico histórico 12 meses com duplo eixo Y (GMV + Sellers), 4 tabs de breakdown (Programa/Frete/Cluster/Localidade) com PieChart + tabela. Try/catch global (ECF Drive offline não quebra pageload). Item "Painel Executivo" no topo da sidebar (só admin). 8 testes Feature verdes (71 assertions). (W1+W2+W3 completed 2026-06-05 — aguardando smoke visual W4)
 - [x] **Phase 25: Análise por Empresa (Sellers)** - Página `/empresas/{custId}/analise` com ficha 360° do seller usando `/sellers/{custId}`, métricas mensal/diário, histórico de medalhas, signals daquele seller, ranking. Destrava a substituição parcial do drilldown Adman MCP (frágil — Phase 19 lutou contra 429) para campos que ECF Drive cobre.
  (completed 2026-06-06)
+
 - [x] **Phase 26: Webhooks completos ECF Drive** - Receiver `POST /api/webhooks/ecf` validando HMAC SHA256 timing-safe (`X-ECF-Signature`) para 6 eventos: `sync.completed`, `sync.failed`, `etl.completed`, `grant.expirando`, `signal.detected`, `relatorio.gerado`. Idempotência via tabela `webhook_deliveries` (UNIQUE event_id), dispatch async via 6 Jobs em `app/Jobs/EcfWebhook/`, rate limit 600/min/IP, canal log dedicado `ecf-webhooks`. **Smoke real em prod**: 6,56ms latência (alvo <100ms), HMAC válido aceito, inválido rejeitado, idempotência confirmada. Webhook configurado no painel ECF Drive com todos os 6 eventos. (completed 2026-06-05, deployed; 6 testes Phase 26 verdes)
 - [x] **Phase 27: Concentração de Receita e Forecast** - Aba `/concentracao` (só admin) com 3 seções: (1) matriz heatmap programa × cluster via `/carteira/segmentacao`; (2) forecast 90 dias com regressão linear sobre `/carteira/historico` (3 cenários otimista/base/pessimista, R² na UI); (3) top 20 "vacas leiteiras silenciosas" (top 50 do ranking cruzado com coeficiente de variação das métricas mensais). `ForecastService` com 3 funções puras. 17 testes verdes (10 Unit + 7 Feature). **Insights reais em prod**: top vaca IMPERIALECOMMERCEOFICIAL (CV 4,3%, R$ 394k médio); top grant em risco RELOJOARIA WENUS (R$ 5,5M, 4d). 4 Planos de fix no mesmo dia (camelCase API, labels pt-BR sem expansão, lookup company nos grants, revert workaround após parceiro corrigir BrasilAPI — diversidade de razões sociais subiu de 1 para 235). (completed 2026-06-06, deployed)
 - [x] **Phase 28: Relatório Mensal Executivo automatizado** - Job mensal (dia 6 às 10h BRT, após webhook `relatorio.gerado` dia 5 09:00 UTC) consome `/relatorios/mensal/{timMonthId}` e gera PDF executivo via Dompdf, enviado por email à liderança. Onboarding rápido (mostra estado completo da carteira para novos gestores). Depende de Phase 26 para receber o webhook.
@@ -111,10 +114,13 @@ Migra o módulo Sugadores da Adman API para a API oficial do Mercado Livre via *
 - [x] **Phase 39: Provider pattern + MercadoLivreSugadoresProvider (sem gravar)** *(completed 2026-06-25 — 5/5 plans: 39-01 ✓ + 39-02 ✓ + 39-03 ✓ + 39-04 ✓ + 39-05 ✓; todas as 4 waves verdes; 48/48 Phase 39 tests; 65/65 Sugador acumulada — zero regressão)* - `SugadoresAdsProvider` contract + `AdmanSugadoresProvider` encapsulando lógica atual + `MercadoLivreSugadoresProvider` + `MercadoLivreAdsService` (retries, paginação, refresh token). Repositório `AdgroupMlbMapRepository` para esconder `adman_adgroup_mlbs`. `SugadorAnalysisService` refatorado pra resolver provider via DI (zero regressão validada por baseline). Comando `sugadores:analyze --provider={adman|ml} --company={id} --dry-run` retornando motivos sem upsert; guard ml_primary aborta `--provider=ml` sem `--dry-run` com exit 1 (proteção pré-Phase 42). Testes unitários de normalização com fixtures especulativas + Feature tests cobrindo command. Critério: `evaluateMetrics()` não sabe a origem.
 - [x] **Phase 40: Shadow mode + tabelas de comparação** - Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado, não toca scheduler Adman. Alvo de paridade: >= 95% de motivos. Conectar 1+ empresa Adman+ML para validar paridade (Bymobile não basta sozinha).
  (completed 2026-06-25)
+
 - [x] **Phase 41: Onboarding ML por empresa** - Tela admin: empresas ativas com `mlToken` válido/expirado/ausente/erro. Checklist por empresa (OAuth, seller_id, advertiser_id, scopes Ads, smoke, shadow). Política temporária: sem token → Adman; com token mas smoke falha → Adman + alerta; com shadow aprovado 7d → candidata a `ml_primary`. Tabela opcional `ml_advertisers` para cache de `advertiser_id`/`seller_id`/`site_id`. Rate limiter `ml-api:{seller_id}` por seller (não global) com backoff 429/5xx/401/403.
  (completed 2026-06-25)
+
 - [x] **Phase 42: Sugadores via API ML (troca de motor + esconder UI Dev paralela)** - Reorientação 2026-06-26 baseada em briefing do usuário (`fix-melhorias-sugadores-api-mercado-livre.md`). Migração ML deixa de ser feature visual paralela e vira troca silenciosa de motor: API ML alimenta o mesmo contrato normalizado (adgroup_id/campaign_id/investment/revenue/sold_quantity/clicks/impressions/cpc/ctr/acos/roas) que a Adman alimentava, mesmo `SugadorAnalysisService`, mesma tabela `sugadores`, mesma `/sugadores`, mesma `/sugadores/config/{company}`. Janela 30d fechados (ontem-29d → ontem). Sidebar item "Onboarding ML" da Phase 41 escondido (rota permanece como ferramenta técnica admin). Adiciona `cpc_minimo_cliques` em `sugador_configs` (Opção B do briefing §8). Preserva quarentena SGI, idempotência por chave estável e status travados (em_acao/resolvido/ignorado/movido/auto_resolvido). Piloto: ByMobille - Teste (#298). Detalhes locked em `.planning/phases/42-sugadores-api-ml/42-CONTEXT.md`.
  (completed 2026-06-26)
+
 - [ ] **Phase 43: Remoção da Adman (Sugadores)** - Só iniciar quando 100% das empresas ativas MLB tiverem `mlToken` válido + scheduler ML estável + 429 ML < 1% por 7d + contas grandes < 900s + suporte aceitar Adman não ser mais fallback. Remove env obrigatório `ADMAN_API_KEY` do path Sugadores (mantém pra Dashboard se ainda dependente). Renomeia `adman_adgroup_mlbs` → `sugador_adgroup_mlbs` via migration simples. Mantém compatibilidade de leitura no histórico.
 - [ ] **Phase 44: Mover adgroup-sugador para campanha SGI via API ML** *(adicionada 2026-06-26 a partir do quick `260626-qgf`; escopo reduzido na discuss-phase 2026-06-26 — só "Mover SGI"; "Pausar in-place" virou Phase 44b)* — Expõe ação destrutiva no `Show.jsx`: mover adgroup pra campanha SGI (quarentena pausada). Combobox com SGIs da conta (reusa `QUARANTINE_NAME_REGEX`) + botão "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável). Toast "Desfazer" por 10s sem persistência no DB. Depende de Phase 43 estabilizar. Plan 44-01 obrigatório: smoke do `PATCH` na API ML Product Ads antes de qualquer planejamento backend. Context: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
 - [ ] **Phase 44b (deferred): Pausar adgroup-sugador in-place via API ML** — `PATCH status=paused` sem mudar campanha. Originalmente parte do escopo Phase 44; reduzido na discuss-phase 2026-06-26 ("Mover SGI" é a ação organizacional canônica). Roda depois da Phase 44 estabilizar.
@@ -142,6 +148,7 @@ Captura inicial: `.planning/todos/pending/270627-melhorias-dashboard-desempenho-
 Desacopla o sistema da premissa "ML-first" para refletir a realidade da ECF Consultoria — que atende empresas em múltiplos marketplaces (Mercado Livre, Shopee, Amazon, Magazine Luiza, etc). Reorganização estrutural de menu, dashboards e áreas transversais + fundação de dados para futuros marketplaces. Roda em paralelo com v11.0 (Sugadores ML) e v12.0 (Carteira/Desempenho — Phase 47 congelada, 53 STANDBY).
 
 **Diretrizes:**
+
 - Publicação é setor **transversal** — atende todos marketplaces
 - Performance atende ML e Shopee (mesmo setor humano)
 - Empresas podem estar em >1 marketplace — view agregada obrigatória (Dashboard ECF)
@@ -158,18 +165,22 @@ Desacopla o sistema da premissa "ML-first" para refletir a realidade da ECF Cons
 ## Phase Details
 
 ### Phase 1: Diagnóstico Adman
+
 **Goal**: Admin pode inspecionar e controlar o sync Adman de cada empresa sem precisar de acesso ao servidor ou Artisan
 **Mode:** mvp
 **Depends on**: Nothing (first phase)
 **Requirements**: DEV-01, DEV-02, DEV-03, DEV-04
 **Success Criteria** (what must be TRUE):
+
   1. Admin vê uma lista de empresas com a data/hora exata do último sync Adman de cada uma
   2. Admin clica em uma empresa e vê o payload bruto retornado pela API Adman (ou a mensagem de erro HTTP) daquele sync
   3. Admin vê o diff do sync: quantos registros foram criados, atualizados e ignorados
   4. Admin clica em "Disparar sync" de uma empresa específica e o sync é enfileirado e executado em background
+
 **Plans**: 3 plans
 
 Plans:
+
 - [x] 01-01-PLAN.md — Fundação de dados e contrato de testes (migration + AdmanSyncLog + Company rels + 5 testes RED)
 - [x] 01-02-PLAN.md — Backend end-to-end: DevController + AdmanService logging + rotas (testes GREEN)
 - [x] 01-03-PLAN.md — UI inline SyncAdmanSection + npm run build + checkpoint humano
@@ -177,66 +188,82 @@ Plans:
 **UI hint**: yes
 
 ### Phase 2: Monitoramento de Jobs
+
 **Goal**: Admin pode acompanhar o estado da fila de jobs em tempo real e investigar falhas sem abrir o servidor
 **Mode:** mvp
 **Depends on**: Phase 1
 **Requirements**: DEV-05
 **Success Criteria** (what must be TRUE):
+
   1. Admin vê contadores de jobs pendentes, em execução e falhados
   2. Admin expande um job falhado e lê o payload completo e a stack trace da exceção
   3. Admin pode retentar ou descartar um job falhado via botão na interface
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 3: Observabilidade
+
 **Goal**: Admin pode ler logs de erro e inspecionar o ambiente de execução diretamente no painel
 **Mode:** mvp
 **Depends on**: Phase 2
 **Requirements**: DEV-06, DEV-07
 **Success Criteria** (what must be TRUE):
+
   1. Admin vê as entradas mais recentes de erro e warning do log do Laravel sem acesso ao servidor
   2. Admin vê informações do ambiente: versão PHP, driver de fila, driver de cache e uptime do processo
   3. Admin pode filtrar os logs por nível (error / warning) e ver a mensagem completa de cada entrada
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 4: Configurações
+
 **Goal**: Admin pode visualizar e editar flags de configuração do sistema diretamente no painel, sem editar arquivos .env no servidor
 **Mode:** mvp
 **Depends on**: Phase 3
 **Requirements**: DEV-08
 **Success Criteria** (what must be TRUE):
+
   1. Admin vê uma lista de configurações/flags do sistema com seus valores atuais
   2. Admin edita o valor de uma flag e salva — a mudança persiste entre sessões
   3. Alterações de configuração ficam registradas no activity log com o usuário que as fez
+
 **Plans**: TBD
 **UI hint**: yes
 
 ### Phase 5: Fundação Fechamento
+
 **Goal**: Banco de dados e model Company preparados para suportar tipo de serviço e datas de contrato; sidebar renomeado para "Fechamento"
 **Mode:** mvp
 **Depends on**: Phase 1 (infra admin existente)
 **Requirements**: FCH-01, FCH-02, FCH-03, CFG-01
 **Success Criteria** (what must be TRUE):
+
   1. A rota `/administrativo/financeiro` continua acessível e o label no sidebar exibe "Fechamento" (não "Financeiro")
   2. A migration `add_service_fields_to_companies` existe e foi executada; as colunas `service_type` (enum: polo/assessoria/incubadora), `contract_start`, `contract_end` e `additional_service` existem na tabela `companies`
   3. Todas as empresas cadastradas aparecem na tela Fechamento, incluindo aquelas sem integração Adman — estas exibem badge "Sem integração"
   4. Admin consegue salvar o tipo de serviço de uma empresa (POLO / Assessoria / Incubadora) via formulário inline; o valor persiste após recarregar a página
   5. Admin consegue salvar as datas de início e encerramento de contrato de uma empresa; os valores persistem após recarregar a página
+
 **Plans**: 3 plans
 
 Plans:
 
 **Wave 1**
+
 - [x] 05-01-PLAN.md — Migration + Company model + stubs de teste Wave 0 (FCH-02, FCH-03)
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 05-02-PLAN.md — AdminController fechamento()/updateFechamento() + rota PATCH (FCH-01, FCH-02, FCH-03)
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 05-03-PLAN.md — Financeiro.jsx reescrito + AppLayout label + npm run build + checkpoint humano (FCH-01, CFG-01)
 
 Cross-cutting constraints:
+
 - `EnsureUserHasRole` middleware obrigatório em todas as rotas admin (Plans 02, 03)
 - Carbon `?->toDateString()` para serialização de datas em props Inertia (Plans 02, 03)
 - `npm run build` obrigatório após qualquer edição JSX (Plan 03)
@@ -244,27 +271,33 @@ Cross-cutting constraints:
 **UI hint**: yes
 
 ### Phase 6: Backend Fechamento
+
 **Goal**: Query de aggregation sobre adman_metrics entrega faturamento mensal por empresa com período coberto; calcularFaixa() determina valor a cobrar; props chegam ao frontend via Inertia
 **Mode:** mvp
 **Depends on**: Phase 5
 **Requirements**: FCH-04, FCH-05
 **Success Criteria** (what must be TRUE):
+
   1. A query `SUM(adman_metrics.revenue) GROUP BY company_id` retorna o faturamento acumulado no mês corrente sem nenhuma chamada HTTP à API Adman
   2. O período coberto ("01/05 a 18/05") é calculado dinamicamente com base nos registros presentes em `adman_metrics` e sempre aparece associado ao faturamento da empresa
   3. Empresas sem nenhum registro em `adman_metrics` no mês corrente recebem estado `sem_dados` e não entram no total consolidado
   4. `calcularFaixa()` aplica a tabela de progressão corretamente: dado um faturamento de entrada, retorna a faixa correspondente e o valor mensal a cobrar
   5. O controller Inertia entrega todos os campos necessários (faturamento, faixa, valor, período, estado) para cada empresa no array de props
+
 **Plans**: 2 plans
 
 Plans:
 
 **Wave 1**
+
 - [x] 06-01-PLAN.md — calcularFaixa() + const FAIXAS + CalcularFaixaTest GREEN + 8 stubs de feature RED (FCH-04, FCH-05)
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 06-02-PLAN.md — fechamento() expandido com aggregation query + todos os 16 testes GREEN (FCH-04, FCH-05)
 
 Cross-cutting constraints:
+
 - `whereNotNull('revenue')` obrigatório na aggregation para evitar distorção por revenue null (Plans 02)
 - `Carbon::parse()` obrigatório antes de `->format('d/m')` em campos retornados por selectRaw (Plan 02)
 - `(float)` cast obrigatório antes de passar faturamento para calcularFaixa() (Plan 02)
@@ -272,24 +305,29 @@ Cross-cutting constraints:
 - `updateFechamento()` não deve ser alterado em nenhum plano desta fase (Plans 01, 02)
 
 ### Phase 7: UI Fechamento
+
 **Goal**: Financeiro.jsx reescrita como tela Fechamento completa: lista de empresas com estado, barra de progresso por faixa, campo de serviço adicional e total consolidado visível
 **Mode:** mvp
 **Depends on**: Phase 6
 **Requirements**: FCH-06, FCH-07, FCH-08
 **Success Criteria** (what must be TRUE):
+
   1. Empresas com faturamento válido exibem barra de progresso mostrando posição na faixa atual e o valor que falta para atingir a próxima faixa
   2. Empresas na faixa máxima (faturamento > R$5M) exibem o texto "Faixa máxima" sem nenhuma barra de progresso
   3. O total consolidado exibido no topo da página soma apenas as empresas com estado `ok` (excluindo `sem_integracao` e `sem_dados`)
   4. O campo de serviço adicional aparece por empresa (valor visível ou placeholder "—"); não há lógica de cálculo associada nesta fase
   5. O período coberto ("01/05 a 18/05") está sempre visível na UI, associado ao bloco de faturamento de cada empresa
+
 **Plans**: 1 plan
 
 Plans:
 
 **Wave 1**
+
 - [x] 07-01-PLAN.md — Financeiro.jsx expandido (TotalConsolidado + FaixaProgresso + FechamentoRow + FechamentoAccordion) + npm run build + checkpoint humano (FCH-06, FCH-07, FCH-08, CFG-01)
 
 Cross-cutting constraints:
+
 - `autonomous: false` — requer checkpoint humano de verificação visual (D-15)
 - `npm run build` obrigatório após edições JSX
 - Nenhuma mudança de backend, rota ou teste PHP — apenas Financeiro.jsx
@@ -297,31 +335,38 @@ Cross-cutting constraints:
 **UI hint**: yes
 
 ### Phase 8: Fundação de Notificações
+
 **Goal**: A infraestrutura mínima de notificações (tabela `notifications` do Laravel, classe `Notification` base e a permission `notificacoes.criar` no catálogo) existe e está disponível para que qualquer outra fase possa criar e ler notificações
 **Mode:** mvp
 **Depends on**: Phase 7 (último estado estável do sistema antes do v3.0)
 **Requirements**: PERM-01, PERM-02, PERM-03
 **Success Criteria** (what must be TRUE):
+
   1. A tabela `notifications` (schema nativo do Laravel: `id` uuid, `type`, `notifiable_id`, `notifiable_type`, `data` json, `read_at`, `created_at`, `updated_at`) existe e foi migrada
   2. A permission_key `notificacoes.criar` aparece no catálogo retornado por `App\Support\Permissions::all()` com label e descrição em pt-BR, sob o grupo "Notificações"
   3. Qualquer usuário admin retorna `true` em `$user->hasPermission('notificacoes.criar')` sem precisar de atribuição manual (short-circuit já existente)
   4. Qualquer usuário cadastrado em `setor_lideres` (líder de qualquer setor) retorna `true` em `$user->hasPermission('notificacoes.criar')` automaticamente, sem precisar de atribuição manual ao setor
   5. A permission_key `notificacoes.criar` consta no array `Permissions::AUTO_LIDERANCA`
+
 **Plans**: 4 plans
 
 Plans:
 
 **Wave 1**
+
 - [x] 08-01-PLAN.md — Slice 1 Storage: migration `notifications` (schema canônico Laravel 12) + esqueleto da suíte Phase8FoundationTest com Test 1 GREEN
 
 **Wave 2** *(blocked on Wave 1 completion)*
+
 - [x] 08-02-PLAN.md — Slice 2 Domain types: enum `Categoria` (backed string, 3 cases) + classe abstrata `BaseNotification` (construtor 6 params, via=database, toArray 6 chaves) + Test 7 smoke E2E GREEN
 - [x] 08-03-PLAN.md — Slice 3 Permission catalog: 3 edições cirúrgicas em `Permissions.php` (constante + grupo `Notificações` + AUTO_LIDERANCA) + Tests 2/3/4 GREEN (PERM-01, PERM-03 registro)
 
 **Wave 3** *(blocked on Wave 2 completion)*
+
 - [x] 08-04-PLAN.md — Slice 4 Authorization resolution E2E: Tests 5/6 GREEN via `User::hasPermission` (admin short-circuit, líder via AUTO_LIDERANCA merge) — suíte 7/7 verde (PERM-02, PERM-03 E2E)
 
 Cross-cutting constraints:
+
 - Não modificar `app/Models/User.php` (D-10: short-circuit + AUTO_LIDERANCA merge existentes cobrem PERM-02/03)
 - Não criar subclasses concretas de `BaseNotification` (D-04: ficam para Phases 11/12)
 - Migration timestamp estritamente posterior a `2026_05_20_200008` (Pitfall 6 do RESEARCH)
@@ -329,11 +374,13 @@ Cross-cutting constraints:
 - `php artisan migrate` e `php artisan test` rodam no host XAMPP (CLI PHP não disponível no agente)
 
 ### Phase 9: Backend de Leitura, Contador e Polling
+
 **Goal**: O backend expõe o contador de não lidas como shared prop Inertia, oferece endpoint JSON de polling, lista as notificações do usuário autenticado e permite marcar uma ou todas como lidas — tudo testável via HTTP/Tinker antes da UI existir
 **Mode:** mvp
 **Depends on**: Phase 8
 **Requirements**: POLL-01, POLL-02, POLL-03, HIST-01, HIST-03, HIST-04
 **Success Criteria** (what must be TRUE):
+
   1. Em toda página Inertia, a prop compartilhada `notificacoes_nao_lidas` está presente e reflete a contagem real de notificações `read_at IS NULL` do usuário autenticado (zero quando não houver)
   2. Após qualquer navegação Inertia (visita a outra rota), a shared prop é recalculada automaticamente sem precisar de requisição manual adicional
   3. O endpoint `GET /api/notificacoes/contador` (autenticado) responde JSON `{ "count": N }` com a contagem atual de não lidas do usuário e pode ser chamado repetidamente para alimentar o polling do frontend
@@ -342,11 +389,13 @@ Cross-cutting constraints:
   6. Existe endpoint para marcar todas as notificações não lidas do usuário como lidas em uma única requisição
 
 ### Phase 10: UI do Sino e Página de Histórico
+
 **Goal**: Usuário autenticado interage com suas notificações pela primeira vez: vê o sino no header com badge de não lidas, abre o dropdown com as 10 mais recentes, clica para marcar como lida e acessa a página `/notificacoes` com abas e marcação em massa
 **Mode:** mvp
 **Depends on**: Phase 9
 **Requirements**: SINO-01, SINO-02, SINO-03, SINO-04, SINO-05, SINO-06, HIST-02, HIST-05
 **Success Criteria** (what must be TRUE):
+
   1. Em qualquer página autenticada, o ícone de sino aparece no canto superior direito do `AppLayout` com badge numérico quando há notificações não lidas, e o badge some quando a contagem é zero
   2. Ao clicar no sino, o dropdown abre exibindo as 10 notificações mais recentes (não lidas + recentes) com título, prévia, autor (quando manual), tempo relativo ("há 5min") e indicador visual de não lida
   3. Ao clicar em uma notificação não lida dentro do dropdown, ela é marcada como lida no backend e o badge do sino decrementa imediatamente, sem reload da página
@@ -354,14 +403,17 @@ Cross-cutting constraints:
   5. A página `/notificacoes` exibe abas "Não lidas" (default) e "Todas" — a aba "Todas" inclui lidas com até 30 dias; alternar abas troca a lista exibida
   6. Cada item da lista mostra título, mensagem completa, origem (nome do autor para manual, ou rótulo "Sistema"), ícone/cor por categoria do evento e data/hora absoluta
   7. O botão "Marcar todas como lidas" zera o badge e move todas as não lidas da aba para o estado lido em uma única ação
+
 **UI hint**: yes
 
 ### Phase 11: Disparos Automáticos de Metas
+
 **Goal**: Sempre que uma meta de qualquer tipo (`SetorGoal`, `Goal` de empresa, `PortfolioGoal`) é atribuída ou atinge seu `target_value`, o público correto recebe a notificação automaticamente sem ação manual do admin
 **Mode:** mvp
 **Depends on**: Phase 9 (dispatch + leitura já funcionam) e Phase 10 (UI para o usuário ver o efeito)
 **Requirements**: AUTO-01, AUTO-02, AUTO-03, AUTO-04, AUTO-05, AUTO-06
 **Success Criteria** (what must be TRUE):
+
   1. Quando uma `SetorGoal` é criada, cada membro daquele setor (relação `user_setores`) recebe a notificação "Nova meta do setor: [descrição]" visível no sino e na página de histórico
   2. Quando uma `Goal` (meta de empresa) é criada, o consultor e o mentor vinculados àquela empresa (relação `company_users`) recebem a notificação "Nova meta para [empresa]: [descrição]"
   3. Quando uma `PortfolioGoal` é criada, o dono da carteira (`user_id`) recebe a notificação "Nova meta de carteira: [descrição]"
@@ -370,11 +422,13 @@ Cross-cutting constraints:
   6. Quando o resultado de uma `PortfolioGoal` atinge o `target_value`, o dono da carteira + todos os admins recebem a notificação "Meta atingida: sua carteira alcançou [métrica]"
 
 ### Phase 12: Criação Manual, Permissão na UI de Setores e Cleanup
+
 **Goal**: Usuário com permissão `notificacoes.criar` envia notificações manuais com targeting (usuário / setor / líderes / todos); a permissão aparece e pode ser atribuída em `/sistema/setores`; o sistema mantém a tabela enxuta via cleanup diário e registra envios manuais no activity log
 **Mode:** mvp
 **Depends on**: Phase 9 (endpoints prontos), Phase 10 (UI base para destinatários verem), Phase 11 (dispatch maduro)
 **Requirements**: ENVIO-01, ENVIO-02, ENVIO-03, ENVIO-04, ENVIO-05, PERM-04, POLL-04, POLL-05
 **Success Criteria** (what must be TRUE):
+
   1. Usuário com a permissão `notificacoes.criar` vê o item "Enviar notificação" no sidebar do `AppLayout` e consegue abrir a página `/notificacoes/nova`
   2. Na tela de envio, o usuário consegue escolher o público entre: (a) usuário individual via busca, (b) um setor inteiro, (c) todos os líderes (qualquer usuário em `setor_lideres`), ou (d) todos os usuários ativos
   3. O envio só é aceito quando título (máx 100 caracteres) e mensagem (máx 1000 caracteres) estão preenchidos — formulário bloqueia submissão e exibe mensagem de erro caso contrário
@@ -383,14 +437,17 @@ Cross-cutting constraints:
   6. Na página `/sistema/setores`, a permissão `notificacoes.criar` aparece na lista de chaves atribuíveis e pode ser concedida ao setor "Administrativo" ou a qualquer outro setor — usuários do setor passam a tê-la imediatamente após salvar
   7. O scheduled command `notifications:cleanup` está declarado em `routes/console.php` rodando diariamente e, ao executar, remove notificações com `read_at` mais antigo do que 30 dias (não toca em não lidas)
   8. Cada envio manual gera entrada no `activity_log` registrando o autor, o público-alvo escolhido e a contagem de destinatários efetivos; disparos automáticos das fases anteriores não são logados
+
 **UI hint**: yes
 
 ### Phase 13: Reestruturação do Cadastro de Empresas
+
 **Goal**: Setor Comercial é a única porta de entrada para cadastro de novas empresas; o cadastro roteia automaticamente por service_type criando os registros corretos em cada tabela; mlb_empresas existentes sem company_id são migradas retroativamente; setores de destino veem empresas pendentes nas suas páginas existentes
 **Mode:** mvp
 **Depends on**: Phase 12 (sistema de notificações para alertar líderes de setor)
 **Requirements**: COM-01, COM-02, COM-03, COM-04, COM-05, COM-06, COM-07, COM-08, COM-09, COM-10, COM-11
 **Success Criteria** (what must be TRUE):
+
   1. Usuário do Comercial (ou admin) acessa `/comercial/empresas/novo` e vê formulário com campos Nome, CNPJ, service_type e subtipo condicional; usuário sem permissão `comercial.cadastrar_empresa` recebe 403
   2. Ao cadastrar empresa tipo POLOS: `companies` (status='pendente') + `mlb_empresas` (tipo=POLO, projeto=POLOS) + `mlb_implementacao` (token + dadosPadrao() + implementacaoPadroes()) criados atomicamente em DB::transaction
   3. Ao cadastrar empresa tipo Assessoria: `companies` (status='pendente') + `mlb_empresas` (tipo=ASSESSORIA); tipo Publicidade/Gestão: apenas `companies` (status='pendente')
@@ -398,9 +455,11 @@ Cross-cutting constraints:
   5. Líderes do setor de destino recebem notificação automática via sistema de notificações (Phases 8-12) ao novo cadastro
   6. Migration de dados cria companies para todos os mlb_empresas sem company_id (idempotente), derivando service_type automaticamente, e preenche mlb_empresas.company_id; todos os registros existentes recebem status='ativo'
   7. Guard de duplicatas bloqueia cadastro com nome igual (case-insensitive) a companies.name ou mlb_empresas.nome existente
+
 **Plans**: 4 plans
 
 Plans:
+
 - [x] 13-01-PLAN.md -- Migrations de schema (companies.status + mlb_empresas.company_id) + rename polo->polos + fix AdminController + Financeiro.jsx labels
 - [x] 13-02-PLAN.md -- Permission comercial.cadastrar_empresa + setor Comercial + migration retroativa idempotente mlb_empresas
 - [x] 13-03-PLAN.md -- ComercialController + EmpresaCadastradaNotification + rotas /comercial/* + suíte Phase13ComercialTest
@@ -409,11 +468,13 @@ Plans:
 **UI hint**: yes
 
 ### Phase 14: Consolidação do Modelo de Serviços (Frente B)
+
 **Goal**: Modelo unificado em `contratos_servico` — os 5 campos legacy de `companies` (`service_type`, `contract_start`, `contract_end`, `additional_service`, `additional_service_price`) substituídos pelo modelo N:N introduzido na quick task 260526-jgj (Frente A); Fechamento, Comercial e demais consumidores migrados sem alterar resultados financeiros
 **Mode:** mvp
 **Depends on**: Phase 13 (cadastro Comercial usa service_type), quick task 260526-jgj (Frente A — catálogo + tabela N:N já criados)
 **Requirements**: SVC-01, SVC-02, SVC-03, SVC-04, SVC-05, SVC-06, SVC-07
 **Success Criteria** (what must be TRUE):
+
   1. Migration de dados popula `servicos` com os 6 tipos canônicos legacy (`publicacao`, `polos`, `assessoria`, `incubadora`, `publicidade`, `gestao`) — `valor_padrao=0`, `tipo_cobranca='mensal'`, `ativo=true` — e cria `contratos_servico` correspondentes para cada empresa, preservando `contract_start`/`contract_end` como `data_contratacao`/`data_vencimento`
   2. Para empresas com `additional_service` não-vazio, migration cria um `servicos` adicional (find-or-create por nome) + `contratos_servico` com `valor_contratado=additional_service_price`, mantendo as datas do contrato principal
   3. `AdminController::fechamento` calcula `cobranca_mensal` como `faixaData['valor']` + SUM(`contratos_servico.valor_contratado` WHERE `ativo=true` AND `tipo_cobranca='mensal'`); valor confere com o cálculo pré-refatoração para toda empresa que tinha `additional_service_price` preenchido
@@ -423,28 +484,35 @@ Plans:
   7. Migration de schema descarta as 5 colunas legacy de `companies`; `down()` recria estrutura (sem rollback de dados pós-drop, documentado na migration)
   8. `EmpresaCadastradaNotification` e `EnviarRelatorioFechamentoJob` adaptados para consumir `contratos_servico`; conteúdo de notificações e email do relatório de fechamento permanece equivalente ao pré-refatoração
   9. Após a refatoração, `grep -rE 'service_type|contract_start|contract_end|additional_service|additional_service_price' app/ resources/js/` retorna zero matches em código aplicativo (migrations históricas excluídas)
+
 **Plans**: 7 plans
 
 Plans:
 
 **Wave 0** *(prep work — nenhum impacto em produção)*
+
 - [x] 14-01-PLAN.md — CobrancaCalculator helper + comando phase14:verificar-cobranca + 2 suítes de testes (SVC-02)
 
 **Wave 1** *(blocked on Wave 0)*
+
 - [x] 14-02-PLAN.md — Migrations 1 (seed_servicos_catalog) + 2 (migrate_legacy_service_data) idempotentes + testes (SVC-01)
 
 **Wave 2** *(blocked on Wave 1 — paralelizável internamente entre 14-03 e 14-04)*
+
 - [x] 14-03-PLAN.md — Refator de 6 consumers PHP (Company, AdminController×3 sites, MlbController, CompanyController, EmpresaCadastradaNotification, EnviarRelatorioFechamentoJob) + 2 suítes (golden cobranca + filtro JOIN) (SVC-02, SVC-04, SVC-07)
 - [x] 14-04-PLAN.md — ComercialController.store reescrito + NovaEmpresa.jsx seletor multi + helper servicoDisparaImplementacao + 2 suítes (helper + roteamento Phase 13 preservado) (SVC-05)
 
 **Wave 3** *(blocked on Wave 2)*
+
 - [x] 14-05-PLAN.md — Admin/Financeiro.jsx substitui editor por seção de contratos (reusa rotas Frente A) + 3 Blade views usam service_type_label accessor + UAT humano deferido (SVC-03, SVC-04)
 
 **Wave 4** *(blocked on Wave 3; 14-06 e 14-07 sequenciais entre si)*
+
 - [x] 14-06-PLAN.md — Pre-flight `phase14:verificar-cobranca --abort-on-divergence` + Migration 3 aplicada localmente (drop 6 colunas, down recria TEXT) + cleanup backend (Company.php $fillable/$casts/logOnly, controllers/job/notification/comando) (SVC-06, SVC-04)
 - [x] 14-07-PLAN.md — Cleanup dos 5 JSX consumers (Admin/Empresas, Comercial/Empresas, Mlb/Empresas, Companies/Index, Admin/Financeiro fragmentos) + smoke test humano fim-a-fim deferido (SVC-04, SVC-06)
 
 Cross-cutting constraints:
+
 - `phase14:verificar-cobranca --abort-on-divergence` é gate obrigatório antes de Plan 14-06 (drop irreversível)
 - Comentários e mensagens em pt-BR (CLAUDE.md mandate)
 - `npm run build` obrigatório após cada edição JSX (Pitfall 6 do RESEARCH)
@@ -454,11 +522,13 @@ Cross-cutting constraints:
 **UI hint**: yes
 
 ### Phase 15: Sugadores — UI por Empresa + Auto-resolução + Atalhos Operacionais
+
 **Goal**: A aba `/sugadores` muda do paradigma "lista global paginada" para "cards por empresa com drilldown filtrado"; a análise diária auto-resolve sugadores `pendente` que não foram re-detectados na nova rodada (combate acúmulo); operadores ganham botão de copy em massa dos MLBs no drilldown do AdGroup e reanálise direto do card da empresa.
 **Mode:** mvp
 **Depends on**: Phase 14 (sistema estável após cleanup de serviços) + módulo Sugadores existente (já entregue em milestone anterior)
 **Requirements**: SUG-01, SUG-02, SUG-03, SUG-04, SUG-05, SUG-06, SUG-07 *(novos — registrar em REQUIREMENTS.md durante o discuss/plan)*
 **Success Criteria** (what must be TRUE):
+
   1. `/sugadores` exibe grid de **cards de empresa** como visão padrão — cada card mostra nome da empresa, contagem de sugadores `pendente` identificados HOJE em destaque, total de pendentes acumulados, e timestamp da última análise daquela empresa
   2. Cards estão ordenados por `count_hoje DESC, total_pendentes DESC, nome ASC`; clicar no card abre o drilldown da empresa (lista filtrada com `company_id` pré-aplicado) mantendo todos os filtros existentes (tipo/status/data/include_resolved); modo "lista global" continua acessível via toggle (compat com bookmarks)
   3. No drilldown de MLBs do AdGroup (`Sugadores/Show.jsx` → `mlbs`), **botão "Copiar MLBs"** copia a lista completa (ex: `MLB1234,MLB5678,...`) para o clipboard via `navigator.clipboard.writeText`; quando há MLBs com `matches_adgroup=true`, aparece botão extra "Copiar prováveis" com a sub-lista
@@ -466,9 +536,11 @@ Cross-cutting constraints:
   5. Após análise diária de uma empresa, sugadores com `status=pendente` e `reference_date < hoje` daquela empresa cujo `(tipo, campaign_id, adgroup_id)` NÃO consta no upsert atual são marcados como `auto_resolvido` (novo status), com `resolvido_em=now()`, `resolvido_por=null` e entrada de `SugadorAcao` com `acao=auto_resolvido`; STATUS_TRAVADOS (`em_acao`, `resolvido`, `ignorado`, `movido`) NÃO são tocados
   6. Sugadores com `status=auto_resolvido` aparecem visualmente diferentes na listagem (badge cinza/verde claro com tooltip "Resolvido automaticamente pelo sistema"), são excluídos do count "Pendentes" mas contam no histórico filtrável (mesmo tratamento de `resolvido`)
   7. Filtro persistente leve: ao abrir o drilldown de uma empresa, a UI grava em `localStorage` (`sugadores:last_company_id`); ao reabrir `/sugadores` na mesma sessão, oferece chip "Continuar com [Empresa X]" — clicar restaura o drilldown. Sem auto-redirect (analista pode querer ver os cards novamente)
+
 **Plans**: TBD (a definir pelo planner — provavelmente 3-4 plans: 1 backend auto-resolução + 2 frontend cards/copy/restore + 1 testes)
 
 Cross-cutting constraints:
+
 - pt-BR em comentários, mensagens e activity log (CLAUDE.md mandate)
 - `npm run build` obrigatório após cada edição JSX
 - Reusar rotas existentes (`sugadores.analyze-company`, `sugadores.index?company_id=`) — não criar endpoints duplicados
@@ -480,11 +552,13 @@ Cross-cutting constraints:
 **UI hint**: yes
 
 ### Phase 16: Adequação à cadência D-1 da API Adman
+
 **Goal**: Reduzir chamadas à API Adman de ~2k/hora para ~168/dia alinhando schedule, caches e UX ao fato de que a Adman é D-1 (atualiza 1× ao dia, às 10h BRT, com limite de 10 req/min por API key). Eliminar o 429 crônico em produção sem perder funcionalidade.
 **Mode:** mvp
 **Depends on**: Phase 15 (módulo Sugadores estável) + confirmação Adman: "API D-1 atualiza às 10h" + doc Adman "10 req/min por API key"
 **Requirements**: ADM-01 a ADM-08 *(novos — registrar em REQUIREMENTS.md durante o discuss/plan)*
 **Success Criteria** (what must be TRUE):
+
   1. Schedule `adman:sync` roda **1× por dia às 11h BRT** (cron `0 11 * * *`) — não mais `everyFiveMinutes()`
   2. Cascata reorganizada para depois das 11h: `adman:sync` (11:00) → `adman:sync-faturamento` (11:30) → `calculate-goal-results` (11:45) → `calculate-setor-goal-results` (11:55) → `sugadores:analyze` (12:00) → `sugadores:cleanup-quarentena` (12:30) → `RefreshGrossBillingCacheJob` (12:45, 1×/dia)
   3. `AdmanService` documenta a constante `ADMAN_RATE_LIMIT_RPM = 10`; throttle entre chamadas sequenciais ajustado para **7 segundos** (folga sobre o limite de 6s teórico) — implementado em `SyncAdmanData` command e `RefreshGrossBillingCacheJob`
@@ -493,9 +567,11 @@ Cross-cutting constraints:
   6. Botão **"Reanalisar"** no card de Sugadores (Phase 15) só fica ativo se `NÃO houve sync no dia atual`; quando bloqueado mostra `"Análise diária já rodou hoje · próxima amanhã às 12h"`; lookup via `AdmanSyncLog::whereDate('created_at', today())->where('company_id', $id)->exists()`
   7. UI mostra disclaimer **"Dados D-1 da Adman"** com tooltip explicativo em Dashboard, Fechamento e cards de Sugadores
   8. Logs do servidor durante 24h pós-deploy mostram **zero 429** em uso normal; `php artisan tinker` rodando `(new AdmanService)->fetchPerformance(...)` 10× seguidas sem dormir mostra throttling automático e sem 429
+
 **Plans**: TBD (a definir pelo planner — sugestão: 3 plans — backend schedule+cache+throttle / UI remoção botão sync + disclaimers / UI bloqueio reanalisar + testes)
 
 Cross-cutting constraints:
+
 - pt-BR em comentários, mensagens flash e activity log
 - `npm run build` obrigatório após cada edição JSX
 - **NÃO quebrar** dados existentes — caches antigos expiram naturalmente (TTL atual ≤ 60min); novos TTLs aplicam-se a partir do próximo refresh
@@ -538,11 +614,13 @@ v4.0 phases execute in order: 13 → 14
 | 19. Sugadores — Foco no dia + Atalhos + Fix MCP | 1/1 | Complete   | 2026-06-03 |
 
 ### Phase 18: Dashboard precisa e com filtros empilháveis
+
 **Goal**: Aplicar diretamente as duas regras-mestras do projeto (**acertividade** + **praticidade**) na Dashboard, eliminando 3 bugs reportados pelo usuário em 2026-06-02. Os dados mostrados ao admin precisam (a) refletir o período selecionado, (b) preservar todos os filtros simultaneamente, e (c) bater com a Adman para o mesmo range.
 **Mode:** mvp (slice por bug)
 **Depends on**: Phase 16 (cache D-1 + `RefreshGrossBillingCacheJob` em produção). Phase 18 NÃO requer mudança de schema.
 **Requirements**: DASH-01 a DASH-06 *(novos — registrar durante o plan)*
 **Success Criteria** (what must be TRUE):
+
   1. **Filtros empilháveis**: o usuário pode selecionar empresa + período + analista + estrategista em qualquer ordem; nenhum se perde ao alterar outro. Fix da inconsistência camelCase (`companyFilter`) ↔ snake_case (`company_id`) em [DashboardController:386](app/Http/Controllers/DashboardController.php) ↔ [Admin.jsx:95](resources/js/Pages/Dashboard/Admin.jsx). Frontend e backend usam exclusivamente snake_case (`company_id`, `consultor_id`, `estrategista_id`, `period`).
   2. **Período afeta TODOS os cards**: trocar o seletor de período (1d/7d/30d/180d) recalcula `total_revenue`, `total_ad_investment`, `avg_tacos`, `avg_margin`, `total_net_billing` e demais cards. Não há mais range `$dateFrom30d` hardcoded; tudo deriva de `$period` via helper `getPeriodRange(string $period): array{from: string, to: string}`.
   3. **Auditoria de divergência executada**: comando Artisan `dashboard:audit-billing-divergence [--period=N]` que, para cada empresa ativa com `cust_id`, compara `AdmanService::fetchPerformance` (fonte autoritativa) com `SUM(adman_metrics.revenue)` no mesmo range e imprime tabela de discrepâncias. Output: empresas sem `cust_id` mapeado, empresas com sync faltando dias, magnitude do gap por empresa, soma total da divergência absoluta e em %. Roda em produção via SSH sem efeito colateral (read-only).
@@ -551,6 +629,7 @@ v4.0 phases execute in order: 13 → 14
   6. **Testes** cobrem: (a) `applyFilter('period', '7')` preserva `company_id` na URL, (b) `applyFilter('company_id', '5')` preserva `period` na URL, (c) range derivado de `$period` é aplicado em TODAS as queries do controller (não só série temporal), (d) auditoria detecta empresa propositalmente sem `cust_id` e sem `adman_metrics` no range.
 
 **Plans**: TBD (sugestão pelo planner — 4 a 5 plans):
+
   - W1: alinhamento naming (SC-1) — backend `compact` em snake_case + frontend `applyFilter` consistente
   - W2: helper `getPeriodRange` + propagação em todas as queries (SC-2)
   - W3: comando de auditoria + execução em produção via SSH (SC-3)
@@ -558,6 +637,7 @@ v4.0 phases execute in order: 13 → 14
   - W5: UI feedback (SC-5) + testes consolidados (SC-6)
 
 Cross-cutting constraints:
+
 - pt-BR em comentários, mensagens flash e activity log
 - `npm run build` obrigatório após cada edição JSX
 - **NÃO mexer** em `RefreshGrossBillingCacheJob` (Phase 16) salvo se a auditoria identificar gap originado lá
@@ -577,6 +657,7 @@ Cross-cutting constraints:
 **Plans:** 5/5 plans complete
 
 **Success Criteria:**
+
 - Dada uma keyword, retorna ranking de keywords dos concorrentes + top dúvidas/objeções das perguntas + recomendação heurística de título/descrição
 - Coleta roda assíncrona (Job, queue `database`) com feedback de progresso (pendente/rodando/concluído/erro) e logging tag `[MLB Coleta]` com id+nome
 - Falha de 1 item não interrompe o lote; erros logados e visíveis na UI
@@ -584,6 +665,7 @@ Cross-cutting constraints:
 - Página React em `resources/js/Pages/Mlb/` com design system `ecf-*` (dark, `DevCard`, `cn()`, shadcn/Radix), sem state global
 
 **Decisões travadas (probe 2026-06-01 — ver memória `project_ml_api_search_restriction`):**
+
 - Fonte via APP TOKEN (`client_credentials`), não user token. `/sites/MLB/search` = 403 (bloqueada). Endpoints OK: `/products/search?q=`, `/highlights/MLB/category/{cat}`, `/trends/MLB[/{cat}]`, `/sites/MLB/domain_discovery/search?q=`, `/items/{id}`, `/items/{id}/description`, `/questions/search?item=`. Reviews best-effort, cai p/ só perguntas.
 - Volume: top 10 produtos; análise a fundo nos 5 melhores.
 - IA FORA da Fase 1 (mineração estatística; recomendação heurística). Recomendação por IA = Fase 2.
@@ -592,14 +674,17 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 1** *(paralelo — sem overlap de arquivos)*
+
 - [x] 17-01-PLAN.md — MlKeywordMinerService (mineração estatística pt-BR + recomendação heurística, PHP puro) + testes unitários (D-04, D-05)
 - [x] 17-02-PLAN.md — Migration + model MlbColeta + MlbColetaJob (ciclo de status/failed) + teste do failed() (D-06)
 
 **Wave 2** *(bloqueado na Wave 1; 17-03 e 17-04 paralelos entre si)*
+
 - [x] 17-03-PLAN.md — MlColetaService (app token cacheado + pipeline ML + 429/fallback questions) + testes (D-01, D-02, D-03, D-04, D-05)
 - [x] 17-04-PLAN.md — Permission mlb.coleta + actions MlbController + rotas mlb.coleta.* + suíte Feature 403/store/status (D-06, D-07)
 
 **Wave 3** *(bloqueado na Wave 2)*
+
 - [x] 17-05-PLAN.md — Página Mlb/Coleta.jsx (formulário + polling + relatório) + nav AppLayout + npm run build + checkpoint humano (D-06, D-07)
 
 ### Phase 20: Integração ECF Drive (substitui sync SFTP por API HTTP)
@@ -611,6 +696,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [x] 20-01-PLAN.md — Backend EcfDriveService + comando grants:sync-ecf + migration segmento + schedule + UI coluna+label + 18 testes Feature + checkpoint humano deploy/smoke (todas as 6 REQ-IDs)
 
 ### Phase 21: Manual do Sistema (artigos explicativos para usuários não-técnicos)
@@ -622,6 +708,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 21 to break down)
 
 ### Phase 22: Wrapper expandido EcfDriveService (todos os endpoints + cache estratégico)
@@ -633,6 +720,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
+
 - [ ] 22-01-PLAN.md — Helpers get/cacheKey + refactor Phase 20 + 18 metodos novos (/clientes, /sellers, /carteira, /signals, /relatorios) + 5 suites de testes Http::fake + smoke prod via tinker
 
 ### Phase 23: Alertas Estratégicos (signals — caixa de entrada do comercial)
@@ -643,6 +731,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 23 to break down)
 
 ### Phase 24: Painel Executivo Carteira ECF (resumo + histórico + breakdowns)
@@ -653,6 +742,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 24 to break down)
 
 ### Phase 25: Análise por Empresa (ficha 360° via Sellers)
@@ -663,6 +753,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 25 to break down)
 
 ### Phase 26: Webhooks completos ECF Drive (receiver HMAC, 6 eventos)
@@ -673,6 +764,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 26 to break down)
 
 ### Phase 27: Concentração de Receita e Forecast 90d
@@ -683,6 +775,7 @@ Plans:
 **Plans:** 0 plans
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 27 to break down)
 
 ### Phase 28: Relatório Mensal Executivo automatizado (PDF + email)
@@ -693,6 +786,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [ ] TBD (run /gsd-plan-phase 28 to break down)
 
 ### Phase 29: signal.detected vira notificação no sino
@@ -703,9 +797,11 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [x] **29-01** — `Categoria::ALERTA_ECF` + `AlertaEcfNotification extends BaseNotification` + reescrita `HandleSignalDetectedJob` (severity guard → carteira guard → idempotência via `data->meta->signal_id` → `Notification::send` admin+consultor+mentor active) + 21 testes Feature
 
 **Resultado:**
+
 - 1 Notification subclass nova (`AlertaEcfNotification`)
 - 1 case enum nova (`Categoria::ALERTA_ECF`)
 - 1 Job reescrito (`HandleSignalDetectedJob.handle()`)
@@ -724,6 +820,7 @@ Plans:
 **Plans:** 1/4 — 30-01 shipped; 30-02/03/04 superseded
 
 Plans:
+
 - [x] 30-01 — W1 throttled queue Adman + checkpoint paginação (RateLimiter global 8/min + Fix D catch 429 upstream) **deployed 2026-06-08**
 - [~] 30-02 — **SUPERSEDED por Phase 39 (v11.0)**: arquitetura mudou para provider pattern; mirror service `SugadorAnalysisServiceMl` foi descartada antes de implementar
 - [~] 30-03 — **SUPERSEDED por Phase 39/41 (v11.0)**: UX adgroup sem MLB integrada ao novo provider pattern (decisão de quando criar Sugador manual fica no provider)
@@ -739,6 +836,7 @@ NPS automatizado mensal por email. Substitui o fluxo manual "por reunião" por u
 **Status:** ✅ Completed (2026-06-10) — pronta para deploy agrupado em prod
 **Goal:** Cliente recebe email NPS automaticamente no dia do mês em que a empresa foi cadastrada (`DAY(companies.created_at) == DAY(today)`), responde 3 notas 1-5 (Estrategista, Analista quando houver, Empresa "está atendendo sua expectativa?") + comentário livre. Admin acompanha por mês em `/nps` com cards de média, gráfico de variação 12 meses (3 séries) e lista de respostas do mês. Geração manual de link preservada como back-compat.
 **Requirements:**
+
 - REQ-31-01 — Coluna `companies.email_cliente` nullable + UI de edição em `Companies/Show.jsx` / `Comercial/Empresas.jsx`
 - REQ-31-02 — Migration drop+recreate `nps_responses` com escala 1-5 (`score_estrategista`, `score_analista` nullable, `score_empresa`, `comment`, `respondent_name` nullable) + apagar surveys/responses existentes (são testes)
 - REQ-31-03 — Migration add `nps_surveys.month_reference` (date YYYY-MM-01) + `nps_surveys.auto_generated` (boolean)
@@ -747,10 +845,12 @@ NPS automatizado mensal por email. Substitui o fluxo manual "por reunião" por u
 - REQ-31-06 — Reescrita `Nps/Respond.jsx`: 3 sliders 1-5 (Estrategista, Analista condicional, Empresa) + textarea livre + nome opcional
 - REQ-31-07 — Admin section dentro de `/nps` com filtro por mês, 3 cards de média (Estrategista/Analista/Empresa), gráfico Recharts de linha (3 séries × 12 meses), lista paginada de respostas do mês
 - REQ-31-08 — Endpoint `nps.generate` (link manual) preservado, cria survey `auto_generated=false` (zero break do fluxo atual)
+
 **Depends on:** Phase 28 (SMTP Gmail validado), Phase 8 (BaseNotification — opcional pra notificar admin sobre respostas recebidas), fix accessor `Company::cust_id` (quick 260609-mom — não é dependência mas evita confusão de match)
 **Plans:** 5/5 plans executed ✅
 
 Plans:
+
 - [x] 31-01-PLAN.md — Schema NPS 1-5: migrations companies.email_cliente + drop+recreate nps_responses + month_reference/auto_generated em nps_surveys (completed 2026-06-10)
 - [x] 31-02-PLAN.md — Backend automação: NpsMonthlyMail + comando nps:disparar-mensal (idempotente, edge dia 31) + schedule 09:00 BRT + NpsController submitResponse 1-5 + generate auto_generated=false (completed 2026-06-10)
 - [x] 31-03-PLAN.md — UI cliente: Nps/Respond.jsx reescrita com 3 sliders 1-5 (analista condicional) + textarea livre + nome opcional (completed 2026-06-10)
@@ -763,12 +863,14 @@ Plans:
 **Status:** ✅ Codigo completo (Wave 2 completa 2026-06-12 — 4/4 plans entregues; falta verify+deploy agrupado)
 **Goal:** Capturar mais info no close comercial (nicho/dor/faturamento/marketplaces/vende_ml), corrigir bug semântico do `email_colaborador`, expor tag "Empresa nova" como pendência na aba `/companies`, máscaras CNPJ/telefone nos forms, e webhook HubSpot para cadastro automático quando deal vira "Fechado Ganho".
 **Requirements:**
+
 - REQ-34-01 — Schema: 9 novas colunas em `companies` (nicho/dor/vende_ml/faturamento_mensal/marketplaces_extras/email_colaborador/empresa_nova/visto_em/visto_por)
 - REQ-34-02 — Tabela `hubspot_eventos` para auditoria/replay do webhook
 - REQ-34-03 — Pendência `empresa_nova` na aba Pendências + botão "Marcar como visto" (admin-only)
 - REQ-34-04 — Fix D-07: `sem_email_colaborador` checa `email_colaborador` (era `email_cliente` por bug semântico)
 
 Plans:
+
 - [x] 34-01-PLAN.md — Fundação: schema (2 migrations defensivas) + Company fillable+casts + HubspotEvento model + CompanyController.index pendencia+fix+payload + endpoint marcar-visto role:admin + 8 testes (completed 2026-06-12)
 - [x] 34-02-PLAN.md — Wizard Comercial estendido: NovaEmpresa.jsx + ComercialController::store validation dos 9 campos + máscaras CNPJ/telefone
 - [x] 34-03-PLAN.md — Admin UI: Companies/Index.jsx (badge "Empresa nova", botão "Marcar visto", modal admin com novos campos + máscaras IMaskInput) + Companies/Show.jsx (seção "Informações do Close") + Comercial/Empresas.jsx edit form com 6 campos + máscaras + CompanyController validation update + payload show (completed 2026-06-12)
@@ -783,6 +885,7 @@ Plans:
 **Depends on:** Phase 34 (webhook HubSpot base, schema close), Phase 35 (correções v2 do cadastro HubSpot), Phase 36 (Comercial UX + Atribuir Serviço migrado pro Comercial), Phase 14 (modelo unificado `contratos_servico` + catálogo `servicos`)
 
 **Decisões travadas (2026-06-18):**
+
 - **Phase 37 ÚNICA** (mega) com 5-7 plans em waves — mantém contexto único e deploy agrupado (sem fragmentar webhook + UI)
 - **Filtro de Performance via catálogo de serviços**: `contratos_servico` JOIN `servicos` WHERE `servicos.setor = 'performance'` (Gestão + Mentoria). Reusa modelo unificado Phase 14 + nova coluna `servicos.setor` (enum). Sem nova coluna em `companies` — setor sempre derivado do catálogo
 - **Empresas legacy** (created_at < deploy desta phase) entram na nova listagem Comercial SEM pendências comerciais. Pendência comercial só dispara para empresas com origem HubSpot (`hubspot_eventos.company_id_criada` apontando pra elas) que vieram sem line items ou com serviço não reconhecido
@@ -790,6 +893,7 @@ Plans:
 - **Backwards compat MLB**: empresas de Publicação criadas via HubSpot continuam aparecendo em `/mlb/empresas` e widget "Empresas Pendentes" — zero regressão do fluxo Publicação atual
 
 **Requirements:**
+
 - REQ-37-01 — `HubspotApiClient::fetchDealLineItems(dealId)` consome `GET /crm/v3/objects/deals/{dealId}/associations/line_items` + `GET /crm/v3/objects/line_items/{id}?properties=name,price,quantity,hs_product_id,recurringbillingfrequency`
 - REQ-37-02 — Tabela `hubspot_line_item_mapping` (`line_item_name` → `servico_id`) gerenciável via UI admin; cobre famílias MAP/Polo/Brigada/Gestão/Mentoria/Publicação
 - REQ-37-03 — Coluna `servicos.setor` (enum: `performance`, `publicacao`, `outros`) com seed atualizando Gestão+Mentoria→`performance`, Publicação→`publicacao`, demais→`outros`; default `outros`; migration idempotente
@@ -802,6 +906,7 @@ Plans:
 - REQ-37-10 — Empresas legacy não geram pendência comercial: query de pendência checa `EXISTS(hubspot_eventos WHERE company_id_criada = companies.id)` para considerar empresa "de origem HubSpot"
 
 **Success Criteria (what must be TRUE):**
+
   1. Quando deal vira `closedwon` no HubSpot, webhook `/api/webhooks/hubspot` busca line items associados, mapeia cada `item.name` para um servico do catálogo via `hubspot_line_item_mapping`, e cria `contratos_servico` na empresa criada com `valor_contratado=item.price`, `tipo_cobranca` derivado de `recurringbillingfrequency` (mensal/única), `data_contratacao=now()` — atomicamente em `DB::transaction`
   2. Quando `line_item.name` não tem mapeamento no `hubspot_line_item_mapping`, a empresa é criada SEM contrato + pendência comercial `servico_nao_reconhecido` marcada — webhook não falha (retorna 200, registra HubspotEvento.processado com warning)
   3. Página `/comercial/empresas/listagem` exibe TODAS as empresas (todos os setores) com filtros funcionais: `?servico=`, `?setor=`, `?ordem=recentes|antigas`, `?pendencia=sem_servico|sem_valor|servico_nao_reconhecido` — filtros empilháveis sem perder seleções (padrão Phase 18 snake_case)
@@ -818,19 +923,23 @@ Plans:
 Plans:
 
 **Wave 1** *(paralelo — fundação schema, sem overlap de arquivos)*
+
 - [x] 37-01-PLAN.md — Migration `servicos.setor` (enum performance/publicacao/outros) + seed Gestão+Mentoria→performance, Publicação→publicacao + Servico::SETORES const + helpers isPerformance/isPublicacao + scope porSetor + 6 testes (REQ-37-03) (completed 2026-06-18)
 - [x] 37-02-PLAN.md — Migration `create_hubspot_line_item_mapping_table` + seed inicial (MAP/Polo/Brigada/Gestão/Mentoria/Publicação) + model HubspotLineItemMapping (scope ativo + relação servico + helper paraNome case-insensitive) + 9 testes (REQ-37-02 schema/model) (completed 2026-06-18)
 
 **Wave 2** *(bloqueado na Wave 1)*
+
 - [x] 37-03-PLAN.md — HubspotApiClient::fetchDealLineItems (2-call pattern: associations + batch loop de detalhes) + tratamento resiliente 4xx/5xx (associations → []; line_item individual → log warning + skip) + cast defensivo price/quantity + 9 testes Http::fake / 28 assertions (REQ-37-01) (completed 2026-06-18)
 - [x] 37-04-PLAN.md — HubspotWebhookController estendido: processarLineItems via HubspotLineItemMapping::paraNome + cria ContratoServico atomicamente em DB::transaction + tipo_cobranca derivado de recurringbillingfrequency (anotado em observacoes, coluna nao existe em contratos_servico) + fallback fluxo legado quando deal sem line items + idempotência preservada + 10 testes Feature ponta-a-ponta / 57 assertions (REQ-37-04) (completed 2026-06-18)
 
 **Wave 3** *(bloqueado na Wave 2 — Plans 37-05/37-06/37-07 paralelizáveis entre si, sem overlap)*
+
 - [x] 37-05-PLAN.md — Nova rota /comercial/empresas/listagem (ComercialController::listagem) com filtros snake_case empilháveis (servico, setor, ordem, pendencia, q) + 5 cards de pendência comercial calculados APENAS para empresas com EXISTS(hubspot_eventos.company_id_criada) + página Comercial/EmpresasListagem.jsx com aba Grupos integrada (GruposManager reaproveitado) + sub-item sidebar "Empresas (todos os setores)" + 17 testes Feature / 62 assertions (REQ-37-05, REQ-37-06, REQ-37-08, REQ-37-10) (completed 2026-06-18)
 - [x] 37-06-PLAN.md — CompanyController::index refoca em Performance via whereHas('contratosServico.servico', $q -> setor performance + ativo) + remove pendência sem_servico do payload + remove aba Grupos do Companies/Index.jsx + 12 testes Phase37CompaniesPerformanceFilterTest verdes (17 assertions) + 4 testes Phase34 ajustados via Rule 1 (helper attachPerformanceContract — fixture obsoleta) + zero regressão Phase 34/35/37 (105/105 — 537 assertions) (REQ-37-07) (completed 2026-06-18)
 - [x] 37-07-PLAN.md — `autonomous: false` — AppLayout sidebar reorganizada (Comercial expansível: Empresas/Cadastrar empresa/Grupos/Serviços/HubSpot Line Items; Serviços removido do raiz) + CRUD admin de HubspotLineItemMapping em /sistema/hubspot-line-items (controller no namespace Sistema\ + 4 rotas role:admin + página React com modal Dialog) + 13 testes Phase37HubspotLineItemMappingAdminTest verdes (45 assertions) + zero regressao Phase 34/35/36/37 (124/124 — 607 assertions) + checkpoint humano pré-aprovado (REQ-37-09, REQ-37-02 UI) (completed 2026-06-18)
 
 **Cross-cutting constraints:**
+
 - pt-BR em comentários, mensagens flash, activity log (CLAUDE.md mandate)
 - `npm run build` obrigatório após cada edição JSX
 - **Deploy agrupado** — não fragmentar: schema + webhook + UI saem juntos (lição Phase 34/35)
@@ -851,6 +960,7 @@ Plans:
 **Goal:** Descobrir o shape real da API oficial do Mercado Livre Mercado Ads / Product Ads para empresa `ByMobille - Teste` (única empresa com OAuth ML direto hoje) **sem tocar no fluxo de produção do módulo Sugadores**. Entrega: comando Artisan `sugadores:ml-smoke --company={id} --days=30` que resolve `mlToken` (com refresh se necessário), descobre `advertiser_id`, lista campanhas e ads, tenta métricas no período, grava fixture JSON anonimizável em `storage/app/sugadores/ml-smoke/{company_id}-{date}.json` e imprime relatório curto. Gate obrigatório antes de Phase 39 (provider pattern) — se smoke não estiver verde, plano técnico bloqueia avanço ("Não avance para substituir a Adman antes desse smoke estar verde").
 **Depends on:** Phase 20 (MlToken + MercadoLivreService + refresh token), Phase 30 W1 (RateLimiter global `adman-api` já em prod — referência de pattern). Não depende de Phase 39+ (esta é o gate de entrada da v11.0).
 **Requirements:**
+
 - REQ-38-01 — Comando `sugadores:ml-smoke --company={id} --days=30` resolve `mlToken` ativo da empresa, faz refresh se expirado, falha cedo com mensagem clara se ausente/inválido
 - REQ-38-02 — Comando descobre `advertiser_id` via `GET /advertising/advertisers` (ou endpoint atualizado da doc oficial), persiste em cache de sessão (não tabela ainda — Phase 41)
 - REQ-38-03 — Comando lista campanhas Product Ads do advertiser e imprime status HTTP, contagem e shape do primeiro payload (campos disponíveis)
@@ -860,6 +970,7 @@ Plans:
 - REQ-38-07 — Comando NÃO grava em `sugadores`, `sugador_configs`, `sugador_acoes` nem em qualquer tabela de produção; é puramente diagnóstico
 
 **Success Criteria** (what must be TRUE):
+
   1. `php artisan sugadores:ml-smoke --company={id_bymobille} --days=30` roda no host de dev sem precisar de mock — chama API ML real com token real
   2. Comando lista pelo menos uma campanha Product Ads OU retorna erro claro de permissão/scope/token (não silencia falhas)
   3. Comando lista pelo menos um anúncio (Product Ad/item) OU explica por quê não conseguiu (advertiser sem ads, scope ausente, etc)
@@ -870,10 +981,12 @@ Plans:
   8. Próxima Phase 39 só pode começar depois do operador (usuário) revisar o relatório e aprovar — `autonomous: false` no plan principal
 
 **Plans:** 1/2 complete + 1/2 partially_complete (smoke real deferido)
+
 - [x] 38-01-PLAN.md — MercadoLivreAdsService (wrapper ML Mercado Ads) + diretorio storage versionado + 4 tests Http::fake (Wave 1, autonomous)
 - [~] 38-02-PLAN.md — Comando Artisan `sugadores:ml-smoke` + 4 tests Feature Http::fake (✅ 4/4 verde, commits `984f3bc` RED + `45e986c` GREEN) + smoke real Bymobille (❌ DEFERIDO — bloqueado por corrupção do MariaDB local, recovery via quick task `dev:reparar-mariadb-local`). Wave 2, autonomous=false.
 
 **Cross-cutting constraints:**
+
 - pt-BR em comentários e mensagens (CLAUDE.md mandate)
 - Não modificar `SugadorAnalysisService`, `SugadorController`, `AnalyzeCompanySugadoresJob`, `FetchAdmanMlbsByCampaignJob` (Adman path) — gate é "smoke não toca prod"
 - Reusar `MercadoLivreService` (Phase 20) para autenticação/refresh; se faltar método específico (advertisers, product ads), adicionar via novo `MercadoLivreAdsService` em namespace separado (`App\Services\MercadoLivre\AdsService` ou `App\Services\Sugadores\MercadoLivreAdsService`)
@@ -892,6 +1005,7 @@ Plans:
 **Goal:** Implementar `SugadoresAdsProvider` contract + `AdmanSugadoresProvider` (encapsula `AdmanService` atual) + `MercadoLivreSugadoresProvider` + `MercadoLivreAdsService` (com retries, paginação, refresh token). Refatorar `SugadorAnalysisService` para resolver provider via DI. Criar `AdgroupMlbMapRepository` para esconder `adman_adgroup_mlbs` (decisão §5 do plano). Comando `sugadores:analyze --provider=ml --company={id} --dry-run` retorna motivos sem upsert. NÃO grava em `sugadores`.
 **Depends on:** Phase 38 (smoke verde com fixtures reais), Phase 20 (MlToken + MercadoLivreService)
 **Requirements:**
+
   - REQ-39-01 — Contract `App\Contracts\SugadoresAdsProvider` com 6 métodos (supports/name/fetchCampaigns/fetchCampaignsMetrics/fetchAdgroupsMetrics/fetchAdgroupMlbs) + PHPDoc descrevendo cada chave do contrato normalizado §2.3
   - REQ-39-02 — `App\Services\Sugadores\AdmanSugadoresProvider` implementando o contract via composição de `AdmanService` (sem modificá-lo)
   - REQ-39-03 — `App\Services\Sugadores\MercadoLivreSugadoresProvider` implementando o contract via composição de `MercadoLivreAdsService` (Phase 38); normalização ML→§2.3; comentários `// CANDIDATO — revalidar após smoke real` em campos especulativos
@@ -900,13 +1014,16 @@ Plans:
   - REQ-39-06 — `SugadorAnalysisService` refatorado para receber factory via DI; analyzeCompany aceita `?string $forceProvider`; lógica de detecção (evaluateMetrics, buildRow, STATUS_TRAVADOS, auto-resolve, quarentena) IDÊNTICA — zero regressão
   - REQ-39-07 — Comando `php artisan sugadores:analyze --company={id} --provider={adman|ml} --dry-run` retorna motivos sem upsert; `--provider=ml` sem `--dry-run` aborta com exit 1 (proteção pré-Phase 42)
   - REQ-39-08 — Suite de testes (Unit + Feature) cobrindo: AdmanProvider (Mockery), MlProvider (Http::fake speculative), Repository (SQLite), Factory (resolução), SugadorAnalysisService refactor (regressão), command (dry-run + guard); zero regressão na suite Sugador existente
+
 **Success Criteria**: provider ML entrega exatamente o contrato §2.3 do plano; `evaluateMetrics()` não sabe a origem; comando dry-run retorna mesma estrutura de motivos do path Adman para Bymobile.
 **Plans:** 5/5 plans executed
+
   - 39-01-PLAN.md — Wave 1: Contract + AdmanSugadoresProvider + Factory minimal + Unit tests ✓ (122451c RED + b69030d GREEN)
   - 39-02-PLAN.md — Wave 2: MercadoLivreSugadoresProvider + factory branch ml + Http::fake speculative tests ✓ (43208d1 RED + 6da011c GREEN)
   - 39-03-PLAN.md — Wave 2: AdgroupMlbMapRepository neutro + legacy compat preserva call-sites + Unit tests ✓ (a3c0bf9 RED + 20e6cd3 GREEN)
   - 39-04-PLAN.md — Wave 3: Refactor SugadorAnalysisService para usar factory; lógica detecção INALTERADA; baseline + refactor tests ✓ (09cd274 BASELINE + 14eb676 RED + f23ba31 GREEN)
   - 39-05-PLAN.md — Wave 4: Estende command sugadores:analyze com --provider + guard ml_primary + Feature tests ✓ (4318d9a RED + e605397 GREEN)
+
 **UI hint**: no
 
 ### Phase 40: Shadow mode + tabelas de comparação
@@ -917,6 +1034,7 @@ Plans:
 **Goal:** Tabelas auxiliares `sugador_provider_runs` + `sugador_provider_items` (sem alterar `sugadores`). Comandos `sugadores:shadow-ml --company={id|all}` e `sugadores:compare-providers --company={id} --from --to`. Match por chave normalizada `tipo|campaign_id|adgroup_id` + alternativo por `mlb_id`. Classifica divergências (só-Adman / só-ML / métricas / motivo / quarentena). Scheduler shadow separado. Alvo paridade ≥95% de motivos. Exige 1+ empresa Adman+ML para validar paridade (Bymobile sozinha não basta).
 **Depends on:** Phase 39 (provider pattern operando dry-run)
 **Requirements:**
+
 - REQ-40-01 — Migration cria `sugador_provider_runs` (10 colunas) + `sugador_provider_items` (8 colunas) + índices compostos (`idx_company_ref_provider`, `idx_run_tipo`); FKs com cascadeOnDelete; idempotente; Models Eloquent `SugadorProviderRun` + `SugadorProviderItem` com casts e relações
 - REQ-40-02 — `App\Services\Sugadores\ShadowRunService` orquestra 2 runs por (empresa+data) — uma com `forceProvider='adman'` e outra com `forceProvider='ml'`, ambas via `SugadorAnalysisService::analyzeCompany($company, $ref, dryRun=true, $provider)`; persiste runs+items; **GATE CRÍTICO:** ZERO gravação em `sugadores`; falha de um provider não interrompe o outro
 - REQ-40-03 — `App\Services\Sugadores\ProviderComparisonService` classifica items em 6 buckets (matched, metrics_diff, motivo_diff, apenas_adman, apenas_ml, quarentena_diff) + calcula `paridade_motivos_pct`; tolerâncias §7 do plano-migracao (dinheiro ≤1% OU ≤R$0,10; percentuais ≤0,5pp; inteiros igualdade); 2 métodos públicos `compareRuns` + `compareWindow`
@@ -927,6 +1045,7 @@ Plans:
 - REQ-40-08 — Suite de testes cobrindo: schema migration (8 tests), ShadowRunService Mockery com gate zero gravação (9 tests), ProviderComparisonService com 15 cenários de divergência, ambos comandos CLI (17 tests — exit codes + format json/table + abort cases); zero regressão na suite Sugador acumulada (>= 65 verdes baseline Phase 39)
 
 **Success Criteria** (what must be TRUE):
+
   1. `php artisan migrate` cria as 2 tabelas com índices compostos e FKs cascade
   2. `ShadowRunService` grava em `sugador_provider_runs`+`sugador_provider_items` mas NUNCA em `sugadores` (validado por `assertDatabaseCount('sugadores', $initial)` antes==depois)
   3. `ProviderComparisonService::compareWindow` retorna paridade % calculável; tolerâncias §7 aplicadas como constantes
@@ -937,6 +1056,7 @@ Plans:
   8. Phase 41 (onboarding ML) destravada — Phase 40 entrega a infra de medição que Phase 41 vai expor visualmente
 
 **Plans:** 4/4 plans complete
+
 - [x] 40-01-PLAN.md — Wave 1: Migration 2 tabelas + 2 Models Eloquent + 1 test schema (REQ-40-01)
 - [x] 40-02-PLAN.md — Wave 2: ShadowRunService + tests Feature com Mockery (REQ-40-02, gate zero gravação)
 - [x] 40-03-PLAN.md — Wave 2: ProviderComparisonService + tests Unit com 15 cenários (REQ-40-03)
@@ -957,17 +1077,21 @@ Plans:
 Plans:
 
 **Wave 1**
+
 - [x] 41-01-PLAN.md — 2 migrations (`ml_advertisers` + `sugador_ml_company_config`) + 2 Models + relações Company (`mlAdvertiser`, `sugadorMlConfig`) + tests schema/FK cascade (REQ-41-01, REQ-41-02)
 
 **Wave 2** *(blocked on Wave 1; 41-02 e 41-03 paralelizáveis — sem overlap de arquivos)*
+
 - [x] 41-02-PLAN.md — Refactor `MercadoLivreAdsService`: `callWithBackoff` (429/5xx/401/403) + cache advertiser 7d + rate limiter `ml-api:{seller_id}` (60/min) registrado em `AppServiceProvider` + métricas operacionais via `getLastRunMetrics` + tests Http::fake (REQ-41-03, REQ-41-04, REQ-41-05, REQ-41-06)
 - [x] 41-03-PLAN.md — Refactor comando `sugadores:shadow-ml --company=all` priorizando `SugadorMlCompanyConfig::where('shadow_enabled', true)` + fallback env CSV preservado + tests config table vs env (REQ-41-07)
 
 **Wave 3** *(blocked on Wave 2)*
+
 - [x] 41-04-PLAN.md — Estende `ShadowRunService` (Plan 40-02) para mesclar `ml_metrics` no `summary` JSON da run quando provider=ml + tests (REQ-41-06 finalização)
 - [x] 41-05-PLAN.md — UI admin `/dev/sugadores-ml-onboarding`: Controller (4 actions) + 4 rotas role:admin + página React (tabela 6 colunas + filtros + ações inline) + item de sidebar Sistema + `npm run build` + tests Feature (REQ-41-08, REQ-41-09, REQ-41-10)
 
 Cross-cutting constraints:
+
 - pt-BR em todos os artefatos e comentários (CLAUDE.md mandate)
 - `npm run build` obrigatório após edição JSX (Plan 41-05)
 - Phase NÃO grava em `sugadores` (gate REQ-40-02 preservado pelos services Plan 40-02/41-04)
@@ -987,6 +1111,7 @@ Cross-cutting constraints:
 **Depends on:** Phase 41 (mlToken + advertiser cache + rate limiter + backoff + métricas operacionais já entregues)
 
 **Requirements:**
+
 - REQ-42-01 — `MercadoLivreSugadoresProvider` (ou equivalente) normaliza payload da API ML para o contrato canônico (§3 do briefing): `adgroup_id`, `campaign_id`, `investment`, `revenue`, `sold_quantity`, `clicks`, `impressions`, `cpc`, `ctr`, `acos`, `roas`, `organic_amount`, `organic_units`, `raw`
 - REQ-42-02 — `SugadorAnalysisService::analyzeCompany($company, $referenceDate, $dryRun=false, $forceProvider='ml')` grava em `sugadores` via ML com mesma idempotência (chave: `company_id|reference_date|tipo|campaign_id|adgroup_id`)
 - REQ-42-03 — Janela default: `reference_date=hoje`, `periodo_fim=ontem`, `periodo_inicio=ontem-29d` (30 dias fechados). Vale para cron e análise manual sem override
@@ -999,6 +1124,7 @@ Cross-cutting constraints:
 - REQ-42-10 — Testes Feature existentes em `tests/Feature/Sugadores*` continuam passando sem alteração (analista não percebe a troca de motor)
 
 **Success Criteria** (must-haves verificáveis):
+
   1. `/sugadores` continua sendo a única tela operacional do analista; nenhum item novo na sidebar
   2. `/sugadores/config/{company}` mostra o novo campo `cpc_minimo_cliques` ao lado de `cpc_maximo` + `cpc_maximo_logic`
   3. Roda análise de ByMobille - Teste via comando manual; sugadores aparecem em `/sugadores` com origem ML transparente
@@ -1015,18 +1141,23 @@ Cross-cutting constraints:
 Plans:
 
 **Wave 1**
+
 - [x] 42-01-PLAN.md — Migration cpc_minimo_cliques + logica composta no evaluator (REQ-42-04 backend, TDD)
 
 **Wave 2** *(blocked on Wave 1; 42-02 e 42-03 paralelos)*
+
 - [x] 42-02-PLAN.md — UI campo cpc_minimo_cliques em /sugadores/configs/{company} (REQ-42-04 frontend)
 - [x] 42-03-PLAN.md — Normalizer ML contrato §3 completo + comentario janela 30d + quarentena SGI por nome+status (REQ-42-01, REQ-42-03, REQ-42-05)
 
 **Wave 3** *(blocked on Wave 2)*
+
 - [x] 42-04-PLAN.md — Cut-over factory (ML preferido) + remove guard ml_primary + controller aceita empresas ML-only (REQ-42-02, REQ-42-06, REQ-42-08)
 
 **Wave 4** *(blocked on Wave 3; 42-05 e 42-06 paralelos)*
+
 - [x] 42-05-PLAN.md — Sidebar esconde Onboarding ML + linkAdsML deep link Mercado Ads (REQ-42-07, REQ-42-09)
 - [x] 42-06-PLAN.md — Suite aceite E2E ByMobille + guard de regressao Sugadores legados (REQ-42-08, REQ-42-10)
+
 **UI hint**: yes (campo novo em /sugadores/config/{company} + esconder item sidebar)
 
 ### Phase 43: Remoção da Adman (Sugadores)
@@ -1046,6 +1177,7 @@ Plans:
 **Mode:** standard
 
 **Requirements**: Detalhados em [44-CONTEXT.md](.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md):
+
 - Combobox com SGIs da conta (reusa `QUARANTINE_NAME_REGEX`) + opção "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável)
 - Modal de confirmação dupla com nome literal do adgroup + nome da SGI destino
 - Toast "Desfazer" por 10s (sem persistência DB)
@@ -1057,6 +1189,7 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
+
 - [ ] 44-01-PLAN.md — Smoke + scope OAuth (BLOQUEIO Wave 1: ml-write-smoke command + scope read write offline_access + checkpoint humano Bymobille)
 - [ ] 44-02-PLAN.md — Backend (MercadoLivreAdsService::createCampaign + moveAdgroupToCampaign + 3 actions controller + feature flag + 3 rotas; 14 tests Feature)
 - [ ] 44-03-PLAN.md — Frontend (MoveToSgiModal evoluido mode=api_call + UndoToast novo + Show.jsx orquestracao; preserva bulk Index audit_only)
@@ -1065,6 +1198,7 @@ Plans:
 **UI hint:** sim — modal de confirmação dupla com combobox de SGI no `Show.jsx`
 
 **Deferred (originalmente parte da Phase 44, reduzido na discuss):**
+
 - Pausar adgroup in-place → Phase 44b
 - Ações em lote (selecionar N sugadores no Index) → phase futura
 - Botão "Reverter" permanente (persistir `campaign_id_anterior`) → phase futura
@@ -1085,6 +1219,7 @@ Plans:
 - Service único compartilhado entre widget e página `/performance` (provavelmente `PerformanceScoreService` ou similar)
 
 **Out of scope** (fica pra phases separadas):
+
 - Item 1a — compat ML em dashboard admin métricas (faturamento total, TACOS médio, gráfico evolução)
 - Item 1b — compat ML em carteira individual/geral (admin, líder)
 - Redesign visual da carteira (briefing-carteira-analistas-ui.md) — vira phase separada quando o usuário decidir
@@ -1280,6 +1415,7 @@ Plans:
 **Plans:** 4 plans em 4 waves
 
 Plans:
+
 - [ ] 52-01-PLAN.md — Wave 1 (backend + policy TDD): SugadorPolicy::manage inclui analista + endpoints mlbs-hint e bulk-copy-mlbs
 - [ ] 52-02-PLAN.md — Wave 2 (UI cleanup): remove textos legacy Adman + botões Rodar análise redundantes + toggle Cards/Lista
 - [ ] 52-03-PLAN.md — Wave 3 (UI features): migra copyMlbsLinha para mlbs-hint + ação em massa Copiar MLBs + ConfigResumoCard + botão análise per-empresa com cronômetro 30s
@@ -1306,6 +1442,7 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
+
 - [ ] 53-01-PLAN.md — Wave 1 (backend TDD): cache listCampaigns + MercadoLivreService::fetchItemStatus + filtro MLB status paused/closed/under_review (fix B1)
 - [ ] 53-02-PLAN.md — Wave 2 (backend TDD): filtro sold_global>=10 remove motivo gasto_sem_venda (fix B2 BARAOSHOP + B3 DINMAP)
 - [ ] 53-03-PLAN.md — Wave 3 (UAT prod): deploy + cache clear + dry-run em CAMILLO/BARAOSHOP/DINMAP + regressão ByMobille + PHASE-SUMMARY
@@ -1370,8 +1507,13 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 58-01-PLAN.md — Rotas + DashboardController (4 métodos + filter whitelist ?marketplace=) + feature tests backend (DASH-01/02/03 backend)
 - [ ] 58-02-PLAN.md — Componentes ShopeeShell.jsx + AmazonShell.jsx (mockup KPI cards + CTA para /dashboard/ecf) (DASH-03 UI)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 58-03-PLAN.md — NAV_TREE: ECF Consolidado + rename Dashboard→Mercado Livre + smoke E2E de navegação (DASH-01/02/03 E2E)
 
 ### Phase 59: Desacoplamento de áreas transversais
