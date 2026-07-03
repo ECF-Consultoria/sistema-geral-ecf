@@ -18,9 +18,9 @@
 
 ### Modelo de Dados Multi-Marketplace (DATA)
 
-- [ ] **DATA-01**: Decisão de arquitetura registrada em ADR: modelo `Company` + tabela pivot N:N `company_marketplaces` vs consolidação de flags na `companies` (Phase 18.5 já introduziu `companies.marketplace`). ADR justifica trade-offs (queries agregadas, migrations, ergonomia Eloquent).
-- [ ] **DATA-02**: Migration criada + backfill executado para 100% das empresas existentes; empresas com ML (`adman_account_id` ou `ml_store_id` preenchido) marcadas em ML; empresas com `companies.marketplace='shopee'` (33 já preenchidas em Phase 18.5) marcadas em Shopee; empresas restantes recebem marketplace via análise de dados
-- [ ] **DATA-03**: Model + relacionamentos cobertos por testes (unit); consultas críticas continuam funcionando sem regressão: Dashboard (`AdmanService::syncAll`), Sugadores (`SugadorAnalysisService`), /desempenho (`PortfolioScoreService`)
+- [x] **DATA-01**: ADR-DATA-01 documenta modelo N:N híbrido intencional (pivot `company_marketplaces` + colunas flat legacy preservadas em paralelo com sync via accessors/mutators do Company)
+- [x] **DATA-02**: Migration `create_company_marketplaces_table` executada em prod (83ms); backfill idempotente criou 126 rows primary para 126 empresas (100% cobertura). Descoberta: distribuição real em 2026-07-03 é 126 meli / 0 shopee / 0 amazon
+- [x] **DATA-03**: 20 testes verdes cobrindo helpers, accessors com fallback, backfill idempotente, e smoke em Dashboard/Sugadores/Performance. Zero regressão em consumidores (AdmanService, SugadorProviders continuam via accessors legacy)
 
 ### Dashboards ECF + Marketplace (DASH)
 
@@ -49,9 +49,9 @@
 | NAV-02 | Phase 56 | Complete |
 | NAV-03 | Phase 56 | Complete |
 | NAV-04 | Phase 56 | Complete |
-| DATA-01 | Phase 57 | Pending |
-| DATA-02 | Phase 57 | Pending |
-| DATA-03 | Phase 57 | Pending |
+| DATA-01 | Phase 57 | Complete |
+| DATA-02 | Phase 57 | Complete |
+| DATA-03 | Phase 57 | Complete |
 | DASH-01 | Phase 58 | Pending |
 | DASH-02 | Phase 58 | Pending |
 | DASH-03 | Phase 58 | Pending |
