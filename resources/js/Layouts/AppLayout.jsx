@@ -37,6 +37,7 @@ const NAV_TREE = [
     {
         group: 'Mercado Livre',
         icon: Store,
+        iconSrc: '/images/mercado-livre-87.svg',
         defaultOpen: true,
         children: [
             // ── Secao Performance ─────────────────────────
@@ -82,6 +83,7 @@ const NAV_TREE = [
         routeParams: { marketplace: 'shopee' },
         page: 'EmDesenvolvimento',
         icon: ShoppingCart,
+        iconSrc: '/images/shopee-icon.svg',
         badgeText: 'Em breve',
     },
     {
@@ -90,6 +92,7 @@ const NAV_TREE = [
         routeParams: { marketplace: 'amazon' },
         page: 'EmDesenvolvimento',
         icon: Package2,
+        iconSrc: '/images/icons8-amazon.svg',
         badgeText: 'Em breve',
     },
 
@@ -420,7 +423,19 @@ export default function AppLayout({ children, title }) {
                                         : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
                                 )}
                             >
-                                <entry.icon className={cn('shrink-0', active ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
+                                {entry.iconSrc ? (
+                                    // Phase 56 v13.0: SVG externo (logo de marca) — usado para
+                                    // marketplaces (Mercado Livre, Shopee, Amazon) que ganham
+                                    // identidade visual propria em vez de icone lucide generico.
+                                    <img
+                                        src={entry.iconSrc}
+                                        alt=""
+                                        aria-hidden="true"
+                                        className="shrink-0 h-[18px] w-[18px] object-contain"
+                                    />
+                                ) : (
+                                    <entry.icon className={cn('shrink-0', active ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
+                                )}
                                 {(!collapsed || mobile) && <span className="truncate">{entry.label}</span>}
                                 {entry.showBadge && badgeCounters[entry.showBadge] > 0 && (!collapsed || mobile) && (
                                     <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-500/20 border border-red-500/30 text-red-300 text-[10px] font-bold shrink-0">
@@ -472,7 +487,16 @@ export default function AppLayout({ children, title }) {
                                         : 'text-white/60 hover:text-white hover:bg-white/[0.05] border border-transparent'
                                 )}
                             >
-                                <entry.icon className={cn('shrink-0', groupActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
+                                {entry.iconSrc ? (
+                                    <img
+                                        src={entry.iconSrc}
+                                        alt=""
+                                        aria-hidden="true"
+                                        className="shrink-0 h-[18px] w-[18px] object-contain"
+                                    />
+                                ) : (
+                                    <entry.icon className={cn('shrink-0', groupActive ? 'text-ecf-yellow' : 'text-white/40')} size={17} />
+                                )}
                                 {(!collapsed || mobile) && <span className="truncate flex-1 text-left">{entry.group}</span>}
                                 {(!collapsed || mobile) && (
                                     <ChevronDown
