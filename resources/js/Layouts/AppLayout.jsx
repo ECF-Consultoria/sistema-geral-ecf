@@ -41,7 +41,10 @@ const NAV_TREE = [
         defaultOpen: true,
         children: [
             // ── Secao Performance ─────────────────────────
-            { label: 'Dashboard',   routeName: 'dashboard',           page: 'Dashboard',    icon: LayoutDashboard, permission: 'core.dashboard' },
+            // NOVO Phase 58 DASH-01 — agregado atraves de marketplaces
+            { label: 'ECF Consolidado', routeName: 'ecf.dashboard',          page: 'Dashboard/Admin', icon: PieChart,        permission: 'core.dashboard' },
+            // MUDADO Phase 58 DASH-02 — antes era { label: 'Dashboard', routeName: 'dashboard' }; rota legacy segue registrada para deep links (CONTEXT §5).
+            { label: 'Mercado Livre',   routeName: 'mercadolivre.dashboard', page: 'Dashboard/Admin', icon: LayoutDashboard, permission: 'core.dashboard' },
             { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
