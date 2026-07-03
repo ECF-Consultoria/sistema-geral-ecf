@@ -1311,3 +1311,76 @@ Plans:
 - [ ] 53-03-PLAN.md — Wave 3 (UAT prod): deploy + cache clear + dry-run em CAMILLO/BARAOSHOP/DINMAP + regressão ByMobille + PHASE-SUMMARY
 
 **UI hint:** parcial — provavelmente 90% backend (`SugadorAnalysisService` + sync ML) e ajustes pequenos na tela de sugadores (rotular "Pausado no ML" ou similar quando excluir por status).
+
+### Phase 56: Menu lateral multi-marketplace + stubs "em desenvolvimento"
+
+**Milestone:** v13.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Reorganizar o sidebar (`AppLayout.jsx` → constante `NAV_TREE`) para refletir a estrutura multi-marketplace da ECF Consultoria. Mudança visual imediata, zero risco de dados. Habilita phases 57/58/59 mas não depende delas.
+
+**Requirements (v13.0):**
+
+- **NAV-01**: Sidebar mostra pasta "Mercado Livre" (aberta por padrão) contendo Performance (Dashboard, Desempenho, Empresas, Carteira, Reuniões, Sugadores, Metas, PPA) + Polos
+- **NAV-02**: Sidebar mostra "Publicação" como setor transversal FORA da pasta ML
+- **NAV-03**: Sidebar mostra "Shopee" e "Amazon" como items visíveis; clicar leva a `/em-desenvolvimento`
+- **NAV-04**: Rota `/em-desenvolvimento` renderiza placeholder consistente com design system ECF
+
+**Depends on:** Nenhuma. Phase de abertura da milestone.
+
+**UI hint:** SIM — mexe em [AppLayout.jsx](resources/js/Layouts/AppLayout.jsx) (568 linhas, constante `NAV_TREE` no topo) + rota nova `/em-desenvolvimento` + página placeholder JSX.
+
+### Phase 57: Modelo de dados multi-marketplace
+
+**Milestone:** v13.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Fundação de dados para multi-marketplace. Decidir arquitetura (ADR), migration, backfill de empresas existentes. Habilita phases 58 e 59.
+
+**Requirements (v13.0):**
+
+- **DATA-01**: ADR com decisão `Company` + N:N `company_marketplaces` vs consolidação de flags na `companies` (Phase 18.5 já introduziu `companies.marketplace`)
+- **DATA-02**: Migration + backfill de 100% das empresas existentes; ML (adman_account_id/ml_store_id preenchido) e Shopee (33 já preenchidas em Phase 18.5)
+- **DATA-03**: Testes cobrindo queries críticas: Dashboard, Sugadores, /desempenho (sem regressão)
+
+**Depends on:** Phase 56 (contexto visual estabelecido).
+
+**UI hint:** Baixo — mudanças em models, migrations, testes. Sem UI nova.
+
+### Phase 58: Dashboard ECF agregado + shells por marketplace
+
+**Milestone:** v13.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Dashboard ECF (`/dashboard/ecf`) soma resultados através de marketplaces. Dashboards por marketplace (`/dashboard/{mercadolivre,shopee,amazon}`) — ML mantém funcionalidade atual, Shopee/Amazon shells.
+
+**Requirements (v13.0):**
+
+- **DASH-01**: `/dashboard/ecf` mostra KPIs consolidados (GMV, vendas, ROAS) somando empresa × marketplaces
+- **DASH-02**: `/dashboard/mercadolivre` mantém dashboard atual (alias ou rota canônica)
+- **DASH-03**: `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento"
+
+**Depends on:** Phase 57 (modelo de dados pronto).
+
+**UI hint:** SIM — rota nova + shells + refactor de `DashboardController` para agregar através de marketplaces.
+
+### Phase 59: Desacoplamento de áreas transversais
+
+**Milestone:** v13.0
+**Status:** Pending
+**Mode:** standard
+
+**Goal:** Auditar e generalizar Usuários, Setores, Comercial, Administrativo, NPS, Notificações — remover acoplamento ML-only. Confirmar Publicação como transversal.
+
+**Requirements (v13.0):**
+
+- **CROSS-01**: AUDIT.md documenta cada acoplamento ML-only nas áreas transversais e plano de generalização
+- **CROSS-02**: Publicação confirmada transversal — permissões `pub.*` sem amarração ML
+- **CROSS-03**: Testes de regressão passam após generalização
+
+**Depends on:** Phase 57 (modelo pronto). Pode rodar em paralelo com Phase 58.
+
+**UI hint:** parcial — auditoria + ajustes finos de texto/filtro. Sem redesign de tela.
