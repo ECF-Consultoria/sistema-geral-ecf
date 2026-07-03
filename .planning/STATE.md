@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v12.0
-milestone_name: Carteira + Desempenho + Gamificação OAuth ML
-status: executing
-stopped_at: "Phase 54 FECHADA (4/4 plans + 1 fix UAT). 5 itens A1-A3 + B1-B2 entregues: layout 2 colunas sidebar sticky, view individual limpa, busca+filtro analista no header, filtro periodo em EmpresaListagem (default hoje), click row com stopPropagation. UAT exigiu correcao do filtro analista: query era company_users.role='analista' (nao existe) — corrigido para user_setores -> cargos.slug='analista' (5 users em prod). Memory project_atribuicao_profissionais.md documentava: analista = role 'consultor' na pivot. Phase 55 (Magic UI + redesign visual) destravada. Debitos: ConfigPickerModal orfao + Link sem import dormente + backend props orfas."
-last_updated: "2026-07-02"
-last_activity: 2026-07-02 -- Phase 54 fechada com UAT aprovado (1 fix filtro analista)
+milestone: v13.0
+milestone_name: Reorganizacao Multi-Marketplace
+status: planning
+last_updated: "2026-07-03T17:43:43.764Z"
+last_activity: 2026-07-03
 progress:
-  total_phases: 48
-  completed_phases: 31
-  total_plans: 112
-  completed_plans: 98
-  percent: 66
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,14 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 55 (modernizacao-visual-sugadores-magic-ui) — COMPLETE
-Plan: 3 of 3 — UAT APROVADO direto
-Status: Phase 55 fechada
-Last activity: 2026-07-03 -- UAT aprovado sem correções; +3.14kb gzip no chunk
-Blockers:
-
-  - **44-01-T3: checkpoint humano** — Plan 44-01 Tarefa 3 requer (a) ativar permissão "Advertising — access, create and manage campaigns" na app ECF em https://developers.mercadolivre.com.br, (b) re-autorizar Bymobille (#298) via `/sistema/ml-oauth` com novo scope `read write offline_access`, (c) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30` e validar fixture 5/5 verdes. Operador respondeu 2026-06-27 que NÃO tem acesso à app no DevCenter agora — fica pendente. Phase 44 inteira em hold (44-02/03/04 dependem de 44-01). Retomar quando acesso DevCenter disponibilizado. Detalhes: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO em `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`.
-  - infra-dev: MariaDB local não sobe (Aria system tables `mysql.db` com "Incorrect file format" pós-fix do aria_log_control). Tratamento via quick task `dev:reparar-mariadb-local`. NÃO bloqueia Phase 39 (tests Mockery + SQLite em-memory — Plan 39-01 confirmou viabilidade).
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-03 — Milestone v13.0 started
 
 ## Performance Metrics
 

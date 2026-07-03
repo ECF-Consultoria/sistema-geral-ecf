@@ -1,6 +1,68 @@
 # Requirements: ECF Admin
 
-**Última atualização:** 2026-05-21
+**Última atualização:** 2026-07-03
+
+---
+
+## Milestone v13.0 — Reorganização Multi-Marketplace
+
+**Definido:** 2026-07-03
+**Core Value:** Desacoplar o sistema da premissa "ML-first" para refletir a realidade da ECF Consultoria — que atende empresas em múltiplos marketplaces (Mercado Livre, Shopee, Amazon, Magazine Luiza, etc). Reorganização estrutural de menu, dashboards e áreas transversais + fundação de dados para futuros marketplaces (Shopee/Amazon nesta milestone: apenas stubs).
+
+### Menu Lateral (NAV)
+
+- [ ] **NAV-01**: Sidebar mostra pasta "Mercado Livre" (aberta por padrão) contendo Performance (Dashboard, Desempenho, Empresas, Carteira, Reuniões, Sugadores, Metas, PPA) + Polos
+- [ ] **NAV-02**: Sidebar mostra "Publicação" como setor transversal FORA da pasta ML (atende todos os marketplaces — não introduzir amarração ML nesta seção)
+- [ ] **NAV-03**: Sidebar mostra itens "Shopee" e "Amazon" visíveis; clicar leva para rota `/em-desenvolvimento` (stub, não quebra)
+- [ ] **NAV-04**: Rota `/em-desenvolvimento` renderiza componente placeholder consistente com design system ECF (dark theme + tokens `ecf-*`), com mensagem clara indicando marketplace em desenvolvimento
+
+### Modelo de Dados Multi-Marketplace (DATA)
+
+- [ ] **DATA-01**: Decisão de arquitetura registrada em ADR: modelo `Company` + tabela pivot N:N `company_marketplaces` vs consolidação de flags na `companies` (Phase 18.5 já introduziu `companies.marketplace`). ADR justifica trade-offs (queries agregadas, migrations, ergonomia Eloquent).
+- [ ] **DATA-02**: Migration criada + backfill executado para 100% das empresas existentes; empresas com ML (`adman_account_id` ou `ml_store_id` preenchido) marcadas em ML; empresas com `companies.marketplace='shopee'` (33 já preenchidas em Phase 18.5) marcadas em Shopee; empresas restantes recebem marketplace via análise de dados
+- [ ] **DATA-03**: Model + relacionamentos cobertos por testes (unit); consultas críticas continuam funcionando sem regressão: Dashboard (`AdmanService::syncAll`), Sugadores (`SugadorAnalysisService`), /desempenho (`PortfolioScoreService`)
+
+### Dashboards ECF + Marketplace (DASH)
+
+- [ ] **DASH-01**: Rota `/dashboard/ecf` mostra KPIs consolidados (GMV total, vendas total, ROAS agregado) somando resultados através de marketplaces de todas as empresas atendidas; empresa em ML+Shopee soma ambos numa linha só; empresa só ML aparece com valores só ML
+- [ ] **DASH-02**: Rota `/dashboard/mercadolivre` mantém a funcionalidade atual do dashboard existente (mesmos filtros, mesmas métricas, mesmos gráficos); pode ser um alias/redirect do `/dashboard` atual ou substituir a rota canônica
+- [ ] **DASH-03**: Rotas `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento" (herdam layout de NAV-04); acessíveis do menu (NAV-03) e navegáveis sem quebrar
+
+### Áreas Transversais (CROSS)
+
+- [ ] **CROSS-01**: Auditoria concluída (documento em `.planning/phases/59-*/AUDIT.md`) mapeando cada acoplamento ML-only nas áreas transversais (Usuários, Setores, Comercial, Administrativo, NPS, Notificações): naming, filtros hardcoded, defaults ML, textos de UI. Cada acoplamento tem plano de generalização.
+- [ ] **CROSS-02**: Publicação confirmada como setor transversal — permissões `pub.*` continuam válidas para todos marketplaces; nenhuma tela de Publicação exige `adman_account_id`; se depender de ML, generalizar ou marcar como conscious debt
+- [ ] **CROSS-03**: Testes de regressão passam nas áreas transversais após generalização (rotas de Usuários, Setores, Comercial, Administrativo, NPS, Notificações)
+
+### Out of Scope (v13.0)
+
+- **Integração real com Shopee, Amazon, Magazine Luiza** — apenas stubs visuais; a integração de dados real fica para milestones futuras (v14+)
+- **Renomeação de tabelas com "adman"/"ml"** — não é o foco. Renomeações vêm quando fizer sentido em uma phase específica.
+- **UI de escolha de marketplace por empresa no Comercial** — pode virar seed para futuro se Phase 57 mostrar que faz sentido
+- **Meta por empresa no onboarding** — seed [270629-modificar-entrada-empresa-meta-onboarding](seeds/270629-modificar-entrada-empresa-meta-onboarding.md) permanece plantada, tangencial ao eixo multi-marketplace
+
+## Traceability v13.0
+
+| Requisito | Fase | Status |
+|-----------|------|--------|
+| NAV-01 | Phase 56 | Pending |
+| NAV-02 | Phase 56 | Pending |
+| NAV-03 | Phase 56 | Pending |
+| NAV-04 | Phase 56 | Pending |
+| DATA-01 | Phase 57 | Pending |
+| DATA-02 | Phase 57 | Pending |
+| DATA-03 | Phase 57 | Pending |
+| DASH-01 | Phase 58 | Pending |
+| DASH-02 | Phase 58 | Pending |
+| DASH-03 | Phase 58 | Pending |
+| CROSS-01 | Phase 59 | Pending |
+| CROSS-02 | Phase 59 | Pending |
+| CROSS-03 | Phase 59 | Pending |
+
+**Cobertura v13.0:**
+- Requirements: 13 total (4 NAV + 3 DATA + 3 DASH + 3 CROSS)
+- Mapeados para fases: 13 (100%)
+- Não mapeados: 0
 
 ---
 

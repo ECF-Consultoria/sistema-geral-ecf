@@ -15,23 +15,25 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v3.0 Sistema de Notificações
+## Current Milestone: v13.0 Reorganização Multi-Marketplace
 
-**Goal:** Usuários veem notificações relevantes (metas atribuídas, metas atingidas, mensagens manuais) em tempo quase real via sino no header, com targeting por usuário/setor/líderes/todos e disparo automático a partir de eventos de metas.
+**Goal:** Desacoplar o sistema da premissa "ML-first" para refletir a realidade da ECF Consultoria — que atende empresas em múltiplos marketplaces (Mercado Livre, Shopee, Amazon, Magazine Luiza, etc). Reorganização estrutural de menu, dashboards e áreas transversais + fundação de dados para futuros marketplaces.
 
-**Funcionalidades:**
-- Sino de notificações no header (badge com contador de não-lidas) e dropdown com últimas N
-- Marcar como lida (individual + todas) com decremento automático do contador
-- Página `/notificacoes` com abas "Não lidas" e "Todas" (lidas dos últimos 30 dias)
-- Criação manual de notificação com targeting: individual, por setor, para líderes, para todos
-- Permissão `notificacoes.criar` (admin sempre tem; líderes ganham automaticamente; atribuível via UI de setores para Administrativo)
-- Disparo automático em eventos de metas:
-  - `SetorGoal` atribuída → notifica todos os membros do setor
-  - `Goal` (empresa) atribuída → notifica consultor/mentor da empresa
-  - `PortfolioGoal` atribuída → notifica dono da carteira
-  - Qualquer meta atingida → notifica admin + líder do setor (quando aplicável)
-- Atualização real-time: polling ~60s + revalidação a cada navegação Inertia (props compartilhada)
-- Cleanup automático via scheduled command: notificações lidas com mais de 30 dias são removidas
+**Target features:**
+- Menu lateral reorganizado (pasta Mercado Livre aberta; Publicação como setor transversal; Shopee/Amazon com stubs "em desenvolvimento")
+- Modelo de dados multi-marketplace (consolida `companies.marketplace` da Phase 18.5 + eventual N:N `company_marketplaces`)
+- Dashboard ECF agregado (`/dashboard/ecf`) somando resultados através de marketplaces
+- Dashboards por marketplace (`/dashboard/mercadolivre` mantém funcionalidade atual; Shopee/Amazon shells)
+- Desacoplamento de áreas transversais (Usuários, Setores, Comercial, Administrativo, NPS, Notificações) do acoplamento ML-only
+- Publicação confirmada como transversal (atende todos os marketplaces)
+
+**Milestones paralelas ativas:**
+- v11.0 (Migração Sugadores Adman→ML) — Phase 44 BLOCKED em checkpoint humano DevCenter ML
+- v12.0 (Carteira + Desempenho + Gamificação) — Phase 47 congelada, Phase 53 STANDBY
+
+**Legado do momento em que v13.0 começa (histórico compactado):**
+- v3.0 Notificações entregue (sino, targeting, disparos automáticos)
+- v4.0 Fluxo Comercial + v4.1/4.2 Sugadores + v5.0 Inteligência ML + v6.0 Dashboard + v7.0 Sugadores Foco + v8.0 ECF Drive + v9.0 Notificações 2.0 + v9.5 Sugadores Robustos + v11.0 Migração ML + v12.0 Carteira/Desempenho — 38+ phases concluídas
 
 ## Requirements
 
@@ -141,4 +143,4 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-05-21 — milestone v3.0 iniciado (Sistema de Notificações)*
+*Last updated: 2026-07-03 — milestone v13.0 iniciado (Reorganização Multi-Marketplace)*
