@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v13.0
 milestone_name: Reorganizacao Multi-Marketplace
-status: planning
-last_updated: "2026-07-03T17:43:43.764Z"
-last_activity: 2026-07-03
+status: Defining requirements
+stopped_at: Phase 56 contexto capturado
+last_updated: "2026-07-03T17:55:44.254Z"
+last_activity: 2026-07-03 — Milestone v13.0 started
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 29
+  completed_phases: 17
+  total_plans: 38
+  completed_plans: 33
+  percent: 59
 ---
 
 # Project State
@@ -550,8 +551,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-06-25T20:52:35.701Z
-Stopped at: Phase 40 Plan 40-04 COMPLETO — PHASE 40 INTEIRA FECHADA (4/4 plans). 2 comandos Artisan (sugadores:shadow-ml + sugadores:compare-providers) + config/sugadores.php (CSV via SUGADORES_ML_SHADOW_COMPANIES) + scheduler diario 13h BRT + env documentada. 17/17 tests novos verdes; Phase 40 acumulado 52/52; Sugador 92/92; Phase 39 48/48 — zero regressao. Wave 3 FECHADA. REQ-40-04..08 fechados. Pronto para deploy. Phase 41 (UI shadow runs + aprovacao manual) destravada.
+Last session: 2026-07-03T17:55:44.238Z
+Stopped at: Phase 56 contexto capturado
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
 
