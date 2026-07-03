@@ -481,17 +481,19 @@ class MercadoLivreAdsService
     }
 
     /**
-     * Quick 2026-07-03 — retorna métricas Product Ads POR MLB dentro de um adgroup.
+     * Quick 2026-07-03 v2 — retorna métricas Product Ads POR MLB dentro de um adgroup.
      *
-     * Reusa listAds() que já pagina todos os ads do advertiser na janela e retorna
-     * `metrics` por item (payload validado em prod contra Bymobille: 570 items com
-     * clicks/cost/units_quantity/total_amount/cpc/acos/ctr/roas por item).
+     * Usa endpoint específico `/advertising/MLB/product_ads/ad_groups/{ADG}/ads`
+     * (estudo-metricas-mlb-por-adgroup §4.1) — mais eficiente que filtrar
+     * listAds() client-side e garante que só retorna do adgroup pedido.
      *
-     * Filtra client-side por `ad_group_id` — endpoint ML NÃO aceita filtro server-side.
+     * REGRAS OBRIGATÓRIAS (estudo §7, §9):
+     *  - Deduplicar por item_id somando métricas (mesmo MLB pode vir em N linhas)
+     *  - Somente Product Ads: NÃO usa organic_units_quantity/organic_units_amount
+     *  - Se API não retornar métrica pro item, o MLB NÃO entra no array (o
+     *    frontend renderiza "indisponível" — nunca copiar métrica do pai)
      *
-     * Métricas 100% Product Ads. Não inclui vendas orgânicas.
-     *
-     * @return array<int, array{
+     * @return array<string, array{
      *   mlb_id: string,
      *   title: ?string,
      *   thumbnail: ?string,
@@ -504,35 +506,71 @@ class MercadoLivreAdsService
      *   cpc: float,
      *   acos: float,
      *   ctr: float,
-     *   roas: float
+     *   roas: float,
+     *   raw_rows: int
      * }>
      */
-    public function fetchItemMetricsForAdgroup(Company $company, int $advertiserId, string $adgroupId, string $dateFrom, string $dateTo): array
+    public function fetchItemMetricsForAdgroup(Company $company, string $adgroupId, string $dateFrom, string $dateTo): array
     {
-        $data = $this->listAds($company, $advertiserId, $dateFrom, $dateTo);
-        $out  = [];
-        foreach ($data['results'] ?? [] as $item) {
-            if ((string) ($item['ad_group_id'] ?? '') !== $adgroupId) {
-                continue;
-            }
+        // Métricas 100% Product Ads (sem orgânico, conforme estudo §3)
+        $metricsCsv = 'clicks,prints,cost,cpc,ctr,direct_amount,indirect_amount,total_amount,'
+                    . 'direct_units_quantity,indirect_units_quantity,units_quantity,acos,roas';
+
+        $data = $this->ml->get($company, "/advertising/MLB/product_ads/ad_groups/{$adgroupId}/ads", [
+            'date_from' => $dateFrom,
+            'date_to'   => $dateTo,
+            'metrics'   => $metricsCsv,
+        ], ['api-version' => '2']);
+
+        $rows = $data['results'] ?? [];
+        $grouped = [];
+
+        foreach ($rows as $item) {
+            $mlbId = (string) ($item['item_id'] ?? '');
+            if ($mlbId === '') continue;
+            // Confere que realmente é do adgroup pedido (defesa em profundidade)
+            if ((string) ($item['ad_group_id'] ?? '') !== $adgroupId) continue;
+
             $m = $item['metrics'] ?? [];
-            $out[] = [
-                'mlb_id'         => (string) ($item['item_id'] ?? ''),
-                'title'          => $item['title']     ?? null,
-                'thumbnail'      => $item['thumbnail'] ?? null,
-                'permalink'      => $item['permalink'] ?? null,
-                'status'         => $item['status']    ?? null,
-                'clicks'         => (int)   ($m['clicks']         ?? 0),
-                'cost'           => (float) ($m['cost']           ?? 0),
-                'units_quantity' => (int)   ($m['units_quantity'] ?? 0),
-                'total_amount'   => (float) ($m['total_amount']   ?? 0),
-                'cpc'            => (float) ($m['cpc']            ?? 0),
-                'acos'           => (float) ($m['acos']           ?? 0),
-                'ctr'            => (float) ($m['ctr']            ?? 0),
-                'roas'           => (float) ($m['roas']           ?? 0),
-            ];
+
+            if (!isset($grouped[$mlbId])) {
+                $grouped[$mlbId] = [
+                    'mlb_id'         => $mlbId,
+                    'title'          => $item['title']     ?? null,
+                    'thumbnail'      => $item['thumbnail'] ?? null,
+                    'permalink'      => $item['permalink'] ?? null,
+                    'status'         => $item['status']    ?? null,
+                    'clicks'         => 0,
+                    'cost'           => 0.0,
+                    'units_quantity' => 0,
+                    'total_amount'   => 0.0,
+                    'cpc'            => 0.0,
+                    'acos'           => 0.0,
+                    'ctr'            => 0.0,
+                    'roas'           => 0.0,
+                    'raw_rows'       => 0,
+                ];
+            }
+
+            // Dedup: soma métricas quando o mesmo mlb_id vier em múltiplas linhas
+            // (estudo §7). CPC/ACOS/CTR/ROAS são recalculados a partir da soma
+            // (não faz sentido somar médias).
+            $grouped[$mlbId]['clicks']         += (int)   ($m['clicks']         ?? 0);
+            $grouped[$mlbId]['cost']           += (float) ($m['cost']           ?? 0);
+            $grouped[$mlbId]['units_quantity'] += (int)   ($m['units_quantity'] ?? 0);
+            $grouped[$mlbId]['total_amount']   += (float) ($m['total_amount']   ?? 0);
+            $grouped[$mlbId]['raw_rows']++;
         }
-        return $out;
+
+        // Recalcula ratios após somas
+        foreach ($grouped as &$g) {
+            $g['cpc']  = $g['clicks'] > 0 ? round($g['cost'] / $g['clicks'], 4) : 0.0;
+            $g['acos'] = $g['total_amount'] > 0 ? round(($g['cost'] * 100) / $g['total_amount'], 4) : 0.0;
+            $g['roas'] = $g['cost'] > 0 ? round($g['total_amount'] / $g['cost'], 4) : 0.0;
+        }
+        unset($g);
+
+        return $grouped;
     }
 
     /**

@@ -603,8 +603,10 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
     //      e' de empresa com adman_account_id. Empresas ML-only (caso ByMobille
     //      Teste #298) caem em 422 — supressao silenciosa, lista ML simples.
     const [state, setState] = useState({ loading: false, error: null, data: null, loaded: false });
-    // Quick 2026-07-03 — métricas Product Ads por MLB via ML (paralelo ao Adman)
+    // Quick 2026-07-03 v2 — métricas Product Ads por MLB via ML (paralelo ao Adman).
+    // Além do map por mlb_id, guardamos totais para o rodapé "soma vs adgroup".
     const [mlMetrics, setMlMetrics] = useState({});
+    const [mlSummary, setMlSummary] = useState(null); // {mlbs_sum, adgroup_total}
     const [copied, setCopied] = useState(false);
 
     const load = async () => {
@@ -624,8 +626,9 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
         }
     };
 
-    // Quick 2026-07-03 — métricas por MLB via ML Product Ads. Sempre 200
-    // (endpoint retorna {mlbs: [], reason} quando empresa sem OAuth ML).
+    // Quick 2026-07-03 v2 — métricas por MLB via ML Product Ads.
+    // Segue estudo-metricas-mlb-por-adgroup: janela = periodo do sugador,
+    // dedup por mlb_id, mostra "indisponível" quando falta dado.
     const loadMlMetrics = async () => {
         try {
             const res = await fetch(route('sugadores.mlbs-metrics-ml', sugadorId), {
@@ -639,6 +642,13 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
                 if (m?.mlb_id) map[m.mlb_id] = m;
             }
             setMlMetrics(map);
+            if (body.mlbs_sum && body.adgroup_total) {
+                setMlSummary({
+                    mlbs_sum:      body.mlbs_sum,
+                    adgroup_total: body.adgroup_total,
+                    window:        body.window,
+                });
+            }
         } catch {
             // Ignore silently — chips ML são enrichment opcional.
         }
@@ -664,8 +674,22 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
 
     // IDs canonicos: ML hint quando disponivel, fallback Adman (sugadores legados
     // sem adgroup_id resolvido ou empresas que ainda nao rodaram analise ML).
-    const idsFromMl    = Array.isArray(mlbsHint) ? mlbsHint.filter(Boolean) : [];
-    const idsFromAdman = Object.keys(admanByMlb);
+    // Quick 2026-07-03 v2 — DEDUP OBRIGATÓRIA (estudo §7): mlbsHint pode trazer
+    // o mesmo MLB em N linhas (adgroup com family/variações). Sem dedup, os
+    // cards ficam duplicados e o mesmo mlMetrics é indexado por vários cards.
+    const dedupeIds = (arr) => {
+        const seen = new Set();
+        const out = [];
+        for (const id of arr) {
+            const key = String(id ?? '').trim();
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            out.push(key);
+        }
+        return out;
+    };
+    const idsFromMl    = dedupeIds(Array.isArray(mlbsHint) ? mlbsHint.filter(Boolean) : []);
+    const idsFromAdman = dedupeIds(Object.keys(admanByMlb));
     const allIds       = idsFromMl.length > 0 ? idsFromMl : idsFromAdman;
 
     // Items finais para render: 1 por ID, com metricas Adman se houver, senao
@@ -786,16 +810,61 @@ function MlbsDoAdgroup({ sugadorId, adgroupName, companyId, mlbsHint = [] }) {
             )}
 
             {items.length > 0 && (
-                <ul className="space-y-3">
-                    {items.map(m => (
-                        <MlbRow
-                            key={m.mlb_id || m.listing_id}
-                            mlb={m}
-                            mlMetrics={mlMetrics[m.mlb_id] ?? null}
-                        />
-                    ))}
-                </ul>
+                <>
+                    {/* Quick 2026-07-03 v2 — rodapé de comparação (estudo §8):
+                        soma dos MLBs vs total do adgroup. Se não bate, marca "parcial". */}
+                    {mlSummary && (
+                        <MlbsSumaryVsAdgroup summary={mlSummary} mlbsRenderedCount={items.length} />
+                    )}
+                    <ul className="space-y-3">
+                        {items.map(m => (
+                            <MlbRow
+                                key={m.mlb_id || m.listing_id}
+                                mlb={m}
+                                mlMetrics={mlMetrics[m.mlb_id] ?? null}
+                                mlMetricsQueried={mlSummary !== null}
+                            />
+                        ))}
+                    </ul>
+                </>
             )}
+        </div>
+    );
+}
+
+/**
+ * Quick 2026-07-03 v2 — rodapé "Soma dos MLBs vs total do adgroup" (estudo §8).
+ * Marca visualmente quando a soma dos filhos NÃO bate com o total do pai —
+ * ajuda o analista a saber que a foto está parcial (item deletado, delegated,
+ * janela diferente, etc).
+ */
+function MlbsSumaryVsAdgroup({ summary, mlbsRenderedCount }) {
+    const s = summary.mlbs_sum;
+    const t = summary.adgroup_total;
+    if (!s || !t) return null;
+    const clicksMatch = s.clicks === t.clicks;
+    const investMatch = Math.abs(s.cost - t.cost) <= 0.10;
+    const salesMatch  = s.units_quantity === t.units_quantity;
+    const perfectMatch = clicksMatch && investMatch && salesMatch;
+    return (
+        <div className={cn(
+            'mb-3 p-2.5 rounded-lg border text-[11px] flex flex-wrap items-center gap-x-4 gap-y-1',
+            perfectMatch
+                ? 'border-emerald-500/20 bg-emerald-500/[0.05]'
+                : 'border-amber-500/25 bg-amber-500/[0.05]',
+        )}>
+            <span className={perfectMatch ? 'text-emerald-300' : 'text-amber-300'}>
+                {perfectMatch ? '✓ Soma dos MLBs bate com o adgroup' : '⚠ Soma parcial · fotos podem estar defasadas'}
+            </span>
+            <span className="text-white/60">
+                MLBs: {fmtInt(s.clicks)} cliques · {fmtBRL(s.cost)} · {fmtInt(s.units_quantity)} vendas
+            </span>
+            <span className="text-white/40">
+                Adgroup: {fmtInt(t.clicks)} · {fmtBRL(t.cost)} · {fmtInt(t.units_quantity)}
+            </span>
+            <span className="text-white/30 italic">
+                Janela {summary.window?.from} → {summary.window?.to}
+            </span>
         </div>
     );
 }
@@ -810,18 +879,20 @@ const mlbUrl = (mlbId) => {
     return `https://produto.mercadolivre.com.br/MLB-${digits}`;
 };
 
-function MlbRow({ mlb, mlMetrics = null }) {
+function MlbRow({ mlb, mlMetrics = null, mlMetricsQueried = false }) {
     // Items ML-only nao trazem metricas Adman (investment/ads_revenue/acos etc).
     // Detecta o caso pra renderizar versao compacta — evita poluir UI com
     // "R$ 0,00" pra tudo quando o sugador e' de empresa ML-only.
     const hasAdmanMetrics = mlb.investment != null || mlb.ads_revenue != null
         || mlb.ads_sold_quantity != null || mlb.clicks != null;
     const listingId = mlb.mlb_id || mlb.listing_id;
-    // Quick 2026-07-03 — mostra chips ML Product Ads (clicks/cost/units) quando
-    // vier do endpoint mlbs-metrics-ml, mesmo se Adman também tiver métrica.
-    // ML é fonte em tempo real; Adman é sync D-1. UI dá prioridade ao ML.
-    const hasMlMetrics = mlMetrics
-        && (mlMetrics.clicks > 0 || mlMetrics.cost > 0 || mlMetrics.units_quantity > 0);
+    // Quick 2026-07-03 v2 — chips ML Product Ads:
+    //  - Se mlMetrics vier: mostra valores reais (inclusive 0 se for 0 real)
+    //  - Se mlMetrics for null MAS a consulta foi feita: mostra "indisponível"
+    //    conforme estudo §9 (NUNCA copiar métrica do adgroup pai)
+    //  - Se a consulta nem foi feita (mlMetricsQueried=false): não mostra nada
+    const hasMlMetrics = !!mlMetrics;
+    const showMlPlaceholder = mlMetricsQueried && !mlMetrics;
 
     return (
         <li className="flex gap-3 p-3 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/[0.04] transition-colors">
@@ -863,16 +934,15 @@ function MlbRow({ mlb, mlMetrics = null }) {
                     </div>
                 </div>
 
-                {/* Quick 2026-07-03 — chips ML Product Ads (clicks/cost/units, 30d).
-                    Renderiza SEMPRE quando o endpoint mlbs-metrics-ml devolveu algo
-                    para este mlb_id — inclui casos com métricas Adman também
-                    (ML é fonte em tempo real, útil pra cross-check). */}
+                {/* Quick 2026-07-03 v2 — chips ML Product Ads.
+                    Regra estudo §9: métricas exclusivas deste MLB (clicks/cost/units).
+                    Se não veio dado do endpoint, mostrar "indisponível" — NUNCA copiar do pai. */}
                 {hasMlMetrics && (
                     <div className="flex flex-wrap items-center gap-1.5 mt-1 mb-1">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ecf-yellow/[0.08] border border-ecf-yellow/25 text-ecf-yellow text-[10px] font-medium" title="Cliques em Product Ads nos últimos 30 dias">
-                            👁 {fmtInt(mlMetrics.clicks)} cliques
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-ecf-yellow/[0.08] border border-ecf-yellow/25 text-ecf-yellow text-[10px] font-medium" title="Cliques em Product Ads no período do sugador">
+                            👁 {fmtInt(mlMetrics.clicks)} cliques ads
                         </span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/[0.08] border border-red-500/25 text-red-300 text-[10px] font-medium" title="Investimento em Product Ads nos últimos 30 dias">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/[0.08] border border-red-500/25 text-red-300 text-[10px] font-medium" title="Investimento em Product Ads no período do sugador">
                             💰 {fmtBRL(mlMetrics.cost)}
                         </span>
                         <span className={cn(
@@ -880,15 +950,23 @@ function MlbRow({ mlb, mlMetrics = null }) {
                             mlMetrics.units_quantity > 0
                                 ? 'bg-emerald-500/[0.08] border-emerald-500/25 text-emerald-300'
                                 : 'bg-white/[0.04] border-white/[0.08] text-white/60',
-                        )} title="Vendas atribuídas a Product Ads nos últimos 30 dias (não inclui orgânico)">
+                        )} title="Vendas atribuídas a Product Ads no período do sugador (não inclui orgânico)">
                             🛒 {fmtInt(mlMetrics.units_quantity)} vendas ads
                         </span>
                         {mlMetrics.total_amount > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-white/70 text-[10px]" title="Receita atribuída a Product Ads (direta + indireta), últimos 30 dias">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-white/70 text-[10px]" title="Receita atribuída a Product Ads (direta + indireta) no período do sugador">
                                 📈 {fmtBRL(mlMetrics.total_amount)}
                             </span>
                         )}
-                        <span className="text-white/30 text-[10px] italic">ML · 30d</span>
+                        <span className="text-white/30 text-[10px] italic">Ads · Product Ads</span>
+                    </div>
+                )}
+
+                {showMlPlaceholder && (
+                    <div className="flex items-center gap-1.5 mt-1 mb-1" title="A API Product Ads não retornou métricas para este MLB neste adgroup+período. Pode indicar item deletado, delegado, revogado, ou fora da janela.">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/[0.02] border border-white/[0.08] text-white/40 text-[10px] italic">
+                            Métricas Ads indisponíveis para este MLB
+                        </span>
                     </div>
                 )}
 

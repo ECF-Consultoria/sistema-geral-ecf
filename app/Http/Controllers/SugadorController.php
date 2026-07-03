@@ -543,18 +543,14 @@ class SugadorController extends Controller
     }
 
     /**
-     * Quick 2026-07-03 — Métricas Product Ads POR MLB dentro do adgroup do sugador.
+     * Quick 2026-07-03 v2 — Métricas Product Ads POR MLB dentro do adgroup do sugador.
      *
-     * Alimenta a seção "MLBs neste adgroup" no Show.jsx com chips per-item:
-     * clicks + investimento (cost) + vendas (units_quantity). Só empresas com
-     * OAuth ML ativo (MercadoLivreAdsService::fetchItemMetricsForAdgroup).
-     *
-     * Empresas sem OAuth ML (só Adman ou nenhum) recebem 200 vazio + reason —
-     * o frontend cai no path Adman legado (mlbs endpoint) que já expõe métricas
-     * via Adman MCP.
-     *
-     * Janela: últimos 30d (mesma do sync/detector). Cache de listAds já é
-     * gerenciado dentro do MercadoLivreAdsService (Phase 41 patterns).
+     * Segue estudo `estudo-metricas-mlb-por-adgroup-product-ads.md`:
+     *  - Endpoint específico `/product_ads/ad_groups/{ADG}/ads` (§4.1) — não filtra listAds
+     *  - Janela usa periodo_inicio/periodo_fim do próprio sugador (§11) — não 30d fixed
+     *  - Deduplica por item_id somando (§7)
+     *  - NUNCA copia métricas do adgroup para MLBs sem dado (§9)
+     *  - Retorna also o total agregado do sugador para o frontend comparar (§8)
      */
     public function mlbsMetricsMl(Sugador $sugador, \App\Services\Sugadores\MercadoLivreAdsService $ads)
     {
@@ -575,30 +571,50 @@ class SugadorController extends Controller
         if (!$token || $token->status !== 'active') {
             return response()->json([
                 'mlbs'   => [],
-                'reason' => 'Empresa sem OAuth ML ativo — use o endpoint Adman legado.',
+                'reason' => 'Empresa sem OAuth ML ativo.',
             ]);
         }
 
+        // Janela do sugador — nunca "últimos 30 dias a partir de agora" (estudo §11).
+        $dateFrom = $sugador->periodo_inicio ? $sugador->periodo_inicio->toDateString() : now()->subDays(30)->toDateString();
+        $dateTo   = $sugador->periodo_fim    ? $sugador->periodo_fim->toDateString()    : now()->toDateString();
+
         try {
-            $adv         = $ads->discoverAdvertiser($company);
-            $advertiser  = $adv['advertiser_id'] ?? null;
-            if (!$advertiser) {
-                return response()->json(['mlbs' => [], 'reason' => 'Advertiser Product Ads não encontrado.']);
-            }
-            $dateTo   = now()->toDateString();
-            $dateFrom = now()->subDays(30)->toDateString();
-            $metrics  = $ads->fetchItemMetricsForAdgroup(
+            $metrics = $ads->fetchItemMetricsForAdgroup(
                 $company,
-                (int) $advertiser,
                 (string) $sugador->adgroup_id,
                 $dateFrom,
                 $dateTo,
             );
+
+            // Soma para comparar com o total do adgroup (estudo §8)
+            $sum = [
+                'clicks'         => 0,
+                'cost'           => 0.0,
+                'units_quantity' => 0,
+                'total_amount'   => 0.0,
+            ];
+            foreach ($metrics as $m) {
+                $sum['clicks']         += $m['clicks'];
+                $sum['cost']           += $m['cost'];
+                $sum['units_quantity'] += $m['units_quantity'];
+                $sum['total_amount']   += $m['total_amount'];
+            }
+
             return response()->json([
-                'mlbs'      => $metrics,
-                'total'     => count($metrics),
-                'window'    => ['from' => $dateFrom, 'to' => $dateTo],
-                'source'    => 'ml',
+                'mlbs'          => array_values($metrics),
+                'total'         => count($metrics),
+                'window'        => ['from' => $dateFrom, 'to' => $dateTo],
+                'source'        => 'ml',
+                // Total do adgroup pai (snapshot no momento da detecção)
+                'adgroup_total' => [
+                    'clicks'         => (int)   $sugador->cliques,
+                    'cost'           => (float) $sugador->investimento_periodo,
+                    'units_quantity' => (int)   $sugador->vendas_periodo,
+                    'total_amount'   => (float) $sugador->faturamento_periodo,
+                ],
+                // Soma dos MLBs (para UI marcar "parcial" se não bater)
+                'mlbs_sum'      => $sum,
             ]);
         } catch (\Throwable $e) {
             Log::warning("[SugadorController::mlbsMetricsMl] falhou sugador={$sugador->id}: " . $e->getMessage());
