@@ -45,8 +45,13 @@ class Servico extends Model
     public const TIPO_UNICA  = 'unica';
 
     // ─── Constants de setor (Phase 37 Plan 37-01 — REQ-37-03) ───────────────
+    // 2026-07-03 quick fix: adicionado 'polos' após operador criar o setor Polos
+    // na tabela `setores` (id=7 slug=polos). Servico #2 "Polos" ficava com
+    // setor='outros' porque o enum não aceitava 'polos' — corrigido via migration
+    // add_polos_to_servicos_setor_enum + update Servico#2.
     public const SETOR_PERFORMANCE = 'performance';
     public const SETOR_PUBLICACAO  = 'publicacao';
+    public const SETOR_POLOS       = 'polos';
     public const SETOR_OUTROS      = 'outros';
 
     /**
@@ -55,6 +60,7 @@ class Servico extends Model
     public const SETORES = [
         self::SETOR_PERFORMANCE,
         self::SETOR_PUBLICACAO,
+        self::SETOR_POLOS,
         self::SETOR_OUTROS,
     ];
 
@@ -77,6 +83,7 @@ class Servico extends Model
         return [
             self::SETOR_PERFORMANCE => 'Performance',
             self::SETOR_PUBLICACAO  => 'Publicação',
+            self::SETOR_POLOS       => 'Polos',
             self::SETOR_OUTROS      => 'Outros',
         ];
     }
