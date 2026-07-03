@@ -4,12 +4,18 @@ import { useEffect, useMemo, useState } from 'react';
 import {
     ArrowLeft, Building2, Tag, Megaphone, Copy, Check, Loader2,
     PlayCircle, Settings, SlidersHorizontal, AlertTriangle,
+    MoreHorizontal, ExternalLink, CheckCircle2, EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
     Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
 } from '@/Components/ui/table';
 import { Checkbox } from '@/Components/ui/checkbox';
+import {
+    DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
+    DropdownMenuItem, DropdownMenuSeparator, DropdownMenuLabel,
+    DropdownMenuCheckboxItem,
+} from '@/Components/ui/dropdown-menu';
 
 // Phase 52 Wave 3.5 (52-03B) — Drilldown "por empresa": lista os sugadores
 // pendentes/em_acao de UMA empresa. Restaura o alvo do click no CompanyCard
@@ -29,6 +35,25 @@ const STATUS_BADGE = {
 };
 const TIPO_ICONS = { adgroup: Tag, campanha: Megaphone };
 const TIPO_LABELS = { adgroup: 'Adgroup', campanha: 'Campanha' };
+
+// ─── Column visibility (Phase 55-02) ─────────────────────────────────────
+// Chave versionada (:v1) permite invalidar cache em phases futuras se o
+// schema de colunas mudar sem quebrar a UX do usuário atual.
+const COL_VIS_STORAGE_KEY = 'sugadores:col-visibility:v1';
+const DEFAULT_COL_VIS = {
+    campaign:     false,
+    mlb_id:       false,
+    motivos:      false,
+    investimento: false,
+    vendas:       false,
+};
+const OPTIONAL_COLUMNS = [
+    { key: 'campaign',     label: 'Campaign name' },
+    { key: 'mlb_id',       label: 'MLB ID' },
+    { key: 'motivos',      label: 'Motivos' },
+    { key: 'investimento', label: 'Investimento' },
+    { key: 'vendas',       label: 'Vendas' },
+];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 const fmtBRL = (n) => 'R$ ' + Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -239,6 +264,40 @@ export default function SugadoresEmpresaListagem({
         );
     }
 
+    // ─── Phase 55-02 (T1) — Mudança de status via dropdown de ações ─────────
+    // Reusa PATCH /sugadores/{sugador}/status (name: sugadores.update-status).
+    // Payload minimo — o controller aceita status ∈ {pendente, em_acao, resolvido, ignorado}.
+    // preserveScroll pra nao pular pro topo; preserveState:false pra recarregar props
+    // frescas (sugadores listados, contadores) apos a mudanca.
+    function mudarStatus(sugadorId, novoStatus) {
+        router.patch(
+            route('sugadores.update-status', sugadorId),
+            { status: novoStatus },
+            { preserveScroll: true, preserveState: false },
+        );
+    }
+
+    // ─── Phase 55-02 (T2) — Column visibility persistida em localStorage ────
+    // Chave versionada + merge defensivo com DEFAULT_COL_VIS mantem UX estavel
+    // mesmo se o schema mudar em phase futura ou o JSON salvo estiver corrompido.
+    const [colVis, setColVis] = useState(() => {
+        try {
+            const raw = typeof window !== 'undefined'
+                ? window.localStorage.getItem(COL_VIS_STORAGE_KEY)
+                : null;
+            return raw ? { ...DEFAULT_COL_VIS, ...JSON.parse(raw) } : DEFAULT_COL_VIS;
+        } catch {
+            return DEFAULT_COL_VIS;
+        }
+    });
+    useEffect(() => {
+        try {
+            if (typeof window !== 'undefined') {
+                window.localStorage.setItem(COL_VIS_STORAGE_KEY, JSON.stringify(colVis));
+            }
+        } catch { /* localStorage cheio ou desabilitado — silencioso */ }
+    }, [colVis]);
+
     // ─── Estados de feedback por linha (copiar MLBs por sugador — A5) ──────
     const [copyingId, setCopyingId] = useState(null);
     const [copiedFeedback, setCopiedFeedback] = useState({}); // { [sugadorId]: {ok, total, error} }
@@ -415,6 +474,41 @@ export default function SugadoresEmpresaListagem({
                                 ? 'Nenhum sugador no período'
                                 : `${fmtInt(sugadores.length)} no período`}
                         </span>
+
+                        {/* Phase 55-02 (T2) — Customize Columns dropdown.
+                            ml-auto empurra pra direita da linha do filtro. onSelect
+                            e.preventDefault() em cada item mantem o menu aberto pra
+                            marcar varias colunas em sequencia. */}
+                        <div className="ml-auto">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40 transition-all"
+                                    >
+                                        <SlidersHorizontal size={12} />
+                                        Customizar colunas
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="bg-ecf-card border-white/[0.08] text-white/90 w-56">
+                                    <DropdownMenuLabel className="text-white/50 text-[10px] uppercase tracking-wider font-semibold">
+                                        Colunas opcionais
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator className="bg-white/[0.06]" />
+                                    {OPTIONAL_COLUMNS.map(col => (
+                                        <DropdownMenuCheckboxItem
+                                            key={col.key}
+                                            checked={!!colVis[col.key]}
+                                            onCheckedChange={(val) => setColVis(prev => ({ ...prev, [col.key]: !!val }))}
+                                            onSelect={(e) => e.preventDefault()}
+                                            className="text-[13px] focus:bg-white/[0.05] focus:text-white"
+                                        >
+                                            {col.label}
+                                        </DropdownMenuCheckboxItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
                     </div>
 
                     {/* Barra bulk — aparece quando ha selecao ────────────────────────*/}
@@ -490,8 +584,25 @@ export default function SugadoresEmpresaListagem({
                                     />
                                 </TableHead>
                                 <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Produto</TableHead>
+                                {/* Phase 55-02 (T2) — Colunas opcionais toggláveis. Renderização condicional
+                                    (NÃO visibility:hidden) — evita colunas fantasma no grid da <Table>. */}
+                                {colVis.campaign && (
+                                    <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Campaign name</TableHead>
+                                )}
+                                {colVis.mlb_id && (
+                                    <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">MLB ID</TableHead>
+                                )}
+                                {colVis.motivos && (
+                                    <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Motivos</TableHead>
+                                )}
                                 <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Status</TableHead>
                                 <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Detectado</TableHead>
+                                {colVis.investimento && (
+                                    <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Investimento</TableHead>
+                                )}
+                                {colVis.vendas && (
+                                    <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Vendas</TableHead>
+                                )}
                                 <TableHead className="text-right text-white/50 font-medium text-xs uppercase tracking-wider">Ações</TableHead>
                             </TableRow>
                         </TableHeader>
@@ -537,6 +648,26 @@ export default function SugadoresEmpresaListagem({
                                                 Invest. {fmtBRL(s.investimento_periodo)}
                                             </p>
                                         </TableCell>
+                                        {/* Phase 55-02 (T2) — Colunas opcionais. Backend porEmpresa envia
+                                            campaign_name/motivos/investimento_periodo; mlb_id e vendas_periodo
+                                            NÃO existem no shape porque sugador é adgroup/campanha (nao MLB). */}
+                                        {colVis.campaign && (
+                                            <TableCell className="py-3 text-white/70 text-xs truncate max-w-[180px]" title={s.campaign_name}>
+                                                {s.campaign_name || '—'}
+                                            </TableCell>
+                                        )}
+                                        {colVis.mlb_id && (
+                                            <TableCell className="py-3 text-white/70 text-xs whitespace-nowrap">
+                                                {s.mlb_id || '—'}
+                                            </TableCell>
+                                        )}
+                                        {colVis.motivos && (
+                                            <TableCell className="py-3 text-white/70 text-xs">
+                                                {Array.isArray(s.motivos) && s.motivos.length > 0
+                                                    ? s.motivos.slice(0, 2).join(', ') + (s.motivos.length > 2 ? '…' : '')
+                                                    : '—'}
+                                            </TableCell>
+                                        )}
                                         <TableCell className="py-3">
                                             <StatusBadge status={s.status} />
                                         </TableCell>
@@ -548,28 +679,75 @@ export default function SugadoresEmpresaListagem({
                                                 </span>
                                             )}
                                         </TableCell>
-                                        {/* stopPropagation preservado — botao "MLBs" inline nao dispara navegacao.
-                                            Dropdown de acoes "⋯" fica para Wave 2 (55-02). */}
-                                        <TableCell onClick={e => e.stopPropagation()} className="py-3 text-right min-w-[80px]">
-                                            <div className="inline-flex items-center gap-1.5 justify-end flex-wrap">
-                                                {isElegivel && (
+                                        {colVis.investimento && (
+                                            <TableCell className="py-3 text-white/70 text-xs tabular-nums whitespace-nowrap">
+                                                {fmtBRL(s.investimento_periodo)}
+                                            </TableCell>
+                                        )}
+                                        {colVis.vendas && (
+                                            <TableCell className="py-3 text-white/70 text-xs tabular-nums whitespace-nowrap">
+                                                {s.vendas_periodo != null ? fmtInt(s.vendas_periodo) : '—'}
+                                            </TableCell>
+                                        )}
+                                        {/* Phase 55-02 (T1) — Dropdown de ações "⋯" substitui o botão MLBs inline.
+                                            stopPropagation no <TableCell> preservado (Phase 54-02 B2): clicar no
+                                            trigger nao dispara navegacao pra Show. asChild repassa handlers do
+                                            Radix pro <button> interno (evita <button><button> aninhado). */}
+                                        <TableCell onClick={e => e.stopPropagation()} className="py-3 text-right w-10">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
                                                     <button
                                                         type="button"
-                                                        onClick={() => copiarMlbsLinha(s.id)}
-                                                        disabled={copyingId === s.id}
-                                                        className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] disabled:opacity-50 text-[11px]"
-                                                        title="Copiar MLBs deste adgroup"
+                                                        className="inline-flex items-center justify-center h-7 w-7 rounded-md text-white/60 hover:text-white hover:bg-white/[0.05] focus:outline-none focus-visible:ring-2 focus-visible:ring-ecf-yellow/40 transition-colors"
+                                                        aria-label="Ações do sugador"
+                                                    >
+                                                        <MoreHorizontal size={14} />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="bg-ecf-card border-white/[0.08] text-white/90 w-52">
+                                                    <DropdownMenuLabel className="text-white/50 text-[10px] uppercase tracking-wider font-semibold">
+                                                        Ações
+                                                    </DropdownMenuLabel>
+                                                    <DropdownMenuSeparator className="bg-white/[0.06]" />
+                                                    <DropdownMenuItem
+                                                        onSelect={() => copiarMlbsLinha(s.id)}
+                                                        disabled={!isElegivel || copyingId === s.id}
+                                                        className="gap-2 text-[13px] focus:bg-white/[0.05] focus:text-white cursor-pointer"
                                                     >
                                                         {copyingId === s.id
-                                                            ? <><Loader2 size={11} className="animate-spin" /> ...</>
-                                                            : fb?.ok
-                                                                ? <><Check size={11} className="text-emerald-300" /> {fb.total}</>
-                                                                : fb?.error
-                                                                    ? <span className="text-red-300">{fb.error}</span>
-                                                                    : <><Copy size={11} /> MLBs</>}
-                                                    </button>
-                                                )}
-                                            </div>
+                                                            ? <Loader2 size={13} className="animate-spin" />
+                                                            : <Copy size={13} />}
+                                                        Copiar MLBs
+                                                        {fb?.ok && <span className="ml-auto text-emerald-300 text-[10px]">{fb.total}</span>}
+                                                        {fb?.error && <span className="ml-auto text-red-300 text-[10px]">erro</span>}
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onSelect={() => router.visit(route('sugadores.show', s.id))}
+                                                        className="gap-2 text-[13px] focus:bg-white/[0.05] focus:text-white cursor-pointer"
+                                                    >
+                                                        <ExternalLink size={13} /> Ver detalhes
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuSeparator className="bg-white/[0.06]" />
+                                                    <DropdownMenuItem
+                                                        onSelect={() => mudarStatus(s.id, 'em_acao')}
+                                                        className="gap-2 text-[13px] focus:bg-white/[0.05] focus:text-white cursor-pointer"
+                                                    >
+                                                        <PlayCircle size={13} /> Marcar em ação
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onSelect={() => mudarStatus(s.id, 'resolvido')}
+                                                        className="gap-2 text-[13px] focus:bg-white/[0.05] focus:text-white cursor-pointer"
+                                                    >
+                                                        <CheckCircle2 size={13} /> Marcar resolvido
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem
+                                                        onSelect={() => mudarStatus(s.id, 'ignorado')}
+                                                        className="gap-2 text-[13px] focus:bg-white/[0.05] focus:text-white cursor-pointer"
+                                                    >
+                                                        <EyeOff size={13} /> Ignorar
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
                                         </TableCell>
                                     </TableRow>
                                 );
