@@ -48,7 +48,20 @@ const NAV_TREE = [
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
             { label: 'Metas',       routeName: 'goals.index',         page: 'Goals',        icon: Target,          permission: 'core.metas' },
             { label: 'PPA',         routeName: 'ppa.index',           page: 'Ppa',          icon: FileText,        permission: 'core.ppa' },
-            // ── Separator visual: Performance | Polos ─────
+            // ── Separator visual: Performance | Dados Estrategicos ─────
+            // Feedback UAT 2026-07-03: dados vem do ECF Drive (fonte ML-only na
+            // pratica), entao Dados Estrategicos e ML-especifico. Movido pra
+            // dentro do grupo ML no lugar de ficar como grupo separado.
+            { divider: 'Dados Estratégicos' },
+            // ── Secao Dados Estrategicos ──────────────────
+            // Phase 24 — Painel Executivo Carteira ECF (admin only)
+            { label: 'Painel Executivo',        routeName: 'painel-executivo.index', page: 'PainelExecutivo',     icon: LineChart,      excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Phase 27 — Concentracao e Forecast 90d (admin only)
+            { label: 'Concentração e Previsão', routeName: 'concentracao.index',    page: 'Concentracao',        icon: TrendingUp,     excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Phase 23 — Alertas Estrategicos (signals ECF Drive)
+            { label: 'Alertas Estratégicos',    routeName: 'alertas.index',          page: 'AlertasEstrategicos', icon: AlertTriangle,  showBadge: 'alertas_criticos_count', excludeRoles: ['publicador', 'analista', 'gestor', 'lider'] },
+            { label: 'Grants',                  routeName: 'grants.index',           page: 'Grants',              icon: ShieldCheck,    permission: 'core.grants' },
+            // ── Separator visual: Dados Estrategicos | Polos ─────
             { divider: 'Polos' },
             // ── Secao Polos ───────────────────────────────
             { label: 'Onboarding',        routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks, permission: 'mlb.implementacao' },
@@ -78,22 +91,10 @@ const NAV_TREE = [
         badgeText: 'Em breve',
     },
 
-    // ── Grupo: Dados Estratégicos ────────────────────────────────────────────
-    {
-        group: 'Dados Estratégicos',
-        icon: LineChart,
-        children: [
-            // Phase 24 — Painel Executivo. Apenas admin (excludeRoles).
-            { label: 'Painel Executivo',       routeName: 'painel-executivo.index', page: 'PainelExecutivo',     icon: LineChart,      excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
-            // Phase 27 — Concentração e Forecast 90d. Apenas admin (excludeRoles).
-            { label: 'Concentração e Previsão', routeName: 'concentracao.index',    page: 'Concentracao',        icon: TrendingUp,     excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
-            // Phase 23 — Alertas Estratégicos. excludeRoles esconde publicador/analista/gestor/lider.
-            { label: 'Alertas Estratégicos',   routeName: 'alertas.index',          page: 'AlertasEstrategicos', icon: AlertTriangle,  showBadge: 'alertas_criticos_count', excludeRoles: ['publicador', 'analista', 'gestor', 'lider'] },
-            { label: 'Grants',                 routeName: 'grants.index',           page: 'Grants',              icon: ShieldCheck,    permission: 'core.grants' },
-        ],
-    },
-
     // ── Itens de topo (setores transversais) ────────────────────────────────
+    // Feedback UAT 2026-07-03: grupo "Dados Estrategicos" que ficava aqui foi
+    // movido pra dentro do grupo Mercado Livre (secao ML-especifica — dados
+    // vem do ECF Drive que hoje serve so ML).
     // Phase 37 Plan 37-07 (REQ-37-09) — item "Serviços" removido do nivel raiz;
     // movido para dentro do grupo Comercial abaixo.
     // Phase 56 v13.0: Dashboard, Carteira, Empresas, Reunioes, Metas, PPA,
