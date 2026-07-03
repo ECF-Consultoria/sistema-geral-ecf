@@ -617,8 +617,13 @@ class PolosController extends Controller
     private function montarAtivosDoMes(?string $mesSel, bool $parcial, array $linhasMes): array
     {
         // Mês corrente/parcial (ou indefinido): estado ao vivo do ECF, curado (D-02).
+        // D-16 (reconciliação com a Comercial): "ativo" = M2/M3/M4 + Fechamento
+        // (empresas graduadas/concluídas que seguem vendendo contam como ativas). Churn
+        // e M0 (onboarding) NÃO contam aqui — M0 vai na coorte M1 (ver montarM1).
+        // Fechamento não tem limiar em $limiares → meta=0 (não infla o denominador do polo;
+        // agrega só o faturamento). Roster manual (Kanban); ver memória do painel de polos.
         if ($parcial || $mesSel === null) {
-            return MlbEmpresa::whereIn('fase', ['M2', 'M3', 'M4'])
+            return MlbEmpresa::whereIn('fase', ['M2', 'M3', 'M4', 'Fechamento'])
                 ->where('projeto', 'POLOS')
                 ->get(['id', 'nome', 'cust_id', 'polo', 'fase', 'problema', 'problema_nota', 'ads_desligado'])
                 ->toArray();
@@ -684,8 +689,11 @@ class PolosController extends Controller
         $roster = [];
         if ($parcial || $mesSel === null) {
             // Mês corrente: estado ao vivo do ECF.
+            // D-16: coorte M1 (onboarding) = fase M1 + M0. M0 são empresas em
+            // implantação (Estágio 1/2/3); as sem cust_id (lixo/não-linkadas) são
+            // descartadas logo abaixo pelo guard `$id === ''`, então não inflam a conta.
             foreach (
-                MlbEmpresa::where('fase', 'M1')->where('projeto', 'POLOS')
+                MlbEmpresa::whereIn('fase', ['M1', 'M0'])->where('projeto', 'POLOS')
                     ->get(['nome', 'cust_id', 'polo']) as $e
             ) {
                 $id = CustId::normaliza((string) $e->cust_id);
