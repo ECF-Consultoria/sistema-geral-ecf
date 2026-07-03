@@ -24,9 +24,9 @@
 
 ### Dashboards ECF + Marketplace (DASH)
 
-- [ ] **DASH-01**: Rota `/dashboard/ecf` mostra KPIs consolidados (GMV total, vendas total, ROAS agregado) somando resultados através de marketplaces de todas as empresas atendidas; empresa em ML+Shopee soma ambos numa linha só; empresa só ML aparece com valores só ML
-- [ ] **DASH-02**: Rota `/dashboard/mercadolivre` mantém a funcionalidade atual do dashboard existente (mesmos filtros, mesmas métricas, mesmos gráficos); pode ser um alias/redirect do `/dashboard` atual ou substituir a rota canônica
-- [ ] **DASH-03**: Rotas `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento" (herdam layout de NAV-04); acessíveis do menu (NAV-03) e navegáveis sem quebrar
+- [x] **DASH-01**: Rota `/dashboard/ecf` mostra KPIs consolidados (GMV total, vendas total, ROAS agregado) somando resultados através de marketplaces de todas as empresas atendidas; empresa em ML+Shopee soma ambos numa linha só; empresa só ML aparece com valores só ML
+- [x] **DASH-02**: Rota `/dashboard/mercadolivre` mantém a funcionalidade atual do dashboard existente (mesmos filtros, mesmas métricas, mesmos gráficos); pode ser um alias/redirect do `/dashboard` atual ou substituir a rota canônica
+- [x] **DASH-03**: Rotas `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento" (herdam layout de NAV-04); acessíveis do menu (NAV-03) e navegáveis sem quebrar
 
 ### Áreas Transversais (CROSS)
 
@@ -52,9 +52,9 @@
 | DATA-01 | Phase 57 | Complete |
 | DATA-02 | Phase 57 | Complete |
 | DATA-03 | Phase 57 | Complete |
-| DASH-01 | Phase 58 | Pending |
-| DASH-02 | Phase 58 | Pending |
-| DASH-03 | Phase 58 | Pending |
+| DASH-01 | Phase 58 | Complete |
+| DASH-02 | Phase 58 | Complete |
+| DASH-03 | Phase 58 | Complete |
 | CROSS-01 | Phase 59 | Pending |
 | CROSS-02 | Phase 59 | Pending |
 | CROSS-03 | Phase 59 | Pending |

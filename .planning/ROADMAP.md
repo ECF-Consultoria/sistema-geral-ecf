@@ -1504,12 +1504,12 @@ Plans:
 
 **UI hint:** SIM — rota nova + shells + refactor de `DashboardController` para agregar através de marketplaces.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 58-01-PLAN.md — Rotas + DashboardController (4 métodos + filter whitelist ?marketplace=) + feature tests backend (DASH-01/02/03 backend)
+- [x] 58-01-PLAN.md — Rotas + DashboardController (4 métodos + filter whitelist ?marketplace=) + feature tests backend (DASH-01/02/03 backend)
 - [ ] 58-02-PLAN.md — Componentes ShopeeShell.jsx + AmazonShell.jsx (mockup KPI cards + CTA para /dashboard/ecf) (DASH-03 UI)
 
 **Wave 2** *(blocked on Wave 1 completion)*

@@ -139,6 +139,15 @@ None - nenhuma configuracao de servico externo necessaria.
 ## Known Stubs
 Nenhum stub introduzido — os metodos `shopee()`/`amazon()` retornam props reais (`marketplace`, `label`) consumidas pelos testes; os componentes JSX que vao renderizar essas props ficam para o Plan 58-02 (documentado explicitamente no CONTEXT §3 e nesta Summary, nao e um stub silencioso).
 
+## Self-Check: PASSED
+
+Todos os arquivos criados e commits referenciados foram verificados como existentes:
+- `tests/Feature/Phase58/DashboardRoutesTest.php` — FOUND
+- `tests/Feature/Phase58/DashboardFilterTest.php` — FOUND
+- `tests/Feature/Phase58/DashboardShellsBackendTest.php` — FOUND
+- `.planning/phases/58-dashboard-ecf-agregado-shells-por-marketplace/58-01-SUMMARY.md` — FOUND
+- Commits `90dc26e`, `a24bd8f`, `9e9d9be`, `ea6f009` — FOUND em `git log --oneline --all`
+
 ---
 *Phase: 58-dashboard-ecf-agregado-shells-por-marketplace*
 *Completed: 2026-07-03*
