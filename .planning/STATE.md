@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v13.0
 milestone_name: Reorganizacao Multi-Marketplace
-status: executing
-stopped_at: Completed 58-01-PLAN.md
-last_updated: "2026-07-03T21:18:52.681Z"
+status: verifying
+stopped_at: Completed 58-03-PLAN.md — Phase 58 fechada (36 tests verdes)
+last_updated: "2026-07-03T21:27:05.357Z"
 last_activity: 2026-07-03
 progress:
   total_phases: 29
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 58 (Dashboard ECF agregado + shells por marketplace) — EXECUTING
+Phase: 58 (Dashboard ECF agregado + shells por marketplace) — PHASE COMPLETE (3/3 plans)
 Plan: 3 of 3
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-03
 
 ## Performance Metrics
@@ -106,6 +106,7 @@ Last activity: 2026-07-03
 | Phase 40-shadow-mode-tabelas-de-compara-o P04 | 10min | 2 tasks | 5 files |
 | Phase 58 P01 | 20min | 3 tasks | 5 files |
 | Phase 58 P02 | ~15min | 2 tasks | 2 files |
+| Phase 58 P58-03 | ~15min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -135,6 +136,7 @@ Last activity: 2026-07-03
 - 2026-06-08 — **Phase 29 FECHADA** (v9.0 P1/3 — Sistema de Notificações 2.0). Costurou a lacuna entre o receiver de webhooks (Phase 26 só logava) e o sino do header (Phase 10): handlers de `signal.detected` severity=critical agora criam `AlertaEcfNotification` (subclasse `BaseNotification` Phase 8) para empresas da NOSSA carteira (match `cust_id` contra `adman_account_id` OR `ml_store_id`). Destinatários: admin + consultor + mentor active (mesma audiência da Phase 23 `/alertas-estrategicos`). **Smoke prod confirmado**: 13 notifications criadas para signal `seller.gmv_queda_mom` de RELOJOARIA WENUS (cust_id 570267839) com título "Queda crítica de faturamento em RELOJOARIA WENUS" e link `/alertas-estrategicos`. Idempotência: 2º curl com mesmo `signal_id=9101` mas event_id diferente retornou 200 sem duplicar (guard via `data->meta->signal_id` exists check). **Zero mudança no frontend** — sino lê automaticamente via polling do shared prop existente. 21 testes Feature verdes (8 Job + 13 Notification). Próximo: Phase 30 (`grant.expirando`) ou Phase 31 (`sync.failed`).
 - 2026-06-10 — **Milestone v10.0 — Pesquisa de Satisfação 2.0** criada. **Phase 31: NPS Mensal Automatizado** adicionada. Substitui o fluxo manual "por reunião" do NPS atual por uma cadência mensal automática: email dispara no `DAY(companies.created_at)` de cada mês até o fim do contrato. Notas separadas (Estrategista, Analista quando houver, Empresa) em escala 1-5 + feedback livre. Admin acompanha por mês com cards de média + gráfico de variação 12 meses + lista de respostas. Geração manual de link preservada. Decisões fechadas: dia do mês = aniversário do cadastro (`companies.created_at`); fonte do email = nova coluna `companies.email_cliente`; histórico antigo (escala 0-10) = apagado (são testes). Dependências: Phase 28 (SMTP Gmail). Próximo: `/gsd-plan-phase 31`.
 - Phase 58 added: Plan 58-02 COMPLETO — shells JSX ShopeeShell.jsx e AmazonShell.jsx entregues (mockup KPI cards + CTA para ecf.dashboard). Build Vite verde. Decisao: duplicacao intencional dos 2 shells (CONTEXT §3), sem extracao de componente comum. Plan 58-03 (NAV_TREE) liberado.
+- 2026-07-03 — **Phase 58 Plan 58-03 COMPLETO — PHASE 58 INTEIRA FECHADA (3/3 plans)**. NAV_TREE de `AppLayout.jsx` costurado com as rotas do Plan 58-01: item novo "ECF Consolidado" (route `ecf.dashboard`, icone `PieChart` ja importado) adicionado no TOPO do grupo Mercado Livre; item existente "Dashboard" renomeado para "Mercado Livre" (route `mercadolivre.dashboard`). Item canonical `dashboard` sai do sidebar mas rota permanece registrada em `routes/web.php` para deep links/bookmarks (CONTEXT §5) — decisao consciente, sem migracao das chamadas `route('dashboard')` existentes no codebase. `tests/Feature/Phase58/DashboardNavigationSmokeTest.php` criado com 5 tests via `AssertableInertia` validando os 4 caminhos completos route→controller→componente (ecf/mercadolivre renderizam `Dashboard/Admin`; shopee/amazon renderizam os shells com props `marketplace`/`label` corretas) + rota legacy `/dashboard` ainda navegavel. **Gate final de zero regressao**: Phase 57 20/20 verdes, Phase 58 16/16 verdes (11 do Plan 58-01 + 5 deste plan) — **36/36 total**. `php artisan route:list --path=dashboard` confirma as 5 rotas nomeadas ativas. Itens estaticos Shopee/Amazon do sidebar (badge "Em breve" → `/em-desenvolvimento`) **NAO tocados** — decisao consciente, item de sidebar dedicado para os shells reais fica para proximo touchpoint UAT. Zero deviations. Commits `48890bd` (feat NAV_TREE) + `a45c838` (test smoke E2E). **REQ DASH-01/02/03 fechados. Phase 58 pronta para UAT em prod** (4 URLs documentadas na SUMMARY: `/dashboard/ecf`, `/dashboard/mercadolivre`, `/dashboard/shopee`, `/dashboard/amazon` + `/dashboard` legacy).
 
 ### Decisões herdadas do v1.0
 
@@ -555,8 +557,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-03T21:14:25.903Z
-Stopped at: Completed 58-01-PLAN.md
+Last session: 2026-07-03T21:27:05.290Z
+Stopped at: Completed 58-03-PLAN.md — Phase 58 fechada (36 tests verdes)
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
 

@@ -159,7 +159,7 @@ Desacopla o sistema da premissa "ML-first" para refletir a realidade da ECF Cons
 
 - [x] **Phase 56: Menu lateral multi-marketplace + stubs "em desenvolvimento"** *(completed 2026-07-03, deployed to prod)* — Reorganizar `AppLayout.jsx`: pasta "Mercado Livre" (aberta) com Performance + Dados Estratégicos + Polos (Dados Estratégicos antecipado no UAT — dados ECF Drive ML-only); Reuniões movido pra top-level (transversal); "Publicação" fora do ML; "Shopee" e "Amazon" com badge "Em breve" + logos SVG das marcas. Rota `/em-desenvolvimento` + página `EmDesenvolvimento.jsx`. Extensões novas em NAV_TREE: `divider`, `badgeText`, `defaultOpen`, `iconSrc`. UAT aprovado em prod após 3 hotfixes visuais.
 - [x] **Phase 57: Modelo de dados multi-marketplace** *(completed 2026-07-03, deployed)* — Modelo N:N formalizado via nova tabela pivot `company_marketplaces` (id, company_id FK, marketplace ENUM, store_id, adman_id, is_primary, active, integracao_status). Company.php ganha `marketplaces()` HasMany + 4 helpers (`isInMarketplace`, `marketplacesAtivos`, `primaryMarketplace`, `storeIdFor`) + accessors legacy com fallback flat (`adman_account_id`, `ml_store_id`) que preservam contrato com AdmanService/Sugadores/comandos. Backfill idempotente executado em prod: **126 rows criadas (100% success)**. Schema legacy preservado em paralelo (companies.marketplace ENUM + marketplaces_extras JSON + IDs flat). ADR-DATA-01. 20 testes verdes. Descoberta: distribuição real em 2026-07-03 é 126 meli + 0 shopee/amazon (CONTEXT.md Phase 18.5 estava desatualizado). Fix colateral: migration `add_polos_to_servicos_setor_enum` ganhou guard MySQL para não quebrar SQLite dos testes. **Requirements:** DATA-01, DATA-02, DATA-03.
-- [ ] **Phase 58: Dashboard ECF agregado + shells por marketplace** — Rota `/dashboard/ecf` (só admin ou expansível) mostra KPIs consolidados (GMV, vendas, ROAS) somando resultados através de marketplaces das empresas atendidas. `/dashboard/mercadolivre` mantém funcionalidade atual do dashboard (renomeada ou aliased). `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento". Depende de: Phase 57 (modelo pronto). **Requirements:** DASH-01, DASH-02, DASH-03.
+- [x] **Phase 58: Dashboard ECF agregado + shells por marketplace** — Rota `/dashboard/ecf` (só admin ou expansível) mostra KPIs consolidados (GMV, vendas, ROAS) somando resultados através de marketplaces das empresas atendidas. `/dashboard/mercadolivre` mantém funcionalidade atual do dashboard (renomeada ou aliased). `/dashboard/shopee` e `/dashboard/amazon` renderizam shells "em desenvolvimento". Depende de: Phase 57 (modelo pronto). **Requirements:** DASH-01, DASH-02, DASH-03. (completed 2026-07-03)
 - [ ] **Phase 59: Desacoplamento de áreas transversais** — Auditar Usuários, Setores, Comercial, Administrativo, NPS, Notificações: mapear acoplamento ML-only (naming, filtros, defaults) e generalizar. Confirmar Publicação transversal — permissões `pub.*` continuam válidas para todos marketplaces (não introduzir mais amarração ML). Testes de regressão em áreas transversais. Depende de: Phase 57 (modelo pronto). Pode rodar em paralelo com Phase 58. **Requirements:** CROSS-01, CROSS-02, CROSS-03.
 
 ## Phase Details
@@ -1504,7 +1504,7 @@ Plans:
 
 **UI hint:** SIM — rota nova + shells + refactor de `DashboardController` para agregar através de marketplaces.
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 **Wave 1**
@@ -1514,7 +1514,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 58-03-PLAN.md — NAV_TREE: ECF Consolidado + rename Dashboard→Mercado Livre + smoke E2E de navegação (DASH-01/02/03 E2E)
+- [x] 58-03-PLAN.md — NAV_TREE: ECF Consolidado + rename Dashboard→Mercado Livre + smoke E2E de navegação (DASH-01/02/03 E2E)
 
 ### Phase 59: Desacoplamento de áreas transversais
 
