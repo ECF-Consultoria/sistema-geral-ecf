@@ -44,7 +44,6 @@ const NAV_TREE = [
             { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
-            { label: 'Reuniões',    routeName: 'meetings.index',      page: 'Meetings',     icon: CalendarCheck,   permission: 'core.reunioes' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
             { label: 'Metas',       routeName: 'goals.index',         page: 'Goals',        icon: Target,          permission: 'core.metas' },
             { label: 'PPA',         routeName: 'ppa.index',           page: 'Ppa',          icon: FileText,        permission: 'core.ppa' },
@@ -101,6 +100,9 @@ const NAV_TREE = [
     // Sugadores, Desempenho movidos pra dentro do grupo Mercado Livre.
     { label: 'Usuários',            routeName: 'users.index',             page: 'Users',            icon: Users,        permission: 'core.usuarios' },
     { label: 'Setores',             routeName: 'admin.setores.index',     page: 'Admin/Setores',    icon: Shield,       permission: 'sistema.setores' },
+    // Feedback UAT 2026-07-03: Reunioes eh transversal (nao especifica de ML),
+    // fica como item topo acima de "Enviar notificacao".
+    { label: 'Reuniões',            routeName: 'meetings.index',          page: 'Meetings',         icon: CalendarCheck, permission: 'core.reunioes' },
     { label: 'Enviar notificação',  routeName: 'notificacoes.nova',       page: 'Notificacoes/Nova', icon: Send,        permission: 'notificacoes.criar' },
     // ── Grupo: NPS ───────────────────────────────────────────────────────────
     // Phase 32 — Plan 02: NPS vira grupo com sub-item "Configuração NPS" (admin only).
