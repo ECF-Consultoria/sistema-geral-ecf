@@ -20,8 +20,63 @@ import NotificationBell from '@/Components/NotificationBell';
  * mas o chevron expande/recolhe os filhos independentemente.
  */
 const NAV_TREE = [
-    // ── Item de topo ────────────────────────────────────────────────────────
-    { label: 'Dashboard', routeName: 'dashboard', page: 'Dashboard', icon: LayoutDashboard, permission: 'core.dashboard' },
+    // ══════════════════════════════════════════════════════════════════════════
+    // Phase 56 v13.0 — Reorganização Multi-Marketplace
+    //
+    // Grupo Mercado Livre (aberto por default via `defaultOpen`) consolida
+    // Performance + Polos num unico agrupamento achatado. Items topo Shopee/
+    // Amazon com badge estatico apontam pro stub /em-desenvolvimento. Grupo
+    // Publicacao (renomeado singular) fica FORA da pasta ML por ser setor
+    // transversal (atende todos marketplaces). Grupo Polos velho foi absorvido
+    // pelo grupo ML — nao existe mais como grupo separado.
+    //
+    // Sub-grupos aninhados nao foram implementados (decisao locked em
+    // 56-CONTEXT.md) — divider tipo `{ divider: 'Polos' }` faz a separacao
+    // visual dentro dos children do grupo.
+    // ══════════════════════════════════════════════════════════════════════════
+    {
+        group: 'Mercado Livre',
+        icon: Store,
+        defaultOpen: true,
+        children: [
+            // ── Secao Performance ─────────────────────────
+            { label: 'Dashboard',   routeName: 'dashboard',           page: 'Dashboard',    icon: LayoutDashboard, permission: 'core.dashboard' },
+            { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
+            { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
+            { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
+            { label: 'Reuniões',    routeName: 'meetings.index',      page: 'Meetings',     icon: CalendarCheck,   permission: 'core.reunioes' },
+            { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
+            { label: 'Metas',       routeName: 'goals.index',         page: 'Goals',        icon: Target,          permission: 'core.metas' },
+            { label: 'PPA',         routeName: 'ppa.index',           page: 'Ppa',          icon: FileText,        permission: 'core.ppa' },
+            // ── Separator visual: Performance | Polos ─────
+            { divider: 'Polos' },
+            // ── Secao Polos ───────────────────────────────
+            { label: 'Onboarding',        routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks, permission: 'mlb.implementacao' },
+            { label: 'Empresas Polos',    routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM', icon: Building2,  permission: 'mlb.projetos' },
+            { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+        ],
+    },
+
+    // ── Stubs marketplaces em desenvolvimento (Phase 56 v13.0) ──────────────
+    // Route params `marketplace` alimentam o sub-titulo do placeholder
+    // EmDesenvolvimento.jsx (Phase 56 Wave 2). Badge estatico "Em breve" via
+    // novo campo `badgeText` (distinto de `showBadge` que eh contador dinamico).
+    {
+        label: 'Shopee',
+        routeName: 'em-desenvolvimento',
+        routeParams: { marketplace: 'shopee' },
+        page: 'EmDesenvolvimento',
+        icon: ShoppingCart,
+        badgeText: 'Em breve',
+    },
+    {
+        label: 'Amazon',
+        routeName: 'em-desenvolvimento',
+        routeParams: { marketplace: 'amazon' },
+        page: 'EmDesenvolvimento',
+        icon: Package2,
+        badgeText: 'Em breve',
+    },
 
     // ── Grupo: Dados Estratégicos ────────────────────────────────────────────
     {
@@ -38,20 +93,14 @@ const NAV_TREE = [
         ],
     },
 
-    // ── Item de topo ────────────────────────────────────────────────────────
-    { label: 'Carteira', routeName: 'portfolio.own', page: 'Portfolio', icon: Briefcase, permission: 'core.carteira' },
-
-    // ── Item de topo: Empresas (link direto; "Pendências" é só uma aba, não vira sub-item) ──
-    { label: 'Empresas', routeName: 'companies.index', page: 'Companies', icon: Building2, permission: 'core.empresas' },
-
-    // ── Itens de topo ───────────────────────────────────────────────────────
+    // ── Itens de topo (setores transversais) ────────────────────────────────
     // Phase 37 Plan 37-07 (REQ-37-09) — item "Serviços" removido do nivel raiz;
-    // movido para dentro do grupo Comercial abaixo (junto com HubSpot Line Items
-    // e Grupos) pq a manutencao do catalogo eh atribuicao do setor Comercial.
+    // movido para dentro do grupo Comercial abaixo.
+    // Phase 56 v13.0: Dashboard, Carteira, Empresas, Reunioes, Metas, PPA,
+    // Sugadores, Desempenho movidos pra dentro do grupo Mercado Livre.
     { label: 'Usuários',            routeName: 'users.index',             page: 'Users',            icon: Users,        permission: 'core.usuarios' },
     { label: 'Setores',             routeName: 'admin.setores.index',     page: 'Admin/Setores',    icon: Shield,       permission: 'sistema.setores' },
     { label: 'Enviar notificação',  routeName: 'notificacoes.nova',       page: 'Notificacoes/Nova', icon: Send,        permission: 'notificacoes.criar' },
-    { label: 'Reuniões',            routeName: 'meetings.index',          page: 'Meetings',         icon: CalendarCheck, permission: 'core.reunioes' },
     // ── Grupo: NPS ───────────────────────────────────────────────────────────
     // Phase 32 — Plan 02: NPS vira grupo com sub-item "Configuração NPS" (admin only).
     // Phase 32 — Plan 04: sub-item "Emails enviados" (admin only) adicionado.
@@ -65,10 +114,6 @@ const NAV_TREE = [
             { label: 'Emails enviados',  routeName: 'nps.emails-enviados.index',  page: 'Nps/EmailsEnviados',  icon: Inbox,    excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
-    { label: 'Metas',               routeName: 'goals.index',             page: 'Goals',            icon: Target,       permission: 'core.metas' },
-    { label: 'PPA',                 routeName: 'ppa.index',               page: 'Ppa',              icon: FileText,     permission: 'core.ppa' },
-    { label: 'Sugadores',           routeName: 'sugadores.index',         page: 'Sugadores',        icon: AlertTriangle, permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
-    { label: 'Desempenho',          routeName: 'performance.index',       page: 'Performance',      icon: Trophy,       permission: 'core.performance' },
 
     // ── Item de topo: Meu Setor (líder; admin excluído por ter visão global) ─
     { label: 'Meu Setor', routeName: 'lideranca.index', page: 'Lideranca', icon: Crown, permission: 'lideranca.dashboard_setor', excludeRoles: ['admin'] },
@@ -125,9 +170,11 @@ const NAV_TREE = [
         ],
     },
 
-    // ── Grupo: Publicações MLB ───────────────────────────────────────────────
+    // ── Grupo: Publicação (setor transversal — atende todos marketplaces) ────
+    // Phase 56 v13.0: renomeado de "Publicações" para "Publicação" (singular).
+    // Sub-items ainda apontam pra rotas mlb.* — Phase 59 audita/generaliza.
     {
-        group: 'Publicações',
+        group: 'Publicação',
         icon: BarChart2,
         children: [
             { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard' },
@@ -143,20 +190,9 @@ const NAV_TREE = [
         ],
     },
 
-    // ── Grupo: Polos (movido de Publicações) ────────────────────────────────
-    {
-        group: 'Polos',
-        icon: ListChecks,
-        children: [
-            { label: 'Onboarding',     routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao',   icon: ListChecks,   permission: 'mlb.implementacao' },
-            // Empresas Polos por fase M (M0–M4) — grid de cards com filtro e contagem por M
-            { label: 'Empresas',       routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM',  icon: Building2,    permission: 'mlb.projetos' },
-            // Phase 38 — Faturamento por Polo vs Meta (admin-only, dados ECF Drive)
-            { label: 'Faturamento Polos', routeName: 'polos.index', page: 'Polos/Index', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
-        ],
-    },
-
     // ── Grupo: Administrativo ────────────────────────────────────────────────
+    // Phase 56 v13.0: grupo Polos (que ficava aqui) foi absorvido pelo grupo
+    // Mercado Livre no topo — usa divider visual `{ divider: 'Polos' }`.
     {
         group: 'Administrativo',
         icon: Shield,
@@ -221,6 +257,10 @@ export default function AppLayout({ children, title }) {
      * a permission requerida não consta na lista de permissions do usuário.
      */
     const itemVisivel = (item) => {
+        // Dividers (labels de separacao dentro de grupos) sao sempre visiveis.
+        // Introduzidos na Phase 56 v13.0 pra separar "Performance" de "Polos"
+        // dentro do grupo Mercado Livre sem precisar de sub-grupos aninhados.
+        if (item.divider) return true;
         if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
         return item.permission ? permissions.includes(item.permission) : true;
     };
@@ -237,7 +277,10 @@ export default function AppLayout({ children, title }) {
                 // Grupos com permission própria (ex: grupo "Empresas") são verificados também
                 if (entry.permission && !itemVisivel(entry)) return acc;
                 const filhos = entry.children.filter(itemVisivel);
-                if (filhos.length > 0) acc.push({ ...entry, children: filhos });
+                // Phase 56 v13.0: se sobrou SO divider (sem items reais), esconder o grupo
+                // — evita "grupo fantasma" com um label sem filhos abaixo.
+                const filhosReais = filhos.filter(c => !c.divider);
+                if (filhosReais.length > 0) acc.push({ ...entry, children: filhos });
             } else {
                 if (itemVisivel(entry)) acc.push(entry);
             }
@@ -257,8 +300,17 @@ export default function AppLayout({ children, title }) {
             if (raw) saved = JSON.parse(raw) || {};
         } catch { /* sessionStorage indisponível — ignora */ }
         NAV_TREE.forEach(entry => {
-            if (entry.group && entry.children.some(c => (pageComponent || '').startsWith(c.page))) {
-                saved[entry.group] = true;
+            if (entry.group) {
+                // Auto-abrir grupo cuja rota atual esta ativa (comportamento historico).
+                if (entry.children.some(c => c.page && (pageComponent || '').startsWith(c.page))) {
+                    saved[entry.group] = true;
+                }
+                // Phase 56 v13.0: `defaultOpen: true` mantem grupo aberto na PRIMEIRA
+                // visita (sem preferencia salva). Se o user fechou o grupo manualmente,
+                // sessionStorage guardou false — respeitamos essa escolha.
+                if (entry.defaultOpen && !(entry.group in saved)) {
+                    saved[entry.group] = true;
+                }
             }
         });
         return saved;
@@ -368,7 +420,14 @@ export default function AppLayout({ children, title }) {
                                         {badgeCounters[entry.showBadge] > 99 ? '99+' : badgeCounters[entry.showBadge]}
                                     </span>
                                 )}
-                                {active && (!collapsed || mobile) && !entry.showBadge && (
+                                {entry.badgeText && !entry.showBadge && (!collapsed || mobile) && (
+                                    // Phase 56 v13.0: badge estatico (ex: "Em breve") diferente do
+                                    // showBadge (contador dinamico). Usado nos stubs Shopee/Amazon.
+                                    <span className="ml-auto inline-flex items-center h-5 px-1.5 rounded-full bg-white/[0.08] border border-white/10 text-white/50 text-[10px] font-medium shrink-0">
+                                        {entry.badgeText}
+                                    </span>
+                                )}
+                                {active && (!collapsed || mobile) && !entry.showBadge && !entry.badgeText && (
                                     <span className="ml-auto w-1.5 h-1.5 rounded-full bg-ecf-yellow shrink-0" />
                                 )}
                             </Link>
@@ -377,8 +436,9 @@ export default function AppLayout({ children, title }) {
 
                     // ── Grupo colapsável ─────────────────────────────────────
                     const isOpen     = !!openGroups[entry.group];
-                    // Grupo marcado como ativo se algum filho corresponde à rota atual
-                    const groupActive = entry.children.some(c => isActive(c.page));
+                    // Grupo marcado como ativo se algum filho corresponde à rota atual.
+                    // Dividers nao tem `page` — filtrar antes pra evitar coercao em isActive.
+                    const groupActive = entry.children.some(c => c.page && isActive(c.page));
 
                     /**
                      * Ao clicar num grupo enquanto a sidebar está collapsed (desktop),
@@ -421,7 +481,20 @@ export default function AppLayout({ children, title }) {
                             {/* Filhos do grupo (visíveis somente quando aberto e não collapsed) */}
                             {isOpen && (!collapsed || mobile) && (
                                 <div className="ml-3 border-l border-white/[0.06] pl-2 mt-0.5 space-y-0.5">
-                                    {entry.children.map(child => {
+                                    {entry.children.map((child, childIdx) => {
+                                        // Phase 56 v13.0: entry tipo `divider` renderiza um label
+                                        // de secao dentro do grupo (sem link/hover). Introduzido
+                                        // para separar Performance de Polos dentro do grupo ML.
+                                        if (child.divider) {
+                                            return (
+                                                <div
+                                                    key={`divider-${child.divider}-${childIdx}`}
+                                                    className="pt-3 pb-1 px-3 text-[10px] uppercase tracking-wide text-white/40 select-none"
+                                                >
+                                                    {child.divider}
+                                                </div>
+                                            );
+                                        }
                                         const childActive = isActive(child.page);
                                         return (
                                             <Link
