@@ -53,7 +53,10 @@ class DashboardFilterTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         Company::factory()->create(['marketplace' => 'meli']);
 
-        $response = $this->actingAs($admin)->get(route('ecf.dashboard', ['marketplace' => 'evil<script>']));
+        // getJson() simula o header que o axios do Inertia sempre envia
+        // (X-Requested-With: XMLHttpRequest) — em producao isso faz o
+        // ValidationException retornar 422 em vez de redirect 302.
+        $response = $this->actingAs($admin)->getJson(route('ecf.dashboard', ['marketplace' => 'evil<script>']));
 
         $response->assertStatus(422);
     }

@@ -40,7 +40,13 @@ class DashboardRoutesTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         Company::factory()->create(['marketplace' => 'meli']);
 
-        $response = $this->actingAs($admin)->get(route('shopee.dashboard'));
+        // X-Inertia simula navegacao client-side — evita depender do
+        // manifest Vite do componente Dashboard/ShopeeShell.jsx, que so
+        // vai existir no Plan 58-02 (backend puro nesta plan). Version
+        // precisa bater com o hash do manifest, senao 409.
+        $response = $this->actingAs($admin)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->inertiaVersion()])
+            ->get(route('shopee.dashboard'));
 
         $response->assertOk();
     }
@@ -50,7 +56,13 @@ class DashboardRoutesTest extends TestCase
         $admin = User::factory()->create(['role' => 'admin']);
         Company::factory()->create(['marketplace' => 'meli']);
 
-        $response = $this->actingAs($admin)->get(route('amazon.dashboard'));
+        // X-Inertia simula navegacao client-side — evita depender do
+        // manifest Vite do componente Dashboard/AmazonShell.jsx, que so
+        // vai existir no Plan 58-02 (backend puro nesta plan). Version
+        // precisa bater com o hash do manifest, senao 409.
+        $response = $this->actingAs($admin)
+            ->withHeaders(['X-Inertia' => 'true', 'X-Inertia-Version' => $this->inertiaVersion()])
+            ->get(route('amazon.dashboard'));
 
         $response->assertOk();
     }
@@ -63,5 +75,16 @@ class DashboardRoutesTest extends TestCase
         $response = $this->actingAs($admin)->get('/dashboard');
 
         $response->assertOk();
+    }
+
+    /**
+     * Versao de assets calculada pelo middleware Inertia (mesma logica de
+     * HandleInertiaRequests::version() — hash de ASSET_URL quando setado,
+     * senao hash do manifest.json). Sem isso, requests com X-Inertia
+     * recebem 409 (conflito de versao).
+     */
+    private function inertiaVersion(): string
+    {
+        return (string) app(\App\Http\Middleware\HandleInertiaRequests::class)->version(request());
     }
 }
