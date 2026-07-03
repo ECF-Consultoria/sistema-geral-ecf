@@ -6,6 +6,10 @@ import {
     PlayCircle, Settings, SlidersHorizontal, AlertTriangle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+    Table, TableHeader, TableBody, TableRow, TableHead, TableCell,
+} from '@/Components/ui/table';
+import { Checkbox } from '@/Components/ui/checkbox';
 
 // Phase 52 Wave 3.5 (52-03B) — Drilldown "por empresa": lista os sugadores
 // pendentes/em_acao de UMA empresa. Restaura o alvo do click no CompanyCard
@@ -350,6 +354,9 @@ export default function SugadoresEmpresaListagem({
 
     return (
         <AppLayout title={`Sugadores · ${company?.name ?? ''}`}>
+            {/* Phase 55-01 (T3) — Blur Fade CSS puro via tailwindcss-animate (0 kb novos).
+                Envolve todo o conteúdo do <AppLayout>. NUNCA instalar framer-motion aqui. */}
+            <div className="animate-in fade-in duration-300">
             {/* Breadcrumb + voltar ───────────────────────────────────────────*/}
             <div className="mb-4 flex items-center gap-2 text-xs text-white/40">
                 <Link href={route('sugadores.index')} className="hover:text-white/70 inline-flex items-center gap-1">
@@ -465,57 +472,59 @@ export default function SugadoresEmpresaListagem({
                     </p>
                 </div>
             ) : (
+                // Phase 55-01 (T2) — Wrapper shadcn <Table>. Overrides dark theme aplicados
+                // NO CONSUMIDOR (o wrapper compartilhado Components/ui/table.jsx nao muda,
+                // pois e usado por 9 paginas com paleta light-adjacent). Ref research §5.
                 <div className="card-ecf rounded-xl overflow-hidden">
-                    <table className="w-full">
-                        <thead className="border-b border-white/[0.06] bg-white/[0.02]">
-                            <tr className="text-left text-white/50 text-[10px] uppercase tracking-wider font-semibold">
-                                <th className="p-3 w-8">
-                                    <input
-                                        type="checkbox"
+                    <Table>
+                        <TableHeader className="border-white/[0.06] bg-white/[0.02]">
+                            {/* hover:bg-transparent NEUTRALIZA o hover:bg-muted/50 default do wrapper
+                                (que ficaria feio no header dark). */}
+                            <TableRow className="hover:bg-transparent border-white/[0.06]">
+                                <TableHead className="w-10 text-white/50 font-medium text-xs uppercase tracking-wider">
+                                    <Checkbox
                                         checked={allElegiveisSelected}
-                                        onChange={toggleAllVisible}
+                                        onCheckedChange={toggleAllVisible}
                                         disabled={elegiveisIds.length === 0}
-                                        className="accent-ecf-yellow"
-                                        title="Selecionar todos os adgroups desta empresa"
+                                        aria-label="Selecionar todos os adgroups desta empresa"
                                     />
-                                </th>
-                                <th className="p-3">Produto</th>
-                                <th className="p-3">Status</th>
-                                <th className="p-3">Detectado</th>
-                                <th className="p-3 text-right">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                                </TableHead>
+                                <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Produto</TableHead>
+                                <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Status</TableHead>
+                                <TableHead className="text-white/50 font-medium text-xs uppercase tracking-wider">Detectado</TableHead>
+                                <TableHead className="text-right text-white/50 font-medium text-xs uppercase tracking-wider">Ações</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
                             {sugadores.map(s => {
                                 const TipoIcon = TIPO_ICONS[s.tipo] || Tag;
                                 const isSelected = selectedIds.has(s.id);
                                 const isElegivel = s.tipo === 'adgroup';
                                 const fb = copiedFeedback[s.id];
                                 return (
-                                    // Phase 54-02 (B2) — Row inteira clicavel navega pro Show.
-                                    // Pattern canonico: Performance/Index.jsx:324 (click row + stopPropagation).
-                                    // hover:bg-white/[0.05] (mais escuro que os [0.02] originais) da affordance
-                                    // visual de row clicavel — research §5.
-                                    <tr
+                                    // Phase 54-02 (B2) preservado — row inteira clicavel navega pro Show.
+                                    // data-state={isSelected ? 'selected' : undefined} alimenta o override CSS
+                                    // data-[state=selected]:bg-ecf-yellow/[0.03] (semantica shadcn oficial).
+                                    <TableRow
                                         key={s.id}
+                                        data-state={isSelected ? 'selected' : undefined}
                                         onClick={() => router.visit(route('sugadores.show', s.id))}
                                         className={cn(
-                                            'border-b border-white/[0.03] last:border-0 hover:bg-white/[0.05] cursor-pointer transition-colors',
-                                            isSelected && 'bg-ecf-yellow/[0.03]',
+                                            'border-white/[0.05] hover:bg-white/[0.03] cursor-pointer transition-colors',
+                                            'data-[state=selected]:bg-ecf-yellow/[0.03]',
                                         )}
                                     >
-                                        {/* stopPropagation no <td> — clicar no checkbox nao navega. */}
-                                        <td onClick={e => e.stopPropagation()} className="p-3">
-                                            <input
-                                                type="checkbox"
+                                        {/* stopPropagation no <TableCell> — clicar no checkbox nao navega.
+                                            Radix Checkbox dispara onCheckedChange (nao onChange). */}
+                                        <TableCell onClick={e => e.stopPropagation()} className="w-10 py-3">
+                                            <Checkbox
                                                 checked={isSelected}
-                                                onChange={() => toggleOne(s.id)}
+                                                onCheckedChange={() => toggleOne(s.id)}
                                                 disabled={!isElegivel}
-                                                className="accent-ecf-yellow disabled:opacity-30"
-                                                title={isElegivel ? '' : 'Sugadores de campanha não entram no bulk copy MLBs'}
+                                                aria-label={isElegivel ? 'Selecionar sugador' : 'Sugadores de campanha não entram no bulk copy MLBs'}
                                             />
-                                        </td>
-                                        <td className="p-3 min-w-0">
+                                        </TableCell>
+                                        <TableCell className="min-w-0 py-3">
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <TipoIcon size={12} className="text-white/40 shrink-0" />
                                                 <span className="text-white/90 text-sm truncate" title={s.adgroup_name || s.campaign_name}>
@@ -527,23 +536,21 @@ export default function SugadoresEmpresaListagem({
                                                 {' · '}
                                                 Invest. {fmtBRL(s.investimento_periodo)}
                                             </p>
-                                        </td>
-                                        <td className="p-3">
+                                        </TableCell>
+                                        <TableCell className="py-3">
                                             <StatusBadge status={s.status} />
-                                        </td>
-                                        <td className="p-3 text-white/60 text-xs whitespace-nowrap">
+                                        </TableCell>
+                                        <TableCell className="py-3 text-white/60 text-xs whitespace-nowrap">
                                             {fmtDate(s.reference_date)}
                                             {s.days_since_detected > 0 && (
                                                 <span className="text-white/30 text-[10px] block">
                                                     há {s.days_since_detected} dia{s.days_since_detected !== 1 ? 's' : ''}
                                                 </span>
                                             )}
-                                        </td>
-                                        {/* stopPropagation no <td> wrapper — botao "MLBs" nao dispara navegacao.
-                                            <Link "Detalhes"> removido — click-row cobre navegacao (research §5,
-                                            CONTEXT decision discretion linha 65 aprova). min-w-[80px] mantem
-                                            largura estavel quando isElegivel=false (sugadores tipo=campanha). */}
-                                        <td onClick={e => e.stopPropagation()} className="p-3 text-right min-w-[80px]">
+                                        </TableCell>
+                                        {/* stopPropagation preservado — botao "MLBs" inline nao dispara navegacao.
+                                            Dropdown de acoes "⋯" fica para Wave 2 (55-02). */}
+                                        <TableCell onClick={e => e.stopPropagation()} className="py-3 text-right min-w-[80px]">
                                             <div className="inline-flex items-center gap-1.5 justify-end flex-wrap">
                                                 {isElegivel && (
                                                     <button
@@ -563,12 +570,12 @@ export default function SugadoresEmpresaListagem({
                                                     </button>
                                                 )}
                                             </div>
-                                        </td>
-                                    </tr>
+                                        </TableCell>
+                                    </TableRow>
                                 );
                             })}
-                        </tbody>
-                    </table>
+                        </TableBody>
+                    </Table>
                 </div>
             )}
                 </div>
@@ -587,6 +594,7 @@ export default function SugadoresEmpresaListagem({
                         onRodarAnalise={rodarAnalise}
                     />
                 </aside>
+            </div>
             </div>
         </AppLayout>
     );
