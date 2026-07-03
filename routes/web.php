@@ -137,6 +137,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
+    // Phase 58 v13.0 — Rotas Dashboard multi-marketplace. `/dashboard` legacy
+    // preservada como canonical fallback (CONTEXT §5).
+    Route::get('/dashboard/ecf',          [DashboardController::class, 'ecf'])->name('ecf.dashboard');
+    Route::get('/dashboard/mercadolivre', [DashboardController::class, 'mercadolivre'])->name('mercadolivre.dashboard');
+    Route::get('/dashboard/shopee',       [DashboardController::class, 'shopee'])->name('shopee.dashboard');
+    Route::get('/dashboard/amazon',       [DashboardController::class, 'amazon'])->name('amazon.dashboard');
+
     // Phase 56 v13.0 — Placeholder para marketplaces em desenvolvimento
     // (Shopee, Amazon, Magazine Luiza, etc). Sidebar (AppLayout.jsx) aponta
     // stubs pra ca com query param ?marketplace=<slug>. Sem permission

@@ -61,6 +61,55 @@ class DashboardController extends Controller
         return $this->userDashboard($user, $since, $period);
     }
 
+    /**
+     * Phase 58 DASH-01 — Dashboard ECF agregado atraves de marketplaces.
+     * Hoje delega ao pipeline existente sem filter (100% empresas meli);
+     * v14+ vai agregar via CompanyMarketplace pivot.
+     */
+    public function ecf(Request $request)
+    {
+        $request->validate(['marketplace' => 'nullable|string|in:meli,shopee,amazon']);
+
+        return $this->index($request);
+    }
+
+    /**
+     * Phase 58 DASH-02 — Dashboard Mercado Livre. Forca filter
+     * marketplace=meli via merge no request; delega ao pipeline existente.
+     */
+    public function mercadolivre(Request $request)
+    {
+        $request->merge(['marketplace' => 'meli']);
+
+        $request->validate(['marketplace' => 'nullable|string|in:meli,shopee,amazon']);
+
+        return $this->index($request);
+    }
+
+    /**
+     * Phase 58 DASH-03 — Shell Shopee. Renderiza direto (bypass pipeline)
+     * para evitar KPIs zerados enganosos (CONTEXT §2).
+     */
+    public function shopee(Request $request)
+    {
+        return Inertia::render('Dashboard/ShopeeShell', [
+            'marketplace' => 'shopee',
+            'label'       => 'Shopee',
+        ]);
+    }
+
+    /**
+     * Phase 58 DASH-03 — Shell Amazon. Renderiza direto (bypass pipeline)
+     * para evitar KPIs zerados enganosos (CONTEXT §2).
+     */
+    public function amazon(Request $request)
+    {
+        return Inertia::render('Dashboard/AmazonShell', [
+            'marketplace' => 'amazon',
+            'label'       => 'Amazon',
+        ]);
+    }
+
     private function getSince(string $period): Carbon
     {
         return match ($period) {
@@ -107,6 +156,9 @@ class DashboardController extends Controller
         $consultorFilter = $request->get('consultor_id');
         $estrategistaFilter = $request->get('estrategista_id') ?? $request->get('mentor_id'); // back-compat com chamadas antigas
         $grupoFilter = $request->get('group_id');
+        // Phase 58 DASH-01/02 — Filter marketplace opcional (whitelist ja
+        // validada em ecf()/mercadolivre() antes de chegar aqui).
+        $marketplaceFilter = $request->get('marketplace');
 
         // Hotfix 2026-06-19 — alinha o universo do Dashboard ao de /companies:
         // (1) Phase 35 D-03 — exclui empresas com MlbEmpresa (dupla contagem com /mlb/empresas).
@@ -131,6 +183,13 @@ class DashboardController extends Controller
         // (Antes usava a hierarquia parent_company_id da empresa principal.)
         if ($grupoFilter) {
             $companiesQuery->where('company_group_id', $grupoFilter);
+        }
+        // Phase 58 DASH-01/02 — Filter marketplace opcional. Usa coluna flat
+        // companies.marketplace (indice existente Phase 18.5) por
+        // performance; migracao pra pivot CompanyMarketplace fica pra v14+
+        // (CONTEXT §2).
+        if ($marketplaceFilter) {
+            $companiesQuery->where('marketplace', $marketplaceFilter);
         }
 
         $companies = $companiesQuery->get();
@@ -455,6 +514,9 @@ class DashboardController extends Controller
                       $qs->where('setor', Servico::SETOR_PERFORMANCE)
                   )
             )
+            // Phase 58 DASH-01/02 — mantem o dropdown consistente com o
+            // universo filtrado pelo marketplace (quando presente).
+            ->when($marketplaceFilter, fn ($q, $mp) => $q->where('marketplace', $mp))
             ->orderBy('name')
             ->get(['id', 'name']);
 
@@ -732,6 +794,14 @@ class DashboardController extends Controller
     private function userDashboard(User $user, Carbon $since, string $period)
     {
         $companies = $user->companies()->with(['latestMetrics', 'goals'])->get();
+
+        // Phase 58 DASH-01/02 — filter marketplace opcional (carteira ja
+        // restrita; filtro em Collection, sem re-query). Baixo impacto
+        // pratico pois usuarios comuns ja tem carteira pequena.
+        $marketplaceFilter = request()->get('marketplace');
+        if ($marketplaceFilter && in_array($marketplaceFilter, ['meli', 'shopee', 'amazon'], true)) {
+            $companies = $companies->where('marketplace', $marketplaceFilter)->values();
+        }
 
         // Sugadores na carteira do usuário (pendentes)
         $sugadoresCarteira = Sugador::pendentes()
