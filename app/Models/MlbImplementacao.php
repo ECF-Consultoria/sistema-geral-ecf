@@ -72,7 +72,7 @@ class MlbImplementacao extends Model
     public const ONB_POLO_OPCOES = [
         'Arapongas',
         'S. J. Rio Preto',
-        'Bento Gonçalves',
+        'Serra Gaúcha', // renomeado de 'Bento Gonçalves' (planilha 2026-07)
         'São Bento do Sul',
     ];
 
