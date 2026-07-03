@@ -1,5 +1,6 @@
 <?php
 
+use Inertia\Inertia;
 use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AlertasController;
 use App\Http\Controllers\EcfWebhookController;
@@ -135,6 +136,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    // Phase 56 v13.0 — Placeholder para marketplaces em desenvolvimento
+    // (Shopee, Amazon, Magazine Luiza, etc). Sidebar (AppLayout.jsx) aponta
+    // stubs pra ca com query param ?marketplace=<slug>. Sem permission
+    // dedicada — visivel a todos autenticados (mesmo padrao do Manual).
+    Route::get('/em-desenvolvimento', function () {
+        return Inertia::render('EmDesenvolvimento', [
+            'marketplace' => request()->query('marketplace'),
+        ]);
+    })->name('em-desenvolvimento');
 
     // Perfil
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
