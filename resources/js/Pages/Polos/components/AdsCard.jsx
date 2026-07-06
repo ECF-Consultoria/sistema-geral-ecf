@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Megaphone, Info } from 'lucide-react';
-import { cn, formatCurrency } from '@/lib/utils';
+import { Megaphone, Info, ChevronDown, ChevronRight } from 'lucide-react';
+import { cn, formatCurrency, formatCurrencyCompact } from '@/lib/utils';
 
 const COR_ADS  = '#38bdf8';   // sky — identidade de ADS (mesma do SparkSemanal)
 const COR_OVER = '#f43f5e';   // rose — estourou o teto disponível
@@ -28,11 +28,12 @@ function BarraAds({ label, gasto, disponivel, sub, mounted = true }) {
     );
 }
 
-function MiniKpi({ label, valor, cor = 'text-white/85' }) {
+// Valor compacto (R$ 279K) p/ caber nos cards estreitos; `title` mostra o valor exato no hover.
+function MiniKpi({ label, valor, title, cor = 'text-white/85' }) {
     return (
-        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
-            <p className="text-white/35 text-[10px] uppercase tracking-wider">{label}</p>
-            <p className={cn('mt-0.5 font-display font-extrabold text-lg tabular-nums', cor)}>{valor}</p>
+        <div className="min-w-0 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+            <p className="text-white/35 text-[10px] uppercase tracking-wider truncate">{label}</p>
+            <p title={title} className={cn('mt-0.5 font-display font-extrabold text-base tabular-nums whitespace-nowrap', cor)}>{valor}</p>
         </div>
     );
 }
@@ -50,6 +51,7 @@ function MiniKpi({ label, valor, cor = 'text-white/85' }) {
  */
 export default function AdsCard({ polos = [], teto = 3000, fechado = false, onPolo }) {
     const [mounted, setMounted] = useState(false);
+    const [verEmpresas, setVerEmpresas] = useState(true);
     useEffect(() => {
         const id = requestAnimationFrame(() => setMounted(true));
         return () => cancelAnimationFrame(id);
@@ -59,6 +61,7 @@ export default function AdsCard({ polos = [], teto = 3000, fechado = false, onPo
         const fases   = { M2: { n: 0, gasto: 0 }, M3: { n: 0, gasto: 0 }, M4: { n: 0, gasto: 0 } };
         let gastoTot = 0, nTot = 0;
         const porPolo = [];
+        const porEmpresa = [];
 
         polos.forEach((p) => {
             let gastoPolo = 0;
@@ -69,13 +72,15 @@ export default function AdsCard({ polos = [], teto = 3000, fechado = false, onPo
                 gastoTot  += g;
                 nTot++;
                 if (fases[e.fase]) { fases[e.fase].n++; fases[e.fase].gasto += g; }
+                porEmpresa.push({ cust_id: e.cust_id, nome: e.nome, polo: p.polo, fase: e.fase, gasto: g });
             });
             porPolo.push({ polo: p.polo, ref: p, gasto: gastoPolo, disponivel: teto * nPolo, n: nPolo });
         });
 
         porPolo.sort((a, b) => b.gasto - a.gasto);
+        porEmpresa.sort((a, b) => b.gasto - a.gasto); // maiores gastadores primeiro
         const dispTot = teto * nTot;
-        return { fases, gastoTot, nTot, dispTot, porPolo };
+        return { fases, gastoTot, nTot, dispTot, porPolo, porEmpresa };
     }, [polos, teto]);
 
     const saldo    = Math.max(dados.dispTot - dados.gastoTot, 0);
@@ -102,11 +107,11 @@ export default function AdsCard({ polos = [], teto = 3000, fechado = false, onPo
                 </div>
             )}
 
-            {/* Mini-KPIs do saldo */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-                <MiniKpi label="Disponível" valor={formatCurrency(dados.dispTot)} cor="text-sky-400" />
-                <MiniKpi label="Gasto" valor={fechado ? '—' : formatCurrency(dados.gastoTot)} />
-                <MiniKpi label="Saldo restante" valor={fechado ? '—' : formatCurrency(saldo)} />
+            {/* Mini-KPIs do saldo (valor compacto p/ não transbordar; exato no hover) */}
+            <div className="grid grid-cols-2 gap-2.5">
+                <MiniKpi label="Disponível" valor={formatCurrencyCompact(dados.dispTot)} title={formatCurrency(dados.dispTot)} cor="text-sky-400" />
+                <MiniKpi label="Gasto" valor={fechado ? '—' : formatCurrencyCompact(dados.gastoTot)} title={fechado ? undefined : formatCurrency(dados.gastoTot)} />
+                <MiniKpi label="Saldo restante" valor={fechado ? '—' : formatCurrencyCompact(saldo)} title={fechado ? undefined : formatCurrency(saldo)} />
                 <MiniKpi label="% utilizado" valor={fechado ? '—' : `${pctUso.toFixed(1)}%`} cor={pctUso > 100 ? 'text-rose-400' : 'text-white/85'} />
             </div>
 
@@ -157,6 +162,42 @@ export default function AdsCard({ polos = [], teto = 3000, fechado = false, onPo
                     );
                 })}
             </div>
+
+            {/* Gasto individual por empresa (recolhível; ADS é apurado só no mês corrente) */}
+            <button
+                type="button"
+                onClick={() => setVerEmpresas((v) => !v)}
+                className="mt-5 flex w-full items-center gap-1.5 text-[11px] uppercase tracking-wider text-white/40 transition hover:text-white/70"
+            >
+                {verEmpresas ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                Por empresa — gasto individual ({dados.porEmpresa.length})
+            </button>
+            {verEmpresas && (
+                <div className={cn('mt-2 space-y-1', dados.porEmpresa.length > 10 && 'max-h-[320px] overflow-y-auto pr-1')}>
+                    {dados.porEmpresa.length === 0 && (
+                        <p className="py-3 text-center text-[11px] text-white/30">Nenhuma empresa ativa no mês.</p>
+                    )}
+                    {dados.porEmpresa.map((e, i) => {
+                        const pct  = teto > 0 ? Math.min((e.gasto / teto) * 100, 100) : 0;
+                        const over = teto > 0 && e.gasto > teto;
+                        const cor  = over ? COR_OVER : COR_ADS;
+                        return (
+                            <div key={`${e.cust_id || 'x'}-${i}`} className="flex items-center gap-3" title={`${e.nome} · ${e.polo} · ${e.fase}`}>
+                                <span className="w-36 shrink-0 truncate text-xs text-white/75">{e.nome}</span>
+                                <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                                    <div
+                                        className="h-full rounded-full transition-[width] duration-700 ease-out"
+                                        style={{ width: `${mounted ? pct : 0}%`, background: `linear-gradient(90deg, ${cor}cc, ${cor})` }}
+                                    />
+                                </div>
+                                <span className="w-28 shrink-0 text-right text-[11px] tabular-nums text-white/60">
+                                    {fechado ? '—' : formatCurrencyCompact(e.gasto)} <span className="text-white/25">/ {formatCurrencyCompact(teto)}</span>
+                                </span>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
         </div>
     );
 }

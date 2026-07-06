@@ -23,6 +23,7 @@ import M1Card from './components/M1Card';
 import SparkSemanal from './components/SparkSemanal';
 import { montarCorDoPolo } from './components/poloCores';
 import { corEstagio } from './components/estagioBadge';
+import { corAds } from './components/adsCor';
 import OperacoesPanel from './components/OperacoesPanel';
 import MetasPanel from './components/MetasPanel';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
@@ -438,7 +439,7 @@ export default function PolosPainel({
             { key: 'produtos',  label: 'Produtos & Publicação' },
             { key: 'logistica', label: 'Logística' },
         ];
-        return isAdmin ? [...base, { key: 'financeiro', label: 'Financeiro' }] : base;
+        return isAdmin ? [...base, { key: 'financeiro', label: 'Performance' }] : base;
     }, [isAdmin]);
     const [lente, setLente] = useState('geral');
 
@@ -471,6 +472,7 @@ export default function PolosPainel({
     // ── Financeiro (admin) — carregado async, separado do payload operacional ──
     const [mes, setMes]           = useState(null);   // null = mês default do backend
     const [fin, setFin]           = useState(null);   // { custNorm: {...} }
+    const [finErro, setFinErro]   = useState(false);  // falha no fetch financeiro (≠ "sem meta")
     const [cockpit, setCockpit]   = useState(null);
     const [finLoading, setFinLoading] = useState(false);
     const [cockpitAberto, setCockpitAberto] = useState(false); // recolhido por padrão
@@ -481,11 +483,12 @@ export default function PolosPainel({
         if (!isAdmin) return;
         let vivo = true;
         setFinLoading(true);
+        setFinErro(false);
         const url = route('mlb.polos-painel.financeiro', mes ? { mes } : {});
         fetch(url, { headers: { Accept: 'application/json' } })
             .then((r) => r.json())
             .then((d) => { if (!vivo) return; setCockpit(d.cockpit ?? null); setFin(d.financeiro ?? {}); })
-            .catch(() => { if (vivo) setFin({}); })
+            .catch(() => { if (vivo) { setFin({}); setFinErro(true); } })
             .finally(() => { if (vivo) setFinLoading(false); });
         return () => { vivo = false; };
     }, [isAdmin, mes]);
@@ -494,6 +497,7 @@ export default function PolosPainel({
     const parcial    = cockpit?.parcial ?? false;
     const fechado    = !parcial;
     const polosCk    = cockpit?.polos ?? [];
+    const adsLimites = cockpit?.adsLimites ?? { teto: 3000, alerta1: 1000, alerta2: 2000 }; // barra de ADS (lente Performance)
     const corDoPolo  = useMemo(() => montarCorDoPolo(polosCk), [polosCk]);
     const finDe      = (e) => (fin && e.cust_norm) ? (fin[e.cust_norm] ?? null) : null;
 
@@ -808,7 +812,7 @@ export default function PolosPainel({
                         <button type="button" onClick={() => setCockpitAberto((v) => !v)}
                             className="flex w-full items-center gap-2 px-4 py-3 text-white/60 hover:text-white text-sm font-semibold transition">
                             {cockpitAberto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                            Cockpit financeiro
+                            Faturamento Polos
                             {finLoading && <RefreshCw size={13} className="animate-spin text-white/30" />}
                             {!cockpitAberto && cockpit && (
                                 <span className="ml-2 text-[12px] font-normal text-white/40">
@@ -920,7 +924,7 @@ export default function PolosPainel({
                                 className={cn('rounded-lg px-3.5 py-1.5 text-[13px] font-semibold transition-all border',
                                     lente === l.key ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
                                                     : 'border-transparent text-white/45 hover:text-white/80 hover:bg-white/[0.04]')}>
-                                {l.key === 'financeiro' ? `$ ${l.label}` : l.label}
+                                {l.label}
                             </button>
                         ))}
                     </div>
@@ -943,6 +947,7 @@ export default function PolosPainel({
                         onSalvarMeta={salvarMetaEntrada}
                         fin={fin}
                         finLoaded={fin !== null}
+                        finErro={finErro}
                         isAdmin={isAdmin}
                     />
                 ) : (
@@ -1008,6 +1013,7 @@ export default function PolosPainel({
                                     fin={finDe(e)}
                                     finLoaded={fin !== null}
                                     fechado={fechado}
+                                    adsLimites={adsLimites}
                                     semanal={e.cust_id ? semanal[e.cust_id] : null}
                                     aberta={expandida === e.id}
                                     editNota={editNota}
@@ -1125,7 +1131,7 @@ function CabecalhoLente({ keys = [], af, colunas }) {
 }
 
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
-function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, semanal, aberta, editNota, setEditNota, on }) {
+function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
     const onb = e.onboarding_progresso;
     const td = 'px-2.5 py-3 align-middle';
@@ -1239,14 +1245,14 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                     {celAcessos}
                     {celProdutos}
                     {celLogistica}
-                    {isAdmin && <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} />}
+                    {isAdmin && <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />}
                     {celAcoes}
                 </>)}
                 {lente === 'acessos'   && celAcessos}
                 {lente === 'produtos'  && celProdutos}
                 {lente === 'logistica' && celLogistica}
                 {lente === 'financeiro' && isAdmin && (
-                    <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} />
+                    <CelulasFinanceiro fin={fin} finLoaded={finLoaded} td={td} adsLimites={adsLimites} fechado={fechado} />
                 )}
             </tr>
 
@@ -1303,8 +1309,8 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
     );
 }
 
-// ─── Células da lente Financeiro (admin, read-only) ─────────────────────────────────
-function CelulasFinanceiro({ fin, finLoaded, td }) {
+// ─── Células da lente Financeiro/Performance (admin, read-only) ─────────────────────
+function CelulasFinanceiro({ fin, finLoaded, td, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, fechado = false }) {
     if (!finLoaded) return <td className={td} colSpan={5}><span className="text-white/25 text-[12px] inline-flex items-center gap-1.5"><RefreshCw size={11} className="animate-spin" /> carregando…</span></td>;
     if (!fin) return <td className={td} colSpan={5}><span className="text-white/20 text-[12px]">— sem dado financeiro (não ativo / sem sync)</span></td>;
     if (fin.tipo === 'm1') {
@@ -1317,11 +1323,28 @@ function CelulasFinanceiro({ fin, finLoaded, td }) {
         </>);
     }
     const cor = fin.pct >= 100 ? '#22c55e' : fin.pct > 0 ? '#ffe600' : '#ef4444';
+    // ADS: MESMA coluna de /polos/empresas — barra do gasto vs teto/empresa, cor por limiar (corAds),
+    // com o teto visível ("R$ X / R$ 3.000,00"). Mês fechado não tem fonte de ADS → "—".
+    const ads    = fin.ads ?? 0;
+    const adsPct = Math.min(ads / (adsLimites.teto || 3000) * 100, 100);
     return (<>
         <td className={cn(td, 'text-right')}><span className="text-white/90 text-[12px] font-semibold tabular-nums">{formatCurrency(fin.faturamento ?? 0)}</span></td>
         <td className={cn(td, 'text-right text-white/40 text-[12px] tabular-nums')}>{formatCurrency(fin.meta ?? 0)}</td>
         <td className={cn(td, 'text-right')}><span className="text-[12px] font-semibold tabular-nums" style={{ color: cor }}>{fmtPct(fin.pct)}</span></td>
-        <td className={cn(td, 'text-white/70 text-[12px] tabular-nums')}>{formatCurrency(fin.ads ?? 0)}</td>
+        <td className={td}>
+            {fechado ? (
+                <span className="text-white/20 text-[12px]" title="ADS só é apurado no mês corrente">—</span>
+            ) : (
+                <div className="flex items-center gap-2">
+                    <div className="w-24 h-1.5 rounded-full bg-white/[0.08] overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${adsPct}%`, background: corAds(ads, adsLimites) }} />
+                    </div>
+                    <span className="text-white/40 text-xs tabular-nums whitespace-nowrap">
+                        {formatCurrency(ads)} <span className="text-white/20">/ {formatCurrency(adsLimites.teto)}</span>
+                    </span>
+                </div>
+            )}
+        </td>
         <td className={td}><StatusBadge status={fin.status} /></td>
     </>);
 }

@@ -3,6 +3,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Head, Link, router } from '@inertiajs/react';
 import { ArrowLeft, Search, Megaphone, MegaphoneOff, AlertTriangle, ChevronDown, ArrowUpDown } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import { corAds } from './components/adsCor';
 
 const STATUS_META = {
     'Sim':          { cor: '#22c55e', label: 'No alvo' },
@@ -10,20 +11,6 @@ const STATUS_META = {
     'Não':          { cor: '#ef4444', label: 'Não faturou' },
     'Problema':     { cor: '#a855f7', label: 'Problema' },
 };
-
-/**
- * Retorna a cor do gasto de ADS por limiar universal:
- * - vermelho (>= alerta2): estouro crítico
- * - amarelo (>= alerta1): atenção
- * - verde (< alerta1): dentro do esperado
- */
-function corAds(gasto, limites) {
-    const alerta1 = (limites?.alerta1) ?? 1000;
-    const alerta2 = (limites?.alerta2) ?? 2000;
-    if (gasto >= alerta2) return '#ef4444'; // vermelho
-    if (gasto >= alerta1) return '#ffe600'; // amarelo / ecf-yellow
-    return '#22c55e'; // verde
-}
 
 const FILTROS = [
     { key: 'todas',        label: 'Todas' },

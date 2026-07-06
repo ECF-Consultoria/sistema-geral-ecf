@@ -50,7 +50,8 @@ export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 
                 <div className="mt-3 flex items-center gap-4">
                     <div className="relative grid place-items-center shrink-0" style={{ width: 92, height: 92 }}>
                         <RadialGauge pct={gauge} size={92} />
-                        <span className={cn(numCls, 'absolute text-2xl')}>{valor}</span>
+                        {/* Número responsivo ao comprimento: frações "128/140" não transbordam o arco de 92px. */}
+                        <span className={cn(numCls, 'absolute max-w-[78px] px-1 text-center leading-none', String(valor).length > 4 ? 'text-lg' : 'text-2xl')}>{valor}</span>
                     </div>
                     {sublabel && (
                         <p className="text-[11px] text-white/50 leading-snug">{sublabel}</p>
