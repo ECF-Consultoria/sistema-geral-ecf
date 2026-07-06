@@ -1,0 +1,620 @@
+import { Head, Link, usePage } from '@inertiajs/react';
+import { useState, useMemo } from 'react';
+import {
+    LayoutDashboard, Search, Bell, HelpCircle, Calendar, Plus,
+    DollarSign, TrendingUp, CheckCircle2, Target, MessageSquare,
+    Filter, Columns3, Sparkles,
+} from 'lucide-react';
+import AppLayout from '@/Layouts/AppLayout';
+import { cn, formatCurrency, formatPercent } from '@/lib/utils';
+
+/**
+ * Dashboard Performance da Carteira — analistas/estrategistas.
+ *
+ * Adaptado do prototype `dashboard-performance-ui-proposta.html`:
+ * design tokens do sistema ECF (ecf-yellow em vez de laranja/vermelho,
+ * ecf-card / ecf-bg em dark mode), wrapper AppLayout com sidebar oficial,
+ * widgets são cards clicáveis que linkam pras páginas correspondentes.
+ *
+ * Fase 1 (mock): valores hardcoded do backend. Fase 2: integração real
+ * via PortfolioScoreService + AdmanMetric + NpsSurvey + Goal.
+ */
+
+// ═══════════════════════════════════════════════════════════════
+// Helpers de formatação (compactos — pt-BR)
+// ═══════════════════════════════════════════════════════════════
+
+const fmtBRLCompact = (n) => {
+    if (n == null) return '—';
+    if (Math.abs(n) >= 1_000_000) return `R$ ${(n / 1_000_000).toFixed(2)}M`;
+    if (Math.abs(n) >= 1_000) return `R$ ${(n / 1_000).toFixed(0)}K`;
+    return `R$ ${n.toLocaleString('pt-BR')}`;
+};
+
+// Classificação de score → cor
+const scoreClasse = (score) => {
+    if (score >= 85) return { cor: 'emerald', label: 'Excelente' };
+    if (score >= 70) return { cor: 'lime',    label: 'Bom' };
+    if (score >= 55) return { cor: 'amber',   label: 'Atenção' };
+    return                { cor: 'rose',    label: 'Crítico' };
+};
+
+// Status → cor de chip
+const statusClasse = {
+    saudavel: { classes: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300', label: 'Saudável' },
+    atencao:  { classes: 'bg-amber-500/15 border-amber-500/30 text-amber-300',       label: 'Atenção' },
+    critico:  { classes: 'bg-rose-500/15 border-rose-500/30 text-rose-300',           label: 'Crítico' },
+};
+
+const npsClasse = {
+    Promotor: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+    Neutro:   'bg-amber-500/15 border-amber-500/30 text-amber-300',
+    Detrator: 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+};
+
+const iconeMeta = { dollar: DollarSign, check: CheckCircle2, trend: TrendingUp };
+
+// ═══════════════════════════════════════════════════════════════
+// Sub-componentes
+// ═══════════════════════════════════════════════════════════════
+
+// Barra de progresso amarela ECF
+function ProgressBar({ percent, size = 'md' }) {
+    const h = size === 'sm' ? 'h-1.5' : 'h-2';
+    return (
+        <div className={cn('w-full bg-white/[0.06] rounded-full overflow-hidden', h)}>
+            <div
+                className="h-full bg-gradient-to-r from-ecf-yellow to-yellow-300 rounded-full transition-all"
+                style={{ width: `${Math.min(100, Math.max(0, percent))}%` }}
+            />
+        </div>
+    );
+}
+
+// Logo Mercado Livre (SVG inline com selo amarelo ECF)
+function MlBadge() {
+    return (
+        <span
+            title="Conectada ao Mercado Livre"
+            className="inline-flex items-center justify-center w-5 h-4 rounded bg-ecf-yellow text-[#252525]"
+        >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-3 h-3">
+                <path d="m7 13 3 3 7-8"/>
+            </svg>
+        </span>
+    );
+}
+
+// Velocímetro/gauge do card Score
+function Speedometer({ score }) {
+    const { cor } = scoreClasse(score);
+    const strokeMap = {
+        emerald: '#10b981',
+        lime:    '#84cc16',
+        amber:   '#f59e0b',
+        rose:    '#e11d48',
+    };
+    const angulo = -90 + (Math.min(100, Math.max(0, score)) / 100) * 180;
+    const dashLen = 166 * (score / 100);
+
+    return (
+        <svg
+            viewBox="0 0 210 130"
+            aria-hidden="true"
+            className="absolute -right-8 -bottom-6 w-[210px] h-[130px] pointer-events-none opacity-90"
+        >
+            {/* arco de fundo */}
+            <path d="M35 105a70 70 0 0 1 140 0" fill="none" stroke="rgba(255,255,255,.08)" strokeWidth="18" strokeLinecap="round"/>
+            {/* arco colorido proporcional ao score */}
+            <path
+                d="M35 105a70 70 0 0 1 140 0"
+                fill="none"
+                stroke={strokeMap[cor]}
+                strokeWidth="18"
+                strokeLinecap="round"
+                strokeDasharray={`${dashLen} 220`}
+                style={{ transition: 'stroke-dasharray 0.5s ease' }}
+            />
+            {/* ponteiro */}
+            <line
+                x1="105" y1="105" x2="105" y2="43"
+                stroke="rgba(255,255,255,.9)"
+                strokeWidth="4"
+                strokeLinecap="round"
+                style={{
+                    transformOrigin: '105px 105px',
+                    transform: `rotate(${angulo}deg)`,
+                    transition: 'transform 0.5s ease',
+                }}
+            />
+            <circle cx="105" cy="105" r="7" fill="rgba(255,255,255,.9)"/>
+        </svg>
+    );
+}
+
+// Gráfico de área verde no fundo do card Crescimento
+function GrowthBackground() {
+    return (
+        <svg
+            viewBox="0 0 360 100"
+            aria-hidden="true"
+            preserveAspectRatio="none"
+            className="absolute inset-x-0 bottom-0 w-full h-[92px] pointer-events-none opacity-80"
+        >
+            <defs>
+                <linearGradient id="growthArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0" stopColor="#10b981" stopOpacity=".7"/>
+                    <stop offset="1" stopColor="#10b981" stopOpacity="0"/>
+                </linearGradient>
+            </defs>
+            <path
+                d="M0 86 C30 78 36 54 68 61 C96 67 99 40 132 43 C161 45 163 20 198 18 C237 16 240 52 272 50 C306 49 321 28 360 33 L360 100 L0 100 Z"
+                fill="url(#growthArea)"
+            />
+            <path
+                d="M0 86 C30 78 36 54 68 61 C96 67 99 40 132 43 C161 45 163 20 198 18 C237 16 240 52 272 50 C306 49 321 28 360 33"
+                fill="none"
+                stroke="#10b981"
+                strokeWidth="3"
+            />
+        </svg>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Página principal
+// ═══════════════════════════════════════════════════════════════
+
+export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, empresas }) {
+    const [busca, setBusca] = useState('');
+    const [statusFilter, setStatusFilter] = useState('all');
+    const [colunas, setColunas] = useState({
+        faturamento: true, meta: true, crescimento: true,
+        nps: true, ads: true, acao: true,
+    });
+    const [showColunas, setShowColunas] = useState(false);
+
+    const empresasFiltradas = useMemo(() => {
+        const termo = busca.trim().toLowerCase();
+        return empresas.filter((e) => {
+            const matchBusca = !termo || e.nome.toLowerCase().includes(termo) || (e.acao || '').toLowerCase().includes(termo);
+            const matchStatus = statusFilter === 'all' || e.status === statusFilter;
+            return matchBusca && matchStatus;
+        });
+    }, [empresas, busca, statusFilter]);
+
+    const { cor: scoreCor, label: scoreLabel } = scoreClasse(kpis.score);
+    const chipScoreClasses = {
+        emerald: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+        lime:    'bg-lime-500/15 border-lime-500/30 text-lime-300',
+        amber:   'bg-amber-500/15 border-amber-500/30 text-amber-300',
+        rose:    'bg-rose-500/15 border-rose-500/30 text-rose-300',
+    }[scoreCor];
+
+    return (
+        <AppLayout title="Dashboard da Carteira">
+            <Head title={`Dashboard — ${pessoa.nome}`} />
+
+            <div className="p-6 max-w-7xl mx-auto space-y-6">
+                {/* ═══ HEADER ═══════════════════════════════════════ */}
+                <div className="flex items-center justify-between gap-4 pb-4 border-b border-white/[0.06]">
+                    <div className="flex items-center gap-3">
+                        {/* Avatar com iniciais */}
+                        <div className="w-11 h-11 rounded-lg bg-gradient-to-br from-ecf-yellow/20 to-yellow-500/5 border border-ecf-yellow/30 flex items-center justify-center text-ecf-yellow font-black text-sm">
+                            {pessoa.iniciais}
+                        </div>
+                        <div>
+                            <h1 className="text-white text-xl font-display font-bold leading-none">{pessoa.nome}</h1>
+                            <p className="text-white/50 text-sm mt-1">{pessoa.funcao}</p>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button
+                            className="w-9 h-9 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-colors flex items-center justify-center"
+                            aria-label="Ajuda"
+                        >
+                            <HelpCircle size={16} />
+                        </button>
+                        <button
+                            className="w-9 h-9 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-colors flex items-center justify-center"
+                            aria-label="Notificações"
+                        >
+                            <Bell size={16} />
+                        </button>
+                        <button className="h-9 px-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/80 hover:bg-white/[0.06] transition-colors inline-flex items-center gap-2 text-xs font-semibold">
+                            <Calendar size={14} />
+                            {periodo}
+                        </button>
+                        <Link
+                            href={route('goals.index')}
+                            className="h-9 px-3 rounded-lg bg-ecf-yellow text-[#252525] hover:bg-yellow-300 transition-colors inline-flex items-center gap-2 text-xs font-bold"
+                        >
+                            <Plus size={14} />
+                            Nova meta
+                        </Link>
+                    </div>
+                </div>
+
+                {/* ═══ OVERVIEW TÍTULO ═════════════════════════════════ */}
+                <div className="flex justify-between items-end gap-4">
+                    <div>
+                        <h2 className="text-white text-lg font-display font-bold">Overview</h2>
+                        <p className="text-white/50 text-sm mt-1">Resumo da carteira · {periodo.toLowerCase()}</p>
+                    </div>
+                    <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                        {kpis.empresas_em_crescimento} de {kpis.empresas_em_carteira} empresas em crescimento
+                    </span>
+                </div>
+
+                {/* ═══ 3 KPI CARDS (grid) ═════════════════════════════ */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Card 1 — Faturamento total (link → dashboard ECF) */}
+                    <Link
+                        href={route('ecf.dashboard')}
+                        className="group relative overflow-hidden rounded-xl bg-ecf-card border border-white/[0.08] p-5 min-h-[160px] flex flex-col justify-between hover:border-ecf-yellow/40 transition-all"
+                    >
+                        {/* Glow decorativo yellow ECF */}
+                        <div className="absolute -top-16 -right-16 w-52 h-52 bg-ecf-yellow/[0.08] rounded-full blur-3xl pointer-events-none" />
+                        {/* Grid pattern sutil */}
+                        <div
+                            className="absolute inset-0 opacity-30 pointer-events-none"
+                            style={{
+                                backgroundImage: 'linear-gradient(90deg, rgba(255,230,0,.06) 1px, transparent 1px), linear-gradient(180deg, rgba(255,230,0,.04) 1px, transparent 1px)',
+                                backgroundSize: '34px 34px',
+                            }}
+                        />
+                        <div className="relative">
+                            <span className="text-[10px] uppercase tracking-wider text-white/60 font-bold">
+                                Faturamento total · últimos 30 dias
+                            </span>
+                            <div className="flex items-baseline gap-3 mt-3 flex-wrap">
+                                <strong className="text-4xl font-black text-white tabular-nums leading-none">
+                                    {fmtBRLCompact(kpis.faturamento_total)}
+                                </strong>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-white/[0.06] border border-white/[0.08] text-white/70 font-semibold">
+                                    {kpis.empresas_em_carteira} empresas
+                                </span>
+                            </div>
+                        </div>
+                        <p className="relative text-xs text-white/50">
+                            {kpis.empresas_conectadas_ml} empresas conectadas ao Mercado Livre.
+                        </p>
+                    </Link>
+
+                    {/* Card 2 — Crescimento vs anterior (link → performance) */}
+                    <Link
+                        href={route('performance.index')}
+                        className="group relative overflow-hidden rounded-xl bg-ecf-card border border-white/[0.08] p-5 min-h-[160px] flex flex-col justify-between hover:border-emerald-500/40 transition-all"
+                    >
+                        <GrowthBackground />
+                        <div className="relative">
+                            <span className="text-[10px] uppercase tracking-wider text-white/60 font-bold">
+                                Crescimento vs anterior
+                            </span>
+                            <div className="flex items-baseline gap-3 mt-3 flex-wrap">
+                                <strong className="text-4xl font-black text-white tabular-nums leading-none">
+                                    +{kpis.crescimento_percent}%
+                                </strong>
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                                    +{fmtBRLCompact(kpis.crescimento_delta_valor)}
+                                </span>
+                            </div>
+                        </div>
+                        <p className="relative text-xs text-white/50">
+                            Comparado aos 30 dias anteriores. Mediana por empresa: +{kpis.crescimento_mediana}%.
+                        </p>
+                    </Link>
+
+                    {/* Card 3 — Score (link → performance) */}
+                    <Link
+                        href={route('performance.index')}
+                        className="group relative overflow-hidden rounded-xl bg-ecf-card border border-white/[0.08] p-5 min-h-[160px] flex flex-col justify-between hover:border-ecf-yellow/40 transition-all"
+                    >
+                        <Speedometer score={kpis.score} />
+                        <div className="relative">
+                            <span className="text-[10px] uppercase tracking-wider text-white/60 font-bold">
+                                Score
+                            </span>
+                            <div className="flex items-baseline gap-3 mt-3 flex-wrap">
+                                <strong className="text-4xl font-black text-white tabular-nums leading-none">
+                                    {kpis.score}
+                                </strong>
+                                <span className={cn('text-xs px-2 py-0.5 rounded-full border font-semibold', chipScoreClasses)}>
+                                    {scoreLabel}
+                                </span>
+                            </div>
+                        </div>
+                        <p className="relative text-xs text-white/50 max-w-[65%]">
+                            Ponderado por crescimento, meta, execução e NPS.
+                        </p>
+                    </Link>
+                </div>
+
+                {/* ═══ NPS + METAS (grid 2 cols) ═════════════════════ */}
+                <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.15fr)] gap-4">
+                    {/* Widget NPS (link → /nps) */}
+                    <Link
+                        href={route('nps.index')}
+                        className="group bg-ecf-card border border-white/[0.08] rounded-xl overflow-hidden hover:border-emerald-500/40 transition-colors flex flex-col"
+                    >
+                        <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <MessageSquare size={16} className="text-emerald-400" />
+                                <h3 className="text-white text-sm font-bold">NPS</h3>
+                            </div>
+                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                                Média {nps.media}
+                            </span>
+                        </div>
+                        <div className="p-4 space-y-2.5">
+                            {nps.respostas.map((r, i) => (
+                                <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                    <span className={cn(
+                                        'w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm border',
+                                        r.classe === 'Promotor' && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+                                        r.classe === 'Neutro'   && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+                                        r.classe === 'Detrator' && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+                                    )}>
+                                        {r.nota}
+                                    </span>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-white text-sm font-semibold truncate">{r.empresa}</div>
+                                        <div className="text-white/40 text-[11px] mt-0.5">{r.quando}</div>
+                                    </div>
+                                    <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap', npsClasse[r.classe])}>
+                                        {r.classe}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    </Link>
+
+                    {/* Widget Metas (link → /goals) */}
+                    <Link
+                        href={route('goals.index')}
+                        className="group bg-ecf-card border border-white/[0.08] rounded-xl overflow-hidden hover:border-ecf-yellow/40 transition-colors flex flex-col"
+                    >
+                        <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                                <Target size={16} className="text-ecf-yellow" />
+                                <h3 className="text-white text-sm font-bold">Progresso das metas</h3>
+                            </div>
+                            <span className="text-xs px-2 py-1 rounded-full bg-white/[0.03] border border-white/[0.06] text-white/60 font-semibold">
+                                Ver todas
+                            </span>
+                        </div>
+                        <div className="p-4 space-y-3">
+                            {metas.map((m, i) => {
+                                const Icone = iconeMeta[m.icone] ?? Target;
+                                return (
+                                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                        <span className="w-10 h-10 rounded-lg bg-ecf-yellow/15 border border-ecf-yellow/30 text-ecf-yellow flex items-center justify-center flex-shrink-0">
+                                            <Icone size={17} />
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                                                <strong className="text-white text-sm font-bold truncate">{m.nome}</strong>
+                                                <span className="text-white/50 text-xs whitespace-nowrap">{m.atual} / {m.objetivo}</span>
+                                            </div>
+                                            <ProgressBar percent={m.percent} size="sm" />
+                                        </div>
+                                        <b className="text-white text-sm font-bold tabular-nums w-10 text-right">{m.percent}%</b>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </Link>
+                </div>
+
+                {/* ═══ TABELA EMPRESAS EM CARTEIRA ═══════════════════ */}
+                <div className="bg-ecf-card border border-white/[0.08] rounded-xl overflow-hidden">
+                    {/* Header */}
+                    <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2">
+                            <LayoutDashboard size={16} className="text-white/60" />
+                            <h3 className="text-white text-sm font-bold">Empresas em carteira</h3>
+                        </div>
+                        <span className="text-white/50 text-xs">
+                            {empresasFiltradas.length} {empresasFiltradas.length === 1 ? 'empresa listada' : 'empresas listadas'}
+                        </span>
+                    </div>
+
+                    {/* Toolbar (busca + filtros + colunas) */}
+                    <div className="px-5 py-3 border-b border-white/[0.06] flex items-center gap-3 flex-wrap">
+                        <div className="relative flex-1 min-w-[220px]">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                            <input
+                                type="search"
+                                value={busca}
+                                onChange={(e) => setBusca(e.target.value)}
+                                placeholder="Buscar por empresa ou ação"
+                                className="w-full h-9 pl-9 pr-3 rounded-lg bg-white/[0.03] border border-white/[0.08] text-white text-sm placeholder-white/30 focus:outline-none focus:border-ecf-yellow/40 focus:ring-1 focus:ring-ecf-yellow/40"
+                            />
+                        </div>
+
+                        <div className="relative">
+                            <Filter size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="h-9 pl-8 pr-8 rounded-lg bg-white/[0.03] border border-white/[0.08] text-white/80 text-xs font-semibold appearance-none focus:outline-none focus:border-ecf-yellow/40 cursor-pointer"
+                            >
+                                <option value="all">Todos os status</option>
+                                <option value="saudavel">Saudável</option>
+                                <option value="atencao">Atenção</option>
+                                <option value="critico">Crítico</option>
+                            </select>
+                        </div>
+
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowColunas((v) => !v)}
+                                className="h-9 px-3 rounded-lg bg-white/[0.03] border border-white/[0.08] text-white/80 text-xs font-semibold inline-flex items-center gap-2 hover:bg-white/[0.06] transition-colors"
+                            >
+                                <Columns3 size={13} />
+                                Colunas
+                            </button>
+                            {showColunas && (
+                                <div className="absolute top-full right-0 mt-2 w-56 p-3 rounded-lg bg-ecf-card border border-white/[0.1] shadow-2xl z-20 space-y-2">
+                                    {[
+                                        { key: 'faturamento', label: 'Faturamento', locked: true },
+                                        { key: 'meta',        label: 'Meta',        locked: true },
+                                        { key: 'crescimento', label: 'Crescimento', locked: true },
+                                        { key: 'nps',         label: 'NPS' },
+                                        { key: 'ads',         label: 'Investimento Ads' },
+                                        { key: 'acao',        label: 'Ação recomendada' },
+                                    ].map(({ key, label, locked }) => (
+                                        <label
+                                            key={key}
+                                            className={cn(
+                                                'flex items-center gap-2 text-xs cursor-pointer',
+                                                locked ? 'text-white/40' : 'text-white/70 hover:text-white'
+                                            )}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                checked={colunas[key]}
+                                                disabled={locked}
+                                                onChange={(e) => setColunas((c) => ({ ...c, [key]: e.target.checked }))}
+                                                className="accent-ecf-yellow"
+                                            />
+                                            {label}
+                                        </label>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Tabela (desktop) */}
+                    <div className="overflow-x-auto hidden md:block">
+                        <table className="w-full text-sm">
+                            <thead>
+                                <tr className="text-left text-[10px] uppercase tracking-wider text-white/50 border-b border-white/[0.06]">
+                                    <th className="px-5 py-3 font-bold">Empresa</th>
+                                    <th className="px-3 py-3 font-bold">Status</th>
+                                    {colunas.faturamento && <th className="px-3 py-3 font-bold text-right">Faturamento</th>}
+                                    {colunas.meta        && <th className="px-3 py-3 font-bold text-right">Meta</th>}
+                                    {colunas.crescimento && <th className="px-3 py-3 font-bold text-right">Crescimento</th>}
+                                    {colunas.nps         && <th className="px-3 py-3 font-bold text-right">NPS</th>}
+                                    {colunas.ads         && <th className="px-3 py-3 font-bold text-right">Ads</th>}
+                                    {colunas.acao        && <th className="px-3 py-3 font-bold">Ação recomendada</th>}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {empresasFiltradas.map((e) => {
+                                    const st = statusClasse[e.status] || statusClasse.saudavel;
+                                    return (
+                                        <tr key={e.nome} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
+                                            <td className="px-5 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="w-9 h-9 rounded-lg bg-white/[0.05] border border-white/[0.06] text-white/60 font-black flex items-center justify-center flex-shrink-0">
+                                                        {e.nome.charAt(0)}
+                                                    </span>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-white font-semibold truncate">{e.nome}</span>
+                                                            {e.ml && <MlBadge />}
+                                                        </div>
+                                                        <span className="text-white/40 text-[11px] block mt-0.5 truncate">{e.nota}</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap', st.classes)}>
+                                                    {st.label}
+                                                </span>
+                                            </td>
+                                            {colunas.faturamento && <td className="px-3 py-3 text-right text-white font-semibold tabular-nums">{fmtBRLCompact(e.faturamento)}</td>}
+                                            {colunas.meta && (
+                                                <td className="px-3 py-3 text-right">
+                                                    <div className="inline-flex flex-col items-end gap-1">
+                                                        <span className="w-24"><ProgressBar percent={e.meta} size="sm" /></span>
+                                                        <span className="text-white/50 text-[11px] font-semibold">{e.meta}%</span>
+                                                    </div>
+                                                </td>
+                                            )}
+                                            {colunas.crescimento && (
+                                                <td className="px-3 py-3 text-right">
+                                                    <span className={cn(
+                                                        'text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap',
+                                                        e.crescimento >= 15 && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+                                                        e.crescimento < 15 && e.crescimento >= 0 && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+                                                        e.crescimento < 0 && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+                                                    )}>
+                                                        {e.crescimento >= 0 ? '+' : ''}{e.crescimento}%
+                                                    </span>
+                                                </td>
+                                            )}
+                                            {colunas.nps         && <td className="px-3 py-3 text-right text-white/80 tabular-nums">{e.nps}</td>}
+                                            {colunas.ads         && <td className="px-3 py-3 text-right text-white/60 tabular-nums">{fmtBRLCompact(e.ads)}</td>}
+                                            {colunas.acao        && <td className="px-3 py-3 text-white/70">{e.acao}</td>}
+                                        </tr>
+                                    );
+                                })}
+                                {empresasFiltradas.length === 0 && (
+                                    <tr>
+                                        <td colSpan={8} className="text-center py-10 text-white/40 text-sm">
+                                            Nenhuma empresa encontrada com os filtros aplicados.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Cards mobile */}
+                    <div className="md:hidden p-4 space-y-3">
+                        {empresasFiltradas.map((e) => {
+                            const st = statusClasse[e.status] || statusClasse.saudavel;
+                            return (
+                                <div key={e.nome} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] space-y-3">
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="text-white font-bold text-sm truncate">{e.nome}</span>
+                                            {e.ml && <MlBadge />}
+                                        </div>
+                                        <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold', st.classes)}>
+                                            {st.label}
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div>
+                                            <span className="text-white/40 block">Faturamento</span>
+                                            <b className="text-white">{fmtBRLCompact(e.faturamento)}</b>
+                                        </div>
+                                        <div>
+                                            <span className="text-white/40 block">Meta</span>
+                                            <b className="text-white">{e.meta}%</b>
+                                        </div>
+                                        <div>
+                                            <span className="text-white/40 block">Crescimento</span>
+                                            <b className={cn(
+                                                e.crescimento >= 15 && 'text-emerald-300',
+                                                e.crescimento < 15 && e.crescimento >= 0 && 'text-amber-300',
+                                                e.crescimento < 0 && 'text-rose-300',
+                                            )}>
+                                                {e.crescimento >= 0 ? '+' : ''}{e.crescimento}%
+                                            </b>
+                                        </div>
+                                        <div>
+                                            <span className="text-white/40 block">Ação</span>
+                                            <b className="text-white/80 text-[11px]">{e.acao}</b>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Rodapé sutil */}
+                <div className="flex items-center gap-2 text-white/30 text-[11px] pt-2">
+                    <Sparkles size={11} />
+                    <span>Dashboard em fase inicial — dados mockados. Integração real será liberada nas próximas fases.</span>
+                </div>
+            </div>
+        </AppLayout>
+    );
+}

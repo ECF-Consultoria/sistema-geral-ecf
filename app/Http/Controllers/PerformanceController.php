@@ -181,6 +181,70 @@ class PerformanceController extends Controller
     }
 
     /**
+     * Dashboard operacional da Carteira (Analista/Estrategista de Performance).
+     *
+     * Tela compacta com KPIs de carteira dos últimos 30 dias: faturamento
+     * total, crescimento vs período anterior, score de performance +
+     * widgets de NPS recente + progresso das metas + tabela de empresas
+     * em carteira. Segue design tokens ECF (dark theme, ecf-yellow accent).
+     *
+     * Fase 1 (prototype): mock data pra validar UX. Fase 2 (integração real):
+     * substituir por queries contra AdmanMetric/Company/NpsSurvey/Goal.
+     */
+    public function dashboardCarteira(Request $request): \Inertia\Response
+    {
+        $user = $request->user();
+
+        // Mock data — Phase 1 prototype (spec 2026-07-06).
+        // Fase futura: substituir por queries reais contra PortfolioScoreService,
+        // AdmanMetric, NpsSurvey, Goal (por analista).
+        $mock = [
+            'pessoa' => [
+                'nome'   => $user->name ?? 'Ana Julia',
+                'funcao' => $user->isMentor() ? 'Estrategista' : 'Analista de Performance',
+                'iniciais' => strtoupper(mb_substr(explode(' ', $user->name ?? 'AJ')[0] ?? 'A', 0, 1)
+                    . mb_substr(explode(' ', $user->name ?? 'AJ')[1] ?? 'J', 0, 1)),
+            ],
+            'periodo' => 'Últimos 30 dias',
+            'kpis' => [
+                'faturamento_total'       => 20_200_000,      // R$ 20.20M
+                'empresas_em_carteira'    => 24,
+                'empresas_conectadas_ml'  => 21,
+                'crescimento_percent'     => 18.8,
+                'crescimento_delta_valor' => 3_200_000,       // +R$ 3.20M
+                'crescimento_mediana'     => 11.4,
+                'score'                   => 87,
+                'score_label'             => 'Excelente',
+                'empresas_em_crescimento' => 16,
+            ],
+            'nps' => [
+                'media' => 9.2,
+                'respostas' => [
+                    ['empresa' => 'Comilopartsfilial', 'nota' => 10, 'classe' => 'Promotor', 'quando' => 'Recebido hoje, 10:42'],
+                    ['empresa' => 'Relojoaria Wenus',  'nota' => 9,  'classe' => 'Promotor', 'quando' => 'Recebido ontem, 16:18'],
+                    ['empresa' => 'Gran Belo',         'nota' => 8,  'classe' => 'Neutro',   'quando' => 'Recebido em 04/07'],
+                    ['empresa' => 'Dmov',              'nota' => 10, 'classe' => 'Promotor', 'quando' => 'Recebido em 03/07'],
+                ],
+            ],
+            'metas' => [
+                ['icone' => 'dollar',  'nome' => 'Faturamento mensal',       'atual' => 'R$ 20.20M', 'objetivo' => 'R$ 24.60M', 'percent' => 82],
+                ['icone' => 'check',   'nome' => 'Ações críticas resolvidas', 'atual' => '9',         'objetivo' => '12 tarefas', 'percent' => 75],
+                ['icone' => 'trend',   'nome' => 'Empresas em crescimento',  'atual' => '16',        'objetivo' => '24 empresas', 'percent' => 67],
+            ],
+            'empresas' => [
+                ['nome' => 'COMILOPARTSFILIAL', 'ml' => true,  'status' => 'saudavel', 'faturamento' => 8_450_000, 'meta' => 96, 'crescimento' => 22.1, 'nps' => 10, 'ads' => 318_000, 'acao' => 'Manter ritmo',        'nota' => 'Conectada ao Mercado Livre'],
+                ['nome' => 'RELOJOARIA WENUS',  'ml' => true,  'status' => 'critico',  'faturamento' => 3_460_000, 'meta' => 84, 'crescimento' => 4.7,  'nps' => 9,  'ads' => 82_000,  'acao' => 'Renovar grant',       'nota' => 'Grant vencido há 12 dias'],
+                ['nome' => 'GRAN BELO',         'ml' => true,  'status' => 'saudavel', 'faturamento' => 1_190_000, 'meta' => 91, 'crescimento' => 16.8, 'nps' => 8,  'ads' => 41_000,  'acao' => 'Escalar Ads',         'nota' => 'Crescimento consistente'],
+                ['nome' => 'Dmov',              'ml' => false, 'status' => 'atencao',  'faturamento' => 804_000,   'meta' => 45, 'crescimento' => -3.4, 'nps' => 10, 'ads' => 0,       'acao' => 'Conectar ML',         'nota' => 'Sem conexão Mercado Livre'],
+                ['nome' => 'AUTOPARTS UNION',   'ml' => true,  'status' => 'atencao',  'faturamento' => 2_080_000, 'meta' => 63, 'crescimento' => 9.5,  'nps' => 7,  'ads' => 66_000,  'acao' => 'Revisar sortimento',  'nota' => 'Meta abaixo do ritmo'],
+                ['nome' => 'CASA DELTA',        'ml' => false, 'status' => 'saudavel', 'faturamento' => 1_740_000, 'meta' => 88, 'crescimento' => 12.6, 'nps' => 9,  'ads' => 27_000,  'acao' => 'Conectar ML',         'nota' => 'Sem conexão Mercado Livre'],
+            ],
+        ];
+
+        return Inertia::render('Performance/Dashboard', $mock);
+    }
+
+    /**
      * Phase 46 Plan 46-02 — endpoint JSON com a curva de evolução do score
      * de um user nos últimos N dias.
      *
