@@ -542,7 +542,10 @@ class AdminController extends Controller
                 'id'                       => $f->id,
                 'name'                     => $f->name,
                 'cnpj'                     => $f->cnpj,
-                'adman_account_id'         => $f->ml_store_id ?: $f->adman_account_id,
+                // Phase 59 fix — usa o accessor cust_id (adman_account_id ?: ml_store_id)
+                // em vez de replicar a resolução manualmente com ordem invertida;
+                // unifica com gerarRelatorioGeral() (ver 59-AUDIT.md item AdminController.php:545).
+                'adman_account_id'         => $f->cust_id,
                 'adman_store_id'           => $f->adman_store_id ?? null,
                 'ml_store_id'              => $f->ml_store_id,
                 // ─── Chaves legacy — TODO Plan 14-06: remover após drop ───
@@ -706,7 +709,9 @@ class AdminController extends Controller
                     'id'                       => $f->id,
                     'name'                     => $f->name,
                     'cnpj'                     => $f->cnpj,
-                    'adman_account_id'         => $f->adman_account_id,
+                    // Phase 59 fix — usa o accessor cust_id, unificando com fechamento()
+                    // (ver 59-AUDIT.md item AdminController.php:545).
+                    'adman_account_id'         => $f->cust_id,
                     'adman_store_id'           => $f->adman_store_id,
                     'ml_store_id'              => $f->ml_store_id,
                     'segment'                  => $f->segment,
