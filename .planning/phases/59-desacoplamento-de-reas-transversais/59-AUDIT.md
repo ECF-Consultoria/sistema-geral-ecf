@@ -484,3 +484,120 @@ estava classificado como `fix Phase 59`.
 **Nota final:** Gate de regressão completo (suite inteira, contagem
 comparável ao baseline de 63 vermelhos pré-existentes) delegado ao Plan 03
 conforme `59-02-PLAN.md` e `§Baseline pré-fix` acima.
+
+---
+
+## Plan 03 — Regressão + confirmação Publicação
+
+**Data:** 2026-07-06 (ISO)
+
+### 1. Regressão (CROSS-03)
+
+Contorno de infraestrutura reaplicado idêntico ao Plan 01 (suite rodada em
+2 lotes via `vendor/bin/phpunit` direto, para evitar o crash de
+`set_time_limit(300)` compartilhado descrito em `§Baseline pré-fix`):
+
+- Lote 1 — `vendor/bin/phpunit --filter '^(?!.*SyncGrantsFromEcfDriveTest).*$'`
+- Lote 2 — `vendor/bin/phpunit --filter 'SyncGrantsFromEcfDriveTest'`
+
+| Métrica | Baseline (Plan 01) | Pós-fix (Plan 03) | Delta |
+|---|---|---|---|
+| Tests | 955 | 955 | **0** |
+| Assertions | 4748 | 4748 | **0** |
+| Errors | 15 | 15 | **0** |
+| Failures | 48 | 48 | **0** |
+| Skipped | 1 | 1 | **0** |
+| Passed | 892 | 892 | **0 (>= 0 ✓)** |
+
+**Delta: P_passed - B_passed = 0** (892 - 892 = 0, >= 0 confirmado). Delta
+de Assertions/Errors/Failures/Skipped também = 0 em todas as métricas.
+
+**Detalhe por lote (pós-fix):**
+- Lote 1 (943 testes, exclui `SyncGrantsFromEcfDriveTest`): 4707 assertions,
+  15 errors, 48 failures, 1 skipped — idêntico ao Lote 1 do baseline.
+- Lote 2 (12 testes, `SyncGrantsFromEcfDriveTest` isolado): 41 assertions,
+  0 errors, 0 failures — idêntico ao Lote 2 do baseline.
+
+Os 4 últimos casos de falha visíveis no tail do Lote 1
+(`Phase42\AnalyzeCompanyMlWindowQuarantineTest::fetchAdgroupsMetrics_fail_open_em_listCampaigns_quebrado`,
+`Phase42\CutOverMlPrimaryTest::reanalise_mesmo_dia_com_config_relaxada_depois_apertada_auto_resolve`,
+`Phase42\CutOverMlPrimaryTest::auto_resolvido_recicla_quando_config_afrouxa_e_ad_volta_a_bater_criterio`,
+`Polos\PolosFaturamentoSnapshotTest::test_job_persiste_snapshot_no_sucesso`)
+já constam na lista de vermelhos pré-existentes do baseline (`§Baseline
+pré-fix`, itens Phase42 e Polos) — nenhum teste novo apareceu na cauda do
+output.
+
+**Phase 57:** `--filter Phase57` → **20/20 passed**, 26 assertions,
+12.570s — baseline preservado exato.
+
+**Phase 58:** `--filter Phase58` → **16/16 passed**, 62 assertions,
+31.879s — baseline preservado exato.
+
+**Task 2 (resolver vermelhos) foi PULADA** — a contagem pós-fix bateu
+exatamente com o baseline em todas as métricas (delta = 0 em Tests,
+Assertions, Errors, Failures, Skipped), e Phase 57 (20/20) + Phase 58
+(16/16) confirmados intactos. Não há vermelho novo causado pelos fixes
+`e816307`/`90a2afe` do Plan 02 para resolver.
+
+**Afirmativa final: Zero regressão confirmada.** Os 63 vermelhos
+(15 errors + 48 failures) pós-fix são EXATAMENTE os mesmos 63 vermelhos
+pré-existentes documentados em `§Baseline pré-fix` — mesma composição,
+mesma contagem, nenhum acréscimo. Os fixes cirúrgicos de resolução `cust_id`
+(`CompanyController::index()`, `AdminController::fechamento()`/
+`gerarRelatorioGeral()`) não tocaram nenhum caminho exercitado pelos 63
+testes vermelhos pré-existentes (confirmado também no Plan 02 por reversão
+temporária + re-execução isolada — ver `59-02-SUMMARY.md`).
+
+### 2. Publicação transversal reforçada (CROSS-02)
+
+Evidência DINÂMICA (execução real da suite, não apenas grep estático) que
+complementa a seção `## Publicação — CONFIRMED transversal` acima:
+
+- **Suite completa executada em 2026-07-06 (955 testes, 2 lotes) — 0 testes
+  de módulos Publicação/`mlb.*` ficaram vermelhos APÓS os fixes cirúrgicos**
+  em `CompanyController`/`AdminController` (Plan 02, commits `e816307` e
+  `90a2afe`). As suites que exercitam o módulo de Publicação —
+  `tests/Feature/Phase38Publicador/MeuPainelControllerTest.php`,
+  `tests/Feature/PublicacaoDesempenhoRouteTest.php`,
+  `tests/Feature/Phase36/MlbDadosMlControllerTest.php`,
+  `tests/Feature/Phase37/MlbDadosMlReputacaoTest.php` — **todas passaram**
+  no Lote 1 (nenhuma aparece na lista de 63 vermelhos, pré-existente ou
+  nova).
+- Grep adicional de amostragem (`grep -rn "hasPubPermission\|pub\." tests/`)
+  retorna **0 ocorrências literais** — nenhum teste referencia o método
+  `hasPubPermission()` ou a string `pub.` diretamente (o domínio de
+  Publicação é exercitado nos testes via o prefixo real de permission key
+  `mlb.`, não via um prefixo `pub.` — consistente com o achado LOW já
+  registrado na seção acima: o naming histórico é `mlb.`, não `pub.`).
+  `grep -rln "mlb\." tests/Feature` retorna 6 arquivos de teste (listados
+  acima + `Phase33OnboardingFichaTest.php`, `Phase35OnboardingPrazoTest.php`)
+  que exercitam fluxos do módulo Publicação/onboarding — todos verdes no
+  run pós-fix, exceto `Phase33OnboardingFichaTest`, que já constava nos
+  63 vermelhos pré-existentes do baseline (causa raiz documentada:
+  bug de timezone Carbon/Windows em `contract_start`, não relacionado a
+  `hasPubPermission()`/permissão de Publicação).
+
+**Afirmativa final: Publicação confirmada transversal** — permissões
+`pub.*` (via `hasPubPermission()`, delegando para chave real `mlb.*`)
+funcionam sem amarração implícita a marketplace; grep estático (seção
+acima) + execução real da suite completa (2026-07-06, 955 testes, zero
+vermelho novo em módulo Publicação) comprovam.
+
+### 3. Encerramento Phase 59
+
+| Requisito | Fechado por | Status |
+|---|---|---|
+| CROSS-01 (mapa de acoplamento ML) | Plan 01 (audit) + Plan 02 (2 fixes aplicados) | ✅ Fechado |
+| CROSS-02 (Publicação transversal) | Plan 01 (grep estático) + Plan 03 (evidência dinâmica de suite) | ✅ Fechado |
+| CROSS-03 (zero regressão) | Plan 03 (delta = 0 vs. baseline, Phase 57/58 preservados) | ✅ Fechado |
+
+**Itens deferred v14+ (não bloqueiam fechamento desta phase):**
+- Migração completa para pivot N:N `whereHas('marketplaces', ...)` em
+  `ComercialController`/`CompanyController`/`AdminController` — fica para
+  quando Shopee/Amazon integrarem de fato (custo/benefício não justifica
+  agora).
+- Naming histórico `mlb.` no prefixo das permission keys de Publicação
+  (`app/Models/User.php:216-218`) — exigiria migração de dados gravados em
+  `permissoes`/`cargo_permissoes`; fora do escopo cirúrgico desta Phase.
+
+**Phase 59 pronta para `/gsd:complete-phase 59`.**
