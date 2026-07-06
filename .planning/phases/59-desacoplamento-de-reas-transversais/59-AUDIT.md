@@ -203,7 +203,7 @@ assume ML incorretamente" — é código ML por design, conforme CONTEXT §4).
 | 85 | `->whereDoesntHave('mlbEmpresa')` | filtro hardcoded (mas legítimo) | INFO | no-op (legítimo) — filtro Phase 35/37 documentado: `/companies` refoca em Performance, empresas do módulo Polos/Publicação (`mlbEmpresa`) vivem em outra tela por desenho consciente, não é bug |
 | 88 | comentário "MlbEmpresa já excluído acima" | docblock | INFO | no-op (legítimo) |
 | 125 | `'marketplaces_extras' => $c->marketplaces_extras ?? []` (payload `index()`) | payload/accessor legítimo | INFO | no-op (legítimo) |
-| 129 | `'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id` (payload `index()`) | resolução cust_id | **MEDIUM** | **fix Phase 59** — ver nota abaixo |
+| 129 | `'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id` (payload `index()`) | resolução cust_id | **MEDIUM** | **APLICADO em `e816307`** — ver nota abaixo |
 | 131 | `'ml_store_id' => $c->ml_store_id` (payload `index()`) | payload/accessor legítimo | INFO | no-op (legítimo) |
 | 165 | `(! $c->adman_account_id && ! $c->ml_store_id) ? 'sem_cust_id' : null` | resolução cust_id | INFO | no-op (legítimo) — checa AMBAS as colunas antes de marcar pendência, correto |
 | 268-269 | docblock "usa accessor cust_id (adman_account_id ?: ml_store_id)" no `show()` | docblock | INFO | no-op (legítimo) |
@@ -234,8 +234,20 @@ documentação** (ex.: renomear a chave de saída para `cust_id_display` ou
 usar o accessor `$c->cust_id` diretamente e documentar a semântica), não
 uma mudança de comportamento de query — sem risco à suite de testes.
 
-**Company — 1 item `fix Phase 59`** (linha 129, MEDIUM, naming/consistência).
-Os demais 16 refs são legítimos.
+**APLICADO em Plan 02 (commit `e816307`):** linha 109 (numeração atual do
+arquivo — a numeração 129 refletia o estado do working tree no momento do
+scout, que já tinha edições locais não commitadas de outra frente/tarefa)
+trocada para `'adman_account_id' => $c->cust_id`. Achado extra durante a
+aplicação: o accessor `Company::cust_id` resolve na ordem
+`adman_account_id ?: ml_store_id` (fixada em 2026-06-09 após bug real
+ADHARAPRINTSHOP/AVF_2K — ver `app/Models/Company.php` docblock), enquanto a
+expressão manual do controller usava a ordem INVERTIDA
+(`ml_store_id ?: adman_account_id`). O fix não é só naming — corrige também
+a ordem de prioridade para bater com o accessor canônico. Suite `--filter`
+específica confirmada sem regressão nova (ver seção "Plan 02 — Execução").
+
+**Company — 1 item `fix Phase 59`** (linha 129, MEDIUM, naming/consistência)
+— **APLICADO**. Os demais 16 refs são legítimos.
 
 ---
 
@@ -248,7 +260,7 @@ Os demais 16 refs são legítimos.
 | 202-203 | comentário explicando bugfix histórico (lookup usava `ml_store_id ?: adman_account_id`, causava cache miss) | docblock | INFO | no-op (legítimo) — comentário documenta correção já aplicada |
 | 399 | `$q2->whereNotNull('ml_store_id')->where('ml_store_id','!=','')` OU `whereNotNull('adman_account_id')...` (`syncFaturamento()`) | filtro hardcoded (mas legítimo) | INFO | no-op (legítimo) — filtra empresas com QUALQUER cust_id (ML ou Adman), não exclui nenhum marketplace |
 | 494 | comentário "Resolução de custId via accessor cust_id" (`fechamento()`) | docblock | INFO | no-op (legítimo) |
-| 545 | `'adman_account_id' => $f->ml_store_id ?: $f->adman_account_id` (payload `fechamento()`, empresa vinculada) | resolução cust_id | **MEDIUM** | **fix Phase 59** — mesma inconsistência da linha 129 do CompanyController |
+| 545 | `'adman_account_id' => $f->ml_store_id ?: $f->adman_account_id` (payload `fechamento()`, empresa vinculada) | resolução cust_id | **MEDIUM** | **APLICADO em `90a2afe`** — mesma inconsistência da linha 129 do CompanyController |
 | 547 | `'ml_store_id' => $f->ml_store_id` (payload `fechamento()`) | payload/accessor legítimo | INFO | no-op (legítimo) |
 | 660 | comentário "cust_id (adman_account_id ?: ml_store_id) bate com a chave do writer" (`gerarRelatorioGeral()`) | docblock | INFO | no-op (legítimo) |
 | 711 | `'ml_store_id' => $f->ml_store_id` (payload `gerarRelatorioGeral()`) | payload/accessor legítimo | INFO | no-op (legítimo) |
@@ -265,8 +277,17 @@ para usar o mesmo padrão (idealmente o accessor `$f->cust_id` direto),
 eliminando a divergência. Nenhuma mudança de schema ou API pública — troca
 interna de expressão de payload.
 
-**Admin — 1 item `fix Phase 59`** (linha 545, MEDIUM, naming/consistência).
-Os demais 9 refs são legítimos.
+**APLICADO em Plan 02 (commit `90a2afe`):** ambas as ocorrências (linha 545
+em `fechamento()` e linha 709 em `gerarRelatorioGeral()`) trocadas para
+`$f->cust_id`. Mesmo achado do item CompanyController.php:129 — a expressão
+manual da linha 545 usava a ordem invertida (`ml_store_id ?: adman_account_id`)
+em relação ao accessor canônico (`adman_account_id ?: ml_store_id`); a linha
+709 já não tinha fallback nenhum. Unificar via accessor resolve as duas
+divergências simultaneamente. Suite `--filter` específica confirmada sem
+regressão nova (ver seção "Plan 02 — Execução").
+
+**Admin — 1 item `fix Phase 59`** (linha 545, MEDIUM, naming/consistência)
+— **APLICADO**. Os demais 9 refs são legítimos.
 
 ---
 
@@ -383,6 +404,7 @@ accessor `cust_id` na maioria dos casos.
   dado real retornado. Plano: usar o accessor `$c->cust_id` diretamente (ou
   renomear a chave de saída) para eliminar a discrepância entre nome da
   chave e semântica do valor. Severidade MEDIUM.
+  **APLICADO em `e816307`** (Plan 02).
 - `AdminController.php:545` — payload `fechamento()` (empresa vinculada)
   usa `$f->ml_store_id ?: $f->adman_account_id`, enquanto
   `AdminController.php:709` (`gerarRelatorioGeral()`, mesmo conceito de
@@ -390,6 +412,7 @@ accessor `cust_id` na maioria dos casos.
   mesmo controller retornam valores DIFERENTES para o mesmo campo na mesma
   empresa. Plano: unificar as duas ocorrências para usar o mesmo padrão
   (idealmente `$f->cust_id`). Severidade MEDIUM.
+  **APLICADO em `90a2afe`** (Plan 02, cobre linhas 545 e 709).
 
 Ambos os itens são de **naming/consistência interna**, não filtros que
 excluem funcionalidade — nenhum dos dois bloqueia ou meia empresa
@@ -402,3 +425,62 @@ schema, rota ou contrato de API externo.
 **Item `deferred v14+`:** naming `mlb.` no prefixo das permission keys de
 Publicação (`app/Models/User.php:216-218`) — migração de dados gravados em
 `permissoes`/`cargo_permissoes`, fora do escopo cirúrgico desta Phase.
+
+---
+
+## Plan 02 — Execução (status)
+
+**Data:** 2026-07-06 (ISO)
+
+**Contagem literal:** 2 itens da lista "Itens a corrigir" foram processados;
+**2 aplicados**; 0 reclassificados; 0 pulados por drift.
+
+Ambos os itens foram validados contra o código atual antes do fix (Task 1) —
+nenhum drift encontrado (o trecho citado no AUDIT ainda existia idêntico,
+apesar da numeração de linha do `CompanyController.php` ter mudado de 129
+para 109 devido a edições locais não commitadas de outra frente de trabalho
+presentes no working tree — o trecho em si não mudou).
+
+**Achado adicional durante a aplicação (não expande escopo — é o mesmo fix
+recomendado pelo AUDIT):** em ambos os itens, a expressão manual do
+controller usava a ordem `ml_store_id ?: adman_account_id`, enquanto o
+accessor canônico `Company::cust_id` usa a ordem INVERSA
+(`adman_account_id ?: ml_store_id`, fixada em 2026-06-09 após bug real de
+produção com as empresas ADHARAPRINTSHOP/AVF_2K — ver docblock de
+`app/Models/Company.php::getCustIdAttribute()`). Trocar para o accessor
+(conforme já recomendado pelo próprio AUDIT) corrige naming E ordem de
+prioridade simultaneamente, sem qualquer mudança de escopo além do que já
+estava classificado como `fix Phase 59`.
+
+**Lista literal dos commits gerados:**
+
+- `refactor(59-02): CompanyController.php:109 — resolução cust_id — usa accessor cust_id em vez de fallback manual com ordem invertida` — `e816307`
+- `refactor(59-02): AdminController.php:545,709 — resolução cust_id — unifica fechamento()/gerarRelatorioGeral() via accessor cust_id` — `90a2afe`
+
+**Validação de não-regressão (smoke, gate rigoroso fica no Plan 03):**
+
+- `php artisan test tests/Feature/Phase57/ tests/Feature/Phase58/` → **36/36
+  passed** (baseline Phase 57 20/20 + Phase 58 16/16 preservado).
+- `php artisan test tests/Feature/AdminFechamentoControllerTest.php
+  tests/Feature/Phase14AdminControllerCobrancaTest.php
+  tests/Feature/Phase14VerificarCobrancaTest.php` → 8 failed / 14 passed —
+  **idênticas às falhas pré-existentes documentadas em
+  `.planning/phases/14-consolida-o-do-modelo-de-servi-os-frente-b/deferred-items.md`**
+  (confirmado por reversão temporária do fix + re-execução do teste isolado
+  `update_persiste_datas_contrato`, que falha igualmente sem o fix desta
+  plan — causa raiz é coluna legacy `service_type`/data de contrato, não
+  `adman_account_id`).
+- `php artisan test tests/Feature/Phase18/ tests/Feature/Phase37CompaniesPerformanceFilterTest.php
+  tests/Feature/CompanyPortfolioAccessTest.php` → 2 failed / 39 passed —
+  as 2 falhas são em `Phase18\CompaniesCustIdFilterTest`, já listada no
+  baseline do Plan 01 como pré-existente; confirmado por reversão temporária
+  do fix + re-execução, que reproduz as mesmas 2 falhas sem o fix desta plan.
+- Nenhum teste que assertava o valor exato de `adman_account_id` nos payloads
+  tocados (`CompanyController::index()`, `AdminController::fechamento()`,
+  `AdminController::gerarRelatorioGeral()`) foi encontrado na suíte — os
+  fixes trocam apenas a expressão de resolução do valor, sem contrato de API
+  externo ou schema alterado.
+
+**Nota final:** Gate de regressão completo (suite inteira, contagem
+comparável ao baseline de 63 vermelhos pré-existentes) delegado ao Plan 03
+conforme `59-02-PLAN.md` e `§Baseline pré-fix` acima.
