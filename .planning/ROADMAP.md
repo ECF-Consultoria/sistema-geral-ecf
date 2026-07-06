@@ -1534,7 +1534,7 @@ Plans:
 
 **UI hint:** parcial — auditoria + ajustes finos de texto/filtro. Sem redesign de tela.
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 
@@ -1544,7 +1544,7 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 59-02-PLAN.md — Wave 2 (fixes): aplica EXATAMENTE os itens classificados como `fix Phase 59` na lista "Itens a corrigir no Plan 02" do AUDIT.md; 1 commit atômico por item; escopo cirúrgico (whitelist `files_modified`). Se AUDIT deu lista vazia, Plan 02 vira no-op consciente e documentado. Cobre CROSS-01 (execução)
+- [x] 59-02-PLAN.md — Wave 2 (fixes): aplica EXATAMENTE os itens classificados como `fix Phase 59` na lista "Itens a corrigir no Plan 02" do AUDIT.md; 1 commit atômico por item; escopo cirúrgico (whitelist `files_modified`). Se AUDIT deu lista vazia, Plan 02 vira no-op consciente e documentado. Cobre CROSS-01 (execução)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
