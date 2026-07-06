@@ -63,14 +63,18 @@ class DashboardController extends Controller
 
     /**
      * Phase 58 DASH-01 — Dashboard ECF agregado atraves de marketplaces.
-     * Hoje delega ao pipeline existente sem filter (100% empresas meli);
-     * v14+ vai agregar via CompanyMarketplace pivot.
+     * Ajuste pos-UAT: renderiza EcfShell (em construcao) direto, bypass do
+     * pipeline. Isto (a) diferencia active-state no sidebar do /dashboard/
+     * mercadolivre e (b) comunica claramente que a agregacao real cross-
+     * marketplace esta reservada pra v14+ quando Shopee/Amazon integrarem
+     * (hoje 0 empresas com 2+ marketplaces — CONTEXT §2 + Deferred).
+     * Whitelist mantida no request pra rejeitar `?marketplace=invalido`.
      */
     public function ecf(Request $request)
     {
         $request->validate(['marketplace' => 'nullable|string|in:meli,shopee,amazon']);
 
-        return $this->index($request);
+        return Inertia::render('Dashboard/EcfShell');
     }
 
     /**

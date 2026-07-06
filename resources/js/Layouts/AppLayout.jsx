@@ -38,7 +38,9 @@ const NAV_TREE = [
     // Ajuste pós-UAT Phase 58: ECF Dashboard sai do grupo Mercado Livre e vira
     // item de topo (dashboard da empresa englobando TODOS os marketplaces —
     // ML/Shopee/Amazon). Renomeado de "ECF Consolidado" para "ECF Dashboard".
-    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/Admin', icon: PieChart, permission: 'core.dashboard' },
+    // Ajuste pós-UAT 2: page: 'Dashboard/EcfShell' (não mais 'Dashboard/Admin')
+    // para que active-state do sidebar diferencie de /dashboard/mercadolivre.
+    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/EcfShell', icon: PieChart, permission: 'core.dashboard' },
 
     {
         group: 'Mercado Livre',

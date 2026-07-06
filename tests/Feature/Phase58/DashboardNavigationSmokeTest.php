@@ -19,7 +19,7 @@ class DashboardNavigationSmokeTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_ecf_dashboard_renderiza_componente_admin(): void
+    public function test_ecf_dashboard_renderiza_shell_em_construcao(): void
     {
         $admin = User::factory()->create(['role' => 'admin']);
 
@@ -34,8 +34,10 @@ class DashboardNavigationSmokeTest extends TestCase
         $response = $this->actingAs($admin)->get(route('ecf.dashboard'));
 
         $response->assertOk();
-        // ECF Dashboard reutiliza o mesmo componente Dashboard/Admin do pipeline agregado (CONTEXT §2)
-        $response->assertInertia(fn (Assert $page) => $page->component('Dashboard/Admin'));
+        // Ajuste pos-UAT Phase 58: ECF Dashboard renderiza EcfShell (em construcao)
+        // pra diferenciar active-state do sidebar do /dashboard/mercadolivre. A
+        // agregacao real cross-marketplace fica pra v14+ (CONTEXT §2 + Deferred).
+        $response->assertInertia(fn (Assert $page) => $page->component('Dashboard/EcfShell'));
     }
 
     public function test_mercadolivre_dashboard_renderiza_componente_admin(): void
