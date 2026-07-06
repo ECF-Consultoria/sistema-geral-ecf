@@ -106,7 +106,10 @@ class CompanyController extends Controller
                 'email_colaborador'   => $c->email_colaborador,
                 // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06). Bool puro alimenta o badge na linha.
                 'empresa_nova'        => (bool) $c->empresa_nova,
-                'adman_account_id' => $c->ml_store_id ?: $c->adman_account_id,
+                // Phase 59 fix — usa o accessor cust_id (adman_account_id ?: ml_store_id)
+                // em vez de replicar a resolução manualmente com ordem invertida
+                // (ver 59-AUDIT.md item CompanyController.php:129).
+                'adman_account_id' => $c->cust_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
                 'consultor'        => $c->consultor->first()?->only(['id', 'name']),
