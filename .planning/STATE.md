@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v13.0
 milestone_name: Reorganizacao Multi-Marketplace
-status: verifying
-stopped_at: Completed 58-03-PLAN.md — Phase 58 fechada (36 tests verdes)
-last_updated: "2026-07-03T21:27:05.357Z"
+status: ready_to_plan
+stopped_at: Phase 58 complete (3/3) — ready to discuss Phase 59
+last_updated: 2026-07-06T11:46:50.981Z
 last_activity: 2026-07-03
 progress:
   total_phases: 29
   completed_phases: 17
   total_plans: 38
-  completed_plans: 33
+  completed_plans: 122
   percent: 59
 ---
 
@@ -21,20 +21,20 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 58 — Dashboard ECF agregado + shells por marketplace
+**Current focus:** Phase 59 — desacoplamento de áreas transversais
 
 ## Current Position
 
-Phase: 58 (Dashboard ECF agregado + shells por marketplace) — PHASE COMPLETE (3/3 plans)
-Plan: 3 of 3
-Status: Phase complete — ready for verification
-Last activity: 2026-07-03
+Phase: 59
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-07-06
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 29
+- Total plans completed: 32
 - Average duration: ~15 min/plan
 - Total execution time: ~1.5 hours
 
@@ -55,6 +55,7 @@ Last activity: 2026-07-03
 | 17 | 5 | - | - |
 | 41 | 5 | - | - |
 | 42 | 6 | - | - |
+| 58 | 3 | - | - |
 
 *Updated after each plan completion*
 | Phase 06-backend-fechamento P01 | 2 | 2 tasks | 3 files |
