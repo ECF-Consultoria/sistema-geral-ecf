@@ -84,24 +84,25 @@ const NAV_TREE = [
         ],
     },
 
-    // ── Stubs marketplaces em desenvolvimento (Phase 56 v13.0) ──────────────
-    // Route params `marketplace` alimentam o sub-titulo do placeholder
-    // EmDesenvolvimento.jsx (Phase 56 Wave 2). Badge estatico "Em breve" via
-    // novo campo `badgeText` (distinto de `showBadge` que eh contador dinamico).
+    // ── Stubs marketplaces em desenvolvimento (Phase 58 v13.0) ──────────────
+    // Ajuste pós-UAT Phase 59: apontam pras rotas dedicadas /dashboard/shopee
+    // e /dashboard/amazon (Phase 58 DASH-03) que renderizam ShopeeShell.jsx
+    // e AmazonShell.jsx. Antes ambos apontavam pra em-desenvolvimento com
+    // page: 'EmDesenvolvimento' idêntico — o que fazia isActive() casar os
+    // dois simultaneamente. Agora cada um tem page própria.
+    // Badge estatico "Em breve" via `badgeText` (distinto de `showBadge`).
     {
         label: 'Shopee',
-        routeName: 'em-desenvolvimento',
-        routeParams: { marketplace: 'shopee' },
-        page: 'EmDesenvolvimento',
+        routeName: 'shopee.dashboard',
+        page: 'Dashboard/ShopeeShell',
         icon: ShoppingCart,
         iconSrc: '/images/shopee-icon.svg',
         badgeText: 'Em breve',
     },
     {
         label: 'Amazon',
-        routeName: 'em-desenvolvimento',
-        routeParams: { marketplace: 'amazon' },
-        page: 'EmDesenvolvimento',
+        routeName: 'amazon.dashboard',
+        page: 'Dashboard/AmazonShell',
         icon: Package2,
         iconSrc: '/images/icons8-amazon.svg',
         badgeText: 'Em breve',
