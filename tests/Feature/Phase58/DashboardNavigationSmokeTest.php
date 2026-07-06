@@ -34,7 +34,7 @@ class DashboardNavigationSmokeTest extends TestCase
         $response = $this->actingAs($admin)->get(route('ecf.dashboard'));
 
         $response->assertOk();
-        // ECF Consolidado reutiliza o mesmo componente Dashboard/Admin do pipeline agregado (CONTEXT §2)
+        // ECF Dashboard reutiliza o mesmo componente Dashboard/Admin do pipeline agregado (CONTEXT §2)
         $response->assertInertia(fn (Assert $page) => $page->component('Dashboard/Admin'));
     }
 

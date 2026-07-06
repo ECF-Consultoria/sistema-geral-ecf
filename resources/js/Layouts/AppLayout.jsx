@@ -34,6 +34,12 @@ const NAV_TREE = [
     // 56-CONTEXT.md) — divider tipo `{ divider: 'Polos' }` faz a separacao
     // visual dentro dos children do grupo.
     // ══════════════════════════════════════════════════════════════════════════
+    // ── Dashboard ECF (topo — agregado da empresa toda através de marketplaces) ─
+    // Ajuste pós-UAT Phase 58: ECF Dashboard sai do grupo Mercado Livre e vira
+    // item de topo (dashboard da empresa englobando TODOS os marketplaces —
+    // ML/Shopee/Amazon). Renomeado de "ECF Consolidado" para "ECF Dashboard".
+    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/Admin', icon: PieChart, permission: 'core.dashboard' },
+
     {
         group: 'Mercado Livre',
         icon: Store,
@@ -41,10 +47,10 @@ const NAV_TREE = [
         defaultOpen: true,
         children: [
             // ── Secao Performance ─────────────────────────
-            // NOVO Phase 58 DASH-01 — agregado atraves de marketplaces
-            { label: 'ECF Consolidado', routeName: 'ecf.dashboard',          page: 'Dashboard/Admin', icon: PieChart,        permission: 'core.dashboard' },
-            // MUDADO Phase 58 DASH-02 — antes era { label: 'Dashboard', routeName: 'dashboard' }; rota legacy segue registrada para deep links (CONTEXT §5).
-            { label: 'Mercado Livre',   routeName: 'mercadolivre.dashboard', page: 'Dashboard/Admin', icon: LayoutDashboard, permission: 'core.dashboard' },
+            // Ajuste pós-UAT Phase 58: dentro do grupo ML, item chama-se "Dashboard"
+            // (contexto do grupo já implica Mercado Livre). Rota legacy `dashboard`
+            // segue registrada para deep links (CONTEXT §5).
+            { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: 'Dashboard/Admin', icon: LayoutDashboard, permission: 'core.dashboard' },
             { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
