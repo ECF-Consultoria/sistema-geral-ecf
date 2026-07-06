@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v13.0
 milestone_name: Reorganizacao Multi-Marketplace
 status: executing
-stopped_at: Phase 59 context gathered
-last_updated: "2026-07-06T12:57:16.629Z"
-last_activity: 2026-07-06 -- Phase 59 planning complete
+stopped_at: Completed 59-01-PLAN.md
+last_updated: "2026-07-06T13:58:09.879Z"
+last_activity: 2026-07-06
 progress:
   total_phases: 29
   completed_phases: 17
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-21)
 
 **Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Phase 59 — desacoplamento de áreas transversais
+**Current focus:** Phase 59 — Desacoplamento de áreas transversais
 
 ## Current Position
 
-Phase: 59
-Plan: Not started
+Phase: 59 (Desacoplamento de áreas transversais) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
-Last activity: 2026-07-06 -- Phase 59 planning complete
+Last activity: 2026-07-06
 
 ## Performance Metrics
 
@@ -108,11 +108,13 @@ Last activity: 2026-07-06 -- Phase 59 planning complete
 | Phase 58 P01 | 20min | 3 tasks | 5 files |
 | Phase 58 P02 | ~15min | 2 tasks | 2 files |
 | Phase 58 P58-03 | ~15min | 3 tasks | 2 files |
+| Phase 59 P01 | 55min | 2 tasks | 1 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-07-06 — **Phase 59 Plan 59-01 COMPLETO — Audit + baseline** (v13.0). `59-AUDIT.md` entregue com mapeamento linha-a-linha dos 56 refs `marketplace|meli|mlb|Mlb|ml_store` nos 3 controllers hotspot (ComercialController 29, CompanyController 17, AdminController 10). **Resultado: ZERO itens HIGH** — apenas 2 MEDIUM (naming/consistência de payload cust_id: `CompanyController.php:129` rotula `adman_account_id` mas resolve como `ml_store_id ?: adman_account_id`; `AdminController.php:545` vs `:709` resolvem a MESMA chave com fallback diferente no mesmo controller) e 1 LOW (prefixo `mlb.` nas permission keys de Publicação, `deferred v14+` por exigir migração de dados gravados). **Publicação CONFIRMED transversal** via grep + leitura completa de `EnsurePermission.php` e `checkPubAccess()` (`MlbController.php`) — nenhuma amarração a marketplace encontrada. **Baseline de testes capturado**: 955 testes coletados, 4748 assertions, **63 vermelhos pré-existentes** (15 errors + 48 failures, 1 skipped) — inspeção linha-a-linha confirmou que NENHUM está relacionado ao escopo desta Phase (são falhas legadas de Phase 13/14 migrations, `CalcularFaixaTest` com DI desatualizada, bug de timezone Carbon no Windows, `Phase38\PolosControllerTest` e `Phase42\*` já documentados como pré-existentes). Phase 57 (20/20) e Phase 58 (16/16) confirmadas verdes. **Descoberta de infraestrutura**: `php artisan test`/`vendor/bin/phpunit` direto crasham com "Maximum execution time of 300 seconds exceeded" mesmo com `-d max_execution_time=0` — causa raiz é `set_time_limit(300)` em `SyncGrantsFromEcfDrive::handle()` (código de produção legítimo) chamado 12x por `SyncGrantsFromEcfDriveTest` no mesmo processo PHPUnit, resetando o timer compartilhado até estourar durante os testes de backoff real (`usleep`) da Phase 41/42. Contornado rodando a suite em 2 lotes (exclui o arquivo, roda separado, soma os totais) — **sem tocar nenhum código de produção**. Lista "Itens a corrigir no Plan 02" documentada com os 2 itens MEDIUM (baixo risco, sem impacto em rota/schema/contrato). Commits `171620e` (Task 1 baseline) + `d742f21` (Task 2 classificação). **REQ CROSS-01 + CROSS-02 fechados** (CROSS-03 fecha na Plan 03 via regressão). Próximo: Plan 59-02 (fixes) tem lista de trabalho pequena e concreta.
 - 2026-06-27 — **Phase 44 Plan 44-01 PARCIAL — checkpoint humano PENDENTE**. Tarefas 1 (scope OAuth `read write offline_access` em `MercadoLivreService.php:53`) e 2 (`app/Console/Commands/SugadoresMlWriteSmoke.php` + `tests/Feature/Phase44/MlWriteSmokeCommandTest.php` com 6/6 testes verdes via Http::fake) commitadas em sequência TDD: `e40fce3` (T1), `9981f84` (T2-RED — 6 testes falhando), `eceeb26` (T2-GREEN — command implementado, 6/6 testes verdes, suite Phase 38 4/4 mantida — zero regressão). Tarefa 3 (smoke real contra Bymobille #298) NÃO executada: operador respondeu 2026-06-27 "não tenho acesso à app no DevCenter agora — vou dar como pendente". Sem fixture 5/5 verde + variante POST campaign (A ou B) confirmada, plans 44-02 (backend `moverSgi`/`criarSgiEMover`/`desfazerMove`), 44-03 (UI `MoveToSgiModal` + `UndoToast`) e 44-04 (banner re-auth) ficam BLOQUEADOS — `depends_on=[44-01]` em cadeia. Resume marker: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO de destravamento: `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`. Próximo passo quando acesso DevCenter ML voltar: (1) ativar permissão "Advertising" na app ECF, (2) reconectar Bymobille via `/sistema/ml-oauth`, (3) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30`, (4) responder com `approved smoke=5/5 variant={A|B} campaign_id={N}` para liberar Wave 2.
 - 2026-06-26 — **Phase 44 CONTEXT.md lockado via discuss-phase**: escopo reduzido pra APENAS "Mover adgroup pra SGI" (pergunta 3 da discuss). "Pausar in-place" virou **Phase 44b** (deferred no ROADMAP). Decisões locked: combobox com SGIs da conta reusando `QUARANTINE_NAME_REGEX` + botão "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável); aviso não-bloqueante se SGI escolhida está ativa; toast "Desfazer" 10s sem persistência DB (padrão Gmail); confirmação dupla obrigatória. 3 áreas (undo persistente, tratamento erro PATCH, feature flag + OAuth scope) foram para "Claude's Discretion" com defaults documentados. Plan 44-01 obrigatório: smoke do PATCH na API ML antes de qualquer planejamento backend. Context: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
 - 2026-06-26 — **Phase 44 adicionada** ao roadmap: "Mover adgroup-sugador para SGI ou pausar via API ML" — ideia surgida na ideação do quick `260626-qgf` (drilldown de MLBs). Expõe 2 ações destrutivas via API ML Product Ads no `Show.jsx` do sugador: (1) mover adgroup pra campanha SGI (quarentena); (2) pausar adgroup in-place. Seed completo em `.planning/todos/pending/260626-acoes-ml-mover-sgi-pausar-via-api.md` com pré-requisitos a validar antes de planejar (smoke do PATCH na API, escopo OAuth, política SGI) e salvaguardas obrigatórias (confirmação dupla, activity_log, undo, feature flag). Sem urgência operacional — operador hoje resolve via painel ML; ganho é ergonômico. Rodar APÓS Phase 43 (remoção do path Adman) estabilizar. Status: not planned yet.
@@ -558,8 +560,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-06T12:47:39.643Z
-Stopped at: Phase 59 context gathered
+Last session: 2026-07-06T13:58:09.855Z
+Stopped at: Completed 59-01-PLAN.md
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
 

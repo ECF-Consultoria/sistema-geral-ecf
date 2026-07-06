@@ -1534,13 +1534,13 @@ Plans:
 
 **UI hint:** parcial — auditoria + ajustes finos de texto/filtro. Sem redesign de tela.
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 
 **Wave 1**
 
-- [ ] 59-01-PLAN.md — Wave 1 (audit): baseline de testes + scout completo dos 3 controllers hotspot (Comercial/Company/Admin) + seção Publicação transversal → produz `59-AUDIT.md` com tabelas classificadas (linha/trecho/tipo/severidade/plano). Não toca código de produção. Cobre CROSS-01 (deliverable) + metade CROSS-02 (grep-based)
+- [x] 59-01-PLAN.md — Wave 1 (audit): baseline de testes + scout completo dos 3 controllers hotspot (Comercial/Company/Admin) + seção Publicação transversal → produz `59-AUDIT.md` com tabelas classificadas (linha/trecho/tipo/severidade/plano). Não toca código de produção. Cobre CROSS-01 (deliverable) + metade CROSS-02 (grep-based)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 

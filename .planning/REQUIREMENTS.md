@@ -30,8 +30,8 @@
 
 ### Áreas Transversais (CROSS)
 
-- [ ] **CROSS-01**: Auditoria concluída (documento em `.planning/phases/59-*/AUDIT.md`) mapeando cada acoplamento ML-only nas áreas transversais (Usuários, Setores, Comercial, Administrativo, NPS, Notificações): naming, filtros hardcoded, defaults ML, textos de UI. Cada acoplamento tem plano de generalização.
-- [ ] **CROSS-02**: Publicação confirmada como setor transversal — permissões `pub.*` continuam válidas para todos marketplaces; nenhuma tela de Publicação exige `adman_account_id`; se depender de ML, generalizar ou marcar como conscious debt
+- [x] **CROSS-01**: Auditoria concluída (documento em `.planning/phases/59-*/AUDIT.md`) mapeando cada acoplamento ML-only nas áreas transversais (Usuários, Setores, Comercial, Administrativo, NPS, Notificações): naming, filtros hardcoded, defaults ML, textos de UI. Cada acoplamento tem plano de generalização.
+- [x] **CROSS-02**: Publicação confirmada como setor transversal — permissões `pub.*` continuam válidas para todos marketplaces; nenhuma tela de Publicação exige `adman_account_id`; se depender de ML, generalizar ou marcar como conscious debt
 - [ ] **CROSS-03**: Testes de regressão passam nas áreas transversais após generalização (rotas de Usuários, Setores, Comercial, Administrativo, NPS, Notificações)
 
 ### Out of Scope (v13.0)
@@ -55,8 +55,8 @@
 | DASH-01 | Phase 58 | Complete |
 | DASH-02 | Phase 58 | Complete |
 | DASH-03 | Phase 58 | Complete |
-| CROSS-01 | Phase 59 | Pending |
-| CROSS-02 | Phase 59 | Pending |
+| CROSS-01 | Phase 59 | Complete |
+| CROSS-02 | Phase 59 | Complete |
 | CROSS-03 | Phase 59 | Pending |
 
 **Cobertura v13.0:**
