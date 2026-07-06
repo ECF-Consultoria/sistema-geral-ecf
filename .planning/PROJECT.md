@@ -143,4 +143,4 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-07-06 — Phase 58 v13.0 concluída (Dashboard ECF agregado + shells por marketplace); DASH-01/02/03 entregues, agregação cross-marketplace real deferida pra v14+ (0 empresas com 2+ marketplaces hoje)*
+*Last updated: 2026-07-06 — **Milestone v13.0 (Reorganização Multi-Marketplace) completa**. Phase 58 (Dashboard ECF + shells; DASH-01/02/03) e Phase 59 (Desacoplamento ML cirúrgico; CROSS-01/02/03) fechadas. Agregação cross-marketplace real, migração N:N ampla e refactor de MlbController deferidos pra v14+ (0 empresas com 2+ marketplaces hoje). Zero regressão (baseline 955 tests preservado).*
