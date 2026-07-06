@@ -15,25 +15,26 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v13.0 Reorganização Multi-Marketplace
+## Recently Shipped: ✅ v13.0 Reorganização Multi-Marketplace *(2026-07-06)*
 
-**Goal:** Desacoplar o sistema da premissa "ML-first" para refletir a realidade da ECF Consultoria — que atende empresas em múltiplos marketplaces (Mercado Livre, Shopee, Amazon, Magazine Luiza, etc). Reorganização estrutural de menu, dashboards e áreas transversais + fundação de dados para futuros marketplaces.
+**Delivered:** 4 phases (56, 57, 58, 59), 8 plans, 100% em produção. Arquivo completo em `.planning/milestones/v13.0-ROADMAP.md`.
 
-**Target features:**
-- Menu lateral reorganizado (pasta Mercado Livre aberta; Publicação como setor transversal; Shopee/Amazon com stubs "em desenvolvimento")
-- Modelo de dados multi-marketplace (consolida `companies.marketplace` da Phase 18.5 + eventual N:N `company_marketplaces`)
-- Dashboard ECF agregado (`/dashboard/ecf`) somando resultados através de marketplaces
-- Dashboards por marketplace (`/dashboard/mercadolivre` mantém funcionalidade atual; Shopee/Amazon shells)
-- Desacoplamento de áreas transversais (Usuários, Setores, Comercial, Administrativo, NPS, Notificações) do acoplamento ML-only
-- Publicação confirmada como transversal (atende todos os marketplaces)
+**Shipped features:**
+- ✓ Menu lateral reorganizado (pasta Mercado Livre aberta; Publicação transversal; ECF Dashboard no topo; Shopee/Amazon apontam pras rotas dedicadas)
+- ✓ Modelo N:N `company_marketplaces` formalizado + 126 rows backfilled + accessors legacy preservam contrato
+- ✓ Dashboard ECF agregado (`Dashboard/EcfShell.jsx` aspirational + hero card + prévia KPIs) + dashboards por marketplace (`/dashboard/{ecf,mercadolivre,shopee,amazon}`)
+- ✓ Filtro `?marketplace=` validado por whitelist + Publicação confirmed transversal (grep + suite dinâmica)
+- ✓ Desacoplamento cirúrgico: 2 fixes MED em Company/Admin (accessor `cust_id` unificado — corrigiu naming + ordem invertida em bug real)
 
-**Milestones paralelas ativas:**
+**Deferred to v14+:** agregação real cross-marketplace no ECF Dashboard, migração completa pra pivot N:N em queries transversais, refactor de MlbController separando transversal vs. ML-específico, integração real de Shopee/Amazon.
+
+**Milestones paralelas ainda ativas:**
 - v11.0 (Migração Sugadores Adman→ML) — Phase 44 BLOCKED em checkpoint humano DevCenter ML
 - v12.0 (Carteira + Desempenho + Gamificação) — Phase 47 congelada, Phase 53 STANDBY
 
-**Legado do momento em que v13.0 começa (histórico compactado):**
+**Legado histórico:**
 - v3.0 Notificações entregue (sino, targeting, disparos automáticos)
-- v4.0 Fluxo Comercial + v4.1/4.2 Sugadores + v5.0 Inteligência ML + v6.0 Dashboard + v7.0 Sugadores Foco + v8.0 ECF Drive + v9.0 Notificações 2.0 + v9.5 Sugadores Robustos + v11.0 Migração ML + v12.0 Carteira/Desempenho — 38+ phases concluídas
+- v4.0 Fluxo Comercial + v4.1/4.2 Sugadores + v5.0 Inteligência ML + v6.0 Dashboard + v7.0 Sugadores Foco + v8.0 ECF Drive + v9.0 Notificações 2.0 + v9.5 Sugadores Robustos + v11.0 Migração ML + v12.0 Carteira/Desempenho — 40+ phases concluídas ao longo do projeto
 
 ## Requirements
 
@@ -48,6 +49,15 @@ manuais) — sem precisar de acesso direto ao servidor.
 - ✓ Activity log via `spatie/laravel-activitylog` — existente
 - ✓ Middleware `role:admin` para controle de acesso — existente
 - ✓ Comandos de diagnóstico Artisan (`DiagnosticSyncVendas`, `InspecionarAdman`) — existente
+
+**v13.0 — Reorganização Multi-Marketplace (shipped 2026-07-06):**
+- ✓ **DATA-01/02/03**: Modelo N:N `company_marketplaces` + helpers + accessors legacy — Phase 57
+- ✓ **DASH-01**: `/dashboard/ecf` shell "em construção" com prévia agregada — Phase 58 (agregação real deferida v14+)
+- ✓ **DASH-02**: `/dashboard/mercadolivre` mantém dashboard atual com filter=meli — Phase 58
+- ✓ **DASH-03**: `/dashboard/shopee` + `/dashboard/amazon` renderizam shells dedicados — Phase 58
+- ✓ **CROSS-01**: AUDIT.md documenta os 3 hotspots (Comercial/Company/Admin) — Phase 59
+- ✓ **CROSS-02**: Publicação confirmed transversal via grep + suite dinâmica — Phase 59
+- ✓ **CROSS-03**: Zero regressão (delta = 0 vs baseline 955 tests) — Phase 59
 
 ### Active (v3.0 — Sistema de Notificações)
 

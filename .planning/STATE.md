@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v13.0
 milestone_name: Reorganizacao Multi-Marketplace
-status: milestone_complete
-stopped_at: Milestone complete (Phase 59 was final phase)
-last_updated: 2026-07-06T14:46:17.535Z
-last_activity: 2026-07-06
+status: Awaiting next milestone
+stopped_at: Completed 59-03-PLAN.md
+last_updated: "2026-07-06T16:33:40.741Z"
+last_activity: 2026-07-06 — Milestone v13.0 completed and archived
 progress:
   total_phases: 29
   completed_phases: 17
   total_plans: 38
-  completed_plans: 126
+  completed_plans: 33
   percent: 59
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: 59
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-07-06
+Phase: Milestone v13.0 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-07-06 — Milestone v13.0 completed and archived
 
 ## Performance Metrics
 
@@ -605,3 +605,23 @@ Stopped at: Completed 59-03-PLAN.md
   - 37-07: UI admin `/sistema/hubspot-line-items` + reorg sidebar Comercial (autonomous: false — checkpoint humano)
 - **Deploy:** NÃO fazer deploy do Plan 37-04 sozinho — agrupar com Plans 37-02/03/05/06/07 (deploy agrupado Phase 37, lição Phase 34/35). Pos-deploy: `php artisan migrate --force && php artisan cache:clear`
 - HEAD: `b26b42d` feat(37-04): HubspotWebhookController consome line items + materializa ContratoServico (GREEN)
+
+## Deferred Items — v13.0 close (2026-07-06)
+
+Fechamento formal da v13.0 (Reorganização Multi-Marketplace) reconheceu **66 itens abertos** herdados de milestones anteriores (v9/v10/v11/v12), **não específicos da v13.0**. Registrados como deferred pra próximo milestone triar:
+
+| Categoria | Contagem |
+|---|---|
+| Quick tasks históricos | 38 |
+| UAT gaps herdados | 14 |
+| Verification gaps herdados | 9 |
+| Todos pendentes | 5 |
+| **Total** | **66** |
+
+**Inventário completo:** rodar `gsd-sdk query audit-open` a qualquer momento. Nenhum item é bloqueador de v13.0 (que entregou DASH-01/02/03 + CROSS-01/02/03 + DATA-01/02/03 + NAV Phase 56).
+
+**Decisão:** herança da v12 (que também nunca foi formalmente arquivada) — próximo milestone deve triar item-a-item ou aceitar como dívida técnica documentada.
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone
