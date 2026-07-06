@@ -229,7 +229,7 @@ class PerformanceController extends Controller
             ->map(fn ($group) => $group->first());
 
         // Monta lista de empresas pra tabela
-        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany) {
+        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany, $npsField) {
             $row = $metricsByCompany->get($c->id);
             $rev     = (float) ($row->rev ?? 0);
             $revPrev = (float) ($row->rev_prev ?? 0);
@@ -247,8 +247,8 @@ class PerformanceController extends Controller
 
             $nps = null;
             $survey = $npsByCompany->get($c->id);
-            if ($survey && $survey->response) {
-                $nps = (int) $survey->response->{$user->isMentor() ? 'score_estrategista' : 'score_analista'} ?? null;
+            if ($survey && $survey->response && $survey->response->{$npsField} !== null) {
+                $nps = (int) $survey->response->{$npsField};
             }
 
             // Status heurístico: baseado em crescimento + meta
