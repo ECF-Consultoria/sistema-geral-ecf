@@ -78,11 +78,28 @@ class DashboardController extends Controller
     }
 
     /**
-     * Phase 58 DASH-02 — Dashboard Mercado Livre. Forca filter
-     * marketplace=meli via merge no request; delega ao pipeline existente.
+     * Phase 58 DASH-02 — Dashboard Mercado Livre. Branching por role:
+     * - Analista (consultor) ou Estrategista (mentor) e NÃO líder → dashboard
+     *   operacional da carteira (Performance/Dashboard) via delegação
+     *   pra PerformanceController::dashboardCarteira().
+     * - Admin, líder de Performance ou demais → dashboard admin tradicional
+     *   com filter=meli (comportamento anterior).
+     *
+     * Ajuste UAT 2026-07-06: separa a experiência de carteira do resumo admin.
      */
     public function mercadolivre(Request $request)
     {
+        $user = $request->user();
+
+        $isCarteiraUser = ! $user->isAdmin()
+            && ! $user->isLider()
+            && ($user->isConsultor() || $user->isMentor());
+
+        if ($isCarteiraUser) {
+            return app(\App\Http\Controllers\PerformanceController::class)
+                ->dashboardCarteira($request);
+        }
+
         $request->merge(['marketplace' => 'meli']);
 
         $request->validate(['marketplace' => 'nullable|string|in:meli,shopee,amazon']);

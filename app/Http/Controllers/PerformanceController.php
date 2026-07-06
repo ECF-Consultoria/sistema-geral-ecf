@@ -181,67 +181,211 @@ class PerformanceController extends Controller
     }
 
     /**
-     * Dashboard operacional da Carteira (Analista/Estrategista de Performance).
+     * Dashboard operacional da Carteira do Analista/Estrategista.
      *
-     * Tela compacta com KPIs de carteira dos últimos 30 dias: faturamento
-     * total, crescimento vs período anterior, score de performance +
-     * widgets de NPS recente + progresso das metas + tabela de empresas
-     * em carteira. Segue design tokens ECF (dark theme, ecf-yellow accent).
+     * Chamado por DashboardController::mercadolivre() quando o user é
+     * Analista (consultor) ou Estrategista (mentor) — mas NÃO líder de
+     * Performance nem admin (esses seguem no dashboard admin tradicional).
      *
-     * Fase 1 (prototype): mock data pra validar UX. Fase 2 (integração real):
-     * substituir por queries contra AdmanMetric/Company/NpsSurvey/Goal.
+     * Puxa dados REAIS via PortfolioScoreService + queries dedicadas por
+     * empresa da carteira (revenue AdmanMetric, NPS NpsSurvey, meta Goal).
      */
     public function dashboardCarteira(Request $request): \Inertia\Response
     {
         $user = $request->user();
 
-        // Mock data — Phase 1 prototype (spec 2026-07-06).
-        // Fase futura: substituir por queries reais contra PortfolioScoreService,
-        // AdmanMetric, NpsSurvey, Goal (por analista).
-        $mock = [
+        // ── Score + métricas agregadas de carteira ──
+        $data = $this->scoreService->compute($user);
+
+        // ── Empresas em carteira (todas, ativas) ──
+        $companies = $user->companies()->where('active', true)->get();
+        $companyIds = $companies->pluck('id');
+        $atualFrom = $data['periodo']['from'];
+        $atualTo   = $data['periodo']['to'];
+
+        // Revenue + revenue anterior + ads por empresa (últimos 30d)
+        $metricsByCompany = \App\Models\AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$atualFrom, $atualTo])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(revenue_prev_period) as rev_prev, SUM(ad_spend) as ads')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        // NPS score mais recente por empresa (últimos 60d completed)
+        $npsField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
+        $npsByCompany = \App\Models\NpsSurvey::with('response')
+            ->whereIn('company_id', $companyIds)
+            ->where('status', 'completed')
+            ->where('completed_at', '>=', now()->subDays(60))
+            ->get()
+            ->groupBy('company_id')
+            ->map(fn ($group) => $group->sortByDesc('completed_at')->first());
+
+        // Meta por empresa (Goal ativa por empresa; se >1 pega a de faturamento)
+        $goalsByCompany = \App\Models\Goal::whereIn('company_id', $companyIds)
+            ->where('active', true)
+            ->get()
+            ->groupBy('company_id')
+            ->map(fn ($group) => $group->first());
+
+        // Monta lista de empresas pra tabela
+        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany) {
+            $row = $metricsByCompany->get($c->id);
+            $rev     = (float) ($row->rev ?? 0);
+            $revPrev = (float) ($row->rev_prev ?? 0);
+            $ads     = (float) ($row->ads ?? 0);
+
+            $crescimento = $revPrev > 0
+                ? round((($rev - $revPrev) / $revPrev) * 100, 1)
+                : null;
+
+            $goal = $goalsByCompany->get($c->id);
+            $metaPct = null;
+            if ($goal && $goal->target_value > 0) {
+                $metaPct = (int) min(100, round(($rev / (float) $goal->target_value) * 100));
+            }
+
+            $nps = null;
+            $survey = $npsByCompany->get($c->id);
+            if ($survey && $survey->response) {
+                $nps = (int) $survey->response->{$user->isMentor() ? 'score_estrategista' : 'score_analista'} ?? null;
+            }
+
+            // Status heurístico: baseado em crescimento + meta
+            $status = 'saudavel';
+            if ($crescimento !== null && $crescimento < 0) {
+                $status = 'critico';
+            } elseif ($metaPct !== null && $metaPct < 60) {
+                $status = 'atencao';
+            } elseif ($crescimento !== null && $crescimento < 5) {
+                $status = 'atencao';
+            }
+
+            // Ação heurística leve
+            $acao = null;
+            if ($crescimento !== null && $crescimento < 0) $acao = 'Investigar queda';
+            elseif ($metaPct !== null && $metaPct < 60)    $acao = 'Acelerar meta';
+            elseif ($rev > 0 && $ads == 0)                 $acao = 'Considerar Ads';
+            elseif (! $c->marketplace || $c->marketplace !== 'meli') $acao = 'Conectar ML';
+            else                                            $acao = 'Manter ritmo';
+
+            return [
+                'id'          => $c->id,
+                'nome'        => $c->name,
+                'ml'          => $c->marketplace === 'meli',
+                'status'      => $status,
+                'faturamento' => $rev,
+                'meta'        => $metaPct,     // null se sem goal
+                'crescimento' => $crescimento, // null se sem base
+                'nps'         => $nps,          // null se sem resposta
+                'ads'         => $ads,
+                'acao'        => $acao,
+            ];
+        })->values();
+
+        // ── NPS widget: últimas 4 respostas completed ──
+        $recentSurveys = \App\Models\NpsSurvey::with(['response', 'company'])
+            ->whereIn('company_id', $companyIds)
+            ->where('status', 'completed')
+            ->orderByDesc('completed_at')
+            ->limit(4)
+            ->get();
+
+        $npsRespostas = $recentSurveys->map(function ($s) use ($npsField) {
+            $nota = $s->response?->$npsField;
+            if ($nota === null) return null;
+            $classe = $nota >= 9 ? 'Promotor' : ($nota >= 7 ? 'Neutro' : 'Detrator');
+            return [
+                'empresa' => $s->company?->name ?? '—',
+                'nota'    => (int) $nota,
+                'classe'  => $classe,
+                'quando'  => optional($s->completed_at)->diffForHumans(),
+            ];
+        })->filter()->values();
+
+        // ── Metas widget: 3 metas agregadas da carteira ──
+        $metricas = $data['metricas'];
+        $atingimento = $metricas['atingimento_meta'];
+        $emCresc = $metricas['empresas_em_crescimento'];
+
+        $metasWidget = [];
+        // Faturamento mensal (meta agregada portfolio)
+        if ($atingimento['target_value'] && $atingimento['target_value'] > 0) {
+            $metasWidget[] = [
+                'icone'    => 'dollar',
+                'nome'     => 'Faturamento vs meta',
+                'atual'    => $this->fmtBRL((float) $atingimento['realized_value']),
+                'objetivo' => $this->fmtBRL((float) $atingimento['target_value']),
+                'percent'  => (int) min(100, round((float) $atingimento['pct'])),
+            ];
+        }
+        // Empresas em crescimento
+        if ($emCresc['total'] > 0) {
+            $metasWidget[] = [
+                'icone'    => 'trend',
+                'nome'     => 'Empresas em crescimento',
+                'atual'    => (string) $emCresc['count'],
+                'objetivo' => "{$emCresc['total']} empresas",
+                'percent'  => (int) ($emCresc['pct'] ?? 0),
+            ];
+        }
+        // Qualidade (NPS médio)
+        $qual = $metricas['qualidade'];
+        if ($qual['avg_nps'] !== null) {
+            $notaMax = 5.0; // escala NPS interna 0-5
+            $pct = (int) min(100, round(($qual['avg_nps'] / $notaMax) * 100));
+            $metasWidget[] = [
+                'icone'    => 'check',
+                'nome'     => 'Qualidade NPS média',
+                'atual'    => number_format($qual['avg_nps'], 1, ',', '.'),
+                'objetivo' => '5,0',
+                'percent'  => $pct,
+            ];
+        }
+
+        return Inertia::render('Performance/Dashboard', [
             'pessoa' => [
-                'nome'   => $user->name ?? 'Ana Julia',
+                'nome'   => $user->name,
                 'funcao' => $user->isMentor() ? 'Estrategista' : 'Analista de Performance',
-                'iniciais' => strtoupper(mb_substr(explode(' ', $user->name ?? 'AJ')[0] ?? 'A', 0, 1)
-                    . mb_substr(explode(' ', $user->name ?? 'AJ')[1] ?? 'J', 0, 1)),
+                'role_key' => $user->isMentor() ? 'mentor' : ($user->isConsultor() ? 'consultor' : 'other'),
+                'iniciais' => $this->iniciais($user->name),
             ],
             'periodo' => 'Últimos 30 dias',
             'kpis' => [
-                'faturamento_total'       => 20_200_000,      // R$ 20.20M
-                'empresas_em_carteira'    => 24,
-                'empresas_conectadas_ml'  => 21,
-                'crescimento_percent'     => 18.8,
-                'crescimento_delta_valor' => 3_200_000,       // +R$ 3.20M
-                'crescimento_mediana'     => 11.4,
-                'score'                   => 87,
-                'score_label'             => 'Excelente',
-                'empresas_em_crescimento' => 16,
+                'faturamento_total'       => (float) $metricas['faturamento']['atual'],
+                'empresas_em_carteira'    => $data['empresas_carteira'],
+                'empresas_conectadas_ml'  => (int) $companies->where('marketplace', 'meli')->count(),
+                'crescimento_percent'     => $metricas['crescimento_ajustado_pct'],  // null se sem base
+                'crescimento_delta_valor' => (float) $metricas['faturamento']['atual'] - (float) $metricas['faturamento']['anterior'],
+                'crescimento_mediana'     => $metricas['crescimento_mediano_empresa_pct'],
+                'score'                   => $data['score'],
+                'score_label'             => $data['classificacao'],
+                'empresas_em_crescimento' => $emCresc['count'],
+                'tem_base_comparativa'    => $data['tem_base_comparativa'],
             ],
             'nps' => [
-                'media' => 9.2,
-                'respostas' => [
-                    ['empresa' => 'Comilopartsfilial', 'nota' => 10, 'classe' => 'Promotor', 'quando' => 'Recebido hoje, 10:42'],
-                    ['empresa' => 'Relojoaria Wenus',  'nota' => 9,  'classe' => 'Promotor', 'quando' => 'Recebido ontem, 16:18'],
-                    ['empresa' => 'Gran Belo',         'nota' => 8,  'classe' => 'Neutro',   'quando' => 'Recebido em 04/07'],
-                    ['empresa' => 'Dmov',              'nota' => 10, 'classe' => 'Promotor', 'quando' => 'Recebido em 03/07'],
-                ],
+                'media'     => $qual['avg_nps'],
+                'respostas' => $npsRespostas,
             ],
-            'metas' => [
-                ['icone' => 'dollar',  'nome' => 'Faturamento mensal',       'atual' => 'R$ 20.20M', 'objetivo' => 'R$ 24.60M', 'percent' => 82],
-                ['icone' => 'check',   'nome' => 'Ações críticas resolvidas', 'atual' => '9',         'objetivo' => '12 tarefas', 'percent' => 75],
-                ['icone' => 'trend',   'nome' => 'Empresas em crescimento',  'atual' => '16',        'objetivo' => '24 empresas', 'percent' => 67],
-            ],
-            'empresas' => [
-                ['nome' => 'COMILOPARTSFILIAL', 'ml' => true,  'status' => 'saudavel', 'faturamento' => 8_450_000, 'meta' => 96, 'crescimento' => 22.1, 'nps' => 10, 'ads' => 318_000, 'acao' => 'Manter ritmo',        'nota' => 'Conectada ao Mercado Livre'],
-                ['nome' => 'RELOJOARIA WENUS',  'ml' => true,  'status' => 'critico',  'faturamento' => 3_460_000, 'meta' => 84, 'crescimento' => 4.7,  'nps' => 9,  'ads' => 82_000,  'acao' => 'Renovar grant',       'nota' => 'Grant vencido há 12 dias'],
-                ['nome' => 'GRAN BELO',         'ml' => true,  'status' => 'saudavel', 'faturamento' => 1_190_000, 'meta' => 91, 'crescimento' => 16.8, 'nps' => 8,  'ads' => 41_000,  'acao' => 'Escalar Ads',         'nota' => 'Crescimento consistente'],
-                ['nome' => 'Dmov',              'ml' => false, 'status' => 'atencao',  'faturamento' => 804_000,   'meta' => 45, 'crescimento' => -3.4, 'nps' => 10, 'ads' => 0,       'acao' => 'Conectar ML',         'nota' => 'Sem conexão Mercado Livre'],
-                ['nome' => 'AUTOPARTS UNION',   'ml' => true,  'status' => 'atencao',  'faturamento' => 2_080_000, 'meta' => 63, 'crescimento' => 9.5,  'nps' => 7,  'ads' => 66_000,  'acao' => 'Revisar sortimento',  'nota' => 'Meta abaixo do ritmo'],
-                ['nome' => 'CASA DELTA',        'ml' => false, 'status' => 'saudavel', 'faturamento' => 1_740_000, 'meta' => 88, 'crescimento' => 12.6, 'nps' => 9,  'ads' => 27_000,  'acao' => 'Conectar ML',         'nota' => 'Sem conexão Mercado Livre'],
-            ],
-        ];
+            'metas' => $metasWidget,
+            'empresas' => $empresas,
+        ]);
+    }
 
-        return Inertia::render('Performance/Dashboard', $mock);
+    private function fmtBRL(float $v): string
+    {
+        if (abs($v) >= 1_000_000) return 'R$ ' . number_format($v / 1_000_000, 2, ',', '.') . 'M';
+        if (abs($v) >= 1_000)     return 'R$ ' . number_format($v / 1_000, 0, ',', '.') . 'K';
+        return 'R$ ' . number_format($v, 2, ',', '.');
+    }
+
+    private function iniciais(?string $nome): string
+    {
+        if (! $nome) return '?';
+        $parts = preg_split('/\s+/', trim($nome));
+        $ini = mb_substr($parts[0] ?? '', 0, 1);
+        if (count($parts) > 1) $ini .= mb_substr($parts[count($parts) - 1], 0, 1);
+        return mb_strtoupper($ini);
     }
 
     /**

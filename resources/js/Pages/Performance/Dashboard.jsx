@@ -1,12 +1,12 @@
-import { Head, Link, usePage } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
-    LayoutDashboard, Search, Bell, HelpCircle, Calendar, Plus,
+    LayoutDashboard, Search, Calendar, Plus,
     DollarSign, TrendingUp, CheckCircle2, Target, MessageSquare,
-    Filter, Columns3, Sparkles,
+    Filter, Columns3, MessageCircleOff, TargetIcon,
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { cn, formatCurrency, formatPercent } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 /**
  * Dashboard Performance da Carteira — analistas/estrategistas.
@@ -71,17 +71,16 @@ function ProgressBar({ percent, size = 'md' }) {
     );
 }
 
-// Logo Mercado Livre (SVG inline com selo amarelo ECF)
-function MlBadge() {
+// Logo Mercado Livre (SVG oficial da pasta /public/images/)
+function MlBadge({ size = 18 }) {
     return (
-        <span
+        <img
+            src="/images/mercado-livre-87.svg"
+            alt="Conectada ao Mercado Livre"
             title="Conectada ao Mercado Livre"
-            className="inline-flex items-center justify-center w-5 h-4 rounded bg-ecf-yellow text-[#252525]"
-        >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-3 h-3">
-                <path d="m7 13 3 3 7-8"/>
-            </svg>
-        </span>
+            className="inline-block flex-shrink-0"
+            style={{ width: size, height: size }}
+        />
     );
 }
 
@@ -210,29 +209,19 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button
-                            className="w-9 h-9 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-colors flex items-center justify-center"
-                            aria-label="Ajuda"
-                        >
-                            <HelpCircle size={16} />
-                        </button>
-                        <button
-                            className="w-9 h-9 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/50 hover:text-white/80 hover:bg-white/[0.06] transition-colors flex items-center justify-center"
-                            aria-label="Notificações"
-                        >
-                            <Bell size={16} />
-                        </button>
                         <button className="h-9 px-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/80 hover:bg-white/[0.06] transition-colors inline-flex items-center gap-2 text-xs font-semibold">
                             <Calendar size={14} />
                             {periodo}
                         </button>
-                        <Link
-                            href={route('goals.index')}
-                            className="h-9 px-3 rounded-lg bg-ecf-yellow text-[#252525] hover:bg-yellow-300 transition-colors inline-flex items-center gap-2 text-xs font-bold"
-                        >
-                            <Plus size={14} />
-                            Nova meta
-                        </Link>
+                        {pessoa.role_key === 'mentor' && (
+                            <Link
+                                href={route('goals.index')}
+                                className="h-9 px-3 rounded-lg bg-ecf-yellow text-[#252525] hover:bg-yellow-300 transition-colors inline-flex items-center gap-2 text-xs font-bold"
+                            >
+                                <Plus size={14} />
+                                Nova meta
+                            </Link>
+                        )}
                     </div>
                 </div>
 
@@ -249,11 +238,8 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
 
                 {/* ═══ 3 KPI CARDS (grid) ═════════════════════════════ */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Card 1 — Faturamento total (link → dashboard ECF) */}
-                    <Link
-                        href={route('ecf.dashboard')}
-                        className="group relative overflow-hidden rounded-xl bg-ecf-card border border-white/[0.08] p-5 min-h-[160px] flex flex-col justify-between hover:border-ecf-yellow/40 transition-all"
-                    >
+                    {/* Card 1 — Faturamento total (sem link — só indicador) */}
+                    <div className="relative overflow-hidden rounded-xl bg-ecf-card border border-white/[0.08] p-5 min-h-[160px] flex flex-col justify-between">
                         {/* Glow decorativo yellow ECF */}
                         <div className="absolute -top-16 -right-16 w-52 h-52 bg-ecf-yellow/[0.08] rounded-full blur-3xl pointer-events-none" />
                         {/* Grid pattern sutil */}
@@ -280,7 +266,7 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                         <p className="relative text-xs text-white/50">
                             {kpis.empresas_conectadas_ml} empresas conectadas ao Mercado Livre.
                         </p>
-                    </Link>
+                    </div>
 
                     {/* Card 2 — Crescimento vs anterior (link → performance) */}
                     <Link
@@ -293,16 +279,32 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                 Crescimento vs anterior
                             </span>
                             <div className="flex items-baseline gap-3 mt-3 flex-wrap">
-                                <strong className="text-4xl font-black text-white tabular-nums leading-none">
-                                    +{kpis.crescimento_percent}%
-                                </strong>
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
-                                    +{fmtBRLCompact(kpis.crescimento_delta_valor)}
-                                </span>
+                                {kpis.crescimento_percent !== null ? (
+                                    <>
+                                        <strong className={cn(
+                                            'text-4xl font-black tabular-nums leading-none',
+                                            kpis.crescimento_percent >= 0 ? 'text-white' : 'text-rose-300'
+                                        )}>
+                                            {kpis.crescimento_percent >= 0 ? '+' : ''}{kpis.crescimento_percent}%
+                                        </strong>
+                                        <span className={cn(
+                                            'text-xs px-2 py-0.5 rounded-full border font-semibold',
+                                            kpis.crescimento_delta_valor >= 0
+                                                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+                                                : 'bg-rose-500/15 border-rose-500/30 text-rose-300'
+                                        )}>
+                                            {kpis.crescimento_delta_valor >= 0 ? '+' : ''}{fmtBRLCompact(kpis.crescimento_delta_valor)}
+                                        </span>
+                                    </>
+                                ) : (
+                                    <span className="text-2xl font-bold text-white/40">Sem base comparativa</span>
+                                )}
                             </div>
                         </div>
                         <p className="relative text-xs text-white/50">
-                            Comparado aos 30 dias anteriores. Mediana por empresa: +{kpis.crescimento_mediana}%.
+                            {kpis.crescimento_mediana !== null
+                                ? <>Comparado aos 30 dias anteriores. Mediana por empresa: {kpis.crescimento_mediana >= 0 ? '+' : ''}{kpis.crescimento_mediana}%.</>
+                                : 'Base insuficiente pra comparar com o período anterior.'}
                         </p>
                     </Link>
 
@@ -343,31 +345,43 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                 <MessageSquare size={16} className="text-emerald-400" />
                                 <h3 className="text-white text-sm font-bold">NPS</h3>
                             </div>
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
-                                Média {nps.media}
-                            </span>
+                            {nps.media !== null && (
+                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
+                                    Média {nps.media}
+                                </span>
+                            )}
                         </div>
-                        <div className="p-4 space-y-2.5">
-                            {nps.respostas.map((r, i) => (
-                                <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                                    <span className={cn(
-                                        'w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm border',
-                                        r.classe === 'Promotor' && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
-                                        r.classe === 'Neutro'   && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
-                                        r.classe === 'Detrator' && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
-                                    )}>
-                                        {r.nota}
-                                    </span>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-white text-sm font-semibold truncate">{r.empresa}</div>
-                                        <div className="text-white/40 text-[11px] mt-0.5">{r.quando}</div>
+                        {nps.respostas && nps.respostas.length > 0 ? (
+                            <div className="p-4 space-y-2.5">
+                                {nps.respostas.map((r, i) => (
+                                    <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                        <span className={cn(
+                                            'w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm border',
+                                            r.classe === 'Promotor' && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+                                            r.classe === 'Neutro'   && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+                                            r.classe === 'Detrator' && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+                                        )}>
+                                            {r.nota}
+                                        </span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-white text-sm font-semibold truncate">{r.empresa}</div>
+                                            <div className="text-white/40 text-[11px] mt-0.5">{r.quando}</div>
+                                        </div>
+                                        <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap', npsClasse[r.classe])}>
+                                            {r.classe}
+                                        </span>
                                     </div>
-                                    <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap', npsClasse[r.classe])}>
-                                        {r.classe}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-8 flex flex-col items-center justify-center text-center gap-2 min-h-[220px]">
+                                <MessageCircleOff size={28} className="text-white/20" />
+                                <p className="text-white/60 text-sm font-semibold">Sem respostas de NPS ainda</p>
+                                <p className="text-white/35 text-xs max-w-[240px]">
+                                    Quando os clientes responderem à pesquisa, as últimas notas aparecem aqui.
+                                </p>
+                            </div>
+                        )}
                     </Link>
 
                     {/* Widget Metas (link → /goals) */}
@@ -384,26 +398,38 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                 Ver todas
                             </span>
                         </div>
-                        <div className="p-4 space-y-3">
-                            {metas.map((m, i) => {
-                                const Icone = iconeMeta[m.icone] ?? Target;
-                                return (
-                                    <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                                        <span className="w-10 h-10 rounded-lg bg-ecf-yellow/15 border border-ecf-yellow/30 text-ecf-yellow flex items-center justify-center flex-shrink-0">
-                                            <Icone size={17} />
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="flex items-baseline justify-between gap-2 mb-1.5">
-                                                <strong className="text-white text-sm font-bold truncate">{m.nome}</strong>
-                                                <span className="text-white/50 text-xs whitespace-nowrap">{m.atual} / {m.objetivo}</span>
+                        {metas && metas.length > 0 ? (
+                            <div className="p-4 space-y-3">
+                                {metas.map((m, i) => {
+                                    const Icone = iconeMeta[m.icone] ?? Target;
+                                    return (
+                                        <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                            <span className="w-10 h-10 rounded-lg bg-ecf-yellow/15 border border-ecf-yellow/30 text-ecf-yellow flex items-center justify-center flex-shrink-0">
+                                                <Icone size={17} />
+                                            </span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-baseline justify-between gap-2 mb-1.5">
+                                                    <strong className="text-white text-sm font-bold truncate">{m.nome}</strong>
+                                                    <span className="text-white/50 text-xs whitespace-nowrap">{m.atual} / {m.objetivo}</span>
+                                                </div>
+                                                <ProgressBar percent={m.percent} size="sm" />
                                             </div>
-                                            <ProgressBar percent={m.percent} size="sm" />
+                                            <b className="text-white text-sm font-bold tabular-nums w-10 text-right">{m.percent}%</b>
                                         </div>
-                                        <b className="text-white text-sm font-bold tabular-nums w-10 text-right">{m.percent}%</b>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="p-8 flex flex-col items-center justify-center text-center gap-2 min-h-[220px]">
+                                <TargetIcon size={28} className="text-white/20" />
+                                <p className="text-white/60 text-sm font-semibold">Sem metas configuradas ainda</p>
+                                <p className="text-white/35 text-xs max-w-[240px]">
+                                    {pessoa.role_key === 'mentor'
+                                        ? 'Clique em "Nova meta" no topo pra criar a primeira meta da carteira.'
+                                        : 'Assim que o estrategista configurar metas pra sua carteira, elas aparecem aqui.'}
+                                </p>
+                            </div>
+                        )}
                     </Link>
                 </div>
 
@@ -529,26 +555,30 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                             {colunas.faturamento && <td className="px-3 py-3 text-right text-white font-semibold tabular-nums">{fmtBRLCompact(e.faturamento)}</td>}
                                             {colunas.meta && (
                                                 <td className="px-3 py-3 text-right">
-                                                    <div className="inline-flex flex-col items-end gap-1">
-                                                        <span className="w-24"><ProgressBar percent={e.meta} size="sm" /></span>
-                                                        <span className="text-white/50 text-[11px] font-semibold">{e.meta}%</span>
-                                                    </div>
+                                                    {e.meta !== null ? (
+                                                        <div className="inline-flex flex-col items-end gap-1">
+                                                            <span className="w-24"><ProgressBar percent={e.meta} size="sm" /></span>
+                                                            <span className="text-white/50 text-[11px] font-semibold">{e.meta}%</span>
+                                                        </div>
+                                                    ) : <span className="text-white/25">—</span>}
                                                 </td>
                                             )}
                                             {colunas.crescimento && (
                                                 <td className="px-3 py-3 text-right">
-                                                    <span className={cn(
-                                                        'text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap',
-                                                        e.crescimento >= 15 && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
-                                                        e.crescimento < 15 && e.crescimento >= 0 && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
-                                                        e.crescimento < 0 && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
-                                                    )}>
-                                                        {e.crescimento >= 0 ? '+' : ''}{e.crescimento}%
-                                                    </span>
+                                                    {e.crescimento !== null ? (
+                                                        <span className={cn(
+                                                            'text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap',
+                                                            e.crescimento >= 15 && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
+                                                            e.crescimento < 15 && e.crescimento >= 0 && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
+                                                            e.crescimento < 0 && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+                                                        )}>
+                                                            {e.crescimento >= 0 ? '+' : ''}{e.crescimento}%
+                                                        </span>
+                                                    ) : <span className="text-white/25">—</span>}
                                                 </td>
                                             )}
-                                            {colunas.nps         && <td className="px-3 py-3 text-right text-white/80 tabular-nums">{e.nps}</td>}
-                                            {colunas.ads         && <td className="px-3 py-3 text-right text-white/60 tabular-nums">{fmtBRLCompact(e.ads)}</td>}
+                                            {colunas.nps         && <td className="px-3 py-3 text-right text-white/80 tabular-nums">{e.nps ?? <span className="text-white/25">—</span>}</td>}
+                                            {colunas.ads         && <td className="px-3 py-3 text-right text-white/60 tabular-nums">{e.ads > 0 ? fmtBRLCompact(e.ads) : <span className="text-white/25">—</span>}</td>}
                                             {colunas.acao        && <td className="px-3 py-3 text-white/70">{e.acao}</td>}
                                         </tr>
                                     );
@@ -586,17 +616,19 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                         </div>
                                         <div>
                                             <span className="text-white/40 block">Meta</span>
-                                            <b className="text-white">{e.meta}%</b>
+                                            <b className="text-white">{e.meta !== null ? `${e.meta}%` : '—'}</b>
                                         </div>
                                         <div>
                                             <span className="text-white/40 block">Crescimento</span>
-                                            <b className={cn(
-                                                e.crescimento >= 15 && 'text-emerald-300',
-                                                e.crescimento < 15 && e.crescimento >= 0 && 'text-amber-300',
-                                                e.crescimento < 0 && 'text-rose-300',
-                                            )}>
-                                                {e.crescimento >= 0 ? '+' : ''}{e.crescimento}%
-                                            </b>
+                                            {e.crescimento !== null ? (
+                                                <b className={cn(
+                                                    e.crescimento >= 15 && 'text-emerald-300',
+                                                    e.crescimento < 15 && e.crescimento >= 0 && 'text-amber-300',
+                                                    e.crescimento < 0 && 'text-rose-300',
+                                                )}>
+                                                    {e.crescimento >= 0 ? '+' : ''}{e.crescimento}%
+                                                </b>
+                                            ) : <b className="text-white/25">—</b>}
                                         </div>
                                         <div>
                                             <span className="text-white/40 block">Ação</span>
@@ -609,11 +641,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                     </div>
                 </div>
 
-                {/* Rodapé sutil */}
-                <div className="flex items-center gap-2 text-white/30 text-[11px] pt-2">
-                    <Sparkles size={11} />
-                    <span>Dashboard em fase inicial — dados mockados. Integração real será liberada nas próximas fases.</span>
-                </div>
             </div>
         </AppLayout>
     );

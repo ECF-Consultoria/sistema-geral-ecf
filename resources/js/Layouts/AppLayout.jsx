@@ -54,8 +54,6 @@ const NAV_TREE = [
             // segue registrada para deep links (CONTEXT §5).
             { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: 'Dashboard/Admin', icon: LayoutDashboard, permission: 'core.dashboard' },
             { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
-            // Dashboard operacional da Carteira (spec 2026-07-06) — mock data fase 1
-            { label: 'Minha Carteira', routeName: 'performance.carteira.dashboard', page: 'Performance/Dashboard', icon: LayoutDashboard, permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },

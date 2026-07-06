@@ -260,11 +260,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/performance', [PerformanceController::class, 'index'])
         ->middleware('permission:core.performance')
         ->name('performance.index');
-    // Dashboard operacional da Carteira do Analista/Estrategista
-    // (spec 2026-07-06 — Dashboard Performance, mock data fase 1).
-    Route::get('/performance/carteira/dashboard', [PerformanceController::class, 'dashboardCarteira'])
-        ->middleware('permission:core.performance')
-        ->name('performance.carteira.dashboard');
     Route::get('/performance/{user}', [PerformanceController::class, 'show'])
         ->middleware('permission:core.performance')
         ->name('performance.show');
