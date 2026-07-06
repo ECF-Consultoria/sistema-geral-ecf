@@ -1533,3 +1533,19 @@ Plans:
 **Depends on:** Phase 57 (modelo pronto). Pode rodar em paralelo com Phase 58.
 
 **UI hint:** parcial — auditoria + ajustes finos de texto/filtro. Sem redesign de tela.
+
+**Plans:** 3 plans
+
+Plans:
+
+**Wave 1**
+
+- [ ] 59-01-PLAN.md — Wave 1 (audit): baseline de testes + scout completo dos 3 controllers hotspot (Comercial/Company/Admin) + seção Publicação transversal → produz `59-AUDIT.md` com tabelas classificadas (linha/trecho/tipo/severidade/plano). Não toca código de produção. Cobre CROSS-01 (deliverable) + metade CROSS-02 (grep-based)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 59-02-PLAN.md — Wave 2 (fixes): aplica EXATAMENTE os itens classificados como `fix Phase 59` na lista "Itens a corrigir no Plan 02" do AUDIT.md; 1 commit atômico por item; escopo cirúrgico (whitelist `files_modified`). Se AUDIT deu lista vazia, Plan 02 vira no-op consciente e documentado. Cobre CROSS-01 (execução)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 59-03-PLAN.md — Wave 3 (regressão + Publicação): `php artisan test` completo + comparação com baseline registrado no Plan 01 + Phase 57/58 baselines preservados (20/16) + reforço da seção "Publicação — CONFIRMED transversal" com evidência de suite verde. Cobre CROSS-02 (execução) + CROSS-03 (regressão)
