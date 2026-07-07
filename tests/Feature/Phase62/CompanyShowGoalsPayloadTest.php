@@ -176,7 +176,8 @@ class CompanyShowGoalsPayloadTest extends TestCase
         $company = $this->createCompanyForAdmin();
 
         $this->createGoal($company, ['active' => true,  'metric' => 'tacos']);
-        $this->createGoal($company, ['active' => false, 'metric' => 'acos']); // não deve aparecer
+        // `nps` (não `acos`) pra respeitar CHECK constraint do SQLite (in-memory).
+        $this->createGoal($company, ['active' => false, 'metric' => 'nps']); // não deve aparecer
 
         $this->actingAs($admin)
             ->get(route('companies.show', $company->id))
@@ -193,8 +194,11 @@ class CompanyShowGoalsPayloadTest extends TestCase
     {
         $admin = $this->createAdmin();
         $company = $this->createCompanyForAdmin();
-        $goal = $this->createGoal($company);
-        $this->createResult($goal, '2026-06', 12.34, 10.00, true);
+        // Uso valores fracionarios em ambos os lados para evitar coercao JSON
+        // int/float (10.00 -> encoded "10" -> decoded int 10, quebrando where()
+        // com comparacao estrita contra 10.0).
+        $goal = $this->createGoal($company, ['target_value' => 10.50]);
+        $this->createResult($goal, '2026-06', 12.34, 10.50, true);
 
         $this->actingAs($admin)
             ->get(route('companies.show', $company->id))
@@ -203,7 +207,7 @@ class CompanyShowGoalsPayloadTest extends TestCase
                 ->has('company.goals.0.results.0', fn (Assert $r) => $r
                     ->hasAll(['id', 'period', 'realized_value', 'target_value', 'achieved'])
                     ->where('realized_value', 12.34)
-                    ->where('target_value', 10.00)
+                    ->where('target_value', 10.50)
                     ->where('achieved', true)
                     ->etc()
                 )

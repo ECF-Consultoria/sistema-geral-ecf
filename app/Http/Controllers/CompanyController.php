@@ -276,7 +276,11 @@ class CompanyController extends Controller
 
         $company->load([
             'consultor', 'estrategista',
-            'goals' => fn($q) => $q->where('active', true),
+            // Phase 62 Plan 62-05 (META-01): eager load pega os 12 results
+            // MAIS RECENTES (desc + limit) — o mapper depois reordena ASC
+            // para alimentar o chart do <GoalProgressPanel /> temporalmente.
+            'goals' => fn($q) => $q->where('active', true)
+                ->with(['results' => fn($rq) => $rq->orderBy('period', 'desc')->limit(12)]),
             'ppas.mentor',
             'meetings' => fn($q) => $q->orderBy('scheduled_at', 'desc')->limit(10),
             'npsSurveys' => fn($q) => $q->where('status', 'completed')->with('response')->orderBy('completed_at', 'desc')->limit(10),
@@ -444,9 +448,28 @@ class CompanyController extends Controller
                 'ad_investment_30d'=> $adInvestment30d,
                 'consultor'        => $company->consultor->map->only(['id', 'name'])->values(),
                 'estrategista'     => $company->estrategista->map->only(['id', 'name'])->values(),
+                // Phase 62 Plan 62-05 (META-01): shape enriquecido — inclui
+                // value_type/period_type + results[] (ate 12 periodos, ASC pra
+                // chart). Alimenta <GoalProgressPanel /> na Section "Metas Ativas".
+                // results[] pode ser vazio (goal recem-criada sem historico).
                 'goals'            => $company->goals->map(fn($g) => [
-                    'id' => $g->id, 'metric' => $g->metric, 'metric_label' => $g->metric_label,
-                    'target_value' => $g->target_value, 'active' => $g->active,
+                    'id'           => $g->id,
+                    'metric'       => $g->metric,
+                    'metric_label' => $g->metric_label,
+                    'target_value' => $g->target_value,
+                    'value_type'   => $g->value_type,
+                    'period_type'  => $g->period_type,
+                    'active'       => $g->active,
+                    'results'      => $g->results
+                        ->sortBy('period')
+                        ->values()
+                        ->map(fn($r) => [
+                            'id'             => $r->id,
+                            'period'         => $r->period,
+                            'realized_value' => (float) $r->realized_value,
+                            'target_value'   => (float) $r->target_value,
+                            'achieved'       => (bool) $r->achieved,
+                        ])->all(),
                 ])->values(),
                 'meetings'         => $company->meetings->map(fn($m) => [
                     'id' => $m->id, 'scheduled_at' => $m->scheduled_at,
