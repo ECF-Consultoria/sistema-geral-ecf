@@ -15,7 +15,15 @@ class GoalController extends Controller
     {
         $user = $request->user();
 
-        $query = Company::with(['goals', 'consultor', 'estrategista'])
+        // Phase 62 (META-04): eager load `results` (últimos 12 períodos) por goal
+        // alimenta chart do <GoalProgressPanel> quando exibido inline. Filtro `active=true`
+        // movido para o closure (economiza query + garante consistência com resultado do map).
+        $query = Company::with([
+                'goals' => fn($q) => $q->where('active', true)
+                    ->with(['results' => fn($rq) => $rq->orderBy('period', 'desc')->limit(12)]),
+                'consultor',
+                'estrategista',
+            ])
             ->where('active', true)
             ->orderBy('name');
 
@@ -29,7 +37,7 @@ class GoalController extends Controller
             'name'      => $c->name,
             'consultor' => $c->consultor->first()?->name,
             'estrategista' => $c->estrategista->first()?->name,
-            'goals'     => $c->goals->where('active', true)->map(fn($g) => [
+            'goals'     => $c->goals->map(fn($g) => [
                 'id'           => $g->id,
                 'metric'       => $g->metric,
                 'metric_label' => $g->metric_label,
@@ -37,6 +45,17 @@ class GoalController extends Controller
                 'value_type'   => $g->value_type,
                 'period_type'  => $g->period_type,
                 'description'  => $g->description,
+                // Inversão para ASC (por period) — chart do painel de progresso precisa ordem cronológica.
+                'results'      => $g->results
+                    ->sortBy('period')
+                    ->values()
+                    ->map(fn($r) => [
+                        'id'             => $r->id,
+                        'period'         => $r->period,
+                        'realized_value' => (float) $r->realized_value,
+                        'target_value'   => (float) $r->target_value,
+                        'achieved'       => (bool) $r->achieved,
+                    ]),
             ])->values(),
         ]);
 
