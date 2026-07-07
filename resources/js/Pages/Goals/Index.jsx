@@ -7,8 +7,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Textarea } from '@/Components/ui/textarea';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Plus, Pencil, Trash2, Target, Building2, DollarSign, Percent, Users } from 'lucide-react';
+import { Plus, Pencil, Trash2, Target, Building2, DollarSign, Percent, Users, Clock, Check, X as XIcon } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import GoalHistoryDrawer from '@/Components/goals/GoalHistoryDrawer';
 
 const periodLabel = { monthly: 'Mensal', quarterly: 'Trimestral', yearly: 'Anual' };
 const aggregationLabel = { avg: 'Média', sum: 'Soma' };
@@ -62,10 +63,46 @@ function EmpresasSection({ companies, metrics, percentage_only_metrics, can_mana
     const [editing, setEditing] = useState(null);
     const [selectedCompany, setSelectedCompany] = useState(null);
 
+    // Phase 62 — META-04: inline edit envia só target_value+period_type;
+    // para editar tipo/período/descrição completos, usar botão Pencil (Dialog original).
+    const [editingGoalId, setEditingGoalId] = useState(null);
+    const [editingValue, setEditingValue] = useState('');
+    const [historyOpen, setHistoryOpen] = useState(false);
+    const [historyGoal, setHistoryGoal] = useState(null);
+    const inlineForm = useForm({ target_value: '', period_type: 'monthly' });
+
     const { data, setData, post, processing, reset } = useForm({
         company_id: '', metric: '', target_value: '', value_type: 'currency', period_type: 'monthly', description: '',
     });
     const editForm = useForm({ target_value: '', value_type: 'percentage', period_type: 'monthly', description: '' });
+
+    // Phase 62 — Handlers de inline edit + histórico
+    const startInlineEdit = (goal) => {
+        setEditingGoalId(goal.id);
+        setEditingValue(String(goal.target_value));
+        inlineForm.setData({ target_value: String(goal.target_value), period_type: goal.period_type });
+    };
+    const cancelInlineEdit = () => {
+        setEditingGoalId(null);
+        setEditingValue('');
+    };
+    const commitInlineEdit = (goal) => {
+        // No-op se valor não mudou (evita PUT desnecessário e activity_log ruidoso).
+        if (editingValue === String(goal.target_value)) {
+            cancelInlineEdit();
+            return;
+        }
+        inlineForm.setData({ target_value: editingValue, period_type: goal.period_type });
+        inlineForm.put(route('goals.update', goal.id), {
+            preserveScroll: true,
+            onSuccess: () => setEditingGoalId(null),
+            // onError: mantém input aberto pra correção (feedback via flash message).
+        });
+    };
+    const openHistory = (goal) => {
+        setHistoryGoal(goal);
+        setHistoryOpen(true);
+    };
 
     const isPercentageOnly = (metric) => percentage_only_metrics.includes(metric);
     const supportsValueType = (metric) => metric && !isPercentageOnly(metric) && metric !== 'nps';
@@ -166,7 +203,54 @@ function EmpresasSection({ companies, metrics, percentage_only_metrics, can_mana
                                                 metricColor[goal.metric] || 'text-white/60 bg-white/[0.03] border-white/[0.08]')}>
                                             <div className="space-y-1.5 min-w-0">
                                                 <p className="text-[11px] font-semibold tracking-wide uppercase opacity-70">{goal.metric_label}</p>
-                                                <p className="font-display font-extrabold text-2xl leading-none">{formatGoalValue(goal)}</p>
+
+                                                {/* Phase 62 (META-04): inline edit do target_value — Enter/Blur commit, Escape cancela */}
+                                                {editingGoalId === goal.id ? (
+                                                    <form
+                                                        onSubmit={(e) => { e.preventDefault(); commitInlineEdit(goal); }}
+                                                        className="flex items-center gap-1"
+                                                        data-testid={`goal-inline-edit-form-${goal.id}`}
+                                                    >
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            autoFocus
+                                                            value={editingValue}
+                                                            onChange={(e) => setEditingValue(e.target.value)}
+                                                            onBlur={() => commitInlineEdit(goal)}
+                                                            onKeyDown={(e) => { if (e.key === 'Escape') cancelInlineEdit(); }}
+                                                            disabled={inlineForm.processing}
+                                                            data-testid={`goal-inline-edit-input-${goal.id}`}
+                                                            className={cn(
+                                                                'h-9 w-32 text-lg font-bold',
+                                                                inlineForm.processing && 'opacity-60',
+                                                            )}
+                                                        />
+                                                        <button type="submit" className="p-1 rounded hover:bg-white/10" title="Salvar">
+                                                            <Check size={14} />
+                                                        </button>
+                                                        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={cancelInlineEdit}
+                                                            className="p-1 rounded hover:bg-white/10" title="Cancelar">
+                                                            <XIcon size={14} />
+                                                        </button>
+                                                    </form>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => can_manage && startInlineEdit(goal)}
+                                                        disabled={!can_manage}
+                                                        data-testid={`goal-inline-edit-trigger-${goal.id}`}
+                                                        className={cn(
+                                                            'font-display font-extrabold text-2xl leading-none text-left',
+                                                            can_manage && 'hover:underline decoration-dashed underline-offset-4 cursor-text',
+                                                        )}
+                                                        title={can_manage ? 'Clique para editar' : undefined}
+                                                    >
+                                                        {formatGoalValue(goal)}
+                                                    </button>
+                                                )}
+
                                                 <div className="flex items-center gap-1.5 flex-wrap">
                                                     <span className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/10">
                                                         {periodLabel[goal.period_type]}
@@ -181,18 +265,31 @@ function EmpresasSection({ companies, metrics, percentage_only_metrics, can_mana
                                                     <p className="text-[11px] opacity-60 leading-snug">{goal.description}</p>
                                                 )}
                                             </div>
-                                            {can_manage && (
-                                                <div className="flex gap-0.5 shrink-0 ml-2">
-                                                    <button onClick={() => openEdit(goal)}
-                                                        className="p-1.5 rounded-lg hover:bg-white/10 transition-colors opacity-50 hover:opacity-100">
-                                                        <Pencil size={13} />
-                                                    </button>
-                                                    <button onClick={() => remove(goal.id)}
-                                                        className="p-1.5 rounded-lg hover:bg-red-500/20 transition-colors opacity-50 hover:opacity-100 text-red-400">
-                                                        <Trash2 size={13} />
-                                                    </button>
-                                                </div>
-                                            )}
+
+                                            {/* Botões de ação: Clock (livre para leitura) + Pencil/Trash (gated por can_manage) */}
+                                            <div className="flex gap-0.5 shrink-0 ml-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openHistory(goal)}
+                                                    data-testid={`goal-history-open-${goal.id}`}
+                                                    className="p-1.5 rounded-lg hover:bg-white/10 transition-colors opacity-50 hover:opacity-100"
+                                                    title="Ver histórico de alterações"
+                                                >
+                                                    <Clock size={13} />
+                                                </button>
+                                                {can_manage && (
+                                                    <>
+                                                        <button onClick={() => openEdit(goal)}
+                                                            className="p-1.5 rounded-lg hover:bg-white/10 transition-colors opacity-50 hover:opacity-100">
+                                                            <Pencil size={13} />
+                                                        </button>
+                                                        <button onClick={() => remove(goal.id)}
+                                                            className="p-1.5 rounded-lg hover:bg-red-500/20 transition-colors opacity-50 hover:opacity-100 text-red-400">
+                                                            <Trash2 size={13} />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -310,6 +407,14 @@ function EmpresasSection({ companies, metrics, percentage_only_metrics, can_mana
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* Phase 62 (META-04): drawer de histórico compartilhado (fetch on-open no proprio componente) */}
+            <GoalHistoryDrawer
+                open={historyOpen}
+                onOpenChange={setHistoryOpen}
+                goalId={historyGoal?.id ?? null}
+                metricLabel={historyGoal?.metric_label}
+            />
         </>
     );
 }
