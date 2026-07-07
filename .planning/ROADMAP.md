@@ -50,7 +50,13 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   2. Dashboards de Analista e Estrategista renderizam a carteira sem lançar erro quando uma empresa é ML-only (sem Adman) — empresas Adman-only continuam aparecendo normalmente
   3. Carteira individual exibe badge visual "ML" ao lado do nome de cada empresa conectada ao Mercado Livre
   4. Cada métrica renderizada na UI carrega indicador visual da fonte (badge ou tooltip: ML, Adman, ou Agregado)
-**Plans**: TBD
+**Plans**: 6 plans
+- [ ] 61-01-PLAN.md — Backend: PortfolioController + DashboardController + config/metrics.php com feature flag UNIFIED_METRICS_ENABLED (enriquece payload com source/source_counts quando ON, delta zero quando OFF)
+- [ ] 61-02-PLAN.md — Componente <SourceBadge> reusável (4 variantes ml/adman/unified/none com labels pt-BR e tooltip nativo)
+- [ ] 61-03-PLAN.md — DASH-06: Badge de fonte no header da carteira individual (Companies/Show.jsx + CompanyController::show)
+- [ ] 61-04-PLAN.md — DASH-05: Portfolio Show + Carteiras tolerantes a fonte + badges por empresa e mini-legenda por profissional
+- [ ] 61-05-PLAN.md — DASH-04: Dashboard ML unificado com legenda source_counts no topo + badge por linha da tabela
+- [ ] 61-06-PLAN.md — E2E: 15 testes cobrindo 3 casos ADR + none + regressao flag OFF (dashboard + portfolio + baseline Phase 60 intacto)
 **UI hint**: yes
 
 ### Phase 62: Metas — apresentação clara + edição rápida
@@ -131,7 +137,7 @@ Dependência crítica: Phase 60 é a fundação de dados que destrava Phase 61 (
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 60. Base multi-fonte (backend ML+Adman unificado) | 2/4 | In Progress|  |
-| 61. Dashboards multi-fonte + indicador de origem | 0/TBD | Not started | - |
+| 61. Dashboards multi-fonte + indicador de origem | 0/6 | Not started | - |
 | 62. Metas — apresentação clara + edição rápida | 0/TBD | Not started | - |
 | 63. Metas — onboarding + legacy + activity log | 0/TBD | Not started | - |
 | 64. Parâmetro de uso — captura event-based | 0/TBD | Not started | - |
