@@ -214,11 +214,17 @@ class NpsController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
+        // UAT 2026-07-07: só admin ou líder pode filtrar por estrategista/
+        // analista específicos — analista/estrategista comum já vê apenas
+        // NPS da sua carteira (linha 92-95), sem necessidade do filtro.
+        $podeFiltrarPorPessoa = $user->isAdmin() || $user->isLider();
+
         return Inertia::render('Nps/Index', [
-            'surveys'        => $surveys,
-            'companies'      => $companies,
-            'estrategistas'  => $estrategistas,
-            'analistas'      => $analistas,
+            'surveys'                => $surveys,
+            'companies'              => $companies,
+            'estrategistas'          => $estrategistas,
+            'analistas'              => $analistas,
+            'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,
             'cards'          => $cards,
             'serie_12m'      => $serieMeses,
             'mes_filtro'     => $mesFiltro,

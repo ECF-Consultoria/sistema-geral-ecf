@@ -40,7 +40,9 @@ const NAV_TREE = [
     // ML/Shopee/Amazon). Renomeado de "ECF Consolidado" para "ECF Dashboard".
     // Ajuste pós-UAT 2: page: 'Dashboard/EcfShell' (não mais 'Dashboard/Admin')
     // para que active-state do sidebar diferencie de /dashboard/mercadolivre.
-    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/EcfShell', icon: PieChart, permission: 'core.dashboard' },
+    // Ajuste pós-UAT 3 (2026-07-07): admin-only — Analista/Estrategista/Líder
+    // não devem ver esse item; carteira própria é a fonte deles.
+    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/EcfShell', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
 
     {
         group: 'Mercado Livre',
@@ -294,11 +296,32 @@ export default function AppLayout({ children, title }) {
      * Grupo com permission própria (ex: "Empresas"): descarta se itemVisivel falhar no grupo em si.
      */
     const filteredTree = useMemo(() => {
+        // Remove dividers órfãos: um divider é órfão quando NÃO tem nenhum
+        // item real (não-divider) entre ele e o próximo divider (ou o fim
+        // da lista). Ajuste UAT 2026-07-07: divider "POLOS" ficava visível
+        // pra Estrategista mesmo com todos os filhos abaixo dele gated.
+        const removerDividersOrfaos = (children) => {
+            const out = [];
+            for (let i = 0; i < children.length; i++) {
+                const item = children[i];
+                if (!item.divider) { out.push(item); continue; }
+                // Procura próximo item real entre este divider e o próximo divider
+                let temRealAbaixo = false;
+                for (let j = i + 1; j < children.length; j++) {
+                    if (children[j].divider) break;
+                    temRealAbaixo = true;
+                    break;
+                }
+                if (temRealAbaixo) out.push(item);
+            }
+            return out;
+        };
+
         return NAV_TREE.reduce((acc, entry) => {
             if (entry.group) {
                 // Grupos com permission própria (ex: grupo "Empresas") são verificados também
                 if (entry.permission && !itemVisivel(entry)) return acc;
-                const filhos = entry.children.filter(itemVisivel);
+                const filhos = removerDividersOrfaos(entry.children.filter(itemVisivel));
                 // Phase 56 v13.0: se sobrou SO divider (sem items reais), esconder o grupo
                 // — evita "grupo fantasma" com um label sem filhos abaixo.
                 const filhosReais = filhos.filter(c => !c.divider);

@@ -145,6 +145,7 @@ export default function NpsIndex({
     companies,
     estrategistas = [],
     analistas = [],
+    pode_filtrar_por_pessoa = false,
     cards = {},
     serie_12m = [],
     mes_filtro = '',
@@ -247,31 +248,37 @@ export default function NpsIndex({
                             </SelectContent>
                         </Select>
 
-                        {/* Quick 260612-flt — filtro estrategista */}
-                        <Select value={filtros.estrategista_id ? String(filtros.estrategista_id) : '__all__'} onValueChange={handleEstrategistaChange}>
-                            <SelectTrigger className="w-[180px] bg-ecf-card border-white/[0.08]">
-                                <SelectValue placeholder="Estrategista..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__all__">Todos os estrategistas</SelectItem>
-                                {estrategistas.map(u => (
-                                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        {/* Filtros estrategista/analista — apenas admin ou líder.
+                            UAT 2026-07-07: analista/estrategista comum já vê só a
+                            própria carteira (scope backend), então esses filtros
+                            seriam sempre no-op. Escondidos para eles. */}
+                        {pode_filtrar_por_pessoa && (
+                            <>
+                                <Select value={filtros.estrategista_id ? String(filtros.estrategista_id) : '__all__'} onValueChange={handleEstrategistaChange}>
+                                    <SelectTrigger className="w-[180px] bg-ecf-card border-white/[0.08]">
+                                        <SelectValue placeholder="Estrategista..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__all__">Todos os estrategistas</SelectItem>
+                                        {estrategistas.map(u => (
+                                            <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
 
-                        {/* Quick 260612-flt — filtro analista */}
-                        <Select value={filtros.analista_id ? String(filtros.analista_id) : '__all__'} onValueChange={handleAnalistaChange}>
-                            <SelectTrigger className="w-[180px] bg-ecf-card border-white/[0.08]">
-                                <SelectValue placeholder="Analista..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__all__">Todos os analistas</SelectItem>
-                                {analistas.map(u => (
-                                    <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                                <Select value={filtros.analista_id ? String(filtros.analista_id) : '__all__'} onValueChange={handleAnalistaChange}>
+                                    <SelectTrigger className="w-[180px] bg-ecf-card border-white/[0.08]">
+                                        <SelectValue placeholder="Analista..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__all__">Todos os analistas</SelectItem>
+                                        {analistas.map(u => (
+                                            <SelectItem key={u.id} value={String(u.id)}>{u.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </>
+                        )}
 
                         {algumFiltroAtivo && (
                             <Button variant="ghost" size="sm" onClick={limparFiltros} className="text-white/60 hover:text-white">
