@@ -11,7 +11,9 @@ use App\Models\PortfolioGoal;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\PortfolioScoreService;
+use App\Models\Company;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,7 +24,41 @@ class PortfolioController extends Controller
     public function __construct(
         private AdmanService $adman,
         private PortfolioScoreService $scoreService,
+        private MetricsProviderFactory $metricsFactory,
     ) {}
+
+    /**
+     * Phase 61 Plan 61-01 — Feature flag ADR DATA-04 (default false).
+     *
+     * Leitura via `config()` (nunca `env()` em runtime — Laravel invalida
+     * `env()` fora de config files quando `config:cache` está ativo em prod).
+     */
+    private function unifiedMetricsEnabled(): bool
+    {
+        return (bool) config('metrics.unified_metrics_enabled');
+    }
+
+    /**
+     * Phase 61 Plan 61-01 — Mapa canônico caseFor → valor de `source` no
+     * payload Inertia (ADR DATA-04 seção "Vocabulário do campo `source`").
+     *
+     *   'ambos'    → 'unified'
+     *   'so-ml'    → 'ml'
+     *   'so-adman' → 'adman'
+     *   'none'     → 'none'
+     *
+     * Chamada barata: `caseFor()` só olha accessors denormalizados
+     * (`is_ml_driven` via `mlToken` + `adman_account_id`) — não faz HTTP.
+     */
+    private function factoryToSource(Company $company): string
+    {
+        return match ($this->metricsFactory->caseFor($company)) {
+            'ambos'    => 'unified',
+            'so-ml'    => 'ml',
+            'so-adman' => 'adman',
+            default    => 'none',
+        };
+    }
 
     // Carteira individual de um profissional. Acesso (quick 260623):
     //  - Admin: qualquer user (compat).
@@ -217,6 +253,32 @@ class PortfolioController extends Controller
             ];
         })->filter()->sortBy('name')->values();
 
+        // Phase 61 Plan 61-01 — enriquecimento condicional com `source_counts`
+        // por profissional. Quando flag ON, agrega `{adman, ml, unified, none}`
+        // varrendo a carteira de cada user via `factoryToSource(Company)`
+        // (ADR DATA-04). Recomputa a lista de empresas por user — o closure
+        // de $portfolios já retornou payload sem acesso à coleção original.
+        if ($this->unifiedMetricsEnabled()) {
+            $portfolios = $portfolios->map(function ($row) use ($todos) {
+                $item = $todos->first(fn ($t) => $t['user']->id === $row['id']);
+                if (! $item) {
+                    return $row;
+                }
+                $u    = $item['user'];
+                $tipo = $item['tipo'];
+                $companies = ($tipo === 'estrategista')
+                    ? $u->estrategistaCompanies()->where('active', true)->with('mlToken')->get()
+                    : $u->consultorCompanies()->where('active', true)->with('mlToken')->get();
+
+                $sourceCounts = ['adman' => 0, 'ml' => 0, 'unified' => 0, 'none' => 0];
+                foreach ($companies as $c) {
+                    $sourceCounts[$this->factoryToSource($c)]++;
+                }
+
+                return array_merge($row, ['source_counts' => $sourceCounts]);
+            });
+        }
+
         return Inertia::render('Portfolio/Carteiras', [
             'user_portfolios' => $portfolios,
             'period'          => $period,
@@ -247,9 +309,11 @@ class PortfolioController extends Controller
             $dateToAnterior   = $refDate->copy()->subMonth()->endOfMonth()->toDateString();
         }
 
-        // Empresas da carteira (todas as roles)
+        // Empresas da carteira (todas as roles). Phase 61 Plan 61-01 —
+        // eager-load `mlToken` pra `MetricsProviderFactory::caseFor()` avaliar
+        // caso ADR DATA-04 sem N+1 (mitigação T-61-01-02 do threat model).
         $rawCompanies = $user->companies()
-            ->with(['latestMetrics', 'grants'])
+            ->with(['latestMetrics', 'grants', 'mlToken'])
             ->where('active', true)
             ->withPivot('role')
             ->orderBy('name')
@@ -704,6 +768,20 @@ class PortfolioController extends Controller
             unset($c['_grant_ok'], $c['_ad_spend_num']);
             return $c;
         });
+
+        // Phase 61 Plan 61-01 — enriquecimento condicional com `source`
+        // (ADR DATA-04 vocabulário: adman|ml|unified|none). Passa por
+        // `MetricsProviderFactory::caseFor()` — chamada barata (só accessors
+        // denormalizados, SEM HTTP). Chave ADICIONA metadados no payload;
+        // não substitui nenhum campo existente (coexistência com legado).
+        if ($this->unifiedMetricsEnabled()) {
+            $rawCompaniesById = $rawCompanies->keyBy('id');
+            $companies = $companies->map(function ($c) use ($rawCompaniesById) {
+                $company = $rawCompaniesById->get($c['id']);
+                $c['source'] = $company ? $this->factoryToSource($company) : 'none';
+                return $c;
+            });
+        }
 
         // ── Quick 260623 redesign performance — Score + comparacao contextual ──
         // Conforme metodologia-desempenho-carteira.md: NAO comparar por
