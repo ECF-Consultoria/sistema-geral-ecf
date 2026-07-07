@@ -1,6 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { Link, router, useForm } from '@inertiajs/react';
 import { Badge } from '@/Components/ui/badge';
+import { SourceBadge } from '@/Components/ui/source-badge';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
@@ -82,9 +83,12 @@ function mlKpis(metrics, days) {
 }
 
 // ─── Card de integração ML OAuth ────────────────────────────────────────────
-function MlConnectionCard({ company }) {
+function MlConnectionCard({ company, permissions = {} }) {
     const token   = company.ml_token;
     const metrics = company.ml_metrics ?? [];
+    const canInitiate = permissions.can_initiate_ml_oauth ?? true;
+    const canDisconnect = !!permissions.can_disconnect_ml_oauth;
+    const canSync = !!permissions.can_sync_ml;
 
     const [linkDialogOpen, setLinkDialogOpen] = useState(false);
     const [authUrl, setAuthUrl]               = useState('');
@@ -240,6 +244,7 @@ function MlConnectionCard({ company }) {
                             )}
 
                             {/* Forçar resync D-1 — para quando o job automático falhou */}
+                            {canSync && (
                             <div className="pt-1 border-t border-white/[0.04]">
                                 <Button
                                     type="button"
@@ -259,6 +264,7 @@ function MlConnectionCard({ company }) {
                                     <p className="text-center text-[11px] text-red-400 mt-1">{syncResult.error}</p>
                                 )}
                             </div>
+                            )}
 
                             <div className="flex gap-2 pt-1">
                                 <Button
@@ -267,21 +273,23 @@ function MlConnectionCard({ company }) {
                                     size="sm"
                                     className="text-[12px] gap-1.5"
                                     onClick={gerarLink}
-                                    disabled={loadingLink}
+                                    disabled={loadingLink || !canInitiate}
                                 >
                                     <ShoppingCart size={13} />
                                     {loadingLink ? 'Gerando...' : 'Reconectar'}
                                 </Button>
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-[12px] gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                                    onClick={desconectar}
-                                >
-                                    <Unplug size={13} />
-                                    Desconectar
-                                </Button>
+                                {canDisconnect && (
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="text-[12px] gap-1.5 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                                        onClick={desconectar}
+                                    >
+                                        <Unplug size={13} />
+                                        Desconectar
+                                    </Button>
+                                )}
                             </div>
                         </>
                     ) : (
@@ -292,7 +300,7 @@ function MlConnectionCard({ company }) {
                                 size="sm"
                                 className="gap-1.5 text-[12px]"
                                 onClick={gerarLink}
-                                disabled={loadingLink}
+                                disabled={loadingLink || !canInitiate}
                             >
                                 <ShoppingCart size={13} />
                                 {loadingLink ? 'Gerando link...' : 'Gerar link de conexão'}
@@ -355,10 +363,19 @@ const ecfNumOuNull = (v) => {
     return isNaN(n) ? null : n;
 };
 
-export default function CompanyShow({ company, servicos_disponiveis = [], ecf_drive = null }) {
+export default function CompanyShow({
+    company,
+    servicos_disponiveis = [],
+    ecf_drive = null,
+    goal_metrics = {},
+    goal_percentage_only_metrics = [],
+    permissions = {},
+}) {
     const consultor = company.consultor?.[0];
     const estrategista = company.estrategista?.[0];
     const latestMetric = company.adman_metrics?.[0];
+    const canManageContracts = !!permissions.can_manage_contracts;
+    const canCreateGoals = !!permissions.can_create_goals;
     // ML-driven: empresa com token Mercado Livre ATIVO — o backend serve os
     // KPIs financeiros 30d (revenue/acos/tacos/margin) pelo caminho ML mesmo
     // que ainda exista adman_account_id (cutover Adman → ML, Opção A).
@@ -398,8 +415,45 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
         observacoes: '',
         ativo: true,
     });
+    const [goalOpen, setGoalOpen] = useState(false);
+    const goalMetricOptions = Object.entries(goal_metrics || {});
+    const goalForm = useForm({
+        company_id: company.id,
+        metric: goalMetricOptions[0]?.[0] ?? '',
+        target_value: '',
+        value_type: 'currency',
+        period_type: 'monthly',
+        description: '',
+    });
+
+    const abrirNovaMeta = () => {
+        if (!canCreateGoals) return;
+        goalForm.setData({
+            company_id: company.id,
+            metric: goalMetricOptions[0]?.[0] ?? '',
+            target_value: '',
+            value_type: 'currency',
+            period_type: 'monthly',
+            description: '',
+        });
+        goalForm.clearErrors();
+        setGoalOpen(true);
+    };
+
+    const submitGoal = (e) => {
+        e.preventDefault();
+        if (!canCreateGoals) return;
+        goalForm.post(route('goals.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                setGoalOpen(false);
+                goalForm.reset();
+            },
+        });
+    };
 
     const abrirNovoContrato = () => {
+        if (!canManageContracts) return;
         setEditingContrato(null);
         contratoForm.setData({
             servico_id: '',
@@ -414,6 +468,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
     };
 
     const abrirEditarContrato = (ct) => {
+        if (!canManageContracts) return;
         setEditingContrato(ct);
         contratoForm.setData({
             servico_id: String(ct.servico?.id ?? ''),
@@ -440,6 +495,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
 
     const submitContrato = (e) => {
         e.preventDefault();
+        if (!canManageContracts) return;
         const onSuccess = () => { setContratoOpen(false); contratoForm.reset(); };
         if (editingContrato) {
             contratoForm.put(
@@ -455,6 +511,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
     };
 
     const desativarContrato = (ct) => {
+        if (!canManageContracts) return;
         if (confirm(`Desativar este contrato (${ct.servico?.nome ?? 'serviço'})?`)) {
             router.delete(route('empresas.contratos.destroy', [company.id, ct.id]), {
                 preserveScroll: true,
@@ -499,6 +556,12 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                         </div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                        {/* Phase 61 Plan 61-03 (DASH-06) — badge de origem da empresa.
+                            Guarda `!== 'none'`: no header individual, não poluímos
+                            o título de empresa sem integração ativa. */}
+                        {company.source && company.source !== 'none' && (
+                            <SourceBadge variant={company.source} />
+                        )}
                         <Link
                             href={route('sugadores.config.show', company.id)}
                             className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/70 hover:text-white hover:bg-white/[0.05] text-[12px] font-medium"
@@ -753,6 +816,13 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
 
                     {/* Metas */}
                     <Section icon={Target} title="Metas Ativas">
+                        {canCreateGoals && (
+                            <div className="flex justify-end mb-3">
+                                <Button size="sm" onClick={abrirNovaMeta}>
+                                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova meta
+                                </Button>
+                            </div>
+                        )}
                         {(company.goals || []).filter(g => g.active).length === 0 ? (
                             <p className="text-white/25 text-sm text-center py-4">Nenhuma meta cadastrada</p>
                         ) : (
@@ -788,9 +858,11 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                                 />
                                 Mostrar inativos
                             </label>
-                            <Button size="sm" onClick={abrirNovoContrato}>
-                                <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar contrato
-                            </Button>
+                            {canManageContracts && (
+                                <Button size="sm" onClick={abrirNovoContrato}>
+                                    <Plus className="h-3.5 w-3.5 mr-1" /> Adicionar contrato
+                                </Button>
+                            )}
                         </div>
                     </div>
                     <div className="p-5">
@@ -811,7 +883,9 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                                             <th className="text-left pb-2 pl-3 font-semibold">Início</th>
                                             <th className="text-left pb-2 pl-3 font-semibold">Vencimento</th>
                                             <th className="text-left pb-2 pl-3 font-semibold">Status</th>
-                                            <th className="text-right pb-2 font-semibold">Ações</th>
+                                            {canManageContracts && (
+                                                <th className="text-right pb-2 font-semibold">Ações</th>
+                                            )}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -843,30 +917,32 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                                                         <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-white/40 text-[10px] font-semibold uppercase">Inativo</span>
                                                     )}
                                                 </td>
-                                                <td className="py-2.5 text-right">
-                                                    <div className="flex justify-end gap-1">
-                                                        <Button
-                                                            size="icon"
-                                                            variant="ghost"
-                                                            onClick={() => abrirEditarContrato(ct)}
-                                                            title="Editar contrato"
-                                                            className="h-7 w-7"
-                                                        >
-                                                            <Pencil className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                        {ct.ativo && (
+                                                {canManageContracts && (
+                                                    <td className="py-2.5 text-right">
+                                                        <div className="flex justify-end gap-1">
                                                             <Button
                                                                 size="icon"
                                                                 variant="ghost"
-                                                                onClick={() => desativarContrato(ct)}
-                                                                title="Desativar contrato"
-                                                                className="h-7 w-7 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                                                                onClick={() => abrirEditarContrato(ct)}
+                                                                title="Editar contrato"
+                                                                className="h-7 w-7"
                                                             >
-                                                                <PowerOff className="h-3.5 w-3.5" />
+                                                                <Pencil className="h-3.5 w-3.5" />
                                                             </Button>
-                                                        )}
-                                                    </div>
-                                                </td>
+                                                            {ct.ativo && (
+                                                                <Button
+                                                                    size="icon"
+                                                                    variant="ghost"
+                                                                    onClick={() => desativarContrato(ct)}
+                                                                    title="Desativar contrato"
+                                                                    className="h-7 w-7 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                                                                >
+                                                                    <PowerOff className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                )}
                                             </tr>
                                         ))}
                                     </tbody>
@@ -947,7 +1023,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                 )}
 
                 {/* Integração Mercado Livre */}
-                <MlConnectionCard company={company} />
+                <MlConnectionCard company={company} permissions={permissions} />
 
                 {/* Métricas Adman recentes */}
                 {company.adman_account_id && (company.adman_metrics || []).length > 0 && (
@@ -980,7 +1056,112 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                 )}
             </div>
 
+            {/* ─── Modal Criar meta ──────────────────────── */}
+            <Dialog open={goalOpen} onOpenChange={setGoalOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Nova meta</DialogTitle>
+                    </DialogHeader>
+                    <form onSubmit={submitGoal} className="space-y-4">
+                        <div className="space-y-1.5">
+                            <Label>Métrica *</Label>
+                            <select
+                                value={goalForm.data.metric}
+                                onChange={e => {
+                                    const metric = e.target.value;
+                                    goalForm.setData(prev => ({
+                                        ...prev,
+                                        metric,
+                                        value_type: goal_percentage_only_metrics.includes(metric) ? 'percentage' : prev.value_type,
+                                    }));
+                                }}
+                                required
+                                className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                            >
+                                {goalMetricOptions.map(([key, label]) => (
+                                    <option key={key} value={key}>{label}</option>
+                                ))}
+                            </select>
+                            {goalForm.errors.metric && (
+                                <p className="text-destructive text-xs">{goalForm.errors.metric}</p>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5">
+                                <Label>Valor alvo *</Label>
+                                <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={goalForm.data.target_value}
+                                    onChange={e => goalForm.setData('target_value', e.target.value)}
+                                    required
+                                />
+                                {goalForm.errors.target_value && (
+                                    <p className="text-destructive text-xs">{goalForm.errors.target_value}</p>
+                                )}
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Tipo</Label>
+                                <select
+                                    value={goalForm.data.value_type}
+                                    onChange={e => goalForm.setData('value_type', e.target.value)}
+                                    disabled={goal_percentage_only_metrics.includes(goalForm.data.metric)}
+                                    className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none disabled:opacity-50"
+                                >
+                                    <option value="currency">R$</option>
+                                    <option value="percentage">%</option>
+                                </select>
+                                {goalForm.errors.value_type && (
+                                    <p className="text-destructive text-xs">{goalForm.errors.value_type}</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label>Período</Label>
+                            <select
+                                value={goalForm.data.period_type}
+                                onChange={e => goalForm.setData('period_type', e.target.value)}
+                                className="w-full rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[13px] text-white focus:border-ecf-yellow/40 focus:outline-none"
+                            >
+                                <option value="monthly">Mensal</option>
+                                <option value="quarterly">Trimestral</option>
+                                <option value="yearly">Anual</option>
+                            </select>
+                            {goalForm.errors.period_type && (
+                                <p className="text-destructive text-xs">{goalForm.errors.period_type}</p>
+                            )}
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <Label>Descrição</Label>
+                            <Textarea
+                                rows={2}
+                                value={goalForm.data.description}
+                                onChange={e => goalForm.setData('description', e.target.value)}
+                                placeholder="Opcional"
+                            />
+                            {goalForm.errors.description && (
+                                <p className="text-destructive text-xs">{goalForm.errors.description}</p>
+                            )}
+                        </div>
+
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setGoalOpen(false)}>
+                                Cancelar
+                            </Button>
+                            <Button type="submit" disabled={goalForm.processing || !canCreateGoals}>
+                                {goalForm.processing ? 'Salvando...' : 'Criar meta'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+
             {/* ─── Modal Adicionar/Editar contrato ──────────────────────── */}
+            {canManageContracts && (
             <Dialog open={contratoOpen} onOpenChange={setContratoOpen}>
                 <DialogContent className="max-w-md">
                     <DialogHeader>
@@ -1099,6 +1280,7 @@ export default function CompanyShow({ company, servicos_disponiveis = [], ecf_dr
                     </form>
                 </DialogContent>
             </Dialog>
+            )}
         </AppLayout>
     );
 }
