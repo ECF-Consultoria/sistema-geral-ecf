@@ -15,6 +15,23 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
+## Current Milestone: v14.0 Confiabilidade + Polish
+
+**Goal:** Consolidar acertividade dos dados (fontes ML + Adman unificadas em uma mesma superfície), polir usabilidade de Metas + parâmetros de desempenho, corrigir bugs UX relatados por operadores em teste e refinar detecção de Sugadores — antes de escalar novas features sobre uma base ainda instável.
+
+**Target features:**
+- **A. Confiabilidade + Multi-Fonte:** Dashboard Mercado Livre + carteira individual + dashboards de analista/estrategista unificando empresas fonte-ML e fonte-Adman
+- **B. Metas (UX + Onboarding):** melhorar usabilidade da tela e visualização de progresso; incluir meta na criação/onboarding da empresa (resolve seed `270629`)
+- **C. Parâmetros de Desempenho:** adicionar dimensão "forma de uso do sistema" (ex: qtd de análises de sugadores rodadas)
+- **D. Bug Fixes UX:** OAuth ML erro cosmético cliente-side; filtro "conectada ao Mercado Livre" em /companies; badge ML na carteira; sidebar collapse-arrow vs botão voltar
+- **E. Sugadores refinements (escopo raso):** falsos-negativos (By Mobile, KAPRAKASA); "dados defasados" ao copiar MLBs (Desk Design); página de config mais simples
+
+**Key context:**
+- Herda 66 items "deferred" do fechamento da v13.0 — verificar overlap ao definir REQs, sem incluir automaticamente
+- Deploy gate ativo: `deploy.sh` exige confirmação caso-a-caso (outro dev em paralelo)
+- Prioridade dura: **acertividade > velocidade** (não é polish superficial — é confiabilidade)
+- Sugadores (bloco E) tem escopo propositalmente raso — usuário vai aprofundar em milestone dedicada depois
+
 ## Recently Shipped: ✅ v13.0 Reorganização Multi-Marketplace *(2026-07-06)*
 
 **Delivered:** 4 phases (56, 57, 58, 59), 8 plans, 100% em produção. Arquivo completo em `.planning/milestones/v13.0-ROADMAP.md`.
@@ -59,13 +76,18 @@ manuais) — sem precisar de acesso direto ao servidor.
 - ✓ **CROSS-02**: Publicação confirmed transversal via grep + suite dinâmica — Phase 59
 - ✓ **CROSS-03**: Zero regressão (delta = 0 vs baseline 955 tests) — Phase 59
 
-### Active (v3.0 — Sistema de Notificações)
+### Active (v14.0 — Confiabilidade + Polish)
 
-<!-- Escopo do milestone atual — Notificações. REQ-IDs serão definidos no REQUIREMENTS.md. -->
+<!-- Escopo do milestone atual. REQ-IDs definidos em `.planning/REQUIREMENTS.md`. -->
+
+Categorias-alvo: **DATA** (unificação fontes ML/Adman), **DASH** (dashboards multi-fonte), **META** (usabilidade + onboarding + seed 270629), **PERF** (parâmetro "uso do sistema"), **UX** (bug fixes: OAuth, filtro, badge, sidebar), **SUGA** (refinements rasos).
+
+### Legado (v3.0 — Sistema de Notificações, shipped 2026-05)
+
+<!-- Categorias históricas mantidas como referência. -->
 
 Categorias-alvo: SINO (UI header), HIST (página de histórico), ENVIO (criação manual com targeting),
 AUTO-METAS (disparos automáticos), PERM (permissão `notificacoes.criar`), POLL (atualização real-time + cleanup).
-Lista detalhada em `.planning/REQUIREMENTS.md`.
 
 ### Entregue (v2.0 — Administrativo Fechamento)
 
@@ -153,4 +175,4 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-07-06 — **Milestone v13.0 (Reorganização Multi-Marketplace) completa**. Phase 58 (Dashboard ECF + shells; DASH-01/02/03) e Phase 59 (Desacoplamento ML cirúrgico; CROSS-01/02/03) fechadas. Agregação cross-marketplace real, migração N:N ampla e refactor de MlbController deferidos pra v14+ (0 empresas com 2+ marketplaces hoje). Zero regressão (baseline 955 tests preservado).*
+*Last updated: 2026-07-07 — **Milestone v14.0 (Confiabilidade + Polish) aberta.** Escopo: unificação fontes ML/Adman em dashboards e carteiras, Metas UX + onboarding (resolve seed 270629), parâmetro "uso do sistema", bug fixes UX (OAuth, filtro ML, badge, sidebar), refinements rasos de Sugadores. Prioridade acertividade > velocidade. Deploy gate ativo.*

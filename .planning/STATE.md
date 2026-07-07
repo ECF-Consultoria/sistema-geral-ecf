@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v13.0
-milestone_name: Reorganizacao Multi-Marketplace
-status: Awaiting next milestone
-stopped_at: Completed 59-03-PLAN.md
-last_updated: "2026-07-06T16:33:40.741Z"
-last_activity: 2026-07-06 — Milestone v13.0 completed and archived
+milestone: v14.0
+milestone_name: Confiabilidade + Polish
+status: planning
+last_updated: "2026-07-07T13:15:41.229Z"
+last_activity: 2026-07-07
 progress:
-  total_phases: 29
-  completed_phases: 17
-  total_plans: 38
-  completed_plans: 33
-  percent: 59
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -25,10 +24,10 @@ See: .planning/PROJECT.md (updated 2026-05-21)
 
 ## Current Position
 
-Phase: Milestone v13.0 complete
+Phase: Not started (defining requirements)
 Plan: —
-Status: Awaiting next milestone
-Last activity: 2026-07-06 — Milestone v13.0 completed and archived
+Status: Defining requirements
+Last activity: 2026-07-07 — Milestone v14.0 started
 
 ## Performance Metrics
 
