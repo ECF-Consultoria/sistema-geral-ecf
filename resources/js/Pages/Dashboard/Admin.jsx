@@ -10,6 +10,7 @@ import {
     DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, TrendingUp
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { SourceBadge } from '@/Components/ui/source-badge';
 
 
 const PERIOD_OPTIONS = [
@@ -110,6 +111,10 @@ export default function AdminDashboard({
     adman_last_sync = null,
 }) {
     const [tvMode, setTvMode] = useState(false);
+
+    // Phase 61-05 (DASH-04/DATA-05) — legenda multi-fonte no header.
+    // Guard `sourceCounts &&` mantém backward compat quando flag OFF (undefined).
+    const sourceCounts = stats?.source_counts ?? null;
 
     const applyFilter = (key, value) => {
         router.get(route('dashboard'), {
@@ -316,6 +321,17 @@ export default function AdminDashboard({
                     />
 
                     <div className="ml-auto flex items-center gap-2">
+                        {/* Phase 61-05 — Legenda `stats.source_counts` (DASH-04/DATA-05).
+                            Ordem canônica ML → Agregado → Adman → Sem integração. */}
+                        {sourceCounts && (
+                            <div className="flex items-center gap-2 text-[11px] text-white/50 flex-wrap" data-testid="dashboard-source-legend">
+                                <span className="uppercase tracking-wider">Fontes:</span>
+                                {sourceCounts.ml > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="ml" />{sourceCounts.ml}</span>}
+                                {sourceCounts.unified > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="unified" />{sourceCounts.unified}</span>}
+                                {sourceCounts.adman > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="adman" />{sourceCounts.adman}</span>}
+                                {sourceCounts.none > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="none" />{sourceCounts.none}</span>}
+                            </div>
+                        )}
                         {/* Badge D-1 da Adman — substitui o antigo botão "Sincronizar agora"
                             (Phase 16, SC-5/SC-7). Sync é automático 1×/dia às 11h BRT. */}
                         <div
@@ -513,6 +529,8 @@ export default function AdminDashboard({
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <p className="text-white/80 text-[13px] font-semibold">{c.name}</p>
                                                 <CustIdInvalidoBadge status={c.cust_id_status} />
+                                                {/* Phase 61-05 (DATA-05) — badge de fonte por linha; guard `c.source &&` mantém backward compat flag OFF */}
+                                                {c.source && <SourceBadge variant={c.source} />}
                                             </div>
                                             <p className="text-white/30 text-xs mt-0.5">{c.consultor ?? '—'} / {c.estrategista ?? '—'}</p>
                                         </div>
