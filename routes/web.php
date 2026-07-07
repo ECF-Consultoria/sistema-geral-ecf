@@ -301,8 +301,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/companies/{company}', [CompanyController::class, 'show'])->name('companies.show');
 
     // Criacao de meta de empresa: admin ou estrategista vinculado a empresa.
-    // Edicao/remocao continuam restritas ao admin no grupo abaixo.
+    // Remocao continua restrita ao admin no grupo abaixo.
     Route::post('/goals', [GoalController::class, 'store'])->name('goals.store');
+
+    // Edicao de meta (META-04): admin OR estrategista vinculado a empresa (auth no controller).
+    Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
+    // Historico de alteracoes da meta (drawer META-04): admin ou qualquer user
+    // vinculado a empresa pode ler (auth no controller). Retorna JSON.
+    Route::get('/goals/{goal}/history', [GoalController::class, 'history'])->name('goals.history');
 
     // ML OAuth: qualquer usuario com acesso ao detalhe da empresa pode gerar
     // link de conexao; desconectar/sync manual seguem admin-only.
@@ -381,7 +387,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
             Route::post('/{company}/toggle-shadow',               [SugadoresMlOnboardingController::class, 'toggleShadow'])->name('toggle_shadow');
         });
 
-        Route::put('/goals/{goal}', [GoalController::class, 'update'])->name('goals.update');
+        // PUT /goals/{goal} movida pra fora do grupo (META-04) — estrategista pode
+        // editar. DELETE segue restrita ao admin.
         Route::delete('/goals/{goal}', [GoalController::class, 'destroy'])->name('goals.destroy');
 
         // Grants (admin only) — cadastro manual removido; lista vem do ML via SFTP
