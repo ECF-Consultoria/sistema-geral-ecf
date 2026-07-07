@@ -22,6 +22,11 @@ class ActivityLogController extends Controller
             $query->where('subject_type', $request->subject_type);
         }
 
+        // Filtro subject_id (Phase 62 META-04): link "Ver log completo" do drawer aponta pra activity-log?subject_type=...&subject_id=X
+        if ($request->filled('subject_id')) {
+            $query->where('subject_id', $request->integer('subject_id'));
+        }
+
         if ($request->filled('event')) {
             $query->where('event', $request->event);
         }
@@ -73,7 +78,7 @@ class ActivityLogController extends Controller
             'logs'         => $logs,
             'users'        => $users,
             'subjectTypes' => $subjectTypes,
-            'filters'      => $request->only(['user_id', 'subject_type', 'event', 'date_from', 'date_to', 'search']),
+            'filters'      => $request->only(['user_id', 'subject_type', 'subject_id', 'event', 'date_from', 'date_to', 'search']),
         ]);
     }
 
