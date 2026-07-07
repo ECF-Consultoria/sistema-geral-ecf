@@ -35,7 +35,11 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   2. Empresas conectadas a AMBAS as fontes têm métricas conciliadas sem duplicação, com regra de precedência documentada em ADR versionado dentro de `.planning/`
   3. Testes automatizados validam o comportamento nos 3 casos (só-Adman / só-ML / ambos) usando `RefreshDatabase` + fixtures mínimas
   4. Consumidores atuais de `adman_metrics` continuam funcionando sem regressão (delta = 0 na suite baseline)
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 60-01-PLAN.md — ADR DATA-04 de regra de precedência multi-fonte (ML primário, Adman enriquece)
+- [ ] 60-02-PLAN.md — Contract MetricsProvider + DTO UnifiedMetricsDto + AdmanMetricsProvider (lê adman_metrics local)
+- [ ] 60-03-PLAN.md — MlMetricsProvider (API ML via MercadoLivreService com cache) + MetricsProviderFactory
+- [ ] 60-04-PLAN.md — UnifiedMetricsService (orquestrador multi-fonte) + testes 3 casos (só-Adman/só-ML/ambos) + baseline zero-regressão
 
 ### Phase 61: Dashboards multi-fonte + indicador de origem
 **Goal**: Dashboards e carteiras passam a exibir métricas corretas independentemente da fonte da empresa, com indicador visual claro de origem em cada métrica exibida.
