@@ -131,6 +131,18 @@ class GoalController extends Controller
 
     public function update(Request $request, Goal $goal)
     {
+        // META-04: edicao aberta pra admin OR estrategista vinculado a empresa (pivot company_users.role='estrategista').
+        // Consultor, mentor e user sem vinculo recebem 403. Mesmo padrao do store (linhas 111-118).
+        $company = $goal->company;
+        $user = $request->user();
+        $canManage = $user?->isAdmin()
+            || $company->users()
+                ->where('users.id', $user?->id)
+                ->wherePivot('role', 'estrategista')
+                ->exists();
+
+        abort_unless($canManage, 403);
+
         $data = $request->validate([
             'target_value' => 'required|numeric|min:0',
             'value_type'   => 'nullable|in:currency,percentage',
@@ -138,6 +150,12 @@ class GoalController extends Controller
             'description'  => 'nullable|string',
             'active'       => 'boolean',
         ]);
+
+        // Bloqueio delete-via-toggle: estrategista NAO pode desativar meta via active=false (so admin).
+        // Chave descartada silenciosamente pra nao quebrar callers atuais.
+        if (!$user->isAdmin()) {
+            unset($data['active']);
+        }
 
         if (in_array($goal->metric, Goal::$percentageOnlyMetrics)) {
             $data['value_type'] = 'percentage';
@@ -154,5 +172,44 @@ class GoalController extends Controller
     {
         $goal->update(['active' => false]);
         return back()->with('success', 'Meta removida.');
+    }
+
+    /**
+     * META-04: retorna as ultimas 10 entries do activity_log dessa meta.
+     *
+     * Auth: admin OU qualquer user vinculado a empresa da meta (via pivot company_users)
+     * — mesmo criterio de leitura de `/companies/{id}`. Isolamento por subject_id
+     * garante que nao vaza historico cross-empresa.
+     */
+    public function history(Goal $goal, Request $request): \Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+        $canView = $user?->isAdmin()
+            || $goal->company->users()->where('users.id', $user?->id)->exists();
+
+        abort_unless($canView, 403);
+
+        // Ordenacao: created_at DESC + id DESC como tiebreaker (entries no mesmo
+        // segundo mantem ordem cronologica correta — necessario porque activity_log
+        // tem granularidade de segundos e updates rapidos batem no mesmo timestamp).
+        $entries = \Spatie\Activitylog\Models\Activity::with('causer')
+            ->where('subject_type', Goal::class)
+            ->where('subject_id', $goal->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(10)
+            ->get()
+            ->map(fn($a) => [
+                'id'          => $a->id,
+                'description' => $a->description,
+                'causer_name' => optional($a->causer)->name,
+                'created_at'  => optional($a->created_at)->toIso8601String(),
+                'changes'     => [
+                    'old'        => $a->properties['old'] ?? null,
+                    'attributes' => $a->properties['attributes'] ?? null,
+                ],
+            ]);
+
+        return response()->json(['entries' => $entries]);
     }
 }
