@@ -67,7 +67,12 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   1. Usuário abre uma empresa e visualiza meta atribuída + progresso mensal em apresentação única contendo chart + percentual + valor absoluto
   2. Gestor edita meta inline (ou em bulk quando aplicável) sem navegar para outra tela
   3. Histórico de alterações da meta é visível na própria tela de gestão (últimas N alterações + link para log completo)
-**Plans**: TBD
+**Plans**: 5 plans
+- [ ] 62-01-PLAN.md — Backend: abre PUT /goals/{goal} para admin OR estrategista + endpoint GET /goals/{goal}/history (últimas 10 do activity_log)
+- [ ] 62-02-PLAN.md — Componente <GoalProgressPanel /> reusável (chart Recharts + percentual + valor absoluto + status derivado)
+- [ ] 62-03-PLAN.md — Componente <GoalHistoryDrawer /> reusável (Dialog + fetch on-open + link Ver log completo)
+- [ ] 62-04-PLAN.md — Goals/Index.jsx: inline edit de target_value (Enter/Blur/Escape) + ícone Clock por meta abre drawer + GoalController::index expõe results
+- [ ] 62-05-PLAN.md — Companies/Show.jsx: substitui lista simples por grid de <GoalProgressPanel /> compact + CompanyController::show enriquecido com goals.results
 **UI hint**: yes
 
 ### Phase 63: Metas — onboarding obrigatório + tratamento de legacy + activity log
