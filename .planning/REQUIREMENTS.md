@@ -6,7 +6,7 @@
 
 ## v14.0 Requirements
 
-Requirements do milestone atual. Cada um será mapeado para exatamente uma phase no ROADMAP.md.
+Requirements do milestone atual. Cada um mapeado para exatamente uma phase no ROADMAP.md.
 
 ### DATA — Unificação de fontes de dados (ML + Adman)
 
@@ -32,7 +32,7 @@ Requirements do milestone atual. Cada um será mapeado para exatamente uma phase
 - [ ] **META-02**: Fluxo de criação/onboarding de empresa inclui campo obrigatório "meta inicial mensal" (Mercado Livre)
 - [ ] **META-03**: Empresas legadas sem meta ganham tratamento explícito na UI (flag visível "Meta não definida" com CTA para definição) — sem default arbitrário
 - [ ] **META-04**: Tela de gestão de metas suporta edição rápida (inline ou bulk) e mostra histórico de alterações
-- [ ] **META-05**: Alterações de meta são registradas em `activity_log` com autor, valor anterior e novo valor
+- [ ] **META-05**: Alterações de meta são registradas em `activity_log` com autor, valor anterior e valor novo
 
 ### PERF — Parâmetro "forma de uso do sistema"
 
@@ -86,37 +86,48 @@ Requirements do milestone atual. Cada um será mapeado para exatamente uma phase
 
 ## Traceability
 
-<!-- Preenchido pelo gsd-roadmapper após aprovação. -->
+Mapping definido pelo gsd-roadmapper em 2026-07-07 (aprovado por escopo pré-acordado com o usuário).
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| DATA-04     | TBD   | Pending |
-| DATA-05     | TBD   | Pending |
-| DATA-06     | TBD   | Pending |
-| DASH-04     | TBD   | Pending |
-| DASH-05     | TBD   | Pending |
-| DASH-06     | TBD   | Pending |
-| META-01     | TBD   | Pending |
-| META-02     | TBD   | Pending |
-| META-03     | TBD   | Pending |
-| META-04     | TBD   | Pending |
-| META-05     | TBD   | Pending |
-| PERF-01     | TBD   | Pending |
-| PERF-02     | TBD   | Pending |
-| PERF-03     | TBD   | Pending |
-| UX-01       | TBD   | Pending |
-| UX-02       | TBD   | Pending |
-| UX-03       | TBD   | Pending |
-| SUGA-01     | TBD   | Pending |
-| SUGA-02     | TBD   | Pending |
-| SUGA-03     | TBD   | Pending |
-| SUGA-04     | TBD   | Pending |
+| Requirement | Phase     | Status  |
+|-------------|-----------|---------|
+| DATA-04     | Phase 60  | Pending |
+| DATA-05     | Phase 61  | Pending |
+| DATA-06     | Phase 60  | Pending |
+| DASH-04     | Phase 61  | Pending |
+| DASH-05     | Phase 61  | Pending |
+| DASH-06     | Phase 61  | Pending |
+| META-01     | Phase 62  | Pending |
+| META-02     | Phase 63  | Pending |
+| META-03     | Phase 63  | Pending |
+| META-04     | Phase 62  | Pending |
+| META-05     | Phase 63  | Pending |
+| PERF-01     | Phase 64  | Pending |
+| PERF-02     | Phase 65  | Pending |
+| PERF-03     | Phase 64  | Pending |
+| UX-01       | Phase 66  | Pending |
+| UX-02       | Phase 66  | Pending |
+| UX-03       | Phase 66  | Pending |
+| SUGA-01     | Phase 67  | Pending |
+| SUGA-02     | Phase 67  | Pending |
+| SUGA-03     | Phase 67  | Pending |
+| SUGA-04     | Phase 67  | Pending |
 
 **Coverage:**
 - v14.0 requirements: 21 total
-- Mapped to phases: 0 (aguardando roadmapper)
-- Unmapped: 21 ⚠️
+- Mapped to phases: 21 ✓
+- Unmapped: 0
+
+**Phase → Requirements (reverso):**
+- **Phase 60**: DATA-04, DATA-06 (2)
+- **Phase 61**: DATA-05, DASH-04, DASH-05, DASH-06 (4)
+- **Phase 62**: META-01, META-04 (2)
+- **Phase 63**: META-02, META-03, META-05 (3)
+- **Phase 64**: PERF-01, PERF-03 (2)
+- **Phase 65**: PERF-02 (1)
+- **Phase 66**: UX-01, UX-02, UX-03 (3)
+- **Phase 67**: SUGA-01, SUGA-02, SUGA-03, SUGA-04 (4)
 
 ---
 *Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 — initial definition for milestone v14.0 (Confiabilidade + Polish)*
+*Traceability mapped: 2026-07-07 — 21/21 requirements ✓*
+*Last updated: 2026-07-07 — mapping para phases 60-67 pelo gsd-roadmapper*

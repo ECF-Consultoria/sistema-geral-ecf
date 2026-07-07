@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v14.0
 milestone_name: Confiabilidade + Polish
-status: planning
-last_updated: "2026-07-07T13:15:41.229Z"
+status: roadmap_defined
+last_updated: "2026-07-07T14:00:00.000Z"
 last_activity: 2026-07-07
 progress:
-  total_phases: 0
+  total_phases: 8
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -17,17 +17,19 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-21)
+See: .planning/PROJECT.md (updated 2026-07-07)
 
-**Core value:** Dar ao admin visibilidade total sobre operações internas: sync Adman, fechamento financeiro, comunicação interna (notificações) e cadastro centralizado de empresas pelo Comercial
-**Current focus:** Milestone complete
+**Core value:** Consolidar acertividade dos dados (fontes ML + Adman unificadas) e polir usabilidade antes de escalar novas features sobre uma base ainda instável — v14.0 Confiabilidade + Polish.
+**Current focus:** Phase 60 — Base multi-fonte (backend ML+Adman unificado) — ready to plan
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-07-07 — Milestone v14.0 started
+Phase: 60 of 67 (Base multi-fonte — backend ML+Adman unificado)
+Plan: — (aguardando /gsd:plan-phase 60)
+Status: Ready to plan (roadmap definido com 21/21 requirements mapeados às phases 60-67)
+Last activity: 2026-07-07 — Roadmap v14.0 criado pelo gsd-roadmapper (8 phases: 60-67, coverage 21/21)
+
+Progress: [░░░░░░░░░░] 0% (0 de 8 phases da v14.0)
 
 ## Performance Metrics
 
