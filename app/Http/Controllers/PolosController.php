@@ -848,20 +848,20 @@ class PolosController extends Controller
     }
 
     /**
-     * Faturamento ao vivo via Adman para o mês CORRENTE/parcial, por cust_id
-     * normalizado. Usado em vez do TGMV_LC do CSV (que atrasa no mês corrente).
+     * Faturamento POR CATEGORIA "Casa, Móveis e Decoração" (raiz ML MLB1574) do mês,
+     * por cust_id normalizado. SUBSTITUI o gross total da conta — o /polos passa a
+     * contar SÓ Móveis em todo o painel.
      *
-     * Estratégia (spike 2026-06-15, alinhada com DashboardController):
-     *   1. SOMENTE cache (getCachedGrossBillingsMany) — instantâneo, sem HTTP. A
-     *      request NUNCA busca da Adman de forma síncrona: o throttle (~7s/cust_id
-     *      em cache frio) inviabiliza N grande (ex.: 77 polos → ~9min → timeout).
-     *      O cache é aquecido FORA da request (comando/queue), 24h de TTL.
-     *   2. 100% defensivo: cust_id sem cache → ausência no mapa, e o chamador cai
-     *      de volta no TGMV_LC do CSV. A página nunca quebra nem bloqueia.
+     * Fonte: coluna `faturamento_moveis` do PoloFaturamentoSnapshot, computada pelo
+     * SyncPolosFaturamentoJob a partir do netBilling por item do /performance (Adman
+     * entrega o categoryId; a raiz vem da API pública do ML). Diferente do gross, o
+     * valor por categoria NÃO tem cache ao vivo — a frescura é a do último warm (cron
+     * 13:00 + botão "Sincronizar"), igual ao ADS. Cust_id sem snapshot → ausência no
+     * mapa (o chamador trata como R$0). NUNCA quebra o /polos.
      *
-     * @param  array<array<string,mixed>>  $ativos  Ativos M2–M4 (toArray)
+     * @param  array<array<string,mixed>>  $ativos  Ativos (toArray)
      * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
-     * @return array<string,float>  [cust_id normalizado => gross_billing]
+     * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
      */
     private function faturamentoAdmanDoMes(array $ativos, string $mesSel): array
     {
@@ -877,51 +877,22 @@ class PolosController extends Controller
                 return [];
             }
 
-            // Janela do mês: primeiro ao último dia (mesma do spike).
-            $de  = substr($mesSel, 0, 4) . '-' . substr($mesSel, 4, 2) . '-01';
-            $ate = date('Y-m-t', strtotime($de));
+            // Faturamento de Móveis vive SÓ no snapshot (sem cache ao vivo por categoria).
+            $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
+                ->whereIn('cust_id', $custIds)
+                ->pluck('faturamento_moveis', 'cust_id');
 
-            // SOMENTE cache (sem HTTP) — round-trip único, igual ao DashboardController.
-            // Cust_id sem cache NÃO é buscado aqui (evita ~7s/cust_id no render); cai
-            // no TGMV_LC do CSV no chamador até o cache aquecer fora da request.
-            $cache     = $this->adman->getCachedGrossBillingsMany($custIds, $de, $ate);
-            $out       = [];
-            $faltantes = [];
+            $out = [];
             foreach ($custIds as $id) {
-                if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
-                    $out[$id] = (float) $cache[$id]['value'];
-                } else {
-                    $faltantes[] = $id;
+                if (isset($snaps[$id]) && $snaps[$id] !== null) {
+                    $out[$id] = (float) $snaps[$id];
                 }
-            }
-
-            // Fallback durável: cust_ids sem cache do dia (chave fria — logo após a
-            // meia-noite BRT, quando o cacheDay rotaciona, ou após flush/restart do Redis)
-            // são preenchidos com o último faturamento sincronizado e persistido no
-            // snapshot. Sem isto a página zerava para R$0 ao virar o dia. O cache do dia
-            // (mais fresco) continua sendo a fonte preferencial — só preenche o que faltou.
-            $doSnapshot = 0;
-            if (! empty($faltantes)) {
-                $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
-                    ->whereIn('cust_id', $faltantes)
-                    ->pluck('faturamento', 'cust_id');
-                foreach ($faltantes as $id) {
-                    if (isset($snaps[$id])) {
-                        $out[$id] = (float) $snaps[$id];
-                        $doSnapshot++;
-                    }
-                }
-            }
-
-            $semDado = count($faltantes) - $doSnapshot;
-            if ($semDado > 0) {
-                Log::info("[Polos] Adman: {$semDado} cust_ids sem cache nem snapshot no mês corrente — R\$0 até o próximo sync.");
             }
 
             return $out;
         } catch (\Throwable $e) {
-            // Defensiva: Adman fora do ar NÃO quebra /polos — cai no CSV.
-            Log::warning('[Polos] Falha ao buscar faturamento Adman do mês corrente: ' . $e->getMessage());
+            // Defensiva: falha de leitura NÃO quebra /polos.
+            Log::warning('[Polos] Falha ao ler faturamento (Móveis) do snapshot: ' . $e->getMessage());
             return [];
         }
     }

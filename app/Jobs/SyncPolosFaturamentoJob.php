@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\MlbEmpresa;
 use App\Models\PoloFaturamentoSnapshot;
 use App\Services\AdmanService;
+use App\Services\MlCategoriaService;
 use App\Support\CustId;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -47,7 +48,7 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         private ?string $ate = null,
     ) {}
 
-    public function handle(AdmanService $adman): void
+    public function handle(AdmanService $adman, MlCategoriaService $categoria): void
     {
         // Default: mês corrente (usado pelo warm agendado, que roda todo dia).
         // $this->de/$this->ate vêm do construtor (mês selecionado no botão Sincronizar);
@@ -106,17 +107,32 @@ class SyncPolosFaturamentoJob implements ShouldQueue
             }
 
             try {
-                // Faturamento (gross_billing) via /performance.
-                $r = $adman->warmPerformance($cust, $de, $ate);
-                if ($r['gross_billing'] === null) {
+                // Faturamento via /performance — 1 chamada devolve gross total (conta) +
+                // netBilling por categoryId (items[]). Custo Adman zero extra.
+                $r = $adman->fetchPerformanceBreakdown($cust, $de, $ate);
+                if ($r === null || $r['gross_billing'] === null) {
                     continue; // erro/timeout: NÃO grava (preserva o último valor bom)
                 }
                 $ok++;
-                if ($r['gross_billing'] > 0) {
+
+                // Faturamento SÓ "Casa, Móveis e Decoração" (raiz MLB1574): soma o
+                // netBilling dos itens cuja categoria-raiz é Móveis. É o valor que o
+                // /polos passa a servir no lugar do gross total da conta.
+                $moveis = 0.0;
+                foreach ($r['net_por_categoria'] as $catId => $net) {
+                    if ($categoria->ehCasaMoveisDecoracao((string) $catId)) {
+                        $moveis += $net;
+                    }
+                }
+                if ($moveis > 0) {
                     $comFat++;
                 }
 
-                $dados = ['faturamento' => $r['gross_billing'], 'synced_at' => now()];
+                $dados = [
+                    'faturamento'        => $r['gross_billing'], // gross total da conta (referência/auditoria)
+                    'faturamento_moveis' => $moveis,             // net só Móveis (servido no painel)
+                    'synced_at'          => now(),
+                ];
 
                 // ADS REAL = soma do investment dos adgroups (fonte correta; bate com a
                 // planilha). O summarizedData.investment do /performance vem 0 p/ a maioria
