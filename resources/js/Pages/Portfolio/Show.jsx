@@ -10,6 +10,7 @@ import {
     Trophy, Briefcase, Building2, ShoppingCart, Award, Users, Minus,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
+import { SourceBadge } from '@/Components/ui/source-badge';
 import SparklineCrescimento from '@/Components/Carteira/SparklineCrescimento';
 import NpsHistoryWidget from '@/Components/Carteira/NpsHistoryWidget';
 import BlocoFuncionario from '@/Components/Carteira/BlocoFuncionario';
@@ -791,6 +792,10 @@ export default function PortfolioShow({
                                                 >
                                                     {c.name}
                                                 </Link>
+                                                {/* Badge de origem multi-fonte (Phase 61) — guarda defensiva:
+                                                    quando flag UNIFIED_METRICS_ENABLED=OFF, c.source é undefined
+                                                    e o badge não renderiza (backward compat total). */}
+                                                {c.source && <SourceBadge variant={c.source} />}
                                                 {c.status && (
                                                     <span className={cn(
                                                         'inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border shrink-0',
@@ -874,6 +879,9 @@ export default function PortfolioShow({
                                                         >
                                                             {c.name}
                                                         </Link>
+                                                        {/* Badge de origem multi-fonte (Phase 61) — guarda defensiva:
+                                                            c.source pode ser undefined quando flag OFF. */}
+                                                        {c.source && <SourceBadge variant={c.source} />}
                                                         {grantInativo && (
                                                             <span
                                                                 title="Grant vencido ou inativo"

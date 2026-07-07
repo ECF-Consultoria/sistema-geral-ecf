@@ -2,6 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
 import { Briefcase, ChevronRight } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { SourceBadge } from '@/Components/ui/source-badge';
 
 // Labels da taxonomia nova (cargo no setor Performance via pivot user_setores).
 // Mesmo mapeamento usado no Dashboard Admin antes do quick 260610-lj6.
@@ -80,6 +81,17 @@ export default function PortfolioCarteiras({
                                             <p className="text-white/30 text-[11px] mt-0.5">
                                                 {tipoLabel[u.tipo] ?? u.tipo} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''}
                                             </p>
+                                            {/* Mini-legenda de fontes (Phase 61) — só renderiza quando o backend
+                                                enviou source_counts (flag ON). Ordem canônica: ML → Agregado → Adman →
+                                                Sem integração. Cada variante só aparece se count > 0. */}
+                                            {u.source_counts && (
+                                                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                    {u.source_counts.ml > 0 && <span className="text-[10px] text-white/50 inline-flex items-center gap-1"><SourceBadge variant="ml" />{u.source_counts.ml}</span>}
+                                                    {u.source_counts.unified > 0 && <span className="text-[10px] text-white/50 inline-flex items-center gap-1"><SourceBadge variant="unified" />{u.source_counts.unified}</span>}
+                                                    {u.source_counts.adman > 0 && <span className="text-[10px] text-white/50 inline-flex items-center gap-1"><SourceBadge variant="adman" />{u.source_counts.adman}</span>}
+                                                    {u.source_counts.none > 0 && <span className="text-[10px] text-white/50 inline-flex items-center gap-1"><SourceBadge variant="none" />{u.source_counts.none}</span>}
+                                                </div>
+                                            )}
                                         </div>
                                         <button
                                             onClick={() => router.visit(route('portfolio.show', u.id))}
