@@ -16,6 +16,8 @@ import HistoricoMedalhas from '@/Pages/EmpresaAnaliseEcf/components/HistoricoMed
 import AlertasDoSeller from '@/Pages/EmpresaAnaliseEcf/components/AlertasDoSeller';
 import KpiCard from '@/Pages/PainelExecutivo/components/KpiCard';
 import { PROGRAMA_LABELS, CLUSTER_LABELS } from '@/lib/ecfDriveLabels';
+// Phase 62 Plan 62-05 (META-01): apresentacao clara das metas (chart + % + valor absoluto).
+import GoalProgressPanel from '@/Components/goals/GoalProgressPanel';
 
 const statusColor = { pending: 'secondary', completed: 'success', cancelled: 'destructive', scheduled: 'outline' };
 const statusLabel = { pending: 'Pendente', completed: 'Realizada', cancelled: 'Cancelada', scheduled: 'Agendada' };
@@ -814,29 +816,44 @@ export default function CompanyShow({
                         )}
                     </Section>
 
-                    {/* Metas */}
-                    <Section icon={Target} title="Metas Ativas">
-                        {canCreateGoals && (
-                            <div className="flex justify-end mb-3">
-                                <Button size="sm" onClick={abrirNovaMeta}>
-                                    <Plus className="h-3.5 w-3.5 mr-1" /> Nova meta
-                                </Button>
-                            </div>
-                        )}
-                        {(company.goals || []).filter(g => g.active).length === 0 ? (
-                            <p className="text-white/25 text-sm text-center py-4">Nenhuma meta cadastrada</p>
-                        ) : (
-                            <div className="space-y-2">
-                                {company.goals.filter(g => g.active).map(g => (
-                                    <div key={g.id} className="flex items-center justify-between py-2 border-b border-white/[0.04] last:border-0">
-                                        <span className="text-white/60 text-[13px]">{g.metric_label ?? g.metric}</span>
-                                        <span className="text-ecf-yellow font-bold text-[13px]">{g.target_value}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </Section>
                 </div>
+
+                {/* ─── Metas Ativas ─────────────────────────────────────────
+                    Phase 62 Plan 62-05 (META-01): metas exibidas via
+                    <GoalProgressPanel /> — chart + % + valor absoluto por meta.
+                    Bloco full-width fora do grid de Dados da Empresa para dar
+                    espaco aos charts (SC #1 do phase). */}
+                <Section icon={Target} title="Metas Ativas">
+                    {canCreateGoals && (
+                        <div className="flex justify-end mb-3">
+                            <Button size="sm" onClick={abrirNovaMeta}>
+                                <Plus className="h-3.5 w-3.5 mr-1" /> Nova meta
+                            </Button>
+                        </div>
+                    )}
+                    {(company.goals || []).filter(g => g.active).length === 0 ? (
+                        <p
+                            data-testid="company-goals-empty"
+                            className="text-white/25 text-sm text-center py-8"
+                        >
+                            Nenhuma meta cadastrada
+                        </p>
+                    ) : (
+                        <div
+                            data-testid="company-goals-grid"
+                            className="grid grid-cols-1 lg:grid-cols-2 gap-4"
+                        >
+                            {company.goals.filter(g => g.active).map(g => (
+                                <GoalProgressPanel
+                                    key={g.id}
+                                    goal={g}
+                                    results={g.results || []}
+                                    compact
+                                />
+                            ))}
+                        </div>
+                    )}
+                </Section>
 
                 {/* ─── Serviços contratados (Módulo Serviços — Frente A) ─── */}
                 <div className="card-ecf rounded-2xl overflow-hidden">
