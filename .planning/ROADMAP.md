@@ -83,7 +83,11 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   1. Fluxo de criação/onboarding de empresa exige "meta inicial mensal" como campo obrigatório para empresas Mercado Livre (validação server-side + UI)
   2. Empresa legada sem meta exibe flag visível "Meta não definida" com CTA de definição — sem default arbitrário atrás dos panos
   3. Cada alteração de meta gera entrada em `activity_log` (via `spatie/laravel-activitylog`) com autor, valor anterior e valor novo — consultável na tela de histórico
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
+- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
+- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
+- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
 **UI hint**: yes
 
 ### Phase 64: Parâmetro de uso — captura event-based
@@ -94,7 +98,11 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   1. Sistema captura métrica "quantidade de análises de sugadores rodadas" por usuário/empresa/período — persistida e consultável
   2. Adicionar novo evento de uso no futuro (ex: qtd de acessos ao MLB, freq de edição de metas) exige apenas registrar o evento — sem refactor da camada de captura
   3. Testes automatizados cobrem gravação de eventos + agregação por usuário/empresa/período
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
+- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
+- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
+- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
 
 ### Phase 65: Dashboard de desempenho — dimensão "uso do sistema"
 **Goal**: Painel de desempenho passa a exibir a dimensão "uso do sistema" (capturada na Phase 64) complementarmente aos KPIs comerciais existentes.
@@ -104,7 +112,11 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   1. Dashboard de desempenho apresenta a dimensão "uso do sistema" em painel dedicado, coluna ou gráfico — decisão de layout tomada na fase de planning
   2. Métrica de uso convive com KPIs comerciais existentes sem regressão visual nem quebra do layout responsivo
   3. Usuário identifica facilmente empresas/consultores com baixo uso do sistema para orientar ação
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
+- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
+- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
+- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
 **UI hint**: yes
 
 ### Phase 66: Bug fixes UX (OAuth ML, filtro companies, sidebar)
@@ -115,7 +127,11 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   1. Fluxo OAuth Mercado Livre NÃO exibe tela de erro para o cliente quando a conexão foi bem-sucedida no admin — root cause do erro cosmético identificado e corrigido (redirect, callback ou race condition)
   2. Página `/companies` tem filtro "Conectada ao Mercado Livre" com opções (Sim / Não / Qualquer) integrado aos filtros existentes, sem quebrá-los
   3. Sidebar reorganiza a hierarquia visual entre botão recolher (fixo na rolagem) e botão voltar (não-fixo) de modo que operadores em teste não confundem mais os dois
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
+- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
+- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
+- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
 **UI hint**: yes
 
 ### Phase 67: Sugadores refinements — investigação + fixes + UX config
@@ -127,7 +143,11 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   2. "Dados defasados" ao copiar MLBs em Desk Design está corrigido — refresh, cache ou coleta ajustados conforme root cause
   3. Página de configuração de Sugadores tem hierarquia visual mais clara: agrupamento por intenção, menos opções aparentes por padrão, sem perder capacidade avançada
   4. Zero regressão na suite Sugador acumulada (baseline capturado no início da phase)
-**Plans**: TBD
+**Plans**: 4 plans
+- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
+- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
+- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
+- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
 **UI hint**: yes
 
 ## Progress
