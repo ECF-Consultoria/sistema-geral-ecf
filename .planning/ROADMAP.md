@@ -36,8 +36,8 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   3. Testes automatizados validam o comportamento nos 3 casos (só-Adman / só-ML / ambos) usando `RefreshDatabase` + fixtures mínimas
   4. Consumidores atuais de `adman_metrics` continuam funcionando sem regressão (delta = 0 na suite baseline)
 **Plans**: 4 plans
-- [ ] 60-01-PLAN.md — ADR DATA-04 de regra de precedência multi-fonte (ML primário, Adman enriquece)
-- [ ] 60-02-PLAN.md — Contract MetricsProvider + DTO UnifiedMetricsDto + AdmanMetricsProvider (lê adman_metrics local)
+- [x] 60-01-PLAN.md — ADR DATA-04 de regra de precedência multi-fonte (ML primário, Adman enriquece)
+- [x] 60-02-PLAN.md — Contract MetricsProvider + DTO UnifiedMetricsDto + AdmanMetricsProvider (lê adman_metrics local)
 - [ ] 60-03-PLAN.md — MlMetricsProvider (API ML via MercadoLivreService com cache) + MetricsProviderFactory
 - [ ] 60-04-PLAN.md — UnifiedMetricsService (orquestrador multi-fonte) + testes 3 casos (só-Adman/só-ML/ambos) + baseline zero-regressão
 
@@ -130,7 +130,7 @@ Dependência crítica: Phase 60 é a fundação de dados que destrava Phase 61 (
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 60. Base multi-fonte (backend ML+Adman unificado) | 0/TBD | Not started | - |
+| 60. Base multi-fonte (backend ML+Adman unificado) | 2/4 | In Progress|  |
 | 61. Dashboards multi-fonte + indicador de origem | 0/TBD | Not started | - |
 | 62. Metas — apresentação clara + edição rápida | 0/TBD | Not started | - |
 | 63. Metas — onboarding + legacy + activity log | 0/TBD | Not started | - |

@@ -2,14 +2,15 @@
 gsd_state_version: 1.0
 milestone: v14.0
 milestone_name: Confiabilidade + Polish
-status: roadmap_defined
-last_updated: "2026-07-07T14:00:00.000Z"
-last_activity: 2026-07-07
+status: in-progress
+stopped_at: Completed 60-02-PLAN.md
+last_updated: "2026-07-07T15:30:00.000Z"
+last_activity: "2026-07-07 — Phase 60 Plan 60-02 completo: contract MetricsProvider + DTO UnifiedMetricsDto (19 propriedades) + AdmanMetricsProvider (13/13 testes verdes, zero regressao)"
 progress:
   total_phases: 8
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_plans: 4
+  completed_plans: 2
   percent: 0
 ---
 
@@ -25,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 60 of 67 (Base multi-fonte — backend ML+Adman unificado)
-Plan: — (aguardando /gsd:plan-phase 60)
-Status: Ready to plan (roadmap definido com 21/21 requirements mapeados às phases 60-67)
-Last activity: 2026-07-07 — Roadmap v14.0 criado pelo gsd-roadmapper (8 phases: 60-67, coverage 21/21)
+Plan: 2 of 4 (60-02 completo — proximo 60-03 MlMetricsProvider)
+Status: In-progress (Wave 2/4 fechada — contract + DTO + AdmanMetricsProvider prontos)
+Last activity: 2026-07-07 — Phase 60 Plan 60-02 completo: contract MetricsProvider + DTO UnifiedMetricsDto (19 propriedades) + AdmanMetricsProvider (13/13 testes verdes)
 
-Progress: [░░░░░░░░░░] 0% (0 de 8 phases da v14.0)
+Progress: [██░░░░░░░░] 25% (2 de 8 plans da Phase 60; 0 de 8 phases da v14.0)
 
 ## Performance Metrics
 
@@ -113,11 +114,13 @@ Progress: [░░░░░░░░░░] 0% (0 de 8 phases da v14.0)
 | Phase 59 P01 | 55min | 2 tasks | 1 files |
 | Phase 59 P02 | 35min | 3 tasks | 3 files |
 | Phase 59 P59-03 | 20min | 3 tasks | 1 files |
+| Phase 60 P02 | 35min | 2 tasks (TDD RED+GREEN) | 4 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-07-07 — **Phase 60 Plan 60-02 COMPLETO — Wave 2/4 fechada** (v14.0). Contract `App\Contracts\MetricsProvider` (interface 3 metodos: `supports(Company): bool`, `name(): string`, `readForCompany(Company, Carbon, Carbon): UnifiedMetricsDto`) + DTO `App\Services\Metrics\UnifiedMetricsDto` (`final readonly` PHP 8.2+ com 19 propriedades: 4 metadados nao-nullable — `company_id` int, `source` string enum ADR DATA-04, `period_from`/`period_to` Carbon — + 15 numericos nullable — 10 preenchiveis por Adman + 5 exclusivos ML que sempre retornam null: `acos`/`roas`/`clicks`/`impressions`/`orders_count`) + `App\Services\Metrics\AdmanMetricsProvider` (implementa contract lendo APENAS de `adman_metrics` via `AdmanMetric::whereBetween('reference_date', [...])`, zero HTTP em runtime, TACOS ponderado por revenue `SUM(revenue*tacos)/SUM(revenue)` com fallback para media simples). 13/13 testes `Feature\Phase60\AdmanMetricsProviderTest` verdes (50 assertions). RED confirmado via 9 falhas `Class "AdmanMetricsProvider" not found` antes do Task 2 GREEN. Zero regressao em suite Adman/Dashboard/Phase18/Phase58 (109 verdes + 2 falhas pre-existentes em `Phase18\CompaniesCustIdFilterTest` documentadas em `deferred-items.md` — mesmas falhas sem o novo provider, provavelmente colaterais de mudancas untracked em `CompanyController.php` fora do escopo). Suite Feature completa NAO rodada por timeout de 300s em `MercadoLivreAdsService.php:215` (issue pre-existente Phase 39/40, documentado como DEF-60-02-02). ZERO modificacao em `AdmanService`, `DashboardController`, `CompanyController`, `AdminController`, `PortfolioController`, `PerformanceController` — providers coexistem 100% com codigo legado. Commits `ea95746` (test RED — 3 arquivos: contract + DTO + test com 4 testes de fundacao) + `4fa14e1` (feat GREEN — AdmanMetricsProvider + 9 testes de comportamento). **REQ DATA-04 avancado** (ADR fechado no 60-01 + primeira implementacao do contract). **Wave 3 (60-03 MlMetricsProvider) e Wave 4 (60-04 UnifiedMetricsService + factory + reconciliacao) LIBERADAS** — fundacao completa (contract + DTO + Adman side). Proximo: `/gsd:plan-phase 60` para Plan 60-03 ou execucao direta.
 - 2026-07-06 — **Phase 59 Plan 59-01 COMPLETO — Audit + baseline** (v13.0). `59-AUDIT.md` entregue com mapeamento linha-a-linha dos 56 refs `marketplace|meli|mlb|Mlb|ml_store` nos 3 controllers hotspot (ComercialController 29, CompanyController 17, AdminController 10). **Resultado: ZERO itens HIGH** — apenas 2 MEDIUM (naming/consistência de payload cust_id: `CompanyController.php:129` rotula `adman_account_id` mas resolve como `ml_store_id ?: adman_account_id`; `AdminController.php:545` vs `:709` resolvem a MESMA chave com fallback diferente no mesmo controller) e 1 LOW (prefixo `mlb.` nas permission keys de Publicação, `deferred v14+` por exigir migração de dados gravados). **Publicação CONFIRMED transversal** via grep + leitura completa de `EnsurePermission.php` e `checkPubAccess()` (`MlbController.php`) — nenhuma amarração a marketplace encontrada. **Baseline de testes capturado**: 955 testes coletados, 4748 assertions, **63 vermelhos pré-existentes** (15 errors + 48 failures, 1 skipped) — inspeção linha-a-linha confirmou que NENHUM está relacionado ao escopo desta Phase (são falhas legadas de Phase 13/14 migrations, `CalcularFaixaTest` com DI desatualizada, bug de timezone Carbon no Windows, `Phase38\PolosControllerTest` e `Phase42\*` já documentados como pré-existentes). Phase 57 (20/20) e Phase 58 (16/16) confirmadas verdes. **Descoberta de infraestrutura**: `php artisan test`/`vendor/bin/phpunit` direto crasham com "Maximum execution time of 300 seconds exceeded" mesmo com `-d max_execution_time=0` — causa raiz é `set_time_limit(300)` em `SyncGrantsFromEcfDrive::handle()` (código de produção legítimo) chamado 12x por `SyncGrantsFromEcfDriveTest` no mesmo processo PHPUnit, resetando o timer compartilhado até estourar durante os testes de backoff real (`usleep`) da Phase 41/42. Contornado rodando a suite em 2 lotes (exclui o arquivo, roda separado, soma os totais) — **sem tocar nenhum código de produção**. Lista "Itens a corrigir no Plan 02" documentada com os 2 itens MEDIUM (baixo risco, sem impacto em rota/schema/contrato). Commits `171620e` (Task 1 baseline) + `d742f21` (Task 2 classificação). **REQ CROSS-01 + CROSS-02 fechados** (CROSS-03 fecha na Plan 03 via regressão). Próximo: Plan 59-02 (fixes) tem lista de trabalho pequena e concreta.
 - 2026-06-27 — **Phase 44 Plan 44-01 PARCIAL — checkpoint humano PENDENTE**. Tarefas 1 (scope OAuth `read write offline_access` em `MercadoLivreService.php:53`) e 2 (`app/Console/Commands/SugadoresMlWriteSmoke.php` + `tests/Feature/Phase44/MlWriteSmokeCommandTest.php` com 6/6 testes verdes via Http::fake) commitadas em sequência TDD: `e40fce3` (T1), `9981f84` (T2-RED — 6 testes falhando), `eceeb26` (T2-GREEN — command implementado, 6/6 testes verdes, suite Phase 38 4/4 mantida — zero regressão). Tarefa 3 (smoke real contra Bymobille #298) NÃO executada: operador respondeu 2026-06-27 "não tenho acesso à app no DevCenter agora — vou dar como pendente". Sem fixture 5/5 verde + variante POST campaign (A ou B) confirmada, plans 44-02 (backend `moverSgi`/`criarSgiEMover`/`desfazerMove`), 44-03 (UI `MoveToSgiModal` + `UndoToast`) e 44-04 (banner re-auth) ficam BLOQUEADOS — `depends_on=[44-01]` em cadeia. Resume marker: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-01-CHECKPOINT-PENDING.md`. TODO de destravamento: `.planning/todos/pending/270626-resume-44-01-smoke-bymobille.md`. Próximo passo quando acesso DevCenter ML voltar: (1) ativar permissão "Advertising" na app ECF, (2) reconectar Bymobille via `/sistema/ml-oauth`, (3) rodar `php artisan sugadores:ml-write-smoke --company=298 --days=30`, (4) responder com `approved smoke=5/5 variant={A|B} campaign_id={N}` para liberar Wave 2.
 - 2026-06-26 — **Phase 44 CONTEXT.md lockado via discuss-phase**: escopo reduzido pra APENAS "Mover adgroup pra SGI" (pergunta 3 da discuss). "Pausar in-place" virou **Phase 44b** (deferred no ROADMAP). Decisões locked: combobox com SGIs da conta reusando `QUARANTINE_NAME_REGEX` + botão "Criar nova SGI" (pausada, nome sugerido `SGI [YYYY-MM]` editável); aviso não-bloqueante se SGI escolhida está ativa; toast "Desfazer" 10s sem persistência DB (padrão Gmail); confirmação dupla obrigatória. 3 áreas (undo persistente, tratamento erro PATCH, feature flag + OAuth scope) foram para "Claude's Discretion" com defaults documentados. Plan 44-01 obrigatório: smoke do PATCH na API ML antes de qualquer planejamento backend. Context: `.planning/phases/44-mover-adgroup-sugador-para-sgi-ou-pausar-via-api-ml/44-CONTEXT.md`.
@@ -564,7 +567,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-06T14:41:24.936Z
+Last session: 2026-07-07T14:41:21.537Z
 Stopped at: Completed 59-03-PLAN.md
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
