@@ -12,6 +12,7 @@ use App\Models\Servico;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -20,7 +21,45 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
-    public function __construct(private AdmanService $adman) {}
+    public function __construct(
+        private AdmanService $adman,
+        private MetricsProviderFactory $metricsFactory,
+    ) {}
+
+    /**
+     * Phase 61 Plan 61-01 — Feature flag ADR DATA-04 (default false).
+     *
+     * Leitura via `config()` (nunca `env()` em runtime — Laravel invalida
+     * `env()` fora de config files quando `config:cache` está ativo em prod).
+     */
+    private function unifiedMetricsEnabled(): bool
+    {
+        return (bool) config('metrics.unified_metrics_enabled');
+    }
+
+    /**
+     * Phase 61 Plan 61-01 — Mapa canônico caseFor → valor de `source` no
+     * payload Inertia (ADR DATA-04 seção "Vocabulário do campo `source`").
+     *
+     *   'ambos'    → 'unified'
+     *   'so-ml'    → 'ml'
+     *   'so-adman' → 'adman'
+     *   'none'     → 'none'
+     *
+     * Chamada barata: `caseFor()` só olha accessors denormalizados
+     * (`is_ml_driven` via `mlToken` + `adman_account_id`) — não faz HTTP.
+     * Duplicação intencional com `PortfolioController::factoryToSource`
+     * (extração pra trait fica pra v14.x se justificar — Task 3 do plan).
+     */
+    private function factoryToSource(Company $company): string
+    {
+        return match ($this->metricsFactory->caseFor($company)) {
+            'ambos'    => 'unified',
+            'so-ml'    => 'ml',
+            'so-adman' => 'adman',
+            default    => 'none',
+        };
+    }
 
     public function index(Request $request)
     {
@@ -195,7 +234,12 @@ class DashboardController extends Controller
         // (2) Phase 37 Plan 37-06 (REQ-37-07) — restringe a empresas com >=1 contrato ATIVO
         //     em servico de setor=Performance (Gestao+Mentoria). Sem o filtro, o
         //     dashboard contava 115 empresas enquanto /companies mostrava 104.
-        $companiesQuery = Company::with(['latestMetrics', 'consultor', 'estrategista'])
+        // Phase 61 Plan 61-01 — eager-load `mlToken` pra
+        // `MetricsProviderFactory::caseFor()` avaliar caso ADR DATA-04 sem
+        // N+1 (mitigação T-61-01-02 do threat model). Sempre carregado —
+        // custo é 1 query extra mesmo com flag OFF; irrisório vs os loops
+        // existentes de gross/account cache.
+        $companiesQuery = Company::with(['latestMetrics', 'consultor', 'estrategista', 'mlToken'])
             ->where('active', true)
             ->whereDoesntHave('mlbEmpresa')
             ->whereHas('contratosServico', fn ($q) =>
@@ -706,6 +750,25 @@ class DashboardController extends Controller
             ->sortByDesc('score')
             ->values();
 
+        // Phase 61 Plan 61-01 — enriquecimento condicional com `source` por
+        // empresa (dicionário id→enum) e `source_counts` agregado. Quando
+        // flag ON, percorre `$companies` UMA vez chamando `caseFor()`
+        // (barato — sem HTTP) e alimenta:
+        //  - `$sourceByCompanyId` consumido no map de companies_performance
+        //  - `$sourceCounts` mesclado em stats.source_counts
+        // Quando flag OFF, ambos ficam null → chaves não aparecem no payload.
+        $sourceByCompanyId = null;
+        $sourceCounts      = null;
+        if ($this->unifiedMetricsEnabled()) {
+            $sourceByCompanyId = [];
+            $sourceCounts      = ['adman' => 0, 'ml' => 0, 'unified' => 0, 'none' => 0];
+            foreach ($companies as $c) {
+                $src = $this->factoryToSource($c);
+                $sourceByCompanyId[$c->id] = $src;
+                $sourceCounts[$src]++;
+            }
+        }
+
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
                 'total_companies'          => $companies->count(),
@@ -723,6 +786,12 @@ class DashboardController extends Controller
                 'avg_profit_share'         => round($avgProfitShare, 2),
                 'products_without_cost_pct' => round($productsWithoutCost, 2),
                 'last_sync_date'           => $lastSyncDate?->format('d/m/Y'),
+                // Phase 61 Plan 61-01 — ADICIONA metadados só quando flag ON.
+                // Se null, Inertia serializa como null (aceito nos testes que
+                // usam ->missing() semanticamente pra "chave ausente ou null"
+                // — mas usamos array_filter abaixo pra garantir OMISSÃO real
+                // quando flag OFF, preservando payload legacy bit-a-bit).
+                ...($sourceCounts !== null ? ['source_counts' => $sourceCounts] : []),
             ],
             'revenue_chart'  => $revenueChart,
             'tacos_chart'    => $tacosChart,
@@ -769,6 +838,10 @@ class DashboardController extends Controller
                 'cust_id_status' => $c->cust_id_status,
                 'consultor' => $c->consultor->first()?->name,
                 'estrategista' => $c->estrategista->first()?->name,
+                // Phase 61 Plan 61-01 — ADICIONA `source` só quando flag ON.
+                // Spread condicional preserva payload legacy bit-a-bit (chave
+                // literalmente ausente quando flag OFF).
+                ...($sourceByCompanyId !== null ? ['source' => $sourceByCompanyId[$c->id] ?? 'none'] : []),
             ]),
             'adman_last_sync' => $admanLastSync,
             // Phase 18 (W2-T3) — true quando cards Adman-dependentes refletem
