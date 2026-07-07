@@ -1,3 +1,12 @@
+---
+id: 270702-refinamentos-sugadores-uat-e-magic-ui
+created: 2026-07-02
+title: Refinamentos /sugadores — pós-UAT Phase 52 + modernização visual
+area: sugadores
+resolves_phase: 67
+status: pending
+---
+
 # Refinamentos /sugadores — pós-UAT Phase 52 + modernização visual
 
 **Capturado:** 2026-07-02

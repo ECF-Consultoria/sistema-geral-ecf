@@ -15,6 +15,7 @@ related_briefings:
   - metodologia-desempenho-carteira.md (untracked no root — metodologia de scoring justa; complementa Itens 4 e 5)
 blocks_on:
   - Phase 44 (apenas para Phase 47 — analistas/estrategistas precisam do path ML para sugador-resolvido)
+resolves_phase: 61
 status: pending
 ---
 

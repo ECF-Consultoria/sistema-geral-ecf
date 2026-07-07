@@ -1,3 +1,12 @@
+---
+id: 270701-melhorias-sugadores-ui-ux-e-detector
+created: 2026-07-01
+title: Melhorias Sugadores — UI/UX + Detector
+area: sugadores
+resolves_phase: 67
+status: pending
+---
+
 # Melhorias Sugadores — UI/UX + Detector
 
 **Capturado:** 2026-07-01
