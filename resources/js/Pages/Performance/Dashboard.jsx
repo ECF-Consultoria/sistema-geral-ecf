@@ -1,7 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
-    LayoutDashboard, Search, Calendar, Plus,
+    LayoutDashboard, Search, Plus,
     DollarSign, TrendingUp, CheckCircle2, Target, MessageSquare,
     Filter, Columns3, MessageCircleOff, TargetIcon,
 } from 'lucide-react';
@@ -214,10 +214,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                     </div>
 
                     <div className="flex items-center gap-2">
-                        <button className="h-9 px-3 rounded-lg bg-white/[0.03] border border-white/[0.06] text-white/80 hover:bg-white/[0.06] transition-colors inline-flex items-center gap-2 text-xs font-semibold">
-                            <Calendar size={14} />
-                            {periodo}
-                        </button>
                         {pessoa.role_key === 'mentor' && (
                             <Link
                                 href={route('goals.index')}
@@ -230,12 +226,8 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                     </div>
                 </div>
 
-                {/* ═══ OVERVIEW TÍTULO ═════════════════════════════════ */}
-                <div className="flex justify-between items-end gap-4">
-                    <div>
-                        <h2 className="text-white text-lg font-display font-bold">Overview</h2>
-                        <p className="text-white/50 text-sm mt-1">Resumo da carteira · {periodo.toLowerCase()}</p>
-                    </div>
+                {/* Chip resumo — sem título "Overview" (UAT 2026-07-07) */}
+                <div className="flex justify-end">
                     <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
                         {kpis.empresas_em_crescimento} de {kpis.empresas_em_carteira} empresas em crescimento
                     </span>
