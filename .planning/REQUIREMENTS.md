@@ -6,7 +6,7 @@
 
 ## v15.0 Requirements
 
-Requirements do milestone atual. Cada um será mapeado para exatamente uma phase no ROADMAP.md.
+Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROADMAP.md.
 
 ### NPS-A — Schema, modelos e migração de dados existentes
 
@@ -88,45 +88,53 @@ Requirements do milestone atual. Cada um será mapeado para exatamente uma phase
 
 ## Traceability
 
-<!-- Preenchido pelo gsd-roadmapper após aprovação. -->
+<!-- Preenchido pelo gsd-roadmapper em 2026-07-07 após ROADMAP.md v15.0. -->
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| NPS-A-01 | TBD | Pending |
-| NPS-A-02 | TBD | Pending |
-| NPS-A-03 | TBD | Pending |
-| NPS-A-04 | TBD | Pending |
-| NPS-B-01 | TBD | Pending |
-| NPS-B-02 | TBD | Pending |
-| NPS-B-03 | TBD | Pending |
-| NPS-B-04 | TBD | Pending |
-| NPS-B-05 | TBD | Pending |
-| NPS-C-01 | TBD | Pending |
-| NPS-C-02 | TBD | Pending |
-| NPS-C-03 | TBD | Pending |
-| NPS-C-04 | TBD | Pending |
-| NPS-C-05 | TBD | Pending |
-| NPS-C-06 | TBD | Pending |
-| NPS-D-01 | TBD | Pending |
-| NPS-D-02 | TBD | Pending |
-| NPS-D-03 | TBD | Pending |
-| NPS-D-04 | TBD | Pending |
-| NPS-D-05 | TBD | Pending |
-| NPS-E-01 | TBD | Pending |
-| NPS-E-02 | TBD | Pending |
-| NPS-E-03 | TBD | Pending |
-| NPS-E-04 | TBD | Pending |
-| NPS-E-05 | TBD | Pending |
-| NPS-F-01 | TBD | Pending |
-| NPS-F-02 | TBD | Pending |
-| NPS-F-03 | TBD | Pending |
-| NPS-F-04 | TBD | Pending |
+| NPS-A-01 | Phase 68 | Pending |
+| NPS-A-02 | Phase 68 | Pending |
+| NPS-A-03 | Phase 68 | Pending |
+| NPS-A-04 | Phase 68 | Pending |
+| NPS-B-01 | Phase 69 | Pending |
+| NPS-B-02 | Phase 69 | Pending |
+| NPS-B-03 | Phase 69 | Pending |
+| NPS-B-04 | Phase 69 | Pending |
+| NPS-B-05 | Phase 69 | Pending |
+| NPS-C-01 | Phase 70 | Pending |
+| NPS-C-02 | Phase 70 | Pending |
+| NPS-C-03 | Phase 70 | Pending |
+| NPS-C-04 | Phase 70 | Pending |
+| NPS-C-05 | Phase 70 | Pending |
+| NPS-C-06 | Phase 70 | Pending |
+| NPS-D-01 | Phase 71 | Pending |
+| NPS-D-02 | Phase 71 | Pending |
+| NPS-D-03 | Phase 71 | Pending |
+| NPS-D-04 | Phase 71 | Pending |
+| NPS-D-05 | Phase 71 | Pending |
+| NPS-E-01 | Phase 72 | Pending |
+| NPS-E-02 | Phase 72 | Pending |
+| NPS-E-03 | Phase 72 | Pending |
+| NPS-E-04 | Phase 72 | Pending |
+| NPS-E-05 | Phase 72 | Pending |
+| NPS-F-01 | Phase 73 | Pending |
+| NPS-F-02 | Phase 73 | Pending |
+| NPS-F-03 | Phase 73 | Pending |
+| NPS-F-04 | Phase 73 | Pending |
 
 **Coverage:**
 - v15.0 requirements: 29 total
-- Mapped to phases: 0 (aguardando roadmapper)
-- Unmapped: 29 ⚠️
+- Mapped to phases: 29 ✓
+- Unmapped: 0
+
+**Distribuição por phase:**
+- Phase 68 (NPS-A — Schema): 4 REQs
+- Phase 69 (NPS-B — Backend): 5 REQs
+- Phase 70 (NPS-C — UI Config): 6 REQs
+- Phase 71 (NPS-D — Form público): 5 REQs
+- Phase 72 (NPS-E — Dashboards): 5 REQs
+- Phase 73 (NPS-F — Limpeza + testes): 4 REQs
 
 ---
 *Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 — initial definition for milestone v15.0 (NPS Templates); v14.0 REQs preservados em `.planning/milestones/v14.0-REQUIREMENTS-wip.md`*
+*Last updated: 2026-07-07 — traceability preenchida pelo gsd-roadmapper (29/29 REQs mapeadas para Phase 68-73)*

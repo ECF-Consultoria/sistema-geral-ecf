@@ -1,223 +1,185 @@
-# Roadmap: ECF Admin — Milestone v14.0 Confiabilidade + Polish
+# Roadmap: ECF Admin — Milestone v15.0 NPS Templates
 
 ## Overview
 
-Milestone de consolidação: v13.0 entregou a arquitetura multi-marketplace (pivot `company_marketplaces` N:N + shells de dashboard por marketplace), mas deixou a superfície ainda instável — dados ML e Adman coexistem sem regra unificada, dashboards e carteiras quebram silenciosamente quando a fonte diverge, Metas carecem de usabilidade + onboarding, o parâmetro "forma de uso do sistema" é conceito novo, e há bugs UX pontuais + falso-negativos de Sugadores relatados por operadores em teste. A v14.0 fecha essa dívida em 8 phases seguindo a ordem lógica **base → dashboards → metas → uso → polish → sugadores** para não construir novas features sobre alicerce oscilante.
+Reescrita completa do módulo NPS baseado em **modelos configuráveis de formulário**. Sistema atual (v13.0 herdado) é rígido — 3 perguntas fixas (estrategista/analista/empresa) escala 1-5 + perguntas customizadas globais. Escopo v15.0 introduz templates por tipo de serviço, perguntas customizáveis com opções e pesos ajustáveis, cálculo por dimensão (estrategista/analista/empresa/geral), bloqueio de duplicata mensal, dashboards de pendência com "dia de cobrança" configurável e UX limpa do formulário público. **Zero uso de Promotor/Neutro/Detrator** — escala 1-5 sempre.
 
-Prioridade dura: **acertividade > velocidade**. Nada aqui é polish superficial — é confiabilidade de dados exibidos ao operador.
+Prioridade dura: **não quebrar histórico**. Seed "NPS Padrão" cobrindo 100% do legado (zero survey órfã); dashboards atuais continuam funcionando durante toda a migração.
 
-Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTONES.md` + arquivos em `.planning/milestones/`.
+Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTONES.md` + arquivos em `.planning/milestones/`. v14.0 pausada — ROADMAP preservado em `.planning/milestones/v14.0-ROADMAP-wip.md`.
 
 ## Phases
 
 **Phase Numbering:**
-- Continuidade monotônica após v13.0 (última phase: 59). v14.0 começa em Phase 60.
-- Integer phases (60-67): trabalho planejado da milestone
-- Decimal phases (60.1, 61.2...): reservadas para inserções urgentes durante execução
+- Continuidade monotônica após v14.0 (última phase planejada: 67). v15.0 começa em Phase 68.
+- Reservado 68–73 para os 6 blocos NPS-A a NPS-F
+- Integer phases (68-73): trabalho planejado da milestone
+- Decimal phases (68.1, 69.2…): reservadas para inserções urgentes durante execução
 
-- [ ] **Phase 60: Base multi-fonte (backend ML+Adman unificado)** — Camada de dados única sobre `company_marketplaces` que lê Adman e ML sem quebrar quando uma fonte é ausente, com regra de precedência documentada em ADR
-- [ ] **Phase 61: Dashboards multi-fonte + indicador de origem** — Dashboard ML, dashboards Analista/Estrategista e carteira individual passam a respeitar a fonte de cada empresa; badge visual de origem (ML/Adman/Agregado) em toda métrica
-- [ ] **Phase 62: Metas — apresentação clara + edição rápida** — Tela de Metas mostra progresso mensal com clareza (chart + % + valor absoluto), edição inline/bulk e histórico visível
-- [ ] **Phase 63: Metas — onboarding obrigatório + tratamento de legacy + activity log** — Fluxo de cadastro de empresa exige meta inicial mensal (resolve seed 270629); empresas legadas ganham flag visível "Meta não definida"; alterações registradas em `activity_log`
-- [ ] **Phase 64: Parâmetro de uso — captura event-based** — Camada backend event-based que grava "análises de sugadores rodadas" e permite adicionar novos eventos de uso sem refactor
-- [ ] **Phase 65: Dashboard de desempenho — dimensão "uso do sistema"** — Painel/coluna dedicada a métricas de uso no dashboard de desempenho, convivendo com KPIs comerciais existentes
-- [ ] **Phase 66: Bug fixes UX (OAuth ML, filtro companies, sidebar)** — Correções pontuais reportadas por operadores em teste: erro cosmético do OAuth ML, filtro "conectada ao ML" em `/companies`, hierarquia visual sidebar recolher-vs-voltar
-- [ ] **Phase 67: Sugadores refinements — investigação + fixes + UX config** — Root-cause de falsos-negativos (By Mobile, KAPRAKASA) e "dados defasados" (Desk Design); simplificação da página de configuração
+- [ ] **Phase 68: Schema, modelos e seed retroativo "NPS Padrão"** — 5 tabelas novas (`nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes`, `nps_response_answers`) + alter em `nps_surveys`/`nps_responses` + seed retro-associa 100% do histórico legado ao template padrão
+- [ ] **Phase 69: Backend — regras de negócio, cálculo e dispatch** — `NpsTemplateService::resolveForCompany` (priority DESC + is_default fallback), `NpsScoreCalculator` por dimensão via `AVG(option_peso_snapshot)`, unique index parcial split por driver (MySQL virtual column / SQLite partial), guard QueryException 23000, comando `nps:disparar-mensal` usa template correto por empresa
+- [ ] **Phase 70: UI de Configuração (admin)** — CRUD de templates em `/nps/configuracao` (novo layout multi-template) + perguntas com dimensão/obrigatoriedade + opções com label/peso/ordem (Up/Down zero-deps) + associação template↔serviço + preview live do formulário
+- [ ] **Phase 71: Formulário público dinâmico** — `/nps/{token}` renderiza a partir do template snapshot; radio group cinza/amarelo ativo, mobile-friendly, marcador de obrigatoriedade, telas `ThankYou`/`AlreadyCompleted`/`Expired` preservadas, labels sem jargão técnico
+- [ ] **Phase 72: Dashboards + pendências + dia de cobrança** — Config global "dia de cobrança" (1-31), badge de pendência em `Portfolio/Show.jsx` e `Companies/Index.jsx`, contagem/lista no dashboard do analista/estrategista, `NpsPendingService` como contrato base, dashboards existentes leem via `NpsScoreCalculator`
+- [ ] **Phase 73: Limpeza de legado + testes E2E** — Remove `>=9 Promotor/>=7 Neutro/else Detrator` do `PerformanceController.php:301` + `Performance/Dashboard.jsx`; limpa refs `score_overall/consultant/mentor` em `Companies/Show.jsx` (fechamento do Plan 31-05); implementa `metric='nps'` em `CalculateGoalResults.php:155` usando `NpsScoreCalculator`; suite E2E completa
 
 ## Phase Details
 
-### Phase 60: Base multi-fonte (backend ML+Adman unificado)
-**Goal**: Estabelecer camada de leitura unificada sobre `company_marketplaces` que suporta empresa fonte-ML, fonte-Adman ou ambas, com regra de precedência explícita e testável.
-**Depends on**: Nothing (primeira phase da milestone v14.0; herda pivot `company_marketplaces` de Phase 57)
-**Requirements**: DATA-04, DATA-06
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Cálculo agregado de métricas de uma empresa lê `adman_metrics` (fonte Adman) E tabelas ML nativas (fonte ML) sem quebrar quando uma das fontes é ausente — cobertura para os 3 casos: só-Adman, só-ML, ambos
-  2. Empresas conectadas a AMBAS as fontes têm métricas conciliadas sem duplicação, com regra de precedência documentada em ADR versionado dentro de `.planning/`
-  3. Testes automatizados validam o comportamento nos 3 casos (só-Adman / só-ML / ambos) usando `RefreshDatabase` + fixtures mínimas
-  4. Consumidores atuais de `adman_metrics` continuam funcionando sem regressão (delta = 0 na suite baseline)
-**Plans**: 4 plans
-- [x] 60-01-PLAN.md — ADR DATA-04 de regra de precedência multi-fonte (ML primário, Adman enriquece)
-- [x] 60-02-PLAN.md — Contract MetricsProvider + DTO UnifiedMetricsDto + AdmanMetricsProvider (lê adman_metrics local)
-- [ ] 60-03-PLAN.md — MlMetricsProvider (API ML via MercadoLivreService com cache) + MetricsProviderFactory
-- [ ] 60-04-PLAN.md — UnifiedMetricsService (orquestrador multi-fonte) + testes 3 casos (só-Adman/só-ML/ambos) + baseline zero-regressão
+### Phase 68: Schema, modelos e seed retroativo "NPS Padrão"
+**Goal**: Ter todas as tabelas + modelos Eloquent + seed retroativo que permitam representar templates configuráveis e associar 100% do histórico legado ao template padrão sem quebrar dashboards atuais.
+**Depends on**: Nada (fundação)
+**Requirements**: NPS-A-01, NPS-A-02, NPS-A-03, NPS-A-04
+**Success Criteria** (o que deve ser VERDADE):
+  1. Migration cria as 5 tabelas novas (`nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes`, `nps_response_answers`) com FKs, índices e constraints conforme spec do research (§1)
+  2. Modelos Eloquent (`NpsTemplate`, `NpsTemplateQuestion`, `NpsTemplateOption`, `NpsResponseAnswer`) têm relationships definidas (`hasMany`/`belongsToMany`) e casts corretos
+  3. Seed "NPS Padrão" existe com `is_default=true`, cobre as 3 perguntas legadas (estrategista/analista/empresa) escala 1-5 e retro-associa **100%** dos `nps_surveys` existentes via `template_id` — nenhuma survey fica órfã
+  4. `nps_response_answers` armazena snapshot congelado (`question_texto_snapshot`, `question_dimensao_snapshot`, `option_label_snapshot`, `option_peso_snapshot`) — mudanças futuras no template não alteram histórico gravado
+  5. Dashboards existentes (NPS mensal, `Performance/Dashboard.jsx`) continuam renderizando dados legados sem quebra visual pós-migration
+**Plans**: TBD
 
-### Phase 61: Dashboards multi-fonte + indicador de origem
-**Goal**: Dashboards e carteiras passam a exibir métricas corretas independentemente da fonte da empresa, com indicador visual claro de origem em cada métrica exibida.
-**Depends on**: Phase 60
-**Requirements**: DATA-05, DASH-04, DASH-05, DASH-06
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Dashboard Mercado Livre (`/dashboard/mercadolivre`) exibe KPI unificado que soma empresas fonte-ML + fonte-Adman num único número, sem duplicar nem ignorar
-  2. Dashboards de Analista e Estrategista renderizam a carteira sem lançar erro quando uma empresa é ML-only (sem Adman) — empresas Adman-only continuam aparecendo normalmente
-  3. Carteira individual exibe badge visual "ML" ao lado do nome de cada empresa conectada ao Mercado Livre
-  4. Cada métrica renderizada na UI carrega indicador visual da fonte (badge ou tooltip: ML, Adman, ou Agregado)
-**Plans**: 6 plans
-- [ ] 61-01-PLAN.md — Backend: PortfolioController + DashboardController + config/metrics.php com feature flag UNIFIED_METRICS_ENABLED (enriquece payload com source/source_counts quando ON, delta zero quando OFF)
-- [ ] 61-02-PLAN.md — Componente <SourceBadge> reusável (4 variantes ml/adman/unified/none com labels pt-BR e tooltip nativo)
-- [ ] 61-03-PLAN.md — DASH-06: Badge de fonte no header da carteira individual (Companies/Show.jsx + CompanyController::show)
-- [ ] 61-04-PLAN.md — DASH-05: Portfolio Show + Carteiras tolerantes a fonte + badges por empresa e mini-legenda por profissional
-- [ ] 61-05-PLAN.md — DASH-04: Dashboard ML unificado com legenda source_counts no topo + badge por linha da tabela
-- [ ] 61-06-PLAN.md — E2E: 15 testes cobrindo 3 casos ADR + none + regressao flag OFF (dashboard + portfolio + baseline Phase 60 intacto)
+### Phase 69: Backend — regras de negócio, cálculo e dispatch
+**Goal**: Regras de negócio implementadas em services + validação server-side + dedup mensal garantido no DB + dispatch mensal usando template correto por empresa.
+**Depends on**: Phase 68 (precisa das tabelas e da coluna virtual dedup)
+**Requirements**: NPS-B-01, NPS-B-02, NPS-B-03, NPS-B-04, NPS-B-05
+**Success Criteria** (o que deve ser VERDADE):
+  1. `NpsTemplateService::resolveForCompany(Company)` retorna o template correto respeitando `priority DESC + is_default` fallback e usando `nps_template_service_scopes` (research §4)
+  2. `NpsScoreCalculator::compute(NpsResponse, dimensao)` calcula média dos `option_peso_snapshot` das answers da dimensão pedida; retorna `null` quando não há perguntas dessa dimensão (não zero, não erro)
+  3. Segunda tentativa de responder NPS para o mesmo (`company_id`, `month_reference`, `template_id`) é bloqueada pelo DB (unique index parcial via virtual column MySQL / partial SQLite conforme research §2); controller captura `QueryException 23000` e mostra tela "Já respondida no mês"
+  4. Comando `nps:disparar-mensal` chama `NpsTemplateService::resolveForCompany` por empresa; empresas sem template aplicável (nem default) são puladas com `Log::warning` estruturado — comando **não crasha** o batch
+  5. Validação server-side do formulário público (`NpsController::submit`) deriva regras de obrigatoriedade e range de peso do template snapshot da survey, não de defaults hardcoded
+**Plans**: TBD
+
+### Phase 70: UI de Configuração (admin)
+**Goal**: Admin consegue criar e editar templates de NPS completos (perguntas + opções + pesos + associação com serviço) e enxergar preview do formulário público antes de publicar.
+**Depends on**: Phase 69 (backend precisa estar pronto para validar payloads e servir preview via `NpsTemplateService`)
+**Requirements**: NPS-C-01, NPS-C-02, NPS-C-03, NPS-C-04, NPS-C-05, NPS-C-06
+**Success Criteria** (o que deve ser VERDADE):
+  1. Admin acessa `/nps/configuracao`, vê lista de templates existentes (padrão + criados), consegue criar, editar título/descrição/ativo, e desativar sem apagar (soft flag)
+  2. Dentro de um template, admin adiciona/edita/remove perguntas escolhendo tipo (`escala` gera 5 opções 1-5 auto-editáveis conforme research §5; `opcoes` inicia vazio); ordem controlada por Up/Down + input `type=number` (zero-deps conforme research §3)
+  3. Para cada pergunta, admin configura opções (label visível ao cliente + peso interno 1-5 + ordem), marca dimensão (`estrategista`/`analista`/`empresa`/`geral`) e obrigatoriedade
+  4. Admin associa o template a um ou mais tipos de serviço via UI de pivot `nps_template_service_scopes`; feedback visual mostra empresas afetadas
+  5. Preview live renderiza o formulário público a partir do estado atual do form de edição, sem persistir no banco — usa o mesmo componente que a Phase 71 vai construir para o `/nps/{token}` real
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 62: Metas — apresentação clara + edição rápida
-**Goal**: Tela de Metas apresenta progresso mensal de forma clara e permite edição rápida sem sair da listagem, com histórico visível.
-**Depends on**: Nothing (independente de Phase 60/61; pode executar em paralelo)
-**Requirements**: META-01, META-04
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Usuário abre uma empresa e visualiza meta atribuída + progresso mensal em apresentação única contendo chart + percentual + valor absoluto
-  2. Gestor edita meta inline (ou em bulk quando aplicável) sem navegar para outra tela
-  3. Histórico de alterações da meta é visível na própria tela de gestão (últimas N alterações + link para log completo)
-**Plans**: 5 plans
-- [ ] 62-01-PLAN.md — Backend: abre PUT /goals/{goal} para admin OR estrategista + endpoint GET /goals/{goal}/history (últimas 10 do activity_log)
-- [ ] 62-02-PLAN.md — Componente <GoalProgressPanel /> reusável (chart Recharts + percentual + valor absoluto + status derivado)
-- [ ] 62-03-PLAN.md — Componente <GoalHistoryDrawer /> reusável (Dialog + fetch on-open + link Ver log completo)
-- [ ] 62-04-PLAN.md — Goals/Index.jsx: inline edit de target_value (Enter/Blur/Escape) + ícone Clock por meta abre drawer + GoalController::index expõe results
-- [ ] 62-05-PLAN.md — Companies/Show.jsx: substitui lista simples por grid de <GoalProgressPanel /> compact + CompanyController::show enriquecido com goals.results
+### Phase 71: Formulário público dinâmico
+**Goal**: Cliente responde `/nps/{token}` a partir do template snapshot da survey — sem hardcode das 3 perguntas antigas — com UX limpa (cinza/amarelo), mobile-friendly e labels sem jargão técnico.
+**Depends on**: Phase 70 (form público reusa componentes do preview) e Phase 69 (validação server-side)
+**Requirements**: NPS-D-01, NPS-D-02, NPS-D-03, NPS-D-04, NPS-D-05
+**Success Criteria** (o que deve ser VERDADE):
+  1. `/nps/{token}` renderiza as perguntas dinamicamente a partir do `template_snapshot_json` da survey — nunca hardcoded; abrir survey de template A e survey de template B mostra formulários distintos
+  2. Perguntas com opções renderizam como radio group com estilo cinza no estado padrão + amarelo (`ecf-yellow`) no estado ativo/selecionado; layout responsivo em telas mobile (≤ 400px de largura)
+  3. Perguntas obrigatórias são visualmente marcadas (asterisco + texto "obrigatório"); botão de submit fica desabilitado até que todas obrigatórias tenham resposta; server-side devolve 422 com mensagem clara se cliente contornar client-side
+  4. Fluxo pós-submit preserva as telas `ThankYou`, `AlreadyCompleted` e `Expired` existentes — comportamento inalterado; token expirado ainda renderiza tela `Expired`
+  5. Nenhuma label apresentada ao cliente contém jargão técnico (`unified`, `dimensao`, `snapshot`, `estrategista`, `analista` só se corresponder a papel do time visível ao cliente) — textos em pt-BR simples
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 63: Metas — onboarding obrigatório + tratamento de legacy + activity log
-**Goal**: Novas empresas entram no sistema com meta inicial já definida (resolve seed `270629`); empresas legadas sem meta ganham tratamento explícito na UI; toda alteração de meta é auditável.
-**Depends on**: Nothing (independente; pode executar em paralelo com Phase 62, mas coordenar padrão UX com ela)
-**Requirements**: META-02, META-03, META-05
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Fluxo de criação/onboarding de empresa exige "meta inicial mensal" como campo obrigatório para empresas Mercado Livre (validação server-side + UI)
-  2. Empresa legada sem meta exibe flag visível "Meta não definida" com CTA de definição — sem default arbitrário atrás dos panos
-  3. Cada alteração de meta gera entrada em `activity_log` (via `spatie/laravel-activitylog`) com autor, valor anterior e valor novo — consultável na tela de histórico
-**Plans**: 4 plans
-- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
-- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
-- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
-- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
+### Phase 72: Dashboards + pendências + dia de cobrança
+**Goal**: Consultoria (analista/estrategista/admin) enxerga claramente quais empresas ainda não responderam o NPS do mês corrente, com base preparada para futura notificação interna.
+**Depends on**: Phase 69 (precisa de `NpsScoreCalculator` + `NpsTemplateService` para saber quem deveria ter respondido)
+**Requirements**: NPS-E-01, NPS-E-02, NPS-E-03, NPS-E-04, NPS-E-05
+**Success Criteria** (o que deve ser VERDADE):
+  1. Sistema tem configuração global "dia de cobrança mensal" (int 1-31) que dispara marcação de pendência a partir daquele dia do mês corrente (editável via UI admin ou config file — implementação a definir no plan)
+  2. Listagem de empresas em carteira (`Portfolio/Show.jsx` e `Companies/Index.jsx`) mostra badge/indicador visual quando empresa está em pendência de NPS do mês corrente
+  3. Dashboard do analista/estrategista mostra contagem + lista das empresas pendentes de NPS no mês corrente dentro da sua carteira; admin vê versão consolidada
+  4. `NpsPendingService::forCarteira(User)` existe e retorna a lista de empresas pendentes por carteira; contrato de retorno documentado para futura integração com sistema de notificações (integração real fica para NPS-FUTURE-03)
+  5. Dashboards existentes (`Dashboard/Admin.jsx`, `Performance/Dashboard.jsx`, `Companies/Show.jsx`) leem médias por dimensão via `NpsScoreCalculator` respeitando `template_snapshot` — números batem com o novo cálculo
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 64: Parâmetro de uso — captura event-based
-**Goal**: Estabelecer a camada backend que captura eventos de "forma de uso do sistema" de modo extensível — começando por "análises de sugadores rodadas" como exemplo canônico.
-**Depends on**: Nothing (independente; consome infra Sugadores já entregue na v11.0)
-**Requirements**: PERF-01, PERF-03
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Sistema captura métrica "quantidade de análises de sugadores rodadas" por usuário/empresa/período — persistida e consultável
-  2. Adicionar novo evento de uso no futuro (ex: qtd de acessos ao MLB, freq de edição de metas) exige apenas registrar o evento — sem refactor da camada de captura
-  3. Testes automatizados cobrem gravação de eventos + agregação por usuário/empresa/período
-**Plans**: 4 plans
-- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
-- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
-- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
-- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
-
-### Phase 65: Dashboard de desempenho — dimensão "uso do sistema"
-**Goal**: Painel de desempenho passa a exibir a dimensão "uso do sistema" (capturada na Phase 64) complementarmente aos KPIs comerciais existentes.
-**Depends on**: Phase 64
-**Requirements**: PERF-02
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Dashboard de desempenho apresenta a dimensão "uso do sistema" em painel dedicado, coluna ou gráfico — decisão de layout tomada na fase de planning
-  2. Métrica de uso convive com KPIs comerciais existentes sem regressão visual nem quebra do layout responsivo
-  3. Usuário identifica facilmente empresas/consultores com baixo uso do sistema para orientar ação
-**Plans**: 4 plans
-- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
-- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
-- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
-- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
+### Phase 73: Limpeza de legado + testes E2E
+**Goal**: Zero uso de Promotor/Neutro/Detrator no código; refs legadas de scores removidas; `metric='nps'` no `CalculateGoalResults` implementado de verdade; suite E2E cobrindo os 10 critérios de aceite do brief.
+**Depends on**: Phase 72 (novos consumers em cima antes de desativar código legado)
+**Requirements**: NPS-F-01, NPS-F-02, NPS-F-03, NPS-F-04
+**Success Criteria** (o que deve ser VERDADE):
+  1. `grep -rn "Promotor\|Neutro\|Detrator"` em `app/` e `resources/js/` retorna zero resultado — cálculo em `PerformanceController.php:301` e `Performance/Dashboard.jsx` foi removido
+  2. `Companies/Show.jsx` não contém mais refs a `score_overall`, `score_consultant`, `score_mentor` — nota exibida vem exclusivamente do novo cálculo via `NpsScoreCalculator`; `CompanyController::show` deixa de compor essas chaves como fallback
+  3. `CalculateGoalResults.php:155` implementa cálculo real para `metric='nps'` usando `NpsScoreCalculator` — meta de NPS tem progresso; branch `null` só é atingido quando não há resposta no período
+  4. Suite E2E (`tests/Feature/Phase73/`) cobre: criação de template + perguntas com pesos, resposta pública, cálculo por dimensão (incluindo dimensão sem perguntas retornando null), bloqueio de duplicata (unique index parcial), dispatch idempotente pelo comando, empresa pendente aparece corretamente, template sem analista funciona sem quebrar
+  5. Suite completa `php artisan test` continua verde (delta = 0 vs baseline pré-Phase 73) — zero regressão em dashboards, sugadores, metas, publicação
+**Plans**: TBD
 **UI hint**: yes
 
-### Phase 66: Bug fixes UX (OAuth ML, filtro companies, sidebar)
-**Goal**: Corrigir bugs UX pontuais reportados por operadores em teste que hoje geram atrito ou desconfiança no sistema.
-**Depends on**: Nothing (fixes independentes; podem executar em paralelo com qualquer outra phase)
-**Requirements**: UX-01, UX-02, UX-03
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Fluxo OAuth Mercado Livre NÃO exibe tela de erro para o cliente quando a conexão foi bem-sucedida no admin — root cause do erro cosmético identificado e corrigido (redirect, callback ou race condition)
-  2. Página `/companies` tem filtro "Conectada ao Mercado Livre" com opções (Sim / Não / Qualquer) integrado aos filtros existentes, sem quebrá-los
-  3. Sidebar reorganiza a hierarquia visual entre botão recolher (fixo na rolagem) e botão voltar (não-fixo) de modo que operadores em teste não confundem mais os dois
-**Plans**: 4 plans
-- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
-- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
-- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
-- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
-**UI hint**: yes
-
-### Phase 67: Sugadores refinements — investigação + fixes + UX config
-**Goal**: Endereçar casos concretos de falsos-negativos e dados defasados relatados em By Mobile, KAPRAKASA e Desk Design, e simplificar a página de configuração de Sugadores. Escopo propositalmente raso — rework estrutural fica para milestone dedicada.
-**Depends on**: Nothing (opera sobre base já migrada em v11.0)
-**Requirements**: SUGA-01, SUGA-02, SUGA-03, SUGA-04
-**Success Criteria** (o que precisa ser VERDADE):
-  1. Root cause dos falsos-negativos de By Mobile e KAPRAKASA está documentado (relatório de investigação em `.planning/phases/67-*/`) e a correção que se aplica está entregue e validada contra as empresas afetadas
-  2. "Dados defasados" ao copiar MLBs em Desk Design está corrigido — refresh, cache ou coleta ajustados conforme root cause
-  3. Página de configuração de Sugadores tem hierarquia visual mais clara: agrupamento por intenção, menos opções aparentes por padrão, sem perder capacidade avançada
-  4. Zero regressão na suite Sugador acumulada (baseline capturado no início da phase)
-**Plans**: 4 plans
-- [ ] 63-01-PLAN.md — Backend: valida meta_inicial_mensal obrigatório em ComercialController::store + cria Goal atômica dentro da DB::transaction (META-02)
-- [ ] 63-02-PLAN.md — Frontend: campo obrigatório "Meta inicial mensal (R$)" no passo 2 do wizard NovaEmpresa.jsx (META-02)
-- [ ] 63-03-PLAN.md — Companies/Show.jsx: substitui empty state por callout "Meta não definida" + CTA condicional reusa dialog existente (META-03)
-- [ ] 63-04-PLAN.md — Suite tests Phase63/GoalActivityLogTest validando audit trail existente do trait LogsActivity em create/update/delete (META-05)
-**UI hint**: yes
-
-## Progress
-
-**Execution Order:**
-- Phases 60 → 61 são sequenciais (61 depende de 60).
-- Phases 62, 63, 64, 66, 67 são independentes e podem executar em paralelo, respeitando o deploy gate ativo (outro dev em paralelo — confirmar `deploy.sh` caso-a-caso).
-- Phase 65 depende de Phase 64.
-
-Dependência crítica: Phase 60 é a fundação de dados que destrava Phase 61 (dashboards). Phases META (62/63), PERF (64/65), UX (66) e SUGA (67) não bloqueiam nem são bloqueadas por 60/61.
+## Phase Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 60. Base multi-fonte (backend ML+Adman unificado) | 2/4 | In Progress|  |
-| 61. Dashboards multi-fonte + indicador de origem | 0/6 | Not started | - |
-| 62. Metas — apresentação clara + edição rápida | 0/TBD | Not started | - |
-| 63. Metas — onboarding + legacy + activity log | 0/TBD | Not started | - |
-| 64. Parâmetro de uso — captura event-based | 0/TBD | Not started | - |
-| 65. Dashboard desempenho — dimensão "uso do sistema" | 0/TBD | Not started | - |
-| 66. Bug fixes UX (OAuth ML, filtro companies, sidebar) | 0/TBD | Not started | - |
-| 67. Sugadores refinements — investigação + fixes + UX config | 0/TBD | Not started | - |
+| 68. Schema, modelos e seed retroativo | 0/? | Not started | — |
+| 69. Backend regras de negócio | 0/? | Not started | — |
+| 70. UI de Configuração | 0/? | Not started | — |
+| 71. Formulário público | 0/? | Not started | — |
+| 72. Dashboards + pendências | 0/? | Not started | — |
+| 73. Limpeza legado + testes E2E | 0/? | Not started | — |
 
-## Coverage
+## Dependencies
 
-**v14.0 requirements mapped: 21/21 ✓**
+**Sequencial obrigatório:**
+- **68 → 69** — backend precisa das tabelas + coluna virtual dedup
+- **69 → 70** — UI Config precisa do `NpsTemplateService` para validar payloads e servir preview
+- **69 → 72** — dashboards precisam de `NpsScoreCalculator` + `NpsPendingService`
+- **70 → 71** — form público reusa componentes do preview live de config
+- **72 → 73** — limpeza só depois que todos os novos consumers estiverem em cima
 
-| Requirement | Phase |
-|-------------|-------|
-| DATA-04 | Phase 60 |
-| DATA-05 | Phase 61 |
-| DATA-06 | Phase 60 |
-| DASH-04 | Phase 61 |
-| DASH-05 | Phase 61 |
-| DASH-06 | Phase 61 |
-| META-01 | Phase 62 |
-| META-02 | Phase 63 |
-| META-03 | Phase 63 |
-| META-04 | Phase 62 |
-| META-05 | Phase 63 |
-| PERF-01 | Phase 64 |
-| PERF-02 | Phase 65 |
-| PERF-03 | Phase 64 |
-| UX-01 | Phase 66 |
-| UX-02 | Phase 66 |
-| UX-03 | Phase 66 |
-| SUGA-01 | Phase 67 |
-| SUGA-02 | Phase 67 |
-| SUGA-03 | Phase 67 |
-| SUGA-04 | Phase 67 |
+**Paralelizáveis:**
+- **70 e 72** podem rodar em paralelo após 69 (UI Config e dashboards não se tocam)
 
-## Milestones (histórico)
+## Coverage Map
 
-Referência rápida — histórico completo em `.planning/MILESTONES.md` e arquivos individuais em `.planning/milestones/`.
+Todas as 29 REQs de v15.0 mapeadas para exatamente uma phase:
 
-- ✅ **v1.0** Setor Dev (Phases 1-4) — shipped ~2026-05
-- ✅ **v2.0** Administrativo Fechamento (Phases 5-7) — shipped 2026-05-19
-- ✅ **v3.0** Sistema de Notificações (Phases 8-12) — shipped 2026-05
-- ✅ **v4.x** Fluxo Comercial + Sugadores (Phases 13-16)
-- ✅ **v5.0** Inteligência ML (Phase 17+)
-- ✅ **v6.0** Dashboard
-- ✅ **v7.0** Sugadores Foco (Phases 19-21)
-- ✅ **v8.0** ECF Drive (Phases 22-28) — shipped 2026-06-08
-- ✅ **v9.0/v9.5** Notificações 2.0 + Sugadores Robustos (Phases 29+)
-- 🚧 **v11.0** Migração Sugadores Adman→ML (Phases 38-43) — Phase 44 BLOCKED em checkpoint humano DevCenter ML
-- 🚧 **v12.0** Carteira + Desempenho + Gamificação (Phases 45-55) — Phase 47 congelada, Phase 53 STANDBY
-- ✅ **v13.0** Reorganização Multi-Marketplace (Phases 56-59) — shipped 2026-07-06
-- 🚧 **v14.0** Confiabilidade + Polish (Phases 60-67) — em execução
+| Categoria | REQ | Phase |
+|-----------|-----|-------|
+| NPS-A (Schema) | NPS-A-01 | Phase 68 |
+| NPS-A | NPS-A-02 | Phase 68 |
+| NPS-A | NPS-A-03 | Phase 68 |
+| NPS-A | NPS-A-04 | Phase 68 |
+| NPS-B (Backend) | NPS-B-01 | Phase 69 |
+| NPS-B | NPS-B-02 | Phase 69 |
+| NPS-B | NPS-B-03 | Phase 69 |
+| NPS-B | NPS-B-04 | Phase 69 |
+| NPS-B | NPS-B-05 | Phase 69 |
+| NPS-C (UI Config) | NPS-C-01 | Phase 70 |
+| NPS-C | NPS-C-02 | Phase 70 |
+| NPS-C | NPS-C-03 | Phase 70 |
+| NPS-C | NPS-C-04 | Phase 70 |
+| NPS-C | NPS-C-05 | Phase 70 |
+| NPS-C | NPS-C-06 | Phase 70 |
+| NPS-D (Form público) | NPS-D-01 | Phase 71 |
+| NPS-D | NPS-D-02 | Phase 71 |
+| NPS-D | NPS-D-03 | Phase 71 |
+| NPS-D | NPS-D-04 | Phase 71 |
+| NPS-D | NPS-D-05 | Phase 71 |
+| NPS-E (Dashboards) | NPS-E-01 | Phase 72 |
+| NPS-E | NPS-E-02 | Phase 72 |
+| NPS-E | NPS-E-03 | Phase 72 |
+| NPS-E | NPS-E-04 | Phase 72 |
+| NPS-E | NPS-E-05 | Phase 72 |
+| NPS-F (Limpeza) | NPS-F-01 | Phase 73 |
+| NPS-F | NPS-F-02 | Phase 73 |
+| NPS-F | NPS-F-03 | Phase 73 |
+| NPS-F | NPS-F-04 | Phase 73 |
+
+**Cobertura:** 29/29 v15.0 REQs mapeadas ✓ — zero órfãos, zero duplicatas.
+
+## Decisões técnicas travadas (research)
+
+Ver `.planning/research/v15-nps-templates-schema.md` para detalhes:
+
+1. **Snapshot per-row em `nps_response_answers`** (não JSON no survey, não Spatie ActivityLog) — colunas `question_*_snapshot` + `option_*_snapshot` + índice `(response_id, question_dimensao_snapshot)`
+2. **Unique index parcial via generated column virtual (MySQL) / partial index (SQLite)** — split por `DB::connection()->getDriverName()`; NULL não colide em unique; controller trata `QueryException 23000` para UX
+3. **Drag-and-drop = sem library** — Up/Down buttons + input `type="number"` de ordem, mantém padrão zero-deps v13/v14
+4. **Precedência via `priority` DESC + `is_default` fallback** — determinístico, sem depender de `pivot.created_at`
+5. **`escala` = 5 opções auto-geradas + editáveis** — 1 tabela `nps_template_options` unificada, `NpsScoreCalculator` uniforme via `AVG(option_peso_snapshot)`
+
+## Constraints herdadas
+
+- Stack Laravel 12 + Inertia.js + React (nada novo)
+- Design system `ecf-*` tokens, dark theme, `cn()` utility, componentes shadcn/ui
+- NPS atual (v13.0 herdado) fica preservado durante toda a migração — dashboards continuam funcionando com dados legados via seed "NPS Padrão"
+- Comentários em pt-BR
+- Escala 1-5 SEMPRE — nunca 0-10 clássico NPS
+- Deploy gate ativo — perguntar antes de deploy.sh (outro dev em paralelo)
 
 ---
-
-*Roadmap criado: 2026-07-07 pelo gsd-roadmapper*
-*Milestone: v14.0 — Confiabilidade + Polish*
-*Coverage: 21/21 requirements mapped ✓*
+*Roadmap criado: 2026-07-07 — Milestone v15.0 (NPS Templates) — 6 phases (68-73) cobrindo 29 REQs; granularity=standard*
