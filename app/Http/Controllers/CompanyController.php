@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\ContratoServico;
+use App\Models\Goal;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
+use App\Services\Metrics\MetricsProviderFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -20,7 +22,47 @@ class CompanyController extends Controller
     public function __construct(
         private AdmanService $adman,
         private EcfDriveService $ecf,
+        private MetricsProviderFactory $metricsFactory,
     ) {}
+
+    /**
+     * Phase 61 Plan 61-03 (DASH-06) — Traduz o caso do ADR DATA-04
+     * (`ambos|so-ml|so-adman|none`) para o vocabulário travado do
+     * `<SourceBadge>` frontend (`unified|ml|adman|none`).
+     *
+     * Enriquecimento UNCONDITIONAL (sem feature flag): `caseFor()` é I/O-free
+     * — só lê accessors denormalizados da própria Company — e o badge é
+     * requisito de UI do ROADMAP (SC #3 da Phase 61), não conteúdo dinâmico
+     * dependente de disponibilidade de sync.
+     */
+    private function factoryToSource(Company $company): string
+    {
+        return match ($this->metricsFactory->caseFor($company)) {
+            'ambos'    => 'unified',
+            'so-ml'    => 'ml',
+            'so-adman' => 'adman',
+            default    => 'none',
+        };
+    }
+
+    private function userCanViewCompany(User $user, Company $company): bool
+    {
+        if ($user->isAdmin() || $user->hasPermission('core.empresas')) {
+            return true;
+        }
+
+        return $company->users()
+            ->where('users.id', $user->id)
+            ->exists();
+    }
+
+    private function userIsCompanyEstrategista(User $user, Company $company): bool
+    {
+        return $company->users()
+            ->where('users.id', $user->id)
+            ->wherePivot('role', 'estrategista')
+            ->exists();
+    }
 
     /**
      * Listagem de empresas (admin).
@@ -228,6 +270,10 @@ class CompanyController extends Controller
 
     public function show(Company $company)
     {
+        $user = request()->user();
+
+        abort_unless($user && $this->userCanViewCompany($user, $company), 403);
+
         $company->load([
             'consultor', 'estrategista',
             'goals' => fn($q) => $q->where('active', true),
@@ -379,6 +425,10 @@ class CompanyController extends Controller
                 'adman_account_id' => $company->adman_account_id,
                 'adman_store_id'   => $company->adman_store_id,
                 'ml_store_id'      => $company->ml_store_id,
+                // Phase 61 Plan 61-03 (DASH-06) — origem para SourceBadge no
+                // header. Derivado do ADR DATA-04 via MetricsProviderFactory
+                // (leitura denormalizada, I/O-free — safe by default).
+                'source'           => $this->factoryToSource($company),
                 'ml_token'         => $company->mlToken ? [
                     'status'            => $company->mlToken->status,
                     'ml_user_id'        => $company->mlToken->ml_user_id,
@@ -463,6 +513,15 @@ class CompanyController extends Controller
             'servicos_disponiveis' => $servicosDisponiveis,
             // Phase 25 Plano 04: bloco ECF Drive (seller + 12m métricas + medalhas + signals)
             // ou null quando empresa não tem cust_id ou API ECF Drive indisponível.
+            'goal_metrics'          => Goal::$metricLabels,
+            'goal_percentage_only_metrics' => Goal::$percentageOnlyMetrics,
+            'permissions'           => [
+                'can_manage_contracts'    => $user->isAdmin(),
+                'can_create_goals'        => $user->isAdmin() || $this->userIsCompanyEstrategista($user, $company),
+                'can_initiate_ml_oauth'   => true,
+                'can_disconnect_ml_oauth' => $user->isAdmin(),
+                'can_sync_ml'             => $user->isAdmin(),
+            ],
             'ecf_drive'            => $ecfDrive,
         ]);
     }
