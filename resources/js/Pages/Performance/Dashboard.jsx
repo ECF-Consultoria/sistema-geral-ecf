@@ -174,7 +174,7 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
     const [statusFilter, setStatusFilter] = useState('all');
     const [colunas, setColunas] = useState({
         faturamento: true, meta: true, crescimento: true,
-        nps: true, ads: true, acao: true,
+        nps: true, acao: true,
     });
     const [showColunas, setShowColunas] = useState(false);
 
@@ -224,13 +224,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                             </Link>
                         )}
                     </div>
-                </div>
-
-                {/* Chip resumo — sem título "Overview" (UAT 2026-07-07) */}
-                <div className="flex justify-end">
-                    <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
-                        {kpis.empresas_em_crescimento} de {kpis.empresas_em_carteira} empresas em crescimento
-                    </span>
                 </div>
 
                 {/* ═══ 3 KPI CARDS (grid) ═════════════════════════════ */}
@@ -485,7 +478,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                         { key: 'meta',        label: 'Meta',        locked: true },
                                         { key: 'crescimento', label: 'Crescimento', locked: true },
                                         { key: 'nps',         label: 'NPS' },
-                                        { key: 'ads',         label: 'Investimento Ads' },
                                         { key: 'acao',        label: 'Ação recomendada' },
                                     ].map(({ key, label, locked }) => (
                                         <label
@@ -520,7 +512,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                     {colunas.meta        && <th className="px-3 py-3 font-bold text-right">Meta</th>}
                                     {colunas.crescimento && <th className="px-3 py-3 font-bold text-right">Crescimento</th>}
                                     {colunas.nps         && <th className="px-3 py-3 font-bold text-right">NPS</th>}
-                                    {colunas.ads         && <th className="px-3 py-3 font-bold text-right">Ads</th>}
                                     {colunas.acao        && <th className="px-3 py-3 font-bold">Ação recomendada</th>}
                                 </tr>
                             </thead>
@@ -568,14 +559,13 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                                 </td>
                                             )}
                                             {colunas.nps         && <td className="px-3 py-3 text-right text-white/80 tabular-nums">{e.nps ?? <span className="text-white/25">—</span>}</td>}
-                                            {colunas.ads         && <td className="px-3 py-3 text-right text-white/60 tabular-nums">{e.ads > 0 ? fmtBRLCompact(e.ads) : <span className="text-white/25">—</span>}</td>}
                                             {colunas.acao        && <td className="px-3 py-3 text-white/70">{e.acao}</td>}
                                         </tr>
                                     );
                                 })}
                                 {empresasFiltradas.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="text-center py-10 text-white/40 text-sm">
+                                        <td colSpan={6} className="text-center py-10 text-white/40 text-sm">
                                             Nenhuma empresa encontrada com os filtros aplicados.
                                         </td>
                                     </tr>
