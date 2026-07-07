@@ -196,7 +196,7 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
     }[scoreCor];
 
     return (
-        <AppLayout title="Dashboard da Carteira">
+        <AppLayout title="Dashboard">
             <Head title={`Dashboard — ${pessoa.nome}`} />
 
             <div className="p-6 max-w-7xl mx-auto space-y-6">

@@ -54,8 +54,14 @@ const NAV_TREE = [
             // Ajuste pós-UAT Phase 58: dentro do grupo ML, item chama-se "Dashboard"
             // (contexto do grupo já implica Mercado Livre). Rota legacy `dashboard`
             // segue registrada para deep links (CONTEXT §5).
-            { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: 'Dashboard/Admin', icon: LayoutDashboard, permission: 'core.dashboard' },
-            { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
+            // Ajuste UAT 2026-07-07: page virou array porque admin renderiza
+            // Dashboard/Admin e analista/estrategista renderiza Performance/
+            // Dashboard (branching no controller). Ambos devem highlightar
+            // este item quando na rota /dashboard/mercadolivre.
+            { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: ['Dashboard/Admin', 'Performance/Dashboard'], icon: LayoutDashboard, permission: 'core.dashboard' },
+            // Desempenho fica com array explícito das páginas do ranking
+            // (Index + Show) pra não engolir Performance/Dashboard acima.
+            { label: 'Desempenho',  routeName: 'performance.index',   page: ['Performance/Index', 'Performance/Show'],  icon: Trophy,          permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
@@ -396,7 +402,17 @@ export default function AppLayout({ children, title }) {
         }
     }, [flash]);
 
-    const isActive = (page) => (pageComponent || '').startsWith(page);
+    // Aceita string (comportamento clássico) ou array — matcha se QUALQUER
+    // entrada do array for prefixo do pageComponent atual. Necessário pra
+    // itens do NAV que representam a mesma "área" mas renderizam páginas
+    // diferentes por role (ex: Dashboard admin vs Performance/Dashboard
+    // do analista/estrategista — ambos ativam o mesmo item Dashboard).
+    const isActive = (page) => {
+        if (!page) return false;
+        const current = pageComponent || '';
+        if (Array.isArray(page)) return page.some((p) => current.startsWith(p));
+        return current.startsWith(page);
+    };
 
     const initials = user?.name
         ? user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()
