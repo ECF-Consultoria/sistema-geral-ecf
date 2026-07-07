@@ -58,6 +58,15 @@ class DashboardController extends Controller
             return $this->adminDashboard($request, $since, $period);
         }
 
+        // Ajuste UAT 2026-07-07: Analista (consultor) e Estrategista (mentor)
+        // recebem o dashboard operacional da carteira na landing após login
+        // (mesma tela do /dashboard/mercadolivre) — antes caía no userDashboard
+        // legacy que não fazia sentido pro fluxo novo.
+        if (! $user->isLider() && ($user->isConsultor() || $user->isMentor())) {
+            return app(\App\Http\Controllers\PerformanceController::class)
+                ->dashboardCarteira($request);
+        }
+
         return $this->userDashboard($user, $since, $period);
     }
 

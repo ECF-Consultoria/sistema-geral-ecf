@@ -131,32 +131,37 @@ function Speedometer({ score }) {
     );
 }
 
-// Gráfico de área verde no fundo do card Crescimento
+// Gráfico de área verde no fundo do card Crescimento — confinado à faixa
+// inferior baixa e com opacidade reduzida pra não competir com o texto.
 function GrowthBackground() {
     return (
-        <svg
-            viewBox="0 0 360 100"
-            aria-hidden="true"
-            preserveAspectRatio="none"
-            className="absolute inset-x-0 bottom-0 w-full h-[92px] pointer-events-none opacity-80"
-        >
-            <defs>
-                <linearGradient id="growthArea" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0" stopColor="#10b981" stopOpacity=".7"/>
-                    <stop offset="1" stopColor="#10b981" stopOpacity="0"/>
-                </linearGradient>
-            </defs>
-            <path
-                d="M0 86 C30 78 36 54 68 61 C96 67 99 40 132 43 C161 45 163 20 198 18 C237 16 240 52 272 50 C306 49 321 28 360 33 L360 100 L0 100 Z"
-                fill="url(#growthArea)"
-            />
-            <path
-                d="M0 86 C30 78 36 54 68 61 C96 67 99 40 132 43 C161 45 163 20 198 18 C237 16 240 52 272 50 C306 49 321 28 360 33"
-                fill="none"
-                stroke="#10b981"
-                strokeWidth="3"
-            />
-        </svg>
+        <>
+            <svg
+                viewBox="0 0 360 60"
+                aria-hidden="true"
+                preserveAspectRatio="none"
+                className="absolute inset-x-0 bottom-0 w-full h-[54px] pointer-events-none opacity-45"
+            >
+                <defs>
+                    <linearGradient id="growthArea" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0" stopColor="#10b981" stopOpacity=".5"/>
+                        <stop offset="1" stopColor="#10b981" stopOpacity="0"/>
+                    </linearGradient>
+                </defs>
+                <path
+                    d="M0 46 C30 40 36 26 68 30 C96 34 99 18 132 20 C161 22 163 8 198 6 C237 4 240 26 272 24 C306 23 321 12 360 15 L360 60 L0 60 Z"
+                    fill="url(#growthArea)"
+                />
+                <path
+                    d="M0 46 C30 40 36 26 68 30 C96 34 99 18 132 20 C161 22 163 8 198 6 C237 4 240 26 272 24 C306 23 321 12 360 15"
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth="2.2"
+                />
+            </svg>
+            {/* Overlay pra escurecer o topo do gráfico (garante contraste com o texto) */}
+            <div className="absolute inset-x-0 bottom-0 h-[54px] bg-gradient-to-t from-transparent via-ecf-card/60 to-ecf-card pointer-events-none" />
+        </>
     );
 }
 
@@ -422,11 +427,11 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                         ) : (
                             <div className="p-8 flex flex-col items-center justify-center text-center gap-2 min-h-[220px]">
                                 <TargetIcon size={28} className="text-white/20" />
-                                <p className="text-white/60 text-sm font-semibold">Sem metas configuradas ainda</p>
-                                <p className="text-white/35 text-xs max-w-[240px]">
+                                <p className="text-white/70 text-sm font-semibold">Nenhuma meta atribuída</p>
+                                <p className="text-white/40 text-xs max-w-[240px]">
                                     {pessoa.role_key === 'mentor'
-                                        ? 'Clique em "Nova meta" no topo pra criar a primeira meta da carteira.'
-                                        : 'Assim que o estrategista configurar metas pra sua carteira, elas aparecem aqui.'}
+                                        ? 'Clique em "Nova meta" no topo pra atribuir a primeira meta a uma empresa da carteira.'
+                                        : 'Assim que o estrategista atribuir metas às empresas da sua carteira, elas aparecem aqui.'}
                                 </p>
                             </div>
                         )}
@@ -519,7 +524,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                             <thead>
                                 <tr className="text-left text-[10px] uppercase tracking-wider text-white/50 border-b border-white/[0.06]">
                                     <th className="px-5 py-3 font-bold">Empresa</th>
-                                    <th className="px-3 py-3 font-bold">Status</th>
                                     {colunas.faturamento && <th className="px-3 py-3 font-bold text-right">Faturamento</th>}
                                     {colunas.meta        && <th className="px-3 py-3 font-bold text-right">Meta</th>}
                                     {colunas.crescimento && <th className="px-3 py-3 font-bold text-right">Crescimento</th>}
@@ -530,7 +534,6 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                             </thead>
                             <tbody>
                                 {empresasFiltradas.map((e) => {
-                                    const st = statusClasse[e.status] || statusClasse.saudavel;
                                     return (
                                         <tr key={e.nome} className="border-b border-white/[0.04] hover:bg-white/[0.02] transition-colors">
                                             <td className="px-5 py-3">
@@ -543,14 +546,9 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                                             <span className="text-white font-semibold truncate">{e.nome}</span>
                                                             {e.ml && <MlBadge />}
                                                         </div>
-                                                        <span className="text-white/40 text-[11px] block mt-0.5 truncate">{e.nota}</span>
+                                                        {e.nota && <span className="text-white/40 text-[11px] block mt-0.5 truncate">{e.nota}</span>}
                                                     </div>
                                                 </div>
-                                            </td>
-                                            <td className="px-3 py-3">
-                                                <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap', st.classes)}>
-                                                    {st.label}
-                                                </span>
                                             </td>
                                             {colunas.faturamento && <td className="px-3 py-3 text-right text-white font-semibold tabular-nums">{fmtBRLCompact(e.faturamento)}</td>}
                                             {colunas.meta && (
@@ -585,7 +583,7 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                                 })}
                                 {empresasFiltradas.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="text-center py-10 text-white/40 text-sm">
+                                        <td colSpan={7} className="text-center py-10 text-white/40 text-sm">
                                             Nenhuma empresa encontrada com os filtros aplicados.
                                         </td>
                                     </tr>
@@ -597,17 +595,11 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                     {/* Cards mobile */}
                     <div className="md:hidden p-4 space-y-3">
                         {empresasFiltradas.map((e) => {
-                            const st = statusClasse[e.status] || statusClasse.saudavel;
                             return (
                                 <div key={e.nome} className="p-3 rounded-lg bg-white/[0.02] border border-white/[0.06] space-y-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <div className="flex items-center gap-2 min-w-0">
-                                            <span className="text-white font-bold text-sm truncate">{e.nome}</span>
-                                            {e.ml && <MlBadge />}
-                                        </div>
-                                        <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold', st.classes)}>
-                                            {st.label}
-                                        </span>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-white font-bold text-sm truncate">{e.nome}</span>
+                                        {e.ml && <MlBadge />}
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 text-xs">
                                         <div>

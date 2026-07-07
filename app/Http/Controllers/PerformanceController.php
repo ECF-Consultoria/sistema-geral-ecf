@@ -198,7 +198,8 @@ class PerformanceController extends Controller
         $data = $this->scoreService->compute($user);
 
         // ── Empresas em carteira (todas, ativas) ──
-        $companies = $user->companies()->where('active', true)->get();
+        // Eager-load mlToken pra detectar conexão OAuth ativa (badge ML).
+        $companies = $user->companies()->with('mlToken')->where('active', true)->get();
         $companyIds = $companies->pluck('id');
         $atualFrom = $data['periodo']['from'];
         $atualTo   = $data['periodo']['to'];
@@ -272,7 +273,10 @@ class PerformanceController extends Controller
             return [
                 'id'          => $c->id,
                 'nome'        => $c->name,
-                'ml'          => $c->marketplace === 'meli',
+                // Badge ML só aparece se a empresa tem conexão OAuth ML ativa
+                // (mlToken.status === 'active'). Empresas com dados vindos só
+                // do Adman API NÃO ganham badge.
+                'ml'          => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
                 'status'      => $status,
                 'faturamento' => $rev,
                 'meta'        => $metaPct,     // null se sem goal
@@ -303,44 +307,49 @@ class PerformanceController extends Controller
             ];
         })->filter()->values();
 
-        // ── Metas widget: 3 metas agregadas da carteira ──
+        // ── Metas widget: só entra se houver ≥ 1 Goal atribuída a alguma
+        //    empresa da carteira. Sem Goal = "Nenhuma meta atribuída".
+        //    Regra UAT 2026-07-07: não mostrar progresso agregado (NPS/
+        //    empresas crescendo) sem meta explícita atribuída.
         $metricas = $data['metricas'];
         $atingimento = $metricas['atingimento_meta'];
         $emCresc = $metricas['empresas_em_crescimento'];
+        $qual = $metricas['qualidade'];
 
         $metasWidget = [];
-        // Faturamento mensal (meta agregada portfolio)
-        if ($atingimento['target_value'] && $atingimento['target_value'] > 0) {
-            $metasWidget[] = [
-                'icone'    => 'dollar',
-                'nome'     => 'Faturamento vs meta',
-                'atual'    => $this->fmtBRL((float) $atingimento['realized_value']),
-                'objetivo' => $this->fmtBRL((float) $atingimento['target_value']),
-                'percent'  => (int) min(100, round((float) $atingimento['pct'])),
-            ];
-        }
-        // Empresas em crescimento
-        if ($emCresc['total'] > 0) {
-            $metasWidget[] = [
-                'icone'    => 'trend',
-                'nome'     => 'Empresas em crescimento',
-                'atual'    => (string) $emCresc['count'],
-                'objetivo' => "{$emCresc['total']} empresas",
-                'percent'  => (int) ($emCresc['pct'] ?? 0),
-            ];
-        }
-        // Qualidade (NPS médio)
-        $qual = $metricas['qualidade'];
-        if ($qual['avg_nps'] !== null) {
-            $notaMax = 5.0; // escala NPS interna 0-5
-            $pct = (int) min(100, round(($qual['avg_nps'] / $notaMax) * 100));
-            $metasWidget[] = [
-                'icone'    => 'check',
-                'nome'     => 'Qualidade NPS média',
-                'atual'    => number_format($qual['avg_nps'], 1, ',', '.'),
-                'objetivo' => '5,0',
-                'percent'  => $pct,
-            ];
+        if ($goalsByCompany->count() > 0) {
+            // Faturamento mensal (meta agregada portfolio)
+            if ($atingimento['target_value'] && $atingimento['target_value'] > 0) {
+                $metasWidget[] = [
+                    'icone'    => 'dollar',
+                    'nome'     => 'Faturamento vs meta',
+                    'atual'    => $this->fmtBRL((float) $atingimento['realized_value']),
+                    'objetivo' => $this->fmtBRL((float) $atingimento['target_value']),
+                    'percent'  => (int) min(100, round((float) $atingimento['pct'])),
+                ];
+            }
+            // Empresas em crescimento
+            if ($emCresc['total'] > 0) {
+                $metasWidget[] = [
+                    'icone'    => 'trend',
+                    'nome'     => 'Empresas em crescimento',
+                    'atual'    => (string) $emCresc['count'],
+                    'objetivo' => "{$emCresc['total']} empresas",
+                    'percent'  => (int) ($emCresc['pct'] ?? 0),
+                ];
+            }
+            // Qualidade (NPS médio)
+            if ($qual['avg_nps'] !== null) {
+                $notaMax = 5.0; // escala NPS interna 0-5
+                $pct = (int) min(100, round(($qual['avg_nps'] / $notaMax) * 100));
+                $metasWidget[] = [
+                    'icone'    => 'check',
+                    'nome'     => 'Qualidade NPS média',
+                    'atual'    => number_format($qual['avg_nps'], 1, ',', '.'),
+                    'objetivo' => '5,0',
+                    'percent'  => $pct,
+                ];
+            }
         }
 
         return Inertia::render('Performance/Dashboard', [
