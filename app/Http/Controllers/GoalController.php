@@ -107,6 +107,16 @@ class GoalController extends Controller
             'description'  => 'nullable|string',
         ]);
 
+        $company = Company::findOrFail($data['company_id']);
+        $user = $request->user();
+        $canCreate = $user?->isAdmin()
+            || $company->users()
+                ->where('users.id', $user?->id)
+                ->wherePivot('role', 'estrategista')
+                ->exists();
+
+        abort_unless($canCreate, 403);
+
         // Métricas de porcentagem não têm opção de R$
         if (in_array($data['metric'], Goal::$percentageOnlyMetrics)) {
             $data['value_type'] = 'percentage';
