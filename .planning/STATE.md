@@ -1,16 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v14.0
-milestone_name: Confiabilidade + Polish
-status: in-progress
-stopped_at: Completed 60-02-PLAN.md
-last_updated: "2026-07-07T15:30:00.000Z"
-last_activity: "2026-07-07 — Phase 60 Plan 60-02 completo: contract MetricsProvider + DTO UnifiedMetricsDto (19 propriedades) + AdmanMetricsProvider (13/13 testes verdes, zero regressao)"
+milestone: v15.0
+milestone_name: NPS Templates
+status: planning
+last_updated: "2026-07-07T22:41:43.132Z"
+last_activity: 2026-07-07
 progress:
-  total_phases: 8
+  total_phases: 0
   completed_phases: 0
-  total_plans: 4
-  completed_plans: 2
+  total_plans: 0
+  completed_plans: 0
   percent: 0
 ---
 
@@ -25,12 +24,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 60 of 67 (Base multi-fonte — backend ML+Adman unificado)
-Plan: 2 of 4 (60-02 completo — proximo 60-03 MlMetricsProvider)
-Status: In-progress (Wave 2/4 fechada — contract + DTO + AdmanMetricsProvider prontos)
-Last activity: 2026-07-07 — Phase 60 Plan 60-02 completo: contract MetricsProvider + DTO UnifiedMetricsDto (19 propriedades) + AdmanMetricsProvider (13/13 testes verdes)
-
-Progress: [██░░░░░░░░] 25% (2 de 8 plans da Phase 60; 0 de 8 phases da v14.0)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-07-07 — Milestone v15.0 started
 
 ## Performance Metrics
 

@@ -15,22 +15,44 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v14.0 Confiabilidade + Polish
+## Current Milestone: v15.0 NPS Templates
 
-**Goal:** Consolidar acertividade dos dados (fontes ML + Adman unificadas em uma mesma superfície), polir usabilidade de Metas + parâmetros de desempenho, corrigir bugs UX relatados por operadores em teste e refinar detecção de Sugadores — antes de escalar novas features sobre uma base ainda instável.
+**Goal:** Reescrever o módulo NPS baseado em **modelos configuráveis de formulário** — templates por tipo de serviço, perguntas customizáveis com opções e pesos ajustáveis, cálculo por dimensão (estrategista/analista/empresa/geral), bloqueio de duplicata mensal, dashboards de pendência e UX limpa do formulário público. **Zero uso de Promotor/Neutro/Detrator** — escala 1-5.
 
-**Target features:**
-- **A. Confiabilidade + Multi-Fonte:** Dashboard Mercado Livre + carteira individual + dashboards de analista/estrategista unificando empresas fonte-ML e fonte-Adman
-- **B. Metas (UX + Onboarding):** melhorar usabilidade da tela e visualização de progresso; incluir meta na criação/onboarding da empresa (resolve seed `270629`)
-- **C. Parâmetros de Desempenho:** adicionar dimensão "forma de uso do sistema" (ex: qtd de análises de sugadores rodadas)
-- **D. Bug Fixes UX:** OAuth ML erro cosmético cliente-side; filtro "conectada ao Mercado Livre" em /companies; badge ML na carteira; sidebar collapse-arrow vs botão voltar
-- **E. Sugadores refinements (escopo raso):** falsos-negativos (By Mobile, KAPRAKASA); "dados defasados" ao copiar MLBs (Desk Design); página de config mais simples
+**Target features (6 blocos):**
+- **A. Schema + modelos + seed "NPS Padrão" retroativo:** 5 tabelas novas (`nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes`, `nps_response_answers`) + alter `nps_surveys/responses`; seed retro-associa 100% dos surveys legados ao template padrão
+- **B. Backend regras de negócio:** `NpsTemplateService` (resolve template por company+serviço), `NpsScoreCalculator` (média por dimensão), dedup mensal via unique index parcial, dispatch usando template correto
+- **C. UI Configuração:** CRUD de templates + perguntas + opções, drag/drop pra reordenar, ajuste de pesos inline, preview live
+- **D. Formulário público:** dinâmico por template, UX limpa (opções cinza / ativo amarelo), mobile-friendly, marcador de obrigatoriedade
+- **E. Dashboards + pendências:** destaque na carteira quando empresa não respondeu no mês, "dia de cobrança" configurável, base pra notificação interna
+- **F. Limpeza legado + testes:** remove `>=9 Promotor/>=7 Neutro/else Detrator` (`PerformanceController.php:301`), remove refs `score_overall/consultant/mentor` (`CompanyController.php:482-487`), suite E2E completa
 
 **Key context:**
-- Herda 66 items "deferred" do fechamento da v13.0 — verificar overlap ao definir REQs, sem incluir automaticamente
-- Deploy gate ativo: `deploy.sh` exige confirmação caso-a-caso (outro dev em paralelo)
-- Prioridade dura: **acertividade > velocidade** (não é polish superficial — é confiabilidade)
-- Sugadores (bloco E) tem escopo propositalmente raso — usuário vai aprofundar em milestone dedicada depois
+- Escopo pré-negociado em 2026-07-07 (spec de ~200 linhas do usuário + mapeamento completo do NPS atual)
+- Escala 1-5 SEMPRE — nunca 0-10 clássico NPS
+- Seed "NPS Padrão" cobrindo 100% do legado (zero survey órfã)
+- Deploy gate ativo — outro dev em paralelo
+- pt-BR em tudo
+
+## Paused: v14.0 Confiabilidade + Polish *(paused 2026-07-07)*
+
+**Status:** 3/8 fases entregues, pausada para atacar v15.0 NPS Templates.
+
+**Delivered:**
+- ✓ Phase 60 — Base multi-fonte (backend ML+Adman unificado): 46 tests verdes, DATA-04/DATA-06 fechados
+- ✓ Phase 61 — Dashboards multi-fonte + indicador de origem: 31 tests verdes, DATA-05/DASH-04/DASH-05/DASH-06 fechados
+- ✓ Phase 62 — Metas apresentação clara + edição rápida: 19 tests verdes, META-01/META-04 fechados
+
+**Deferred (resumir depois):**
+- Phase 63 — Metas: onboarding + legacy + activity_log (**planejada com Task 0 + 4 plans, não executada**; META-02/META-03/META-05)
+- Phase 64 — Parâmetro uso do sistema (captura) — sem plans (PERF-01/PERF-03)
+- Phase 65 — Dashboard uso do sistema — sem plans (PERF-02)
+- Phase 66 — Bug fixes UX (OAuth ML, filtro companies, sidebar) — sem plans (UX-01/UX-02/UX-03)
+- Phase 67 — Sugadores refinements — sem plans (SUGA-01/02/03/04)
+
+**Como resumir:** ROADMAP.md original preservado em `.planning/milestones/v14.0-ROADMAP-wip.md`. `.planning/phases/60-63/*` intactas com todos SUMMARY + plans commitados. Rodar `/gsd:new-milestone v14.1` ou reabrir v14.0 quando pronto.
+
+**Commits acumulados v14.0:** 60+ desde main (não deployado — deploy gate ativo).
 
 ## Recently Shipped: ✅ v13.0 Reorganização Multi-Marketplace *(2026-07-06)*
 
@@ -76,11 +98,18 @@ manuais) — sem precisar de acesso direto ao servidor.
 - ✓ **CROSS-02**: Publicação confirmed transversal via grep + suite dinâmica — Phase 59
 - ✓ **CROSS-03**: Zero regressão (delta = 0 vs baseline 955 tests) — Phase 59
 
-### Active (v14.0 — Confiabilidade + Polish)
+### Active (v15.0 — NPS Templates)
 
 <!-- Escopo do milestone atual. REQ-IDs definidos em `.planning/REQUIREMENTS.md`. -->
 
-Categorias-alvo: **DATA** (unificação fontes ML/Adman), **DASH** (dashboards multi-fonte), **META** (usabilidade + onboarding + seed 270629), **PERF** (parâmetro "uso do sistema"), **UX** (bug fixes: OAuth, filtro, badge, sidebar), **SUGA** (refinements rasos).
+Categorias-alvo: **NPS-A** (schema + modelos + seed retroativo), **NPS-B** (backend regras), **NPS-C** (UI configuração), **NPS-D** (formulário público), **NPS-E** (dashboards + pendências), **NPS-F** (limpeza legado + testes).
+
+### Paused (v14.0 — Confiabilidade + Polish)
+
+<!-- Pausada em 2026-07-07 para atacar v15.0 NPS Templates. 3/8 fases entregues. Resumir depois via /gsd:new-milestone v14.1 ou reabertura. Ver `.planning/milestones/v14.0-ROADMAP-wip.md`. -->
+
+Categorias-alvo entregues: **DATA-04/05/06**, **DASH-04/05/06**, **META-01/04** — via phases 60/61/62.
+Categorias pendentes: **META-02/03/05** (Phase 63 planejada), **PERF-01/02/03** (Phase 64/65), **UX-01/02/03** (Phase 66), **SUGA-01/02/03/04** (Phase 67).
 
 ### Legado (v3.0 — Sistema de Notificações, shipped 2026-05)
 
@@ -175,4 +204,4 @@ Este documento evolui a cada transição de fase e marco de milestone.
 4. Atualizar Context com estado atual
 
 ---
-*Last updated: 2026-07-07 — **Milestone v14.0 (Confiabilidade + Polish) aberta.** Escopo: unificação fontes ML/Adman em dashboards e carteiras, Metas UX + onboarding (resolve seed 270629), parâmetro "uso do sistema", bug fixes UX (OAuth, filtro ML, badge, sidebar), refinements rasos de Sugadores. Prioridade acertividade > velocidade. Deploy gate ativo.*
+*Last updated: 2026-07-07 — **Milestone v15.0 (NPS Templates) aberta.** v14.0 pausada mid-flight com 3/8 entregues (Phase 60/61/62 verified; 63 planejada não executada; 64-67 sem plans). Escopo v15.0: reescrita completa do módulo NPS baseado em modelos configuráveis de formulário, com pesos ajustáveis por opção, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator. Deploy gate ativo.*

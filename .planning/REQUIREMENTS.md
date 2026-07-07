@@ -1,133 +1,132 @@
-# Requirements: ECF Admin — Milestone v14.0
+# Requirements: ECF Admin — Milestone v15.0
 
 **Defined:** 2026-07-07
-**Milestone:** v14.0 — Confiabilidade + Polish
-**Core Value:** Consolidar acertividade dos dados (fontes ML + Adman unificadas) e polir usabilidade antes de escalar novas features sobre uma base ainda instável.
+**Milestone:** v15.0 — NPS Templates
+**Core Value:** Transformar o NPS de "3 perguntas fixas + extras globais" em "modelos configuráveis de formulário", com pesos por opção, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre.
 
-## v14.0 Requirements
+## v15.0 Requirements
 
-Requirements do milestone atual. Cada um mapeado para exatamente uma phase no ROADMAP.md.
+Requirements do milestone atual. Cada um será mapeado para exatamente uma phase no ROADMAP.md.
 
-### DATA — Unificação de fontes de dados (ML + Adman)
+### NPS-A — Schema, modelos e migração de dados existentes
 
-<!-- Continua numeração de DATA-01/02/03 já entregues em v13.0 (Phase 57). -->
+- [ ] **NPS-A-01**: Sistema tem tabelas `nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes` e `nps_response_answers` criadas com constraints e índices apropriados
+- [ ] **NPS-A-02**: Modelos Eloquent + relationships definidos (`NpsTemplate hasMany Questions`, `Question hasMany Options`, `Template belongsToMany Servico` via pivot, `NpsResponse hasMany Answers`)
+- [ ] **NPS-A-03**: Migração de dados legados cria template seed "NPS Padrão" e retro-associa 100% dos `nps_surveys` existentes; nenhuma survey fica órfã sem `template_id`
+- [ ] **NPS-A-04**: `nps_response_answers` armazena snapshot completo (question_texto, option_label, peso) por resposta — mudanças futuras no template não alteram histórico
 
-- [ ] **DATA-04**: Sistema calcula métricas agregadas de uma empresa lendo tanto `adman_metrics` (fonte Adman) quanto tabelas ML nativas (fonte ML), sem quebrar quando uma das fontes está ausente
-- [ ] **DATA-05**: Cada métrica exibida na UI carrega indicador visual da fonte (badge/tooltip: ML, Adman, ou Agregado)
-- [ ] **DATA-06**: Empresas conectadas a AMBAS as fontes têm métricas conciliadas sem duplicação — regra de precedência documentada em ADR
+### NPS-B — Backend: regras de negócio, cálculo e dispatch
 
-### DASH — Dashboards e Carteira multi-fonte
+- [ ] **NPS-B-01**: `NpsTemplateService` resolve o template correto para uma empresa dado seus serviços ativos (via `nps_template_service_scopes`); retorna o template default se nenhum específico aplicar
+- [ ] **NPS-B-02**: `NpsScoreCalculator` computa nota por dimensão (`estrategista`, `analista`, `empresa`, `geral`) como média dos pesos das opções escolhidas nas perguntas daquela dimensão; retorna `null` para dimensão sem perguntas correspondentes
+- [ ] **NPS-B-03**: Sistema bloqueia gerar/responder NPS duplicado para mesma `(company_id, month_reference, template_id)` — via unique index parcial + guard no controller. Link redundante mostra tela "Já respondida no mês"
+- [ ] **NPS-B-04**: Comando `nps:disparar-mensal` usa `NpsTemplateService` pra resolver template correto por empresa; empresas sem template aplicável são puladas com log
+- [ ] **NPS-B-05**: Validação server-side do formulário público é dinâmica — deriva regras (obrigatoriedade, tipo, range de pesos) do template snapshot associado à survey, não de defaults hardcoded
 
-<!-- Continua numeração de DASH-01/02/03 já entregues em v13.0 (Phase 58). -->
+### NPS-C — UI de configuração (admin)
 
-- [ ] **DASH-04**: Dashboard Mercado Livre (`/dashboard/mercadolivre`) contabiliza empresas com fonte-ML E fonte-Adman num único KPI unificado (não duplica, não ignora)
-- [ ] **DASH-05**: Dashboard do Analista e Estrategista respeita a fonte de cada empresa da carteira sem quebrar — empresas ML-only não geram erro Adman; empresas Adman-only aparecem normalmente
-- [ ] **DASH-06**: Carteira individual exibe badge visual "ML" ao lado do nome de empresa conectada ao Mercado Livre
+- [ ] **NPS-C-01**: Admin pode criar, editar e desativar templates de NPS via `/nps/configuracao` (novo layout multi-template)
+- [ ] **NPS-C-02**: Admin pode adicionar, editar, reordenar e excluir perguntas dentro de um template (`escala`, `opcoes` como tipos suportados)
+- [ ] **NPS-C-03**: Admin pode configurar opções de resposta de cada pergunta com label visível ao cliente + peso interno (1-5+) + ordem; reordenação drag-and-drop ou arrows
+- [ ] **NPS-C-04**: Admin pode marcar dimensão de cada pergunta (`estrategista`, `analista`, `empresa`, `geral`) e obrigatoriedade
+- [ ] **NPS-C-05**: Admin pode associar templates a tipos de serviço via pivot `nps_template_service_scopes` — decide qual template cada tipo de empresa recebe
+- [ ] **NPS-C-06**: Admin vê preview live do formulário público renderizado a partir do template em edição, sem persistir mudanças
 
-### META — Metas: usabilidade + onboarding
+### NPS-D — Formulário público (cliente respondendo)
 
-<!-- Consolida seed 270629 (meta no onboarding). -->
+- [ ] **NPS-D-01**: Formulário público `/nps/{token}` renderiza dinamicamente a partir do template snapshot associado à survey — sem hardcode de 3 perguntas fixas
+- [ ] **NPS-D-02**: Perguntas com opções renderizam como radio group com estilo cinza no estado padrão + amarelo no estado ativo (opção selecionada); mobile-friendly
+- [ ] **NPS-D-03**: Perguntas obrigatórias são visualmente marcadas; submit desabilita até que todas obrigatórias estejam preenchidas (validação client-side + confirmação server-side)
+- [ ] **NPS-D-04**: Formulário preserva telas `ThankYou`, `AlreadyCompleted` e `Expired` — comportamento inalterado
+- [ ] **NPS-D-05**: Formulário público não usa jargão técnico (`unified`, `dimensao`, `snapshot`) — labels apresentadas ao cliente em pt-BR simples
 
-- [ ] **META-01**: Usuário visualiza a meta atribuída de uma empresa e o progresso mensal numa apresentação clara (chart + percentual + valor absoluto)
-- [ ] **META-02**: Fluxo de criação/onboarding de empresa inclui campo obrigatório "meta inicial mensal" (Mercado Livre)
-- [ ] **META-03**: Empresas legadas sem meta ganham tratamento explícito na UI (flag visível "Meta não definida" com CTA para definição) — sem default arbitrário
-- [ ] **META-04**: Tela de gestão de metas suporta edição rápida (inline ou bulk) e mostra histórico de alterações
-- [ ] **META-05**: Alterações de meta são registradas em `activity_log` com autor, valor anterior e valor novo
+### NPS-E — Dashboards e pendências de resposta
 
-### PERF — Parâmetro "forma de uso do sistema"
+- [ ] **NPS-E-01**: Sistema tem configuração global "dia de cobrança mensal" (int 1-31) que dispara marcação de pendência a partir daquele dia do mês
+- [ ] **NPS-E-02**: Listagem de empresas em carteira (`Portfolio/Show.jsx` e `Companies/Index.jsx`) mostra badge/indicador visual quando empresa está em pendência de NPS do mês corrente
+- [ ] **NPS-E-03**: Dashboard do analista/estrategista mostra contagem/lista de empresas pendentes de NPS no mês corrente na sua carteira
+- [ ] **NPS-E-04**: Sistema tem `NpsPendingService` que retorna a lista de empresas pendentes por carteira; base preparada para futura integração com sistema de notificações (não obrigatório integrar nesta phase, mas contrato definido)
+- [ ] **NPS-E-05**: Dashboards existentes (`Dashboard/Admin.jsx`, `Performance/Dashboard.jsx`, `Companies/Show.jsx`) leem nota via `NpsScoreCalculator` e exibem médias por dimensão respeitando `template_snapshot`
 
-- [ ] **PERF-01**: Sistema captura métrica "quantidade de análises de sugadores rodadas" por usuário/empresa/período (exemplo canonical do parâmetro de uso)
-- [ ] **PERF-02**: Dashboard de desempenho exibe dimensão "uso do sistema" complementar aos KPIs comerciais existentes (coluna, gráfico ou painel dedicado)
-- [ ] **PERF-03**: Arquitetura de captura suporta adicionar novos eventos de uso no futuro (ex: qtd de acessos ao MLB, freq de edição de metas) sem refactor — event-based extensível
+### NPS-F — Limpeza de legado + testes E2E
 
-### UX — Bug Fixes e polish
-
-- [ ] **UX-01**: Fluxo OAuth Mercado Livre não exibe tela de erro pro cliente quando a conexão foi bem-sucedida no admin — investigar e corrigir erro cosmético client-side (redirect, callback, ou race condition)
-- [ ] **UX-02**: `/companies` tem filtro "Conectada ao Mercado Livre" com opções (Sim / Não / Qualquer) integrado aos filtros existentes
-- [ ] **UX-03**: Sidebar reorganiza a hierarquia visual entre botão de recolher (hoje fixo na rolagem) e botão voltar (não-fixo) para eliminar confusão dos operadores em teste
-
-### SUGA — Sugadores refinements (escopo raso)
-
-<!-- Usuário disse que vai aprofundar Sugadores em milestone própria depois — aqui só os casos concretos já observados. -->
-
-- [ ] **SUGA-01**: Investigar e corrigir falso-negativo em By Mobile (sugadores que atendem parâmetros de detecção mas não aparecem no sistema)
-- [ ] **SUGA-02**: Investigar e corrigir "dados defasados" ao copiar MLBs em Desk Design (erro na coleta, refresh ou cache)
-- [ ] **SUGA-03**: Investigar sugadores existentes não encontrados em KAPRAKASA — validar contra o mesmo baseline usado em outras empresas
-- [ ] **SUGA-04**: Página de configuração de sugadores fica mais simples (hierarquia visual mais clara, menos opções aparentes por padrão, agrupamento por intenção)
+- [ ] **NPS-F-01**: Zero cálculo `>=9 Promotor / >=7 Neutro / else Detrator` restante no código (grep confirma remoção em `PerformanceController.php`, `Performance/Dashboard.jsx`, qualquer outro loco)
+- [ ] **NPS-F-02**: Referências legadas a `score_overall`, `score_consultant`, `score_mentor` removidas de `Companies/Show.jsx` (fechamento do Plan 31-05 nunca finalizado)
+- [ ] **NPS-F-03**: `CalculateGoalResults` (`app/Jobs/CalculateGoalResults.php:155`) implementa cálculo real para `metric='nps'` usando `NpsScoreCalculator` — não cai mais no branch `null`
+- [ ] **NPS-F-04**: Suite de tests E2E cobre: criação de template, perguntas com pesos, resposta pública, cálculo por dimensão, bloqueio de duplicata, dispatch idempotente, empresa pendente aparece corretamente, template sem analista funciona sem quebrar
 
 ## Future Requirements
 
 <!-- Reconhecidos mas fora do escopo desta milestone. -->
 
-### Sugadores (aprofundamento dedicado)
+### NPS avançado
 
-- **SUGA-FUTURE-01**: Análise sistemática dos casos de "empresas que acham sugadores sem nenhum MLB" — investigação de root cause
-- **SUGA-FUTURE-02**: Rework completo do motor de detecção de sugadores (se investigação SUGA-01/03 apontar limitações estruturais)
+- **NPS-FUTURE-01**: UI para ajustar janelas de expiração (7d manual / 30d auto) via config sem deploy
+- **NPS-FUTURE-02**: UI para ajustar horário do disparo mensal (hoje 9h America/Sao_Paulo) via config sem deploy
+- **NPS-FUTURE-03**: Integração real com sistema de notificações (in-app + email interno) quando pendência é detectada — hoje NPS-E-04 só prepara o contrato
+- **NPS-FUTURE-04**: Suporte a mais tipos de pergunta no template (`sim_nao`, `texto`, `multipla` — hoje só `escala` e `opcoes`)
+- **NPS-FUTURE-05**: A/B testing de templates (mesma empresa/serviço recebe templates diferentes por período pra medir engajamento)
 
-### Metas (extensões)
+### Herança pausada (v14.0)
 
-- **META-FUTURE-01**: Relatório "empresas abaixo de X% da meta" com trigger de alerta
-- **META-FUTURE-02**: Migração automática de empresas legacy com sugestão baseada em revenue médio dos últimos 3 meses
-
-### Multi-marketplace (herdado de v13.0)
-
-- **DATA-FUTURE-01**: Agregação real cross-marketplace no ECF Dashboard (quando >0 empresas tiverem 2+ marketplaces reais)
-- **DATA-FUTURE-02**: Migração completa para pivot N:N `whereHas('marketplaces', ...)` em todas queries transversais
+- Todas as REQs de v14.0 que ainda não foram entregues ficam preservadas em `.planning/milestones/v14.0-REQUIREMENTS-wip.md`:
+  - **META-02, META-03, META-05** (Phase 63 planejada)
+  - **PERF-01, PERF-02, PERF-03** (Phase 64/65 sem plans)
+  - **UX-01, UX-02, UX-03** (Phase 66 sem plans)
+  - **SUGA-01, SUGA-02, SUGA-03, SUGA-04** (Phase 67 sem plans)
 
 ## Out of Scope
 
 | Feature | Motivo |
 |---------|--------|
-| Rework completo do motor de Sugadores | Escopo dedicado em milestone própria — usuário sinalizou aprofundamento posterior |
-| Integração real de dados Shopee/Amazon | Ainda não há empresas com esses marketplaces; escopo v15+ quando o primeiro caso aparecer |
-| Redesign completo de Metas | v14.0 foca em usabilidade + onboarding, não em novo produto; UX-focused, não feature-focused |
-| WebSockets/broadcast para desempenho em tempo real | Polling atual atende — não é o gargalo dessa milestone |
-| Migração dos 66 items "deferred" de v13.0 | Herança de v9-v12; endereçar caso-a-caso quando bater no roadmap, não em bulk |
+| NPS clássico 0-10 | Decisão explícita do usuário — escala 1-5 é a definitiva. Zero uso de Promotor/Neutro/Detrator |
+| Retentar/rerender survey já respondida (idempotência) | Depois de responder, survey vira read-only. Editar histórico compromete audit trail |
+| Migração automática das perguntas customizadas globais existentes em templates separados | Serão migradas como "perguntas extras" dentro do template "NPS Padrão" seed; separação manual fica pra Future se demandado |
+| Sistema de notificação interna (in-app + email) integrado nesta phase | NPS-E-04 prepara contrato `NpsPendingService`; integração real fica pra NPS-FUTURE-03 |
+| Modelo de perguntas com tipo `texto`/`sim_nao`/`multipla` no template | Hoje `NpsPerguntaCustomizada` suporta esses tipos mas na v15.0 template usa só `escala` e `opcoes` — extensão fica pra NPS-FUTURE-04 |
+| Deploy automatizado da milestone | Deploy gate ativo — [[feedback_perguntar_antes_deploy_v9]] |
 
 ## Traceability
 
-Mapping definido pelo gsd-roadmapper em 2026-07-07 (aprovado por escopo pré-acordado com o usuário).
+<!-- Preenchido pelo gsd-roadmapper após aprovação. -->
 
-| Requirement | Phase     | Status  |
-|-------------|-----------|---------|
-| DATA-04     | Phase 60  | Pending |
-| DATA-05     | Phase 61  | Pending |
-| DATA-06     | Phase 60  | Pending |
-| DASH-04     | Phase 61  | Pending |
-| DASH-05     | Phase 61  | Pending |
-| DASH-06     | Phase 61  | Pending |
-| META-01     | Phase 62  | Pending |
-| META-02     | Phase 63  | Pending |
-| META-03     | Phase 63  | Pending |
-| META-04     | Phase 62  | Pending |
-| META-05     | Phase 63  | Pending |
-| PERF-01     | Phase 64  | Pending |
-| PERF-02     | Phase 65  | Pending |
-| PERF-03     | Phase 64  | Pending |
-| UX-01       | Phase 66  | Pending |
-| UX-02       | Phase 66  | Pending |
-| UX-03       | Phase 66  | Pending |
-| SUGA-01     | Phase 67  | Pending |
-| SUGA-02     | Phase 67  | Pending |
-| SUGA-03     | Phase 67  | Pending |
-| SUGA-04     | Phase 67  | Pending |
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| NPS-A-01 | TBD | Pending |
+| NPS-A-02 | TBD | Pending |
+| NPS-A-03 | TBD | Pending |
+| NPS-A-04 | TBD | Pending |
+| NPS-B-01 | TBD | Pending |
+| NPS-B-02 | TBD | Pending |
+| NPS-B-03 | TBD | Pending |
+| NPS-B-04 | TBD | Pending |
+| NPS-B-05 | TBD | Pending |
+| NPS-C-01 | TBD | Pending |
+| NPS-C-02 | TBD | Pending |
+| NPS-C-03 | TBD | Pending |
+| NPS-C-04 | TBD | Pending |
+| NPS-C-05 | TBD | Pending |
+| NPS-C-06 | TBD | Pending |
+| NPS-D-01 | TBD | Pending |
+| NPS-D-02 | TBD | Pending |
+| NPS-D-03 | TBD | Pending |
+| NPS-D-04 | TBD | Pending |
+| NPS-D-05 | TBD | Pending |
+| NPS-E-01 | TBD | Pending |
+| NPS-E-02 | TBD | Pending |
+| NPS-E-03 | TBD | Pending |
+| NPS-E-04 | TBD | Pending |
+| NPS-E-05 | TBD | Pending |
+| NPS-F-01 | TBD | Pending |
+| NPS-F-02 | TBD | Pending |
+| NPS-F-03 | TBD | Pending |
+| NPS-F-04 | TBD | Pending |
 
 **Coverage:**
-- v14.0 requirements: 21 total
-- Mapped to phases: 21 ✓
-- Unmapped: 0
-
-**Phase → Requirements (reverso):**
-- **Phase 60**: DATA-04, DATA-06 (2)
-- **Phase 61**: DATA-05, DASH-04, DASH-05, DASH-06 (4)
-- **Phase 62**: META-01, META-04 (2)
-- **Phase 63**: META-02, META-03, META-05 (3)
-- **Phase 64**: PERF-01, PERF-03 (2)
-- **Phase 65**: PERF-02 (1)
-- **Phase 66**: UX-01, UX-02, UX-03 (3)
-- **Phase 67**: SUGA-01, SUGA-02, SUGA-03, SUGA-04 (4)
+- v15.0 requirements: 29 total
+- Mapped to phases: 0 (aguardando roadmapper)
+- Unmapped: 29 ⚠️
 
 ---
 *Requirements defined: 2026-07-07*
-*Traceability mapped: 2026-07-07 — 21/21 requirements ✓*
-*Last updated: 2026-07-07 — mapping para phases 60-67 pelo gsd-roadmapper*
+*Last updated: 2026-07-07 — initial definition for milestone v15.0 (NPS Templates); v14.0 REQs preservados em `.planning/milestones/v14.0-REQUIREMENTS-wip.md`*
