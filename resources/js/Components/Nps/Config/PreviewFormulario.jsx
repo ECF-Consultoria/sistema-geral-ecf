@@ -2,43 +2,76 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
- * PreviewFormulario — Phase 70 Plan 05 v15.0.
+ * PreviewFormulario — Phase 70 Plan 05 v15.0 + Phase 71 Plan 02 refactor.
  *
  * Componente **PURO** que renderiza a versão pública do formulário NPS
  * a partir de um template normalizado (shape do `POST /preview` — Plan 70-04).
  *
  *   - `mode === 'preview'` — usado no admin (Configuracao.jsx). Botões
  *     aparecem clicáveis para simular seleção, mas o rodapé indica que é
- *     preview e não persiste nada.
- *   - `mode === 'live'`    — reservado para a Phase 71 (Respond.jsx público).
- *     Neste modo os botões são interativos e o rodapé mostra CTA "Enviar".
+ *     preview e não persiste nada. Sem props `value/onChange` → usa state interno.
+ *   - `mode === 'live'`    — usado no público (Nps/Respond.jsx). Neste modo
+ *     o componente é **controlled**: recebe `value` (map { [pergunta_id]:
+ *     option_id }) + `onChange` (setter). Também aceita `errors` (map
+ *     { [pergunta_id]: mensagem }) para renderizar mensagem de erro por
+ *     pergunta. O rodapé em `live` NÃO renderiza nada — o wrapper Respond.jsx
+ *     posiciona seus próprios campos (nome/comentário/submit) fora.
  *
  * REGRA CRÍTICA DE PORTABILIDADE (research §5):
  *   Nenhuma chamada de rede. Nenhum hook de submissao Inertia. Nenhum
  *   dispatcher de navegacao. O componente recebe o template ja pronto e
- *   renderiza. A Phase 71 vai importar ESTE arquivo identico e envolve-lo
- *   com o hook de submit do Respond.jsx.
+ *   renderiza. O Respond.jsx envolve esse componente com o hook de submit.
  *
  * Shape esperado do prop `template`:
  *   {
  *     nome: string,
  *     descricao?: string | null,
  *     perguntas: Array<{
+ *       id?: number,          // presente em Phase 71 (v15 público), ausente em preview cru
  *       ordem: number,
  *       texto: string,
  *       tipo: 'escala' | 'opcoes',
  *       dimensao: 'estrategista' | 'analista' | 'empresa' | 'geral',
  *       obrigatoria: boolean,
- *       options: Array<{ ordem: number, label: string, peso: number }>,
+ *       options: Array<{ id?: number, ordem: number, label: string, peso: number }>,
  *     }>
  *   }
  *
+ * Identificador de pergunta/opção normalizado — Phase 71 (público) precisa
+ * mandar `option_id` para o backend; Phase 70 (preview cru sem save) só
+ * precisa de um key visual, então cai no `ordem`/`peso`. Ver helpers
+ * `perguntaKey` e `optionKey` abaixo.
+ *
  * Layout mobile-first (max-w-md) — mesma largura útil do form real no cliente.
+ *
+ * @param {object}   props
+ * @param {object}   props.template  Template normalizado (obrigatório em runtime).
+ * @param {'preview'|'live'} [props.mode='preview']
+ * @param {object}   [props.value]    Map { [perguntaId]: optionId } — modo controlled.
+ * @param {function} [props.onChange] Handler `(perguntaId, optionId) => void` — modo controlled.
+ * @param {object}   [props.errors]   Map { [perguntaId]: string } para erro por pergunta.
  */
-export default function PreviewFormulario({ template, mode = 'preview' }) {
-    // Estado local só para feedback visual do "botão selecionado" — não é
-    // persistido em lugar nenhum. `{ [perguntaOrdem]: opcaoPeso }`.
-    const [respostas, setRespostas] = useState({});
+export default function PreviewFormulario({
+    template,
+    mode = 'preview',
+    value,
+    onChange,
+    errors,
+}) {
+    // ─── Detecção de modo controlled ────────────────────────────────────────
+    // Se o wrapper (Phase 71 Respond.jsx) passou value + onChange, delegamos
+    // a fonte da verdade ao pai. Caso contrário (Phase 70 Configuracao.jsx),
+    // mantemos o estado local original — retrocompat total.
+    const isControlled = typeof value === 'object' && value !== null && typeof onChange === 'function';
+    const [internalRespostas, setInternalRespostas] = useState({});
+    const respostas = isControlled ? value : internalRespostas;
+
+    // ─── Helpers de chave estável ──────────────────────────────────────────
+    // Public (Phase 71) precisa mandar `option_id` real ao backend — usa `id`.
+    // Preview cru (Phase 70) recebe template sem `id` (ex: rascunho em edição)
+    // — cai no `peso`/`ordem` só para diferenciar visualmente as opções.
+    const perguntaKey = (q) => q.id ?? q.ordem;
+    const optionKey = (o) => o.id ?? o.peso;
 
     if (!template) {
         return (
@@ -50,9 +83,15 @@ export default function PreviewFormulario({ template, mode = 'preview' }) {
 
     const perguntas = template.perguntas ?? template.questions ?? [];
 
-    const selecionar = (perguntaOrdem, opcaoPeso) => {
-        // Preview permite feedback visual — não faz nada além do state local.
-        setRespostas((prev) => ({ ...prev, [perguntaOrdem]: opcaoPeso }));
+    const selecionar = (pergunta, opcao) => {
+        const pk = perguntaKey(pergunta);
+        const ok = optionKey(opcao);
+        if (isControlled) {
+            onChange(pk, ok);
+        } else {
+            // Preview permite feedback visual — state local só para UX.
+            setInternalRespostas((prev) => ({ ...prev, [pk]: ok }));
+        }
     };
 
     return (
@@ -78,7 +117,8 @@ export default function PreviewFormulario({ template, mode = 'preview' }) {
 
             {perguntas.map((q, idx) => {
                 const opcoes = q.options ?? [];
-                const selecionado = respostas[q.ordem ?? idx];
+                const pk = perguntaKey(q);
+                const selecionado = respostas[pk];
                 // Grid heurístico: até 5 opções usa grid-cols-N (compacto); acima
                 // disso empilha em 1 coluna para não quebrar em mobile.
                 // ATENÇÃO: Tailwind JIT não detecta classes dinâmicas via template
@@ -98,7 +138,7 @@ export default function PreviewFormulario({ template, mode = 'preview' }) {
                         : 'grid-cols-1';
 
                 return (
-                    <div key={q.ordem ?? idx} className="space-y-2.5">
+                    <div key={pk ?? idx} className="space-y-2.5">
                         <label className="block">
                             <span className="text-white text-[13.5px] font-medium leading-snug">
                                 {q.texto || '(Pergunta sem texto)'}
@@ -115,12 +155,13 @@ export default function PreviewFormulario({ template, mode = 'preview' }) {
                         ) : (
                             <div className={cn('grid gap-1.5', gridClass)}>
                                 {opcoes.map((o, j) => {
-                                    const isActive = selecionado === o.peso;
+                                    const ok = optionKey(o);
+                                    const isActive = selecionado === ok;
                                     return (
                                         <button
                                             type="button"
-                                            key={o.ordem ?? j}
-                                            onClick={() => selecionar(q.ordem ?? idx, o.peso)}
+                                            key={ok ?? j}
+                                            onClick={() => selecionar(q, o)}
                                             className={cn(
                                                 'px-2.5 py-2 rounded-lg border text-[12.5px] font-medium transition-colors text-center break-words',
                                                 isActive
@@ -134,25 +175,25 @@ export default function PreviewFormulario({ template, mode = 'preview' }) {
                                 })}
                             </div>
                         )}
+
+                        {/* Erro server-side por pergunta — só quando errors[pk] presente
+                            (modo live com useForm errors mapeados para questão). */}
+                        {errors?.[pk] && (
+                            <p className="text-red-400 text-xs mt-1">{errors[pk]}</p>
+                        )}
                     </div>
                 );
             })}
 
-            {/* Rodapé — muda conforme mode */}
+            {/* Rodapé — muda conforme mode.
+                'preview' → aviso de que respostas não são salvas (Phase 70).
+                'live'    → NADA renderizado aqui; o Respond.jsx (Phase 71) posiciona
+                            fora do componente os campos nome/comentário/submit. */}
             <footer className="pt-4 border-t border-white/[0.06]">
-                {mode === 'preview' ? (
+                {mode === 'preview' && (
                     <p className="text-white/40 text-[11.5px] text-center italic">
                         Preview — as respostas não são salvas.
                     </p>
-                ) : (
-                    <button
-                        type="button"
-                        disabled
-                        className="w-full py-2.5 rounded-lg bg-ecf-yellow text-[#050507] font-semibold text-[13.5px] opacity-70 cursor-not-allowed"
-                        title="Wrapper Phase 71 substitui este botão pelo submit real."
-                    >
-                        Enviar respostas
-                    </button>
                 )}
             </footer>
         </div>
