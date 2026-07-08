@@ -123,7 +123,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   4. Suite E2E (`tests/Feature/Phase73/`) cobre: criação de template + perguntas com pesos, resposta pública, cálculo por dimensão (incluindo dimensão sem perguntas retornando null), bloqueio de duplicata (unique index parcial), dispatch idempotente pelo comando, empresa pendente aparece corretamente, template sem analista funciona sem quebrar
   5. Suite completa `php artisan test` continua verde (delta = 0 vs baseline pré-Phase 73) — zero regressão em dashboards, sugadores, metas, publicação
 **Plans**: 4 plans em 3 waves — Wave 1 (73-01 backend cleanup PerformanceController + DashboardController) → Wave 2 (73-02 CalculateGoalResults metric='nps' + 73-03 frontend cleanup Performance/Dashboard.jsx + Companies/Show.jsx) → Wave 3 (73-04 E2E suite)
-- [ ] 73-01-PLAN.md — PerformanceController.php:301 remove classificação + DashboardController promotores/neutros/detratores → positivas/negativas + $scoreField → NpsScoreCalculator
+- [x] 73-01-PLAN.md — PerformanceController.php:301 remove classificação + DashboardController promotores/neutros/detratores → positivas/negativas + $scoreField → NpsScoreCalculator (COMPLETO 2026-07-08 — commits 9a00de6 + 623336a; SC#1 backend atendido, delta zero preservado)
 - [ ] 73-02-PLAN.md — CalculateGoalResults.php:155 implementa metric='nps' real via NpsScoreCalculator dual-path
 - [ ] 73-03-PLAN.md — Performance/Dashboard.jsx cor por threshold direto + Companies/Show.jsx remove refs obsoletas
 - [ ] 73-04-PLAN.md — Suite E2E Phase73 (NpsV15E2ETest 5 tests linear + NpsGoalMetricNpsTest 3 tests)
@@ -138,7 +138,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 | 70. UI de Configuração | 6/6 | Complete | 2026-07-08 |
 | 71. Formulário público | 3/3 | Complete | 2026-07-08 |
 | 72. Dashboards + pendências | 4/4 | Complete | 2026-07-08 |
-| 73. Limpeza legado + testes E2E | 0/4 | Planned | — |
+| 73. Limpeza legado + testes E2E | 1/4 | In Progress | — |
 
 ## Dependencies
 
