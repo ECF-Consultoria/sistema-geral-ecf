@@ -57,7 +57,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 - [ ] 69-02-PLAN.md — NpsScoreCalculator::compute (AVG option_peso_snapshot por dimensão, null-safe)
 - [ ] 69-03-PLAN.md — NpsController::submitResponse validação dinâmica + snapshot per-row + guard QueryException 23000
 - [ ] 69-04-PLAN.md — NpsController::generate usa NpsTemplateService (associa template_id no survey manual)
-- [ ] 69-05-PLAN.md — NpsDispararMensal usa NpsTemplateService com skip-log guard (empresas sem template não crasham batch)
+- [x] 69-05-PLAN.md — NpsDispararMensal usa NpsTemplateService com skip-log guard (empresas sem template não crasham batch) — 2026-07-08 (5/5 tests + 72/72 regressão)
 - [ ] 69-06-PLAN.md — Suite Feature E2E integrando os 5 SC (dispatch + generate + dedup 23000 + validação dinâmica + snapshot)
 
 ### Phase 70: UI de Configuração (admin)

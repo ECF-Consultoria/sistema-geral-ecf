@@ -20,7 +20,7 @@ Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROA
 - [ ] **NPS-B-01**: `NpsTemplateService` resolve o template correto para uma empresa dado seus serviços ativos (via `nps_template_service_scopes`); retorna o template default se nenhum específico aplicar
 - [ ] **NPS-B-02**: `NpsScoreCalculator` computa nota por dimensão (`estrategista`, `analista`, `empresa`, `geral`) como média dos pesos das opções escolhidas nas perguntas daquela dimensão; retorna `null` para dimensão sem perguntas correspondentes
 - [ ] **NPS-B-03**: Sistema bloqueia gerar/responder NPS duplicado para mesma `(company_id, month_reference, template_id)` — via unique index parcial + guard no controller. Link redundante mostra tela "Já respondida no mês"
-- [ ] **NPS-B-04**: Comando `nps:disparar-mensal` usa `NpsTemplateService` pra resolver template correto por empresa; empresas sem template aplicável são puladas com log
+- [x] **NPS-B-04**: Comando `nps:disparar-mensal` usa `NpsTemplateService` pra resolver template correto por empresa; empresas sem template aplicável são puladas com log
 - [ ] **NPS-B-05**: Validação server-side do formulário público é dinâmica — deriva regras (obrigatoriedade, tipo, range de pesos) do template snapshot associado à survey, não de defaults hardcoded
 
 ### NPS-C — UI de configuração (admin)
@@ -99,7 +99,7 @@ Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROA
 | NPS-B-01 | Phase 69 | Pending |
 | NPS-B-02 | Phase 69 | Pending |
 | NPS-B-03 | Phase 69 | Pending |
-| NPS-B-04 | Phase 69 | Pending |
+| NPS-B-04 | Phase 69 | Done (2026-07-08 — Plan 69-05) |
 | NPS-B-05 | Phase 69 | Pending |
 | NPS-C-01 | Phase 70 | Pending |
 | NPS-C-02 | Phase 70 | Pending |
