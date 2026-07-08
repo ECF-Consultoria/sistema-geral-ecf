@@ -98,7 +98,7 @@ export default function AdminDashboard({
     stats = {},
     revenue_chart = [],
     tacos_chart = [],
-    nps_distribution = { promotores: 0, neutros: 0, detratores: 0 },
+    nps_distribution = { positivas: 0, negativas: 0 },
     performance_equipe = [],
     period = '30',
     filters = {},
@@ -145,19 +145,18 @@ export default function AdminDashboard({
 
     const noData = s.total_companies === 0;
 
-    const npsTotal = (nps_distribution.promotores ?? 0) + (nps_distribution.neutros ?? 0) + (nps_distribution.detratores ?? 0);
+    const npsTotal = (nps_distribution.positivas ?? 0) + (nps_distribution.negativas ?? 0);
     const npsScore = npsTotal > 0
-        ? Math.round(((nps_distribution.promotores - nps_distribution.detratores) / npsTotal) * 100)
+        ? Math.round(((nps_distribution.positivas - nps_distribution.negativas) / npsTotal) * 100)
         : 0;
 
-    // Phase 31 (Plan 05 — D-09): escala 1-5 substituiu 0-10. O Pie do widget
-    // continua consumindo o shape {promotores, neutros, detratores} (mapeado no
-    // DashboardController para 5=promotor, 4=neutro, 1-3=detrator) mas os rotulos
-    // visuais agora refletem a nova escala: Excelente (5) / Bom (4) / Ruim (1-3).
+    // Phase 73 Plan 01 v15.0 — buckets simplificados escala 1-5.
+    // Backend (DashboardController) agora envia apenas positivas (nota >= 4)
+    // e negativas (nota <= 3). Classificação Promotor/Neutro/Detrator (herança
+    // NPS 0-10 clássico) foi removida.
     const npsData = [
-        { name: 'Excelente (5)', value: nps_distribution.promotores ?? 0, color: '#19e06a' },
-        { name: 'Bom (4)',       value: nps_distribution.neutros ?? 0,    color: '#ffe600' },
-        { name: 'Ruim (1-3)',    value: nps_distribution.detratores ?? 0, color: '#ff4d4d' },
+        { name: 'Positivas (4-5)', value: nps_distribution.positivas ?? 0, color: '#19e06a' },
+        { name: 'Negativas (1-3)', value: nps_distribution.negativas ?? 0, color: '#ff4d4d' },
     ];
     const npsDataFilled = npsTotal === 0 ? [{ name: 'Sem dados', value: 1, color: 'rgba(255,255,255,0.06)' }] : npsData;
 
