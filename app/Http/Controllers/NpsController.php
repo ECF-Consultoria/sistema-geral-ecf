@@ -9,6 +9,7 @@ use App\Models\NpsPerguntaCustomizada;
 use App\Models\NpsRespostaCustomizada;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
+use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -244,19 +245,31 @@ class NpsController extends Controller
      * automatizadas (Plan 02 / Plan 04). `expires_at` continua em 7 dias
      * para manuais (vs. 30 dias para automáticas — D-12).
      */
-    public function generate(Request $request)
+    public function generate(Request $request, NpsTemplateService $templateService)
     {
         $user = $request->user();
         $data = $request->validate([
             'company_id' => 'required|exists:companies,id',
         ]);
 
+        // Auth: admin OR user com a empresa em qualquer role no pivot
+        // company_users (inclui estrategista, consultor, mentor). Padrão
+        // consolidado da Phase 62 — superset seguro que preserva REQ-31-08
+        // (compat com generate manual atual) E admite estrategista da
+        // carteira sem restringir os demais roles historicamente autorizados.
         if (!$user->isAdmin()) {
             $allowed = $user->companies()->pluck('companies.id');
             if (!$allowed->contains($data['company_id'])) {
                 abort(403);
             }
         }
+
+        // Phase 69 NPS-B-01: resolve o template NPS aplicável à empresa
+        // (priority DESC → is_default fallback). O survey nasce já com
+        // template_id populado — sem este bind, a dedup unique parcial
+        // (Plan 68-04) e o snapshot per-row (Phase 68) ficam degradados.
+        $company  = Company::findOrFail($data['company_id']);
+        $template = $templateService->resolveForCompany($company);
 
         $survey = NpsSurvey::create([
             'token'          => Str::uuid()->toString(),
@@ -267,6 +280,8 @@ class NpsController extends Controller
             // REQ-31-08: explicita auto_generated=false em surveys manuais
             // para o admin filtrar "manual vs automatico" na UI (Plan 31-04).
             'auto_generated' => false,
+            // Phase 69 NPS-B-01 — template resolvido via NpsTemplateService.
+            'template_id'    => $template->id,
             // month_reference fica null para manuais (D-12) — só surveys
             // mensais automatizadas carregam o mês de referência semântico.
         ]);
