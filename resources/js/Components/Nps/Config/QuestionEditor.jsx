@@ -1,119 +1,65 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { router } from '@inertiajs/react';
-import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, Check, X, ListChecks } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, ListChecks, MessageSquarePlus } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
-import { Input } from '@/Components/ui/input';
 import { Textarea } from '@/Components/ui/textarea';
 import { Label } from '@/Components/ui/label';
 import { cn } from '@/lib/utils';
+import OptionsEditor from './OptionsEditor';
 
 /**
- * QuestionEditor — Phase 70 Plan 05 v15.0.
+ * QuestionEditor — Phase 70 Plan 05 v15.0 + UX refactor 2026-07-08.
  *
- * CRUD inline das perguntas de um template. Espelha o padrão da Phase 33
- * (ver ConfiguracaoLegado.jsx — `criando` + `editandoId` + form clonado) mas
- * consome as rotas nomeadas do Plan 70-02 (`nps.configuracao.templates.perguntas.*`).
+ * Ajustes aplicados (feedback pós-deploy):
+ *   - Ajuste 2: DESTAQUE VISUAL — título grande "Perguntas do modelo" +
+ *     botão prominente "+ Adicionar pergunta" + lista com mais espaço vertical.
+ *     Cada pergunta renderiza <OptionsEditor> INLINE dentro do card (não mais
+ *     empilhado separadamente na coluna).
+ *   - Ajuste 3: sem botões Salvar/Cancelar/Editar. Cada pergunta é sempre
+ *     editável direto — texto + dimensão + obrigatoriedade salvam via
+ *     debounce 800ms + toast "Salvo". Adicionar cria com defaults e já entra
+ *     editável. Excluir MANTÉM confirm() — operação destrutiva. Reorder
+ *     (⬆⬇) salva imediatamente.
  *
- * Regras de UX críticas (research §5 + backend guard Plan 70-02):
- *   - **Tipo IMUTÁVEL após criação.** Backend (StoreQuestion/UpdateQuestion
- *     Requests) rejeita mudança de tipo — a UI reforça mostrando badge
- *     read-only em vez de select durante edição.
- *   - **Auto-geração de 5 opções quando tipo=escala:** o backend cria as
- *     opções ao criar a pergunta. UI só sinaliza no form de criação.
- *   - Setas ⬆⬇ para reorder (research §3 — zero deps novas). Backend
- *     `mover` faz SWAP com pergunta vizinha.
- *   - `confirm()` no delete (destrutivo — apaga cascade das opções).
+ * Guard mantido: tipo IMUTÁVEL após criação. UI mostra como badge read-only
+ * dentro do card. Backend também rejeita (Plan 70-02).
  *
  * Contrato de props:
- *   - template:          NpsTemplate (com `questions` eager-loaded no controller)
- *   - tipos:             NpsTemplateQuestion::TIPOS (['escala', 'opcoes'])
- *   - dimensoesLabels:   { estrategista: 'Estrategista', ... }
- *   - onChange:          () => void   (parent recarrega props após mutação)
- *   - onSelectQuestion:  (q) => void  (opcional — parent abre editor de opções)
+ *   - template:         NpsTemplate (com `questions` eager-loaded)
+ *   - tipos:            NpsTemplateQuestion::TIPOS (['escala', 'opcoes'])
+ *   - dimensoesLabels:  { estrategista: 'Estrategista', ... }
+ *   - onChange:         () => void   (parent recarrega props após mutação)
+ *   - mostrarToast:     () => void   (parent dispara toast "Salvo")
  */
-
-// Defaults do form de criação (evita bug de state parcial).
-const FORM_NOVA_DEFAULT = {
-    texto:       '',
-    tipo:        'escala',
-    dimensao:    'geral',
-    obrigatoria: true,
-};
-
-export default function QuestionEditor({ template, tipos, dimensoesLabels, onChange }) {
-    const [criando, setCriando]           = useState(false);
-    const [formNova, setFormNova]         = useState(FORM_NOVA_DEFAULT);
-    const [editandoId, setEditandoId]     = useState(null);
-    const [formEditando, setFormEditando] = useState(null);
-    const [erroLocal, setErroLocal]       = useState(null);
-
+export default function QuestionEditor({ template, tipos, dimensoesLabels, onChange, mostrarToast }) {
     const perguntas = template?.questions ?? [];
 
-    // Helpers de classes dark-themed (padrão do projeto).
-    const inputCls    = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
-    const textareaCls = cn(inputCls, 'min-h-[70px] font-sans text-[13px]');
+    const [criando, setCriando]     = useState(false);
+    const [formNova, setFormNova]   = useState({ texto: '', tipo: 'escala', dimensao: 'geral', obrigatoria: true });
+    const [erroLocal, setErroLocal] = useState(null);
 
     // ─── Handlers ────────────────────────────────────────────────────────
 
     const resetFormNova = () => {
-        setFormNova(FORM_NOVA_DEFAULT);
+        setFormNova({ texto: '', tipo: 'escala', dimensao: 'geral', obrigatoria: true });
         setCriando(false);
         setErroLocal(null);
     };
 
-    const iniciarEdicao = (q) => {
-        setEditandoId(q.id);
-        setFormEditando({
-            texto:       q.texto ?? '',
-            dimensao:    q.dimensao,
-            obrigatoria: !!q.obrigatoria,
-        });
-        setErroLocal(null);
-        // Fecha o form de criação se estava aberto (evita 2 forms simultâneos).
-        if (criando) setCriando(false);
-    };
-
-    const cancelarEdicao = () => {
-        setEditandoId(null);
-        setFormEditando(null);
-        setErroLocal(null);
-    };
-
-    const validarNova = () => {
-        if (!formNova.texto || !formNova.texto.trim()) return 'Informe o texto da pergunta.';
-        if (!tipos.includes(formNova.tipo)) return 'Tipo inválido.';
-        return null;
-    };
-
-    const validarEdicao = () => {
-        if (!formEditando?.texto || !formEditando.texto.trim()) return 'Informe o texto da pergunta.';
-        return null;
-    };
-
-    const salvarNova = () => {
-        const err = validarNova();
-        if (err) { setErroLocal(err); return; }
+    const criarPergunta = () => {
+        if (!formNova.texto || !formNova.texto.trim()) {
+            setErroLocal('Informe o texto da pergunta.');
+            return;
+        }
+        if (!tipos.includes(formNova.tipo)) {
+            setErroLocal('Tipo inválido.');
+            return;
+        }
         router.post(route('nps.configuracao.templates.perguntas.store', template.id), formNova, {
             preserveScroll: true,
             onSuccess: () => {
                 resetFormNova();
-                onChange && onChange();
-            },
-            onError: (errs) => {
-                // Mostra o primeiro erro do backend (raro — geralmente a UI já cobre).
-                const first = Object.values(errs)[0];
-                if (first) setErroLocal(first);
-            },
-        });
-    };
-
-    const salvarEdicao = () => {
-        const err = validarEdicao();
-        if (err) { setErroLocal(err); return; }
-        router.put(route('nps.configuracao.templates.perguntas.update', [template.id, editandoId]), formEditando, {
-            preserveScroll: true,
-            onSuccess: () => {
-                cancelarEdicao();
+                mostrarToast && mostrarToast();
                 onChange && onChange();
             },
             onError: (errs) => {
@@ -127,7 +73,10 @@ export default function QuestionEditor({ template, tipos, dimensoesLabels, onCha
         if (!confirm(`Excluir a pergunta "${q.texto}" e suas ${q.options?.length ?? 0} opção(ões)?`)) return;
         router.delete(route('nps.configuracao.templates.perguntas.destroy', [template.id, q.id]), {
             preserveScroll: true,
-            onSuccess: () => onChange && onChange(),
+            onSuccess: () => {
+                mostrarToast && mostrarToast();
+                onChange && onChange();
+            },
         });
     };
 
@@ -137,7 +86,10 @@ export default function QuestionEditor({ template, tipos, dimensoesLabels, onCha
             { direcao },
             {
                 preserveScroll: true,
-                onSuccess: () => onChange && onChange(),
+                onSuccess: () => {
+                    mostrarToast && mostrarToast();
+                    onChange && onChange();
+                },
             },
         );
     };
@@ -145,300 +97,124 @@ export default function QuestionEditor({ template, tipos, dimensoesLabels, onCha
     // ─── Render ──────────────────────────────────────────────────────────
 
     return (
-        <div className="bg-ecf-card border border-white/[0.08] rounded-2xl p-6 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+        <div className="space-y-4">
+            {/* Título de destaque — Ajuste 2 */}
+            <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div>
-                    <h3 className="text-white font-semibold text-base tracking-tight">
-                        Perguntas do template
-                    </h3>
-                    <p className="text-white/50 text-xs mt-0.5">
-                        {perguntas.length} pergunta{perguntas.length === 1 ? '' : 's'} cadastrada{perguntas.length === 1 ? '' : 's'}. Ordem 1 aparece primeiro no formulário público.
+                    <h2 className="text-white font-display font-bold text-xl tracking-tight flex items-center gap-2">
+                        <ListChecks size={20} className="text-ecf-yellow" />
+                        Perguntas do modelo
+                    </h2>
+                    <p className="text-white/50 text-[12.5px] mt-0.5">
+                        {perguntas.length} pergunta{perguntas.length === 1 ? '' : 's'} cadastrada{perguntas.length === 1 ? '' : 's'}. As alterações salvam automaticamente enquanto você digita.
                     </p>
                 </div>
                 {!criando && (
                     <Button
                         type="button"
-                        onClick={() => { cancelarEdicao(); setCriando(true); setErroLocal(null); }}
-                        className="bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/30 hover:bg-ecf-yellow/[0.18] font-semibold"
+                        onClick={() => { setCriando(true); setErroLocal(null); }}
+                        className="bg-ecf-yellow text-[#050507] hover:bg-ecf-yellow/90 font-semibold shadow-sm shadow-ecf-yellow/20"
                     >
-                        <Plus size={14} />
-                        Nova pergunta
+                        <MessageSquarePlus size={15} />
+                        Adicionar pergunta
                     </Button>
                 )}
             </div>
 
-            {/* Form de criação */}
+            {/* Form de criação (aparece só quando `criando`) */}
             {criando && (
-                <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.04] p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                        <h4 className="text-ecf-yellow font-semibold text-[13px] tracking-tight">
-                            Nova pergunta
-                        </h4>
-                    </div>
-
-                    <div className="space-y-1.5">
-                        <Label className="text-white/80 text-[12px] font-medium">Texto</Label>
-                        <Textarea
-                            value={formNova.texto}
-                            onChange={(e) => setFormNova({ ...formNova, texto: e.target.value })}
-                            placeholder="Ex.: Como você avalia o alinhamento estratégico do último mês?"
-                            className={textareaCls}
-                        />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div className="space-y-1.5">
-                            <Label className="text-white/80 text-[12px] font-medium">Tipo</Label>
-                            <NativeSelect
-                                value={formNova.tipo}
-                                onChange={(v) => setFormNova({ ...formNova, tipo: v })}
-                                options={tipos.map(t => ({
-                                    value: t,
-                                    label: t === 'escala' ? 'Escala 1 a 5 (auto-gera 5 opções)' : 'Opções livres',
-                                }))}
-                            />
-                            <p className="text-white/40 text-[10.5px] leading-relaxed">
-                                O tipo é imutável após criar — escolha com cuidado.
-                            </p>
-                        </div>
-                        <div className="space-y-1.5">
-                            <Label className="text-white/80 text-[12px] font-medium">Dimensão</Label>
-                            <NativeSelect
-                                value={formNova.dimensao}
-                                onChange={(v) => setFormNova({ ...formNova, dimensao: v })}
-                                options={Object.entries(dimensoesLabels).map(([k, v]) => ({ value: k, label: v }))}
-                            />
-                        </div>
-                        <div className="space-y-1.5 pt-1">
-                            <Label className="text-white/80 text-[12px] font-medium">Obrigatoriedade</Label>
-                            <label className="flex items-center gap-2 cursor-pointer select-none h-10">
-                                <input
-                                    type="checkbox"
-                                    checked={!!formNova.obrigatoria}
-                                    onChange={(e) => setFormNova({ ...formNova, obrigatoria: e.target.checked })}
-                                    className="h-4 w-4 rounded border-white/20 bg-white/[0.05] text-ecf-yellow focus:ring-ecf-yellow/40 cursor-pointer"
-                                />
-                                <span className="text-white/85 text-[12.5px]">Obrigatória</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    {erroLocal && (
-                        <div className="rounded-lg border border-red-500/30 bg-red-950/40 px-3 py-2 text-red-300 text-[12px]">
-                            {erroLocal}
-                        </div>
-                    )}
-
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={resetFormNova}
-                            className="border-white/[0.08] bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:text-white"
-                        >
-                            <X size={13} />
-                            Cancelar
-                        </Button>
-                        <Button
-                            type="button"
-                            onClick={salvarNova}
-                            className="bg-ecf-yellow text-[#050507] hover:bg-ecf-yellow/90 font-semibold"
-                        >
-                            <Check size={13} />
-                            Adicionar pergunta
-                        </Button>
-                    </div>
-                </div>
+                <FormNovaPergunta
+                    formNova={formNova}
+                    setFormNova={setFormNova}
+                    tipos={tipos}
+                    dimensoesLabels={dimensoesLabels}
+                    erroLocal={erroLocal}
+                    onCancelar={resetFormNova}
+                    onCriar={criarPergunta}
+                />
             )}
 
-            {/* Lista de perguntas */}
+            {/* Empty state */}
             {perguntas.length === 0 && !criando && (
-                <div className="rounded-xl border border-dashed border-white/[0.08] bg-white/[0.01] p-6 text-center">
-                    <ListChecks size={28} className="text-white/20 mx-auto mb-2" />
-                    <p className="text-white/50 text-sm">
-                        Nenhuma pergunta cadastrada — clique em "Nova pergunta" para começar.
+                <div className="rounded-2xl border border-dashed border-white/[0.08] bg-white/[0.01] p-10 text-center">
+                    <ListChecks size={36} className="text-white/20 mx-auto mb-3" />
+                    <p className="text-white/60 text-sm mb-1">
+                        Nenhuma pergunta cadastrada
+                    </p>
+                    <p className="text-white/40 text-[12.5px]">
+                        Clique em "Adicionar pergunta" para começar a montar o formulário.
                     </p>
                 </div>
             )}
 
-            <div className="space-y-2">
-                {perguntas.map((q, idx) => {
-                    const emEdicao = editandoId === q.id;
-                    if (emEdicao) {
-                        return (
-                            <PerguntaEmEdicao
-                                key={q.id}
-                                pergunta={q}
-                                dimensoesLabels={dimensoesLabels}
-                                formEditando={formEditando}
-                                setFormEditando={setFormEditando}
-                                onSalvar={salvarEdicao}
-                                onCancelar={cancelarEdicao}
-                                erroLocal={erroLocal}
-                                inputCls={inputCls}
-                                textareaCls={textareaCls}
-                            />
-                        );
-                    }
-                    return (
-                        <PerguntaCard
-                            key={q.id}
-                            pergunta={q}
-                            primeira={idx === 0}
-                            ultima={idx === perguntas.length - 1}
-                            dimensoesLabels={dimensoesLabels}
-                            onMoverUp={() => mover(q, 'up')}
-                            onMoverDown={() => mover(q, 'down')}
-                            onEditar={() => iniciarEdicao(q)}
-                            onExcluir={() => excluir(q)}
-                        />
-                    );
-                })}
+            {/* Lista de perguntas — cards grandes, OptionsEditor inline */}
+            <div className="space-y-4">
+                {perguntas.map((q, idx) => (
+                    <PerguntaCard
+                        key={q.id}
+                        template={template}
+                        pergunta={q}
+                        primeira={idx === 0}
+                        ultima={idx === perguntas.length - 1}
+                        dimensoesLabels={dimensoesLabels}
+                        onMoverUp={() => mover(q, 'up')}
+                        onMoverDown={() => mover(q, 'down')}
+                        onExcluir={() => excluir(q)}
+                        onChange={onChange}
+                        mostrarToast={mostrarToast}
+                    />
+                ))}
             </div>
         </div>
     );
 }
 
-// ─── Sub-componentes locais ──────────────────────────────────────────────
-
-/**
- * Card da pergunta em modo visualização. Setas ⬆⬇ + badges + ações inline.
- * Tipo aparece como BADGE (read-only) — reforça a regra "tipo imutável".
- */
-function PerguntaCard({
-    pergunta, primeira, ultima, dimensoesLabels,
-    onMoverUp, onMoverDown, onEditar, onExcluir,
+// ═══════════════════════════════════════════════════════════════════════
+// Form de nova pergunta — mantém botão explícito porque é ação de criação
+// ═══════════════════════════════════════════════════════════════════════
+function FormNovaPergunta({
+    formNova, setFormNova, tipos, dimensoesLabels, erroLocal, onCancelar, onCriar,
 }) {
-    const tipoLabel     = pergunta.tipo === 'escala' ? 'Escala 1-5' : 'Opções livres';
-    const dimensaoLabel = dimensoesLabels[pergunta.dimensao] ?? pergunta.dimensao;
-    const nOpcoes       = pergunta.options?.length ?? 0;
+    const inputCls    = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
+    const textareaCls = cn(inputCls, 'min-h-[70px] font-sans text-[13px]');
 
     return (
-        <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 hover:border-white/[0.14] transition-colors">
-            <div className="flex items-start gap-3">
-                {/* Setas de reorder */}
-                <div className="flex flex-col gap-0.5 shrink-0 pt-0.5">
-                    <button
-                        type="button"
-                        onClick={onMoverUp}
-                        disabled={primeira}
-                        title="Mover para cima"
-                        className={cn(
-                            'h-6 w-6 rounded flex items-center justify-center text-white/40 hover:bg-white/[0.06] hover:text-white/80',
-                            primeira && 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-white/40',
-                        )}
-                    >
-                        <ArrowUp size={14} />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={onMoverDown}
-                        disabled={ultima}
-                        title="Mover para baixo"
-                        className={cn(
-                            'h-6 w-6 rounded flex items-center justify-center text-white/40 hover:bg-white/[0.06] hover:text-white/80',
-                            ultima && 'opacity-30 cursor-not-allowed hover:bg-transparent hover:text-white/40',
-                        )}
-                    >
-                        <ArrowDown size={14} />
-                    </button>
-                </div>
-
-                {/* Texto + badges */}
-                <div className="flex-1 min-w-0 space-y-2">
-                    <p className="text-white/90 text-[13.5px] leading-snug font-medium break-words">
-                        {pergunta.texto}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                        {/* Tipo — badge read-only (regra "tipo imutável") */}
-                        <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] text-white/70 border border-white/[0.10]">
-                            {tipoLabel}
-                        </span>
-                        {/* Dimensão */}
-                        <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/20">
-                            {dimensaoLabel}
-                        </span>
-                        {/* Obrigatoriedade */}
-                        {pergunta.obrigatoria && (
-                            <span className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/[0.10] text-red-300 border border-red-500/20">
-                                Obrigatória
-                            </span>
-                        )}
-                        <span className="text-white/30 text-[10.5px]">
-                            ordem {pergunta.ordem} · {nOpcoes} opção{nOpcoes === 1 ? '' : 'es'}
-                        </span>
-                    </div>
-                </div>
-
-                {/* Ações */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={onEditar}
-                        className="border-white/[0.08] bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:text-white"
-                    >
-                        <Pencil size={12} />
-                        Editar
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={onExcluir}
-                        className="border-red-500/20 bg-red-500/[0.04] text-red-300 hover:bg-red-500/[0.12] hover:text-red-200 hover:border-red-500/40"
-                        title="Excluir pergunta"
-                    >
-                        <Trash2 size={12} />
-                    </Button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-/**
- * Card da pergunta em modo edição. **NÃO renderiza select de tipo** — mostra
- * badge do tipo atual como read-only (regra imutável, Plan 70-02).
- */
-function PerguntaEmEdicao({
-    pergunta, dimensoesLabels, formEditando, setFormEditando,
-    onSalvar, onCancelar, erroLocal, inputCls, textareaCls,
-}) {
-    if (!formEditando) return null;
-    const tipoLabel = pergunta.tipo === 'escala' ? 'Escala 1-5' : 'Opções livres';
-
-    return (
-        <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.04] p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-                <h4 className="text-ecf-yellow font-semibold text-[13px] tracking-tight">
-                    Editando pergunta #{pergunta.id}
-                </h4>
-                {/* Tipo read-only — badge cinza (regra imutável) */}
-                <span
-                    className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-full bg-white/[0.06] text-white/60 border border-white/[0.10]"
-                    title="O tipo da pergunta não pode ser alterado após criação."
-                >
-                    Tipo: {tipoLabel} (imutável)
-                </span>
-            </div>
+        <div className="rounded-xl border border-ecf-yellow/30 bg-ecf-yellow/[0.05] p-4 space-y-3">
+            <h3 className="text-ecf-yellow font-semibold text-[13px] tracking-tight">
+                Nova pergunta
+            </h3>
 
             <div className="space-y-1.5">
                 <Label className="text-white/80 text-[12px] font-medium">Texto</Label>
                 <Textarea
-                    value={formEditando.texto}
-                    onChange={(e) => setFormEditando({ ...formEditando, texto: e.target.value })}
+                    value={formNova.texto}
+                    onChange={(e) => setFormNova({ ...formNova, texto: e.target.value })}
+                    placeholder="Ex.: Como você avalia o alinhamento estratégico do último mês?"
                     className={textareaCls}
+                    autoFocus
                 />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                    <Label className="text-white/80 text-[12px] font-medium">Tipo</Label>
+                    <NativeSelect
+                        value={formNova.tipo}
+                        onChange={(v) => setFormNova({ ...formNova, tipo: v })}
+                        options={tipos.map(t => ({
+                            value: t,
+                            label: t === 'escala' ? 'Escala 1 a 5 (auto-gera 5 opções)' : 'Opções livres',
+                        }))}
+                    />
+                    <p className="text-white/40 text-[10.5px] leading-relaxed">
+                        O tipo é fixo após criar — escolha com cuidado.
+                    </p>
+                </div>
                 <div className="space-y-1.5">
                     <Label className="text-white/80 text-[12px] font-medium">Dimensão</Label>
                     <NativeSelect
-                        value={formEditando.dimensao}
-                        onChange={(v) => setFormEditando({ ...formEditando, dimensao: v })}
+                        value={formNova.dimensao}
+                        onChange={(v) => setFormNova({ ...formNova, dimensao: v })}
                         options={Object.entries(dimensoesLabels).map(([k, v]) => ({ value: k, label: v }))}
                     />
                 </div>
@@ -447,8 +223,8 @@ function PerguntaEmEdicao({
                     <label className="flex items-center gap-2 cursor-pointer select-none h-10">
                         <input
                             type="checkbox"
-                            checked={!!formEditando.obrigatoria}
-                            onChange={(e) => setFormEditando({ ...formEditando, obrigatoria: e.target.checked })}
+                            checked={!!formNova.obrigatoria}
+                            onChange={(e) => setFormNova({ ...formNova, obrigatoria: e.target.checked })}
                             className="h-4 w-4 rounded border-white/20 bg-white/[0.05] text-ecf-yellow focus:ring-ecf-yellow/40 cursor-pointer"
                         />
                         <span className="text-white/85 text-[12.5px]">Obrigatória</span>
@@ -469,27 +245,206 @@ function PerguntaEmEdicao({
                     onClick={onCancelar}
                     className="border-white/[0.08] bg-white/[0.03] text-white/70 hover:bg-white/[0.08] hover:text-white"
                 >
-                    <X size={13} />
                     Cancelar
                 </Button>
                 <Button
                     type="button"
-                    onClick={onSalvar}
+                    onClick={onCriar}
                     className="bg-ecf-yellow text-[#050507] hover:bg-ecf-yellow/90 font-semibold"
                 >
-                    <Check size={13} />
-                    Salvar
+                    <Plus size={13} />
+                    Criar pergunta
                 </Button>
             </div>
         </div>
     );
 }
 
-/**
- * Select nativo dark-themed — mesmo padrão do Sugadores/Index.jsx e do
- * ConfiguracaoLegado.jsx. Evita o overhead do Select shadcn (Radix portal)
- * para inputs simples.
- */
+// ═══════════════════════════════════════════════════════════════════════
+// Card de pergunta — sempre editável, auto-save debounced, OptionsEditor inline
+// ═══════════════════════════════════════════════════════════════════════
+function PerguntaCard({
+    template, pergunta,
+    primeira, ultima, dimensoesLabels,
+    onMoverUp, onMoverDown, onExcluir,
+    onChange, mostrarToast,
+}) {
+    // Data inicial derivada da pergunta.
+    const initialData = useMemo(() => ({
+        texto:       pergunta.texto ?? '',
+        dimensao:    pergunta.dimensao,
+        obrigatoria: !!pergunta.obrigatoria,
+    }), [pergunta.id, pergunta.texto, pergunta.dimensao, pergunta.obrigatoria]);
+
+    const [data, setData] = useState(initialData);
+    const [erro, setErro] = useState(null);
+    const timerRef = useRef(null);
+
+    // Reset quando pergunta muda (reload após save).
+    useEffect(() => {
+        setData(initialData);
+        setErro(null);
+    }, [initialData]);
+
+    // Auto-save debounced (800ms).
+    useEffect(() => {
+        const isDirty =
+            data.texto       !== initialData.texto       ||
+            data.dimensao    !== initialData.dimensao    ||
+            data.obrigatoria !== initialData.obrigatoria;
+        if (!isDirty) return;
+
+        // Guard: texto vazio não salva (mostra erro local, backend também rejeita).
+        if (!data.texto || !data.texto.trim()) {
+            setErro('Informe o texto da pergunta.');
+            return;
+        }
+        setErro(null);
+
+        const currentTemplateId  = template.id;
+        const currentPerguntaId  = pergunta.id;
+
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+            router.put(
+                route('nps.configuracao.templates.perguntas.update', [currentTemplateId, currentPerguntaId]),
+                data,
+                {
+                    preserveScroll: true,
+                    preserveState:  true,
+                    onSuccess: () => {
+                        mostrarToast && mostrarToast();
+                        onChange && onChange();
+                    },
+                    onError: (errs) => {
+                        const first = Object.values(errs)[0];
+                        if (first) setErro(first);
+                    },
+                },
+            );
+        }, 800);
+
+        return () => {
+            if (timerRef.current) clearTimeout(timerRef.current);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [data, pergunta.id]);
+
+    const tipoLabel   = pergunta.tipo === 'escala' ? 'Escala 1-5' : 'Opções livres';
+    const inputCls    = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
+    const textareaCls = cn(inputCls, 'min-h-[60px] font-sans text-[13.5px]');
+
+    return (
+        <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4 space-y-3">
+            {/* Header do card: setas + badges + delete */}
+            <div className="flex items-start gap-3">
+                {/* Setas reorder */}
+                <div className="flex flex-col gap-0.5 shrink-0 pt-1">
+                    <button
+                        type="button"
+                        onClick={onMoverUp}
+                        disabled={primeira}
+                        title="Mover para cima"
+                        className={cn(
+                            'h-6 w-6 rounded flex items-center justify-center text-white/40 hover:bg-white/[0.06] hover:text-white/80',
+                            primeira && 'opacity-30 cursor-not-allowed hover:bg-transparent',
+                        )}
+                    >
+                        <ArrowUp size={14} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onMoverDown}
+                        disabled={ultima}
+                        title="Mover para baixo"
+                        className={cn(
+                            'h-6 w-6 rounded flex items-center justify-center text-white/40 hover:bg-white/[0.06] hover:text-white/80',
+                            ultima && 'opacity-30 cursor-not-allowed hover:bg-transparent',
+                        )}
+                    >
+                        <ArrowDown size={14} />
+                    </button>
+                </div>
+
+                {/* Corpo do card: texto editável + campos */}
+                <div className="flex-1 min-w-0 space-y-3">
+                    {/* Badges (tipo read-only, dimensão, obrigatória) */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <span
+                            className="inline-flex items-center text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/[0.06] text-white/70 border border-white/[0.10]"
+                            title="Tipo imutável após criação."
+                        >
+                            {tipoLabel}
+                        </span>
+                        <span className="text-white/30 text-[10.5px]">
+                            ordem {pergunta.ordem}
+                        </span>
+                    </div>
+
+                    {/* Texto da pergunta — editável direto */}
+                    <div className="space-y-1">
+                        <Label className="text-white/70 text-[11.5px] font-medium">Texto da pergunta</Label>
+                        <Textarea
+                            value={data.texto}
+                            onChange={(e) => setData({ ...data, texto: e.target.value })}
+                            className={textareaCls}
+                        />
+                    </div>
+
+                    {/* Dimensão + obrigatoriedade lado a lado */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <Label className="text-white/70 text-[11.5px] font-medium">Dimensão</Label>
+                            <NativeSelect
+                                value={data.dimensao}
+                                onChange={(v) => setData({ ...data, dimensao: v })}
+                                options={Object.entries(dimensoesLabels).map(([k, v]) => ({ value: k, label: v }))}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label className="text-white/70 text-[11.5px] font-medium">Obrigatoriedade</Label>
+                            <label className="flex items-center gap-2 cursor-pointer select-none h-10">
+                                <input
+                                    type="checkbox"
+                                    checked={!!data.obrigatoria}
+                                    onChange={(e) => setData({ ...data, obrigatoria: e.target.checked })}
+                                    className="h-4 w-4 rounded border-white/20 bg-white/[0.05] text-ecf-yellow focus:ring-ecf-yellow/40 cursor-pointer"
+                                />
+                                <span className="text-white/85 text-[12.5px]">Obrigatória</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    {erro && (
+                        <p className="text-red-400 text-[11px]">{erro}</p>
+                    )}
+                </div>
+
+                {/* Delete */}
+                <button
+                    type="button"
+                    onClick={onExcluir}
+                    className="h-8 w-8 rounded flex items-center justify-center text-red-300/70 hover:bg-red-500/[0.10] hover:text-red-200 shrink-0"
+                    title="Excluir pergunta"
+                >
+                    <Trash2 size={14} />
+                </button>
+            </div>
+
+            {/* Ajuste 2: OptionsEditor renderizado INLINE dentro do card da pergunta */}
+            <div className="pl-9">
+                <OptionsEditor
+                    template={template}
+                    question={pergunta}
+                    onChange={onChange}
+                    mostrarToast={mostrarToast}
+                />
+            </div>
+        </div>
+    );
+}
+
+// ─── Select nativo dark-themed (padrão do projeto) ───────────────────────
 function NativeSelect({ value, onChange, options, className }) {
     return (
         <select

@@ -1,5 +1,5 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { router, useForm } from '@inertiajs/react';
 import { ExternalLink, CalendarClock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -8,55 +8,52 @@ import { Button } from '@/Components/ui/button';
 import TemplatesList        from '@/Components/Nps/Config/TemplatesList';
 import TemplateEditForm     from '@/Components/Nps/Config/TemplateEditForm';
 import QuestionEditor       from '@/Components/Nps/Config/QuestionEditor';
-import OptionsEditor        from '@/Components/Nps/Config/OptionsEditor';
-import ServiceScopesPicker  from '@/Components/Nps/Config/ServiceScopesPicker';
+import ServiceScopesModal   from '@/Components/Nps/Config/ServiceScopesModal';
 import PreviewFormulario    from '@/Components/Nps/Config/PreviewFormulario';
+import ToastSalvo           from '@/Components/Nps/Config/ToastSalvo';
 
 /**
- * Página Nps/Configuracao — Phase 70 Plan 05 v15.0.
+ * Página Nps/Configuracao — Phase 70 Plan 05 v15.0 + UX refactor 2026-07-08.
  *
- * Reescrita completa da UI de Configuração NPS para o modelo multi-template
- * (Milestone v15.0). Layout:
+ * Refactor UX aplicado (5 ajustes do feedback pós-deploy):
+ *   1. Terminologia "Priority" → "Prioridade" + tooltip explicativo
+ *      (aplicado dentro de TemplateEditForm).
+ *   2. Perguntas em DESTAQUE — título grande "Perguntas do modelo" +
+ *      botão prominente + lista com mais espaço vertical. OptionsEditor
+ *      renderizado inline dentro de cada card de pergunta (não mais
+ *      empilhado como componente separado).
+ *   3. Auto-save híbrido — inputs disparam PUT/POST via debounce 800ms +
+ *      toast "Salvo" no canto superior direito. Estado do toast gerenciado
+ *      aqui e passado via prop `mostrarToast()`.
+ *   4. Serviços cobertos em MODAL — botão "🔗 Serviços cobertos (N)" no
+ *      TemplateEditForm dispara ServiceScopesModal (Radix Dialog).
+ *   5. NPS Padrão restaurado via migration backend
+ *      (2026_07_08_165206_migrate_perguntas_extras_to_nps_padrao.php) —
+ *      sem mudanças no frontend, o QuestionEditor consome template.questions
+ *      normalmente.
  *
- *   ┌──────────────────────────────────────────────────────────────────────┐
- *   │  Header: título + link "Textos legado (v13)"                        │
- *   ├──────────────┬────────────────────────────────┬─────────────────────┤
- *   │ TemplatesList│ Editor (Template/Perguntas/    │ PreviewFormulario   │
- *   │  (sidebar)   │  Opções/Service scopes)        │  (sticky, debounced)│
- *   └──────────────┴────────────────────────────────┴─────────────────────┘
- *
- * Componentes filhos (imports acima) são finos e focados por responsabilidade
- * — evita o arquivo monolítico da Phase 33 (1072 linhas em Configuracao.jsx
- * legado, agora migrado para ConfiguracaoLegado.jsx).
- *
- * Preview live via debounce 300ms POSTando route('nps.configuracao.templates.preview')
- * com o draft do template selecionado. Endpoint stateless (Plan 70-04) — não
- * salva nada, só normaliza e devolve o shape que PreviewFormulario renderiza.
- *
- * Modo LEGADO (Phase 33 — 11 textos + perguntas customizadas) preservado sob
- * `/nps/configuracao/textos-legado` — link discreto no header desta página.
+ * Layout (após refactor):
+ *   ┌────────────────────────────────────────────────────────────────────┐
+ *   │  Header + link "Textos legado"                                      │
+ *   ├────────────────────────────────────────────────────────────────────┤
+ *   │  DiaCobrancaWidget (config global)                                  │
+ *   ├──────────────┬───────────────────────────────┬──────────────────────┤
+ *   │ TemplatesList│ [Card compacto TemplateEdit]  │ Preview live sticky │
+ *   │              │ [Título "Perguntas" destaque] │                     │
+ *   │              │ [QuestionEditor + Options inl]│                     │
+ *   └──────────────┴───────────────────────────────┴──────────────────────┘
+ *   + ServiceScopesModal (Radix Portal — dispara pelo TemplateEditForm)
+ *   + ToastSalvo fixed top-right
  *
  * Contrato de props do controller (NpsTemplateController@index — Plan 70-01):
  *   - templates:            Array<NpsTemplate> (com withCount + questions.options + servicos)
  *   - tipos_pergunta:       NpsTemplateQuestion::TIPOS   ['escala', 'opcoes']
  *   - dimensoes_labels:     { estrategista: 'Estrategista', ... }
  *   - servicos_disponiveis: Array<{id, nome, setor}>
- */
-/**
- * DiaCobrancaWidget — Phase 72 Plan 01 v15.0.
- *
- * Widget compacto no topo da página Configuracao renderiza um form de 1 campo
- * (int 1..31) que persiste a config global `nps_dia_cobranca` via PATCH
- * `nps.configuracao.dia-cobranca.update`. Consumido pelo backend do
- * NpsPendingService::diaCobranca (Phase 72 Plan 01).
- *
- * Props:
- *  - diaAtual: int  (valor atual persistido; default backend = 25)
+ *   - dia_cobranca:         int   (Phase 72 Plan 01 — config global)
  */
 function DiaCobrancaWidget({ diaAtual }) {
     // useForm cuida do estado, erros de validação e flag `processing` do botão.
-    // Não usamos `wasSuccessful` na UI porque o backend já emite flash.success
-    // — o AppLayout global mostra o toast.
     const { data, setData, patch, processing, errors } = useForm({
         dia: diaAtual ?? 25,
     });
@@ -118,23 +115,39 @@ export default function Configuracao({
     tipos_pergunta,
     dimensoes_labels,
     servicos_disponiveis,
-    dia_cobranca,   // Phase 72 Plan 01 — config global "dia de cobrança mensal"
+    dia_cobranca,
 }) {
     // ─── Estado principal ────────────────────────────────────────────────
-    // selectedId: id do template atualmente aberto no editor.
-    // creating:   modo "novo template" (form vazio, esconde perguntas/opções).
-    const [selectedId, setSelectedId] = useState(templates?.[0]?.id ?? null);
-    const [creating, setCreating]     = useState(false);
-    const [previewData, setPreviewData] = useState(null);
+    const [selectedId, setSelectedId]     = useState(templates?.[0]?.id ?? null);
+    const [creating, setCreating]         = useState(false);
+    const [previewData, setPreviewData]   = useState(null);
+    const [servicosOpen, setServicosOpen] = useState(false);
 
-    // Template selecionado (recalculado a cada render do useMemo — leve).
+    // Estado do toast global (Ajuste 3).
+    const [toastVisible, setToastVisible] = useState(false);
+    const toastTimerRef = useRef(null);
+
+    const mostrarToast = useCallback(() => {
+        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        setToastVisible(true);
+        toastTimerRef.current = setTimeout(() => setToastVisible(false), 1500);
+    }, []);
+
+    // Cleanup do timer do toast ao desmontar (evita setState em componente unmounted).
+    useEffect(() => {
+        return () => {
+            if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+        };
+    }, []);
+
+    // Template selecionado (recalculado a cada render — leve).
     const selected = useMemo(
         () => templates?.find((t) => t.id === selectedId) ?? null,
         [templates, selectedId],
     );
 
-    // Se o template selecionado sumiu (ex.: prop reload trocou a lista),
-    // reseleciona o primeiro disponível para evitar tela em branco.
+    // Se o template selecionado sumiu (prop reload trocou a lista), reseleciona
+    // o primeiro disponível para evitar tela em branco.
     useEffect(() => {
         if (!selected && (templates?.length ?? 0) > 0 && !creating) {
             setSelectedId(templates[0].id);
@@ -143,16 +156,12 @@ export default function Configuracao({
     }, [templates]);
 
     // ─── Preview live debounced (300ms) ──────────────────────────────────
-    // Regeneramos o preview sempre que o `selected` muda (troca de template,
-    // reload de props após CRUD). Chamada é silenciosa — o preview é
-    // secundário e não pode bloquear a UI.
     const previewTimerRef = useRef(null);
     useEffect(() => {
         if (!selected || creating) {
             setPreviewData(null);
             return;
         }
-        // Cancela timer anterior (debounce).
         if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
 
         previewTimerRef.current = setTimeout(async () => {
@@ -174,7 +183,7 @@ export default function Configuracao({
                 );
                 setPreviewData(r.data?.template ?? null);
             } catch (e) {
-                // Silencioso — preview é secundário. UI mostra "sem preview".
+                // Silencioso — preview é secundário.
             }
         }, 300);
 
@@ -184,28 +193,42 @@ export default function Configuracao({
     }, [selected, creating]);
 
     // ─── Handler de refresh (chamado pelos filhos após mutar dados) ──────
-    // router.reload({only: ['templates']}) faz partial reload — o controller
-    // re-executa apenas o closure da prop `templates` (mais rápido que
-    // full reload da página).
     const refresh = () => router.reload({ only: ['templates'] });
+
+    // Serviços cobertos count — usado no botão do TemplateEditForm.
+    const servicosCount = selected?.servicos?.length ?? selected?.servicos_count ?? 0;
 
     return (
         <AppLayout title="Configuração NPS">
+            {/* Toast global "Salvo" (Ajuste 3) */}
+            <ToastSalvo visible={toastVisible} />
+
+            {/* Modal de serviços cobertos (Ajuste 4) — Portal, controlado por state daqui */}
+            {selected && !creating && (
+                <ServiceScopesModal
+                    open={servicosOpen}
+                    onOpenChange={setServicosOpen}
+                    template={selected}
+                    servicos={servicos_disponiveis ?? []}
+                    onSaved={refresh}
+                    mostrarToast={mostrarToast}
+                />
+            )}
+
             <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
                 {/* Header */}
                 <header className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                         <h1 className="text-white font-display font-bold text-2xl tracking-tight">
-                            Templates de NPS
+                            Modelos de NPS
                         </h1>
                         <p className="text-white/50 text-sm mt-1 max-w-2xl">
-                            Gerencie os formulários enviados pelo NPS mensal. Cada template define
-                            perguntas, opções e a quais serviços ele se aplica. O template com maior
-                            <span className="text-white/70"> priority</span> vence quando 2+ cobrem a mesma empresa.
+                            Gerencie os formulários enviados pelo NPS mensal. Cada modelo define
+                            perguntas, opções e a quais serviços ele se aplica. O modelo com
+                            <span className="text-white/70"> maior prioridade</span> vence quando dois ou mais cobrem a mesma empresa.
                         </p>
                     </div>
-                    {/* Link discreto para o modo legado (Phase 33) */}
                     <a
                         href="/nps/configuracao/textos-legado"
                         className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 underline underline-offset-4 shrink-0"
@@ -216,12 +239,10 @@ export default function Configuracao({
                     </a>
                 </header>
 
-                {/* Phase 72 Plan 01 — widget de configuração global "Dia de cobrança".
-                    Fica ACIMA do grid principal porque não pertence a nenhum template
-                    específico — é config global do NPS. */}
+                {/* Widget de config global "Dia de cobrança" (Phase 72 Plan 01) */}
                 <DiaCobrancaWidget diaAtual={dia_cobranca} />
 
-                {/* Layout principal: sidebar templates | editor | preview */}
+                {/* Layout principal: sidebar templates | editor + preview */}
                 <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
 
                     {/* ─── Coluna esquerda: lista de templates ────────────── */}
@@ -232,56 +253,39 @@ export default function Configuracao({
                         onCreate={() => { setCreating(true); setSelectedId(null); }}
                     />
 
-                    {/* ─── Coluna direita: editor + preview ─────────────────── */}
+                    {/* ─── Coluna direita: editor (compacto + destaque) | preview ─── */}
                     <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
 
-                        {/* Editor principal (empilhado) */}
+                        {/* Editor principal */}
                         <div className="space-y-6 min-w-0">
+                            {/* Card compacto do template (Ajuste 2) */}
                             <TemplateEditForm
                                 template={creating ? null : selected}
                                 onSaved={(savedId) => {
-                                    // Após criar, o back().reload traz o template novo.
-                                    // Reload para pegar templates[] atualizado + selecionar
-                                    // o recém-criado (usa flash id se disponível, senão
-                                    // pega o primeiro após reload).
                                     setCreating(false);
                                     if (savedId) setSelectedId(savedId);
                                     refresh();
                                 }}
+                                onOpenServicos={() => setServicosOpen(true)}
+                                mostrarToast={mostrarToast}
+                                servicosCount={servicosCount}
                             />
 
-                            {/* Só mostra editors avançados em modo edição (não criação). */}
+                            {/* Perguntas em destaque (Ajuste 2) — só em modo edição */}
                             {selected && !creating && (
-                                <>
-                                    <QuestionEditor
-                                        template={selected}
-                                        tipos={tipos_pergunta}
-                                        dimensoesLabels={dimensoes_labels}
-                                        onChange={refresh}
-                                    />
-
-                                    {/* OptionsEditor por pergunta — nested sob cada uma. */}
-                                    {(selected.questions ?? []).map((q) => (
-                                        <OptionsEditor
-                                            key={q.id}
-                                            template={selected}
-                                            question={q}
-                                            onChange={refresh}
-                                        />
-                                    ))}
-
-                                    <ServiceScopesPicker
-                                        template={selected}
-                                        servicos={servicos_disponiveis ?? []}
-                                        onSaved={refresh}
-                                    />
-                                </>
+                                <QuestionEditor
+                                    template={selected}
+                                    tipos={tipos_pergunta}
+                                    dimensoesLabels={dimensoes_labels}
+                                    onChange={refresh}
+                                    mostrarToast={mostrarToast}
+                                />
                             )}
 
                             {creating && (
                                 <div className="rounded-xl border border-dashed border-white/[0.08] bg-white/[0.01] p-6 text-center">
                                     <p className="text-white/50 text-sm">
-                                        Salve o template para adicionar perguntas, opções e escopos de serviço.
+                                        Salve o modelo para adicionar perguntas, opções e serviços cobertos.
                                     </p>
                                 </div>
                             )}
@@ -299,8 +303,8 @@ export default function Configuracao({
                                     <div className="max-w-md mx-auto bg-ecf-card border border-dashed border-white/[0.08] rounded-2xl p-6 text-center">
                                         <p className="text-white/40 text-sm">
                                             {creating
-                                                ? 'Salve o template para ver o preview.'
-                                                : 'Selecione um template para ver o preview.'}
+                                                ? 'Salve o modelo para ver o preview.'
+                                                : 'Selecione um modelo para ver o preview.'}
                                         </p>
                                     </div>
                                 )}
