@@ -29,6 +29,7 @@ use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
+use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PerformanceController;
@@ -119,6 +120,20 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     Route::put   ('/nps/configuracao/perguntas/{pergunta}',        [NpsController::class, 'atualizarPerguntaExtra'])->name('nps.configuracao.perguntas.atualizar');
     Route::delete('/nps/configuracao/perguntas/{pergunta}',        [NpsController::class, 'excluirPerguntaExtra'])->name('nps.configuracao.perguntas.excluir');
     Route::post  ('/nps/configuracao/perguntas/{pergunta}/mover',  [NpsController::class, 'moverPerguntaExtra'])->name('nps.configuracao.perguntas.mover');
+
+    // ─── Phase 70 Plan 01 — CRUD templates NPS v15.0 ─────────────────────
+    // Backend REST dos templates (base multi-template) — consumido pela
+    // Plan 70-05 (rewrite Configuracao.jsx). Perguntas e opções vêm em
+    // routes aninhadas nas Plans 70-02/03. NÃO tem DELETE — templates só
+    // são desativados via toggle-active (invariante do seed NPS Padrão).
+    Route::get   ('/nps/configuracao/templates',                          [NpsTemplateController::class, 'index'])
+        ->name('nps.configuracao.templates.index');
+    Route::post  ('/nps/configuracao/templates',                          [NpsTemplateController::class, 'store'])
+        ->name('nps.configuracao.templates.store');
+    Route::put   ('/nps/configuracao/templates/{template}',               [NpsTemplateController::class, 'update'])
+        ->name('nps.configuracao.templates.update');
+    Route::patch ('/nps/configuracao/templates/{template}/toggle-active', [NpsTemplateController::class, 'toggleActive'])
+        ->name('nps.configuracao.templates.toggle-active');
 
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
