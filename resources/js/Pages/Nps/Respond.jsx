@@ -1,185 +1,617 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, Head } from '@inertiajs/react';
-import { Button } from '@/Components/ui/button';
-import { Input } from '@/Components/ui/input';
-import { Label } from '@/Components/ui/label';
-import { Textarea } from '@/Components/ui/textarea';
-import LogoEcf from '@/Components/LogoEcf';
-import PreviewFormulario from '@/Components/Nps/Config/PreviewFormulario';
 import RespondLegado from './RespondLegado';
 
 /**
- * Phase 71 Plan 02 — Formulário público dinâmico v15.0.
+ * Nps/Respond — formulário público v15.0 (redesenho 2026-07-08).
  *
- * Roteamento por presença do prop `template`:
- *   - `template` presente (survey.template_id !== null) → renderiza fluxo
- *     dinâmico usando o PreviewFormulario controlled (mesmo componente
- *     visual do Phase 70) + campos nome/comentário + submit v15.
- *   - `template` null → delega ao RespondLegado (Phase 33 preservado byte-a-byte).
+ * Design importado do Claude Design MCP (ECF NPS Survey.dc.html):
+ *   - Background com radial gradients (laranja→transparente no topo direito,
+ *     roxo→transparente no canto inferior esquerdo) sobre #08080A.
+ *   - Cabeçalho de marca ECF centralizado: logo + barra gradient laranja→roxo
+ *     + subtítulo "CONSULTORIA & ASSESSORIA".
+ *   - Chip com nome da empresa e bolinha degradê.
+ *   - Card "Sua opinião move a ECF" com contador N/M e barra de progresso
+ *     que anima conforme respostas são marcadas.
+ *   - Cards de pergunta numerados. Escala 1-5 usa cores de sentimento
+ *     (vermelho → verde) mapeadas ao peso da option. Perguntas de opções
+ *     livres viram pills com gradient laranja→roxo quando selecionadas.
+ *   - Botão submit gigante com gradient quando podeEnviar; cinza c/ mensagem
+ *     "Responda todas para enviar" caso contrário.
+ *   - Rodapé de confidencialidade.
  *
- * Contrato submit v15 (Phase 69-03 NpsController::submitResponseV15):
+ * Rota legacy preservada: quando `template` é null, delega ao RespondLegado
+ * (Phase 33 preservado byte-a-byte para surveys anteriores à Phase 68).
+ *
+ * Contrato submit v15 (Phase 69-03):
  *   POST /nps/{token}
  *   { respondent_name, comment, answers: { [question_id]: option_id } }
- *
- * O submit é desabilitado até que todas as perguntas obrigatórias tenham
- * resposta (client-side guard); server-side também valida com Rule::in
- * (redundância defensiva — cliente contornando via devtools cai no 422).
- *
- * Layout mobile-first (max-w-md), sem AppLayout — o cliente que responde
- * NÃO é usuário logado do painel; página standalone com branding ECF.
  */
 export default function Respond({ survey, perguntas_extras, template }) {
-    // ─── Rota legacy: template null → delega Phase 33 preservado ────────
     if (!template) {
         return <RespondLegado survey={survey} perguntas_extras={perguntas_extras} />;
     }
-
     return <RespondV15 survey={survey} template={template} />;
 }
 
-/**
- * Componente interno v15.0 — separado para preservar ordem/estabilidade
- * dos hooks (delegação early-return acima nunca chega neste bloco).
- */
+const ACCENT = '#FF5A19';
+const ACCENT_ALT = '#C94FE0';
+
+// Sentiment palette (vermelho → verde) usada nas escala 1..5.
+const SENTIMENT = ['#E5484D', '#F76B15', '#F5A623', '#7CB342', '#2FA85A'];
+const sentimentForPeso = (peso) => SENTIMENT[Math.max(0, Math.min(4, (peso ?? 3) - 1))] ?? ACCENT;
+
 function RespondV15({ survey, template }) {
+    const perguntas = template.perguntas ?? [];
+    const total = perguntas.length;
+
     const { data, setData, post, processing, errors } = useForm({
         respondent_name: '',
         comment: '',
         answers: {},
     });
 
-    // Handler passado ao PreviewFormulario controlado — recebe
-    // (questionId, optionId) e mescla no map `answers`.
-    const setAnswer = (questionId, optionId) => {
+    const [attempted, setAttempted] = useState(false);
+
+    const pick = (questionId, optionId) => {
         setData('answers', { ...data.answers, [questionId]: optionId });
     };
 
-    // Client-side guard: botão só habilita quando todas as perguntas
-    // marcadas com `obrigatoria` tiverem um `option_id` selecionado.
-    const perguntas = template.perguntas ?? [];
-    const podeEnviar = useMemo(() => {
-        const obrigatorias = perguntas.filter((q) => q.obrigatoria);
-        return obrigatorias.every((q) => {
-            const v = data.answers[q.id];
-            return v !== undefined && v !== null;
-        });
-    }, [perguntas, data.answers]);
+    const answered = useMemo(
+        () => Object.keys(data.answers).filter((k) => data.answers[k] != null).length,
+        [data.answers],
+    );
+    const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
 
-    // Mapa de erros por pergunta — Laravel devolve validation errors com
-    // chave `answers.<question_id>`. Convertemos para `{ [qid]: mensagem }`
-    // e passamos ao PreviewFormulario para renderizar inline.
+    const obrigatorias = useMemo(() => perguntas.filter((q) => q.obrigatoria), [perguntas]);
+    const podeEnviar = obrigatorias.every((q) => {
+        const v = data.answers[q.id];
+        return v !== undefined && v !== null;
+    });
+    const completoTudo = answered === total && total > 0;
+
+    // Erros server-side por pergunta — Laravel devolve `answers.{qid}`.
     const errorsByQuestion = useMemo(() => {
         const map = {};
         Object.entries(errors || {}).forEach(([key, msg]) => {
-            const match = key.match(/^answers\.(\d+)$/);
-            if (match) map[Number(match[1])] = msg;
+            const m = key.match(/^answers\.(\d+)$/);
+            if (m) map[Number(m[1])] = msg;
         });
         return map;
     }, [errors]);
 
     const submit = (e) => {
         e.preventDefault();
+        if (!podeEnviar) {
+            setAttempted(true);
+            return;
+        }
         post(route('nps.submit', survey.token), { preserveScroll: true });
     };
 
     return (
         <>
-            <Head title="Pesquisa de satisfação — ECF" />
-            <div className="min-h-screen bg-ecf-bg text-white py-8 px-4">
-                <div className="max-w-md mx-auto">
-                    {/* Bugfix 2026-07-08 — LogoEcf oficial no topo (paridade com
-                        RespondLegado.jsx da Phase 33). Sem logo, cliente perdia
-                        identidade visual da ECF ao abrir a pesquisa. */}
-                    <div className="flex justify-center mb-4">
-                        <LogoEcf theme="dark" />
-                    </div>
+            <Head title="Pesquisa de satisfação — ECF">
+                <link rel="preconnect" href="https://fonts.googleapis.com" />
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+                <link
+                    href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap"
+                    rel="stylesheet"
+                />
+            </Head>
 
-                    {/* Header — apenas nome da empresa e título neutro.
-                        Zero jargão técnico visível ao cliente. */}
-                    <header className="mb-6 text-center space-y-1">
-                        <h1 className="text-white text-xl font-semibold tracking-tight">
-                            Pesquisa de satisfação
-                        </h1>
-                        <p className="text-white/60 text-sm">{survey.company_name}</p>
-                    </header>
+            {/* Animações + reset body */}
+            <style>{`
+                html, body { margin: 0; padding: 0; }
+                body { background: #08080A; font-family: 'Manrope', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+                @keyframes ecfrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+            `}</style>
 
-                    <form onSubmit={submit} className="space-y-5">
-                        {/* PreviewFormulario controlled: renderiza dinamicamente as
-                            perguntas do template + opções (radio group cinza→amarelo).
-                            Apenas texto da pergunta e labels visíveis ao cliente —
-                            metadados internos ficam escondidos. */}
-                        <PreviewFormulario
-                            template={template}
-                            mode="live"
-                            value={data.answers}
-                            onChange={setAnswer}
-                            errors={errorsByQuestion}
+            <div style={{
+                minHeight: '100vh',
+                width: '100%',
+                background:
+                    'radial-gradient(1100px 620px at 78% -8%, rgba(255,90,25,0.18), transparent 60%),' +
+                    'radial-gradient(900px 560px at 6% 108%, rgba(124,79,224,0.14), transparent 55%),' +
+                    '#08080A',
+                display: 'flex',
+                justifyContent: 'center',
+                padding: '56px 20px 80px',
+                fontFamily: "'Manrope', system-ui, sans-serif",
+                color: '#F4F4F6',
+            }}>
+                <div style={{ width: '100%', maxWidth: 660 }}>
+                    <BrandHeader companyName={survey.company_name} />
+
+                    <form onSubmit={submit} style={{ animation: 'ecfrise .55s ease both' }}>
+                        <IntroCard
+                            total={total}
+                            answered={answered}
+                            pct={pct}
+                            complete={completoTudo}
                         />
 
-                        {/* Campo comentário livre — opcional, max 2000 chars.
-                            Placeholder em pt-BR sem jargão. */}
-                        <div className="max-w-md mx-auto bg-ecf-card border border-white/[0.08] rounded-2xl p-6 space-y-3">
-                            <Label htmlFor="comment" className="text-white text-sm font-medium">
-                                Comentário (opcional)
-                            </Label>
-                            <Textarea
-                                id="comment"
-                                value={data.comment}
-                                onChange={(e) => setData('comment', e.target.value)}
-                                placeholder="Escreva aqui, se quiser deixar uma observação."
-                                rows={4}
-                                maxLength={2000}
-                                className="bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30"
-                            />
-                            {errors.comment && (
-                                <p className="text-red-400 text-xs">{errors.comment}</p>
-                            )}
+                        {/* Perguntas */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                            {perguntas.map((q, idx) => (
+                                <QuestionCard
+                                    key={q.id}
+                                    numero={idx + 1}
+                                    pergunta={q}
+                                    selecionadoId={data.answers[q.id]}
+                                    missing={attempted && q.obrigatoria && data.answers[q.id] == null}
+                                    onPick={(optId) => pick(q.id, optId)}
+                                    error={errorsByQuestion[q.id]}
+                                />
+                            ))}
                         </div>
 
-                        {/* Campo nome — opcional; nullable no backend. */}
-                        <div className="max-w-md mx-auto bg-ecf-card border border-white/[0.08] rounded-2xl p-6 space-y-3">
-                            <Label htmlFor="respondent_name" className="text-white text-sm font-medium">
-                                Seu nome (opcional)
-                            </Label>
-                            <Input
-                                id="respondent_name"
-                                type="text"
-                                value={data.respondent_name}
-                                onChange={(e) => setData('respondent_name', e.target.value)}
-                                placeholder="Como você prefere ser chamado(a)."
-                                maxLength={255}
-                                className="bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30"
-                            />
-                            {errors.respondent_name && (
-                                <p className="text-red-400 text-xs">{errors.respondent_name}</p>
-                            )}
-                        </div>
+                        {/* Comentário e nome — opcionais, escondidos por default para não poluir */}
+                        <ExtraFields
+                            data={data}
+                            setData={setData}
+                            errors={errors}
+                        />
 
-                        {/* Submit — disabled até obrigatórias preenchidas + hint pt-BR.
-                            Server-side redundante 422 no NpsController::submitResponseV15. */}
-                        <div className="max-w-md mx-auto">
-                            <Button
-                                type="submit"
-                                disabled={!podeEnviar || processing}
-                                className="w-full bg-ecf-yellow text-[#050507] font-semibold hover:bg-ecf-yellow/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {processing ? 'Enviando…' : 'Enviar respostas'}
-                            </Button>
-                            {!podeEnviar && (
-                                <p className="text-white/50 text-xs text-center mt-2">
-                                    Responda todas as perguntas marcadas com{' '}
-                                    <span className="text-red-400">*</span> para enviar.
-                                </p>
-                            )}
+                        <button
+                            type="submit"
+                            disabled={processing}
+                            style={{
+                                width: '100%',
+                                marginTop: 24,
+                                padding: 17,
+                                borderRadius: 15,
+                                border: 'none',
+                                fontFamily: "'Space Grotesk', sans-serif",
+                                fontWeight: 700,
+                                fontSize: 16,
+                                cursor: processing ? 'wait' : 'pointer',
+                                background: podeEnviar
+                                    ? `linear-gradient(135deg, ${ACCENT}, #FF8A4D)`
+                                    : 'rgba(255,255,255,.05)',
+                                color: podeEnviar ? '#fff' : '#7A7A82',
+                                boxShadow: podeEnviar ? '0 14px 40px rgba(255,90,25,.35)' : 'none',
+                                transition: 'all .2s ease',
+                            }}
+                        >
+                            {processing ? 'Enviando…' : (podeEnviar ? 'Enviar avaliação' : 'Responda todas para enviar')}
+                        </button>
+
+                        <div style={{
+                            textAlign: 'center',
+                            fontSize: 12,
+                            color: '#6A6A72',
+                            marginTop: 16,
+                        }}>
+                            Suas respostas são confidenciais e usadas apenas para melhorar nosso trabalho.
                         </div>
                     </form>
-
-                    {/* Rodapé — branding ECF, sem jargão técnico. */}
-                    <footer className="mt-8 text-center text-white/30 text-xs">
-                        ECF Consultoria — pesquisa de satisfação
-                    </footer>
                 </div>
             </div>
         </>
+    );
+}
+
+// ─── Header de marca ─────────────────────────────────────────────────────
+function BrandHeader({ companyName }) {
+    return (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            textAlign: 'center',
+            gap: 6,
+            marginBottom: 34,
+            animation: 'ecfrise .5s ease both',
+        }}>
+            <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 14,
+                marginBottom: 6,
+            }}>
+                <div style={{
+                    fontFamily: "'Space Grotesk', sans-serif",
+                    fontWeight: 700,
+                    fontSize: 34,
+                    letterSpacing: 1,
+                    color: '#fff',
+                }}>ECF</div>
+                <div style={{
+                    width: 3,
+                    height: 34,
+                    borderRadius: 3,
+                    background: 'linear-gradient(180deg,#FF5A19,#C94FE0 55%,#6B4FE0)',
+                }} />
+                <div style={{
+                    textAlign: 'left',
+                    fontFamily: "'Space Grotesk', sans-serif",
+                    fontWeight: 600,
+                    fontSize: 11.5,
+                    letterSpacing: 2.4,
+                    lineHeight: 1.35,
+                    color: '#B7B7C0',
+                }}>
+                    CONSULTORIA<br />&amp; ASSESSORIA
+                </div>
+            </div>
+            <div style={{
+                fontFamily: "'Space Grotesk', sans-serif",
+                fontWeight: 600,
+                fontSize: 24,
+                color: '#fff',
+                letterSpacing: '-.3px',
+            }}>
+                Pesquisa de satisfação
+            </div>
+            {companyName && (
+                <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '6px 14px',
+                    borderRadius: 999,
+                    background: 'rgba(255,255,255,.05)',
+                    border: '1px solid rgba(255,255,255,.09)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    letterSpacing: 1.6,
+                    color: '#C7C7CF',
+                    textTransform: 'uppercase',
+                }}>
+                    <span style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: '50%',
+                        background: 'linear-gradient(135deg,#FF6B2C,#C94FE0)',
+                    }} />
+                    {companyName}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ─── Card intro + progresso ──────────────────────────────────────────────
+function IntroCard({ total, answered, pct, complete }) {
+    return (
+        <div style={{
+            background: 'linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.02))',
+            border: '1px solid rgba(255,255,255,.08)',
+            borderRadius: 20,
+            padding: '22px 24px',
+            marginBottom: 22,
+        }}>
+            <div style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                justifyContent: 'space-between',
+                gap: 16,
+                flexWrap: 'wrap',
+            }}>
+                <div style={{ maxWidth: 410 }}>
+                    <div style={{
+                        fontFamily: "'Space Grotesk', sans-serif",
+                        fontWeight: 600,
+                        fontSize: 17,
+                        color: '#fff',
+                        marginBottom: 5,
+                    }}>
+                        Sua opinião move a ECF
+                    </div>
+                    <div style={{
+                        fontSize: 13.5,
+                        lineHeight: 1.55,
+                        color: '#9A9AA4',
+                    }}>
+                        São {total} pergunta{total === 1 ? '' : 's'} sobre o atendimento e os resultados. Leva menos de 2 minutos e é totalmente confidencial.
+                    </div>
+                </div>
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{
+                        fontFamily: "'Space Grotesk', sans-serif",
+                        fontWeight: 700,
+                        fontSize: 26,
+                        color: '#fff',
+                        lineHeight: 1,
+                    }}>
+                        <span style={{ color: complete ? '#2FA85A' : ACCENT }}>{answered}</span>
+                        <span style={{ color: '#55555E', fontSize: 18 }}>/{total}</span>
+                    </div>
+                    <div style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: 1,
+                        color: '#77777F',
+                        marginTop: 4,
+                    }}>
+                        RESPONDIDAS
+                    </div>
+                </div>
+            </div>
+            <div style={{
+                marginTop: 18,
+                height: 7,
+                borderRadius: 99,
+                background: 'rgba(255,255,255,.07)',
+                overflow: 'hidden',
+            }}>
+                <div style={{
+                    height: '100%',
+                    width: pct + '%',
+                    borderRadius: 99,
+                    background: `linear-gradient(90deg, ${ACCENT}, ${ACCENT_ALT})`,
+                    transition: 'width .4s cubic-bezier(.4,0,.2,1)',
+                }} />
+            </div>
+        </div>
+    );
+}
+
+// ─── Card de pergunta ────────────────────────────────────────────────────
+function QuestionCard({ numero, pergunta, selecionadoId, missing, onPick, error }) {
+    const chosenOption = pergunta.options?.find((o) => o.id === selecionadoId);
+    const marcada = chosenOption != null;
+
+    const cardStyle = {
+        background: 'linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.018))',
+        border: '1px solid ' + (
+            missing ? 'rgba(229,72,77,.5)'
+            : marcada ? 'rgba(255,255,255,.13)'
+            : 'rgba(255,255,255,.07)'
+        ),
+        borderRadius: 18,
+        padding: '22px 22px 20px',
+        transition: 'border-color .2s',
+    };
+
+    const numStyle = {
+        flexShrink: 0,
+        width: 26,
+        height: 26,
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: "'Space Grotesk', sans-serif",
+        fontWeight: 700,
+        fontSize: 13,
+        background: marcada ? ACCENT : 'rgba(255,255,255,.06)',
+        color: marcada ? '#fff' : '#8A8A93',
+        transition: 'background .2s, color .2s',
+    };
+
+    const isEscala = pergunta.tipo === 'escala';
+    const options = pergunta.options ?? [];
+
+    return (
+        <div style={cardStyle}>
+            <div style={{
+                display: 'flex',
+                gap: 12,
+                alignItems: 'flex-start',
+                marginBottom: 16,
+            }}>
+                <div style={numStyle}>{numero}</div>
+                <div style={{
+                    fontFamily: "'Space Grotesk', sans-serif",
+                    fontWeight: 600,
+                    fontSize: 16,
+                    lineHeight: 1.4,
+                    color: '#F1F1F4',
+                    paddingTop: 2,
+                }}>
+                    {pergunta.texto}
+                    {pergunta.obrigatoria && (
+                        <span style={{ color: ACCENT, marginLeft: 3 }}>*</span>
+                    )}
+                </div>
+            </div>
+
+            {isEscala ? (
+                <ScaleRow options={options} selecionadoId={selecionadoId} onPick={onPick} />
+            ) : (
+                <ChoiceRow options={options} selecionadoId={selecionadoId} onPick={onPick} />
+            )}
+
+            {error && (
+                <p style={{
+                    marginTop: 10,
+                    color: '#E5484D',
+                    fontSize: 12,
+                    fontWeight: 500,
+                }}>{error}</p>
+            )}
+        </div>
+    );
+}
+
+// ─── Escala 1-5 com cores de sentimento ──────────────────────────────────
+function ScaleRow({ options, selecionadoId, onPick }) {
+    // Ordena por peso ASC (1..5) para garantir gradient da esquerda pra direita.
+    const ordered = [...options].sort((a, b) => (a.peso ?? 0) - (b.peso ?? 0));
+
+    return (
+        <>
+            <div style={{ display: 'flex', gap: 10 }}>
+                {ordered.map((o) => {
+                    const sel = selecionadoId === o.id;
+                    const col = sentimentForPeso(o.peso);
+                    return (
+                        <button
+                            type="button"
+                            key={o.id}
+                            onClick={() => onPick(o.id)}
+                            style={{
+                                flex: 1,
+                                height: 52,
+                                borderRadius: 12,
+                                cursor: 'pointer',
+                                fontFamily: "'Space Grotesk', sans-serif",
+                                fontWeight: 700,
+                                fontSize: 18,
+                                border: '1px solid ' + (sel ? col : 'rgba(255,255,255,.09)'),
+                                background: sel ? col : 'rgba(255,255,255,.03)',
+                                color: sel ? '#fff' : '#B7B7C0',
+                                boxShadow: sel ? `0 8px 22px ${col}55` : 'none',
+                                transform: sel ? 'translateY(-2px)' : 'none',
+                                transition: 'all .18s ease',
+                            }}
+                        >
+                            {o.label}
+                        </button>
+                    );
+                })}
+            </div>
+            <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginTop: 11,
+                padding: '0 2px',
+            }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: .3, color: '#6E6E77' }}>
+                    Ruim
+                </span>
+                <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: .3, color: '#6E6E77' }}>
+                    Excelente
+                </span>
+            </div>
+        </>
+    );
+}
+
+// ─── Opções livres em formato pill com gradient laranja→roxo ─────────────
+function ChoiceRow({ options, selecionadoId, onPick }) {
+    return (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {options.map((o) => {
+                const sel = selecionadoId === o.id;
+                return (
+                    <button
+                        type="button"
+                        key={o.id}
+                        onClick={() => onPick(o.id)}
+                        style={{
+                            padding: '11px 18px',
+                            borderRadius: 999,
+                            cursor: 'pointer',
+                            fontFamily: "'Manrope', sans-serif",
+                            fontWeight: 600,
+                            fontSize: 13.5,
+                            border: '1px solid ' + (sel ? ACCENT : 'rgba(255,255,255,.1)'),
+                            background: sel
+                                ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT_ALT})`
+                                : 'rgba(255,255,255,.03)',
+                            color: sel ? '#fff' : '#C1C1C9',
+                            boxShadow: sel ? '0 8px 22px rgba(255,90,25,.28)' : 'none',
+                            transition: 'all .18s ease',
+                        }}
+                    >
+                        {o.label}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
+// ─── Campos extras: comentário + nome (opcionais) ────────────────────────
+function ExtraFields({ data, setData, errors }) {
+    const [showExtras, setShowExtras] = useState(false);
+
+    const fieldStyle = {
+        width: '100%',
+        padding: '12px 14px',
+        borderRadius: 12,
+        border: '1px solid rgba(255,255,255,.09)',
+        background: 'rgba(255,255,255,.03)',
+        color: '#F4F4F6',
+        fontFamily: "'Manrope', sans-serif",
+        fontSize: 14,
+        outline: 'none',
+        transition: 'border-color .18s ease',
+    };
+
+    return (
+        <div style={{ marginTop: 22 }}>
+            {!showExtras ? (
+                <button
+                    type="button"
+                    onClick={() => setShowExtras(true)}
+                    style={{
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#B7B7C0',
+                        fontFamily: "'Manrope', sans-serif",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        textDecoration: 'underline',
+                        textUnderlineOffset: 3,
+                    }}
+                >
+                    Adicionar comentário ou nome (opcional)
+                </button>
+            ) : (
+                <div style={{
+                    background: 'linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.018))',
+                    border: '1px solid rgba(255,255,255,.08)',
+                    borderRadius: 18,
+                    padding: '20px 22px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 14,
+                }}>
+                    <div>
+                        <label style={{
+                            display: 'block',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            letterSpacing: 0.5,
+                            color: '#B7B7C0',
+                            marginBottom: 6,
+                            textTransform: 'uppercase',
+                        }}>
+                            Comentário (opcional)
+                        </label>
+                        <textarea
+                            value={data.comment}
+                            onChange={(e) => setData('comment', e.target.value)}
+                            placeholder="Escreva aqui, se quiser deixar uma observação."
+                            rows={3}
+                            maxLength={2000}
+                            style={{ ...fieldStyle, resize: 'vertical', minHeight: 72 }}
+                        />
+                        {errors.comment && (
+                            <p style={{ color: '#E5484D', fontSize: 12, marginTop: 4 }}>{errors.comment}</p>
+                        )}
+                    </div>
+                    <div>
+                        <label style={{
+                            display: 'block',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            letterSpacing: 0.5,
+                            color: '#B7B7C0',
+                            marginBottom: 6,
+                            textTransform: 'uppercase',
+                        }}>
+                            Seu nome (opcional)
+                        </label>
+                        <input
+                            type="text"
+                            value={data.respondent_name}
+                            onChange={(e) => setData('respondent_name', e.target.value)}
+                            placeholder="Como você prefere ser chamado(a)."
+                            maxLength={255}
+                            style={fieldStyle}
+                        />
+                        {errors.respondent_name && (
+                            <p style={{ color: '#E5484D', fontSize: 12, marginTop: 4 }}>{errors.respondent_name}</p>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
     );
 }
