@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\PreviewNpsTemplateRequest;
 use App\Http\Requests\StoreNpsTemplateRequest;
+use App\Http\Requests\SyncNpsTemplateScopesRequest;
 use App\Http\Requests\UpdateNpsTemplateRequest;
+use App\Models\Company;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
+use App\Services\Nps\NpsTemplateService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use RuntimeException;
 
 /**
  * Controller CRUD dos templates NPS — Phase 70 Plan 70-01 v15.0.
@@ -150,5 +155,184 @@ class NpsTemplateController extends Controller
             'success',
             $template->active ? 'Template ativado.' : 'Template desativado.'
         );
+    }
+
+    /**
+     * PUT /nps/configuracao/templates/{template}/servicos — sincroniza o
+     * pivot `nps_template_service_scopes` de forma ATÔMICA — Plan 70-04
+     * v15.0 (REQ NPS-C-05).
+     *
+     * O `sync()` do BelongsToMany faz DELETE+INSERT em transação implícita
+     * do Laravel, comparando o array recebido com o estado atual do pivot
+     * e emitindo APENAS as diferenças (inserts para IDs novos, deletes
+     * para IDs removidos). Safe para concurrent edits — ninguém termina
+     * com estado parcialmente sincronizado.
+     *
+     * Payload `{"servicos": []}` é válido — desassocia o template de todos
+     * os serviços numa chamada só (só sobra o fallback via `is_default` do
+     * NpsTemplateService::resolveForCompany, se aplicável).
+     *
+     * Fluxo típico da UI (Plan 70-05):
+     *   1. Admin abre picker de serviços
+     *   2. Marca/desmarca checkboxes
+     *   3. `GET /nps/configuracao/templates/{id}/empresas-afetadas` mostra
+     *      preview de quais empresas mudariam de template
+     *   4. Admin confirma → este PUT persiste
+     */
+    public function syncServicos(SyncNpsTemplateScopesRequest $request, NpsTemplate $template)
+    {
+        $ids = $request->validated()['servicos'] ?? [];
+
+        $template->servicos()->sync($ids);
+
+        $count = count($ids);
+
+        return back()->with(
+            'success',
+            $count === 0
+                ? 'Template desassociado de todos os serviços.'
+                : "Template agora vale para {$count} " . ($count === 1 ? 'serviço.' : 'serviços.')
+        );
+    }
+
+    /**
+     * GET /nps/configuracao/templates/{template}/empresas-afetadas —
+     * simula quais empresas em carteira receberiam ESTE template dado o
+     * pivot atual (research §4 precedência) — Plan 70-04 v15.0
+     * (feedback visual do REQ NPS-C-05).
+     *
+     * IMPORTANTE: NÃO usamos apenas "empresas com serviço em comum" pra
+     * responder isso, porque a precedência do research §4 é composta:
+     *   - Empresa A pode ter serviço X em comum COM ESTE template, mas
+     *     outro template com maior `priority` cobre o mesmo X → empresa A
+     *     receberia o OUTRO, não este.
+     *   - Empresa B pode não ter NENHUM serviço no pivot → cai no
+     *     `is_default` (se ESTE for o default, ainda receberia).
+     *
+     * Único caminho correto é SIMULAR o resolveForCompany() (Plan 69-01)
+     * para cada empresa ativa e agrupar por template.id retornado.
+     *
+     * Perf guard:
+     *   - LIMIT 100 empresas — carteira tem centenas; endpoint é chamado
+     *     sob demanda pelo admin (não em batch).
+     *   - Loop O(N) com resolveForCompany fazendo ~3 queries cada = ~300
+     *     queries no pior caso. Aceitável para v15.0; otimização batch
+     *     fica para v15.1 se latência incomodar.
+     *   - Campo `truncated: true` sinaliza à UI que existem mais empresas
+     *     do que as retornadas (mostra aviso "primeiras 100 de N").
+     *
+     * Response é JSON (não Inertia) porque este endpoint é chamado via
+     * fetch/axios pelo React quando o admin mexe no picker de serviços
+     * — re-renderizar a página inteira seria desperdício.
+     *
+     * `catch (RuntimeException)` tolera o cenário raro em que o seed
+     * NPS Padrão foi revertido — em vez de crashar a página, apenas
+     * ignora aquela empresa na simulação. Log warning fica para v15.1
+     * se quisermos auditoria.
+     */
+    public function empresasAfetadas(NpsTemplate $template, NpsTemplateService $service)
+    {
+        // Base: empresas ativas com pelo menos 1 contrato ativo — evita
+        // simular sobre empresas dormentes (que nem receberiam disparo
+        // mensal). Ordena por nome pra listagem previsível.
+        $companies = Company::query()
+            ->where('active', true)
+            ->whereHas('contratosServico', fn ($q) => $q->where('ativo', true))
+            ->orderBy('name')
+            ->limit(100)
+            ->get(['id', 'name']);
+
+        // Total real para o campo `truncated` da resposta — permite a UI
+        // avisar "primeiras 100 de N".
+        $totalAtivas = Company::query()
+            ->where('active', true)
+            ->whereHas('contratosServico', fn ($q) => $q->where('ativo', true))
+            ->count();
+
+        $afetadas = [];
+        foreach ($companies as $company) {
+            try {
+                $resolved = $service->resolveForCompany($company);
+                if ($resolved->id === $template->id) {
+                    $afetadas[] = [
+                        'id'   => $company->id,
+                        'name' => $company->name,
+                    ];
+                }
+            } catch (RuntimeException $e) {
+                // Cenário raro: seed 'NPS Padrão' revertido / migração
+                // 100004 pendente. Ignora a empresa e continua — não
+                // faz sentido crashar toda a simulação por causa de 1
+                // empresa em estado anômalo.
+                continue;
+            }
+        }
+
+        return response()->json([
+            'template_id'  => $template->id,
+            'count'        => count($afetadas),
+            'empresas'     => $afetadas,
+            'sampled_from' => $companies->count(),
+            'total_ativas' => $totalAtivas,
+            'truncated'    => $totalAtivas > 100,
+        ]);
+    }
+
+    /**
+     * POST /nps/configuracao/templates/preview — recebe payload
+     * NÃO-PERSISTIDO (draft state completo do form) e devolve estrutura
+     * normalizada pronta pra renderizar o preview live — Plan 70-04 v15.0
+     * (REQ NPS-C-06).
+     *
+     * PURE FUNCTION — nenhum INSERT/UPDATE/DELETE/sync no banco. O admin
+     * pode arrastar perguntas, mudar textos e ver o preview em tempo
+     * real sem risco de sujar o banco. Preserva a experiência de "editor
+     * → preview → editor" sem ping-pong.
+     *
+     * O shape retornado é IDÊNTICO ao `template_snapshot_json` que a
+     * Phase 71 vai congelar em cada `NpsResponse` — assim o mesmo
+     * componente `<PreviewFormulario>` (Plan 70-05) pode ser reusado
+     * pelo `Respond.jsx` (Phase 71) sem duplicação.
+     *
+     * Normalização:
+     *   - `ordem` recomputada via `$idx + 1` (respeita ordem do array
+     *     vindo do form; frontend arrasta livremente).
+     *   - `options` reordenadas por índice da UI, não por peso — permite
+     *     admin escolher a ordem visual sem amarrar ao peso interno.
+     *   - `obrigatoria` default `true` quando omitido (segurança padrão).
+     *
+     * Sem `{template}` na URL — endpoint stateless, o payload contém
+     * tudo. Isso permite o admin previsualizar um template ANTES de criar
+     * o registro (útil pro fluxo "montar → preview → salvar").
+     */
+    public function preview(PreviewNpsTemplateRequest $request)
+    {
+        $validated = $request->validated();
+
+        // Normaliza perguntas + options no mesmo shape que Phase 71
+        // vai renderizar. `$idx + 1` para ordens humano-legíveis (1..N)
+        // em vez do índice 0-based do array.
+        $perguntasNormalizadas = collect($validated['perguntas'])->map(function ($p, $idx) {
+            return [
+                'ordem'       => $idx + 1,
+                'texto'       => $p['texto'],
+                'tipo'        => $p['tipo'],
+                'dimensao'    => $p['dimensao'],
+                'obrigatoria' => $p['obrigatoria'] ?? true,
+                'options'     => collect($p['options'] ?? [])->map(fn ($o, $j) => [
+                    'ordem' => $j + 1,
+                    'label' => $o['label'],
+                    'peso'  => $o['peso'],
+                ])->values()->all(),
+            ];
+        })->values()->all();
+
+        return response()->json([
+            'template' => [
+                'nome'      => $validated['nome']      ?? '(sem título)',
+                'descricao' => $validated['descricao'] ?? null,
+                'perguntas' => $perguntasNormalizadas,
+            ],
+        ]);
     }
 }

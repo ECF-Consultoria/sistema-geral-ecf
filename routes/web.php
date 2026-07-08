@@ -189,6 +189,25 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         ->scopeBindings()
         ->name('nps.configuracao.templates.perguntas.opcoes.mover');
 
+    // ─── Phase 70 Plan 04 — Service scopes + empresas afetadas + preview ─
+    // 3 endpoints complementares da UI de Configuração admin:
+    //  - PUT servicos: sincroniza pivot nps_template_service_scopes (REQ NPS-C-05)
+    //  - GET empresas-afetadas: simula quais empresas em carteira receberiam este
+    //    template dado o pivot atual (feedback visual do REQ NPS-C-05)
+    //  - POST preview: renderiza preview live SEM PERSISTIR — payload não amarrado
+    //    a {template} porque a rota é stateless (REQ NPS-C-06).
+    Route::put ('/nps/configuracao/templates/{template}/servicos',
+        [NpsTemplateController::class, 'syncServicos'])
+        ->name('nps.configuracao.templates.servicos.sync');
+
+    Route::get ('/nps/configuracao/templates/{template}/empresas-afetadas',
+        [NpsTemplateController::class, 'empresasAfetadas'])
+        ->name('nps.configuracao.templates.empresas-afetadas');
+
+    Route::post('/nps/configuracao/templates/preview',
+        [NpsTemplateController::class, 'preview'])
+        ->name('nps.configuracao.templates.preview');
+
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
     Route::delete('/nps/{survey}/response', [NpsController::class, 'excluirResposta'])->name('nps.responses.destroy');
