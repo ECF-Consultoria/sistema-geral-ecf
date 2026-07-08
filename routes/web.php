@@ -30,6 +30,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\NpsTemplateController;
+use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\PerformanceController;
@@ -134,6 +135,31 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         ->name('nps.configuracao.templates.update');
     Route::patch ('/nps/configuracao/templates/{template}/toggle-active', [NpsTemplateController::class, 'toggleActive'])
         ->name('nps.configuracao.templates.toggle-active');
+
+    // ─── Phase 70 Plan 02 — CRUD perguntas dos templates ────────────────
+    // Rotas aninhadas sob {template}. scopeBindings() faz o Laravel resolver
+    // {pergunta} via NpsTemplateQuestion::where('template_id', $template->id)
+    // -> 404 direto se a pergunta não pertence ao template (segurança em
+    // profundidade + guard interno abort_if no controller). Store não usa
+    // scopeBindings porque não recebe {pergunta} (só cria).
+    Route::post  ('/nps/configuracao/templates/{template}/perguntas',
+        [NpsTemplateQuestionController::class, 'store'])
+        ->name('nps.configuracao.templates.perguntas.store');
+
+    Route::put   ('/nps/configuracao/templates/{template}/perguntas/{pergunta}',
+        [NpsTemplateQuestionController::class, 'update'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.update');
+
+    Route::delete('/nps/configuracao/templates/{template}/perguntas/{pergunta}',
+        [NpsTemplateQuestionController::class, 'destroy'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.destroy');
+
+    Route::post  ('/nps/configuracao/templates/{template}/perguntas/{pergunta}/mover',
+        [NpsTemplateQuestionController::class, 'mover'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.mover');
 
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
