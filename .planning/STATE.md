@@ -2,15 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: planning
-last_updated: "2026-07-07T23:15:00.000Z"
-last_activity: 2026-07-07
+status: Phase 68 em execução — Plan 68-01 completo (Wave 1/4 fechada)
+stopped_at: Completed 68-01-PLAN.md
+last_updated: "2026-07-07T12:00:00.000Z"
+last_activity: 2026-07-07 — Phase 68 Plan 68-01 COMPLETO — 3 migrations criadas (5 tabelas novas + template_id em nps_surveys + score_* NULLABLE em nps_responses)
 progress:
   total_phases: 6
   completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_plans: 5
+  completed_plans: 2
+  percent: 3
 ---
 
 # Project State
@@ -20,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 68 — Schema, modelos e seed retroativo "NPS Padrão" — ready to plan
+**Current focus:** Phase 68 — Schema, modelos e seed retroativo "NPS Padrão" — em execução (Wave 1/4 fechada)
 
 ## Current Position
 
 Phase: Phase 68 — Schema, modelos e seed retroativo "NPS Padrão"
-Plan: — (aguardando `/gsd:plan-phase 68`)
-Status: Roadmap aprovado — pronto pra planejar Phase 68
-Last activity: 2026-07-07 — ROADMAP.md v15.0 criado (6 phases 68-73, 29/29 REQs mapeadas)
+Plan: 68-01 COMPLETO — Wave 1/4 (schema físico) fechada
+Status: Wave 2 liberada — Plans 68-02 (Models + factories) + 68-04 (dedup_key) podem rodar em paralelo
+Last activity: 2026-07-07 — Plan 68-01 COMPLETO — 3 migrations criadas em SQLite in-memory verde (5 tabelas novas + template_id FK + score_* NULLABLE); suite Phase 31 NPS 19/19 verdes (zero regressão)
 
 ## Performance Metrics
 
@@ -112,11 +113,13 @@ Last activity: 2026-07-07 — ROADMAP.md v15.0 criado (6 phases 68-73, 29/29 REQ
 | Phase 59 P02 | 35min | 3 tasks | 3 files |
 | Phase 59 P59-03 | 20min | 3 tasks | 1 files |
 | Phase 60 P02 | 35min | 2 tasks (TDD RED+GREEN) | 4 files |
+| Phase 68 P01 | ~22min | 3 tasks | 3 migrations |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-07-07 — **Phase 68 Plan 68-01 COMPLETO — Wave 1/4 FECHADA** (v15.0). 3 migrations sequenciais entregues: `2026_07_07_100001_create_nps_templates_v15_tables.php` cria as **5 tabelas novas** do schema NPS Templates (`nps_templates` com unique parcial em `is_default` split por driver — SQLite partial index / MySQL virtual generated column, além de índice `(active, priority)` para acelerar `NpsTemplateService::resolveForCompany`; `nps_template_questions` com enum `dimensao ∈ {estrategista,analista,empresa,geral}` + índice `(template_id, ordem)`; `nps_template_options` com peso 1..5 + índice `(question_id, ordem)`; `nps_template_service_scopes` pivot template×serviço com unique composto `nps_tpl_scope_uniq`; `nps_response_answers` com snapshot per-row congelado — `question_texto_snapshot`, `question_dimensao_snapshot`, `option_label_snapshot`, `option_peso_snapshot`, `comentario` — + FK viva com `nullOnDelete` + índice composto `nps_ans_response_dim_idx (response_id, question_dimensao_snapshot)` que acelera `NpsScoreCalculator::compute()`). `2026_07_07_100002_alter_nps_surveys_add_template_id.php` adiciona `template_id` como `foreignId nullable + constrained + nullOnDelete + after('auto_generated')` — nullable porque o backfill vem no Plan 68-03 e nullOnDelete porque snapshot congelado em `nps_response_answers` é fonte de verdade histórica se template pai for hard-deletado. `2026_07_07_100003_alter_nps_responses_scores_nullable.php` torna `score_estrategista` e `score_empresa` NULLABLE via `->change()` sem branch por driver (Laravel 12 encapsula o recreate em SQLite); `score_analista` não é alterada (já era nullable desde Phase 31); `down()` é no-op informativo com `Log::warning` porque reverter para NOT NULL destruiria rows legítimas NULL da Phase 69+ (padrão consolidado Phase 31 D-10). **Validações executadas em SQLite in-memory:** `migrate:fresh` verde; 5 tabelas + template_id + score_* NULLABLE + 4 índices nomeados presentes; INSERT com `is_default=true` 2x dispara `SQLSTATE 23000` (unique parcial funcionando); ciclo `migrate:fresh → migrate:rollback --step=3 → migrate` sem erros (idempotência confirmada); suite Phase 31 NPS **19/19 verdes** (zero regressão introduzida). Falha pré-existente em `Phase33OnboardingFichaTest > padroes_expoem_mensagem_e_grants_padrao` confirmada via `git stash --include-untracked` (falha existe antes das minhas migrations; escopo out — deferred). Commits `f84df0f` (Task 1 — 288 linhas), `e674195` (Task 2 — 70 linhas), `9fbd985` (Task 3 — 88 linhas). ZERO modificação em Models Eloquent (`NpsSurvey.php`, `NpsResponse.php`), controllers, jobs, comandos — apenas schema físico. Zero deps novas. Zero deviations (plan executado exatamente como escrito). **REQ NPS-A-01 + NPS-A-04 fechados**. **Wave 2 LIBERADA:** Plans 68-02 (Models + factories dos 5 novos modelos) + 68-04 (dedup_key composto — depende de `nps_surveys.template_id` criado aqui) podem rodar em paralelo. Wave 3 (Plan 68-03 seed retro-associativo "NPS Padrão") depende de 68-02 finalizar. Deploy gate ativo — não deployar sem autorização explícita.
 - 2026-07-07 — **Milestone v15.0 aberta — ROADMAP.md v15.0 criado**. 6 phases (68-73) cobrindo os 6 blocos NPS-A a NPS-F: Phase 68 (Schema + modelos + seed retro "NPS Padrão" — NPS-A, 4 REQs), Phase 69 (Backend TemplateService/ScoreCalculator/dedup mês/dispatch — NPS-B, 5 REQs), Phase 70 (UI Config CRUD templates + preview live — NPS-C, 6 REQs), Phase 71 (Form público dinâmico cinza/amarelo — NPS-D, 5 REQs), Phase 72 (Dashboards + pendências + dia de cobrança — NPS-E, 5 REQs), Phase 73 (Limpeza legado Promotor/Neutro/Detrator + testes E2E — NPS-F, 4 REQs). **Cobertura: 29/29 REQs mapeadas** — zero órfãos, zero duplicatas. Numeração monotônica continua após v14.0 pausada (última planejada Phase 67). Dependências travadas: 68→69→70→71 sequencial + 69→72 (paralelo com 70) + 72→73. Decisões técnicas do research (`v15-nps-templates-schema.md`) incorporadas: snapshot per-row em `nps_response_answers`, unique index parcial via virtual column MySQL / partial SQLite, drag-and-drop sem library (Up/Down + input ordem), precedência priority DESC + is_default fallback, `escala` = 5 opções auto-geradas. REQUIREMENTS.md Traceability preenchida. Próximo: `/gsd:plan-phase 68`.
 - 2026-07-07 — **Phase 60 Plan 60-02 COMPLETO — Wave 2/4 fechada** (v14.0). Contract `App\Contracts\MetricsProvider` (interface 3 metodos: `supports(Company): bool`, `name(): string`, `readForCompany(Company, Carbon, Carbon): UnifiedMetricsDto`) + DTO `App\Services\Metrics\UnifiedMetricsDto` (`final readonly` PHP 8.2+ com 19 propriedades: 4 metadados nao-nullable — `company_id` int, `source` string enum ADR DATA-04, `period_from`/`period_to` Carbon — + 15 numericos nullable — 10 preenchiveis por Adman + 5 exclusivos ML que sempre retornam null: `acos`/`roas`/`clicks`/`impressions`/`orders_count`) + `App\Services\Metrics\AdmanMetricsProvider` (implementa contract lendo APENAS de `adman_metrics` via `AdmanMetric::whereBetween('reference_date', [...])`, zero HTTP em runtime, TACOS ponderado por revenue `SUM(revenue*tacos)/SUM(revenue)` com fallback para media simples). 13/13 testes `Feature\Phase60\AdmanMetricsProviderTest` verdes (50 assertions). RED confirmado via 9 falhas `Class "AdmanMetricsProvider" not found` antes do Task 2 GREEN. Zero regressao em suite Adman/Dashboard/Phase18/Phase58 (109 verdes + 2 falhas pre-existentes em `Phase18\CompaniesCustIdFilterTest` documentadas em `deferred-items.md` — mesmas falhas sem o novo provider, provavelmente colaterais de mudancas untracked em `CompanyController.php` fora do escopo). Suite Feature completa NAO rodada por timeout de 300s em `MercadoLivreAdsService.php:215` (issue pre-existente Phase 39/40, documentado como DEF-60-02-02). ZERO modificacao em `AdmanService`, `DashboardController`, `CompanyController`, `AdminController`, `PortfolioController`, `PerformanceController` — providers coexistem 100% com codigo legado. Commits `ea95746` (test RED — 3 arquivos: contract + DTO + test com 4 testes de fundacao) + `4fa14e1` (feat GREEN — AdmanMetricsProvider + 9 testes de comportamento). **REQ DATA-04 avancado** (ADR fechado no 60-01 + primeira implementacao do contract). **Wave 3 (60-03 MlMetricsProvider) e Wave 4 (60-04 UnifiedMetricsService + factory + reconciliacao) LIBERADAS** — fundacao completa (contract + DTO + Adman side). Proximo: `/gsd:plan-phase 60` para Plan 60-03 ou execucao direta.
 - 2026-07-06 — **Phase 59 Plan 59-01 COMPLETO — Audit + baseline** (v13.0). `59-AUDIT.md` entregue com mapeamento linha-a-linha dos 56 refs `marketplace|meli|mlb|Mlb|ml_store` nos 3 controllers hotspot (ComercialController 29, CompanyController 17, AdminController 10). **Resultado: ZERO itens HIGH** — apenas 2 MEDIUM (naming/consistência de payload cust_id: `CompanyController.php:129` rotula `adman_account_id` mas resolve como `ml_store_id ?: adman_account_id`; `AdminController.php:545` vs `:709` resolvem a MESMA chave com fallback diferente no mesmo controller) e 1 LOW (prefixo `mlb.` nas permission keys de Publicação, `deferred v14+` por exigir migração de dados gravados). **Publicação CONFIRMED transversal** via grep + leitura completa de `EnsurePermission.php` e `checkPubAccess()` (`MlbController.php`) — nenhuma amarração a marketplace encontrada. **Baseline de testes capturado**: 955 testes coletados, 4748 assertions, **63 vermelhos pré-existentes** (15 errors + 48 failures, 1 skipped) — inspeção linha-a-linha confirmou que NENHUM está relacionado ao escopo desta Phase (são falhas legadas de Phase 13/14 migrations, `CalcularFaixaTest` com DI desatualizada, bug de timezone Carbon no Windows, `Phase38\PolosControllerTest` e `Phase42\*` já documentados como pré-existentes). Phase 57 (20/20) e Phase 58 (16/16) confirmadas verdes. **Descoberta de infraestrutura**: `php artisan test`/`vendor/bin/phpunit` direto crasham com "Maximum execution time of 300 seconds exceeded" mesmo com `-d max_execution_time=0` — causa raiz é `set_time_limit(300)` em `SyncGrantsFromEcfDrive::handle()` (código de produção legítimo) chamado 12x por `SyncGrantsFromEcfDriveTest` no mesmo processo PHPUnit, resetando o timer compartilhado até estourar durante os testes de backoff real (`usleep`) da Phase 41/42. Contornado rodando a suite em 2 lotes (exclui o arquivo, roda separado, soma os totais) — **sem tocar nenhum código de produção**. Lista "Itens a corrigir no Plan 02" documentada com os 2 itens MEDIUM (baixo risco, sem impacto em rota/schema/contrato). Commits `171620e` (Task 1 baseline) + `d742f21` (Task 2 classificação). **REQ CROSS-01 + CROSS-02 fechados** (CROSS-03 fecha na Plan 03 via regressão). Próximo: Plan 59-02 (fixes) tem lista de trabalho pequena e concreta.
