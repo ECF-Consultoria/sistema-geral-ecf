@@ -1,8 +1,9 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { router } from '@inertiajs/react';
-import { ExternalLink } from 'lucide-react';
+import { router, useForm } from '@inertiajs/react';
+import { ExternalLink, CalendarClock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Button } from '@/Components/ui/button';
 
 import TemplatesList        from '@/Components/Nps/Config/TemplatesList';
 import TemplateEditForm     from '@/Components/Nps/Config/TemplateEditForm';
@@ -41,11 +42,83 @@ import PreviewFormulario    from '@/Components/Nps/Config/PreviewFormulario';
  *   - dimensoes_labels:     { estrategista: 'Estrategista', ... }
  *   - servicos_disponiveis: Array<{id, nome, setor}>
  */
+/**
+ * DiaCobrancaWidget — Phase 72 Plan 01 v15.0.
+ *
+ * Widget compacto no topo da página Configuracao renderiza um form de 1 campo
+ * (int 1..31) que persiste a config global `nps_dia_cobranca` via PATCH
+ * `nps.configuracao.dia-cobranca.update`. Consumido pelo backend do
+ * NpsPendingService::diaCobranca (Phase 72 Plan 01).
+ *
+ * Props:
+ *  - diaAtual: int  (valor atual persistido; default backend = 25)
+ */
+function DiaCobrancaWidget({ diaAtual }) {
+    // useForm cuida do estado, erros de validação e flag `processing` do botão.
+    // Não usamos `wasSuccessful` na UI porque o backend já emite flash.success
+    // — o AppLayout global mostra o toast.
+    const { data, setData, patch, processing, errors } = useForm({
+        dia: diaAtual ?? 25,
+    });
+
+    const submit = (e) => {
+        e.preventDefault();
+        patch(route('nps.configuracao.dia-cobranca.update'), {
+            preserveScroll: true,
+        });
+    };
+
+    return (
+        <div className="bg-ecf-card border border-white/[0.08] rounded-2xl p-4 flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-3 flex-1 min-w-[240px]">
+                <div className="w-9 h-9 rounded-lg bg-ecf-yellow/10 border border-ecf-yellow/20 flex items-center justify-center shrink-0">
+                    <CalendarClock size={16} className="text-ecf-yellow" />
+                </div>
+                <div>
+                    <div className="text-white text-sm font-medium">Dia de cobrança mensal</div>
+                    <div className="text-white/50 text-xs mt-0.5">
+                        A partir deste dia do mês, empresas sem resposta são marcadas como pendentes.
+                    </div>
+                </div>
+            </div>
+            <form onSubmit={submit} className="flex items-center gap-2">
+                <input
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={data.dia}
+                    onChange={(e) => setData('dia', parseInt(e.target.value, 10) || 1)}
+                    className={cn(
+                        'w-20 bg-white/[0.03] border rounded-lg px-3 py-2 text-white text-sm',
+                        'focus:outline-none focus:ring-2 focus:ring-ecf-yellow/30',
+                        errors.dia ? 'border-red-500/60' : 'border-white/[0.08]',
+                    )}
+                    aria-invalid={!!errors.dia}
+                    aria-label="Dia do mês para cobrança"
+                />
+                <Button
+                    type="submit"
+                    disabled={processing}
+                    className="bg-ecf-yellow text-[#050507] hover:bg-ecf-yellow/90 text-sm px-4"
+                >
+                    {processing ? 'Salvando…' : 'Salvar'}
+                </Button>
+                {errors.dia && (
+                    <span className="text-red-400 text-xs ml-2 w-full sm:w-auto">
+                        {errors.dia}
+                    </span>
+                )}
+            </form>
+        </div>
+    );
+}
+
 export default function Configuracao({
     templates,
     tipos_pergunta,
     dimensoes_labels,
     servicos_disponiveis,
+    dia_cobranca,   // Phase 72 Plan 01 — config global "dia de cobrança mensal"
 }) {
     // ─── Estado principal ────────────────────────────────────────────────
     // selectedId: id do template atualmente aberto no editor.
@@ -142,6 +215,11 @@ export default function Configuracao({
                         Textos e perguntas extras (legado v13)
                     </a>
                 </header>
+
+                {/* Phase 72 Plan 01 — widget de configuração global "Dia de cobrança".
+                    Fica ACIMA do grid principal porque não pertence a nenhum template
+                    específico — é config global do NPS. */}
+                <DiaCobrancaWidget diaAtual={dia_cobranca} />
 
                 {/* Layout principal: sidebar templates | editor | preview */}
                 <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">

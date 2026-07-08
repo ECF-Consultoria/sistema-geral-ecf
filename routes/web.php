@@ -232,6 +232,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         [NpsTemplateController::class, 'preview'])
         ->name('nps.configuracao.templates.preview');
 
+    // ─── Phase 72 Plan 01 — Config global NPS (dia de cobrança) ─────────
+    // PATCH admin-only para persistir Configuracao::nps_dia_cobranca (int 1..31).
+    // Consumido pelo widget DiaCobrancaWidget em Nps/Configuracao.jsx e lido
+    // pelo NpsPendingService::diaCobranca() (Phase 72 Plan 01).
+    Route::patch('/nps/configuracao/dia-cobranca',
+        [NpsController::class, 'atualizarDiaCobranca'])
+        ->name('nps.configuracao.dia-cobranca.update');
+
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
     Route::delete('/nps/{survey}/response', [NpsController::class, 'excluirResposta'])->name('nps.responses.destroy');

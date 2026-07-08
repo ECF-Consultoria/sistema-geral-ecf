@@ -7,6 +7,7 @@ use App\Http\Requests\StoreNpsTemplateRequest;
 use App\Http\Requests\SyncNpsTemplateScopesRequest;
 use App\Http\Requests\UpdateNpsTemplateRequest;
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
@@ -82,6 +83,10 @@ class NpsTemplateController extends Controller
             'tipos_pergunta'       => NpsTemplateQuestion::TIPOS,
             'dimensoes_labels'     => NpsTemplateQuestion::dimensoesLabels(),
             'servicos_disponiveis' => $servicosDisponiveis,
+            // Phase 72 Plan 01 — widget "Dia de cobrança" (DiaCobrancaWidget).
+            // Cast + fallback 25 espelha a leitura do NpsPendingService::diaCobranca()
+            // — se o valor no banco estiver corrompido/ausente, a UI mostra 25.
+            'dia_cobranca'         => (int) Configuracao::get('nps_dia_cobranca', 25),
         ]);
     }
 

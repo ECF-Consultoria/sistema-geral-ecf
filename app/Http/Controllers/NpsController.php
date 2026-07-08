@@ -754,6 +754,36 @@ class NpsController extends Controller
     }
 
     /**
+     * PATCH /nps/configuracao/dia-cobranca — persiste config global "dia de
+     * cobrança mensal" (Phase 72 Plan 01, NPS-E-01).
+     *
+     * Aceita int 1..31; qualquer valor fora do range é rejeitado com 422 com
+     * mensagem pt-BR. Persistido em Configuracao::set('nps_dia_cobranca', ...)
+     * como string (padrão do key-value store). O NpsPendingService::diaCobranca
+     * cast de volta para int + clamp defensivo 1..31.
+     *
+     * Consumido pelo widget DiaCobrancaWidget em Nps/Configuracao.jsx
+     * (Phase 72 Plan 01 T3).
+     */
+    public function atualizarDiaCobranca(Request $request)
+    {
+        $validated = $request->validate([
+            'dia' => 'required|integer|min:1|max:31',
+        ], [
+            'dia.required' => 'Informe o dia de cobrança.',
+            'dia.integer'  => 'O dia deve ser um número inteiro.',
+            'dia.min'      => 'O dia deve ser entre 1 e 31.',
+            'dia.max'      => 'O dia deve ser entre 1 e 31.',
+        ]);
+
+        // Persiste como string (padrão do key-value store Configuracao);
+        // NpsPendingService::diaCobranca faz cast + clamp na leitura.
+        Configuracao::set('nps_dia_cobranca', (string) $validated['dia']);
+
+        return back()->with('success', "Dia de cobrança do NPS atualizado para {$validated['dia']}.");
+    }
+
+    /**
      * POST /nps/configuracao/preview — renderiza o template Blade do email
      * com os textos NÃO PERSISTIDOS vindos do form (permite preview sem salvar).
      *
