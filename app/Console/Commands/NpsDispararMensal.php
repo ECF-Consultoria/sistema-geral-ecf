@@ -6,12 +6,14 @@ use App\Mail\NpsMonthlyMail;
 use App\Models\Company;
 use App\Models\NpsEmailEnvio;
 use App\Models\NpsSurvey;
+use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * Comando do disparo mensal automatizado da pesquisa NPS.
@@ -50,6 +52,19 @@ class NpsDispararMensal extends Command
 
     protected $description = 'Cria survey NPS auto_generated + envia email customizado no aniversário do cadastro (DAY(companies.created_at) == DAY(today), com clamp pro último dia do mês). Idempotente.';
 
+    /**
+     * Phase 69 Plan 05 (REQ NPS-B-04) — DI do NpsTemplateService.
+     *
+     * O comando resolve o template aplicável por empresa antes de criar o
+     * survey; o service é stateless e resolve pelo container Laravel.
+     * `parent::__construct()` é obrigatório — sem ele o Console\Command não
+     * registra `signature` nem `description` corretamente.
+     */
+    public function __construct(private NpsTemplateService $templateService)
+    {
+        parent::__construct();
+    }
+
     public function handle(): int
     {
         // Hoje em horário Brasília — o servidor de produção roda em America/Sao_Paulo
@@ -70,6 +85,11 @@ class NpsDispararMensal extends Command
         $elegiveisHoje = 0;
         $puladosSemEstrategista = 0;
         $puladosIdempotencia = 0;
+        // Phase 69 Plan 05 (REQ NPS-B-04) — contador de empresas puladas por
+        // ausência de template aplicável (nenhum scope + seed padrão faltando).
+        // Situação anômala em prod, mas o comando NÃO crasha o batch por causa
+        // de uma empresa isolada — apenas pula + loga warning.
+        $puladosSemTemplate = 0;
 
         $this->info("Iniciando disparo NPS mensal — hoje={$hoje->toDateString()}, mes_ref={$mesAtual}" . ($dryRun ? ' [DRY-RUN]' : ''));
 
@@ -80,7 +100,8 @@ class NpsDispararMensal extends Command
             ->chunkById(50, function ($empresas) use (
                 $hoje, $mesAtual, $dryRun, $textos, $mesReferencia,
                 &$enviados, &$criados, &$elegiveisHoje,
-                &$puladosSemEstrategista, &$puladosIdempotencia
+                &$puladosSemEstrategista, &$puladosIdempotencia,
+                &$puladosSemTemplate
             ) {
                 foreach ($empresas as $empresa) {
                     try {
@@ -117,12 +138,34 @@ class NpsDispararMensal extends Command
                         // D-07 Phase 31 — Analista é opcional (mentoria pura). Pode ser null.
                         $analista = $empresa->consultor()->first();
 
-                        if ($dryRun) {
-                            $this->line("[DRY] empresa #{$empresa->id} ({$empresa->name}) dispararia para {$empresa->email_cliente}");
+                        // Phase 69 Plan 05 (REQ NPS-B-04) — resolve template aplicável.
+                        // Empresa sem NENHUM template (nem scope + nem seed padrão) é
+                        // pulada com Log::warning estruturado; o batch continua para
+                        // as próximas. Situação anômala: sinaliza seed 100004 revertido.
+                        try {
+                            $template = $this->templateService->resolveForCompany($empresa);
+                        } catch (RuntimeException $e) {
+                            Log::warning(
+                                "[NPS Mensal] empresa {$empresa->id} ({$empresa->name}) sem template aplicavel — pulando disparo",
+                                [
+                                    'company_id'   => $empresa->id,
+                                    'company_name' => $empresa->name,
+                                    'reason'       => $e->getMessage(),
+                                ]
+                            );
+                            $puladosSemTemplate++;
                             continue;
                         }
 
-                        // D-12 Phase 31 — Cria survey antes de renderizar o link.
+                        if ($dryRun) {
+                            $this->line("[DRY] empresa #{$empresa->id} ({$empresa->name}) dispararia para {$empresa->email_cliente} usando template #{$template->id} ({$template->nome})");
+                            continue;
+                        }
+
+                        // D-12 Phase 31 + Phase 69 NPS-B-04 — Cria survey já com
+                        // `template_id` populado. Necessário para o dedup unique
+                        // parcial do Plan 68-04 e para o snapshot per-row (nps_response_answers)
+                        // amarrar cada answer ao template correto no submit.
                         $survey = NpsSurvey::create([
                             'token'           => Str::uuid()->toString(),
                             'company_id'      => $empresa->id,
@@ -131,6 +174,7 @@ class NpsDispararMensal extends Command
                             'status'          => 'pending',
                             'month_reference' => $mesAtual,
                             'auto_generated'  => true,
+                            'template_id'     => $template->id,
                         ]);
                         $criados++;
 
@@ -216,8 +260,11 @@ class NpsDispararMensal extends Command
         if ($puladosSemEstrategista > 0) {
             $this->line("  ↳ {$puladosSemEstrategista} pulada(s) por nao ter estrategista atribuido.");
         }
+        if ($puladosSemTemplate > 0) {
+            $this->line("  ↳ {$puladosSemTemplate} pulada(s) por nao ter template NPS aplicavel.");
+        }
 
-        Log::info("[NPS Mensal] Concluído: {$criados} surveys, {$enviados} emails, {$elegiveisHoje} elegíveis, {$puladosIdempotencia} idempotentes, {$puladosSemEstrategista} sem estrategista");
+        Log::info("[NPS Mensal] Concluído: {$criados} surveys, {$enviados} emails, {$elegiveisHoje} elegíveis, {$puladosIdempotencia} idempotentes, {$puladosSemEstrategista} sem estrategista, {$puladosSemTemplate} sem template");
 
         return self::SUCCESS;
     }
