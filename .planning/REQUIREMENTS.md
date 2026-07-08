@@ -42,11 +42,11 @@ Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROA
 
 ### NPS-E — Dashboards e pendências de resposta
 
-- [ ] **NPS-E-01**: Sistema tem configuração global "dia de cobrança mensal" (int 1-31) que dispara marcação de pendência a partir daquele dia do mês
-- [ ] **NPS-E-02**: Listagem de empresas em carteira (`Portfolio/Show.jsx` e `Companies/Index.jsx`) mostra badge/indicador visual quando empresa está em pendência de NPS do mês corrente
-- [ ] **NPS-E-03**: Dashboard do analista/estrategista mostra contagem/lista de empresas pendentes de NPS no mês corrente na sua carteira
-- [ ] **NPS-E-04**: Sistema tem `NpsPendingService` que retorna a lista de empresas pendentes por carteira; base preparada para futura integração com sistema de notificações (não obrigatório integrar nesta phase, mas contrato definido)
-- [ ] **NPS-E-05**: Dashboards existentes (`Dashboard/Admin.jsx`, `Performance/Dashboard.jsx`, `Companies/Show.jsx`) leem nota via `NpsScoreCalculator` e exibem médias por dimensão respeitando `template_snapshot`
+- [x] **NPS-E-01**: Sistema tem configuração global "dia de cobrança mensal" (int 1-31) que dispara marcação de pendência a partir daquele dia do mês
+- [x] **NPS-E-02**: Listagem de empresas em carteira (`Portfolio/Show.jsx` e `Companies/Index.jsx`) mostra badge/indicador visual quando empresa está em pendência de NPS do mês corrente
+- [x] **NPS-E-03**: Dashboard do analista/estrategista mostra contagem/lista de empresas pendentes de NPS no mês corrente na sua carteira
+- [x] **NPS-E-04**: Sistema tem `NpsPendingService` que retorna a lista de empresas pendentes por carteira; base preparada para futura integração com sistema de notificações (não obrigatório integrar nesta phase, mas contrato definido)
+- [x] **NPS-E-05**: Dashboards existentes (`Dashboard/Admin.jsx`, `Performance/Dashboard.jsx`, `Companies/Show.jsx`) leem nota via `NpsScoreCalculator` e exibem médias por dimensão respeitando `template_snapshot`
 
 ### NPS-F — Limpeza de legado + testes E2E
 
@@ -112,11 +112,11 @@ Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROA
 | NPS-D-03 | Phase 71 | Pending |
 | NPS-D-04 | Phase 71 | Pending |
 | NPS-D-05 | Phase 71 | Pending |
-| NPS-E-01 | Phase 72 | Pending |
-| NPS-E-02 | Phase 72 | Pending |
-| NPS-E-03 | Phase 72 | Pending |
-| NPS-E-04 | Phase 72 | Pending |
-| NPS-E-05 | Phase 72 | Pending |
+| NPS-E-01 | Phase 72 | Complete |
+| NPS-E-02 | Phase 72 | Complete |
+| NPS-E-03 | Phase 72 | Complete |
+| NPS-E-04 | Phase 72 | Complete |
+| NPS-E-05 | Phase 72 | Complete |
 | NPS-F-01 | Phase 73 | Pending |
 | NPS-F-02 | Phase 73 | Pending |
 | NPS-F-03 | Phase 73 | Pending |

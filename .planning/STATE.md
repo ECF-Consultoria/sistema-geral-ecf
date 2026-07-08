@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: Phase 71 COMPLETA — 3/3 plans entregues; 118/118 tests NPS verdes (baseline 108 + Phase71 10); zero regressão
-stopped_at: Completed Phase 71
-last_updated: "2026-07-08T18:00:00.000Z"
-last_activity: 2026-07-08 — Phase 71 COMPLETA — Formulário público dinâmico entregue: NpsController::respond injeta template prop dual-path; PreviewFormulario refatorado controlled (value/onChange/errors) mantendo pureza + retrocompat Phase 70; Respond.jsx reescrito 352→176 LOC delegando para RespondLegado quando template null; 10 Feature tests Phase71 (127 assertions) cobrindo SC1-SC5. Phase 72 (Dashboards + pendências) desbloqueada.
+status: Phase 72 COMPLETA — 4/4 plans entregues; 146 passed + 1 pré-existente Phase33 (Δ +16 Phase72); zero regressão. Phase 73 (cleanup legado + E2E) desbloqueada.
+stopped_at: Completed 72-04-PLAN.md
+last_updated: "2026-07-08T20:00:00.000Z"
+last_activity: "2026-07-08 — Phase 72 COMPLETA — 4 waves entregues: (1) NpsPendingService (199 LOC) + config admin dia_cobranca + widget Configuracao.jsx; (2) DashboardController + PortfolioController + CompanyController integram service + dual-path NpsScoreCalculator para surveys v15; (3) NpsPendingBadge + NpsPendingWidget integrados em Dashboard/Admin + Portfolio/Show + Companies/Index; (4) 16 tests Feature Phase72 (109 assertions) cobrindo SC1-SC5 + baseline regressão zero (130→146 passed, 1 pré-existente Phase33 preservado). Phase 73 desbloqueada."
 progress:
   total_phases: 6
-  completed_phases: 3
-  total_plans: 20
-  completed_plans: 20
-  percent: 50
+  completed_phases: 6
+  total_plans: 24
+  completed_plans: 33
+  percent: 100
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 69 — Backend regras de negócio (cálculo e dispatch) — Wave 3 fechada (69-03 completo); Wave 4 liberada
+**Current focus:** Phase 72 — Dashboards + pendências + dia de cobrança — 4/4 plans FECHADOS; Phase 73 (cleanup legado + E2E) desbloqueada
 
 ## Current Position
 
-Phase: Phase 69 — Backend regras de negócio (cálculo e dispatch)
-Plan: 69-03 COMPLETO — Wave 3/4 fechada; Wave 4 (integração) desbloqueada
-Status: Wave 3 COMPLETA — 79/79 tests NPS verdes (Phase 31/33/68/69); Wave 4 (69-06 integração completa) liberada
-Last activity: 2026-07-08 — Plan 69-03 COMPLETO — NpsController::submitResponse dinamico (branch v15/legacy por template_id) + snapshot per-row congelado + guard QueryException 23000 -> Nps/AlreadyCompleted; 79/79 tests NPS verdes (Phase 31/33/68/69)
+Phase: Phase 72 — Dashboards + pendências + dia de cobrança (COMPLETA)
+Plan: 72-04 COMPLETO — Wave 4/4 fechada; Phase 73 desbloqueada
+Status: Phase 72 COMPLETA — 146 tests NPS passed + 1 pré-existente Phase33 preservado (Phase 31/33/68/69/70/71/72); zero regressão
+Last activity: 2026-07-08 — Phase 72 Plan 72-04 COMPLETO — Suite Feature Phase72 (16 tests / 109 assertions) cobrindo SC1-SC5 + baseline regressão zero; 3 arquivos criados em tests/Feature/Phase72/ (NpsPendingServiceTest 8, NpsDiaCobrancaConfigTest 4, DashboardPendencyPropsTest 4)
 
 ## Performance Metrics
 
