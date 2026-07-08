@@ -480,12 +480,18 @@ function ScaleRow({ options, selecionadoId, onPick }) {
     );
 }
 
-// ─── Opções livres em formato pill com gradient laranja→roxo ─────────────
+// ─── Opções livres em formato pill com cor sentiment por peso ────────────
+// Ajuste 2026-07-08 (feedback pós-deploy): antes as pills usavam gradient
+// laranja→roxo fixo no selected. Agora aplicam a MESMA cor sentiment das
+// escalas 1-5, baseada em `option.peso`. Assim "Sempre" (peso=5) fica verde
+// escuro, "Raramente" (peso=2) laranja, etc. Independente do texto — o
+// admin controla a cor via peso interno na configuração do template.
 function ChoiceRow({ options, selecionadoId, onPick }) {
     return (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
             {options.map((o) => {
                 const sel = selecionadoId === o.id;
+                const col = sentimentForPeso(o.peso);
                 return (
                     <button
                         type="button"
@@ -498,12 +504,10 @@ function ChoiceRow({ options, selecionadoId, onPick }) {
                             fontFamily: "'Manrope', sans-serif",
                             fontWeight: 600,
                             fontSize: 13.5,
-                            border: '1px solid ' + (sel ? ACCENT : 'rgba(255,255,255,.1)'),
-                            background: sel
-                                ? `linear-gradient(135deg, ${ACCENT}, ${ACCENT_ALT})`
-                                : 'rgba(255,255,255,.03)',
+                            border: '1px solid ' + (sel ? col : 'rgba(255,255,255,.1)'),
+                            background: sel ? col : 'rgba(255,255,255,.03)',
                             color: sel ? '#fff' : '#C1C1C9',
-                            boxShadow: sel ? '0 8px 22px rgba(255,90,25,.28)' : 'none',
+                            boxShadow: sel ? `0 8px 22px ${col}55` : 'none',
                             transition: 'all .18s ease',
                         }}
                     >
