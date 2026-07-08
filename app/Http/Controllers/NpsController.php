@@ -306,7 +306,17 @@ class NpsController extends Controller
      */
     public function respond(string $token)
     {
-        $survey = NpsSurvey::with(['company', 'generatedBy'])
+        // Phase 71 Plan 01 — eager-load `template.questions.options` na MESMA
+        // query do survey para o form dinâmico v15.0 (REQ NPS-D-01). Relations
+        // `NpsTemplate::questions()` e `NpsTemplateQuestion::options()` (Phase 68)
+        // já vêm ordenadas por (ordem ASC, id ASC) — nenhuma reordenação extra
+        // no controller. Surveys legacy (template_id NULL) ficam com
+        // $survey->template = null e caem no fluxo Phase 33 abaixo.
+        $survey = NpsSurvey::with([
+                'company',
+                'generatedBy',
+                'template.questions.options',
+            ])
             ->where('token', $token)
             ->firstOrFail();
 
@@ -361,6 +371,45 @@ class NpsController extends Controller
             ->orderBy('id')
             ->get(['id', 'texto', 'tipo', 'opcoes', 'obrigatorio']);
 
+        // ─── Phase 71 Plan 01 — Payload dinâmico v15.0 ────────────────────────
+        // Se o survey tem template associado (Phase 68/69), monta o shape que o
+        // `PreviewFormulario.jsx` do Phase 70-05 consome — `Respond.jsx` (Plan
+        // 71-02) reaproveita esse mesmo componente puro e envolve-o com o hook
+        // de submit.
+        //
+        // Surveys sem template_id (legacy pre-migration Phase 68 ou dispatch
+        // manual antigo) recebem `$templatePayload = null` — `Respond.jsx` cai
+        // no fluxo Phase 33 (form fixo com perguntas legadas + perguntas_extras).
+        //
+        // IMPLICAÇÃO CRÍTICA (research §5 + Phase 69-03): cada option DEVE
+        // conter `id` — `submitResponseV15` valida `answers.<qid>` via
+        // `Rule::in($optionIds)`. O `peso` viaja junto só para render local
+        // (Phase 71-02 mapeia ID → peso no client apenas para UI).
+        $templatePayload = null;
+        if ($survey->template_id !== null && $survey->template) {
+            $templatePayload = [
+                'id'        => $survey->template->id,
+                'nome'      => $survey->template->nome,
+                'descricao' => $survey->template->descricao,
+                'perguntas' => $survey->template->questions->map(function ($q) {
+                    return [
+                        'id'          => $q->id,
+                        'ordem'       => $q->ordem,
+                        'texto'       => $q->texto,
+                        'tipo'        => $q->tipo,
+                        'dimensao'    => $q->dimensao,
+                        'obrigatoria' => $q->obrigatoria,
+                        'options'     => $q->options->map(fn ($o) => [
+                            'id'    => $o->id,
+                            'ordem' => $o->ordem,
+                            'label' => $o->label,
+                            'peso'  => $o->peso,
+                        ])->values()->all(),
+                    ];
+                })->values()->all(),
+            ];
+        }
+
         return Inertia::render('Nps/Respond', [
             'survey' => [
                 'token'              => $survey->token,
@@ -371,6 +420,8 @@ class NpsController extends Controller
                 'textos'             => $textosRender,
             ],
             'perguntas_extras' => $perguntasExtras,
+            // Phase 71 Plan 01 — payload dinâmico v15.0 (null em surveys legacy).
+            'template'         => $templatePayload,
         ]);
     }
 
