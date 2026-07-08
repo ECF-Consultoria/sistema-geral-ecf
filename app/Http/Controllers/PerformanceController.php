@@ -295,14 +295,25 @@ class PerformanceController extends Controller
             ->limit(4)
             ->get();
 
-        $npsRespostas = $recentSurveys->map(function ($s) use ($npsField) {
-            $nota = $s->response?->$npsField;
+        // Phase 73 Plan 01 (SC#1) — classificacao ternaria legacy
+        // (herdada do NPS 0-10 classico) REMOVIDA. Payload segue com nota bruta
+        // 1-5; frontend (Plan 73-03) decide como colorir por threshold.
+        // Dual-path: surveys v15 (template_id != null) leem media da dimensao
+        // via NpsScoreCalculator respeitando template_snapshot; surveys legacy
+        // (Phase 31, template_id === null) caem no fallback direto na coluna
+        // nps_responses.score_* preservada pela Phase 68 (nullable). $npsField
+        // define qual dimensao ler segundo o cargo do user logado
+        // (score_estrategista para mentor, score_analista caso contrario).
+        $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $dimensao   = $user->isMentor() ? 'estrategista' : 'analista';
+        $npsRespostas = $recentSurveys->map(function ($s) use ($calculator, $dimensao, $npsField) {
+            $nota = ($s->template_id !== null && $s->response)
+                ? $calculator->compute($s->response, $dimensao)
+                : $s->response?->$npsField;
             if ($nota === null) return null;
-            $classe = $nota >= 9 ? 'Promotor' : ($nota >= 7 ? 'Neutro' : 'Detrator');
             return [
                 'empresa' => $s->company?->name ?? '—',
-                'nota'    => (int) $nota,
-                'classe'  => $classe,
+                'nota'    => round((float) $nota, 2),  // pode ser float via avg do calculator
                 'quando'  => optional($s->completed_at)->diffForHumans(),
             ];
         })->filter()->values();
