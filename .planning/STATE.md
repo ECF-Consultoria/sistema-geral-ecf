@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: Phase 70 PLANEJADA — 6 plans em 4 waves prontos para execução (backend Waves 1-2 paralelizáveis + frontend Wave 3 + tests Wave 4); pronto para /gsd:execute-phase 70
-stopped_at: Planned Phase 70
-last_updated: "2026-07-08T15:00:00.000Z"
-last_activity: 2026-07-08 — Phase 70 PLANEJADA — UI de Configuração admin: 6 plans (70-01 CRUD templates + guard is_default, 70-02 CRUD perguntas com auto-5-options em escala + tipo imutável + SWAP reorder, 70-03 CRUD opções peso 1..5 + guard mínimo 1 opção em escala, 70-04 sync scopes atomic + preview endpoint stateless + empresas-afetadas simuladas via NpsTemplateService, 70-05 reescrita Configuracao.jsx multi-template com 6 componentes filhos + PreviewFormulario portável Phase 71 + legado /textos-legado preservado, 70-06 Feature tests 24 cobrindo SC1-SC5 + baseline regressão zero)
+status: Phase 70 COMPLETA — 6/6 plans entregues; 108/108 tests NPS verdes (baseline 84 + Phase70 24); zero regressão; bug scopeBindings caught by tests
+stopped_at: Completed Phase 70
+last_updated: "2026-07-08T16:15:00.000Z"
+last_activity: 2026-07-08 — Phase 70 COMPLETA — UI de Configuração admin entregue: 3 controllers backend (NpsTemplateController/Question/Option) + 8 FormRequests + 6 componentes React em Nps/Config/ + Configuracao.jsx reescrita (1076→236 LOC) + ConfiguracaoLegado.jsx preserva Phase 33 + 15 rotas nps.configuracao.templates.* + 24 tests Feature Phase70 verdes; Phase 71 desbloqueada (PreviewFormulario.jsx portável idêntico)
 progress:
   total_phases: 6
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 17
-  completed_plans: 11
-  percent: 15
+  completed_plans: 17
+  percent: 33
 ---
 
 # Project State
