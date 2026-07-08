@@ -12,7 +12,7 @@ Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROA
 
 - [x] **NPS-A-01**: Sistema tem tabelas `nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes` e `nps_response_answers` criadas com constraints e índices apropriados
 - [x] **NPS-A-02**: Modelos Eloquent + relationships definidos (`NpsTemplate hasMany Questions`, `Question hasMany Options`, `Template belongsToMany Servico` via pivot, `NpsResponse hasMany Answers`)
-- [ ] **NPS-A-03**: Migração de dados legados cria template seed "NPS Padrão" e retro-associa 100% dos `nps_surveys` existentes; nenhuma survey fica órfã sem `template_id`
+- [x] **NPS-A-03**: Migração de dados legados cria template seed "NPS Padrão" e retro-associa 100% dos `nps_surveys` existentes; nenhuma survey fica órfã sem `template_id`
 - [x] **NPS-A-04**: `nps_response_answers` armazena snapshot completo (question_texto, option_label, peso) por resposta — mudanças futuras no template não alteram histórico
 
 ### NPS-B — Backend: regras de negócio, cálculo e dispatch
@@ -94,7 +94,7 @@ Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROA
 |-------------|-------|--------|
 | NPS-A-01 | Phase 68 | Complete |
 | NPS-A-02 | Phase 68 | Complete |
-| NPS-A-03 | Phase 68 | Pending |
+| NPS-A-03 | Phase 68 | Complete |
 | NPS-A-04 | Phase 68 | Complete |
 | NPS-B-01 | Phase 69 | Pending |
 | NPS-B-02 | Phase 69 | Pending |
