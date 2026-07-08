@@ -89,7 +89,10 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   3. Perguntas obrigatórias são visualmente marcadas (asterisco + texto "obrigatório"); botão de submit fica desabilitado até que todas obrigatórias tenham resposta; server-side devolve 422 com mensagem clara se cliente contornar client-side
   4. Fluxo pós-submit preserva as telas `ThankYou`, `AlreadyCompleted` e `Expired` existentes — comportamento inalterado; token expirado ainda renderiza tela `Expired`
   5. Nenhuma label apresentada ao cliente contém jargão técnico (`unified`, `dimensao`, `snapshot`, `estrategista`, `analista` só se corresponder a papel do time visível ao cliente) — textos em pt-BR simples
-**Plans**: TBD
+**Plans**: 3 plans em 3 waves — Wave 1 (71-01 backend NpsController::respond eager-load + inject template prop dual-path) → Wave 2 (71-02 refactor PreviewFormulario controlled + reescrita Respond.jsx + RespondLegado.jsx preserva Phase 33) → Wave 3 (71-03 Feature tests 10 cobrindo SC1-SC5)
+- [ ] 71-01-PLAN.md — NpsController::respond eager-load template.questions.options + inject template prop condicional (null em legacy)
+- [ ] 71-02-PLAN.md — PreviewFormulario controlled props + reescrita Respond.jsx delegando ao RespondLegado quando template null
+- [ ] 71-03-PLAN.md — Suite Feature Phase71 (10 testes) cobrindo SC1-SC5 + baseline regressão zero
 **UI hint**: yes
 
 ### Phase 72: Dashboards + pendências + dia de cobrança
@@ -125,7 +128,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 | 68. Schema, modelos e seed retroativo | 4/5 | In Progress|  |
 | 69. Backend regras de negócio | 5/6 | In Progress|  |
 | 70. UI de Configuração | 6/6 | Complete | 2026-07-08 |
-| 71. Formulário público | 0/? | Not started | — |
+| 71. Formulário público | 0/3 | Planned | — |
 | 72. Dashboards + pendências | 0/? | Not started | — |
 | 73. Limpeza legado + testes E2E | 0/? | Not started | — |
 
