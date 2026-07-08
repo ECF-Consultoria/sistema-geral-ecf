@@ -526,10 +526,21 @@ class DashboardController extends Controller
             ->where('completed_at', '>=', $since)
             ->get();
 
-        // Phase 31 (Plan 05 — D-09): escala 1-5 substituiu 0-10. O card
-        // 'NPS Médio' agora mostra a média de score_empresa (dimensao geral
-        // "A ECF esta atendendo suas expectativas?" — D-07).
-        $avgNps = $npsResponses->avg(fn($s) => $s->response?->score_empresa) ?? 0;
+        // Phase 73 Plan 01 (SC#1) — media NPS dimensao 'empresa' via
+        // NpsScoreCalculator para surveys v15; fallback score_empresa legado
+        // para surveys pre-v15 (Phase 31 preservado — dual-path).
+        // Closure $notaDe reusada logo abaixo pelos buckets positivas/negativas.
+        $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $notaDe = function ($s) use ($calculator) {
+            if ($s->template_id !== null && $s->response) {
+                return $calculator->compute($s->response, 'empresa');
+            }
+            return $s->response?->score_empresa;
+        };
+        $notasEmpresa = $npsResponses->map($notaDe)->filter(fn($n) => $n !== null);
+        $avgNps = $notasEmpresa->isNotEmpty()
+            ? round((float) $notasEmpresa->avg(), 2)
+            : 0;
 
         $meetings = Meeting::whereIn('company_id', $companies->pluck('id'))
             ->where('scheduled_at', '>=', $since)
@@ -560,18 +571,23 @@ class DashboardController extends Controller
 
         $lastSyncDate = $metrics->max('reference_date');
 
-        // Phase 31 (Plan 05 — D-09): mapeamento 1-5 → categorias do widget:
-        //   score_empresa == 5    → promotor   (Excelente)
-        //   score_empresa == 4    → neutro     (Bom)
-        //   score_empresa 1-3     → detrator   (Ruim)
-        // As chaves promotores/neutros/detratores são preservadas porque o
-        // Pie de Dashboard/Admin.jsx ainda consome esse shape — labels
-        // visuais são re-rotulados no JSX para "Excelente/Bom/Ruim".
+        // Phase 73 Plan 01 (SC#1) — buckets simplificados escala 1-5.
+        // Classificacao ternaria legacy (herdada do NPS 0-10 classico)
+        // REMOVIDA. v15 opera:
+        //   nota >= 4 → resposta positiva (Excelente/Bom)
+        //   nota <= 3 → resposta negativa (Precisa melhorar)
+        // Reusa $notaDe declarada acima (dual-path v15 vs legacy).
+        // Chaves de props Inertia mudaram: 'promotores/neutros/detratores'
+        // → 'positivas/negativas'; frontend Plan 73-03 consome os novos nomes.
         $npsDistribution = [
-            'promotores' => $npsResponses->filter(fn($s) => (int) ($s->response?->score_empresa ?? 0) === 5)->count(),
-            'neutros'    => $npsResponses->filter(fn($s) => (int) ($s->response?->score_empresa ?? 0) === 4)->count(),
-            'detratores' => $npsResponses->filter(fn($s) => (int) ($s->response?->score_empresa ?? 0) >= 1
-                                                        && (int) ($s->response?->score_empresa ?? 0) <= 3)->count(),
+            'positivas' => $npsResponses->filter(function ($s) use ($notaDe) {
+                $n = $notaDe($s);
+                return $n !== null && $n >= 4;
+            })->count(),
+            'negativas' => $npsResponses->filter(function ($s) use ($notaDe) {
+                $n = $notaDe($s);
+                return $n !== null && $n <= 3;
+            })->count(),
         ];
 
         // Ranking "Analistas e Mentores" + filtros: só time de consultoria.
@@ -881,13 +897,16 @@ class DashboardController extends Controller
                 ->where('completed_at', '>=', $since)
                 ->get();
 
-            // Phase 31 (Plan 05) — taxonomia nova:
-            //   isMentor() == true  → user é Estrategista → score_estrategista
-            //   else                → user é Analista (consultor) → score_analista
-            // Escala agora é 1-5 (era 0-10). round(1) preserva a precisao.
-            $scoreField = $u->isMentor() ? 'score_estrategista' : 'score_analista';
+            // Phase 73 Plan 01 (SC#1) — media por dimensao via NpsScoreCalculator
+            // para surveys v15 (template_id != null); fallback na coluna legada
+            // nps_responses.score_* para surveys pre-v15 (Phase 31 preservado,
+            // dual-path). Taxonomia mantida: Estrategista (isMentor) →
+            // dimensao 'estrategista'; Analista (consultor) → 'analista'.
+            // Escala 1-5 uniforme, round(1) preserva precisao historica do widget.
+            $dimensao   = $u->isMentor() ? 'estrategista' : 'analista';
+            $scoreField = $u->isMentor() ? 'score_estrategista' : 'score_analista';  // fallback legacy
             $avgNps = $surveys->count() > 0
-                ? round($surveys->avg(fn($s) => $s->response?->$scoreField ?? 0), 1)
+                ? $this->avgNotaDimensao($surveys, $dimensao, $scoreField)
                 : null;
 
             $meetingsTotal = Meeting::whereIn('company_id', $companyIds)
@@ -1015,9 +1034,14 @@ class DashboardController extends Controller
             ? Ppa::with('company')->where('mentor_id', $user->id)->orderBy('created_at', 'desc')->take(5)->get()
             : collect();
 
-        // Phase 31 (Plan 05) — taxonomia nova (idem buildRanking acima):
-        //   Estrategista (isMentor) → score_estrategista; Analista → score_analista.
-        $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
+        // Phase 73 Plan 01 (SC#1) — taxonomia mantida (idem buildRanking acima):
+        //   Estrategista (isMentor) → dimensao 'estrategista'; Analista → 'analista'.
+        // Fonte de leitura mudou: NpsScoreCalculator para surveys v15
+        // (template_id != null); fallback direto na coluna legacy score_* para
+        // surveys pre-v15 (Phase 31 preservado, dual-path). Helper
+        // avgNotaDimensao centraliza a logica.
+        $dimensao   = $user->isMentor() ? 'estrategista' : 'analista';
+        $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';  // fallback legacy
 
         // Phase 72 Plan 02 — SC#3: empresas pendentes de NPS restritas a
         // carteira do proprio usuario (forCarteira filtra por
@@ -1028,7 +1052,7 @@ class DashboardController extends Controller
             'stats' => [
                 'total_companies' => $companies->count(),
                 'avg_tacos' => round($metrics->avg('tacos') ?? 0, 2),
-                'avg_nps' => round($npsResponses->avg(fn($s) => $s->response?->$scoreField ?? 0) ?? 0, 1),
+                'avg_nps' => $this->avgNotaDimensao($npsResponses, $dimensao, $scoreField),
                 'absenteeism_rate' => round($absenteeismRate, 2),
                 'total_revenue' => $metrics->sum('revenue'),
             ],
@@ -1047,5 +1071,35 @@ class DashboardController extends Controller
             // (widget renderizado em Plan 72-03).
             'nps_pendentes' => $npsPendentes,
         ]);
+    }
+
+    /**
+     * Phase 73 Plan 01 (SC#1) — media da nota por dimensao com dual-path v15
+     * vs legacy. Surveys v15 (template_id != null) leem via
+     * NpsScoreCalculator::compute($response, $dimensao) respeitando o
+     * template_snapshot; surveys legacy (Phase 31, template_id === null) caem
+     * no fallback direto na coluna nps_responses.$scoreFieldLegacy.
+     *
+     * Escala 1-5 uniforme; round(1) preserva a precisao historica dos widgets
+     * "Desempenho da equipe" (buildRanking) e "avg_nps" do userDashboard.
+     *
+     * @param  iterable<int, \App\Models\NpsSurvey>  $surveys
+     * @param  string  $dimensao          Uma das constantes NpsTemplateQuestion::DIMENSOES
+     * @param  string  $scoreFieldLegacy  Coluna legacy correspondente em nps_responses (fallback pre-v15)
+     * @return float  Media 1-5 com 1 decimal; 0.0 quando colecao vazia ou todas notas null.
+     */
+    private function avgNotaDimensao(iterable $surveys, string $dimensao, string $scoreFieldLegacy): float
+    {
+        $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $notas = collect($surveys)->map(function ($s) use ($calculator, $dimensao, $scoreFieldLegacy) {
+            if ($s->template_id !== null && $s->response) {
+                return $calculator->compute($s->response, $dimensao);
+            }
+            return $s->response?->$scoreFieldLegacy;
+        })->filter(fn($n) => $n !== null);
+
+        return $notas->isNotEmpty()
+            ? round((float) $notas->avg(), 1)
+            : 0.0;
     }
 }
