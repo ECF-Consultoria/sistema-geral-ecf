@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -40,6 +41,7 @@ class UserController extends Controller
                 'id'              => $u->id,
                 'name'            => $u->name,
                 'email'           => $u->email,
+                'avatar'          => $u->avatar_url,
                 'role'            => $u->role,
                 'is_admin'        => $u->role === 'admin',
                 'active'          => $u->active,
@@ -129,6 +131,49 @@ class UserController extends Controller
         $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
 
         return back()->with('success', 'Usuário atualizado.');
+    }
+
+    /**
+     * Upload da foto do usuário. Guarda no disco público (storage/app/public/avatars)
+     * e salva a URL pública em users.avatar_url. Requer `php artisan storage:link`.
+     */
+    public function updateAvatar(Request $request, User $user)
+    {
+        $request->validate(
+            ['avatar' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:4096']],
+            [
+                'avatar.required' => 'Selecione uma imagem.',
+                'avatar.image'    => 'O arquivo precisa ser uma imagem.',
+                'avatar.mimes'    => 'Formatos aceitos: JPG, PNG ou WEBP.',
+                'avatar.max'      => 'A imagem deve ter no máximo 4 MB.',
+            ],
+        );
+
+        // Remove a foto anterior se era um upload local (não mexe em URL externa).
+        $this->apagarAvatarLocal($user);
+
+        $path = $request->file('avatar')->store('avatars', 'public');
+        $user->forceFill(['avatar_url' => Storage::url($path)])->save();
+
+        return back()->with('success', "Foto de {$user->name} atualizada.");
+    }
+
+    /** Remove a foto do usuário (apaga o arquivo local, se houver, e zera a URL). */
+    public function destroyAvatar(User $user)
+    {
+        $this->apagarAvatarLocal($user);
+        $user->forceFill(['avatar_url' => null])->save();
+
+        return back()->with('success', "Foto de {$user->name} removida.");
+    }
+
+    /** Apaga o arquivo físico da foto quando ela é um upload local (/storage/avatars/...). */
+    private function apagarAvatarLocal(User $user): void
+    {
+        $url = (string) $user->avatar_url;
+        if (str_starts_with($url, '/storage/')) {
+            Storage::disk('public')->delete(substr($url, strlen('/storage/')));
+        }
     }
 
     private function validateUser(Request $request, bool $isUpdate, ?int $userId = null): array

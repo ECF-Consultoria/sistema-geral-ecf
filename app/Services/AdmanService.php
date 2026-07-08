@@ -573,6 +573,66 @@ class AdmanService
         }
     }
 
+    /**
+     * Como warmPerformance, mas também devolve a quebra de netBilling por categoryId
+     * lida do array `items[]` do /performance (1 registro por produto — cobre itens
+     * COM e SEM anúncio). Alimenta o faturamento por categoria do /polos (ex.: só
+     * "Casa, Móveis e Decoração").
+     *
+     * Custo Adman: ZERO chamada extra — o `items[]` já vem na MESMA resposta que o
+     * warm do faturamento consome; hoje o array é descartado. Aquece as MESMAS chaves
+     * de cache de warmPerformance (gross_billing/investment), então os getCached*Many
+     * seguem lendo o gross normalmente. Erro/timeout → null (o job NÃO grava, preserva
+     * o último snapshot bom).
+     *
+     * @return array{gross_billing: ?float, investment: ?float, net_por_categoria: array<string,float>, net_total: float, itens: int}|null
+     */
+    public function fetchPerformanceBreakdown(string $custId, string $dateFrom, string $dateTo, string $marketplace = 'meli'): ?array
+    {
+        $gbKey  = "adman:gross_billing:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+        $invKey = "adman:investment:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+
+        try {
+            $data = $this->fetchPerformance($custId, $dateFrom, $dateTo, 3, $marketplace);
+            $gb   = $data['summarizedData']['grossBilling']['value'] ?? null;
+            $inv  = $data['summarizedData']['investment']['value']   ?? null;
+
+            // netBilling por categoryId a partir dos items[] (cobre com e sem ADS).
+            $porCat   = [];
+            $netTotal = 0.0;
+            $itens    = $data['items'] ?? [];
+            foreach ($itens as $it) {
+                $cat = trim((string) ($it['categoryId'] ?? ''));
+                if ($cat === '') {
+                    continue;
+                }
+                $node = $it['netBilling'] ?? null;
+                $net  = is_array($node) ? (float) ($node['value'] ?? 0) : (float) ($node ?? 0);
+                $porCat[$cat] = ($porCat[$cat] ?? 0.0) + $net;
+                $netTotal    += $net;
+            }
+            $qtdItens = count($itens);
+            unset($data, $itens);
+            gc_collect_cycles();
+
+            Cache::put($gbKey,  $gb  !== null ? (float) $gb  : self::ERROR_SENTINEL, now()->addMinutes($gb  !== null ? 1440 : self::ERROR_CACHE_MINUTES));
+            Cache::put($invKey, $inv !== null ? (float) $inv : self::ERROR_SENTINEL, now()->addMinutes($inv !== null ? 1440 : self::ERROR_CACHE_MINUTES));
+
+            return [
+                'gross_billing'     => $gb  !== null ? (float) $gb  : null,
+                'investment'        => $inv !== null ? (float) $inv : null,
+                'net_por_categoria' => $porCat,
+                'net_total'         => $netTotal,
+                'itens'             => $qtdItens,
+            ];
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/PerfBreakdown] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($gbKey,  self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            Cache::put($invKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
+    }
+
     // ─── Account Metrics (ACOS, TACOS, margem, etc) ───────────────────────────
     //
     // Endpoint /v1/{marketplace}/accounts/{custId}/metrics retorna métricas

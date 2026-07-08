@@ -1,26 +1,21 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronRight, LayoutGrid, GitBranch, Send, ShieldAlert, UserX } from 'lucide-react';
+import { ChevronDown, ChevronRight, LayoutGrid, GitBranch, Send, ShieldAlert, UserX, Lightbulb } from 'lucide-react';
 import { VAZIO } from '@/hooks/useAutoFilter';
 import StatChip from '@/Components/StatChip';
-import DonutIndicador from '@/Components/DonutIndicador';
+import DistribuicaoResumo from '@/Components/DistribuicaoResumo';
 
 /**
- * OperacoesPanel — "Centro de Operações" acionável do Painel Polos, no estilo dos gráficos
- * do cockpit financeiro (donut echarts com nº central + emphasis; legenda estilo Coorte M1).
- * Cada donut/legenda é a renderização de af.optionsFor(coluna); clicar chama irPara(col,valor)
- * → troca de lente + af.setOnly (ou limpa, se já isolado). Auto-atualiza (deriva de `empresas`).
+ * OperacoesPanel — "Centro de Operações" acionável do Painel Polos. "Overview first, details on
+ * demand": grade densa de cards COMPACTOS (DistribuicaoResumo — donut pequeno + Top-5 + total +
+ * "Ver todas"); o detalhamento completo (todas as categorias, busca, ordenação, tabela, export)
+ * abre num DRAWER sob demanda. Alimentado por af.optionsFor(coluna); clicar numa categoria chama
+ * irPara(col,valor) → destaca + filtra a grade (ou limpa, se já isolado). Auto-atualiza (deriva de `empresas`).
  *
- * CONTEXTUAL POR LENTE (rev.4): reage à aba ativa via `lente`.
- *  · Numa área (Acessos/Produtos/Logística) → só os donuts daquela área, detalhados.
- *  · Geral → tríade de comando (Fase/Envio/Precisa de ação) + 1 "principal" por área (resumo).
+ * CONTEXTUAL POR LENTE: reage à aba ativa via `lente`.
+ *  · Numa área (Acessos/Produtos/Logística) → só os indicadores daquela área.
+ *  · Geral → comando (Fase/Envio/Precisa de ação) + 1 "principal" por área (resumo).
  *  · Financeiro → nada (o Cockpit financeiro já cobre) — o painel nem renderiza.
  */
-
-const CARD = 'relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4 before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.10] before:to-transparent';
-
-const TONE_HEX = { red: '#fca5a5', amber: '#fcd34d', green: '#6ee7b7', neutral: '#9ca3af', violet: '#c4b5fd', sky: '#7dd3fc', yellow: '#ffe600' };
-const SIT_TONE = { problema: 'red', fora_prazo: 'red', pendente_envio: 'amber', sem_ficha: 'amber', ads_off: 'neutral' };
-const ENVIO_TONE = { falta_enviar: 'red', enviado: 'amber', concluido: 'green' };
 
 // Rótulo da lente ativa p/ o cabeçalho "Operações · <área>".
 const LENTE_LABEL = { geral: 'Geral', acessos: 'Acessos & Setup', produtos: 'Produtos & Publicação', logistica: 'Logística', financeiro: 'Financeiro' };
@@ -75,13 +70,6 @@ export default function OperacoesPanel({ af, irPara, toneValor, toneFase, lente 
     // Lente sem donuts (ex.: Financeiro) → não renderiza o painel.
     if (!donuts.length) return null;
 
-    // Cor de uma fatia conforme a estratégia de "tom" da coluna.
-    const corDe = (tone, v) => {
-        if (tone === 'fase')     return TONE_HEX[toneFase(v)] ?? TONE_HEX.neutral;
-        if (tone === 'envio')    return TONE_HEX[ENVIO_TONE[v] ?? 'neutral'];
-        if (tone === 'situacao') return TONE_HEX[SIT_TONE[v] ?? 'neutral'];
-        return TONE_HEX[toneValor(v)] ?? TONE_HEX.neutral; // 'valor'
-    };
     // Opções de uma coluna, podando os "vazios" (e o 'ok' de Situação, que não é pendência).
     const optsDe = (col, tone) => {
         const opts = af.optionsFor(col);
@@ -94,14 +82,16 @@ export default function OperacoesPanel({ af, irPara, toneValor, toneFase, lente 
 
     const montar = (d) => {
         const cfg   = DONUT_CFG[d.col] ?? { label: d.col, centro: 'empresas' };
-        const dados = optsDe(d.col, d.tone).map((o) => ({ key: o.value, label: o.label, count: o.count, cor: corDe(d.tone, o.value) }));
+        const dados = optsDe(d.col, d.tone).map((o) => ({ key: o.value, label: o.label, count: o.count }));
         return { ...d, cfg, dados };
     };
-    const renderDonut = (d, height) => (
-        <div key={d.col} className={CARD}>
-            <DonutIndicador titulo={d.cfg.label} icone={d.cfg.icone} height={height} centroLabel={d.cfg.centro ?? 'empresas'}
-                dados={d.dados} activeKey={activeKey(d.col, d.dados)} onClick={(v) => irPara(d.col, v)} />
-        </div>
+    // "Overview first, details on demand": cada indicador é um card COMPACTO (donut pequeno +
+    // Top-5 + total + "Ver todas"), em grade densa. O detalhamento completo (todas as categorias,
+    // busca, ordenação, tabela, export) abre num DRAWER sob demanda. onClick/activeKey mantêm o
+    // cross-filter com a grade (irPara/af.setOnly/isOnly). Cores por paleta categórica (rank).
+    const renderResumo = (d) => (
+        <DistribuicaoResumo key={d.col} titulo={d.cfg.label} icone={d.cfg.icone} centroLabel={d.cfg.centro ?? 'empresas'}
+            dados={d.dados} activeKey={activeKey(d.col, d.dados)} onClick={(v) => irPara(d.col, v)} />
     );
 
     const montados = donuts.map(montar);
@@ -129,10 +119,18 @@ export default function OperacoesPanel({ af, irPara, toneValor, toneFase, lente 
                             active={af.isOnly('responsavel', VAZIO)} onClick={() => irPara('responsavel', VAZIO)} />
                     )}
 
-                    {/* Donuts de comando (só na Geral) */}
+                    {/* Dica única do painel (os widgets vêm com dica={false} p/ não repetir) */}
+                    <div className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.015] px-4 py-2.5">
+                        <Lightbulb size={14} className="shrink-0 text-ecf-yellow/70" />
+                        <p className="text-[12px] text-white/50">
+                            <span className="font-semibold text-white/70">Dica:</span> clique numa categoria para destacar no gráfico e filtrar a grade — as demais ficam em cinza. Clique de novo para limpar.
+                        </p>
+                    </div>
+
+                    {/* Indicadores de comando (só na Geral) */}
                     {comandos.length > 0 && (
-                        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                            {comandos.map((d) => renderDonut(d))}
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                            {comandos.map((d) => renderResumo(d))}
                         </div>
                     )}
 
@@ -140,8 +138,8 @@ export default function OperacoesPanel({ af, irPara, toneValor, toneFase, lente 
                     {lente === 'geral' && principais.length > 0 && (
                         <h4 className="pt-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">Resumo por área</h4>
                     )}
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                        {principais.map((d) => renderDonut(d, 150))}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                        {principais.map((d) => renderResumo(d))}
                     </div>
                 </div>
             )}

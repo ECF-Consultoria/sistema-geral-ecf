@@ -7,10 +7,34 @@ import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, router, usePage } from '@inertiajs/react';
-import { useState } from 'react';
-import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star, Camera } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import FormErrorBanner from '@/Components/FormErrorBanner';
+
+// Iniciais para o avatar quando não há foto.
+function iniciaisNome(nome = '') {
+    const p = String(nome).trim().split(/\s+/).filter(Boolean);
+    if (!p.length) return '?';
+    return ((p[0][0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
+}
+
+// Avatar do usuário: foto (src) com fallback para iniciais (inclusive se a imagem falhar).
+function UserAvatar({ nome, src, size = 32 }) {
+    const [erro, setErro] = useState(false);
+    const usaFoto = Boolean(src) && !erro;
+    return (
+        <span
+            className={cn('inline-grid shrink-0 select-none place-items-center overflow-hidden rounded-full font-display font-bold',
+                usaFoto ? '' : 'border border-white/10 bg-white/[0.06] text-white/70')}
+            style={{ width: size, height: size, fontSize: Math.round(size * 0.38) }}
+        >
+            {usaFoto
+                ? <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setErro(true)} />
+                : iniciaisNome(nome)}
+        </span>
+    );
+}
 
 /**
  * Vínculos (form local): array de objetos com {setor_id, cargo_id, is_principal}.
@@ -42,15 +66,43 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
     // quando o próprio form submete via form.post/put.
     const { errors } = usePage().props;
 
+    // ── Foto do usuário (upload inline, só ao editar um usuário existente) ──
+    const fileRef = useRef(null);
+    const [avatarPreview, setAvatarPreview] = useState(null);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+    const onPickAvatar = (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = '';
+        if (!file || !editing) return;
+        setAvatarPreview(URL.createObjectURL(file));
+        setUploadingAvatar(true);
+        router.post(route('users.avatar.update', editing.id), { avatar: file }, {
+            forceFormData: true,
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => setUploadingAvatar(false),
+            onError:  () => setAvatarPreview(null),
+        });
+    };
+
+    const onRemoveAvatar = () => {
+        if (!editing) return;
+        setAvatarPreview(null);
+        router.delete(route('users.avatar.destroy', editing.id), { preserveScroll: true, preserveState: true });
+    };
+
     const openCreate = () => {
         reset();
         setData(initialForm());
         setEditing(null);
+        setAvatarPreview(null);
         setOpen(true);
     };
 
     const openEdit = (u) => {
         setEditing(u);
+        setAvatarPreview(null);
         setData({
             name:     u.name,
             email:    u.email,
@@ -166,7 +218,12 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                             <TableBody>
                                 {filtered.map(u => (
                                     <TableRow key={u.id}>
-                                        <TableCell className="font-medium">{u.name}</TableCell>
+                                        <TableCell className="font-medium">
+                                            <div className="flex items-center gap-2.5">
+                                                <UserAvatar nome={u.name} src={u.avatar} size={30} />
+                                                <span>{u.name}</span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                                         <TableCell>
                                             {u.is_admin ? (
@@ -236,6 +293,37 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                     <form onSubmit={submit} className="space-y-4">
                         {/* Banner global de erros — surface erros que ficariam invisíveis com campos condicionais. */}
                         <FormErrorBanner errors={errors} />
+
+                        {/* Foto do funcionário — upload inline (só ao editar; novo usuário adiciona após salvar) */}
+                        {editing ? (
+                            <div className="flex items-center gap-4 rounded-xl border border-white/[0.06] bg-white/[0.02] p-3">
+                                <UserAvatar nome={data.name} src={avatarPreview ?? editing.avatar} size={64} />
+                                <div className="min-w-0 flex-1">
+                                    <p className="text-white/80 text-[13px] font-semibold">Foto do funcionário</p>
+                                    <p className="text-white/40 text-[11px]">JPG, PNG ou WEBP · até 4 MB</p>
+                                    <div className="mt-2 flex items-center gap-2">
+                                        <input
+                                            ref={fileRef}
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp"
+                                            className="hidden"
+                                            onChange={onPickAvatar}
+                                        />
+                                        <Button type="button" size="sm" variant="outline" onClick={() => fileRef.current?.click()} disabled={uploadingAvatar}>
+                                            <Camera className="h-3.5 w-3.5 mr-1" /> {uploadingAvatar ? 'Enviando...' : 'Enviar foto'}
+                                        </Button>
+                                        {(avatarPreview ?? editing.avatar) && (
+                                            <Button type="button" size="sm" variant="ghost" onClick={onRemoveAvatar} disabled={uploadingAvatar} className="text-destructive hover:text-destructive">
+                                                <X className="h-3.5 w-3.5 mr-1" /> Remover
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {errors.avatar && <p className="text-destructive text-xs mt-1">{errors.avatar}</p>}
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-white/30 text-[11px] -mb-1">A foto do funcionário pode ser adicionada após salvar o cadastro.</p>
+                        )}
 
                         {/* Toggle Admin */}
                         <div className="grid grid-cols-2 gap-2">

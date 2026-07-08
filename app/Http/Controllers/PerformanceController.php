@@ -237,7 +237,7 @@ class PerformanceController extends Controller
         $users = User::where('active', true)
             ->whereIn('publication_role', ['publicador', 'lider'])
             ->orderBy('name')
-            ->get(['id', 'name', 'publication_role', 'publication_meta']);
+            ->get(['id', 'name', 'publication_role', 'publication_meta', 'avatar_url']);
 
         $hoje      = Carbon::today();
         $primeiroC = $ref->copy()->startOfMonth();
@@ -270,6 +270,7 @@ class PerformanceController extends Controller
                 'id'              => $u->id,
                 'name'            => $u->name,
                 'pub_role'        => $u->publication_role,
+                'foto'            => $u->avatar_url,
                 'meta'            => $meta,
                 'feito'           => $feito,
                 'vendas'          => $vendas,
@@ -288,16 +289,13 @@ class PerformanceController extends Controller
         $maxConversao = max($rawRanking->max('_conversao_raw'), 0.0001);
 
         $ranking = $rawRanking->map(function ($u) use ($maxVendas, $maxConversao) {
-            $pctMeta      = min($u['_pct_meta'],      1.0); // limita em 1 para não distorcer
-            $vendasNorm   = $u['vendas']           / $maxVendas;
-            $conversaoNorm = $u['_conversao_raw']  / $maxConversao;
-
-            $score = round(($pctMeta * 0.4 + $vendasNorm * 0.4 + $conversaoNorm * 0.2) * 100, 1);
+            $score = self::scorePublicador($u['_pct_meta'], $u['vendas'], $maxVendas, $u['_conversao_raw'], $maxConversao);
 
             return [
                 'id'              => $u['id'],
                 'name'            => $u['name'],
                 'pub_role'        => $u['pub_role'],
+                'foto'            => $u['foto'],
                 'meta'            => $u['meta'],
                 'feito'           => $u['feito'],
                 'vendas'          => $u['vendas'],
@@ -308,6 +306,22 @@ class PerformanceController extends Controller
                 'score_final'     => $score,
             ];
         })->sortByDesc('score_final')->values();
+
+        // ── Evolução mês a mês (coluna "Evolução" do dashboard) ──
+        // Compara a posição atual de cada publicador com a do mês anterior (mesma
+        // fórmula de score). delta > 0 = subiu no ranking; < 0 = caiu; 0 = manteve.
+        // Se o mês anterior não teve produção alguma, não há base comparativa →
+        // delta null e a UI mostra "—" (estrutura pronta, sem inventar movimento).
+        $mesAnterior = Carbon::createFromFormat('Y-m', $mesRef)->subMonthNoOverflow()->format('Y-m');
+        $posAnterior = $this->posicoesDoMes($users, $mesAnterior);
+
+        $ranking = $ranking->values()->map(function ($u, $idx) use ($posAnterior) {
+            $posAtual        = $idx + 1;
+            $anterior        = $posAnterior[$u['id']] ?? null;
+            $u['posicao']        = $posAtual;
+            $u['evolucao_delta'] = $anterior !== null ? $anterior - $posAtual : null;
+            return $u;
+        });
 
         // Compatibilidade SQLite (testes) vs MySQL (produção).
         $formatExpr = DB::getDriverName() === 'sqlite'
@@ -324,6 +338,64 @@ class PerformanceController extends Controller
             'mes'     => $mesRef,
             'meses'   => $meses,
         ]);
+    }
+
+    /**
+     * Fórmula única do score do publicador (0–100): 40% atingimento de meta
+     * (limitado em 100%) + 40% vendas normalizadas + 20% conversão normalizada.
+     * Extraída para servir tanto o ranking do mês corrente quanto o cálculo de
+     * posições do mês anterior (evolução) sem risco de divergência de fórmula.
+     */
+    private static function scorePublicador(float $pctMeta, int $vendas, int $maxVendas, float $conversaoRaw, float $maxConversao): float
+    {
+        $pctMetaCap    = min($pctMeta, 1.0);
+        $vendasNorm    = $maxVendas    > 0 ? $vendas       / $maxVendas    : 0.0;
+        $conversaoNorm = $maxConversao > 0 ? $conversaoRaw / $maxConversao : 0.0;
+
+        return round(($pctMetaCap * 0.4 + $vendasNorm * 0.4 + $conversaoNorm * 0.2) * 100, 1);
+    }
+
+    /**
+     * Calcula a posição (1-based) de cada publicador no ranking de um mês,
+     * usando a mesma fórmula de score. Retorna [user_id => posição].
+     * Se o mês não teve produção alguma, retorna [] (sem base para evolução).
+     *
+     * @param  \Illuminate\Support\Collection  $users  publicadores ativos (id)
+     */
+    private function posicoesDoMes($users, string $mesRef): array
+    {
+        $ref      = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
+        $primeiro = $ref->copy()->startOfMonth()->toDateString();
+        $ultimo   = $ref->copy()->endOfMonth()->toDateString();
+
+        $raw = $users->map(function ($u) use ($primeiro, $ultimo, $mesRef) {
+            $meta   = $this->metaParaMes($u->id, $mesRef);
+            $feito  = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->count();
+            $vendas = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('vendido', true)->count();
+
+            return [
+                'id'      => $u->id,
+                'vendas'  => $vendas,
+                'feito'   => $feito,
+                '_pct'    => $meta  > 0 ? $feito  / $meta  : 0.0,
+                '_conv'   => $feito > 0 ? $vendas / $feito : 0.0,
+            ];
+        });
+
+        // Sem produção no mês → nada a comparar.
+        if ((int) $raw->sum('feito') === 0) {
+            return [];
+        }
+
+        $maxVendas    = max((int) $raw->max('vendas'), 1);
+        $maxConversao = max($raw->max('_conv'), 0.0001);
+
+        return $raw
+            ->map(fn ($u) => ['id' => $u['id'], 's' => self::scorePublicador($u['_pct'], $u['vendas'], $maxVendas, $u['_conv'], $maxConversao)])
+            ->sortByDesc('s')
+            ->values()
+            ->mapWithKeys(fn ($u, $i) => [$u['id'] => $i + 1])
+            ->all();
     }
 
     private function metaParaMes(int $userId, string $mes): int

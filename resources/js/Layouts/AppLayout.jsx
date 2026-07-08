@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import NotificationBell from '@/Components/NotificationBell';
+import ThemeToggle from '@/Components/ThemeToggle';
 
 /**
  * Árvore de navegação com suporte a grupos colapsáveis.
@@ -199,7 +200,7 @@ const NAV_TREE = [
         icon: BarChart2,
         children: [
             { label: 'Pub · Dashboard', routeName: 'mlb.dashboard',    page: 'Mlb/Dashboard',    icon: BarChart2,      permission: 'mlb.dashboard' },
-            { label: 'Desempenho',      routeName: 'publicacao.desempenho.index', page: 'Performance', icon: Trophy, permission: 'mlb.dashboard' },
+            { label: 'Desempenho',      routeName: 'publicacao.desempenho.index', page: 'Performance', icon: Trophy, permission: 'mlb.meu_painel' },
             { label: 'Treinamentos',    routeName: 'mlb.treinamentos', page: 'Mlb/Treinamentos', icon: BookOpen,       permission: 'mlb.treinamento' },
             // Admin/Gestor/Líder usam esta tela em modo supervisão (seletor de publicador via ?pub=ID); publicador/analista veem o próprio painel.
             { label: 'Meu Painel',      routeName: 'mlb.meu-painel',   page: 'Mlb/MeuPainel',    icon: LayoutList,     permission: 'mlb.meu_painel' },
@@ -403,7 +404,7 @@ export default function AppLayout({ children, title }) {
                         <img
                             src={logoSrc}
                             alt="ECF Consultoria"
-                            className="h-7 w-auto object-contain"
+                            className="ecf-logo h-7 w-auto object-contain"
                             onError={e => { e.currentTarget.style.display = 'none'; }}
                         />
                     </Link>
@@ -649,6 +650,8 @@ export default function AppLayout({ children, title }) {
                     <div className="flex items-center gap-2">
                         {/* Sino de notificações — Phase 10 (SINO-01) */}
                         <NotificationBell />
+                        {/* Alternância modo claro/escuro — ao lado do perfil */}
+                        <ThemeToggle />
                         <Link
                             href={route('profile.edit')}
                             className="text-white/30 hover:text-white/60 p-1.5 rounded-lg hover:bg-white/[0.05] transition-colors"

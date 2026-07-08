@@ -83,6 +83,11 @@ export default {
                 'accordion-down': { from: { height: '0' }, to: { height: 'var(--radix-accordion-content-height)' } },
                 'accordion-up': { from: { height: 'var(--radix-accordion-content-height)' }, to: { height: '0' } },
                 'fade-in': { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+                // Ticker/marquee horizontal (faixa de destaques do dashboard de Desempenho).
+                // Conteúdo é duplicado no JSX; -50% completa um ciclo sem emenda.
+                'marquee': { from: { transform: 'translateX(0)' }, to: { transform: 'translateX(-50%)' } },
+                // Brilho discreto varrendo a barra do líder (ProducaoBars do Desempenho).
+                'sheen': { '0%': { transform: 'translateX(-120%)' }, '60%, 100%': { transform: 'translateX(360%)' } },
                 // Borda piscando em vermelho — campos obrigatórios não preenchidos (ex.: Frete na precificação do cliente)
                 'blink-red': {
                     '0%, 100%': { borderColor: 'rgb(239 68 68)', boxShadow: '0 0 0 0 rgba(239,68,68,0.45)' },
@@ -93,6 +98,8 @@ export default {
                 'accordion-down': 'accordion-down 0.2s ease-out',
                 'accordion-up': 'accordion-up 0.2s ease-out',
                 'fade-in': 'fade-in 0.3s ease-out',
+                'marquee': 'marquee 40s linear infinite',
+                'sheen': 'sheen 2.8s ease-in-out infinite',
                 'blink-red': 'blink-red 1.1s ease-in-out infinite',
             },
             backgroundImage: {

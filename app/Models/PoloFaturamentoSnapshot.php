@@ -29,13 +29,15 @@ class PoloFaturamentoSnapshot extends Model
         'mes',
         'cust_id',
         'faturamento',
+        'faturamento_moveis',
         'ads',
         'synced_at',
     ];
 
     protected $casts = [
-        'faturamento' => 'float',
-        'ads'         => 'float',
-        'synced_at'   => 'datetime',
+        'faturamento'        => 'float',
+        'faturamento_moveis' => 'float',
+        'ads'                => 'float',
+        'synced_at'          => 'datetime',
     ];
 }

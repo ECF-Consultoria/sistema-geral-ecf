@@ -5,6 +5,17 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
+        {{-- Modo claro/escuro: aplica a preferencia ANTES do render pra evitar flash --}}
+        <script>
+            (function () {
+                try {
+                    if (localStorage.getItem('ecf-theme') === 'light') {
+                        document.documentElement.classList.add('light');
+                    }
+                } catch (e) {}
+            })();
+        </script>
+
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
         <!-- Fonts ECF -->

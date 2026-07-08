@@ -1,4 +1,5 @@
 import '../css/app.css';
+import '../css/light.css'; // tema claro opcional (ativado pela classe .light no <html>)
 import './bootstrap';
 
 import { createInertiaApp, router } from '@inertiajs/react';

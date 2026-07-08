@@ -265,8 +265,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('performance.show');
 
     // Phase 49 Wave 2 — Ranking de desempenho do setor Publicações (rota própria no menu)
+    // Gate mlb.meu_painel: o publicador comum (que já acessa "Meu Painel") enxerga
+    // o MESMO dashboard de desempenho da equipe — não só líderes/gestores (mlb.dashboard).
     Route::get('/publicacao/desempenho', [PerformanceController::class, 'indexPublicacao'])
-        ->middleware('permission:mlb.dashboard')
+        ->middleware('permission:mlb.meu_painel')
         ->name('publicacao.desempenho.index');
 
     // Phase 46 Plan 46-02 — endpoint JSON da curva de evolucao do score de um user
@@ -401,6 +403,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/users', [UserController::class, 'index'])->name('users.index');
         Route::post('/users', [UserController::class, 'store'])->name('users.store');
         Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+        Route::post('/users/{user}/avatar', [UserController::class, 'updateAvatar'])->name('users.avatar.update');
+        Route::delete('/users/{user}/avatar', [UserController::class, 'destroyAvatar'])->name('users.avatar.destroy');
         Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
         Route::post('/users/{id}/restore', [UserController::class, 'restore'])->name('users.restore');
         Route::delete('/users/{id}/force', [UserController::class, 'forceDestroy'])->name('users.force-destroy');

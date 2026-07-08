@@ -1,9 +1,16 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
-import { Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import {
+    Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, X,
+    Users, Target, CheckCircle2, Crown, Award, ShoppingCart, Percent,
+    ArrowUp, ArrowDown, Minus, Flame, Clock, Megaphone, BarChart3,
+    Gauge, Activity, Tv, TrendingDown, Rocket,
+} from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent, formatCurrency } from '@/lib/utils';
+import HeroKpi from '@/Pages/Polos/components/HeroKpi';
+import RadialGauge from '@/Pages/Polos/components/RadialGauge';
 
 const PERIOD_OPTIONS = [
     { value: '7',   label: 'Últimos 7 dias' },
@@ -94,6 +101,14 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
 
     const allRankingIds = ranking.map((r) => r.id);
 
+    // Publicações — dashboard executivo de TV (bloco próprio, largura ampla).
+    // O próprio PolosDashboard decide o "chrome": AppLayout (normal) ou overlay
+    // fullscreen (Modo TV), então NÃO envolvemos em AppLayout aqui.
+    if (isPolos) {
+        return <PolosDashboard ranking={ranking} mes={mes} meses={meses} />;
+    }
+
+    // Consultoria — ranking por score composto (layout original).
     return (
         <AppLayout title="Desempenho">
             <div className="space-y-5 max-w-[1100px]">
@@ -105,66 +120,51 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Toggle Consultoria|Publicações removido — rota define o ranking (Phase 49 UAT 2026-06-30) */}
+                        {/* Filtro por cargo */}
+                        <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
+                            {[
+                                { label: 'Geral',         value: null },
+                                { label: 'Analistas',     value: 'analista' },
+                                { label: 'Estrategistas', value: 'estrategista' },
+                            ].map((opt, i, arr) => (
+                                <div key={opt.value ?? 'geral'} className="flex">
+                                    <button
+                                        onClick={() => applyFilter(
+                                            opt.value
+                                                ? { setor: 'consultoria', period, cargo: opt.value }
+                                                : { setor: 'consultoria', period }
+                                        )}
+                                        className={cn(
+                                            'px-3 h-9 text-[13px] font-medium transition-colors',
+                                            cargo === opt.value
+                                                ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
+                                                : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
+                                        )}
+                                    >
+                                        {opt.label}
+                                    </button>
+                                    {i < arr.length - 1 && <div className="w-px bg-white/[0.08]" />}
+                                </div>
+                            ))}
+                        </div>
 
-                        {/* Filtro por cargo — só no setor consultoria */}
-                        {!isPolos && (
-                            <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
-                                {[
-                                    { label: 'Geral',         value: null },
-                                    { label: 'Analistas',     value: 'analista' },
-                                    { label: 'Estrategistas', value: 'estrategista' },
-                                ].map((opt, i, arr) => (
-                                    <div key={opt.value ?? 'geral'} className="flex">
-                                        <button
-                                            onClick={() => applyFilter(
-                                                opt.value
-                                                    ? { setor: 'consultoria', period, cargo: opt.value }
-                                                    : { setor: 'consultoria', period }
-                                            )}
-                                            className={cn(
-                                                'px-3 h-9 text-[13px] font-medium transition-colors',
-                                                cargo === opt.value
-                                                    ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
-                                                    : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]'
-                                            )}
-                                        >
-                                            {opt.label}
-                                        </button>
-                                        {i < arr.length - 1 && <div className="w-px bg-white/[0.08]" />}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* Period / Month selector */}
-                        {!isPolos ? (
-                            <SelectBox value={period} onChange={v => applyFilter({ setor: 'consultoria', period: v })}>
-                                {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                            </SelectBox>
-                        ) : (
-                            <SelectBox value={mes} onChange={v => applyFilter({ setor: 'polos', mes: v })}>
-                                {meses.map(m => <option key={m} value={m}>{formatMesLabel(m)}</option>)}
-                            </SelectBox>
-                        )}
+                        <SelectBox value={period} onChange={v => applyFilter({ setor: 'consultoria', period: v })}>
+                            {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                        </SelectBox>
                     </div>
                 </div>
 
                 {/* Legend — quick 260623 ranking por score */}
-                {!isPolos && (
-                    <div className="flex flex-wrap gap-4 text-[11px] text-white/30">
-                        <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Score: 30% cresc. ajustado + 20% empresas crescendo + 20% meta + 15% recuperação + 5% qualidade · pesos redistribuem quando faltam dados</span>
-                        <span>Click na linha → carteira individual com detalhe da nota</span>
-                    </div>
-                )}
+                <div className="flex flex-wrap gap-4 text-[11px] text-white/30">
+                    <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Score: 30% cresc. ajustado + 20% empresas crescendo + 20% meta + 15% recuperação + 5% qualidade · pesos redistribuem quando faltam dados</span>
+                    <span>Click na linha → carteira individual com detalhe da nota</span>
+                </div>
 
                 {ranking.length === 0 ? (
                     <div className="card-ecf rounded-2xl p-12 text-center">
                         <Trophy size={32} className="mx-auto mb-3 text-white/20" />
                         <p className="text-white/40 text-sm">Nenhum dado disponível para o período selecionado</p>
                     </div>
-                ) : isPolos ? (
-                    <RankingPolos ranking={ranking} />
                 ) : (
                     <RankingConsultoria ranking={ranking} onSelectUser={setUserSelecionado} />
                 )}
@@ -516,91 +516,875 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
     );
 }
 
-function ScoreTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const color = value >= 75 ? 'text-emerald-400' : value >= 50 ? 'text-ecf-yellow' : value >= 30 ? 'text-orange-400' : 'text-red-400';
-    const barColor = value >= 75 ? '#22c55e' : value >= 50 ? '#ffe600' : value >= 30 ? '#f97316' : '#ef4444';
+// ═══════════════════════════════════════════════════════════════════════
+// Publicações — Dashboard executivo de TV
+// Reorganiza o antigo ranking-tabela em blocos: KPIs de resumo → destaque do
+// líder + produção por publicador → ranking moderno → ticker de destaques.
+// Pensado para ficar exposto numa TV o dia todo: leitura em segundos, animações
+// leves (CSS transition + rAF, sem lib JS) e auto-refresh só da prop 'ranking'.
+// Sem fotos — a identidade vem de avatar com iniciais + medalhas/troféu.
+// Refino 260708 (nível "torre executiva"): fundo sutil, cards com linha de marca
+// + glow, count-up nos números, barras com gradiente/brilho e ranking em cartões.
+// ═══════════════════════════════════════════════════════════════════════
+
+// Superfície bg-ecf-card-2/60 espelha o HeroKpi (mesma página) — cards consistentes
+// no dark e superfície branca sólida no modo claro (light.css mapeia ecf-card-2 → #fff).
+// A sombra suave (drop + inset-highlight) dá profundidade sem "flutuar" demais na TV.
+const CARD = 'relative overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card-2/60 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_24px_48px_-32px_rgba(0,0,0,0.7)] transition-[box-shadow,border-color] duration-300';
+
+// Paleta de accents da página — cada bloco/KPI ganha uma identidade cromática
+// dentro do design system (amarelo da marca + apoios frios/quentes já usados).
+const ACCENTS = {
+    yellow: '#ffe600',
+    blue:   '#60a5fa',
+    green:  '#22c55e',
+    red:    '#ef4444',
+    orange: '#f97316',
+    violet: '#a78bfa',
+};
+
+// Respeita "reduzir movimento" do SO — desliga count-up e sheen em quem pediu.
+function usePrefersReducedMotion() {
+    const [reduz, setReduz] = useState(false);
+    useEffect(() => {
+        const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+        if (!mq) return;
+        setReduz(mq.matches);
+        const on = (e) => setReduz(e.matches);
+        mq.addEventListener?.('change', on);
+        return () => mq.removeEventListener?.('change', on);
+    }, []);
+    return reduz;
+}
+
+// Conta 0 → alvo com easeOutCubic (~900ms). Leve: um rAF só, cancela na saída.
+// `enabled=false` (reduced-motion) entrega o valor final de imediato.
+function useCountUp(target, { duration = 900, enabled = true } = {}) {
+    const to = Number(target) || 0;
+    const [val, setVal] = useState(enabled ? 0 : to);
+    useEffect(() => {
+        if (!enabled) { setVal(to); return; }
+        let raf;
+        const t0 = performance.now();
+        const tick = (now) => {
+            const p = Math.min((now - t0) / duration, 1);
+            const eased = 1 - Math.pow(1 - p, 3);
+            setVal(to * eased);
+            if (p < 1) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [to, enabled, duration]);
+    return val;
+}
+
+// Número animado — usa o formatador da página (fmtInt/fmtScore/fmtPct1) sobre o
+// valor interpolado. Fora do modo reduzido, o pai passa `animar` já resolvido.
+function AnimatedNumber({ value, format = fmtInt, animar = true, duration = 900 }) {
+    const v = useCountUp(value, { enabled: animar, duration });
+    return <>{format(v)}</>;
+}
+
+// Mini gráfico de barras (SVG) — perfil real de uma série (sem eixos, decorativo-
+// informativo). Usado no KPI "Produzido" pra mostrar a distribuição da equipe.
+function Sparkline({ data = [], cor = '#ffe600', width = 96, height = 24 }) {
+    if (!data.length) return null;
+    const max = Math.max(...data, 1);
+    const gap = 2;
+    const bw  = (width - gap * (data.length - 1)) / data.length;
     return (
-        <div className="flex flex-col items-end gap-1">
-            <span className={cn('font-extrabold text-[15px] leading-none', color)}>{value}</span>
-            <div className="w-14 h-1 bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(value, 100)}%`, background: barColor }} />
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} aria-hidden="true" className="overflow-visible">
+            {data.map((d, i) => {
+                const h = Math.max((d / max) * height, 1.5);
+                return (
+                    <rect key={i} x={i * (bw + gap)} y={height - h} width={bw} height={h} rx={Math.min(bw / 2, 2)}
+                          fill={cor} opacity={0.35 + 0.5 * (d / max)} />
+                );
+            })}
+        </svg>
+    );
+}
+
+// Cartão de seção padronizado: superfície CARD + linha colorida superior (marca)
+// + glow de canto opcional. Concentra o "dar vida" pedido (linha, gradiente, sombra)
+// num só lugar, mantendo consistência entre Líder / Produção / Ranking / Ticker.
+function SectionCard({ accent = ACCENTS.yellow, glow = false, className, children, ...rest }) {
+    return (
+        <div className={cn(CARD, 'animate-fade-in', className)} {...rest}>
+            {/* linha colorida superior — identidade visual do bloco */}
+            <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[2px] opacity-80"
+                  style={{ background: `linear-gradient(90deg, transparent, ${accent}, transparent)` }} />
+            {glow && (
+                <span aria-hidden="true"
+                      className="pointer-events-none absolute -top-20 left-1/2 h-40 w-72 -translate-x-1/2 rounded-full blur-3xl"
+                      style={{ background: `${accent}14` }} />
+            )}
+            {children}
+        </div>
+    );
+}
+
+// Fundo da página: grid quase invisível (com máscara radial pra sumir nas bordas)
+// + brilho amarelo suave no topo. Elegante no dark; inócuo no modo claro (branco
+// sobre branco). Fica atrás do conteúdo via -z-10 dentro do container relative.
+function DashboardBackdrop() {
+    return (
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+            <div
+                className="absolute inset-0 opacity-60"
+                style={{
+                    backgroundImage: 'linear-gradient(rgba(255,255,255,0.022) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.022) 1px, transparent 1px)',
+                    backgroundSize: '46px 46px',
+                    maskImage: 'radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%)',
+                    WebkitMaskImage: 'radial-gradient(ellipse at 50% 0%, #000 0%, transparent 72%)',
+                }}
+            />
+            <div
+                className="absolute -top-28 left-1/2 h-72 w-[54rem] -translate-x-1/2 rounded-full blur-3xl"
+                style={{ background: 'radial-gradient(closest-side, rgba(255,230,0,0.07), transparent)' }}
+            />
+        </div>
+    );
+}
+
+// Faixas de cor do score (espelha a lógica do antigo ScoreTag).
+const SCORE_BANDS = [
+    { min: 75, cor: '#22c55e' },
+    { min: 50, cor: '#ffe600' },
+    { min: 30, cor: '#f97316' },
+    { min: 0,  cor: '#ef4444' },
+];
+const bandaScore = (v) => SCORE_BANDS.find((b) => (v ?? 0) >= b.min) ?? SCORE_BANDS[SCORE_BANDS.length - 1];
+
+const STATUS_PILL = {
+    'Acima da meta':  { cor: '#22c55e', label: 'Acima da meta' },
+    'No alvo':        { cor: '#ffe600', label: 'No alvo' },
+    'Abaixo da meta': { cor: '#ef4444', label: 'Abaixo da meta' },
+};
+
+const fmtScore = (n) => Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const fmtInt   = (n) => Number(n ?? 0).toLocaleString('pt-BR');
+const fmtPct1  = (n) => `${Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+const primeiroNome = (nome = '') => (nome.trim().split(/\s+/)[0] || '—');
+
+function iniciais(nome = '') {
+    const p = nome.trim().split(/\s+/).filter(Boolean);
+    if (!p.length) return '?';
+    return ((p[0][0] ?? '') + (p.length > 1 ? p[p.length - 1][0] : '')).toUpperCase();
+}
+
+// Anima valores 0 → alvo na montagem (mesmo padrão de RankingProgresso).
+function useMounted() {
+    const [m, setM] = useState(false);
+    useEffect(() => {
+        const id = requestAnimationFrame(() => setM(true));
+        return () => cancelAnimationFrame(id);
+    }, []);
+    return m;
+}
+
+// Avatar do publicador. Se houver foto (src), renderiza a imagem; senão cai nas
+// iniciais. Líder ganha destaque amarelo (anel/glow na foto, gradiente nas iniciais).
+// A URL da foto vem de users.avatar_url (upload, foto do Google ou URL externa).
+function Avatar({ nome, src, size = 40, destaque = false }) {
+    const [erro, setErro] = useState(false);
+    const usaFoto = Boolean(src) && !erro;
+    return (
+        <span
+            aria-hidden="true"
+            className={cn('inline-grid shrink-0 select-none place-items-center overflow-hidden rounded-full font-display font-extrabold',
+                usaFoto
+                    // Foto: só o anel amarelo quando destaque.
+                    ? (destaque ? 'ring-2 ring-ecf-yellow/60' : '')
+                    // Iniciais: não-destaque usa classes de opacidade (adaptam ao tema claro); líder usa o amarelo da marca.
+                    : (destaque ? 'text-black' : 'border border-white/10 bg-white/[0.07] text-white/80'))}
+            style={{
+                width: size, height: size, fontSize: Math.round(size * 0.36),
+                ...(destaque ? { boxShadow: '0 0 18px rgba(255,230,0,0.35)' } : null),
+                ...(!usaFoto && destaque ? { background: 'linear-gradient(135deg, #ffe600, #f5d400)' } : null),
+            }}
+        >
+            {usaFoto
+                ? <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setErro(true)} />
+                : iniciais(nome)}
+        </span>
+    );
+}
+
+// Medalha para o Top 3, número simples do 4º em diante.
+const MEDALHA = {
+    0: 'linear-gradient(135deg, #fde047, #eab308)',
+    1: 'linear-gradient(135deg, #e5e7eb, #94a3b8)',
+    2: 'linear-gradient(135deg, #fdba74, #c2701c)',
+};
+function RankBadge({ idx }) {
+    const grad = MEDALHA[idx];
+    if (grad) {
+        return (
+            <span className="grid h-8 w-8 place-items-center rounded-full font-display text-[13px] font-extrabold text-black shadow-md"
+                  style={{ background: grad }}>
+                {idx + 1}
+            </span>
+        );
+    }
+    return (
+        <span className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.04] text-[13px] font-semibold tabular-nums text-white/40">
+            {idx + 1}
+        </span>
+    );
+}
+
+// Barra de score + número (cor por faixa). Cresce 0 → valor na montagem, com
+// glow por faixa e trilho embutido — o score é indicador-chave, então ganha peso.
+function ScoreBarra({ value, mounted, delay = 0 }) {
+    const b = bandaScore(value);
+    const w = mounted ? Math.min(value ?? 0, 100) : 0;
+    return (
+        <div className="flex items-center justify-end gap-2.5">
+            <div className="relative h-2 w-20 overflow-hidden rounded-full bg-white/[0.08]">
+                <div className="h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                     style={{
+                         width: `${w}%`,
+                         background: `linear-gradient(90deg, ${b.cor}aa, ${b.cor})`,
+                         boxShadow: `0 0 10px ${b.cor}66`,
+                         transitionDelay: `${delay}ms`,
+                     }} />
+            </div>
+            <span className="w-11 text-right font-display text-[17px] font-extrabold leading-none tabular-nums" style={{ color: b.cor }}>
+                {fmtScore(value)}
+            </span>
+        </div>
+    );
+}
+
+// Mini barra de % da meta (substitui número solto no ranking — ponto "mais visual").
+// Cor por atingimento; trilho fino; cresce na montagem.
+function MetaMiniBar({ value, mounted, delay = 0 }) {
+    if (value === null || value === undefined) return <span className="font-bold text-white/20">—</span>;
+    const cor = value >= 100 ? ACCENTS.green : value >= 70 ? ACCENTS.yellow : ACCENTS.red;
+    const w = mounted ? Math.min(value, 100) : 0;
+    return (
+        <div className="flex items-center gap-2">
+            <div className="h-1.5 w-12 overflow-hidden rounded-full bg-white/[0.08]">
+                <div className="h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                     style={{ width: `${w}%`, background: cor, transitionDelay: `${delay}ms` }} />
+            </div>
+            <span className="w-11 text-right text-[12px] font-semibold tabular-nums" style={{ color: cor }}>{fmtPct1(value)}</span>
+        </div>
+    );
+}
+
+function StatusPill({ status }) {
+    const cfg = STATUS_PILL[status] ?? { cor: '#9ca3af', label: status ?? '—' };
+    return (
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold"
+              style={{ background: `${cfg.cor}1f`, color: cfg.cor }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: cfg.cor }} />
+            {cfg.label}
+        </span>
+    );
+}
+
+// Indicador de evolução no ranking (mês vs mês anterior). '—' quando sem base.
+function Evolucao({ delta }) {
+    if (delta === null || delta === undefined) return <span className="font-bold text-white/20">—</span>;
+    if (delta > 0) return <span className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-emerald-400"><ArrowUp size={13} />{delta}</span>;
+    if (delta < 0) return <span className="inline-flex items-center gap-0.5 text-[13px] font-semibold text-red-400"><ArrowDown size={13} />{Math.abs(delta)}</span>;
+    return <span className="inline-flex items-center text-white/35"><Minus size={13} /></span>;
+}
+
+// Relógio ao vivo — re-renderiza só a si mesmo (isolado), a cada 30s.
+function LiveClock() {
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), 30_000);
+        return () => clearInterval(id);
+    }, []);
+    return <span className="tabular-nums">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>;
+}
+
+// Score circular grande (reaproveita RadialGauge da Torre de Comando).
+function ScoreGauge({ value, size = 116 }) {
+    const pct = Math.min(Math.max(value ?? 0, 0), 100);
+    return (
+        <div className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }}>
+            <RadialGauge pct={pct} size={size} />
+            <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
+                {/* text-xl deixa bom respiro do "72,9" pro arco; text-lg só no caso 5-char "100,0". */}
+                <span className={cn('font-display font-extrabold leading-none tabular-nums text-white', String(fmtScore(value)).length > 4 ? 'text-lg' : 'text-xl')}>{fmtScore(value)}</span>
+                <span className="mt-0.5 text-[10px] uppercase leading-none tracking-wider text-white/35">/ 100</span>
             </div>
         </div>
     );
 }
 
-function RankingPolos({ ranking }) {
+function MiniStat({ label, value, sub, accent, icon: Icon }) {
     return (
-        <div className="card-ecf rounded-2xl overflow-hidden">
-            {/* Header */}
-            <div className="grid grid-cols-[2.5rem_1fr_4rem_4rem_4.5rem_4rem_5rem_5.5rem_7rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
-                <span>#</span>
-                <span>Nome</span>
-                <span className="text-right">Meta</span>
-                <span className="text-right">Feito</span>
-                <span className="text-right">% Meta</span>
-                <span className="text-right">Vendas</span>
-                <span className="text-right">Conversão</span>
-                <span className="text-right flex items-center justify-end gap-1">
-                    Score
-                    <span className="normal-case font-normal text-white/20 text-[10px]">/100</span>
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5">
+            <p className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-white/40">
+                {Icon && <Icon size={11} className="shrink-0" style={accent ? { color: accent } : undefined} />}
+                {label}
+            </p>
+            <p className="mt-1 font-display text-xl font-extrabold leading-none tabular-nums text-white" style={accent ? { color: accent } : undefined}>{value}</p>
+            {sub && <p className="mt-1 text-[10px] text-white/35">{sub}</p>}
+        </div>
+    );
+}
+
+// Selo de evolução no ranking em relação ao mês anterior (usado no destaque).
+function EvolucaoTag({ delta }) {
+    if (delta === null || delta === undefined) {
+        return <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/35">novo</span>;
+    }
+    if (delta > 0) return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-300"><ArrowUp size={12} />subiu {delta}</span>;
+    if (delta < 0) return <span className="inline-flex items-center gap-1 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-300"><ArrowDown size={12} />caiu {Math.abs(delta)}</span>;
+    return <span className="inline-flex items-center gap-1 rounded-full bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45"><Minus size={12} />manteve</span>;
+}
+
+// Bloco 2a — destaque do melhor colaborador (sem foto obrigatória).
+// Aproveita todo o espaço: gauge de score + 4 ministats (inclui Projeção, antes
+// só calculada no backend) + barra de meta com "faltam X" (ou meta batida).
+function LeaderHero({ lider, mounted, animar }) {
+    const banda   = bandaScore(lider.score_final);
+    const w       = mounted ? Math.min(lider.percentual ?? 0, 100) : 0;
+    const faltam  = Math.max((lider.meta ?? 0) - (lider.feito ?? 0), 0);
+    const bateu   = faltam === 0 && (lider.meta ?? 0) > 0;
+
+    return (
+        <SectionCard accent={ACCENTS.yellow} glow className="flex h-full flex-col gap-5 p-6">
+            <div className="flex items-center justify-between">
+                <span className="inline-flex items-center gap-2 text-ecf-yellow">
+                    <Trophy size={18} />
+                    <span className="text-[13px] font-semibold uppercase tracking-wider">Melhor do mês</span>
                 </span>
-                <span className="text-right">Status</span>
+                <EvolucaoTag delta={lider.evolucao_delta} />
             </div>
 
-            <div className="divide-y divide-white/[0.04]">
-                {ranking.map((u, idx) => (
-                    <div
-                        key={u.id}
-                        className={cn(
-                            'grid grid-cols-[2.5rem_1fr_4rem_4rem_4.5rem_4rem_5rem_5.5rem_7rem] gap-2 px-5 py-4 items-center',
-                            idx === 0 && 'bg-ecf-yellow/[0.03]'
-                        )}
-                    >
-                        <div className="flex items-center justify-center">
-                            <MedalBadge idx={idx} />
-                        </div>
+            <div className="flex items-center gap-4">
+                <div className="relative shrink-0">
+                    <Avatar nome={lider.name} src={lider.foto} size={76} destaque />
+                    <span className="absolute -right-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-ecf-bg text-ecf-yellow ring-1 ring-ecf-yellow/40">
+                        <Crown size={13} />
+                    </span>
+                </div>
+                <div className="min-w-0">
+                    <h2 className="truncate font-display text-2xl font-extrabold leading-tight text-white">{lider.name}</h2>
+                    <p className="text-[13px] text-white/45">{pubRoleLabel[lider.pub_role] ?? 'Publicador'}</p>
+                    <div className="mt-2"><StatusPill status={lider.status} /></div>
+                </div>
+            </div>
 
-                        <div>
-                            <p className="text-white font-semibold text-[13px]">{u.name}</p>
-                            <p className="text-white/30 text-[11px]">{pubRoleLabel[u.pub_role]}</p>
-                        </div>
+            <div className="flex items-center gap-5">
+                <ScoreGauge value={lider.score_final} size={116} />
+                <div className="grid flex-1 grid-cols-2 gap-2.5">
+                    <MiniStat label="Produção" icon={CheckCircle2} value={<AnimatedNumber value={lider.feito} animar={animar} />} sub={`meta ${fmtInt(lider.meta)}`} />
+                    <MiniStat label="Vendas" icon={ShoppingCart} accent={ACCENTS.blue} value={<AnimatedNumber value={lider.vendas} animar={animar} />} />
+                    <MiniStat label="Conversão" icon={Percent} value={lider.conversao > 0 ? fmtPct1(lider.conversao) : '—'} />
+                    <MiniStat label="Projeção" icon={Rocket} accent={ACCENTS.violet} value={<AnimatedNumber value={lider.projecao} animar={animar} />} sub="fim do mês" />
+                </div>
+            </div>
 
-                        <div className="text-right">
-                            <span className="text-white/50 text-[13px]">{u.meta}</span>
-                        </div>
+            <div className="mt-auto">
+                <div className="mb-1.5 flex items-center justify-between text-[12px]">
+                    <span className="text-white/50">Atingimento da meta</span>
+                    <span className="font-semibold tabular-nums" style={{ color: banda.cor }}>{fmtPct1(lider.percentual)}</span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div className="h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                         style={{ width: `${w}%`, background: `linear-gradient(90deg, ${banda.cor}aa, ${banda.cor})`, boxShadow: `0 0 12px ${banda.cor}55` }} />
+                </div>
+                <p className="mt-1.5 text-[11px] text-white/40">
+                    {bateu
+                        ? <span className="inline-flex items-center gap-1 text-emerald-300"><CheckCircle2 size={12} /> Meta batida no mês</span>
+                        : <>Faltam <span className="font-semibold text-white/70 tabular-nums">{fmtInt(faltam)}</span> publicações pra meta</>}
+                </p>
+            </div>
+        </SectionCard>
+    );
+}
 
-                        <div className="text-right">
-                            <span className="text-white font-bold text-[15px]">{u.feito}</span>
-                        </div>
+// Cor da barra de produção pelo status (comunica "no trilho?" além do volume).
+const statusCor = (status) => STATUS_PILL[status]?.cor ?? '#9ca3af';
 
-                        <div className="text-right">
-                            <PercentTag value={u.percentual} />
-                        </div>
-
-                        <div className="text-right">
-                            <span className="text-blue-400 font-semibold text-[13px]">{u.vendas}</span>
-                        </div>
-
-                        <div className="text-right">
-                            {u.conversao > 0
-                                ? <span className="text-white/70 font-semibold text-[13px]">{u.conversao}%</span>
-                                : <span className="text-white/20 font-bold">—</span>}
-                        </div>
-
-                        <div className="flex justify-end">
-                            <ScoreTag value={u.score_final} />
-                        </div>
-
-                        <div className="text-right">
-                            <span className={cn('font-semibold text-[11px]', STATUS_COLOR[u.status] ?? 'text-white/40')}>
-                                {u.status}
+// Bloco 2b — produção por publicador (barras horizontais CSS, leves para TV).
+// Enriquecido: gradiente por status, marcador da meta na barra, % da meta,
+// glow+sheen no líder de produção e crescimento escalonado por índice.
+function ProducaoBars({ ranking, mounted }) {
+    const ord = useMemo(() => [...ranking].sort((a, b) => (b.feito ?? 0) - (a.feito ?? 0)), [ranking]);
+    const max = Math.max(...ord.map((r) => r.feito ?? 0), 1);
+    return (
+        <SectionCard accent={ACCENTS.blue} glow className="flex h-full flex-col p-6">
+            <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                    <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/[0.04] text-blue-300"><BarChart3 size={16} /></span>
+                    <h3 className="font-display text-[15px] font-bold text-white">Produção por publicador</h3>
+                </div>
+                <span className="hidden items-center gap-1.5 text-[10px] text-white/35 sm:inline-flex">
+                    <span className="h-2.5 w-px bg-white/40" /> marca da meta
+                </span>
+            </div>
+            <div className="flex flex-1 flex-col justify-center gap-2.5">
+                {ord.map((r, i) => {
+                    const cor       = statusCor(r.status);
+                    const w         = mounted ? ((r.feito ?? 0) / max) * 100 : 0;
+                    const metaX     = Math.min(((r.meta ?? 0) / max) * 100, 100);
+                    const isLider   = i === 0;
+                    const delay     = i * 70; // escalonamento suave do crescimento
+                    return (
+                        <div key={r.id} className="group flex items-center gap-3 rounded-lg px-1.5 py-1 transition-colors hover:bg-white/[0.03]">
+                            <span className={cn('w-28 shrink-0 truncate text-[13px] sm:w-32', isLider ? 'font-semibold text-white' : 'text-white/75')}>
+                                {isLider && <Flame size={12} className="mr-1 inline text-ecf-yellow" />}{r.name}
                             </span>
+                            <div className="relative h-3 flex-1 overflow-hidden rounded-full bg-white/[0.05]">
+                                {/* preenchimento por status, com glow no líder */}
+                                <div className="relative h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                                     style={{
+                                         width: `${w}%`,
+                                         background: `linear-gradient(90deg, ${cor}99, ${cor})`,
+                                         boxShadow: isLider ? `0 0 12px ${cor}88` : 'none',
+                                         transitionDelay: `${delay}ms`,
+                                     }}>
+                                    {/* sheen só no líder — brilho discreto varrendo a barra */}
+                                    {isLider && (
+                                        <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1/3 animate-sheen rounded-full motion-reduce:hidden"
+                                              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent)' }} />
+                                    )}
+                                </div>
+                                {/* marcador da meta — linha vertical sutil */}
+                                {metaX > 0 && metaX < 100 && (
+                                    <span aria-hidden="true" className="absolute inset-y-0 w-px bg-white/45"
+                                          style={{ left: `${metaX}%` }} title={`meta ${fmtInt(r.meta)}`} />
+                                )}
+                            </div>
+                            <span className="w-10 shrink-0 text-right font-display text-[15px] font-extrabold tabular-nums text-white">{fmtInt(r.feito)}</span>
+                            <span className="hidden w-11 shrink-0 text-right text-[11px] font-semibold tabular-nums sm:inline"
+                                  style={{ color: cor }}>{fmtPct1(r.percentual)}</span>
                         </div>
+                    );
+                })}
+            </div>
+        </SectionCard>
+    );
+}
+
+// Bloco 3 — ranking completo, em cartões (sem cara de DataTable).
+// Cores sólidas das medalhas p/ a faixa lateral de destaque do Top 3.
+const MEDAL_SOLID = { 0: '#eab308', 1: '#94a3b8', 2: '#c2701c' };
+const RANK_GRID = 'grid grid-cols-[3rem_minmax(190px,1fr)_5.5rem_8rem_5rem_5rem_9.5rem_8rem_3.5rem] items-center gap-3';
+
+// Célula de conversão com ponto colorido (mais visual que número solto).
+function ConversaoCell({ value }) {
+    if (!(value > 0)) return <span className="font-bold text-white/20">—</span>;
+    const cor = value >= 8 ? ACCENTS.green : value >= 4 ? ACCENTS.yellow : ACCENTS.blue;
+    return (
+        <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold tabular-nums text-white/80">
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: cor }} />{fmtPct1(value)}
+        </span>
+    );
+}
+
+function RankingModerno({ ranking, mounted, metaUniforme }) {
+    return (
+        <SectionCard accent={ACCENTS.yellow}>
+            <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+                <Trophy size={16} className="text-ecf-yellow" />
+                <h3 className="font-display text-[15px] font-bold text-white">Ranking completo</h3>
+                <span className="text-[12px] text-white/30">· {ranking.length} publicadores</span>
+                {metaUniforme !== null && (
+                    <span className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1 text-[11px] font-medium text-white/55">
+                        <Target size={12} className="text-ecf-yellow/70" />
+                        Meta: <span className="font-semibold tabular-nums text-white/80">{fmtInt(metaUniforme)}</span> / publicador
+                    </span>
+                )}
+            </div>
+            <div className="overflow-x-auto px-3 pb-3">
+                <div className="min-w-[860px]">
+                    {/* legenda enxuta (não-uppercase pesado) só p/ orientar a leitura */}
+                    <div className={cn(RANK_GRID, 'px-4 pb-2 text-[10px] font-medium tracking-wide text-white/25')}>
+                        <span className="text-center">#</span>
+                        <span>Publicador</span>
+                        <span className="text-right">Feito</span>
+                        <span className="text-right">% da meta</span>
+                        <span className="text-right">Vendas</span>
+                        <span className="text-right">Conv.</span>
+                        <span className="text-right">Score</span>
+                        <span className="text-center">Status</span>
+                        <span className="text-center">Evol.</span>
                     </div>
-                ))}
+                    <div className="space-y-1.5">
+                        {ranking.map((u, idx) => {
+                            const top3     = idx < 3;
+                            const medalCor = MEDAL_SOLID[idx];
+                            return (
+                                <div key={u.id}
+                                     className={cn(
+                                         RANK_GRID,
+                                         'relative rounded-xl border px-4 transition-colors',
+                                         top3 ? 'border-white/[0.08] bg-white/[0.04] py-4' : 'border-white/[0.05] bg-white/[0.02] py-3 hover:bg-white/[0.04]',
+                                     )}
+                                     style={top3 ? { boxShadow: `inset 3px 0 0 0 ${medalCor}, 0 0 26px -14px ${medalCor}` } : undefined}>
+                                    <div className="flex justify-center"><RankBadge idx={idx} /></div>
+                                    <div className="flex min-w-0 items-center gap-2.5">
+                                        <Avatar nome={u.name} src={u.foto} size={top3 ? 38 : 32} destaque={idx === 0} />
+                                        <div className="min-w-0">
+                                            <p className={cn('truncate font-semibold text-white', top3 ? 'text-[14px]' : 'text-[13px]')}>{u.name}</p>
+                                            <p className="text-[11px] text-white/35">{pubRoleLabel[u.pub_role] ?? 'Publicador'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <span className="font-display text-[17px] font-extrabold tabular-nums text-white">{fmtInt(u.feito)}</span>
+                                        {metaUniforme === null && <span className="ml-1 text-[11px] tabular-nums text-white/30">/{fmtInt(u.meta)}</span>}
+                                    </div>
+                                    <div className="flex justify-end"><MetaMiniBar value={u.percentual} mounted={mounted} delay={idx * 60} /></div>
+                                    <div className="text-right text-[13px] font-semibold tabular-nums text-blue-400">{fmtInt(u.vendas)}</div>
+                                    <div className="flex justify-end"><ConversaoCell value={u.conversao} /></div>
+                                    <div className="flex justify-end"><ScoreBarra value={u.score_final} mounted={mounted} delay={idx * 60} /></div>
+                                    <div className="flex justify-center"><StatusPill status={u.status} /></div>
+                                    <div className="flex justify-center"><Evolucao delta={u.evolucao_delta} /></div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </SectionCard>
+    );
+}
+
+// Bloco 4 — ticker de destaques (marquee CSS; pausa no hover).
+function construirDestaques(ranking, resumo) {
+    const arr = [];
+    const { lider, totalVendas, pctMeta } = resumo;
+    if (lider) arr.push({ icon: Crown, text: `${lider.name} lidera com score ${fmtScore(lider.score_final)}` });
+
+    const maisProd = [...ranking].sort((a, b) => (b.feito ?? 0) - (a.feito ?? 0))[0];
+    if (maisProd) arr.push({ icon: Flame, text: `${maisProd.name} é quem mais produz: ${fmtInt(maisProd.feito)} publicações` });
+
+    const comConv = ranking.filter((r) => (r.conversao ?? 0) > 0).sort((a, b) => b.conversao - a.conversao)[0];
+    if (comConv) arr.push({ icon: Percent, text: `Melhor conversão: ${comConv.name} (${fmtPct1(comConv.conversao)})` });
+
+    arr.push({ icon: ShoppingCart, text: `${fmtInt(totalVendas)} vendas no mês pela equipe` });
+    arr.push({ icon: Target, text: `Meta geral em ${fmtPct1(pctMeta)}` });
+
+    const subiu = ranking.filter((r) => (r.evolucao_delta ?? 0) > 0).sort((a, b) => b.evolucao_delta - a.evolucao_delta)[0];
+    if (subiu) arr.push({ icon: ArrowUp, text: `${subiu.name} subiu ${subiu.evolucao_delta} posição${subiu.evolucao_delta > 1 ? 'ões' : ''} no ranking` });
+
+    const noAlvo = ranking.filter((r) => r.status === 'Acima da meta' || r.status === 'No alvo').length;
+    arr.push({ icon: CheckCircle2, text: `${fmtInt(noAlvo)} de ${fmtInt(ranking.length)} publicadores no alvo` });
+
+    return arr;
+}
+
+// Um "grupo" = a lista completa de destaques. Renderizamos DOIS grupos idênticos
+// e animamos a trilha em -50%: cada grupo tem a mesma largura, então o ciclo fecha
+// sem emenda. O pl-8 é uniforme nos dois grupos (não quebra a simetria).
+function TickerGroup({ itens, ariaHidden }) {
+    return (
+        <div className="flex shrink-0 items-center gap-10 pl-10" aria-hidden={ariaHidden || undefined}>
+            {itens.map((d, i) => {
+                const Ico = d.icon;
+                return (
+                    <span key={i} className="inline-flex items-center gap-2.5 whitespace-nowrap text-[13px] text-white/70">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ecf-yellow/10 text-ecf-yellow">
+                            <Ico size={13} />
+                        </span>
+                        {d.text}
+                        <span className="ml-1 h-1 w-1 rounded-full bg-white/20" />
+                    </span>
+                );
+            })}
+        </div>
+    );
+}
+
+// Máscara de fade nas duas pontas — a rolagem "nasce" e "some" suavemente.
+const TICKER_FADE = {
+    maskImage: 'linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent)',
+    WebkitMaskImage: 'linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent)',
+};
+
+function Ticker({ itens }) {
+    if (!itens.length) return null;
+    return (
+        <SectionCard accent={ACCENTS.yellow}>
+            <div className="flex items-stretch">
+                <div className="flex shrink-0 items-center gap-2 border-r border-white/[0.08] bg-ecf-yellow/[0.06] px-4 py-3.5 text-ecf-yellow">
+                    <Megaphone size={15} />
+                    <span className="text-[12px] font-bold uppercase tracking-wider">Destaques</span>
+                </div>
+                <div className="group relative flex-1 overflow-hidden py-3.5" style={TICKER_FADE}>
+                    <div className="flex w-max animate-marquee group-hover:[animation-play-state:paused]">
+                        <TickerGroup itens={itens} />
+                        <TickerGroup itens={itens} ariaHidden />
+                    </div>
+                </div>
+            </div>
+        </SectionCard>
+    );
+}
+
+function DashboardHeader({ mes, meses, onMes, tvMode = false, onToggleTv }) {
+    return (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-ecf-yellow/10 text-ecf-yellow"><Trophy size={22} /></span>
+                <div>
+                    <h1 className="font-display text-xl font-extrabold leading-none text-white">Desempenho da Equipe</h1>
+                    <p className="mt-1 text-[13px] text-white/40">Publicações · {mes ? formatMesLabel(mes) : '—'}</p>
+                </div>
+            </div>
+            <div className="flex items-center gap-3">
+                <div className="hidden items-center gap-1.5 text-[12px] text-white/40 sm:flex">
+                    <Clock size={13} /><LiveClock />
+                    <span className="text-white/20">·</span>
+                    <span className="inline-flex items-center gap-1"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> ao vivo</span>
+                </div>
+                <SelectBox value={mes} onChange={onMes}>
+                    {meses.map((m) => <option key={m} value={m}>{formatMesLabel(m)}</option>)}
+                </SelectBox>
+                {onToggleTv && (
+                    tvMode ? (
+                        <button
+                            onClick={onToggleTv}
+                            className="flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm text-white/40 transition-all hover:border-white/20 hover:text-white"
+                        >
+                            <X size={14} /> Sair do modo TV
+                        </button>
+                    ) : (
+                        <button
+                            onClick={onToggleTv}
+                            className="flex items-center gap-1.5 h-9 rounded-xl bg-ecf-yellow px-3 text-[13px] font-bold text-[#252525] transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ecf-yellow/20"
+                        >
+                            <Tv size={13} /> Modo TV
+                        </button>
+                    )
+                )}
             </div>
         </div>
     );
+}
+
+// Overlay fullscreen do Modo TV — espelha o padrão do Dashboard principal
+// (fixed inset-0 z-50), trava o scroll do body e mantém o fundo da página.
+function TvShell({ children }) {
+    useEffect(() => {
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    }, []);
+    return (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-ecf-bg p-5 2xl:p-6">
+            {children}
+        </div>
+    );
+}
+
+// Mini "termômetro" de score: faixa colorida 0–100 com marcador na posição.
+function ScoreBandMini({ value }) {
+    const pos = Math.min(Math.max(value ?? 0, 0), 100);
+    return (
+        <div className="relative h-1.5 w-full overflow-hidden rounded-full"
+             style={{ background: 'linear-gradient(90deg, #ef4444, #f97316 35%, #ffe600 62%, #22c55e)' }}>
+            <span className="absolute top-1/2 h-3 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow"
+                  style={{ left: `${pos}%` }} />
+        </div>
+    );
+}
+
+// Bloco 1b — situação da equipe em relance (KPIs rápidos p/ exibição contínua).
+// Todos derivados do ranking atual; "subiram" usa evolucao_delta vs mês anterior.
+function TeamStatusStrip({ stats }) {
+    const itens = [
+        { label: 'No alvo',            value: fmtInt(stats.noAlvo),  sub: `de ${fmtInt(stats.total)}`, cor: ACCENTS.green,  icon: CheckCircle2 },
+        { label: 'Abaixo da meta',     value: fmtInt(stats.abaixo),  sub: 'requer foco',               cor: ACCENTS.red,    icon: TrendingDown },
+        { label: 'Média / publicador', value: fmtInt(stats.mediaProducao), sub: 'publicações',         cor: ACCENTS.blue,   icon: Activity },
+        { label: 'Conversão média',    value: stats.conversaoMedia > 0 ? fmtPct1(stats.conversaoMedia) : '—', sub: 'da equipe', cor: ACCENTS.yellow, icon: Gauge },
+        { label: 'Subiram no ranking', value: fmtInt(stats.subiram), sub: 'vs mês anterior',           cor: ACCENTS.violet, icon: ArrowUp },
+    ];
+    return (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+            {itens.map((it) => {
+                const Ico = it.icon;
+                return (
+                    <div key={it.label} className={cn(CARD, 'flex items-center gap-3 p-3.5')}>
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg"
+                              style={{ background: `${it.cor}1f`, color: it.cor }}>
+                            <Ico size={16} />
+                        </span>
+                        <div className="min-w-0">
+                            <p className="font-display text-lg font-extrabold leading-none tabular-nums text-white">{it.value}</p>
+                            <p className="mt-1 truncate text-[11px] text-white/45">{it.label} · {it.sub}</p>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+function PolosDashboard({ ranking, mes, meses = [] }) {
+    const mounted = useMounted();
+    const reduz   = usePrefersReducedMotion();
+    const animar  = mounted && !reduz;
+
+    // ── Modo TV ──────────────────────────────────────────────────────────
+    // Igual ao Dashboard principal: um overlay fixed inset-0 z-50 que ocupa a
+    // tela toda (some a sidebar/header do app). Além do overlay CSS, dispara o
+    // Fullscreen real do navegador — aí some também a barra do browser (TV/kiosk).
+    const [tvMode, setTvMode] = useState(false);
+
+    const entrarTv = () => {
+        setTvMode(true);
+        document.documentElement.requestFullscreen?.().catch(() => {}); // ignora se o browser bloquear
+    };
+    const sairTv = () => {
+        setTvMode(false);
+        if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    };
+    const toggleTv = () => (tvMode ? sairTv() : entrarTv());
+
+    // Sair do fullscreen do browser (ESC/F11) também sai do Modo TV — mantém sync.
+    useEffect(() => {
+        const onFs = () => { if (!document.fullscreenElement) setTvMode(false); };
+        document.addEventListener('fullscreenchange', onFs);
+        return () => document.removeEventListener('fullscreenchange', onFs);
+    }, []);
+
+    // ESC encerra o Modo TV mesmo quando o fullscreen do browser não engatou.
+    useEffect(() => {
+        if (!tvMode) return;
+        const onKey = (e) => { if (e.key === 'Escape') sairTv(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [tvMode]);
+
+    // Auto-refresh do ranking a cada 5 min (fica exposto numa TV o dia todo).
+    // Recarrega só a prop 'ranking' (partial reload), e apenas com a aba visível.
+    useEffect(() => {
+        const id = setInterval(() => {
+            if (!document.hidden) {
+                router.reload({ only: ['ranking'], preserveScroll: true, preserveState: true });
+            }
+        }, 5 * 60 * 1000);
+        return () => clearInterval(id);
+    }, []);
+
+    // Troca de mês usa a rota própria de Publicações (evita cair no ranking de consultoria).
+    const trocarMes = (m) => router.get(route('publicacao.desempenho.index'), { mes: m }, { preserveState: true, preserveScroll: true });
+
+    const resumo = useMemo(() => {
+        const publicadores = ranking.length;
+        const metaGeral    = ranking.reduce((s, r) => s + (r.meta ?? 0), 0);
+        const produzido    = ranking.reduce((s, r) => s + (r.feito ?? 0), 0);
+        const totalVendas  = ranking.reduce((s, r) => s + (r.vendas ?? 0), 0);
+        const pctMeta      = metaGeral > 0 ? (produzido / metaGeral) * 100 : 0;
+        const lider        = ranking[0] ?? null;
+
+        // Situação da equipe (strip) + detecção de meta uniforme (ponto 6).
+        const noAlvo       = ranking.filter((r) => r.status === 'Acima da meta' || r.status === 'No alvo').length;
+        const abaixo       = ranking.filter((r) => r.status === 'Abaixo da meta').length;
+        const mediaProducao= publicadores > 0 ? Math.round(produzido / publicadores) : 0;
+        const comConv      = ranking.filter((r) => (r.conversao ?? 0) > 0);
+        const conversaoMedia = comConv.length ? comConv.reduce((s, r) => s + r.conversao, 0) / comConv.length : 0;
+        const subiram      = ranking.filter((r) => (r.evolucao_delta ?? 0) > 0).length;
+        const metasDistintas = [...new Set(ranking.map((r) => r.meta ?? 0))];
+        const metaUniforme = metasDistintas.length === 1 ? metasDistintas[0] : null;
+
+        return {
+            publicadores, metaGeral, produzido, totalVendas, pctMeta, lider,
+            total: publicadores, noAlvo, abaixo, mediaProducao, conversaoMedia, subiram, metaUniforme,
+        };
+    }, [ranking]);
+
+    // Perfil de produção da equipe (ordem decrescente) — sparkline real do KPI "Produzido".
+    const sparkProducao = useMemo(
+        () => [...ranking].map((r) => r.feito ?? 0).sort((a, b) => b - a),
+        [ranking],
+    );
+
+    const destaques = useMemo(() => (resumo.lider ? construirDestaques(ranking, resumo) : []), [ranking, resumo]);
+
+    if (!ranking.length) {
+        return (
+            <AppLayout title="Desempenho">
+                <div className="w-full">
+                    <DashboardHeader mes={mes} meses={meses} onMes={trocarMes} />
+                    <div className="card-ecf mt-5 rounded-2xl p-16 text-center">
+                        <Trophy size={34} className="mx-auto mb-3 text-white/20" />
+                        <p className="text-sm text-white/40">Nenhum publicador com dados neste mês</p>
+                    </div>
+                </div>
+            </AppLayout>
+        );
+    }
+
+    const { lider } = resumo;
+    const bandaLider = bandaScore(lider.score_final);
+
+    const conteudo = (
+        <div className="relative w-full">
+            <DashboardBackdrop />
+
+            <div className="relative space-y-4 2xl:space-y-5">
+                <DashboardHeader mes={mes} meses={meses} onMes={trocarMes} tvMode={tvMode} onToggleTv={toggleTv} />
+
+                {/* 1 · KPIs de resumo — cada card com identidade cromática + detalhe gráfico */}
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-3 2xl:grid-cols-6">
+                    <HeroKpi
+                        titulo="Publicadores" icone={Users} accentColor={ACCENTS.blue}
+                        valor={<AnimatedNumber value={resumo.publicadores} animar={animar} />} sublabel="ativos no mês"
+                        extra={
+                            <div className="flex items-center gap-3 text-[11px]">
+                                <span className="inline-flex items-center gap-1 text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />{fmtInt(resumo.noAlvo)} no alvo</span>
+                                <span className="inline-flex items-center gap-1 text-red-300"><span className="h-1.5 w-1.5 rounded-full bg-red-400" />{fmtInt(resumo.abaixo)} abaixo</span>
+                            </div>
+                        }
+                    />
+                    <HeroKpi
+                        titulo="Meta Geral" icone={Target} accentColor={ACCENTS.violet}
+                        valor={<AnimatedNumber value={resumo.metaGeral} animar={animar} />} sublabel="publicações no mês"
+                    />
+                    <HeroKpi
+                        titulo="Produzido" icone={CheckCircle2} glow="green" accentColor={ACCENTS.green}
+                        valor={<AnimatedNumber value={resumo.produzido} animar={animar} />} sublabel={`${fmtInt(resumo.totalVendas)} vendas`}
+                        extra={<Sparkline data={sparkProducao} cor={ACCENTS.green} width={132} height={22} />}
+                    />
+                    <HeroKpi
+                        titulo="% da Meta" icone={TrendingUp} valor={fmtPct1(resumo.pctMeta)}
+                        gauge={Math.min(resumo.pctMeta, 100)} sublabel="atingimento geral da equipe"
+                    />
+                    <HeroKpi
+                        titulo="Melhor Score" icone={Award} glow="yellow" accentColor={bandaLider.cor}
+                        valor={fmtScore(lider.score_final)} sublabel={`${primeiroNome(lider.name)} lidera`}
+                        extra={<ScoreBandMini value={lider.score_final} />}
+                    />
+                    <HeroKpi
+                        titulo="Líder" icone={Crown} glow="yellow" accentColor={ACCENTS.yellow}
+                        valor={primeiroNome(lider.name)} sublabel={pubRoleLabel[lider.pub_role] ?? 'Publicador'}
+                        extra={<StatusPill status={lider.status} />}
+                    />
+                </div>
+
+                {/* 1b · Situação da equipe */}
+                <TeamStatusStrip stats={resumo} />
+
+                {/* 2 · Destaque do líder + produção por publicador */}
+                <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+                    <div className="lg:col-span-5"><LeaderHero lider={lider} mounted={mounted} animar={animar} /></div>
+                    <div className="lg:col-span-7"><ProducaoBars ranking={ranking} mounted={mounted} /></div>
+                </div>
+
+                {/* 3 · Ranking completo */}
+                <RankingModerno ranking={ranking} mounted={mounted} metaUniforme={resumo.metaUniforme} />
+
+                {/* 4 · Ticker de destaques */}
+                <Ticker itens={destaques} />
+            </div>
+        </div>
+    );
+
+    // Modo TV = overlay fullscreen (sem sidebar/header do app). Normal = AppLayout.
+    return tvMode
+        ? <TvShell>{conteudo}</TvShell>
+        : <AppLayout title="Desempenho">{conteudo}</AppLayout>;
 }

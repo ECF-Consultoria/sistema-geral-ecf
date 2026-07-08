@@ -5,7 +5,7 @@ import {
     AlertTriangle, RefreshCw, Search, FileText, FilePlus2, ExternalLink,
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
-    Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2,
+    Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2, Copy,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -531,6 +531,7 @@ export default function PolosPainel({
             gmail_colaborador:   { key: 'gmail_colaborador', label: 'Gmail colaborador', accessor: (e) => e.gmail_colaborador },
             grupo_whatsapp:      { key: 'grupo_whatsapp', label: 'Grupo WhatsApp', accessor: (e) => (e.grupo_whatsapp === true ? 'Sim' : e.grupo_whatsapp === false ? 'Não' : null) },
             data_solicitacao:    { key: 'data_solicitacao', label: 'Data solicitação', type: 'date', accessor: (e) => e.data_solicitacao, format: (v) => (v === VAZIO ? '(Vazios)' : fmtDataBR(v)) },
+            data_cadastro:       { key: 'data_cadastro', label: 'Cadastro', type: 'date', sortable: true, accessor: (e) => e.data_cadastro, format: (v) => (v === VAZIO ? '(Sem data)' : fmtDataBR(v)) },
             planilha_produtos:   { key: 'planilha_produtos', label: 'Planilha produtos', accessor: (e) => e.planilha_produtos },
             listagem:            { key: 'listagem', label: 'Listagem', accessor: (e) => e.listagem },
             publicacao:          { key: 'publicacao', label: 'Publicação', accessor: (e) => e.publicacao },
@@ -1072,6 +1073,7 @@ const COLS_POR_LENTE = {
     // Geral = "planilha completa": união ordenada de todas as áreas (identidade → Acessos →
     // Produtos → Logística → Financeiro admin → Ações). As fin_* só entram p/ admin (colsDaLente).
     geral: [
+        'data_cadastro',
         'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio',
         'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'data_solicitacao',
         'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada',
@@ -1130,6 +1132,56 @@ function CabecalhoLente({ keys = [], af, colunas }) {
     );
 }
 
+// ─── Cust ID clicável (copia ao clicar) ──────────────────────────────────────────────
+// Chip ao lado do nome da empresa: clicar copia o cust_id p/ a área de transferência.
+function CustIdChip({ cust }) {
+    const [copiado, setCopiado] = useState(false);
+    if (!cust) return null;
+
+    const copiar = (ev) => {
+        ev.stopPropagation(); // não dispara "Ver"/expandir da célula
+        const txt = String(cust);
+        const ok = () => { setCopiado(true); setTimeout(() => setCopiado(false), 1200); };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(txt).then(ok).catch(() => fallbackCopiar(txt, ok));
+        } else {
+            fallbackCopiar(txt, ok);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={copiar}
+            title={copiado ? 'Copiado!' : `Copiar Cust ID (${cust})`}
+            className={cn(
+                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-mono tabular-nums transition shrink-0',
+                copiado
+                    ? 'border-emerald-400/40 bg-emerald-500/[0.12] text-emerald-300'
+                    : 'border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80 hover:border-white/25',
+            )}
+        >
+            {copiado ? <Check size={9} /> : <Copy size={9} />}
+            {copiado ? 'copiado' : cust}
+        </button>
+    );
+}
+
+// Fallback de cópia p/ contextos sem Clipboard API (ex.: http não-seguro).
+function fallbackCopiar(txt, done) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done?.();
+    } catch { /* silencioso: sem clipboard disponível */ }
+}
+
 // ─── Linha ──────────────────────────────────────────────────────────────────────────
 function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes, valoresPresentes, usuarios, appUrl, fin, finLoaded, fechado, adsLimites = { teto: 3000, alerta1: 1000, alerta2: 2000 }, semanal, aberta, editNota, setEditNota, on }) {
     const precisaAcao = e.problema || e.fora_do_prazo || e.status_envio === 'falta_enviar';
@@ -1173,6 +1225,19 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
         <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
         <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
     </>);
+
+    // Cadastro no sistema (created_at) — read-only, automático; existe mesmo sem ficha.
+    // Selo "novo": some depois que alguém editar a empresa ou a ficha (flag `e.novo` do backend).
+    const celCadastro = (
+        <td className={td}>
+            <div className="flex items-center gap-1.5 whitespace-nowrap min-w-[112px]">
+                <span className="text-white/60 text-[12px] tabular-nums">{e.data_cadastro ? fmtDataBR(e.data_cadastro) : '—'}</span>
+                {e.novo && (
+                    <span className="rounded-full border border-emerald-400/30 bg-emerald-500/[0.12] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-300">novo</span>
+                )}
+            </div>
+        </td>
+    );
 
     const celProdutos = (<>
         <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="planilha_produtos" opcoes={opcoes.planilha_produtos} presentes={valoresPresentes.planilha_produtos} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
@@ -1226,6 +1291,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                                 ) : (
                                     <span className="text-white text-[13.5px] font-semibold truncate max-w-[220px]">{e.nome}</span>
                                 )}
+                                <CustIdChip cust={e.cust_id} />
                                 {e.problema && <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20" title={e.problema_nota ?? 'Problema'}><ShieldAlert size={9} /> problema</span>}
                                 {e.fora_do_prazo && <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full text-red-300 bg-red-500/10 border border-red-500/20">fora do prazo</span>}
                                 {e.ads_desligado && <span className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full text-white/50 bg-white/[0.05] border border-white/10" title="ADS desligado"><MegaphoneOff size={9} /> ads off</span>}
@@ -1241,6 +1307,7 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
 
                 {/* Colunas da lente — Geral concatena TODAS as áreas (planilha completa). */}
                 {lente === 'geral' && (<>
+                    {celCadastro}
                     {celIdentidade}
                     {celAcessos}
                     {celProdutos}

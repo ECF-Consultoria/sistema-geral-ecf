@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { useAutoFilter, VAZIO } from '@/hooks/useAutoFilter';
 import ColumnFilter from '@/Components/ColumnFilter';
 import HeroKpi from './HeroKpi';
-import DonutIndicador from '@/Components/DonutIndicador';
+import DistribuicaoCard from '@/Components/DistribuicaoCard';
 import EvolucaoEntrantesChart from './EvolucaoEntrantesChart';
 import { STATUS_ORDEM } from './statusMeta';
 import { montarCorDoPolo } from './poloCores';
@@ -770,7 +770,7 @@ function CardM1({ refEl, pulse, totM1, m1Ok, m1Donut, itensM1, gargaloM1, penden
                 <>
                     <Placar n={m1Ok} total={totM1} sufixo="concluíram o M1" />
                     <div className="mt-3 grid grid-cols-1 gap-4 border-t border-white/[0.06] pt-3 sm:grid-cols-2">
-                        <DonutIndicador titulo="Estado do checklist" dados={m1Donut} onClick={onDonut} centroLabel="em M1" height={150} />
+                        <DistribuicaoCard titulo="Estado do checklist" dados={m1Donut} onClick={onDonut} centroLabel="em M1" height={150} modo="donut" ordenar={false} />
                         <div className="space-y-3">
                             {itensM1.map((it) => (
                                 <LinhaItem key={it.key} label={it.label} n={it.n} total={totM1} icone={it.icone}
@@ -829,8 +829,8 @@ function CardFat({ refEl, pulse, finLoaded, finErro, fat, pctFat, irParaPlanilha
                 <>
                     <Placar n={fat.counts.Sim} total={fat.comMeta} sufixo="no alvo" />
                     <div className="mt-3 border-t border-white/[0.06] pt-3">
-                        <DonutIndicador titulo="Distribuição de status" dados={dados}
-                            onClick={(key) => irParaPlanilha({ status: key })} centroLabel="com meta" height={170} />
+                        <DistribuicaoCard titulo="Distribuição de status" dados={dados}
+                            onClick={(key) => irParaPlanilha({ status: key })} centroLabel="com meta" height={170} modo="donut" ordenar={false} />
                     </div>
                 </>
             )}

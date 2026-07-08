@@ -193,6 +193,103 @@ class PolosController extends Controller
     }
 
     /**
+     * DIAGNÓSTICO read-only (não altera nada): reconcilia empresa-a-empresa o faturamento que o
+     * painel mostra (Adman gross_billing) contra o TGMV_LC do CSV (métrica da planilha), p/ medir
+     * o gap e a causa dominante — métrica (gross×TGMV), inclusão de Fechamento no roster, ou
+     * empresas zeradas no CSV mas com venda na Adman. Reusa o MESMO pipeline do cockpit.
+     * Consumido por `php artisan polos:audit-faturamento`.
+     *
+     * @return array{mes:?string,mesLabel:?string,parcial:bool,nAtivos:int,nFechamento:int,
+     *   sumAdman:float,sumCsv:float,diffTotal:float,sumFechamentoAdman:float,sumFechamentoCsv:float,
+     *   distAdman:array,distCsv:array,nZeradasCsvComGross:int,sumZeradasCsvComGross:float,linhas:array}
+     */
+    public function auditarFaturamento(?string $mesPedido = null): array
+    {
+        $files   = $this->ecf->listFiles(['search' => 'POLOS_MENSAL']);
+        $cands   = collect($files['data'] ?? []);
+        $done    = $cands->where('etlStatus', 'done')->sortByDesc('downloadedAt');
+        $arquivo = $done->first() ?? $cands->sortByDesc('downloadedAt')->first();
+        if (! $arquivo) {
+            throw new \RuntimeException('Arquivo CSV POLOS MENSAL não encontrado no ECF Drive.');
+        }
+
+        $resp   = $this->ecf->fileJson($arquivo['id'], ['limit' => 5000]);
+        $linhas = $resp['rows'] ?? [];
+
+        $meses     = $this->listarMeses($linhas);
+        $valores   = array_column($meses, 'value');
+        $mesPedido = trim((string) ($mesPedido ?? ''));
+        $mesSel    = in_array($mesPedido, $valores, true) ? $mesPedido : ($valores[0] ?? null);
+
+        $linhasMes = $mesSel === null ? [] : array_values(array_filter(
+            $linhas,
+            fn ($r) => (string) ($r['TIM_MONTH_ID'] ?? $r['tim_month_id'] ?? '') === $mesSel,
+        ));
+
+        $mesAtual = collect($meses)->firstWhere('value', $mesSel);
+        $parcial  = (bool) ($mesAtual['parcial'] ?? false);
+
+        $limiares = [
+            'M2' => (float) Configuracao::get('polo_limiar_m2', 1000),
+            'M3' => (float) Configuracao::get('polo_limiar_m3', 4000),
+            'M4' => (float) Configuracao::get('polo_limiar_m4', 8000),
+        ];
+
+        $ativos = $this->montarAtivosDoMes($mesSel, $parcial, $linhasMes);
+        $adman  = $mesSel !== null ? $this->faturamentoAdmanDoMes($ativos, $mesSel) : [];
+        $lookup = $this->montarLookup($linhasMes);
+
+        $linhasOut = [];
+        foreach ($ativos as $a) {
+            $id     = CustId::normaliza((string) ($a['cust_id'] ?? ''));
+            $gross  = (float) ($adman[$id] ?? 0.0);
+            $tgmv   = (float) ($lookup[$id]['tgmv'] ?? 0.0);
+            $limiar = (float) ($limiares[$a['fase']] ?? 0);
+            $prob   = (bool) ($a['problema'] ?? false);
+            $linhasOut[] = [
+                'cust_id'      => $id,
+                'nome'         => (string) ($a['nome'] ?? ''),
+                'polo'         => (($lookup[$id]['localidade'] ?? '') ?: (string) ($a['polo'] ?? '')),
+                'fase'         => (string) ($a['fase'] ?? ''),
+                'adman'        => $gross,
+                'csv'          => $tgmv,
+                'diff'         => $gross - $tgmv,
+                'no_csv'       => isset($lookup[$id]),
+                'status_adman' => $this->calcularStatus($prob, $gross, $limiar),
+                'status_csv'   => $this->calcularStatus($prob, $tgmv, $limiar),
+            ];
+        }
+
+        $fech       = array_values(array_filter($linhasOut, fn ($l) => $l['fase'] === 'Fechamento'));
+        $zeradasCsv = array_values(array_filter($linhasOut, fn ($l) => $l['csv'] <= 0 && $l['adman'] > 0));
+
+        $distAdman = ['Sim' => 0, 'Em progresso' => 0, 'Não' => 0, 'Problema' => 0];
+        $distCsv   = ['Sim' => 0, 'Em progresso' => 0, 'Não' => 0, 'Problema' => 0];
+        foreach ($linhasOut as $l) {
+            $distAdman[$l['status_adman']]++;
+            $distCsv[$l['status_csv']]++;
+        }
+
+        return [
+            'mes'                   => $mesSel,
+            'mesLabel'              => $mesAtual['label'] ?? null,
+            'parcial'               => $parcial,
+            'nAtivos'               => count($linhasOut),
+            'nFechamento'           => count($fech),
+            'sumAdman'              => array_sum(array_column($linhasOut, 'adman')),
+            'sumCsv'                => array_sum(array_column($linhasOut, 'csv')),
+            'diffTotal'             => array_sum(array_column($linhasOut, 'diff')),
+            'sumFechamentoAdman'    => array_sum(array_column($fech, 'adman')),
+            'sumFechamentoCsv'      => array_sum(array_column($fech, 'csv')),
+            'distAdman'             => $distAdman,
+            'distCsv'               => $distCsv,
+            'nZeradasCsvComGross'   => count($zeradasCsv),
+            'sumZeradasCsvComGross' => array_sum(array_column($zeradasCsv, 'adman')),
+            'linhas'                => $linhasOut,
+        ];
+    }
+
+    /**
      * Painel unificado de Polos (aba NOVA e ADITIVA — /polos, /mlb/polos-empresas e
      * /mlb/implementacao seguem intactas). Modelo "planilha": tabela plana ancorada
      * em MlbEmpresa projeto=POLOS, com TODOS os campos do onboarding (Acessos/Produtos/
@@ -233,6 +330,13 @@ class PolosController extends Controller
             ->map(function ($e) {
                 $impl  = $e->implementacao;
                 $prazo = $impl?->infoPrazo();
+
+                // "Novo" = ninguém mexeu ainda (nem na empresa, nem na ficha). O selo some
+                // assim que houver a 1ª edição — updated_at passa a divergir de created_at
+                // (2s de tolerância p/ o próprio insert, que grava os dois no mesmo instante).
+                $mexeuEmpresa = $e->created_at && $e->updated_at && $e->created_at->diffInSeconds($e->updated_at) > 2;
+                $mexeuFicha   = $impl && $impl->created_at && $impl->updated_at && $impl->created_at->diffInSeconds($impl->updated_at) > 2;
+                $ehNovo       = (bool) ($e->created_at && ! $mexeuEmpresa && ! $mexeuFicha);
 
                 $row = [
                     'id'                       => $e->id,
@@ -284,6 +388,10 @@ class PolosController extends Controller
                     'places'                   => $impl?->places,
                     'erp'                      => $impl?->erp,
                     'data_solicitacao'         => $impl?->data_solicitacao?->format('Y-m-d'),
+                    // Data de cadastro/entrada da empresa no sistema (automática; existe sem ficha).
+                    'data_cadastro'            => $e->created_at?->format('Y-m-d'),
+                    // Selo "novo": some depois que alguém editar a empresa ou a ficha.
+                    'novo'                     => $ehNovo,
                 ];
 
                 // Sem ficha: anexa o payload COMPLETO que updateEmpresa espera, para a UI
@@ -848,20 +956,20 @@ class PolosController extends Controller
     }
 
     /**
-     * Faturamento ao vivo via Adman para o mês CORRENTE/parcial, por cust_id
-     * normalizado. Usado em vez do TGMV_LC do CSV (que atrasa no mês corrente).
+     * Faturamento POR CATEGORIA "Casa, Móveis e Decoração" (raiz ML MLB1574) do mês,
+     * por cust_id normalizado. SUBSTITUI o gross total da conta — o /polos passa a
+     * contar SÓ Móveis em todo o painel.
      *
-     * Estratégia (spike 2026-06-15, alinhada com DashboardController):
-     *   1. SOMENTE cache (getCachedGrossBillingsMany) — instantâneo, sem HTTP. A
-     *      request NUNCA busca da Adman de forma síncrona: o throttle (~7s/cust_id
-     *      em cache frio) inviabiliza N grande (ex.: 77 polos → ~9min → timeout).
-     *      O cache é aquecido FORA da request (comando/queue), 24h de TTL.
-     *   2. 100% defensivo: cust_id sem cache → ausência no mapa, e o chamador cai
-     *      de volta no TGMV_LC do CSV. A página nunca quebra nem bloqueia.
+     * Fonte: coluna `faturamento_moveis` do PoloFaturamentoSnapshot, computada pelo
+     * SyncPolosFaturamentoJob a partir do netBilling por item do /performance (Adman
+     * entrega o categoryId; a raiz vem da API pública do ML). Diferente do gross, o
+     * valor por categoria NÃO tem cache ao vivo — a frescura é a do último warm (cron
+     * 13:00 + botão "Sincronizar"), igual ao ADS. Cust_id sem snapshot → ausência no
+     * mapa (o chamador trata como R$0). NUNCA quebra o /polos.
      *
-     * @param  array<array<string,mixed>>  $ativos  Ativos M2–M4 (toArray)
+     * @param  array<array<string,mixed>>  $ativos  Ativos (toArray)
      * @param  string  $mesSel  TIM_MONTH_ID 'YYYYMM' do mês exibido
-     * @return array<string,float>  [cust_id normalizado => gross_billing]
+     * @return array<string,float>  [cust_id normalizado => faturamento Móveis (net)]
      */
     private function faturamentoAdmanDoMes(array $ativos, string $mesSel): array
     {
@@ -877,51 +985,22 @@ class PolosController extends Controller
                 return [];
             }
 
-            // Janela do mês: primeiro ao último dia (mesma do spike).
-            $de  = substr($mesSel, 0, 4) . '-' . substr($mesSel, 4, 2) . '-01';
-            $ate = date('Y-m-t', strtotime($de));
+            // Faturamento de Móveis vive SÓ no snapshot (sem cache ao vivo por categoria).
+            $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
+                ->whereIn('cust_id', $custIds)
+                ->pluck('faturamento_moveis', 'cust_id');
 
-            // SOMENTE cache (sem HTTP) — round-trip único, igual ao DashboardController.
-            // Cust_id sem cache NÃO é buscado aqui (evita ~7s/cust_id no render); cai
-            // no TGMV_LC do CSV no chamador até o cache aquecer fora da request.
-            $cache     = $this->adman->getCachedGrossBillingsMany($custIds, $de, $ate);
-            $out       = [];
-            $faltantes = [];
+            $out = [];
             foreach ($custIds as $id) {
-                if (! empty($cache[$id]['hasEntry']) && $cache[$id]['value'] !== null) {
-                    $out[$id] = (float) $cache[$id]['value'];
-                } else {
-                    $faltantes[] = $id;
+                if (isset($snaps[$id]) && $snaps[$id] !== null) {
+                    $out[$id] = (float) $snaps[$id];
                 }
-            }
-
-            // Fallback durável: cust_ids sem cache do dia (chave fria — logo após a
-            // meia-noite BRT, quando o cacheDay rotaciona, ou após flush/restart do Redis)
-            // são preenchidos com o último faturamento sincronizado e persistido no
-            // snapshot. Sem isto a página zerava para R$0 ao virar o dia. O cache do dia
-            // (mais fresco) continua sendo a fonte preferencial — só preenche o que faltou.
-            $doSnapshot = 0;
-            if (! empty($faltantes)) {
-                $snaps = PoloFaturamentoSnapshot::where('mes', $mesSel)
-                    ->whereIn('cust_id', $faltantes)
-                    ->pluck('faturamento', 'cust_id');
-                foreach ($faltantes as $id) {
-                    if (isset($snaps[$id])) {
-                        $out[$id] = (float) $snaps[$id];
-                        $doSnapshot++;
-                    }
-                }
-            }
-
-            $semDado = count($faltantes) - $doSnapshot;
-            if ($semDado > 0) {
-                Log::info("[Polos] Adman: {$semDado} cust_ids sem cache nem snapshot no mês corrente — R\$0 até o próximo sync.");
             }
 
             return $out;
         } catch (\Throwable $e) {
-            // Defensiva: Adman fora do ar NÃO quebra /polos — cai no CSV.
-            Log::warning('[Polos] Falha ao buscar faturamento Adman do mês corrente: ' . $e->getMessage());
+            // Defensiva: falha de leitura NÃO quebra /polos.
+            Log::warning('[Polos] Falha ao ler faturamento (Móveis) do snapshot: ' . $e->getMessage());
             return [];
         }
     }

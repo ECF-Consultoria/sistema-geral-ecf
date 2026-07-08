@@ -23,23 +23,33 @@ const GLOW = {
  *   glow     : 'yellow' | 'rose' | 'green' | 'none'
  *   gauge    : percentual 0–100 → renderiza RadialGauge atrás do número
  *   alerta   : realça o card (borda rose) — usado quando há alertas
+ *   accentColor : cor de identidade (hex) — tinge a linha superior e o chip do ícone
+ *   extra    : ReactNode extra no rodapé do card (chips, sparkline, etc.)
  */
-export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 'none', gauge = null, alerta = false }) {
+export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 'none', gauge = null, alerta = false, accentColor = null, extra = null }) {
     const numCls = cn('font-display font-extrabold tabular-nums leading-none', GLOW[glow] ?? GLOW.none);
 
     return (
         <div
             className={cn(
                 'relative overflow-hidden rounded-2xl border bg-ecf-card-2/60 p-5',
-                'before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.12] before:to-transparent',
+                // Sem accent: linha branca sutil padrão. Com accent: linha colorida (abaixo).
+                !accentColor && 'before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.12] before:to-transparent',
                 alerta ? 'border-rose-500/40' : 'border-white/[0.08]',
             )}
         >
+            {/* Linha colorida superior — identidade cromática do card (opcional) */}
+            {accentColor && (
+                <span aria-hidden="true" className="absolute inset-x-0 top-0 h-[2px] opacity-80"
+                      style={{ background: `linear-gradient(90deg, transparent, ${accentColor}, transparent)` }} />
+            )}
+
             {/* Cabeçalho: título + chip do ícone */}
             <div className="flex items-start justify-between gap-2">
                 <p className="text-white/40 text-xs uppercase tracking-wider">{titulo}</p>
                 {Icone && (
-                    <span className="rounded-xl bg-white/[0.04] p-2 text-white/50 shrink-0">
+                    <span className="rounded-xl bg-white/[0.04] p-2 text-white/50 shrink-0"
+                          style={accentColor ? { background: `${accentColor}1f`, color: accentColor } : undefined}>
                         <Icone size={16} />
                     </span>
                 )}
@@ -65,6 +75,9 @@ export default function HeroKpi({ titulo, valor, icone: Icone, sublabel, glow = 
                     )}
                 </>
             )}
+
+            {/* Rodapé extra opcional (chips, sparkline) */}
+            {extra && <div className="mt-3">{extra}</div>}
         </div>
     );
 }
