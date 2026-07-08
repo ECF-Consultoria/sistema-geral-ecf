@@ -1,11 +1,11 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { ExternalLink, CalendarClock } from 'lucide-react';
+import { ExternalLink, CalendarClock, ArrowLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/Components/ui/button';
 
-import TemplatesList        from '@/Components/Nps/Config/TemplatesList';
+import TemplatesGrid        from '@/Components/Nps/Config/TemplatesGrid';
 import TemplateEditForm     from '@/Components/Nps/Config/TemplateEditForm';
 import QuestionEditor       from '@/Components/Nps/Config/QuestionEditor';
 import ServiceScopesModal   from '@/Components/Nps/Config/ServiceScopesModal';
@@ -15,42 +15,37 @@ import ToastSalvo           from '@/Components/Nps/Config/ToastSalvo';
 /**
  * Página Nps/Configuracao — Phase 70 Plan 05 v15.0 + UX refactor 2026-07-08.
  *
- * Refactor UX aplicado (5 ajustes do feedback pós-deploy):
- *   1. Terminologia "Priority" → "Prioridade" + tooltip explicativo
- *      (aplicado dentro de TemplateEditForm).
- *   2. Perguntas em DESTAQUE — título grande "Perguntas do modelo" +
- *      botão prominente + lista com mais espaço vertical. OptionsEditor
- *      renderizado inline dentro de cada card de pergunta (não mais
- *      empilhado como componente separado).
- *   3. Auto-save híbrido — inputs disparam PUT/POST via debounce 800ms +
- *      toast "Salvo" no canto superior direito. Estado do toast gerenciado
- *      aqui e passado via prop `mostrarToast()`.
- *   4. Serviços cobertos em MODAL — botão "🔗 Serviços cobertos (N)" no
- *      TemplateEditForm dispara ServiceScopesModal (Radix Dialog).
- *   5. NPS Padrão restaurado via migration backend
- *      (2026_07_08_165206_migrate_perguntas_extras_to_nps_padrao.php) —
- *      sem mudanças no frontend, o QuestionEditor consome template.questions
- *      normalmente.
+ * Refactor 2026-07-08 (segundo round de feedback): reestruturado em DUAS
+ * TELAS state-based para eliminar o desperdício da coluna esquerda (sidebar
+ * de templates ocupava 320px vertical mesmo com só 1-2 modelos cadastrados):
  *
- * Layout (após refactor):
- *   ┌────────────────────────────────────────────────────────────────────┐
- *   │  Header + link "Textos legado"                                      │
- *   ├────────────────────────────────────────────────────────────────────┤
- *   │  DiaCobrancaWidget (config global)                                  │
- *   ├──────────────┬───────────────────────────────┬──────────────────────┤
- *   │ TemplatesList│ [Card compacto TemplateEdit]  │ Preview live sticky │
- *   │              │ [Título "Perguntas" destaque] │                     │
- *   │              │ [QuestionEditor + Options inl]│                     │
- *   └──────────────┴───────────────────────────────┴──────────────────────┘
- *   + ServiceScopesModal (Radix Portal — dispara pelo TemplateEditForm)
+ *   MODO 'list' (nenhum template selecionado):
+ *   ┌────────────────────────────────────────────────────────────────┐
+ *   │  Header ("Modelos de NPS") + link Textos legado                 │
+ *   ├────────────────────────────────────────────────────────────────┤
+ *   │  DiaCobrancaWidget                                              │
+ *   ├────────────────────────────────────────────────────────────────┤
+ *   │  TemplatesGrid — cards grandes em grid responsivo (1/2/3 col)  │
+ *   │  + botão "Novo modelo" destacado no topo direito                │
+ *   └────────────────────────────────────────────────────────────────┘
+ *
+ *   MODO 'edit' (template selecionado OU criando):
+ *   ┌────────────────────────────────────────────────────────────────┐
+ *   │  ← Voltar aos modelos  |  Editando: {nome do template}          │
+ *   ├────────────────────────────────────────┬───────────────────────┤
+ *   │  TemplateEditForm (compacto)           │ Preview live sticky   │
+ *   │  Perguntas do modelo (destaque)        │                       │
+ *   │  QuestionEditor + Options inline       │                       │
+ *   └────────────────────────────────────────┴───────────────────────┘
+ *   + ServiceScopesModal (Radix Portal)
  *   + ToastSalvo fixed top-right
  *
- * Contrato de props do controller (NpsTemplateController@index — Plan 70-01):
+ * Contrato de props do controller (NpsTemplateController@index):
  *   - templates:            Array<NpsTemplate> (com withCount + questions.options + servicos)
  *   - tipos_pergunta:       NpsTemplateQuestion::TIPOS   ['escala', 'opcoes']
  *   - dimensoes_labels:     { estrategista: 'Estrategista', ... }
  *   - servicos_disponiveis: Array<{id, nome, setor}>
- *   - dia_cobranca:         int   (Phase 72 Plan 01 — config global)
+ *   - dia_cobranca:         int
  */
 function DiaCobrancaWidget({ diaAtual }) {
     // useForm cuida do estado, erros de validação e flag `processing` do botão.
@@ -118,10 +113,25 @@ export default function Configuracao({
     dia_cobranca,
 }) {
     // ─── Estado principal ────────────────────────────────────────────────
-    const [selectedId, setSelectedId]     = useState(templates?.[0]?.id ?? null);
+    // Refactor 2026-07-08: modo 'list' é o default (nenhum template selecionado).
+    // Admin precisa clicar em "Editar" num card OU em "Novo modelo" para entrar
+    // no modo 'edit'. Isso elimina o desperdício da coluna sidebar quando só
+    // há 1-2 modelos cadastrados.
+    const [selectedId, setSelectedId]     = useState(null);
     const [creating, setCreating]         = useState(false);
     const [previewData, setPreviewData]   = useState(null);
     const [servicosOpen, setServicosOpen] = useState(false);
+
+    // Modo derivado dos states — encapsula a lógica de qual tela renderizar.
+    const mode = (selectedId !== null || creating) ? 'edit' : 'list';
+
+    // Voltar para a listagem: limpa seleção + creating + preview.
+    const voltarParaLista = useCallback(() => {
+        setSelectedId(null);
+        setCreating(false);
+        setPreviewData(null);
+        setServicosOpen(false);
+    }, []);
 
     // Estado do toast global (Ajuste 3).
     const [toastVisible, setToastVisible] = useState(false);
@@ -146,14 +156,9 @@ export default function Configuracao({
         [templates, selectedId],
     );
 
-    // Se o template selecionado sumiu (prop reload trocou a lista), reseleciona
-    // o primeiro disponível para evitar tela em branco.
-    useEffect(() => {
-        if (!selected && (templates?.length ?? 0) > 0 && !creating) {
-            setSelectedId(templates[0].id);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [templates]);
+    // Refactor 2026-07-08: NÃO reseleciona automaticamente ao entrar na página
+    // — modo 'list' é o default. O useEffect antigo pulava direto para modo
+    // 'edit' no primeiro template, o que anulava a UX de escolha.
 
     // ─── Preview live debounced (300ms) ──────────────────────────────────
     const previewTimerRef = useRef(null);
@@ -200,11 +205,11 @@ export default function Configuracao({
 
     return (
         <AppLayout title="Configuração NPS">
-            {/* Toast global "Salvo" (Ajuste 3) */}
+            {/* Toast global "Salvo" */}
             <ToastSalvo visible={toastVisible} />
 
-            {/* Modal de serviços cobertos (Ajuste 4) — Portal, controlado por state daqui */}
-            {selected && !creating && (
+            {/* Modal de serviços cobertos — Portal, só ativo em modo edit */}
+            {selected && mode === 'edit' && (
                 <ServiceScopesModal
                     open={servicosOpen}
                     onOpenChange={setServicosOpen}
@@ -217,48 +222,63 @@ export default function Configuracao({
 
             <div className="max-w-[1600px] mx-auto p-6 space-y-6">
 
-                {/* Header */}
-                <header className="flex items-start justify-between gap-4 flex-wrap">
-                    <div>
-                        <h1 className="text-white font-display font-bold text-2xl tracking-tight">
-                            Modelos de NPS
-                        </h1>
-                        <p className="text-white/50 text-sm mt-1 max-w-2xl">
-                            Gerencie os formulários enviados pelo NPS mensal. Cada modelo define
-                            perguntas, opções e a quais serviços ele se aplica. O modelo com
-                            <span className="text-white/70"> maior prioridade</span> vence quando dois ou mais cobrem a mesma empresa.
-                        </p>
-                    </div>
-                    <a
-                        href="/nps/configuracao/textos-legado"
-                        className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 underline underline-offset-4 shrink-0"
-                        title="Editor legado v13 — textos do email + perguntas extras"
-                    >
-                        <ExternalLink size={12} />
-                        Textos e perguntas extras (legado v13)
-                    </a>
-                </header>
+                {/* Header — muda conforme o modo */}
+                {mode === 'list' ? (
+                    <header className="flex items-start justify-between gap-4 flex-wrap">
+                        <div>
+                            <h1 className="text-white font-display font-bold text-2xl tracking-tight">
+                                Modelos de NPS
+                            </h1>
+                            <p className="text-white/50 text-sm mt-1 max-w-2xl">
+                                Gerencie os formulários enviados pelo NPS mensal. Cada modelo define
+                                perguntas, opções e a quais serviços ele se aplica. O modelo com
+                                <span className="text-white/70"> maior prioridade</span> vence quando dois ou mais cobrem a mesma empresa.
+                            </p>
+                        </div>
+                        <a
+                            href="/nps/configuracao/textos-legado"
+                            className="inline-flex items-center gap-1.5 text-xs text-white/50 hover:text-white/80 underline underline-offset-4 shrink-0"
+                            title="Editor legado v13 — textos do email + perguntas extras"
+                        >
+                            <ExternalLink size={12} />
+                            Textos e perguntas extras (legado v13)
+                        </a>
+                    </header>
+                ) : (
+                    <header className="flex items-center gap-4 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={voltarParaLista}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white/80 hover:bg-white/[0.08] hover:text-white text-sm font-medium transition-colors"
+                        >
+                            <ArrowLeft size={15} />
+                            Voltar aos modelos
+                        </button>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-white/40 text-[11px] uppercase tracking-wider font-semibold">
+                                {creating ? 'Novo modelo' : 'Editando modelo'}
+                            </p>
+                            <h1 className="text-white font-display font-bold text-xl tracking-tight truncate">
+                                {creating ? 'Configurar novo modelo' : (selected?.nome ?? '—')}
+                            </h1>
+                        </div>
+                    </header>
+                )}
 
-                {/* Widget de config global "Dia de cobrança" (Phase 72 Plan 01) */}
-                <DiaCobrancaWidget diaAtual={dia_cobranca} />
+                {/* Widget de config global "Dia de cobrança" — só na tela lista */}
+                {mode === 'list' && <DiaCobrancaWidget diaAtual={dia_cobranca} />}
 
-                {/* Layout principal: sidebar templates | editor + preview */}
-                <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-
-                    {/* ─── Coluna esquerda: lista de templates ────────────── */}
-                    <TemplatesList
+                {/* Conteúdo — muda conforme o modo */}
+                {mode === 'list' ? (
+                    <TemplatesGrid
                         templates={templates ?? []}
-                        selectedId={creating ? null : selectedId}
-                        onSelect={(id) => { setSelectedId(id); setCreating(false); }}
+                        onEdit={(id) => { setSelectedId(id); setCreating(false); }}
                         onCreate={() => { setCreating(true); setSelectedId(null); }}
                     />
-
-                    {/* ─── Coluna direita: editor (compacto + destaque) | preview ─── */}
+                ) : (
                     <div className="grid grid-cols-1 xl:grid-cols-[1fr_420px] gap-6">
-
-                        {/* Editor principal */}
+                        {/* Editor principal — ocupa a coluna larga */}
                         <div className="space-y-6 min-w-0">
-                            {/* Card compacto do template (Ajuste 2) */}
                             <TemplateEditForm
                                 template={creating ? null : selected}
                                 onSaved={(savedId) => {
@@ -271,7 +291,6 @@ export default function Configuracao({
                                 servicosCount={servicosCount}
                             />
 
-                            {/* Perguntas em destaque (Ajuste 2) — só em modo edição */}
                             {selected && !creating && (
                                 <QuestionEditor
                                     template={selected}
@@ -304,14 +323,14 @@ export default function Configuracao({
                                         <p className="text-white/40 text-sm">
                                             {creating
                                                 ? 'Salve o modelo para ver o preview.'
-                                                : 'Selecione um modelo para ver o preview.'}
+                                                : 'Preview carregando…'}
                                         </p>
                                     </div>
                                 )}
                             </div>
                         </aside>
                     </div>
-                </div>
+                )}
             </div>
         </AppLayout>
     );
