@@ -115,4 +115,23 @@ class NpsTemplateQuestion extends Model
             ->orderBy('ordem')
             ->orderBy('id');
     }
+
+    /**
+     * Alias de `options()` — nome plural pt-BR (deliberadamente na forma
+     * `opcaos` que o `Str::plural('opcao')` do Laravel gera; grafia correta
+     * em pt-BR seria "opcoes", mas a resolução do `scopeBindings()` usa
+     * exatamente `Str::plural(Str::camel($param))` e o parâmetro da rota
+     * é `{opcao}` — se renomearmos aqui pra "opcoes", o binding quebra).
+     *
+     * Usado pelo `scopeBindings()` das rotas triplo-aninhadas de opções
+     * (Plan 70-03): Laravel resolve `{opcao}` chamando
+     * `$pergunta->opcaos()`. Ambos apontam para a mesma relação; expor
+     * os dois nomes evita re-refatoração posterior.
+     *
+     * @see routes/web.php — Route::put('.../opcoes/{opcao}')->scopeBindings()
+     */
+    public function opcaos(): HasMany
+    {
+        return $this->options();
+    }
 }

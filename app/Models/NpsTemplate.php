@@ -87,6 +87,21 @@ class NpsTemplate extends Model
     }
 
     /**
+     * Alias de `questions()` — nome plural pt-BR usado pelo `scopeBindings()`
+     * das rotas aninhadas de perguntas (Plan 70-02). Laravel resolve
+     * `{pergunta}` chamando `$template->perguntas()` (Str::plural('pergunta')),
+     * então precisamos deste método para o scoped binding funcionar sem
+     * bater em "Call to undefined method". Ambos apontam para a mesma
+     * relação; expor os dois nomes evita re-refatoração posterior.
+     *
+     * @see routes/web.php — Route::put('.../perguntas/{pergunta}')->scopeBindings()
+     */
+    public function perguntas(): HasMany
+    {
+        return $this->questions();
+    }
+
+    /**
      * Serviços que este template atende — pivot `nps_template_service_scopes`.
      *
      * Empresa com [Gestão, Mentoria] recebe o template de MAIOR priority entre
