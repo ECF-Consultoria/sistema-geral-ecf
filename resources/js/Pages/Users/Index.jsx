@@ -7,8 +7,8 @@ import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, router, usePage } from '@inertiajs/react';
-import { useState, useRef } from 'react';
-import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star, Camera } from 'lucide-react';
+import { useState, useRef, useCallback } from 'react';
+import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star, Camera, ZoomIn } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import FormErrorBanner from '@/Components/FormErrorBanner';
 
@@ -33,6 +33,110 @@ function UserAvatar({ nome, src, size = 32 }) {
                 ? <img src={src} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setErro(true)} />
                 : iniciaisNome(nome)}
         </span>
+    );
+}
+
+/**
+ * Recorte do avatar no navegador: o usuário arrasta pra posicionar e usa o zoom pra
+ * enquadrar (ex.: pegar só o rosto de uma foto de corpo inteiro). A foto original NÃO
+ * é enviada — exportamos só o quadrado final (512px, WebP) via canvas. Assim o arquivo
+ * enviado fica pequeno (não esbarra no limite de upload do PHP) e o sistema não incha.
+ */
+function AvatarCropper({ src, onConfirm, onCancel }) {
+    const V = 300;      // lado do visor (px)
+    const OUT = 512;    // resolução final gravada
+    const imgRef = useRef(null);
+    const drag = useRef(null);
+    const [nat, setNat] = useState(null);      // { w, h } natural da imagem
+    const [zoom, setZoom] = useState(1);
+    const [pos, setPos] = useState({ x: 0, y: 0 });
+
+    const base  = nat ? V / Math.min(nat.w, nat.h) : 1;   // "cover": menor lado preenche o visor
+    const scale = base * zoom;
+
+    // Mantém a imagem sempre cobrindo o visor (sem áreas vazias).
+    const clamp = useCallback((p, s) => {
+        if (!nat) return p;
+        const minX = V - nat.w * s, minY = V - nat.h * s;
+        return { x: Math.min(0, Math.max(minX, p.x)), y: Math.min(0, Math.max(minY, p.y)) };
+    }, [nat]);
+
+    const onLoad = () => {
+        const el = imgRef.current;
+        const w = el.naturalWidth, h = el.naturalHeight;
+        const b = V / Math.min(w, h);
+        setNat({ w, h });
+        setZoom(1);
+        setPos({ x: (V - w * b) / 2, y: (V - h * b) / 2 });   // centraliza
+    };
+
+    const onPointerDown = (e) => { drag.current = { px: e.clientX, py: e.clientY, ...pos }; e.currentTarget.setPointerCapture(e.pointerId); };
+    const onPointerMove = (e) => {
+        if (!drag.current) return;
+        setPos(clamp({ x: drag.current.x + (e.clientX - drag.current.px), y: drag.current.y + (e.clientY - drag.current.py) }, scale));
+    };
+    const onPointerUp = () => { drag.current = null; };
+
+    // Zoom em torno do centro do visor.
+    const onZoom = (z) => {
+        if (!nat) { setZoom(z); return; }
+        const c = V / 2, oldS = base * zoom, newS = base * z;
+        setZoom(z);
+        setPos(clamp({ x: c - (c - pos.x) * (newS / oldS), y: c - (c - pos.y) * (newS / oldS) }, newS));
+    };
+
+    const confirmar = () => {
+        const el = imgRef.current;
+        if (!el || !nat) return;
+        const s = scale;
+        const sw = V / s, sh = V / s, sx = -pos.x / s, sy = -pos.y / s;
+        const canvas = document.createElement('canvas');
+        canvas.width = OUT; canvas.height = OUT;
+        canvas.getContext('2d').drawImage(el, sx, sy, sw, sh, 0, 0, OUT, OUT);
+        // WebP (menor); se o navegador não exportar WebP, cai pra JPEG.
+        canvas.toBlob(
+            (b) => (b ? onConfirm(b) : canvas.toBlob((j) => j && onConfirm(j), 'image/jpeg', 0.85)),
+            'image/webp', 0.85,
+        );
+    };
+
+    return (
+        <Dialog open onOpenChange={(o) => { if (!o) onCancel(); }}>
+            <DialogContent className="max-w-[360px]">
+                <DialogHeader><DialogTitle>Ajustar foto</DialogTitle></DialogHeader>
+                <div className="flex flex-col items-center gap-3">
+                    <div
+                        className="relative select-none overflow-hidden rounded-full bg-black/40 touch-none cursor-move"
+                        style={{ width: V, height: V }}
+                        onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+                        onPointerUp={onPointerUp} onPointerLeave={onPointerUp}
+                    >
+                        <img
+                            ref={imgRef} src={src} alt="" onLoad={onLoad} draggable={false}
+                            style={{
+                                position: 'absolute', top: 0, left: 0, transformOrigin: '0 0',
+                                transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
+                                maxWidth: 'none', pointerEvents: 'none',
+                            }}
+                        />
+                        <div className="pointer-events-none absolute inset-0 rounded-full ring-1 ring-white/30" />
+                    </div>
+                    <div className="flex w-full items-center gap-2">
+                        <ZoomIn className="h-4 w-4 shrink-0 text-white/40" />
+                        <input
+                            type="range" min="1" max="3" step="0.01" value={zoom}
+                            onChange={(e) => onZoom(parseFloat(e.target.value))}
+                            className="flex-1 accent-ecf-yellow"
+                        />
+                    </div>
+                    <p className="text-white/40 text-[11px]">Arraste pra posicionar · use o zoom pra enquadrar</p>
+                </div>
+                <DialogFooter>
+                    <Button type="button" variant="ghost" onClick={onCancel}>Cancelar</Button>
+                    <Button type="button" onClick={confirmar}>Usar foto</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -70,12 +174,27 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
     const fileRef = useRef(null);
     const [avatarPreview, setAvatarPreview] = useState(null);
     const [uploadingAvatar, setUploadingAvatar] = useState(false);
+    const [cropSrc, setCropSrc] = useState(null);   // object URL da imagem escolhida (abre o cropper)
 
+    // Escolher arquivo → abre o cropper (não envia ainda; a original nem sai do navegador).
     const onPickAvatar = (e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
         if (!file || !editing) return;
-        setAvatarPreview(URL.createObjectURL(file));
+        setCropSrc(URL.createObjectURL(file));
+    };
+
+    const fecharCropper = () => {
+        setCropSrc((url) => { if (url) URL.revokeObjectURL(url); return null; });
+    };
+
+    // Confirmou o recorte → envia só o quadrado final (blob pequeno).
+    const onCropConfirm = (blob) => {
+        fecharCropper();
+        if (!editing || !blob) return;
+        const ext  = blob.type === 'image/jpeg' ? 'jpg' : 'webp';
+        const file = new File([blob], `avatar.${ext}`, { type: blob.type || 'image/webp' });
+        setAvatarPreview(URL.createObjectURL(blob));
         setUploadingAvatar(true);
         router.post(route('users.avatar.update', editing.id), { avatar: file }, {
             forceFormData: true,
@@ -300,7 +419,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                 <UserAvatar nome={data.name} src={avatarPreview ?? editing.avatar} size={64} />
                                 <div className="min-w-0 flex-1">
                                     <p className="text-white/80 text-[13px] font-semibold">Foto do funcionário</p>
-                                    <p className="text-white/40 text-[11px]">JPG, PNG ou WEBP · até 4 MB</p>
+                                    <p className="text-white/40 text-[11px]">JPG, PNG ou WEBP · qualquer tamanho — você recorta e posiciona</p>
                                     <div className="mt-2 flex items-center gap-2">
                                         <input
                                             ref={fileRef}
@@ -324,6 +443,9 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                         ) : (
                             <p className="text-white/30 text-[11px] -mb-1">A foto do funcionário pode ser adicionada após salvar o cadastro.</p>
                         )}
+
+                        {/* Cropper do avatar (abre ao escolher uma imagem; envia só o recorte) */}
+                        {cropSrc && <AvatarCropper src={cropSrc} onConfirm={onCropConfirm} onCancel={fecharCropper} />}
 
                         {/* Toggle Admin */}
                         <div className="grid grid-cols-2 gap-2">

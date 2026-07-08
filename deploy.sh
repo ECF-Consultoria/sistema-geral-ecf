@@ -68,6 +68,7 @@ echo "▶ Deploy via git pull na VPS..."
   # Pós-deploy
   composer install --no-dev --optimize-autoloader --no-interaction --ignore-platform-reqs
   php artisan migrate --force
+  php artisan storage:link || true   # symlink public/storage (avatares); idempotente
   php artisan config:cache
   php artisan route:cache
   php artisan view:cache

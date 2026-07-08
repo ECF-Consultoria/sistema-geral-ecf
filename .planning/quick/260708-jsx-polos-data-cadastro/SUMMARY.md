@@ -35,5 +35,6 @@ editável "Data solicitação" (`data_solicitacao`), que só existe quando há f
 - `created_at` reflete quando o registro foi criado no sistema. Empresas importadas em lote
   (seeds/sync) podem compartilhar a data da importação, não a entrada real — é o melhor dado
   automático disponível.
-- NÃO commitado nem deployado (aguarda decisão do usuário).
+- **DEPLOYADO 260708** (14a3b9e) junto do pacote maior (modo claro + desempenho TV) reconciliado
+  com origin/main do outro dev. Ver memória `project_deploy_260708_reconcilia_tudo`.
 - Fora de escopo: modal "Ver" (ImplModal) e semântica de Entrantes (MetasPanel segue `data_solicitacao`).

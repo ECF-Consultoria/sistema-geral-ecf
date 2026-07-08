@@ -139,23 +139,88 @@ class UserController extends Controller
      */
     public function updateAvatar(Request $request, User $user)
     {
+        // Aceita a imagem original grande (foto de celular). O peso final é resolvido
+        // no redimensionamento abaixo — o que fica guardado é sempre pequeno.
         $request->validate(
-            ['avatar' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:4096']],
+            ['avatar' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:15360']],
             [
                 'avatar.required' => 'Selecione uma imagem.',
                 'avatar.image'    => 'O arquivo precisa ser uma imagem.',
                 'avatar.mimes'    => 'Formatos aceitos: JPG, PNG ou WEBP.',
-                'avatar.max'      => 'A imagem deve ter no máximo 4 MB.',
+                'avatar.max'      => 'A imagem deve ter no máximo 15 MB.',
             ],
         );
 
         // Remove a foto anterior se era um upload local (não mexe em URL externa).
         $this->apagarAvatarLocal($user);
 
-        $path = $request->file('avatar')->store('avatars', 'public');
+        // Redimensiona/comprime antes de guardar (avatar leve, sistema não incha).
+        $path = $this->salvarAvatarRedimensionado($request->file('avatar'), $user);
         $user->forceFill(['avatar_url' => Storage::url($path)])->save();
 
         return back()->with('success', "Foto de {$user->name} atualizada.");
+    }
+
+    /**
+     * Redimensiona a imagem enviada para no máximo 512px (mantendo proporção, só reduz)
+     * e re-encoda para um formato leve — WebP quando disponível, senão JPEG. Devolve o
+     * caminho salvo no disco público. Usa GD (sem dependência externa). Assim o usuário
+     * pode subir uma foto grande, mas o arquivo guardado fica em ~100–200 KB.
+     */
+    private function salvarAvatarRedimensionado(\Illuminate\Http\UploadedFile $file, User $user): string
+    {
+        $maxDim = 512;
+        $origem = $file->getRealPath();
+        $mime   = $file->getMimeType();
+
+        $src = match (true) {
+            $mime === 'image/jpeg' && function_exists('imagecreatefromjpeg') => @imagecreatefromjpeg($origem),
+            $mime === 'image/png'  && function_exists('imagecreatefrompng')  => @imagecreatefrompng($origem),
+            $mime === 'image/webp' && function_exists('imagecreatefromwebp') => @imagecreatefromwebp($origem),
+            default => null,
+        };
+
+        // Se o GD não conseguiu abrir (formato exótico/corrompido), guarda o original.
+        if (! $src) {
+            return $file->store('avatars', 'public');
+        }
+
+        $w = imagesx($src);
+        $h = imagesy($src);
+        $escala = min(1, $maxDim / max($w, $h)); // nunca amplia
+        $nw = max(1, (int) round($w * $escala));
+        $nh = max(1, (int) round($h * $escala));
+
+        $dst = imagecreatetruecolor($nw, $nh);
+        imagealphablending($dst, false);   // preserva transparência (PNG/WebP)
+        imagesavealpha($dst, true);
+        imagecopyresampled($dst, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
+
+        if (function_exists('imagewebp')) {
+            $ext = 'webp';
+            ob_start();
+            imagewebp($dst, null, 82);
+            $bin = ob_get_clean();
+        } else {
+            // Sem WebP: achata a transparência em branco e salva JPEG.
+            $fundo  = imagecreatetruecolor($nw, $nh);
+            $branco = imagecolorallocate($fundo, 255, 255, 255);
+            imagefilledrectangle($fundo, 0, 0, $nw, $nh, $branco);
+            imagecopy($fundo, $dst, 0, 0, 0, 0, $nw, $nh);
+            $ext = 'jpg';
+            ob_start();
+            imagejpeg($fundo, null, 85);
+            $bin = ob_get_clean();
+            imagedestroy($fundo);
+        }
+
+        imagedestroy($src);
+        imagedestroy($dst);
+
+        $path = 'avatars/' . $user->id . '_' . uniqid() . '.' . $ext;
+        Storage::disk('public')->put($path, $bin);
+
+        return $path;
     }
 
     /** Remove a foto do usuário (apaga o arquivo local, se houver, e zera a URL). */
