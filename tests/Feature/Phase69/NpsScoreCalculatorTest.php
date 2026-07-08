@@ -4,6 +4,8 @@ namespace Tests\Feature\Phase69;
 
 use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
+use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
 use App\Models\NpsTemplateQuestion;
 use App\Services\Nps\NpsScoreCalculator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,7 +36,14 @@ class NpsScoreCalculatorTest extends TestCase
     /**
      * Helper: cria uma answer da $dimensao pedida com o $peso e $label
      * dados, ligada ao $response. Bypassa FKs vivas (template_question_id
-     * e template_option_id) — o calculator le apenas o snapshot.
+     * e template_option_id) — o calculator le o snapshot per-row.
+     *
+     * Bugfix 2026-07-08: alem da answer, garante que existe uma question
+     * no template do survey com a mesma dimensao. A nova formula do
+     * calculator (SUM(pesos)/N_perguntas do template) precisa que
+     * N_perguntas > 0. Sem isso, todos os asserts caem em null.
+     * Semantica preservada: quando N_answers == N_perguntas (todas
+     * respondidas), SUM/N = AVG das answers — bate com os asserts antigos.
      */
     private function anexarAnswer(
         NpsResponse $response,
@@ -42,6 +51,31 @@ class NpsScoreCalculatorTest extends TestCase
         int $peso,
         string $label = null,
     ): NpsResponseAnswer {
+        $survey = $response->survey;
+
+        // Garante template no survey (cria com is_default para satisfazer
+        // eventual guard downstream).
+        if (! $survey->template_id) {
+            $tpl = NpsTemplate::factory()->create();
+            $survey->update(['template_id' => $tpl->id]);
+            $survey->refresh();
+        }
+
+        // Adiciona 1 pergunta da dimensao no template — count vira base do
+        // divisor. Ordem sequencial dentro do template.
+        $ordem = NpsTemplateQuestion::where('template_id', $survey->template_id)
+            ->where('dimensao', $dimensao)
+            ->count() + 1;
+
+        NpsTemplateQuestion::factory()->create([
+            'template_id' => $survey->template_id,
+            'dimensao'    => $dimensao,
+            'texto'       => "Pergunta {$dimensao} #{$ordem}",
+            'tipo'        => 'escala',
+            'obrigatoria' => false,
+            'ordem'       => $ordem,
+        ]);
+
         return NpsResponseAnswer::factory()->create([
             'response_id'                => $response->id,
             'question_dimensao_snapshot' => $dimensao,

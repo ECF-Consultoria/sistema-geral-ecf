@@ -119,23 +119,22 @@ export default function PreviewFormulario({
                 const opcoes = q.options ?? [];
                 const pk = perguntaKey(q);
                 const selecionado = respostas[pk];
-                // Grid heurístico: até 5 opções usa grid-cols-N (compacto); acima
-                // disso empilha em 1 coluna para não quebrar em mobile.
-                // ATENÇÃO: Tailwind JIT não detecta classes dinâmicas via template
-                // literal, então precisamos usar strings literais explícitas para
-                // que o safelist não seja necessário.
-                const gridByCount = {
-                    1: 'grid-cols-1',
-                    2: 'grid-cols-2',
-                    3: 'grid-cols-3',
-                    4: 'grid-cols-4',
-                    5: 'grid-cols-5',
-                };
-                const gridClass = opcoes.length === 0
-                    ? 'grid-cols-1'
-                    : opcoes.length <= 5
-                        ? gridByCount[opcoes.length]
-                        : 'grid-cols-1';
+                // Bugfix 2026-07-08 — flex-wrap adaptativo em vez de grid-cols
+                // rígido. Labels longas (ex: "Na maioria das vezes", "Sim,
+                // totalmente") ficavam quebrando palavras em botões de 20% de
+                // largura. Agora cada botão cresce até o conteúdo caber e
+                // quebra para a próxima linha só quando necessário.
+                //   - flex-1: cresce igualmente para preencher a linha
+                //   - min-w: garante clique confortável em mobile
+                //   - basis: ancora o tamanho ideal antes do wrap decidir
+                // Labels curtas (1..5 da escala) continuam alinhadas em linha
+                // única. Labels longas quebram naturalmente sem cortar palavras.
+                const hasLongLabels = opcoes.some(
+                    (o) => (o.label ?? '').length > 4,
+                );
+                const buttonBasis = hasLongLabels
+                    ? 'basis-[calc(50%-4px)] sm:basis-[calc(33%-6px)]'
+                    : 'basis-0';
 
                 return (
                     <div key={pk ?? idx} className="space-y-2.5">
@@ -153,7 +152,7 @@ export default function PreviewFormulario({
                                 Nenhuma opção cadastrada nesta pergunta.
                             </p>
                         ) : (
-                            <div className={cn('grid gap-1.5', gridClass)}>
+                            <div className="flex flex-wrap gap-1.5">
                                 {opcoes.map((o, j) => {
                                     const ok = optionKey(o);
                                     const isActive = selecionado === ok;
@@ -163,7 +162,8 @@ export default function PreviewFormulario({
                                             key={ok ?? j}
                                             onClick={() => selecionar(q, o)}
                                             className={cn(
-                                                'px-2.5 py-2 rounded-lg border text-[12.5px] font-medium transition-colors text-center break-words',
+                                                'flex-1 min-w-[64px] px-2.5 py-2 rounded-lg border text-[12.5px] font-medium transition-colors text-center leading-tight break-words',
+                                                buttonBasis,
                                                 isActive
                                                     ? 'bg-ecf-yellow text-[#050507] border-ecf-yellow'
                                                     : 'bg-white/[0.03] text-white/70 border-white/[0.08] hover:bg-white/[0.08] hover:text-white',

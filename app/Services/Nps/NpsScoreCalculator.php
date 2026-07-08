@@ -71,22 +71,44 @@ class NpsScoreCalculator
             return null;
         }
 
-        // Query direta na relacao HasMany. O WHERE composto casa exatamente
-        // com o indice nps_ans_response_dim_idx (response_id + dimensao).
-        // AVG do Query Builder retorna null nativamente quando ha zero rows —
-        // e essa a semantica que queremos propagar.
-        $media = $response->answers()
-            ->where('question_dimensao_snapshot', $dimensao)
-            ->avg('option_peso_snapshot');
-
-        if ($media === null) {
-            // Zero answers da dimensao pedida -> null semantico ("nao tem
-            // pergunta desta dimensao"), nao 0.0. Consumidor decide o display.
+        // Bugfix 2026-07-08 (feedback UX pos-deploy): a formula anterior fazia
+        // AVG das answers da dimensao — o que descartava perguntas que o
+        // cliente pulou. O contrato de negocio pedido pelo usuario e:
+        //   media = SUM(pesos das answers) / N_perguntas do template da dimensao
+        // Assim perguntas opcionais nao respondidas puxam a media para baixo
+        // (proporcional ao "vazio"). Exemplo: 4 perguntas dim=analista, 3
+        // respondidas com pesos 4+5+5 = 14, total 14/4 = 3.5. Se todas as 4
+        // fossem respondidas 4+5+5+3 = 17, 17/4 = 4.25.
+        //
+        // Passo 1: busca o template do survey via snapshot (template_id da FK
+        //          viva do NpsSurvey — se o admin apagar o template, N_perguntas
+        //          vira 0 e retornamos null pra sinalizar "sem base"). O
+        //          snapshot per-row em nps_response_answers protege o SUM
+        //          contra hard-delete das perguntas.
+        $survey = $response->survey;
+        if (! $survey || ! $survey->template_id) {
             return null;
         }
 
-        // MySQL AVG retorna string decimal ("4.5000"); SQLite retorna float
-        // nativo. Cast unifica em float para o contrato ?float do metodo.
-        return (float) $media;
+        $nPerguntas = NpsTemplateQuestion::query()
+            ->where('template_id', $survey->template_id)
+            ->where('dimensao', $dimensao)
+            ->count();
+
+        if ($nPerguntas === 0) {
+            // Dimensao nao existe neste template — null semantico ("sem
+            // pergunta"), nao 0.0. Consumidor decide o display.
+            return null;
+        }
+
+        // Passo 2: SUM dos pesos snapshot da dimensao (indice
+        // nps_ans_response_dim_idx cobre response_id + dimensao). Answers
+        // ausentes nao entram no SUM, mas o divisor e N_perguntas do
+        // template, nao COUNT(answers). Isso e o comportamento pedido.
+        $soma = (float) $response->answers()
+            ->where('question_dimensao_snapshot', $dimensao)
+            ->sum('option_peso_snapshot');
+
+        return $soma / $nPerguntas;
     }
 }
