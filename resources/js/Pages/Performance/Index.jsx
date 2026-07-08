@@ -82,11 +82,19 @@ function formatMesLabel(mes) {
 }
 
 export default function PerformanceIndex({ ranking = [], period = '30', setor = 'consultoria', cargo = null, mes, meses = [] }) {
-    const applyFilter = (params) => {
-        router.get(route('performance.index'), params, { preserveState: true });
-    };
-
     const isPolos = setor === 'polos';
+
+    // Cada setor tem rota própria: POLOS → publicacao.desempenho.index e
+    // consultoria → performance.index. Sem separar, mudar o mês na aba POLOS
+    // caía em performance.index (que força setor=consultoria) e jogava o
+    // usuário para o ranking de consultoria — "muda a data e vai pra outra aba".
+    const applyFilter = (params) => {
+        router.get(
+            route(isPolos ? 'publicacao.desempenho.index' : 'performance.index'),
+            params,
+            { preserveState: true },
+        );
+    };
 
     // Phase 46-03 — user selecionado abre o EvolucaoDrawer à direita
     const [userSelecionado, setUserSelecionado] = useState(null);

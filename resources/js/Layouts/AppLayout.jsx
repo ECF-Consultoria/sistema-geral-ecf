@@ -41,7 +41,9 @@ const NAV_TREE = [
     // ML/Shopee/Amazon). Renomeado de "ECF Consolidado" para "ECF Dashboard".
     // Ajuste pós-UAT 2: page: 'Dashboard/EcfShell' (não mais 'Dashboard/Admin')
     // para que active-state do sidebar diferencie de /dashboard/mercadolivre.
-    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/EcfShell', icon: PieChart, permission: 'core.dashboard' },
+    // Ajuste pós-UAT 3 (2026-07-07): admin-only — Analista/Estrategista/Líder
+    // não devem ver esse item; carteira própria é a fonte deles.
+    { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/EcfShell', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
 
     {
         group: 'Mercado Livre',
@@ -53,8 +55,14 @@ const NAV_TREE = [
             // Ajuste pós-UAT Phase 58: dentro do grupo ML, item chama-se "Dashboard"
             // (contexto do grupo já implica Mercado Livre). Rota legacy `dashboard`
             // segue registrada para deep links (CONTEXT §5).
-            { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: 'Dashboard/Admin', icon: LayoutDashboard, permission: 'core.dashboard' },
-            { label: 'Desempenho',  routeName: 'performance.index',   page: 'Performance',  icon: Trophy,          permission: 'core.performance' },
+            // Ajuste UAT 2026-07-07: page virou array porque admin renderiza
+            // Dashboard/Admin e analista/estrategista renderiza Performance/
+            // Dashboard (branching no controller). Ambos devem highlightar
+            // este item quando na rota /dashboard/mercadolivre.
+            { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: ['Dashboard/Admin', 'Performance/Dashboard'], icon: LayoutDashboard, permission: 'core.dashboard' },
+            // Desempenho fica com array explícito das páginas do ranking
+            // (Index + Show) pra não engolir Performance/Dashboard acima.
+            { label: 'Desempenho',  routeName: 'performance.index',   page: ['Performance/Index', 'Performance/Show'],  icon: Trophy,          permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
@@ -295,11 +303,32 @@ export default function AppLayout({ children, title }) {
      * Grupo com permission própria (ex: "Empresas"): descarta se itemVisivel falhar no grupo em si.
      */
     const filteredTree = useMemo(() => {
+        // Remove dividers órfãos: um divider é órfão quando NÃO tem nenhum
+        // item real (não-divider) entre ele e o próximo divider (ou o fim
+        // da lista). Ajuste UAT 2026-07-07: divider "POLOS" ficava visível
+        // pra Estrategista mesmo com todos os filhos abaixo dele gated.
+        const removerDividersOrfaos = (children) => {
+            const out = [];
+            for (let i = 0; i < children.length; i++) {
+                const item = children[i];
+                if (!item.divider) { out.push(item); continue; }
+                // Procura próximo item real entre este divider e o próximo divider
+                let temRealAbaixo = false;
+                for (let j = i + 1; j < children.length; j++) {
+                    if (children[j].divider) break;
+                    temRealAbaixo = true;
+                    break;
+                }
+                if (temRealAbaixo) out.push(item);
+            }
+            return out;
+        };
+
         return NAV_TREE.reduce((acc, entry) => {
             if (entry.group) {
                 // Grupos com permission própria (ex: grupo "Empresas") são verificados também
                 if (entry.permission && !itemVisivel(entry)) return acc;
-                const filhos = entry.children.filter(itemVisivel);
+                const filhos = removerDividersOrfaos(entry.children.filter(itemVisivel));
                 // Phase 56 v13.0: se sobrou SO divider (sem items reais), esconder o grupo
                 // — evita "grupo fantasma" com um label sem filhos abaixo.
                 const filhosReais = filhos.filter(c => !c.divider);
@@ -374,7 +403,17 @@ export default function AppLayout({ children, title }) {
         }
     }, [flash]);
 
-    const isActive = (page) => (pageComponent || '').startsWith(page);
+    // Aceita string (comportamento clássico) ou array — matcha se QUALQUER
+    // entrada do array for prefixo do pageComponent atual. Necessário pra
+    // itens do NAV que representam a mesma "área" mas renderizam páginas
+    // diferentes por role (ex: Dashboard admin vs Performance/Dashboard
+    // do analista/estrategista — ambos ativam o mesmo item Dashboard).
+    const isActive = (page) => {
+        if (!page) return false;
+        const current = pageComponent || '';
+        if (Array.isArray(page)) return page.some((p) => current.startsWith(p));
+        return current.startsWith(page);
+    };
 
     const initials = user?.name
         ? user.name.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase()

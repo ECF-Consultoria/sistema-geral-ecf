@@ -181,6 +181,223 @@ class PerformanceController extends Controller
     }
 
     /**
+     * Dashboard operacional da Carteira do Analista/Estrategista.
+     *
+     * Chamado por DashboardController::mercadolivre() quando o user é
+     * Analista (consultor) ou Estrategista (mentor) — mas NÃO líder de
+     * Performance nem admin (esses seguem no dashboard admin tradicional).
+     *
+     * Puxa dados REAIS via PortfolioScoreService + queries dedicadas por
+     * empresa da carteira (revenue AdmanMetric, NPS NpsSurvey, meta Goal).
+     */
+    public function dashboardCarteira(Request $request): \Inertia\Response
+    {
+        $user = $request->user();
+
+        // ── Score + métricas agregadas de carteira ──
+        $data = $this->scoreService->compute($user);
+
+        // ── Empresas em carteira (todas, ativas) ──
+        // Eager-load mlToken pra detectar conexão OAuth ativa (badge ML).
+        $companies = $user->companies()->with('mlToken')->where('active', true)->get();
+        $companyIds = $companies->pluck('id');
+        $atualFrom = $data['periodo']['from'];
+        $atualTo   = $data['periodo']['to'];
+
+        // Revenue + revenue anterior + ads por empresa (últimos 30d)
+        $metricsByCompany = \App\Models\AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$atualFrom, $atualTo])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(revenue_prev_period) as rev_prev, SUM(ad_spend) as ads')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        // NPS score mais recente por empresa (últimos 60d completed)
+        $npsField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
+        $npsByCompany = \App\Models\NpsSurvey::with('response')
+            ->whereIn('company_id', $companyIds)
+            ->where('status', 'completed')
+            ->where('completed_at', '>=', now()->subDays(60))
+            ->get()
+            ->groupBy('company_id')
+            ->map(fn ($group) => $group->sortByDesc('completed_at')->first());
+
+        // Meta por empresa (Goal ativa por empresa; se >1 pega a de faturamento)
+        $goalsByCompany = \App\Models\Goal::whereIn('company_id', $companyIds)
+            ->where('active', true)
+            ->get()
+            ->groupBy('company_id')
+            ->map(fn ($group) => $group->first());
+
+        // Monta lista de empresas pra tabela
+        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany, $npsField) {
+            $row = $metricsByCompany->get($c->id);
+            $rev     = (float) ($row->rev ?? 0);
+            $revPrev = (float) ($row->rev_prev ?? 0);
+            $ads     = (float) ($row->ads ?? 0);
+
+            $crescimento = $revPrev > 0
+                ? round((($rev - $revPrev) / $revPrev) * 100, 1)
+                : null;
+
+            $goal = $goalsByCompany->get($c->id);
+            $metaPct = null;
+            if ($goal && $goal->target_value > 0) {
+                $metaPct = (int) min(100, round(($rev / (float) $goal->target_value) * 100));
+            }
+
+            $nps = null;
+            $survey = $npsByCompany->get($c->id);
+            if ($survey && $survey->response && $survey->response->{$npsField} !== null) {
+                $nps = (int) $survey->response->{$npsField};
+            }
+
+            // Status heurístico: baseado em crescimento + meta
+            $status = 'saudavel';
+            if ($crescimento !== null && $crescimento < 0) {
+                $status = 'critico';
+            } elseif ($metaPct !== null && $metaPct < 60) {
+                $status = 'atencao';
+            } elseif ($crescimento !== null && $crescimento < 5) {
+                $status = 'atencao';
+            }
+
+            // Ação heurística leve
+            $acao = null;
+            if ($crescimento !== null && $crescimento < 0) $acao = 'Investigar queda';
+            elseif ($metaPct !== null && $metaPct < 60)    $acao = 'Acelerar meta';
+            elseif ($rev > 0 && $ads == 0)                 $acao = 'Considerar Ads';
+            elseif (! $c->marketplace || $c->marketplace !== 'meli') $acao = 'Conectar ML';
+            else                                            $acao = 'Manter ritmo';
+
+            return [
+                'id'          => $c->id,
+                'nome'        => $c->name,
+                // Badge ML só aparece se a empresa tem conexão OAuth ML ativa
+                // (mlToken.status === 'active'). Empresas com dados vindos só
+                // do Adman API NÃO ganham badge.
+                'ml'          => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+                'status'      => $status,
+                'faturamento' => $rev,
+                'meta'        => $metaPct,     // null se sem goal
+                'crescimento' => $crescimento, // null se sem base
+                'nps'         => $nps,          // null se sem resposta
+                'ads'         => $ads,
+                'acao'        => $acao,
+            ];
+        })->values();
+
+        // ── NPS widget: últimas 4 respostas completed ──
+        $recentSurveys = \App\Models\NpsSurvey::with(['response', 'company'])
+            ->whereIn('company_id', $companyIds)
+            ->where('status', 'completed')
+            ->orderByDesc('completed_at')
+            ->limit(4)
+            ->get();
+
+        $npsRespostas = $recentSurveys->map(function ($s) use ($npsField) {
+            $nota = $s->response?->$npsField;
+            if ($nota === null) return null;
+            $classe = $nota >= 9 ? 'Promotor' : ($nota >= 7 ? 'Neutro' : 'Detrator');
+            return [
+                'empresa' => $s->company?->name ?? '—',
+                'nota'    => (int) $nota,
+                'classe'  => $classe,
+                'quando'  => optional($s->completed_at)->diffForHumans(),
+            ];
+        })->filter()->values();
+
+        // ── Metas widget: só entra se houver ≥ 1 Goal atribuída a alguma
+        //    empresa da carteira. Sem Goal = "Nenhuma meta atribuída".
+        //    Regra UAT 2026-07-07: não mostrar progresso agregado (NPS/
+        //    empresas crescendo) sem meta explícita atribuída.
+        $metricas = $data['metricas'];
+        $atingimento = $metricas['atingimento_meta'];
+        $emCresc = $metricas['empresas_em_crescimento'];
+        $qual = $metricas['qualidade'];
+
+        $metasWidget = [];
+        if ($goalsByCompany->count() > 0) {
+            // Faturamento mensal (meta agregada portfolio)
+            if ($atingimento['target_value'] && $atingimento['target_value'] > 0) {
+                $metasWidget[] = [
+                    'icone'    => 'dollar',
+                    'nome'     => 'Faturamento vs meta',
+                    'atual'    => $this->fmtBRL((float) $atingimento['realized_value']),
+                    'objetivo' => $this->fmtBRL((float) $atingimento['target_value']),
+                    'percent'  => (int) min(100, round((float) $atingimento['pct'])),
+                ];
+            }
+            // Empresas em crescimento
+            if ($emCresc['total'] > 0) {
+                $metasWidget[] = [
+                    'icone'    => 'trend',
+                    'nome'     => 'Empresas em crescimento',
+                    'atual'    => (string) $emCresc['count'],
+                    'objetivo' => "{$emCresc['total']} empresas",
+                    'percent'  => (int) ($emCresc['pct'] ?? 0),
+                ];
+            }
+            // Qualidade (NPS médio)
+            if ($qual['avg_nps'] !== null) {
+                $notaMax = 5.0; // escala NPS interna 0-5
+                $pct = (int) min(100, round(($qual['avg_nps'] / $notaMax) * 100));
+                $metasWidget[] = [
+                    'icone'    => 'check',
+                    'nome'     => 'Qualidade NPS média',
+                    'atual'    => number_format($qual['avg_nps'], 1, ',', '.'),
+                    'objetivo' => '5,0',
+                    'percent'  => $pct,
+                ];
+            }
+        }
+
+        return Inertia::render('Performance/Dashboard', [
+            'pessoa' => [
+                'nome'   => $user->name,
+                'funcao' => $user->isMentor() ? 'Estrategista' : 'Analista de Performance',
+                'role_key' => $user->isMentor() ? 'mentor' : ($user->isConsultor() ? 'consultor' : 'other'),
+                'iniciais' => $this->iniciais($user->name),
+            ],
+            'periodo' => 'Últimos 30 dias',
+            'kpis' => [
+                'faturamento_total'       => (float) $metricas['faturamento']['atual'],
+                'empresas_em_carteira'    => $data['empresas_carteira'],
+                'empresas_conectadas_ml'  => (int) $companies->where('marketplace', 'meli')->count(),
+                'crescimento_percent'     => $metricas['crescimento_ajustado_pct'],  // null se sem base
+                'crescimento_delta_valor' => (float) $metricas['faturamento']['atual'] - (float) $metricas['faturamento']['anterior'],
+                'crescimento_mediana'     => $metricas['crescimento_mediano_empresa_pct'],
+                'score'                   => $data['score'],
+                'score_label'             => $data['classificacao'],
+                'empresas_em_crescimento' => $emCresc['count'],
+                'tem_base_comparativa'    => $data['tem_base_comparativa'],
+            ],
+            'nps' => [
+                'media'     => $qual['avg_nps'],
+                'respostas' => $npsRespostas,
+            ],
+            'metas' => $metasWidget,
+            'empresas' => $empresas,
+        ]);
+    }
+
+    private function fmtBRL(float $v): string
+    {
+        if (abs($v) >= 1_000_000) return 'R$ ' . number_format($v / 1_000_000, 2, ',', '.') . 'M';
+        if (abs($v) >= 1_000)     return 'R$ ' . number_format($v / 1_000, 0, ',', '.') . 'K';
+        return 'R$ ' . number_format($v, 2, ',', '.');
+    }
+
+    private function iniciais(?string $nome): string
+    {
+        if (! $nome) return '?';
+        $parts = preg_split('/\s+/', trim($nome));
+        $ini = mb_substr($parts[0] ?? '', 0, 1);
+        if (count($parts) > 1) $ini .= mb_substr($parts[count($parts) - 1], 0, 1);
+        return mb_strtoupper($ini);
+    }
+
+    /**
      * Phase 46 Plan 46-02 — endpoint JSON com a curva de evolução do score
      * de um user nos últimos N dias.
      *

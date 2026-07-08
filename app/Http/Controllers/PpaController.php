@@ -16,7 +16,10 @@ class PpaController extends Controller
 
         $query = Ppa::with(['company', 'mentor'])->orderBy('created_at', 'desc');
 
-        if ($user->isMentor()) {
+        // Ajuste UAT 2026-07-07: qualquer user não-admin só vê PPAs que ELE
+        // criou. Antes o filtro era só isMentor(), o que deixava Analistas
+        // (consultor) verem PPAs de todos os estrategistas do sistema.
+        if (! $user->isAdmin()) {
             $query->where('mentor_id', $user->id);
         }
 
