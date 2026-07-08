@@ -80,9 +80,19 @@ class NpsController extends Controller
         // ─── Audiência: surveys do mês selecionado ───────────────────────────
         // Surveys auto-geradas usam month_reference (semântica D-specifics).
         // Surveys manuais (month_reference=null) caem no mês via created_at.
-        // Eager load `response.respostasCustomizadas` evita N+1 quando o modal
-        // "Abrir" do Plan 33-04 expande as respostas extras de cada survey.
-        $baseQuery = NpsSurvey::with(['company', 'response.respostasCustomizadas', 'generatedBy'])
+        //
+        // Bugfix 2026-07-08 — eager load expandido para `response.answers` +
+        // `response.template.questions` (dual-path v15/legacy). Respostas v15
+        // gravam apenas em `nps_response_answers` (snapshot per-row); as
+        // colunas legadas `score_*` de `nps_responses` ficam null. Sem carregar
+        // answers, os cards mostram 0 e a lista mostra só o nome do respondente.
+        $baseQuery = NpsSurvey::with([
+                'company',
+                'generatedBy',
+                'response.respostasCustomizadas',
+                'response.answers',
+                'response.survey.template',
+            ])
             ->where(function ($q) use ($mesInicio, $mesFim) {
                 $q->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
                   ->orWhere(function ($qq) use ($mesInicio, $mesFim) {
@@ -100,6 +110,52 @@ class NpsController extends Controller
         // Quick task 260612-flt — filtros empresa/estrategista/analista.
         $aplicarFiltrosSurveys($baseQuery);
 
+        // Bugfix 2026-07-08 — helper de leitura dual-path.
+        // Para surveys v15 (survey.template_id != null): usa NpsScoreCalculator
+        // sobre os answers snapshot (Phase 69-02).
+        // Para surveys legacy: lê a coluna score_$dim direto do NpsResponse.
+        $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $notaDe = function ($response, string $dimensao) use ($calculator) {
+            if (! $response) {
+                return null;
+            }
+            if ($response->survey && $response->survey->template_id !== null) {
+                return $calculator->compute($response, $dimensao);
+            }
+            $col = 'score_' . $dimensao;
+            return $response->$col;
+        };
+
+        // Bugfix 2026-07-08 — "campos extras" v15 vêm de nps_response_answers
+        // com dimensao='geral' (mesma semântica das perguntas customizadas
+        // legacy). Combinamos com `respostas_customizadas` (v13) para o modal
+        // "Abrir" mostrar todos os campos livres independente da era do survey.
+        $extrasDe = function ($response) {
+            if (! $response) {
+                return collect();
+            }
+            $legacy = $response->respostasCustomizadas->map(fn($r) => [
+                'id'             => 'legacy_' . $r->id,
+                'pergunta_id'    => $r->pergunta_id,
+                'pergunta_texto' => $r->pergunta_texto_snapshot,
+                'tipo'           => $r->tipo_snapshot,
+                'valor'          => $r->valor,
+            ]);
+            // v15 answers dimensao='geral' = mesmas semânticas das perguntas
+            // customizadas legacy (Phase 33). Tipo uniforme 'opcoes' porque
+            // v15 sempre serializa via option_label_snapshot (research §5).
+            $v15 = $response->answers
+                ->where('question_dimensao_snapshot', 'geral')
+                ->map(fn($a) => [
+                    'id'             => 'v15_' . $a->id,
+                    'pergunta_id'    => $a->template_question_id,
+                    'pergunta_texto' => $a->question_texto_snapshot,
+                    'tipo'           => 'opcoes',
+                    'valor'          => $a->option_label_snapshot,
+                ]);
+            return $legacy->concat($v15)->values();
+        };
+
         $surveys = $baseQuery->paginate(20)->withQueryString()->through(fn($s) => [
             'id'                 => $s->id,
             'token'              => $s->token,
@@ -111,29 +167,22 @@ class NpsController extends Controller
             'created_at'         => $s->created_at->format('d/m/Y H:i'),
             'expires_at'         => $s->expires_at?->format('d/m/Y'),
             'completed_at'       => $s->completed_at?->format('d/m/Y H:i'),
-            'score_estrategista' => $s->response?->score_estrategista,
-            'score_analista'     => $s->response?->score_analista,
-            'score_empresa'      => $s->response?->score_empresa,
+            'score_estrategista' => $notaDe($s->response, 'estrategista'),
+            'score_analista'     => $notaDe($s->response, 'analista'),
+            'score_empresa'      => $notaDe($s->response, 'empresa'),
             'respondent'         => $s->response?->respondent_name,
             'comment'            => $s->response?->comment,
             'link'               => route('nps.respond', $s->token),
 
-            // Phase 33 Plan 33-04 — payload do modal "Abrir". Usa o snapshot do
-            // texto/tipo (preservado mesmo se a pergunta foi hard-deleted depois).
-            'respostas_customizadas' => $s->response
-                ? $s->response->respostasCustomizadas->map(fn($r) => [
-                    'id'             => $r->id,
-                    'pergunta_id'    => $r->pergunta_id,
-                    'pergunta_texto' => $r->pergunta_texto_snapshot,
-                    'tipo'           => $r->tipo_snapshot,
-                    'valor'          => $r->valor,
-                ])->values()
-                : [],
+            // Phase 33 Plan 33-04 + Bugfix 2026-07-08 — dual-path para o modal.
+            'respostas_customizadas' => $extrasDe($s->response)->all(),
         ]);
 
         // ─── 3 cards de média (somente respostas do mês filtrado) ────────────
-        // Reusa a mesma lógica de pertencer-ao-mês (month_reference OR created_at)
-        // via whereHas('survey', ...). Médias ignoram NULLs naturalmente (AVG SQL).
+        // Bugfix 2026-07-08 — dual-path: como AVG(score_*) do SQL ignora
+        // respostas v15 (colunas null), calculamos em PHP iterando os responses
+        // e usando NpsScoreCalculator quando template_id != null.
+        // Trade-off perf: ~150 responses/mês = O(150) em memória — aceitável.
         $responsesFilter = function ($q) use ($mesInicio, $mesFim, $user, $aplicarFiltrosSurveys) {
             $q->where(function ($qq) use ($mesInicio, $mesFim) {
                 $qq->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
@@ -149,55 +198,60 @@ class NpsController extends Controller
             $aplicarFiltrosSurveys($q);
         };
 
-        $responsesQuery = NpsResponse::query()->whereHas('survey', $responsesFilter);
+        $responsesMes = NpsResponse::query()
+            ->with(['survey', 'answers'])
+            ->whereHas('survey', $responsesFilter)
+            ->get();
+
+        $agregarMedia = function ($responses, string $dimensao) use ($notaDe) {
+            $notas = $responses->map(fn($r) => $notaDe($r, $dimensao))
+                ->filter(fn($n) => $n !== null);
+            return [
+                'media' => $notas->isEmpty() ? 0 : round((float) $notas->avg(), 2),
+                'total' => $notas->count(),
+            ];
+        };
 
         $cards = [
-            'estrategista' => [
-                'media' => round((float) ((clone $responsesQuery)->avg('score_estrategista') ?? 0), 2),
-                'total' => (clone $responsesQuery)->whereNotNull('score_estrategista')->count(),
-            ],
-            'analista' => [
-                'media' => round((float) ((clone $responsesQuery)->avg('score_analista') ?? 0), 2),
-                'total' => (clone $responsesQuery)->whereNotNull('score_analista')->count(),
-            ],
-            'empresa' => [
-                'media' => round((float) ((clone $responsesQuery)->avg('score_empresa') ?? 0), 2),
-                'total' => (clone $responsesQuery)->whereNotNull('score_empresa')->count(),
-            ],
+            'estrategista' => $agregarMedia($responsesMes, 'estrategista'),
+            'analista'     => $agregarMedia($responsesMes, 'analista'),
+            'empresa'      => $agregarMedia($responsesMes, 'empresa'),
         ];
 
         // ─── Série 12 meses para o LineChart ─────────────────────────────────
-        // Trade-off consciente: 12 iterações × 3 avg queries = ~36 queries.
-        // Para o volume esperado (~150 empresas × 12 meses = 1800 respostas no
-        // pior caso) é aceitável. Se virar gargalo, agregar via 1 query single
-        // GROUP BY DATE_FORMAT(month_reference, '%Y-%m').
+        // Bugfix 2026-07-08 — 1 query por mês carregando responses com answers,
+        // agregação em PHP via helper dual-path. ~150 responses/mês × 12 = 1.8k
+        // objetos em memória durante o request — dentro do budget.
         $serieMeses = [];
         $inicio12m  = now()->startOfMonth()->subMonths(11);
         for ($i = 0; $i < 12; $i++) {
             $m    = $inicio12m->copy()->addMonths($i);
             $mFim = $m->copy()->endOfMonth();
 
-            $q = NpsResponse::query()->whereHas('survey', function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys) {
-                $qq->where(function ($qqq) use ($m, $mFim) {
-                    $qqq->whereBetween('month_reference', [$m->toDateString(), $mFim->toDateString()])
-                        ->orWhere(function ($qqqq) use ($m, $mFim) {
-                            $qqqq->whereNull('month_reference')
-                                 ->whereBetween('created_at', [$m, $mFim]);
-                        });
-                });
-                if (!$user->isAdmin()) {
-                    $qq->whereIn('company_id', $user->companies()->pluck('companies.id'));
-                }
-                // Quick task 260612-flt — propaga filtros na serie 12m.
-                $aplicarFiltrosSurveys($qq);
-            });
+            $responsesM = NpsResponse::query()
+                ->with(['survey', 'answers'])
+                ->whereHas('survey', function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys) {
+                    $qq->where(function ($qqq) use ($m, $mFim) {
+                        $qqq->whereBetween('month_reference', [$m->toDateString(), $mFim->toDateString()])
+                            ->orWhere(function ($qqqq) use ($m, $mFim) {
+                                $qqqq->whereNull('month_reference')
+                                     ->whereBetween('created_at', [$m, $mFim]);
+                            });
+                    });
+                    if (!$user->isAdmin()) {
+                        $qq->whereIn('company_id', $user->companies()->pluck('companies.id'));
+                    }
+                    // Quick task 260612-flt — propaga filtros na serie 12m.
+                    $aplicarFiltrosSurveys($qq);
+                })
+                ->get();
 
             $serieMeses[] = [
                 'mes'          => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'jun./26'
                 'mes_iso'      => $m->format('Y-m'),
-                'estrategista' => round((float) ((clone $q)->avg('score_estrategista') ?? 0), 2),
-                'analista'     => round((float) ((clone $q)->avg('score_analista') ?? 0), 2),
-                'empresa'      => round((float) ((clone $q)->avg('score_empresa') ?? 0), 2),
+                'estrategista' => $agregarMedia($responsesM, 'estrategista')['media'],
+                'analista'     => $agregarMedia($responsesM, 'analista')['media'],
+                'empresa'      => $agregarMedia($responsesM, 'empresa')['media'],
             ];
         }
 
