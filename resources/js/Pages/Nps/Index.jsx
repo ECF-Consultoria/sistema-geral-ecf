@@ -80,6 +80,15 @@ const chartStyle = {
 
 // Card de nota individual (Estrategista/Analista/Empresa) — escala 1-5 colorida.
 // Renderiza "—" quando o score é null/undefined (analista em mentoria pura, etc).
+// Bugfix 2026-07-08 — formatValor arredonda floats vindos do NpsScoreCalculator
+// (ex.: 3.6666666666666665 → "3.7") pra caber no card sem overflow visual.
+function formatValor(valor) {
+    if (valor === null || valor === undefined) return null;
+    const n = Number(valor);
+    if (Number.isNaN(n)) return String(valor);
+    // Se for inteiro, mantém sem casas ("5" não "5.00"). Se decimal, 1 casa.
+    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+}
 function NotaCard({ label, valor }) {
     if (valor === null || valor === undefined) {
         return (
@@ -89,16 +98,43 @@ function NotaCard({ label, valor }) {
             </div>
         );
     }
-    const cor = valor <= 2 ? 'text-rose-400'
-              : valor === 3 ? 'text-yellow-400'
+    const n = Number(valor);
+    const cor = n <= 2 ? 'text-rose-400'
+              : n <= 3.5 ? 'text-yellow-400'
               : 'text-emerald-400';
     return (
-        <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-center">
-            <p className="text-[10px] text-white/40 uppercase tracking-wide">{label}</p>
-            <p className={cn('text-2xl font-bold mt-1', cor)}>
-                {valor}<span className="text-sm text-white/40">/5</span>
+        <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-3 text-center min-w-0">
+            <p className="text-[10px] text-white/40 uppercase tracking-wide truncate">{label}</p>
+            <p className={cn('text-2xl font-bold mt-1 leading-none', cor)}>
+                {formatValor(valor)}<span className="text-sm text-white/40">/5</span>
             </p>
         </div>
+    );
+}
+
+// Bugfix 2026-07-08 — badge da dimensão da resposta (v15). Labels em pt-BR
+// para o admin identificar rapidamente qual pergunta era de qual eixo.
+const DIMENSAO_LABEL = {
+    estrategista: 'Estrategista',
+    analista:     'Analista',
+    empresa:      'Empresa',
+    geral:        'Geral',
+};
+const DIMENSAO_COR = {
+    estrategista: 'bg-blue-500/15 text-blue-300 border-blue-500/25',
+    analista:     'bg-violet-500/15 text-violet-300 border-violet-500/25',
+    empresa:      'bg-emerald-500/15 text-emerald-300 border-emerald-500/25',
+    geral:        'bg-white/[0.06] text-white/60 border-white/[0.10]',
+};
+function DimensaoBadge({ dimensao }) {
+    if (!dimensao) return null;
+    return (
+        <span className={cn(
+            'inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider border',
+            DIMENSAO_COR[dimensao] ?? DIMENSAO_COR.geral,
+        )}>
+            {DIMENSAO_LABEL[dimensao] ?? dimensao}
+        </span>
     );
 }
 
@@ -503,8 +539,11 @@ export default function NpsIndex({
             {/* Phase 33 Plan 04 — header (empresa + respondente + data) +    */}
             {/* bloco Notas (3 cards 1-5) + Comentário + Respostas extras.     */}
             <Dialog open={!!modalSurvey} onOpenChange={(o) => !o && setModalSurvey(null)}>
-                <DialogContent className="max-w-2xl bg-ecf-card border border-white/[0.08]">
-                    <DialogHeader>
+                {/* Bugfix 2026-07-08 — modal ficava maior que a viewport com surveys v15
+                    de 16+ perguntas. Agora max-h-[85vh] com scroll interno; header e
+                    footer sticky pra ações permanecerem sempre visíveis. */}
+                <DialogContent className="max-w-2xl bg-ecf-card border border-white/[0.08] max-h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
+                    <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.06] shrink-0">
                         <DialogTitle className="text-white">
                             {modalSurvey?.company_name ?? '—'} — Resposta NPS
                         </DialogTitle>
@@ -515,10 +554,10 @@ export default function NpsIndex({
                     </DialogHeader>
 
                     {modalSurvey && (
-                        <div className="space-y-5">
-                            {/* Bloco notas — 3 dimensões 1-5 */}
+                        <div className="space-y-5 overflow-y-auto px-6 py-5 flex-1 min-h-0">
+                            {/* Bloco notas — 3 dimensões 1-5 (com formatValor arredondado) */}
                             <div>
-                                <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Notas</h3>
+                                <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Notas por dimensão</h3>
                                 <div className="grid grid-cols-3 gap-3">
                                     <NotaCard label="Estrategista" valor={modalSurvey.score_estrategista} />
                                     <NotaCard label="Analista"     valor={modalSurvey.score_analista} />
@@ -534,14 +573,21 @@ export default function NpsIndex({
                                 </div>
                             </div>
 
-                            {/* Bloco respostas extras (so renderiza se houver) */}
+                            {/* Bugfix 2026-07-08 — agora mostra TODAS as respostas (16
+                                do template no exemplo), agrupadas por dimensão. Cada
+                                item ganha badge da dimensão para o admin identificar. */}
                             {modalSurvey.respostas_customizadas?.length > 0 && (
                                 <div>
-                                    <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Respostas extras</h3>
-                                    <div className="space-y-3">
+                                    <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">
+                                        Todas as respostas ({modalSurvey.respostas_customizadas.length})
+                                    </h3>
+                                    <div className="space-y-2">
                                         {modalSurvey.respostas_customizadas.map((r, idx) => (
                                             <div key={r.id ?? idx} className="rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5">
-                                                <p className="text-xs text-white/60 mb-1.5">{r.pergunta_texto}</p>
+                                                <div className="flex items-start justify-between gap-2 mb-1.5">
+                                                    <p className="text-xs text-white/60 leading-snug">{r.pergunta_texto}</p>
+                                                    <DimensaoBadge dimensao={r.dimensao} />
+                                                </div>
                                                 <RespostaExtraValor tipo={r.tipo} valor={r.valor} />
                                             </div>
                                         ))}
@@ -551,7 +597,7 @@ export default function NpsIndex({
                         </div>
                     )}
 
-                    <DialogFooter className="gap-2 sm:gap-0 sm:justify-between">
+                    <DialogFooter className="gap-2 sm:gap-0 sm:justify-between px-6 py-4 border-t border-white/[0.06] shrink-0">
                         {/* Quick 260612-flt — excluir resposta (admin only). Reverte survey pra pending. */}
                         {isAdmin && modalSurvey && (
                             <button

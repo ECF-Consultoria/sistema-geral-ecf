@@ -110,9 +110,10 @@ class NpsController extends Controller
         // Quick task 260612-flt — filtros empresa/estrategista/analista.
         $aplicarFiltrosSurveys($baseQuery);
 
-        // Bugfix 2026-07-08 — helper de leitura dual-path.
+        // Bugfix 2026-07-08 — helper de leitura dual-path com arredondamento.
         // Para surveys v15 (survey.template_id != null): usa NpsScoreCalculator
-        // sobre os answers snapshot (Phase 69-02).
+        // sobre os answers snapshot (Phase 69-02). Sempre arredonda pra 2 casas
+        // ANTES de mandar pro front (evita "3.6666666666666665" na UI).
         // Para surveys legacy: lê a coluna score_$dim direto do NpsResponse.
         $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
         $notaDe = function ($response, string $dimensao) use ($calculator) {
@@ -120,16 +121,20 @@ class NpsController extends Controller
                 return null;
             }
             if ($response->survey && $response->survey->template_id !== null) {
-                return $calculator->compute($response, $dimensao);
+                $v = $calculator->compute($response, $dimensao);
+                return $v === null ? null : round((float) $v, 2);
             }
             $col = 'score_' . $dimensao;
-            return $response->$col;
+            $v = $response->$col;
+            return $v === null ? null : round((float) $v, 2);
         };
 
-        // Bugfix 2026-07-08 — "campos extras" v15 vêm de nps_response_answers
-        // com dimensao='geral' (mesma semântica das perguntas customizadas
-        // legacy). Combinamos com `respostas_customizadas` (v13) para o modal
-        // "Abrir" mostrar todos os campos livres independente da era do survey.
+        // Bugfix 2026-07-08 — modal "Ver respostas" agora mostra TODAS as
+        // answers do template v15 (as 16 perguntas, não só as de dimensão
+        // 'geral'). O admin queixou: "não veio com todos os campos, na tela de
+        // configura mostra que tem 16 campos existentes". Mantém ordem original
+        // (por template_question_id) + concatena as respostas_customizadas v13
+        // para compat com surveys legacy pré-Phase 68.
         $extrasDe = function ($response) {
             if (! $response) {
                 return collect();
@@ -138,18 +143,19 @@ class NpsController extends Controller
                 'id'             => 'legacy_' . $r->id,
                 'pergunta_id'    => $r->pergunta_id,
                 'pergunta_texto' => $r->pergunta_texto_snapshot,
+                'dimensao'       => 'geral',
                 'tipo'           => $r->tipo_snapshot,
                 'valor'          => $r->valor,
             ]);
-            // v15 answers dimensao='geral' = mesmas semânticas das perguntas
-            // customizadas legacy (Phase 33). Tipo uniforme 'opcoes' porque
-            // v15 sempre serializa via option_label_snapshot (research §5).
+            // v15: TODAS as answers do template (ordena por id do
+            // template_question para preservar sequência da configuração).
             $v15 = $response->answers
-                ->where('question_dimensao_snapshot', 'geral')
+                ->sortBy('template_question_id')
                 ->map(fn($a) => [
                     'id'             => 'v15_' . $a->id,
                     'pergunta_id'    => $a->template_question_id,
                     'pergunta_texto' => $a->question_texto_snapshot,
+                    'dimensao'       => $a->question_dimensao_snapshot,
                     'tipo'           => 'opcoes',
                     'valor'          => $a->option_label_snapshot,
                 ]);
