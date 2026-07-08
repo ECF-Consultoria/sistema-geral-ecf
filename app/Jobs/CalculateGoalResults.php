@@ -6,8 +6,10 @@ use App\Models\AdmanCampaignMetric;
 use App\Models\AdmanMetric;
 use App\Models\Goal;
 use App\Models\GoalResult;
+use App\Models\NpsResponse;
 use App\Models\User;
 use App\Notifications\MetaAtingidaNotification;
+use App\Services\Nps\NpsScoreCalculator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -130,6 +132,15 @@ class CalculateGoalResults implements ShouldQueue
             return $avg !== null ? (float) $avg : null;
         }
 
+        // Phase 73 Plan 02 — metric 'nps' NÃO vem de AdmanMetric; fonte é
+        // `nps_responses` filtradas por company_id + completed_at no mês.
+        // Precisa vir ANTES da query AdmanMetric (linha `if (!$row) return null`)
+        // para não excluir empresas ML-only ou sem sync Adman no período.
+        // 'nps' => $this->computeNps($companyId, $year, $month)  ← via early-return
+        if ($metric === 'nps') {
+            return $this->computeNps($companyId, $year, $month);
+        }
+
         // Usa o último registro do mês para métricas diárias
         $row = AdmanMetric::where('company_id', $companyId)
             ->whereYear('reference_date', $year)
@@ -152,8 +163,79 @@ class CalculateGoalResults implements ShouldQueue
                 ? round((float) $row->revenue / (float) $row->sold_quantity, 2)
                 : null,
             'margin'                  => (float) $row->contribution_margin_pct,
-            'absenteeism', 'nps', 'ppa_completion', 'products_without_cost' => null,
+            'absenteeism', 'ppa_completion', 'products_without_cost' => null,
             default => null,
         };
+    }
+
+    /**
+     * Phase 73 Plan 02 — cálculo real de `metric='nps'` usando `NpsScoreCalculator`.
+     *
+     * Escopo: todas as `NpsResponse` completed no período (year+month) das
+     * `NpsSurvey` pertencentes à empresa (`goal->company_id`, resolvido no
+     * caller `extractMetricValue`). O schema atual do Goal é 1 empresa por
+     * meta (`Goal::$fillable = ['company_id', ...]`) — não há
+     * portfolio_id/carteira. Se o schema mudar futuramente, expandir o
+     * whereIn para `->whereIn('company_id', $companyIds)`.
+     *
+     * Período: derivado do parâmetro `$this->period` do job (YYYY-MM), já
+     * decomposto em year+month pelo caller. Filtro via `whereYear` +
+     * `whereMonth` em `completed_at` — mesmo padrão de `AdmanMetric` no fluxo
+     * legacy do próprio job.
+     *
+     * Dual-path (idêntico ao Plan 73-01):
+     *  - Surveys v15 (`template_id !== null`): usa
+     *    `NpsScoreCalculator::compute($response, 'empresa')` — AVG do
+     *    `option_peso_snapshot` da dimensao 'empresa' em `nps_response_answers`.
+     *  - Surveys legacy pre-Phase 68 (`template_id === null`): usa
+     *    `$response->score_empresa` direto (coluna nullable desde Phase 68).
+     *
+     * Semântica de retorno:
+     *  - `null` quando não há response completed no período OU quando nenhuma
+     *    das responses produziu nota computável (dimension 'empresa' vazia +
+     *    legacy score_empresa null). Consumidor (`handle()`) trata null como
+     *    "sem dado" e faz `continue` — não grava GoalResult (semântica
+     *    preservada do fluxo legacy).
+     *  - `float` na escala 1..5 (arredondado 2 casas) quando há ao menos 1
+     *    nota computável. Média aritmética simples das notas por response
+     *    (não pondera dimensões, não pesa por template).
+     *
+     * REQ NPS-F-03. SC#3 do Phase 73. Zero mudança em `NpsScoreCalculator`.
+     */
+    private function computeNps(int $companyId, int $year, int $month): ?float
+    {
+        $responses = NpsResponse::query()
+            ->whereHas('survey', function ($q) use ($companyId, $year, $month) {
+                $q->where('company_id', $companyId)
+                  ->where('status', 'completed')
+                  ->whereYear('completed_at', $year)
+                  ->whereMonth('completed_at', $month);
+            })
+            ->with('survey')
+            ->get();
+
+        if ($responses->isEmpty()) {
+            return null;
+        }
+
+        $calculator = app(NpsScoreCalculator::class);
+
+        $notas = $responses->map(function (NpsResponse $r) use ($calculator) {
+            // Dual-path v15 vs legacy — mesmo discriminador do Plan 73-01
+            // (DashboardController::avgNotaDimensao e
+            // PerformanceController::index): template_id !== null → v15
+            // (usa calculator, dimension 'empresa'); template_id === null →
+            // legacy (score_empresa direto, nullable desde Phase 68).
+            if ($r->survey && $r->survey->template_id !== null) {
+                return $calculator->compute($r, 'empresa');
+            }
+            return $r->score_empresa !== null ? (float) $r->score_empresa : null;
+        })->filter(fn ($n) => $n !== null);
+
+        if ($notas->isEmpty()) {
+            return null;
+        }
+
+        return round((float) $notas->avg(), 2);
     }
 }
