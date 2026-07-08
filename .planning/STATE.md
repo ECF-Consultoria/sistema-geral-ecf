@@ -8,10 +8,10 @@ last_updated: "2026-07-08T20:00:00.000Z"
 last_activity: "2026-07-08 — Phase 72 COMPLETA — 4 waves entregues: (1) NpsPendingService (199 LOC) + config admin dia_cobranca + widget Configuracao.jsx; (2) DashboardController + PortfolioController + CompanyController integram service + dual-path NpsScoreCalculator para surveys v15; (3) NpsPendingBadge + NpsPendingWidget integrados em Dashboard/Admin + Portfolio/Show + Companies/Index; (4) 16 tests Feature Phase72 (109 assertions) cobrindo SC1-SC5 + baseline regressão zero (130→146 passed, 1 pré-existente Phase33 preservado). Phase 73 desbloqueada."
 progress:
   total_phases: 6
-  completed_phases: 6
+  completed_phases: 4
   total_plans: 24
-  completed_plans: 33
-  percent: 100
+  completed_plans: 23
+  percent: 67
 ---
 
 # Project State
