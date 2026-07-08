@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: Phase 68 em execução — Plan 68-01 completo (Wave 1/4 fechada)
-stopped_at: Completed 68-01-PLAN.md
-last_updated: "2026-07-07T12:00:00.000Z"
-last_activity: 2026-07-07 — Phase 68 Plan 68-01 COMPLETO — 3 migrations criadas (5 tabelas novas + template_id em nps_surveys + score_* NULLABLE em nps_responses)
+status: Wave 2 liberada — Plans 68-02 (Models + factories) + 68-04 (dedup_key) podem rodar em paralelo
+stopped_at: Completed 59-03-PLAN.md
+last_updated: "2026-07-08T00:59:48.544Z"
+last_activity: 2026-07-07 — Plan 68-01 COMPLETO — 3 migrations criadas em SQLite in-memory verde (5 tabelas novas + template_id FK + score_* NULLABLE); suite Phase 31 NPS 19/19 verdes (zero regressão)
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
-  percent: 3
+  completed_plans: 3
+  percent: 0
 ---
 
 # Project State
