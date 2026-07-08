@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Nps\NpsScoreCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -283,7 +284,10 @@ class CompanyController extends Controller
                 ->with(['results' => fn($rq) => $rq->orderBy('period', 'desc')->limit(12)]),
             'ppas.mentor',
             'meetings' => fn($q) => $q->orderBy('scheduled_at', 'desc')->limit(10),
-            'npsSurveys' => fn($q) => $q->where('status', 'completed')->with('response')->orderBy('completed_at', 'desc')->limit(10),
+            // Phase 72 Plan 02 — SC#5: eager-load response.answers alem de
+            // response, pra NpsScoreCalculator::compute() nao gerar N+1 quando
+            // recalcula medias por dimensao (surveys v15 com template_id).
+            'npsSurveys' => fn($q) => $q->where('status', 'completed')->with(['response.answers', 'template'])->orderBy('completed_at', 'desc')->limit(10),
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(90),
             // Contratos (ativos + inativos) com servico embedado — UI filtra na renderização
             'contratosServico' => fn($q) => $q->orderBy('ativo', 'desc')->orderBy('data_contratacao', 'desc')->with('servico'),
@@ -477,22 +481,42 @@ class CompanyController extends Controller
                     'consultant_present' => $m->consultant_present,
                     'mentor_present' => $m->mentor_present,
                 ])->values(),
-                'nps_surveys'      => $company->npsSurveys->map(fn($s) => [
-                    'id' => $s->id, 'status' => $s->status,
-                    // Phase 31 Plan 31-04 (Gotcha Plan 31-02) — colunas legacy
-                    // score_overall/score_consultant/score_mentor foram dropadas
-                    // no Plan 31-01 e recriadas como score_empresa/score_analista/
-                    // score_estrategista (escala 1-5). O JSX Companies/Show.jsx
-                    // (linhas 377, 848) ainda referencia os nomes antigos e sera
-                    // ajustado no Plan 31-05.
-                    'response' => $s->response ? [
-                        'respondent_name'    => $s->response->respondent_name,
-                        'score_empresa'      => $s->response->score_empresa,
-                        'score_analista'     => $s->response->score_analista,
-                        'score_estrategista' => $s->response->score_estrategista,
-                        'comment'            => $s->response->comment,
-                    ] : null,
-                ])->values(),
+                // Phase 72 Plan 02 — SC#5 (dual-path NpsScoreCalculator):
+                // Surveys v15 (template_id != null) tem medias por dimensao
+                // recalculadas a partir de nps_response_answers.option_peso_snapshot
+                // via NpsScoreCalculator (respeita template_snapshot, imune a
+                // hard-delete do template — Phase 69-02). Surveys legacy pre-v15
+                // (template_id == null) mantem os score_* legados persistidos em
+                // nps_responses (Phase 31). As CHAVES do payload
+                // score_empresa/score_analista/score_estrategista sao preservadas
+                // bit-a-bit — JSX Companies/Show.jsx nao muda; muda apenas o
+                // valor para surveys v15. Phase 73 remove o path legacy quando
+                // dashboards estiverem 100% convertidos.
+                'nps_surveys'      => (function () use ($company) {
+                    $calculator = app(NpsScoreCalculator::class);
+                    return $company->npsSurveys->map(function ($s) use ($calculator) {
+                        $response = $s->response;
+                        $isV15    = $s->template_id !== null;
+                        return [
+                            'id'          => $s->id,
+                            'status'      => $s->status,
+                            'template_id' => $s->template_id,
+                            'response'    => $response ? [
+                                'respondent_name'    => $response->respondent_name,
+                                'score_empresa'      => $isV15
+                                    ? $calculator->compute($response, 'empresa')
+                                    : $response->score_empresa,
+                                'score_analista'     => $isV15
+                                    ? $calculator->compute($response, 'analista')
+                                    : $response->score_analista,
+                                'score_estrategista' => $isV15
+                                    ? $calculator->compute($response, 'estrategista')
+                                    : $response->score_estrategista,
+                                'comment'            => $response->comment,
+                            ] : null,
+                        ];
+                    })->values();
+                })(),
                 'ppas'             => $company->ppas->map(fn($p) => [
                     'id' => $p->id, 'title' => $p->title,
                     'completion_pct' => $p->completion_pct,

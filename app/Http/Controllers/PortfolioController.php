@@ -12,6 +12,7 @@ use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Nps\NpsPendingService;
 use App\Services\PortfolioScoreService;
 use App\Models\Company;
 use Carbon\Carbon;
@@ -962,6 +963,14 @@ class PortfolioController extends Controller
             ];
         }
 
+        // Phase 72 Plan 02 — SC#2 + SC#3: injeta pendencias de NPS restritas
+        // a carteira do profissional visualizado (owner do portfolio, nao
+        // necessariamente o request user — admin/lider pode ver carteira de
+        // terceiros). NpsPendingService::forCarteira filtra internamente por
+        // $user->companies() quando nao e admin — semantica correta pro
+        // widget "empresas pendentes de NPS" no Portfolio/Show (Plan 72-03).
+        $npsPendentes = app(NpsPendingService::class)->forCarteira($user);
+
         return Inertia::render('Portfolio/Show', [
             'portfolio_user'      => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
             'companies'           => $companies,
@@ -994,6 +1003,10 @@ class PortfolioController extends Controller
             'sugador_counters'        => $sugadorCounters,
             'ppa_counters'            => $ppaCounters,
             'cargo_slug'              => $cargoSlug,
+            // Phase 72 Plan 02 — SC#2 + SC#3: pendencias NPS da carteira
+            // visualizada (badge/widget Plan 72-03). Shape padrao
+            // NpsPendingService::forCarteira (ver PHASE-72-01-SUMMARY).
+            'nps_pendentes'           => $npsPendentes,
         ]);
     }
 

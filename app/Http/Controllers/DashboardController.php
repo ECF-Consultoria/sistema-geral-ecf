@@ -13,6 +13,7 @@ use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Nps\NpsPendingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,9 @@ class DashboardController extends Controller
     public function __construct(
         private AdmanService $adman,
         private MetricsProviderFactory $metricsFactory,
+        // Phase 72 Plan 02 — SC#3: fonte unica de "empresas pendentes de NPS"
+        // reusada por adminDashboard + userDashboard (widget Plan 72-03).
+        private NpsPendingService $npsPending,
     ) {}
 
     /**
@@ -769,6 +773,11 @@ class DashboardController extends Controller
             }
         }
 
+        // Phase 72 Plan 02 — SC#3: injeta lista de empresas pendentes de NPS no
+        // mes corrente para o widget do Dashboard (Plan 72-03 renderiza).
+        // forCarteira ja respeita escopo: admin=todas as empresas ativas.
+        $npsPendentes = $this->npsPending->forCarteira($request->user());
+
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
                 'total_companies'          => $companies->count(),
@@ -848,6 +857,10 @@ class DashboardController extends Controller
             // valores exatos do cache /performance (period=30 + cache hot).
             // Frontend consome em W5-T1 para indicador "≈ aproximado".
             'cards_exatos'    => $cardsExatos,
+            // Phase 72 Plan 02 — SC#3: empresas pendentes de NPS no mes corrente
+            // (shape [{company_id, name, template_id, template_nome,
+            // month_reference, dias_atraso}]). Plan 72-03 renderiza o widget.
+            'nps_pendentes'   => $npsPendentes,
         ]);
     }
 
@@ -1006,6 +1019,11 @@ class DashboardController extends Controller
         //   Estrategista (isMentor) → score_estrategista; Analista → score_analista.
         $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
 
+        // Phase 72 Plan 02 — SC#3: empresas pendentes de NPS restritas a
+        // carteira do proprio usuario (forCarteira filtra por
+        // $user->companies() quando nao e admin).
+        $npsPendentes = $this->npsPending->forCarteira($user);
+
         return Inertia::render('Dashboard/User', [
             'stats' => [
                 'total_companies' => $companies->count(),
@@ -1025,6 +1043,9 @@ class DashboardController extends Controller
             'my_surveys' => $myNpsSurveys,
             'my_ppas' => $myPpas,
             'sugadores_pendentes_carteira' => $sugadoresCarteira,
+            // Phase 72 Plan 02 — SC#3: pendencias NPS da carteira propria
+            // (widget renderizado em Plan 72-03).
+            'nps_pendentes' => $npsPendentes,
         ]);
     }
 }
