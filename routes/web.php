@@ -104,10 +104,34 @@ Route::post('/nps/generate', [NpsController::class, 'generate'])
 // Páginas admin-only (role:admin) para editar os 11 textos do fluxo NPS +
 // endpoint de preview server-rendered do email (D-05). DEVEM ficar ANTES da
 // rota pública /nps/{token} para evitar colisão com o parâmetro dinâmico.
+//
+// Phase 70 Plan 05 (v15.0) — REMAPEAMENTO:
+//   `/nps/configuracao`                       → NpsTemplateController@index (nova UI multi-template)
+//   `/nps/configuracao/textos-legado`         → NpsController@configuracao (Phase 33 preservada)
+//   `/nps/configuracao/textos-legado (PUT)`   → NpsController@atualizarConfiguracao
+//   `/nps/configuracao/textos-legado/preview` → NpsController@previewEmail
+// O nome `nps.configuracao.index` é herdado pela rota nova para preservar
+// compatibilidade com links de menu/breadcrumbs no AppLayout.
 Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
-    Route::get('/nps/configuracao',          [NpsController::class, 'configuracao'])->name('nps.configuracao.index');
-    Route::put('/nps/configuracao',          [NpsController::class, 'atualizarConfiguracao'])->name('nps.configuracao.update');
-    Route::post('/nps/configuracao/preview', [NpsController::class, 'previewEmail'])->name('nps.configuracao.preview');
+    // Rotas legadas (Phase 33) — movidas para subpath `/textos-legado`.
+    // A UI é a mesma (agora servida via ConfiguracaoLegado.jsx) e continua
+    // permitindo edição dos 11 textos + perguntas extras enquanto v15.0 roda.
+    Route::get ('/nps/configuracao/textos-legado',         [NpsController::class, 'configuracao'])->name('nps.configuracao.textos-legado');
+    Route::put ('/nps/configuracao/textos-legado',         [NpsController::class, 'atualizarConfiguracao'])->name('nps.configuracao.textos-legado.update');
+    Route::post('/nps/configuracao/textos-legado/preview', [NpsController::class, 'previewEmail'])->name('nps.configuracao.textos-legado.preview');
+
+    // Aliases preservados para os POST/PUT antigos (o form legado usa
+    // `route('nps.configuracao.update')` e `route('nps.configuracao.preview')`).
+    // Mantidos como aliases duplicados sob o path `/textos-legado` para não
+    // quebrar o JS de ConfiguracaoLegado.jsx durante a migração — trocar os
+    // nomes exigiria varredura ampla no JS legado. Cleanup fica para Phase 73.
+    Route::put ('/nps/configuracao/textos-legado/update',  [NpsController::class, 'atualizarConfiguracao'])->name('nps.configuracao.update');
+    Route::post('/nps/configuracao/textos-legado/preview-alias', [NpsController::class, 'previewEmail'])->name('nps.configuracao.preview');
+
+    // Nova rota principal (v15.0) — UI multi-template Configuracao.jsx.
+    // Herdou o nome canônico `nps.configuracao.index` para preservar links
+    // que dependiam da rota antiga (menu, breadcrumbs, redirects).
+    Route::get('/nps/configuracao', [NpsTemplateController::class, 'index'])->name('nps.configuracao.index');
 
     // Phase 32 Plan 04 — Página de envios NPS (log do nps:disparar-mensal).
     // Tem que ficar dentro deste grupo ANTES de /nps/{token} para nao colidir

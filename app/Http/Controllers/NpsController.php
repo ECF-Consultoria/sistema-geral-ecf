@@ -659,7 +659,11 @@ class NpsController extends Controller
             ->orderBy('id')
             ->get();
 
-        return Inertia::render('Nps/Configuracao', [
+        // Phase 70 Plan 05 (v15.0) — a página `Nps/Configuracao` foi reescrita
+        // como UI multi-template. A UI de edição dos 11 textos + perguntas
+        // extras (Phase 33) foi movida para `Nps/ConfiguracaoLegado.jsx` e
+        // servida sob a subrota `/nps/configuracao/textos-legado`.
+        return Inertia::render('Nps/ConfiguracaoLegado', [
             'textos'           => NpsTextRenderer::getTextos(),
             'defaults'         => NpsTextRenderer::defaults(),
             'placeholders_doc' => $placeholdersDoc,

@@ -55,7 +55,16 @@ class NpsTemplateController extends Controller
      */
     public function index(Request $request)
     {
+        // Phase 70 Plan 05 — props extras exigidas pelo frontend.
+        // O editor (QuestionEditor + OptionsEditor + ServiceScopesPicker)
+        // consome:
+        //   - questions.options (para render + guard "min 1 opção em escala")
+        //   - servicos (IDs atuais no pivot, para pre-marcar checkboxes)
+        // withCount continua para o card compacto de TemplatesList (badge
+        // "N perguntas · M serviços") — Laravel resolve N+1 corretamente:
+        // eager-load + count no mesmo query builder.
         $templates = NpsTemplate::withCount(['questions', 'servicos'])
+            ->with(['questions.options', 'servicos:id,nome,setor'])
             ->orderByDesc('is_default')
             ->orderByDesc('priority')
             ->orderBy('id')
