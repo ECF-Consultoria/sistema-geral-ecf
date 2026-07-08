@@ -30,6 +30,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\NpsTemplateController;
+use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
@@ -160,6 +161,33 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         [NpsTemplateQuestionController::class, 'mover'])
         ->scopeBindings()
         ->name('nps.configuracao.templates.perguntas.mover');
+
+    // ─── Phase 70 Plan 03 — CRUD opções das perguntas ───────────────────
+    // Rotas triplo-aninhadas sob {template}/perguntas/{pergunta}. scopeBindings()
+    // resolve {pergunta} scoped por template_id E {opcao} scoped por question_id
+    // -> 404 automático se qualquer vínculo estiver quebrado. Guard interno
+    // abort_if no controller é defesa em profundidade (belt-and-suspenders).
+    // Todas as 4 rotas — inclusive `store` — usam scopeBindings() porque já
+    // recebem {pergunta} na URL e precisam garantir que pertence ao template.
+    Route::post  ('/nps/configuracao/templates/{template}/perguntas/{pergunta}/opcoes',
+        [NpsTemplateOptionController::class, 'store'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.opcoes.store');
+
+    Route::put   ('/nps/configuracao/templates/{template}/perguntas/{pergunta}/opcoes/{opcao}',
+        [NpsTemplateOptionController::class, 'update'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.opcoes.update');
+
+    Route::delete('/nps/configuracao/templates/{template}/perguntas/{pergunta}/opcoes/{opcao}',
+        [NpsTemplateOptionController::class, 'destroy'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.opcoes.destroy');
+
+    Route::post  ('/nps/configuracao/templates/{template}/perguntas/{pergunta}/opcoes/{opcao}/mover',
+        [NpsTemplateOptionController::class, 'mover'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.opcoes.mover');
 
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
