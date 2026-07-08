@@ -8,10 +8,12 @@ use App\Models\NpsEmailEnvio;
 use App\Models\NpsPerguntaCustomizada;
 use App\Models\NpsRespostaCustomizada;
 use App\Models\NpsResponse;
+use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -373,13 +375,26 @@ class NpsController extends Controller
     }
 
     /**
-     * Persiste a resposta NPS (escala 1-5, 3 dimensões — D-06/D-07).
+     * Persiste a resposta NPS.
      *
-     * - `score_estrategista` 1-5 obrigatório
-     * - `score_analista` 1-5 nullable (omitido em mentoria pura)
-     * - `score_empresa` 1-5 obrigatório
-     * - `respondent_name` nullable (D-07 — cliente pode responder anônimo)
-     * - `comment` até 2000 chars
+     * Discriminacao por template_id (Phase 69 Plan 03):
+     *
+     *   - `template_id !== null` -> fluxo v15.0 dinamico via `submitResponseV15()`:
+     *     rules derivadas do template snapshot (Rule::in nas options), gravacao
+     *     em `nps_response_answers` com snapshot congelado
+     *     (question_texto/dimensao/label/peso_snapshot — research §1) + guard
+     *     QueryException 23000 do dedup unique parcial (research §2 + Plan 68-04)
+     *     -> render `Nps/AlreadyCompleted` em colisao de duplicata mensal.
+     *
+     *   - `template_id === null` -> fluxo legacy Phase 31/33 preservado 100%
+     *     via `submitResponseLegacy()`: score_estrategista/analista/empresa
+     *     hardcoded + NpsRespostaCustomizada extras. Coexiste ate Phase 73
+     *     (rows Phase 31/33 sem template_id continuam funcionando).
+     *
+     * Referencias:
+     *   - .planning/research/v15-nps-templates-schema.md §1 (snapshot per-row)
+     *   - .planning/research/v15-nps-templates-schema.md §2 (dedup 23000)
+     *   - REQ NPS-B-03 (guard 23000) + REQ NPS-B-05 (validacao dinamica)
      */
     public function submitResponse(Request $request, string $token)
     {
@@ -389,6 +404,142 @@ class NpsController extends Controller
             return response()->json(['error' => 'Pesquisa expirada.'], 422);
         }
 
+        // Discriminador Phase 69 Plan 03: template_id populado -> fluxo v15.0
+        // com validacao dinamica + snapshot per-row. NULL -> legacy Phase 31/33.
+        if ($survey->template_id !== null) {
+            return $this->submitResponseV15($request, $survey);
+        }
+
+        return $this->submitResponseLegacy($request, $survey);
+    }
+
+    /**
+     * Fluxo v15.0 (Phase 69 Plan 03) — validacao dinamica derivada do template
+     * snapshot associado ao survey + gravacao 1 NpsResponseAnswer por pergunta
+     * respondida com snapshot congelado + guard QueryException 23000.
+     *
+     * Fonte de verdade das notas migra para `nps_response_answers.option_peso_snapshot`
+     * — as colunas legacy `score_estrategista/analista/empresa` de NpsResponse
+     * ficam NULL neste fluxo (Phase 68 Plan 01 tornou nullable justamente pra isso).
+     * `NpsScoreCalculator::compute()` (Phase 69 Plan 02) le sempre das answers.
+     */
+    private function submitResponseV15(Request $request, NpsSurvey $survey)
+    {
+        // Eager load do template snapshot: perguntas + opcoes ordenadas.
+        // Fonte da validacao dinamica (Rule::in) e do snapshot per-row.
+        $survey->load('template.questions.options');
+
+        if (!$survey->template) {
+            // Consistencia quebrada: template_id != null mas relacionamento vazio
+            // (FK apontando pra template deletado com nullOnDelete NAO deveria
+            // acontecer porque nesse caso o proprio template_id ja teria virado
+            // NULL — mas defesa em profundidade). Fallback 422 claro.
+            return response()->json(['error' => 'Template do NPS nao encontrado.'], 422);
+        }
+
+        // ─── Constroi rules dinamicamente do template ────────────────────────
+        // Cada pergunta gera 1 regra em answers.<qid>:
+        //   - obrigatoria=true  -> required
+        //   - obrigatoria=false -> nullable
+        //   - Rule::in(<option_ids da question>) barra option_id de outro template
+        $rules = [
+            'respondent_name' => 'nullable|string|max:255',
+            'comment'         => 'nullable|string|max:2000',
+            'answers'         => 'nullable|array',
+        ];
+
+        $questionsById     = [];
+        $optionsByQuestion = [];
+
+        foreach ($survey->template->questions as $q) {
+            $questionsById[$q->id]     = $q;
+            $optionsByQuestion[$q->id] = $q->options->keyBy('id');
+
+            $optionIds = $q->options->pluck('id')->all();
+            $req       = $q->obrigatoria ? 'required' : 'nullable';
+
+            $rules["answers.{$q->id}"] = [$req, 'integer', Rule::in($optionIds)];
+        }
+
+        $validated = $request->validate($rules);
+
+        // ─── Persiste dentro de transacao — inclui update status='completed'
+        // que pode disparar QueryException 23000 se o dedup unique parcial
+        // (Plan 68-04) detectar duplicata (company_id, month_reference, template_id).
+        try {
+            DB::transaction(function () use ($survey, $validated, $questionsById, $optionsByQuestion) {
+                // NpsResponse SEM score_* legados — fonte de verdade v15.0 e
+                // nps_response_answers. Colunas legacy nullable desde Phase 68 Plan 01.
+                $response = NpsResponse::create([
+                    'survey_id'          => $survey->id,
+                    'respondent_name'    => $validated['respondent_name'] ?? null,
+                    'score_estrategista' => null,
+                    'score_analista'     => null,
+                    'score_empresa'      => null,
+                    'comment'            => $validated['comment'] ?? null,
+                ]);
+
+                // 1 NpsResponseAnswer por pergunta respondida — snapshot congelado.
+                foreach (($validated['answers'] ?? []) as $qid => $optionId) {
+                    if ($optionId === null || $optionId === '') {
+                        continue; // pergunta opcional sem resposta
+                    }
+
+                    // Defensivo: Rule::in ja barrou tampering; se por race chegou
+                    // aqui com id fora do map, pula silenciosamente.
+                    $question = $questionsById[$qid] ?? null;
+                    $option   = $optionsByQuestion[$qid][$optionId] ?? null;
+                    if (!$question || !$option) {
+                        continue;
+                    }
+
+                    NpsResponseAnswer::create([
+                        'response_id'                => $response->id,
+                        'template_question_id'       => $question->id,
+                        'template_option_id'         => $option->id,
+                        'question_texto_snapshot'    => $question->texto,
+                        'question_dimensao_snapshot' => $question->dimensao,
+                        'option_label_snapshot'      => $option->label,
+                        'option_peso_snapshot'       => $option->peso,
+                        'comentario'                 => null,
+                    ]);
+                }
+
+                // Marca survey como completed — pode disparar 23000 aqui pelo
+                // partial unique index de dedup mensal (Plan 68-04).
+                $survey->update([
+                    'status'       => 'completed',
+                    'completed_at' => now(),
+                ]);
+            });
+        } catch (QueryException $e) {
+            if ((string) $e->getCode() === '23000') {
+                // Phase 68 Plan 04: dedup unique parcial
+                // (company_id, month_reference, template_id) bloqueou 2a
+                // completacao no mesmo mes com o mesmo template. UX: renderiza
+                // a mesma tela ja usada pelo GET quando survey.status=completed.
+                return Inertia::render('Nps/AlreadyCompleted');
+            }
+            throw $e;
+        }
+
+        return Inertia::render('Nps/ThankYou');
+    }
+
+    /**
+     * Fluxo legacy Phase 31/33 preservado 100% — usado quando o survey nao
+     * tem template_id (rows criadas antes da Phase 69 seed retro do Plan 68-03,
+     * ou fluxos que ainda nao migraram). Coexiste ate Phase 73.
+     *
+     * Comportamento identico ao NpsController::submitResponse pre-Phase 69:
+     *   - Rules hardcoded: score_estrategista/analista/empresa 1..5
+     *   - Perguntas customizadas Phase 33 (NpsPerguntaCustomizada) ativas
+     *     geram rules dinamicas em respostas_extras.<pid> por tipo
+     *   - Persiste NpsResponse com scores legados + NpsRespostaCustomizada
+     *     por pergunta extra respondida
+     */
+    private function submitResponseLegacy(Request $request, NpsSurvey $survey)
+    {
         // ─── Phase 33 D-07 — validacao dinamica de perguntas customizadas ────
         // Carrega TODAS as perguntas ativas no momento da submissao para montar
         // as rules dinamicamente conforme tipo (D-02). Perguntas inativas nao
