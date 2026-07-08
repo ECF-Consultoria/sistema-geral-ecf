@@ -998,8 +998,8 @@ export default function CompanyShow({
                         ) : (
                             <div className="space-y-2">
                                 {completedNps.slice(0, 8).map(s => {
-                                    // Phase 31 (Plan 05) — score_empresa (1-5) substitui score_overall (0-10).
-                                    // Mapeamento de cor para a nova escala: 5=emerald, 4=ecf-yellow, 1-3=red.
+                                    // Phase 73 Plan 03 (SC#2) — comentário legado removido. Mapeamento
+                                    // de cor da escala 1-5: 5=emerald, 4=ecf-yellow, 1-3=red.
                                     const score = s.response?.score_empresa;
                                     const scoreColor = score >= 5 ? 'text-emerald-400' : score >= 4 ? 'text-ecf-yellow' : 'text-red-400';
                                     return (

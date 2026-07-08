@@ -48,20 +48,16 @@ const statusClasse = {
     critico:  { classes: 'bg-rose-500/15 border-rose-500/30 text-rose-300',           label: 'Crítico' },
 };
 
-// Classificação da nota traduzida pra linguagem simples (UAT 2026-07-07:
-// termo "Detrator" era jargão NPS confuso; regra geral do sistema é evitar
-// jargão sem explicação em qualquer área). Mapeia as chaves internas do
-// backend (Promotor/Neutro/Detrator) pro rótulo user-facing simples.
-const npsRotulo = {
-    Promotor: 'Positivo',
-    Neutro:   'Neutro',
-    Detrator: 'Insatisfeito',
-};
-const npsClasse = {
-    Promotor: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
-    Neutro:   'bg-amber-500/15 border-amber-500/30 text-amber-300',
-    Detrator: 'bg-rose-500/15 border-rose-500/30 text-rose-300',
-};
+// Phase 73 Plan 03 (SC#1) — sem classificação legada de 3 buckets (herança do
+// NPS 0-10 clássico). Backend (Plan 73-01) removeu o campo `classe` do payload
+// `nps.respostas[]` e passou a enviar `nota` como float 2 casas (escala v15 1-5).
+// Cor por threshold direto: >=4 positiva (verde), <=3 negativa (vermelho), null cinza.
+function corPorNota(nota) {
+    if (nota == null) return 'bg-white/[0.03] border-white/[0.08] text-white/60';
+    return nota >= 4
+        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300'
+        : 'bg-rose-500/15 border-rose-500/30 text-rose-300';
+}
 
 const iconeMeta = { dollar: DollarSign, check: CheckCircle2, trend: TrendingUp };
 
@@ -358,21 +354,17 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                             <div className="p-4 space-y-2.5">
                                 {nps.respostas.map((r, i) => (
                                     <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
+                                        {/* Phase 73 Plan 03 — badge de nota com cor por threshold (sem 'classe' textual) */}
                                         <span className={cn(
                                             'w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm border',
-                                            r.classe === 'Promotor' && 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
-                                            r.classe === 'Neutro'   && 'bg-amber-500/15 border-amber-500/30 text-amber-300',
-                                            r.classe === 'Detrator' && 'bg-rose-500/15 border-rose-500/30 text-rose-300',
+                                            corPorNota(r.nota),
                                         )}>
-                                            {r.nota}
+                                            {r.nota != null ? Number(r.nota).toFixed(1) : '—'}
                                         </span>
                                         <div className="flex-1 min-w-0">
                                             <div className="text-white text-sm font-semibold truncate">{r.empresa}</div>
                                             <div className="text-white/40 text-[11px] mt-0.5">{r.quando}</div>
                                         </div>
-                                        <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap', npsClasse[r.classe])}>
-                                            {npsRotulo[r.classe] ?? r.classe}
-                                        </span>
                                     </div>
                                 ))}
                             </div>
