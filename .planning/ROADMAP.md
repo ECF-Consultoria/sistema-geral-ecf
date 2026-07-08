@@ -35,7 +35,12 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
   3. Seed "NPS Padrão" existe com `is_default=true`, cobre as 3 perguntas legadas (estrategista/analista/empresa) escala 1-5 e retro-associa **100%** dos `nps_surveys` existentes via `template_id` — nenhuma survey fica órfã
   4. `nps_response_answers` armazena snapshot congelado (`question_texto_snapshot`, `question_dimensao_snapshot`, `option_label_snapshot`, `option_peso_snapshot`) — mudanças futuras no template não alteram histórico gravado
   5. Dashboards existentes (NPS mensal, `Performance/Dashboard.jsx`) continuam renderizando dados legados sem quebra visual pós-migration
-**Plans**: TBD
+**Plans**: 5 plans em 4 waves — 68-01 (Wave 1: 3 migrations schema) → 68-02 (Wave 2: 4 Models + 4 Factories) + 68-04 (Wave 2: migration dedup_key virtual + unique parcial split por driver) → 68-03 (Wave 3: seed NPS Padrão + retro-associação idempotente) → 68-05 (Wave 4: 3 arquivos de teste Feature — schema, seed, backward-compat)
+- [ ] 68-01-PLAN.md — 3 migrations criando 5 tabelas novas + alter template_id em nps_surveys + score_* nullable em nps_responses
+- [ ] 68-02-PLAN.md — 4 Models Eloquent novos (NpsTemplate/Question/Option/Answer) + updates em NpsSurvey/NpsResponse + 4 factories
+- [ ] 68-03-PLAN.md — migration de seed template NPS Padrão + retro-associação 100% das surveys legadas via UPDATE transacional idempotente
+- [ ] 68-04-PLAN.md — migration dedup_key virtual + unique index parcial split por driver (MySQL virtual column, SQLite partial index)
+- [ ] 68-05-PLAN.md — 3 testes Feature (NpsSchemaTest 8+, NpsSeedRetroactiveTest 6+, NpsBackwardCompatTest 5+) validando SC1-SC5 do ROADMAP
 
 ### Phase 69: Backend — regras de negócio, cálculo e dispatch
 **Goal**: Regras de negócio implementadas em services + validação server-side + dedup mensal garantido no DB + dispatch mensal usando template correto por empresa.
@@ -105,7 +110,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 68. Schema, modelos e seed retroativo | 0/? | Not started | — |
+| 68. Schema, modelos e seed retroativo | 0/5 | Ready to execute | — |
 | 69. Backend regras de negócio | 0/? | Not started | — |
 | 70. UI de Configuração | 0/? | Not started | — |
 | 71. Formulário público | 0/? | Not started | — |
