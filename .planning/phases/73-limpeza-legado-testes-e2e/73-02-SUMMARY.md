@@ -56,8 +56,8 @@ REQ NPS-F-03 100% coberto no backend. SC#3 do Phase 73 atendido: `metric='nps'` 
 
 | Task | Objetivo | Commit | Arquivo |
 |------|----------|--------|---------|
-| T1   | Separar 'nps' do agrupamento nulo + adicionar método `computeNps(int, int, int): ?float` com dual-path v15/legacy | `41be6f2` | app/Jobs/CalculateGoalResults.php |
-| T2   | Verificação: `php -l` verde + suite baseline delta zero | `41be6f2` (mesmo commit) | — |
+| T1   | Separar 'nps' do agrupamento nulo + adicionar método `computeNps(int, int, int): ?float` com dual-path v15/legacy | `a607262` | app/Jobs/CalculateGoalResults.php |
+| T2   | Verificação: `php -l` verde + suite baseline delta zero | `a607262` (mesmo commit) | — |
 
 ## Mudanças Detalhadas
 
@@ -248,4 +248,4 @@ Verificação estrutural:
 - FOUND: `php -l` verde
 - FOUND: suite baseline 146 verdes + 1 pré-existente delta zero
 
-Commit hash: `41be6f2`
+Commit hash: `a607262`
