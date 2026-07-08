@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
+// Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS na carteira
+import NpsPendingWidget from '@/Components/Nps/NpsPendingWidget';
 
 /**
  * Dashboard Performance da Carteira — analistas/estrategistas.
@@ -178,7 +180,9 @@ function GrowthBackground() {
 // Página principal
 // ═══════════════════════════════════════════════════════════════
 
-export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, empresas }) {
+export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, empresas, nps_pendentes = [] }) {
+    // Phase 72 Plan 03 v15.0 — Guard defensivo pra prop nps_pendentes (Plan 72-02 injection)
+    const npsPendentesList = nps_pendentes ?? [];
     const [busca, setBusca] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [colunas, setColunas] = useState({
@@ -431,6 +435,13 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                         )}
                     </Link>
                 </div>
+
+                {/* ═══ NPS PENDENTES (Phase 72 Plan 03 v15.0) ═══════════════════
+                    Widget novo — mostra empresas da carteira que ainda não responderam
+                    o NPS deste mês. Complementa o widget NPS existente (que mostra as
+                    últimas respostas) — este mostra quem está faltando. Empty state
+                    tratado dentro do próprio widget. */}
+                <NpsPendingWidget pendentes={npsPendentesList} />
 
                 {/* ═══ TABELA EMPRESAS EM CARTEIRA ═══════════════════ */}
                 <div className="bg-ecf-card border border-white/[0.08] rounded-xl overflow-hidden">

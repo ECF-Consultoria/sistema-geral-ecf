@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
+// Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS no mês corrente
+import NpsPendingWidget from '@/Components/Nps/NpsPendingWidget';
 
 
 const PERIOD_OPTIONS = [
@@ -109,6 +111,9 @@ export default function AdminDashboard({
     companies_performance = [],
     ranking = [],
     adman_last_sync = null,
+    // Phase 72 Plan 03 v15.0 — lista de empresas pendentes de NPS este mês
+    // (injetada pelo DashboardController via NpsPendingService::forCarteira)
+    nps_pendentes = [],
 }) {
     const [tvMode, setTvMode] = useState(false);
 
@@ -553,6 +558,11 @@ export default function AdminDashboard({
                     legado usava avg_nps como métrica única; substituído pelo
                     "Desempenho da equipe" (BarChart por score acima). Cobertura
                     completa do ranking continua disponível em /performance. */}
+
+                {/* Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS este mês.
+                    Recebe lista via prop nps_pendentes (Plan 72-02 injection). Empty state
+                    tratado dentro do próprio widget — sempre é seguro renderizar. */}
+                <NpsPendingWidget pendentes={nps_pendentes ?? []} />
 
             </div>
         </AppLayout>

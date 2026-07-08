@@ -5,6 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { formatCurrency, formatPercent } from '@/lib/utils';
 import { router } from '@inertiajs/react';
 import { BarChart2, Star, AlertTriangle, DollarSign, Users } from 'lucide-react';
+// Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS na carteira do analista/estrategista
+import NpsPendingWidget from '@/Components/Nps/NpsPendingWidget';
 
 const PERIOD_OPTIONS = [
     { value: '1', label: 'Último dia' },
@@ -13,7 +15,9 @@ const PERIOD_OPTIONS = [
     { value: '180', label: 'Últimos 6 meses' },
 ];
 
-export default function UserDashboard({ stats, period, companies, my_surveys, my_ppas, sugadores_pendentes_carteira = 0 }) {
+export default function UserDashboard({ stats, period, companies, my_surveys, my_ppas, sugadores_pendentes_carteira = 0, nps_pendentes = [] }) {
+    // Phase 72 Plan 03 v15.0 — Guard defensivo pra prop nps_pendentes (Plan 72-02 injection)
+    const npsPendentesList = nps_pendentes ?? [];
     return (
         <AppLayout title="Dashboard">
             <div className="space-y-6">
@@ -131,6 +135,11 @@ export default function UserDashboard({ stats, period, companies, my_surveys, my
                         </CardContent>
                     </Card>
                 )}
+
+                {/* Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS este mês.
+                    Escopo restrito à carteira do usuário (analista/estrategista) via
+                    NpsPendingService::forCarteira. Empty state tratado dentro do widget. */}
+                <NpsPendingWidget pendentes={npsPendentesList} />
             </div>
         </AppLayout>
     );

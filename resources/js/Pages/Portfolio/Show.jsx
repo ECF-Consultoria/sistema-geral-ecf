@@ -14,6 +14,8 @@ import { SourceBadge } from '@/Components/ui/source-badge';
 import SparklineCrescimento from '@/Components/Carteira/SparklineCrescimento';
 import NpsHistoryWidget from '@/Components/Carteira/NpsHistoryWidget';
 import BlocoFuncionario from '@/Components/Carteira/BlocoFuncionario';
+// Phase 72 Plan 03 v15.0 — Badge NPS pendente na listagem de empresas da carteira
+import NpsPendingBadge from '@/Components/Nps/NpsPendingBadge';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip,
     CartesianGrid, Legend,
@@ -436,7 +438,14 @@ export default function PortfolioShow({
     ppa_counters = null,
     // Histórico NPS mensal do profissional (Plan 48-01) — array de até 12 meses
     nps_history = [],
+    // Phase 72 Plan 03 v15.0 — Lista de empresas pendentes de NPS no mês corrente
+    // (injetada por PortfolioController via NpsPendingService::forCarteira). Shape:
+    //   [{ company_id, name, template_id, template_nome, month_reference, dias_atraso }, ...]
+    nps_pendentes = [],
 }) {
+    // Guard defensivo — se backend legado não injetar, seguir com lista vazia
+    const npsPendentesList = nps_pendentes ?? [];
+
     const isAdmin = portfolio_user.role === 'admin'
         || (typeof window !== 'undefined' && window.location.pathname.includes('/admin/'));
 
@@ -792,6 +801,8 @@ export default function PortfolioShow({
                                                 >
                                                     {c.name}
                                                 </Link>
+                                                {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente (variant compact no mobile pra economizar espaço) */}
+                                                <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="compact" />
                                                 {/* Badge de origem multi-fonte (Phase 61) — guarda defensiva:
                                                     quando flag UNIFIED_METRICS_ENABLED=OFF, c.source é undefined
                                                     e o badge não renderiza (backward compat total). */}
@@ -879,6 +890,8 @@ export default function PortfolioShow({
                                                         >
                                                             {c.name}
                                                         </Link>
+                                                        {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente (variant inline pra desktop) */}
+                                                        <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="inline" />
                                                         {/* Badge de origem multi-fonte (Phase 61) — guarda defensiva:
                                                             c.source pode ser undefined quando flag OFF. */}
                                                         {c.source && <SourceBadge variant={c.source} />}

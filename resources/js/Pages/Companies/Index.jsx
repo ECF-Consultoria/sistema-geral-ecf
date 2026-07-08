@@ -13,6 +13,8 @@ import { useState } from 'react';
 import { Pencil, Eye, Trash2, Building2, ShoppingCart, Copy, Check, RotateCcw, Tag, Briefcase } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+// Phase 72 Plan 03 v15.0 — Badge NPS pendente na coluna Empresa da listagem/pendências
+import NpsPendingBadge from '@/Components/Nps/NpsPendingBadge';
 // Phase 37 Plan 37-06 (REQ-37-07) — GruposManager removido daqui; aba Grupos
 // migrou para /comercial/empresas/listagem (Plan 37-05). Briefcase removido
 // junto pois o botao "Servico" inline tambem nao aparece mais (pendencia
@@ -130,7 +132,9 @@ function GrupoBadge({ grupo }) {
     );
 }
 
-export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {} }) {
+export default function Companies({ companies, users, estrategistas = [], analistas = [], grupos = [], servico_counts = [], servicos_disponiveis = [], filters = {}, nps_pendentes = [] }) {
+    // Phase 72 Plan 03 v15.0 — Guard defensivo pra prop `nps_pendentes` (Plan 72-02 injection)
+    const npsPendentesList = nps_pendentes ?? [];
     // Phase 34 Plan 34-03 — admin check para botao "Marcar como visto" (D-06)
     const { auth } = usePage().props;
     const isAdmin = auth?.user?.role === 'admin';
@@ -434,6 +438,8 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                 <TableCell className="font-medium">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         {c.name}
+                                                        {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente (compact pra tabela) */}
+                                                        <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="compact" />
                                                         <MlStatusBadge status={c.ml_token_status} />
                                                         <CustIdInvalidoBadge status={c.cust_id_status} />
                                                     </div>
@@ -580,6 +586,8 @@ export default function Companies({ companies, users, estrategistas = [], analis
                                                 <TableCell className="font-medium">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         {c.name}
+                                                        {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente na aba Pendências */}
+                                                        <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="compact" />
                                                         {c.grupo && <GrupoBadge grupo={c.grupo} />}
                                                     </div>
                                                 </TableCell>
