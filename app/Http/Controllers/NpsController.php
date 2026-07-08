@@ -387,15 +387,22 @@ class NpsController extends Controller
         // (Phase 71-02 mapeia ID → peso no client apenas para UI).
         $templatePayload = null;
         if ($survey->template_id !== null && $survey->template) {
+            // Bugfix 2026-07-08 — placeholders {nome_estrategista}/{nome_analista}/
+            // {nome_empresa} nos textos das perguntas do template precisam ser
+            // resolvidos antes de mandar pro front. O seed "NPS Padrão" grava textos
+            // com placeholders literais para admitir renomeação de estrategista/
+            // analista por empresa (research §1 seed 100004). $varsPagina já contém
+            // os nomes reais (linha 348+); reusar mesmo pattern do NpsTextRenderer
+            // aplicado aos textosRender legados.
             $templatePayload = [
                 'id'        => $survey->template->id,
                 'nome'      => $survey->template->nome,
                 'descricao' => $survey->template->descricao,
-                'perguntas' => $survey->template->questions->map(function ($q) {
+                'perguntas' => $survey->template->questions->map(function ($q) use ($varsPagina) {
                     return [
                         'id'          => $q->id,
                         'ordem'       => $q->ordem,
-                        'texto'       => $q->texto,
+                        'texto'       => NpsTextRenderer::render($q->texto, $varsPagina),
                         'tipo'        => $q->tipo,
                         'dimensao'    => $q->dimensao,
                         'obrigatoria' => $q->obrigatoria,

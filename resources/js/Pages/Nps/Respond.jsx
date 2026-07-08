@@ -4,6 +4,7 @@ import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Label } from '@/Components/ui/label';
 import { Textarea } from '@/Components/ui/textarea';
+import LogoEcf from '@/Components/LogoEcf';
 import PreviewFormulario from '@/Components/Nps/Config/PreviewFormulario';
 import RespondLegado from './RespondLegado';
 
@@ -86,6 +87,13 @@ function RespondV15({ survey, template }) {
             <Head title="Pesquisa de satisfação — ECF" />
             <div className="min-h-screen bg-ecf-bg text-white py-8 px-4">
                 <div className="max-w-md mx-auto">
+                    {/* Bugfix 2026-07-08 — LogoEcf oficial no topo (paridade com
+                        RespondLegado.jsx da Phase 33). Sem logo, cliente perdia
+                        identidade visual da ECF ao abrir a pesquisa. */}
+                    <div className="flex justify-center mb-4">
+                        <LogoEcf theme="dark" />
+                    </div>
+
                     {/* Header — apenas nome da empresa e título neutro.
                         Zero jargão técnico visível ao cliente. */}
                     <header className="mb-6 text-center space-y-1">
