@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: Phase 73 Plan 73-01 COMPLETO — backend cleanup Promotor/Neutro/Detrator + $scoreField → NpsScoreCalculator dual-path; grep zero em app/; 146 verdes + 1 pré-existente Phase33 (delta zero)
+status: executing
 stopped_at: Phase 74 context gathered
-last_updated: "2026-07-09T16:06:16.680Z"
-last_activity: "2026-07-08 — Phase 73 Plan 73-01 COMPLETO — refactor cirurgico em PerformanceController.php + DashboardController.php (buckets positivas/negativas + helper privado avgNotaDimensao). REQ NPS-F-01 backend fechado; SC#1 backend atendido. Commits 9a00de6 + 623336a."
+last_updated: "2026-07-09T16:36:35.246Z"
+last_activity: 2026-07-09 -- Phase 74 planning complete
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 6
-  total_plans: 28
+  total_plans: 38
   completed_plans: 34
-  percent: 100
+  percent: 86
 ---
 
 # Project State
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 Phase: Phase 73 — Limpeza legado + testes E2E (EM ANDAMENTO — 1/4 plans concluídos)
 Plan: 73-01 COMPLETO — Wave 1/3 fechada; Plan 73-02 e 73-03 desbloqueados
-Status: Phase 73 Plan 73-01 COMPLETO — backend cleanup Promotor/Neutro/Detrator + $scoreField → NpsScoreCalculator dual-path; grep zero em app/; 146 verdes + 1 pré-existente Phase33 (delta zero)
-Last activity: 2026-07-08 — Phase 73 Plan 73-01 COMPLETO — refactor cirurgico em PerformanceController.php + DashboardController.php (buckets positivas/negativas + helper privado avgNotaDimensao). REQ NPS-F-01 backend fechado; SC#1 backend atendido. Commits 9a00de6 + 623336a.
+Status: Ready to execute
+Last activity: 2026-07-09 -- Phase 74 planning complete
 
 ## Performance Metrics
 
