@@ -154,14 +154,32 @@ class NpsPendingService
      */
     public function forCarteira(User $user, ?Carbon $mesReferencia = null): array
     {
-        $mes = $mesReferencia?->copy()->startOfMonth() ?? now()->startOfMonth();
-
         // Admin vê tudo; não-admin vê apenas empresas do pivot company_users
         // (padrão consolidado do projeto — mesmo usado em SugadorController,
         // NpsController::index, etc.).
         $companies = $user->isAdmin()
             ? Company::query()->orderBy('name')->get(['id', 'name'])
             : $user->companies()->orderBy('name')->get(['companies.id', 'name']);
+
+        return $this->forCompanies($companies, $mesReferencia);
+    }
+
+    /**
+     * Versão que aceita uma coleção pré-filtrada de empresas — evita re-consultar
+     * `Company::query()->get()` quando o caller já tem o universo relevante
+     * carregado (ex.: `DashboardController::adminDashboard` já filtra por
+     * Performance + sem MlbEmpresa antes de chegar aqui).
+     *
+     * Reduz o custo de memória do endpoint admin (~350 companies caem para ~168
+     * quando chamado direto por Dashboard/Admin) e mantém `forCarteira` como
+     * interface pública consumida pelos badges.
+     *
+     * @param  \Illuminate\Support\Collection<int, Company>  $companies
+     * @return array<int, array{company_id: int, name: string, template_id: int, template_nome: string, month_reference: string, dias_atraso: int}>
+     */
+    public function forCompanies($companies, ?Carbon $mesReferencia = null): array
+    {
+        $mes = $mesReferencia?->copy()->startOfMonth() ?? now()->startOfMonth();
 
         $ehMesCorrente = $mes->equalTo(now()->startOfMonth());
         $diasAtraso    = $ehMesCorrente ? max(0, now()->day - $this->diaCobranca()) : 0;

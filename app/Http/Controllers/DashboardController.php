@@ -225,6 +225,15 @@ class DashboardController extends Controller
 
     private function adminDashboard(Request $request, Carbon $since, string $period)
     {
+        // v15.5 hotfix 2026-07-09 — endpoint agregador pesado (168 empresas
+        // Performance + metrics + NPS + meetings + score da equipe). Após Phase
+        // 72/73 (nps_pendentes + calculadora dual-path), o teto default 128 MB
+        // do PHP-FPM foi ultrapassado no VPS. Elevar para 512 MB apenas neste
+        // método é o padrão pragmático para endpoints admin heavy — precisa de
+        // otimização real (caching + queries batch por template) mas isso
+        // desbloqueia enquanto planejamos.
+        ini_set('memory_limit', '512M');
+
         $companyFilter = $request->get('company_id');
         $consultorFilter = $request->get('consultor_id');
         $estrategistaFilter = $request->get('estrategista_id') ?? $request->get('mentor_id'); // back-compat com chamadas antigas
