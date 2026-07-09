@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: Phase 73 COMPLETA — Milestone v15.0 ENCERRADA (exceto 68-05 isolado). 154/154 tests NPS verdes + 1 pré-existente Phase33 (baseline 146 + Phase73 8). Zero regressão.
-stopped_at: Completed 73-04-PLAN.md
-last_updated: "2026-07-08T21:30:00Z"
-last_activity: 2026-07-08 — Phase 73 COMPLETA — 4 waves entregues: (1) 73-01 backend cleanup Promotor/Neutro/Detrator + $scoreField → NpsScoreCalculator dual-path; (2a) 73-02 CalculateGoalResults metric='nps' real via NpsScoreCalculator dual-path; (2b) 73-03 frontend cleanup Performance/Dashboard.jsx cor por threshold + Companies/Show.jsx refs obsoletas + Admin.jsx shape positivas/negativas; (3) 73-04 Suite E2E Phase73 (5 tests NpsV15E2ETest linear + 3 tests NpsGoalMetricNpsTest via reflection) — 8 tests / 83 assertions. grep Promotor|Neutro|Detrator em app/+resources/js/ = 0; grep score_overall|score_consultant|score_mentor = 0. Milestone v15.0 (NPS Templates) ENCERRADA — 68-05 isolado remanescente.
+status: Phase 73 Plan 73-01 COMPLETO — backend cleanup Promotor/Neutro/Detrator + $scoreField → NpsScoreCalculator dual-path; grep zero em app/; 146 verdes + 1 pré-existente Phase33 (delta zero)
+stopped_at: Phase 74 context gathered
+last_updated: "2026-07-09T16:06:16.680Z"
+last_activity: "2026-07-08 — Phase 73 Plan 73-01 COMPLETO — refactor cirurgico em PerformanceController.php + DashboardController.php (buckets positivas/negativas + helper privado avgNotaDimensao). REQ NPS-F-01 backend fechado; SC#1 backend atendido. Commits 9a00de6 + 623336a."
 progress:
   total_phases: 6
-  completed_phases: 5
+  completed_phases: 6
   total_plans: 28
-  completed_plans: 27
-  percent: 96
+  completed_plans: 34
+  percent: 100
 ---
 
 # Project State
@@ -578,8 +578,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-07T14:41:21.537Z
-Stopped at: Completed 59-03-PLAN.md
+Last session: 2026-07-09T16:06:16.623Z
+Stopped at: Phase 74 context gathered
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
 
