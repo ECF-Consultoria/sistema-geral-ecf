@@ -172,7 +172,10 @@ class RenderPortfolioTest extends TestCase
     {
         $user = $this->criarAnalista();
 
-        $response = $this->actingAs($user)->get(route('portfolio.own'));
+        // Ajuste 2026-07-09 — /portfolio (portfolio.own) do profissional agora
+        // renderiza Portfolio/AdminCarteira (view enxuta). Portfolio/Show.jsx
+        // legado só é servido via portfolio.show para auto-view (mesmo id).
+        $response = $this->actingAs($user)->get(route('portfolio.show', $user));
         $response->assertOk();
 
         // Extrai props do Inertia via dados da view (page.props)
@@ -195,7 +198,7 @@ class RenderPortfolioTest extends TestCase
         $this->criarEmpresaParaUser($user, 'consultor');
 
         $this->actingAs($user)
-            ->get(route('portfolio.own'))
+            ->get(route('portfolio.show', $user))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')
@@ -217,7 +220,7 @@ class RenderPortfolioTest extends TestCase
         $this->criarGoalRevenue($empresa->id, 100000.00);
 
         $this->actingAs($user)
-            ->get(route('portfolio.own'))
+            ->get(route('portfolio.show', $user))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')
@@ -243,7 +246,7 @@ class RenderPortfolioTest extends TestCase
         $this->criarSugador($empresa->id, 'ignorado');
 
         $this->actingAs($user)
-            ->get(route('portfolio.own'))
+            ->get(route('portfolio.show', $user))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')
@@ -286,7 +289,7 @@ class RenderPortfolioTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get(route('portfolio.own'))
+            ->get(route('portfolio.show', $user))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')
@@ -324,7 +327,7 @@ class RenderPortfolioTest extends TestCase
         ]);
 
         $this->actingAs($user)
-            ->get(route('portfolio.own'))
+            ->get(route('portfolio.show', $user))
             ->assertOk()
             ->assertInertia(fn (Assert $page) => $page
                 ->component('Portfolio/Show')

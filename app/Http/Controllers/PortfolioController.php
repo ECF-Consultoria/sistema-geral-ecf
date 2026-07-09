@@ -89,14 +89,19 @@ class PortfolioController extends Controller
 
         // Admin/líder abrindo OUTRO profissional → view enxuta dedicada.
         if ($atual->id !== $user->id) {
-            return $this->renderAdminCarteira($request, $user);
+            return $this->renderCarteiraProfissional($request, $user);
         }
 
         return $this->renderPortfolio($request, $user);
     }
 
     /**
-     * Página enxuta para admin/líder visualizarem a carteira de um profissional.
+     * Página enxuta da carteira de um profissional (analista/estrategista).
+     *
+     * Usada por 2 fluxos:
+     *  - Admin/líder abrindo carteira de OUTRO profissional em /admin/users/{id}/portfolio
+     *  - Profissional abrindo a PRÓPRIA carteira em /portfolio (ajuste 2026-07-09 v5 —
+     *    antes ia pro Portfolio/Show.jsx legado que estava com tela preta)
      *
      * Requisitos explícitos (2026-07-09):
      *  - Total de faturamento somado de todas empresas em carteira
@@ -106,7 +111,7 @@ class PortfolioController extends Controller
      *
      * Comparação SEMPRE dia-a-dia acumulada (janela justa mesmo em mês em curso).
      */
-    private function renderAdminCarteira(Request $request, User $user): \Inertia\Response
+    private function renderCarteiraProfissional(Request $request, User $user): \Inertia\Response
     {
         // Comparação sempre acumulada dia-a-dia: dia 1..hoje do mês corrente vs
         // dia 1..mesmo dia do mês anterior. Evita queda artificial no início do
@@ -132,15 +137,22 @@ class PortfolioController extends Controller
 
         // Metrics agregados por empresa nas duas janelas (Adman é canônico
         // pra margem — ML não expõe custo unitário).
+        //
+        // Ajuste 2026-07-09 (zero-margin): SUM(contribution_margin) devolve
+        // NULL quando não há linhas (empresa sem sync Adman no período) e
+        // devolve 0 quando as linhas existem mas o campo está null/0 em todas.
+        // O cast para float trata ambos como 0.0 — indistinguível na UI.
+        // Fix: contar quantas linhas TÊM contribution_margin não-null via
+        // `margem_dias` — se 0, tratamos como "sem dados" (null na UI, "—").
         $atualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
             ->whereBetween('reference_date', [$dateFrom, $dateTo])
-            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem')
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
         $anteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
             ->whereBetween('reference_date', [$dateFromPrev, $dateToPrev])
-            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem')
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
@@ -168,30 +180,59 @@ class PortfolioController extends Controller
                 $revenue = $rowAtual ? (float) $rowAtual->rev : null;
             }
 
-            $margemAtual    = (float) ($rowAtual?->margem ?? 0);
-            $margemAnterior = (float) ($rowAnterior?->margem ?? 0);
-            $margemVarPct   = $margemAnterior > 0
-                ? round((($margemAtual - $margemAnterior) / $margemAnterior) * 100, 2)
-                : null;
+            // Margem: distingue "sem dados Adman" (null) de "zero real"
+            // (empresa cadastrada mas margem calculada = 0). margem_dias > 0
+            // significa que houve pelo menos 1 dia com contribution_margin
+            // reportado pela Adman; sem isso, tratamos como null (UI mostra "—"
+            // com badge "sem dados").
+            $temMargemAtual    = $rowAtual !== null && (int) $rowAtual->margem_dias > 0;
+            $temMargemAnterior = $rowAnterior !== null && (int) $rowAnterior->margem_dias > 0;
+            $margemAtual       = $temMargemAtual    ? (float) $rowAtual->margem    : null;
+            $margemAnterior    = $temMargemAnterior ? (float) $rowAnterior->margem : null;
+
+            // Só calcula variação quando temos dados válidos EM AMBAS as janelas
+            // E a baseline anterior é > 0. Caso contrário mostra "—" (evita o
+            // artificial -100% quando a empresa acabou de ativar no mês atual).
+            $margemVarPct = null;
+            if ($margemAtual !== null && $margemAnterior !== null && $margemAnterior > 0) {
+                $margemVarPct = round((($margemAtual - $margemAnterior) / $margemAnterior) * 100, 2);
+            }
+
+            // Motivo pt-BR para tooltip/badge quando margem é null — ajuda o
+            // admin/analista a entender POR QUE algumas empresas aparecem sem
+            // dados de margem (sync não rodou / conexão Adman ausente / etc).
+            $motivoSemMargem = null;
+            if (! $temMargemAtual) {
+                if ($rowAtual === null) {
+                    $motivoSemMargem = 'Sem sync Adman no período';
+                } else {
+                    $motivoSemMargem = 'Adman não reportou margem no período';
+                }
+            }
 
             return [
                 'id'                          => $c->id,
                 'name'                        => $c->name,
                 'faturamento'                 => $revenue !== null ? round($revenue, 2) : null,
-                'margem_contribuicao'         => round($margemAtual, 2),
-                'margem_contribuicao_anterior'=> $margemAnterior > 0 ? round($margemAnterior, 2) : null,
+                'margem_contribuicao'         => $margemAtual !== null ? round($margemAtual, 2) : null,
+                'margem_contribuicao_anterior'=> $margemAnterior !== null ? round($margemAnterior, 2) : null,
                 'margem_variacao_pct'         => $margemVarPct,
+                'motivo_sem_margem'           => $motivoSemMargem,
                 'has_ml_oauth'                => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
             ];
         })->values();
 
-        // Totais consolidados da carteira.
+        // Totais consolidados da carteira — só empresas com dados válidos entram
+        // (nulls filtrados pelo ?? 0 no sum, mas contamos separado pra flag).
         $totalFaturamento    = (float) $empresas->sum('faturamento');
-        $totalMargemAtual    = (float) $empresas->sum('margem_contribuicao');
-        $totalMargemAnterior = (float) $empresas->sum('margem_contribuicao_anterior');
+        $totalMargemAtual    = (float) $empresas->sum(fn ($e) => $e['margem_contribuicao'] ?? 0);
+        $totalMargemAnterior = (float) $empresas->sum(fn ($e) => $e['margem_contribuicao_anterior'] ?? 0);
         $variacaoMargemPct   = $totalMargemAnterior > 0
             ? round((($totalMargemAtual - $totalMargemAnterior) / $totalMargemAnterior) * 100, 2)
             : null;
+
+        // Contadores pra UI expor transparência sobre qualidade dos dados.
+        $empresasSemMargem = (int) $empresas->whereNull('margem_contribuicao')->count();
 
         // Cargo pt-BR pra header (mesmo padrão do resto do módulo).
         $cargoSlug = DB::table('user_setores as us')
@@ -208,12 +249,13 @@ class PortfolioController extends Controller
                 'cargo_label' => $cargoLabel,
             ],
             'resumo' => [
-                'total_empresas'      => $empresas->count(),
-                'empresas_ml_oauth'   => (int) $empresas->where('has_ml_oauth', true)->count(),
-                'total_faturamento'   => round($totalFaturamento, 2),
-                'total_margem_atual'  => round($totalMargemAtual, 2),
+                'total_empresas'        => $empresas->count(),
+                'empresas_ml_oauth'     => (int) $empresas->where('has_ml_oauth', true)->count(),
+                'empresas_sem_margem'   => $empresasSemMargem,
+                'total_faturamento'     => round($totalFaturamento, 2),
+                'total_margem_atual'    => round($totalMargemAtual, 2),
                 'total_margem_anterior' => round($totalMargemAnterior, 2),
-                'variacao_margem_pct' => $variacaoMargemPct,
+                'variacao_margem_pct'   => $variacaoMargemPct,
             ],
             'empresas' => $empresas,
             'periodo' => [
@@ -229,7 +271,13 @@ class PortfolioController extends Controller
     // Aba "Carteira" no sidebar — bifurca por papel (quick 260610-lj6 + 260623):
     //  - admin → visão consolidada de TODOS analistas/estrategistas (cards)
     //  - líder de setor → visão consolidada FILTRADA pelos setores que ele lidera
-    //  - profissional → carteira pessoal (Portfolio/Show)
+    //  - profissional → carteira pessoal enxuta (Portfolio/AdminCarteira)
+    //
+    // Ajuste 2026-07-09 (v5) — profissional agora vê a MESMA página enxuta
+    // que o admin vê pra ele. O Portfolio/Show.jsx legado (1000+ linhas) estava
+    // renderizando tela preta pra estrategista/analista após a migração ao
+    // shape v2. A view nova cobre 100% das necessidades operacionais (total
+    // faturamento, variação margem, listagem com badge ML + variação individual).
     public function own(Request $request)
     {
         $user = $request->user();
@@ -240,7 +288,7 @@ class PortfolioController extends Controller
             $setoresIds = $user->setoresLiderados()->pluck('setores.id')->all();
             return $this->renderCarteirasConsolidadas($request, $setoresIds);
         }
-        return $this->renderPortfolio($request, $user);
+        return $this->renderCarteiraProfissional($request, $user);
     }
 
     /**

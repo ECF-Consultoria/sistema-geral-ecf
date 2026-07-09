@@ -158,7 +158,9 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                 </div>
 
                 {/* ─── KPIs principais ──────────────────────────────────── */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Card "Empresas conectadas ao ML" removido — badge SVG na listagem
+                    já mostra por empresa; card agregado era redundante. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <KpiCard
                         label="Faturamento total da carteira"
                         value={formatCurrencyCompact(resumo?.total_faturamento ?? 0)}
@@ -181,14 +183,30 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                 : resumo.variacao_margem_pct >= 0 ? 'text-emerald-300' : 'text-rose-300'
                         }
                     />
-                    <KpiCard
-                        label="Empresas conectadas ao ML"
-                        value={`${resumo?.empresas_ml_oauth ?? 0} / ${resumo?.total_empresas ?? 0}`}
-                        sub="Com OAuth vendedor ativo"
-                        icon={Building2}
-                        accent="text-white"
-                    />
                 </div>
+
+                {/* Aviso quando há empresas sem dados de margem — transparência sobre
+                    qualidade dos dados. Explica por que algumas linhas mostram "—". */}
+                {(resumo?.empresas_sem_margem ?? 0) > 0 && (
+                    <div className="rounded-xl border border-rose-500/25 bg-rose-500/[0.05] p-4 flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center shrink-0">
+                            <TrendingDown size={16} className="text-rose-300" />
+                        </div>
+                        <div className="text-sm">
+                            <div className="text-rose-200 font-semibold">
+                                {resumo.empresas_sem_margem} empresa{resumo.empresas_sem_margem === 1 ? '' : 's'} sem dados de margem no período
+                            </div>
+                            <div className="text-rose-100/70 text-xs mt-1 leading-relaxed">
+                                Ocorre quando o sync Adman ainda não rodou pra empresa OU quando a Adman
+                                não reportou <code className="bg-white/10 rounded px-1">contribution_margin</code>{' '}
+                                (custo de produto não cadastrado, pedido apenas com custo zero, etc). Essas
+                                empresas mostram <span className="text-white font-mono">—</span> na tabela e
+                                <span className="text-white"> não entram no cálculo</span> da variação de
+                                margem da carteira — evita o falso -100% que poluia a régua de bônus.
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ─── Margem absoluta (contexto adicional) ─────────────── */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -297,7 +315,16 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                                 {c.faturamento !== null ? formatCurrencyCompact(c.faturamento) : '—'}
                                             </td>
                                             <td className="px-3 py-3 text-right text-white/70 tabular-nums">
-                                                {formatCurrencyCompact(c.margem_contribuicao ?? 0)}
+                                                {c.margem_contribuicao !== null && c.margem_contribuicao !== undefined
+                                                    ? formatCurrencyCompact(c.margem_contribuicao)
+                                                    : (
+                                                        <span
+                                                            title={c.motivo_sem_margem ?? 'Sem dados de margem no período'}
+                                                            className="inline-flex items-center gap-1 text-rose-300/80 text-[11px] font-medium cursor-help"
+                                                        >
+                                                            — <span className="text-rose-300/60">?</span>
+                                                        </span>
+                                                    )}
                                             </td>
                                             <td className="px-3 py-3 text-right">
                                                 <VariacaoChip pct={c.margem_variacao_pct} />
