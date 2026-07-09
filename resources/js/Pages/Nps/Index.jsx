@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useForm, usePage, router } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import {
-    Plus, Copy, CheckCircle, AlertTriangle,
+    Plus, Copy, CheckCircle,
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
     Calendar, Star,
@@ -255,98 +255,6 @@ function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, op
                     {options}
                 </SelectContent>
             </Select>
-        </div>
-    );
-}
-
-// ═══ ActionStrip — faixa de pendentes/expirando ══════════════════════════
-function ActionStrip({ pendentesSurveys, onCobrarLink }) {
-    const total = pendentesSurveys.length;
-    if (total === 0) return null;
-
-    // Empresa que expira mais próximo (menor daysUntil positivo).
-    const expiring = pendentesSurveys
-        .map(s => ({ ...s, dias: daysUntil(s.expires_at) }))
-        .filter(s => s.dias !== null && s.dias >= 0)
-        .sort((a, b) => a.dias - b.dias);
-    const nextExpire = expiring[0];
-
-    const chipNames = pendentesSurveys.slice(0, 3).map(s => s.company_name);
-
-    return (
-        <div style={{
-            display: 'flex', alignItems: 'center', gap: 18,
-            padding: '17px 20px', borderRadius: 18,
-            background: 'rgba(255,255,255,0.04)',
-            backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)',
-            border: '1px solid rgba(255,255,255,0.09)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 0 60px -20px rgba(232,67,147,0.4)',
-            position: 'relative', overflow: 'hidden',
-            flexWrap: 'wrap',
-        }}>
-            <div style={{
-                position: 'absolute', top: -40, left: -20, width: 200, height: 200,
-                borderRadius: '50%', background: COL_LARANJA_GLOW, filter: 'blur(90px)',
-                opacity: 0.22, pointerEvents: 'none',
-            }} />
-            <div style={{
-                width: 46, height: 46, borderRadius: 13,
-                background: 'linear-gradient(150deg, rgba(249,115,22,0.3), rgba(232,67,147,0.25))',
-                border: '1px solid rgba(255,255,255,0.15)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: '#ffb87a', flex: '0 0 auto', position: 'relative',
-                boxShadow: '0 0 20px -4px rgba(249,115,22,0.6)',
-            }}>
-                <AlertTriangle size={22} strokeWidth={1.9} />
-            </div>
-            <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-                <div style={{ color: '#f4f4f5', fontWeight: 700, fontSize: 14.5 }}>
-                    {total} pesquisa{total === 1 ? '' : 's'} ainda não responder{total === 1 ? 'a' : 'am'}
-                    {nextExpire && (
-                        <>
-                            {' · '}
-                            <span style={{ color: COL_ATENCAO }}>
-                                {nextExpire.company_name} expira em {nextExpire.dias} dia{nextExpire.dias === 1 ? '' : 's'}
-                            </span>
-                        </>
-                    )}
-                </div>
-                <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12.5, marginTop: 3 }}>
-                    Cobre os pendentes antes do prazo para não perder o mês.
-                </div>
-            </div>
-            {chipNames.length > 0 && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, position: 'relative' }}>
-                    {chipNames.map((name, i) => (
-                        <span key={i} style={{
-                            display: 'inline-flex', alignItems: 'center', height: 26, padding: '0 10px',
-                            borderRadius: 999, background: 'rgba(255,255,255,0.07)',
-                            border: '1px solid rgba(255,255,255,0.08)',
-                            color: 'rgba(255,255,255,0.75)', fontSize: 11.5, fontWeight: 600,
-                            whiteSpace: 'nowrap',
-                        }}>{name}</span>
-                    ))}
-                    {total > 3 && (
-                        <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5 }}>
-                            +{total - 3}
-                        </span>
-                    )}
-                </div>
-            )}
-            <button
-                type="button"
-                onClick={onCobrarLink}
-                style={{
-                    height: 40, padding: '0 17px', borderRadius: 12,
-                    border: '1px solid rgba(255,255,255,0.14)',
-                    background: 'rgba(255,255,255,0.06)',
-                    color: '#fff', fontWeight: 700, fontSize: 13,
-                    cursor: 'pointer', whiteSpace: 'nowrap', position: 'relative',
-                }}
-                title="Copia lista das empresas pendentes"
-            >
-                Copiar lista
-            </button>
         </div>
     );
 }
@@ -888,14 +796,6 @@ export default function NpsIndex({
         [surveys.data],
     );
 
-    const cobrarLinkAll = () => {
-        const lista = pendentesList.map(s => `${s.company_name}: ${s.link}`).join('\n');
-        if (lista) {
-            navigator.clipboard.writeText(lista);
-            alert(`${pendentesList.length} link(s) copiados para a área de transferência. Cole no WhatsApp/e-mail para cobrar.`);
-        }
-    };
-
     const sparkEst = useMemo(() => sparkData(serie_12m, 'estrategista'), [serie_12m]);
     const sparkAna = useMemo(() => sparkData(serie_12m, 'analista'),     [serie_12m]);
     const sparkEmp = useMemo(() => sparkData(serie_12m, 'empresa'),      [serie_12m]);
@@ -984,9 +884,6 @@ export default function NpsIndex({
                                 Gerar Link NPS
                             </button>
                         </div>
-
-                        {/* ─── Faixa de ação (pendentes/expirando) ─────────────── */}
-                        <ActionStrip pendentesSurveys={pendentesList} onCobrarLink={cobrarLinkAll} />
 
                         {/* ─── 3 stat cards ────────────────────────────────────── */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
