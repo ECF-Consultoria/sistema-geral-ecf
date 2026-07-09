@@ -748,21 +748,23 @@ class NpsController extends Controller
     // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Página admin de customização dos 11 textos do fluxo NPS (D-03).
+     * Página admin de customização dos 5 textos do email NPS mensal.
      *
-     * Carrega os textos atuais (com fallback nos defaults) + os defaults canônicos
-     * (usados pelo botão "Restaurar padrão") + a doc dos placeholders suportados
-     * para exibir no painel lateral da página.
+     * v15.5 (2026-07-08) — esta página passou a ser EXCLUSIVA de customização
+     * do email. Toda a UI de edição do formulário NPS (perguntas fixas +
+     * perguntas extras) foi removida daqui — o admin agora usa a nova UI
+     * multi-template em `/nps/configuracao` para editar as perguntas.
      *
-     * Endpoints irmãos: `atualizarConfiguracao` (PUT) salva e `previewEmail`
-     * (POST) renderiza o template Blade com vars de exemplo para o iframe srcdoc.
+     * Carrega os 5 textos atuais + os defaults + a doc dos placeholders para
+     * exibir no painel lateral. Endpoints irmãos: `atualizarConfiguracao`
+     * (PUT) salva e `previewEmail` (POST) renderiza o template Blade.
      */
     public function configuracao()
     {
-        // Documentação dos placeholders aceitos pelos textos (D-03). Estrategista
-        // e analista são variáveis dos textos do email e das perguntas; mês de
-        // referência só faz sentido no assunto/corpo; bloco_analista é usado
-        // exclusivamente em `email_corpo` (vira string vazia em mentoria pura).
+        // Documentação dos placeholders aceitos pelos textos do email.
+        // `nome_analista` fica visível no corpo via `bloco_analista` (que vira
+        // string vazia em mentoria pura). Mês/empresa/estrategista funcionam
+        // em qualquer campo do email.
         $placeholdersDoc = [
             ['chave' => '{nome_estrategista}', 'descricao' => 'Nome do estrategista da empresa.'],
             ['chave' => '{nome_analista}',     'descricao' => 'Nome do analista (omitido quando mentoria pura).'],
@@ -771,55 +773,50 @@ class NpsController extends Controller
             ['chave' => '{bloco_analista}',    'descricao' => 'Bloco condicional " e o analista é **Igor**" no corpo do email (usar apenas em email_corpo); vira string vazia em mentoria pura.'],
         ];
 
-        // ─── Phase 33 Plan 02 — payload da 3a tab "Perguntas extras" ─────────
-        // Carrega TODAS as perguntas (ativas + inativas) ordenadas. A UI admin
-        // decide como agrupar; aqui apenas entregamos a lista canonica para o
-        // form de edicao/listagem/reordenacao.
-        $perguntasExtras = NpsPerguntaCustomizada::orderBy('ordem')
-            ->orderBy('id')
-            ->get();
+        // Só os 5 textos do email chegam ao JSX — o resto do defaults()
+        // (perg_*) segue existindo em NpsTextRenderer pra retro-compat do
+        // RespondLegado.jsx (surveys legacy sem template_id).
+        $textosCompletos = NpsTextRenderer::getTextos();
+        $defaultsCompletos = NpsTextRenderer::defaults();
 
-        // Phase 70 Plan 05 (v15.0) — a página `Nps/Configuracao` foi reescrita
-        // como UI multi-template. A UI de edição dos 11 textos + perguntas
-        // extras (Phase 33) foi movida para `Nps/ConfiguracaoLegado.jsx` e
-        // servida sob a subrota `/nps/configuracao/textos-legado`.
+        $chavesEmail = ['email_assunto', 'email_saudacao', 'email_corpo', 'email_cta', 'email_assinatura'];
+
         return Inertia::render('Nps/ConfiguracaoLegado', [
-            'textos'           => NpsTextRenderer::getTextos(),
-            'defaults'         => NpsTextRenderer::defaults(),
+            'textos'           => collect($textosCompletos)->only($chavesEmail)->toArray(),
+            'defaults'         => collect($defaultsCompletos)->only($chavesEmail)->toArray(),
             'placeholders_doc' => $placeholdersDoc,
-            'perguntas_extras' => $perguntasExtras,
         ]);
     }
 
     /**
-     * PUT /nps/configuracao — persiste os 11 textos editados em
+     * PUT /nps/configuracao — persiste os 5 textos do email em
      * `configuracoes.nps_textos` como JSON.
      *
-     * Valida cada chave como string obrigatória (max 5000 chars — folga ampla
-     * para corpos de email com markdown). Não há restrição de placeholders:
-     * o admin pode optar por não usar nenhum, e os textos vão funcionar como
-     * literais. O NpsTextRenderer aplica str_replace silencioso, então
-     * placeholders desconhecidos simplesmente ficam no texto sem causar erro.
+     * v15.5 (2026-07-08) — só valida os 5 campos do email. Os campos legados
+     * `perg_*` que ainda podem existir no JSON são PRESERVADOS via merge
+     * (defesa para o RespondLegado.jsx que ainda serve surveys sem template_id).
+     * Não há restrição de placeholders — o NpsTextRenderer aplica str_replace
+     * silencioso, placeholders desconhecidos ficam no texto sem erro.
      */
     public function atualizarConfiguracao(Request $request)
     {
         $validated = $request->validate([
-            'email_assunto'              => 'required|string|max:5000',
-            'email_saudacao'             => 'required|string|max:5000',
-            'email_corpo'                => 'required|string|max:5000',
-            'email_cta'                  => 'required|string|max:5000',
-            'email_assinatura'           => 'required|string|max:5000',
-            'perg_estrategista'          => 'required|string|max:5000',
-            'perg_analista'              => 'required|string|max:5000',
-            'perg_empresa'               => 'required|string|max:5000',
-            'perg_comentario_label'      => 'required|string|max:5000',
-            'perg_comentario_placeholder'=> 'required|string|max:5000',
-            'perg_nome_label'            => 'required|string|max:5000',
+            'email_assunto'    => 'required|string|max:5000',
+            'email_saudacao'   => 'required|string|max:5000',
+            'email_corpo'      => 'required|string|max:5000',
+            'email_cta'        => 'required|string|max:5000',
+            'email_assinatura' => 'required|string|max:5000',
         ]);
 
-        Configuracao::set('nps_textos', json_encode($validated, JSON_UNESCAPED_UNICODE));
+        // Merge com o JSON existente — preserva `perg_*` legados usados pelo
+        // RespondLegado.jsx quando a survey vem sem template_id (raro pós-Phase 71,
+        // mas mantém back-compat até Phase 73 limpar de vez).
+        $atual = NpsTextRenderer::getTextos();
+        $novo  = array_merge($atual, $validated);
 
-        return back()->with('success', 'Textos NPS atualizados.');
+        Configuracao::set('nps_textos', json_encode($novo, JSON_UNESCAPED_UNICODE));
+
+        return back()->with('success', 'Textos do email NPS atualizados.');
     }
 
     /**
