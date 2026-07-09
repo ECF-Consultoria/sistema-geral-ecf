@@ -10,7 +10,7 @@ use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\Publicacao;
 use App\Models\User;
-use App\Services\PortfolioScoreService;
+use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,7 +19,7 @@ use Inertia\Inertia;
 
 class PerformanceController extends Controller
 {
-    public function __construct(private PortfolioScoreService $scoreService) {}
+    public function __construct(private DesempenhoScoreService $scoreService) {}
 
     public function index(Request $request)
     {
@@ -55,13 +55,18 @@ class PerformanceController extends Controller
             })
             ->get(['id', 'name', 'role']);
 
-        // ── Quick 260623 redesign performance — ranking por SCORE ──
-        // Conforme metodologia-desempenho-carteira.md: ranking por score
-        // composto, NAO por faturamento bruto ou NPS isolado. Cada user passa
-        // pelo PortfolioScoreService que aplica os pesos do brief.
+        // ── Phase 74 D-05/D-07 — ranking por NOTA FINAL (motor v2) ──
+        // Cada user passa pelo DesempenhoScoreService v2 (4 parâmetros média
+        // direta em escalas naturais). Estratégia: prefere snapshot MENSAL do
+        // último mês fechado (DESEMP-14); fallback a compute() do mês em curso
+        // parcial quando o user ainda não tem snapshot mensal (transição).
         //
+        // DESEMP-10 · users com sem_carteira=true são REMOVIDOS do ranking.
         // Identifica cargo (analista/estrategista) via user_setores → cargos
         // (fonte da verdade desde quick 260610-f69). users.role eh legacy.
+        $mesReferencia    = Carbon::now()->startOfMonth();
+        $mesFechadoStr    = $mesReferencia->copy()->subMonth()->startOfMonth()->toDateString();
+
         $cargosPorUser = DB::table('user_setores as us')
             ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
             ->whereIn('c.slug', ['analista', 'estrategista'])
@@ -69,46 +74,60 @@ class PerformanceController extends Controller
             ->get()
             ->keyBy('user_id');
 
-        $rankingRaw = $users->map(function ($u) use ($cargosPorUser) {
-            $resultado = $this->scoreService->compute($u);
+        // Snapshot mensal do último mês fechado (se existir) — evita recomputar.
+        $snapshotsMensal = DesempenhoScoreSnapshot::mensal()
+            ->whereIn('user_id', $users->pluck('id'))
+            ->whereDate('mes_referencia', $mesFechadoStr)
+            ->get()
+            ->keyBy('user_id');
+
+        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
-            $m = $resultado['metricas'];
+
+            // Prefere snapshot mensal fechado; senão calcula on-the-fly (parcial).
+            $snap = $snapshotsMensal->get($u->id);
+            if ($snap) {
+                $resultado = $snap->breakdown_json ?? [];
+                // Compat: alguns snapshots antigos podem estar num shape v1;
+                // se não tem `componentes`, cai no compute() v2 pra garantir.
+                if (! isset($resultado['componentes'])) {
+                    $resultado = $this->scoreService->compute($u, $mesReferencia);
+                }
+            } else {
+                $resultado = $this->scoreService->compute($u, $mesReferencia);
+            }
+
+            $componentes = $resultado['componentes'] ?? [];
+
             return [
-                'id'                  => $u->id,
-                'name'                => $u->name,
-                'role'                => $u->role,
-                'cargo_slug'          => $cargoSlug,
-                'cargo_label'         => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
-                'empresas_carteira'   => $resultado['empresas_carteira'],
-                'empresas_eligiveis'  => $resultado['empresas_eligiveis'],
-                'tem_base_comparativa'=> $resultado['tem_base_comparativa'],
-                'score'               => $resultado['score'],
-                'classificacao'       => $resultado['classificacao'],
-                'crescimento_ajustado_pct'   => $m['crescimento_ajustado_pct'],
-                'empresas_em_crescimento_pct'=> $m['empresas_em_crescimento']['pct'] ?? null,
-                'atingimento_meta_pct'       => $m['atingimento_meta']['pct'] ?? null,
-                'execucao_ads_pct'           => $m['execucao_ads']['pct'] ?? null,
-                'recuperacao_pct'            => $m['recuperacao']['pct'] ?? null,
-                'avg_nps'                    => $m['qualidade']['avg_nps'] ?? null,
-                'total_meetings'             => $m['qualidade']['meetings'] ?? 0,
-                'absenteeism_rate'           => $m['qualidade']['absenteismo_pct'] ?? 0,
-                'faturamento_atual'          => $m['faturamento']['atual'] ?? 0.0,
-                'faturamento_anterior'       => $m['faturamento']['anterior'] ?? 0.0,
+                'id'                    => $u->id,
+                'name'                  => $u->name,
+                'role'                  => $u->role,
+                'cargo_slug'            => $cargoSlug,
+                'cargo_label'           => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                'empresas_carteira'     => (int) ($resultado['empresas_carteira'] ?? 0),
+                'empresas_com_baseline' => (int) ($resultado['empresas_com_baseline'] ?? 0),
+                'sem_carteira'          => (bool) ($resultado['sem_carteira'] ?? false),
+                'motivo'                => $resultado['motivo'] ?? null,
+                'nota_final'            => $resultado['nota_final'] ?? null,
+                'faixa_bonus'           => $resultado['faixa_bonus'] ?? null,
+                'faixa_promovida'       => (bool) ($resultado['faixa_promovida'] ?? false),
+                'componentes'           => [
+                    'nps_medio'           => $componentes['nps_medio']           ?? null,
+                    'var_faturamento_pct' => $componentes['var_faturamento_pct'] ?? null,
+                    'var_margem_pct'      => $componentes['var_margem_pct']      ?? null,
+                    'absenteismo_pct'     => $componentes['absenteismo_pct']     ?? null,
+                ],
+                'mes_referencia'        => $resultado['mes_referencia'] ?? $mesReferencia->toDateString(),
             ];
         });
 
-        // Tendencia (subindo/estavel/descendo) baseada no crescimento ajustado.
-        $rankingRaw = $rankingRaw->map(function ($r) {
-            $cr = $r['crescimento_ajustado_pct'];
-            $r['tendencia'] = $cr === null ? 'sem_dado'
-                : ($cr >= 5 ? 'subindo'
-                    : ($cr <= -5 ? 'descendo' : 'estavel'));
-            return $r;
-        });
+        // DESEMP-10 · remove users sem carteira antes do sort.
+        $rankingRaw = $rankingRaw->reject(fn ($r) => $r['sem_carteira'] === true);
 
-        // Ordena por score DESC; bases comparativas insuficientes vao pro fim.
+        // Ordena por nota_final DESC (nulls last — nunca à frente de nota real).
         $ranking = $rankingRaw
-            ->sortByDesc(fn ($r) => ($r['tem_base_comparativa'] ? 1 : 0) * 1000 + $r['score'])
+            ->sortByDesc(fn ($r) => $r['nota_final'] ?? -1)
             ->values()
             ->map(function ($r, $idx) {
                 $r['posicao'] = $idx + 1;
@@ -116,44 +135,61 @@ class PerformanceController extends Controller
             });
 
         // ── Phase 46 Plan 46-02 — enriquece ranking com deltas longitudinais ──
-        // Lê snapshots da tabela `desempenho_score_snapshots` (populada pelo
-        // schedule `desempenho:snapshot-scores` às 13:30 BRT, Wave 1).
-        //   - delta_vs_ontem          = score_hoje − snapshot mais recente STRICTLY < hoje
-        //   - delta_vs_semana_passada = score_hoje − snapshot mais recente <= today-7d
-        // 2 queries totais (sem N+1): pegamos TODOS os snapshots elegíveis dos users
-        // do ranking, agrupamos por user e mantemos só o mais recente.
-        // IMPORTANTE: usar whereDate em vez de where('ref_date', $str) — SQLite (testes)
-        // armazena `date` casted como 'YYYY-MM-DD 00:00:00' e a comparação string falha.
-        // whereDate funciona idêntico em MariaDB prod (DATE(ref_date) = ?).
+        // Phase 74 D-02 · filtro adicional `mes_referencia IS NULL` — o snapshot
+        // DIÁRIO é o único elegível para deltas rolling; o snapshot mensal
+        // fechado (mes_referencia populada) é comparado à parte via
+        // `delta_vs_mes_passado`. Sem esse filtro, o cálculo mistura os 2 modos.
+        //   - delta_vs_ontem          = nota_atual − snapshot diário mais recente STRICTLY < hoje
+        //   - delta_vs_semana_passada = nota_atual − snapshot diário mais recente <= today-7d
+        //   - delta_vs_mes_passado    = nota_atual − snapshot mensal M-2 (2 meses atrás)
+        // O `score` em row diário representa nota_final×20 (motor v2) — o delta
+        // volta a ser expressa em escala 0-5 dividindo por 20 e arredondando.
         $userIds = $ranking->pluck('id')->all();
         $ontem          = collect();
         $semanaPassada  = collect();
+        $mesRetrasado   = collect();
         if (!empty($userIds)) {
-            $hojeStr      = now()->toDateString();
-            $semanaCorte  = now()->subDays(7)->toDateString();
+            $hojeStr        = now()->toDateString();
+            $semanaCorte    = now()->subDays(7)->toDateString();
+            $mesRetrasadoStr = Carbon::now()->subMonths(2)->startOfMonth()->toDateString();
 
             $snapshotsOntem = DesempenhoScoreSnapshot::query()
                 ->whereIn('user_id', $userIds)
+                ->whereNull('mes_referencia')
                 ->whereDate('ref_date', '<', $hojeStr)
                 ->orderBy('ref_date', 'desc')
                 ->get(['user_id', 'ref_date', 'score']);
-            // groupBy + first() mantem 1 por user (mais recente por causa do orderBy DESC).
             $ontem = $snapshotsOntem->groupBy('user_id')->map(fn ($g) => $g->first());
 
             $snapshotsSemana = DesempenhoScoreSnapshot::query()
                 ->whereIn('user_id', $userIds)
+                ->whereNull('mes_referencia')
                 ->whereDate('ref_date', '<=', $semanaCorte)
                 ->orderBy('ref_date', 'desc')
                 ->get(['user_id', 'ref_date', 'score']);
             $semanaPassada = $snapshotsSemana->groupBy('user_id')->map(fn ($g) => $g->first());
+
+            // Mensal M-2 (mês retrasado) — usado como baseline pro delta mensal.
+            $snapshotsMesRetrasado = DesempenhoScoreSnapshot::mensal()
+                ->whereIn('user_id', $userIds)
+                ->whereDate('mes_referencia', $mesRetrasadoStr)
+                ->get(['user_id', 'mes_referencia', 'score']);
+            $mesRetrasado = $snapshotsMesRetrasado->keyBy('user_id');
         }
 
-        $ranking = $ranking->map(function ($r) use ($ontem, $semanaPassada) {
-            $scoreHoje = (float) $r['score'];
-            $sOntem    = $ontem->get($r['id']);
-            $sSemana   = $semanaPassada->get($r['id']);
-            $r['delta_vs_ontem']          = $sOntem  ? round($scoreHoje - (float) $sOntem->score, 1)  : null;
-            $r['delta_vs_semana_passada'] = $sSemana ? round($scoreHoje - (float) $sSemana->score, 1) : null;
+        $ranking = $ranking->map(function ($r) use ($ontem, $semanaPassada, $mesRetrasado) {
+            // Nota final volta pra escala 0-5; scores legados são 0-100 (score/20).
+            $notaHoje = $r['nota_final'] !== null ? (float) $r['nota_final'] : null;
+
+            $delta = function ($snap) use ($notaHoje) {
+                if (! $snap || $notaHoje === null) return null;
+                $notaSnap = ((float) $snap->score) / 20.0;
+                return round($notaHoje - $notaSnap, 2);
+            };
+
+            $r['delta_vs_ontem']          = $delta($ontem->get($r['id']));
+            $r['delta_vs_semana_passada'] = $delta($semanaPassada->get($r['id']));
+            $r['delta_vs_mes_passado']    = $delta($mesRetrasado->get($r['id']));
             return $r;
         });
 
@@ -187,22 +223,29 @@ class PerformanceController extends Controller
      * Analista (consultor) ou Estrategista (mentor) — mas NÃO líder de
      * Performance nem admin (esses seguem no dashboard admin tradicional).
      *
-     * Puxa dados REAIS via PortfolioScoreService + queries dedicadas por
-     * empresa da carteira (revenue AdmanMetric, NPS NpsSurvey, meta Goal).
+     * Phase 74 D-05 — puxa dados REAIS via DesempenhoScoreService v2 +
+     * queries dedicadas por empresa da carteira (revenue AdmanMetric, NPS
+     * NpsSurvey, meta Goal). `data` traz shape novo (nota_final/faixa_bonus/
+     * componentes.*); tela decompõe internamente derivadas legadas para o
+     * Dashboard.jsx transicionar (Plan 74-06 reescreve o front pra shape puro).
      */
     public function dashboardCarteira(Request $request): \Inertia\Response
     {
         $user = $request->user();
 
         // ── Score + métricas agregadas de carteira ──
-        $data = $this->scoreService->compute($user);
+        $mesReferencia = Carbon::now()->startOfMonth();
+        $data = $this->scoreService->compute($user, $mesReferencia);
 
         // ── Empresas em carteira (todas, ativas) ──
         // Eager-load mlToken pra detectar conexão OAuth ativa (badge ML).
         $companies = $user->companies()->with('mlToken')->where('active', true)->get();
         $companyIds = $companies->pluck('id');
-        $atualFrom = $data['periodo']['from'];
-        $atualTo   = $data['periodo']['to'];
+        // Janela rolling 30d ainda usada nas queries de metrics por empresa
+        // (independente do compute — a tabela do dashboard mostra "atividade
+        // recente" da carteira, não a estatística mensal fechada).
+        $atualFrom = Carbon::now()->subDays(30)->toDateString();
+        $atualTo   = Carbon::now()->toDateString();
 
         // Revenue + revenue anterior + ads por empresa (últimos 30d)
         $metricsByCompany = \App\Models\AdmanMetric::whereIn('company_id', $companyIds)
@@ -318,50 +361,70 @@ class PerformanceController extends Controller
             ];
         })->filter()->values();
 
-        // ── Metas widget: só entra se houver ≥ 1 Goal atribuída a alguma
-        //    empresa da carteira. Sem Goal = "Nenhuma meta atribuída".
-        //    Regra UAT 2026-07-07: não mostrar progresso agregado (NPS/
-        //    empresas crescendo) sem meta explícita atribuída.
-        $metricas = $data['metricas'];
-        $atingimento = $metricas['atingimento_meta'];
-        $emCresc = $metricas['empresas_em_crescimento'];
-        $qual = $metricas['qualidade'];
+        // ── Métricas derivadas legadas (transição pra Plan 74-06) ────────────
+        // Shape v2 do compute() não expõe atingimento_meta/empresas_em_crescimento
+        // /faturamento agregados; recalculamos inline pra manter o payload
+        // atual do Dashboard.jsx funcionando enquanto Plan 74-06 reescreve o front.
+        $componentes = $data['componentes'] ?? [];
+        $npsMedio    = $componentes['nps_medio'] ?? null;
 
+        $totalRevenue = (float) $companies->sum(function ($c) use ($metricsByCompany) {
+            return (float) ($metricsByCompany->get($c->id)?->rev ?? 0);
+        });
+        $totalRevenuePrev = (float) $companies->sum(function ($c) use ($metricsByCompany) {
+            return (float) ($metricsByCompany->get($c->id)?->rev_prev ?? 0);
+        });
+        $emCrescimentoCount = $companies->filter(function ($c) use ($metricsByCompany) {
+            $row = $metricsByCompany->get($c->id);
+            if (! $row) return false;
+            return ((float) $row->rev_prev > 0) && ((float) $row->rev > (float) $row->rev_prev);
+        })->count();
+
+        // Atingimento agregado a partir das Goals ativas de empresas da carteira.
+        $metaTarget    = (float) $goalsByCompany->sum(fn ($g) => (float) ($g->target_value ?? 0));
+        $metaRealizado = (float) $companies
+            ->filter(fn ($c) => $goalsByCompany->has($c->id))
+            ->sum(fn ($c) => (float) ($metricsByCompany->get($c->id)?->rev ?? 0));
+        $metaPct = $metaTarget > 0 ? round(($metaRealizado / $metaTarget) * 100, 1) : null;
+
+        // Metas widget — só aparece se houver ≥1 Goal atribuída à carteira
+        // (regra UAT 2026-07-07 preservada).
         $metasWidget = [];
         if ($goalsByCompany->count() > 0) {
-            // Faturamento mensal (meta agregada portfolio)
-            if ($atingimento['target_value'] && $atingimento['target_value'] > 0) {
+            if ($metaTarget > 0) {
                 $metasWidget[] = [
                     'icone'    => 'dollar',
                     'nome'     => 'Faturamento vs meta',
-                    'atual'    => $this->fmtBRL((float) $atingimento['realized_value']),
-                    'objetivo' => $this->fmtBRL((float) $atingimento['target_value']),
-                    'percent'  => (int) min(100, round((float) $atingimento['pct'])),
+                    'atual'    => $this->fmtBRL($metaRealizado),
+                    'objetivo' => $this->fmtBRL($metaTarget),
+                    'percent'  => (int) min(100, round((float) $metaPct)),
                 ];
             }
-            // Empresas em crescimento
-            if ($emCresc['total'] > 0) {
+            if ($companies->count() > 0) {
                 $metasWidget[] = [
                     'icone'    => 'trend',
                     'nome'     => 'Empresas em crescimento',
-                    'atual'    => (string) $emCresc['count'],
-                    'objetivo' => "{$emCresc['total']} empresas",
-                    'percent'  => (int) ($emCresc['pct'] ?? 0),
+                    'atual'    => (string) $emCrescimentoCount,
+                    'objetivo' => "{$companies->count()} empresas",
+                    'percent'  => $companies->count() > 0
+                        ? (int) round(($emCrescimentoCount / $companies->count()) * 100)
+                        : 0,
                 ];
             }
-            // Qualidade (NPS médio)
-            if ($qual['avg_nps'] !== null) {
-                $notaMax = 5.0; // escala NPS interna 0-5
-                $pct = (int) min(100, round(($qual['avg_nps'] / $notaMax) * 100));
+            if ($npsMedio !== null && $npsMedio > 0) {
+                $pct = (int) min(100, round(($npsMedio / 5.0) * 100));
                 $metasWidget[] = [
                     'icone'    => 'check',
                     'nome'     => 'Qualidade NPS média',
-                    'atual'    => number_format($qual['avg_nps'], 1, ',', '.'),
+                    'atual'    => number_format($npsMedio, 1, ',', '.'),
                     'objetivo' => '5,0',
                     'percent'  => $pct,
                 ];
             }
         }
+
+        // Delta faturamento vs mês anterior — usa componente do compute (var_faturamento_pct).
+        $varFatPct = $componentes['var_faturamento_pct'] ?? null;
 
         return Inertia::render('Performance/Dashboard', [
             'pessoa' => [
@@ -371,20 +434,25 @@ class PerformanceController extends Controller
                 'iniciais' => $this->iniciais($user->name),
             ],
             'periodo' => 'Últimos 30 dias',
+            // Phase 74 — payload v2 (Plan 74-06 renderiza; enquanto isso, kpis
+            // legados abaixo mantêm compat com Dashboard.jsx atual).
+            'desempenho' => $data,
             'kpis' => [
-                'faturamento_total'       => (float) $metricas['faturamento']['atual'],
-                'empresas_em_carteira'    => $data['empresas_carteira'],
+                'faturamento_total'       => $totalRevenue,
+                'empresas_em_carteira'    => $data['empresas_carteira'] ?? 0,
                 'empresas_conectadas_ml'  => (int) $companies->where('marketplace', 'meli')->count(),
-                'crescimento_percent'     => $metricas['crescimento_ajustado_pct'],  // null se sem base
-                'crescimento_delta_valor' => (float) $metricas['faturamento']['atual'] - (float) $metricas['faturamento']['anterior'],
-                'crescimento_mediana'     => $metricas['crescimento_mediano_empresa_pct'],
-                'score'                   => $data['score'],
-                'score_label'             => $data['classificacao'],
-                'empresas_em_crescimento' => $emCresc['count'],
-                'tem_base_comparativa'    => $data['tem_base_comparativa'],
+                'crescimento_percent'     => $varFatPct,
+                'crescimento_delta_valor' => $totalRevenue - $totalRevenuePrev,
+                'crescimento_mediana'     => $varFatPct,
+                'nota_final'              => $data['nota_final'] ?? null,
+                'faixa_bonus'             => $data['faixa_bonus'] ?? null,
+                'faixa_promovida'         => (bool) ($data['faixa_promovida'] ?? false),
+                'empresas_em_crescimento' => $emCrescimentoCount,
+                'sem_carteira'            => (bool) ($data['sem_carteira'] ?? false),
+                'motivo'                  => $data['motivo'] ?? null,
             ],
             'nps' => [
-                'media'     => $qual['avg_nps'],
+                'media'     => $npsMedio,
                 'respostas' => $npsRespostas,
             ],
             'metas' => $metasWidget,

@@ -12,8 +12,8 @@ use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsPendingService;
-use App\Services\PortfolioScoreService;
 use App\Models\Company;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -24,7 +24,7 @@ class PortfolioController extends Controller
 {
     public function __construct(
         private AdmanService $adman,
-        private PortfolioScoreService $scoreService,
+        private DesempenhoScoreService $scoreService,
         private MetricsProviderFactory $metricsFactory,
     ) {}
 
@@ -663,7 +663,7 @@ class PortfolioController extends Controller
 
         // Phase 48 — meta_carteira_calculada via soma das metas individuais ativas.
         // PortfolioGoal revenue foi descontinuado. Usa Goal.metric='revenue' das
-        // empresas da carteira (mesmo criterio do PortfolioScoreService Caminho B).
+        // empresas da carteira (mesmo criterio do DesempenhoScoreService).
         // Realizado = soma do revenue das empresas QUE TEM meta ativa (like-for-like).
         $goalsRevenue = Goal::where('active', true)
             ->where('metric', 'revenue')
@@ -784,12 +784,13 @@ class PortfolioController extends Controller
             });
         }
 
-        // ── Quick 260623 redesign performance — Score + comparacao contextual ──
-        // Conforme metodologia-desempenho-carteira.md: NAO comparar por
-        // faturamento bruto (vies de tamanho). Comparar por crescimento ajustado,
-        // % empresas crescendo, atingimento meta, recuperacao, execucao, qualidade.
-        // Score 0-100 combina as 6 categorias com pesos do brief.
-        $performanceProfissional = $this->scoreService->compute($user);
+        // ── Phase 74 D-05 — Nota final v2 + comparacao contextual ────────────
+        // DesempenhoScoreService v2: 4 parâmetros (NPS/var faturamento/var margem/
+        // absenteísmo standby) com nota_final em escala 0-5 e faixa_bonus editável.
+        // Comparação contextual usa `nota_final` e componentes.* (nps_medio,
+        // var_faturamento_pct, var_margem_pct) em vez do shape v1.
+        $mesReferencia = Carbon::now()->startOfMonth();
+        $performanceProfissional = $this->scoreService->compute($user, $mesReferencia);
 
         // Comparacao contextual com pares do mesmo cargo (analista x analista
         // ou estrategista x estrategista). Identifica cargo via user_setores
@@ -811,28 +812,39 @@ class PortfolioController extends Controller
                 ->unique()
                 ->values();
 
-            // Calcula score de cada par (N+1 mas N tipicamente <= 10).
+            // Calcula nota v2 de cada par (N+1 mas N tipicamente <= 10).
             $scoresPares = collect();
             foreach (User::whereIn('id', $paresIds)->get() as $par) {
-                $scoresPares->put($par->id, $this->scoreService->compute($par));
+                $resultadoPar = $this->scoreService->compute($par, $mesReferencia);
+                // Sem carteira → filtra do grupo (não entra na mediana).
+                if (($resultadoPar['sem_carteira'] ?? false) === true) {
+                    continue;
+                }
+                $scoresPares->put($par->id, $resultadoPar);
             }
 
             if ($scoresPares->count() >= 2) {
                 $meuResultado = $scoresPares->get($user->id) ?? $performanceProfissional;
+                $minhaNota    = (float) ($meuResultado['nota_final'] ?? 0.0);
 
-                $scoresAll = $scoresPares->pluck('score')->map(fn ($s) => (float) $s)->sort()->values();
-                $abaixoOuIgual = $scoresAll->filter(fn ($s) => $s <= $meuResultado['score'])->count();
-                $percentil = round(($abaixoOuIgual / $scoresAll->count()) * 100);
+                $notasAll = $scoresPares
+                    ->pluck('nota_final')
+                    ->filter(fn ($n) => $n !== null)
+                    ->map(fn ($n) => (float) $n)
+                    ->sort()
+                    ->values();
 
-                // Helper: mediana de uma metrica em todos os pares (ignora nulls).
+                $abaixoOuIgual = $notasAll->filter(fn ($n) => $n <= $minhaNota)->count();
+                $percentil = $notasAll->count() > 0
+                    ? (int) round(($abaixoOuIgual / $notasAll->count()) * 100)
+                    : 0;
+
+                // Helper: mediana de um componente do compute v2 (ignora nulls).
+                // $caminho = 'nps_medio' | 'var_faturamento_pct' | 'var_margem_pct'.
                 $medianaPares = function (string $caminho) use ($scoresPares) {
                     $valores = $scoresPares->map(function ($r) use ($caminho) {
-                        $cur = $r['metricas'] ?? null;
-                        foreach (explode('.', $caminho) as $k) {
-                            if (!is_array($cur) || !array_key_exists($k, $cur)) return null;
-                            $cur = $cur[$k];
-                        }
-                        return is_numeric($cur) ? (float) $cur : null;
+                        $v = $r['componentes'][$caminho] ?? null;
+                        return is_numeric($v) ? (float) $v : null;
                     })->filter(fn ($v) => $v !== null)->values()->all();
                     if (empty($valores)) return null;
                     sort($valores);
@@ -854,14 +866,11 @@ class PortfolioController extends Controller
                     return 'na_media';
                 };
 
-                $meu = fn (string $caminho) => (function () use ($meuResultado, $caminho) {
-                    $cur = $meuResultado['metricas'] ?? null;
-                    foreach (explode('.', $caminho) as $k) {
-                        if (!is_array($cur) || !array_key_exists($k, $cur)) return null;
-                        $cur = $cur[$k];
-                    }
-                    return is_numeric($cur) ? (float) $cur : null;
-                })();
+                $meuComponente = fn (string $caminho) => is_numeric($meuResultado['componentes'][$caminho] ?? null)
+                    ? (float) $meuResultado['componentes'][$caminho]
+                    : null;
+
+                $notaMediana = $notasAll->count() > 0 ? (float) $notasAll->median() : 0.0;
 
                 $comparacaoContextual = [
                     'cargo_slug'      => $cargoSlug,
@@ -873,20 +882,16 @@ class PortfolioController extends Controller
                             : ($percentil >= 40 ? 'Mediana'
                                 : 'Inferior')),
                     'medianas' => [
-                        'score'                    => round((float) $scoresAll->median(), 1),
-                        'crescimento_ajustado_pct' => $medianaPares('crescimento_ajustado_pct'),
-                        'empresas_em_crescimento_pct' => $medianaPares('empresas_em_crescimento.pct'),
-                        'atingimento_meta_pct'     => $medianaPares('atingimento_meta.pct'),
-                        'execucao_ads_pct'         => $medianaPares('execucao_ads.pct'),
-                        'recuperacao_pct'          => $medianaPares('recuperacao.pct'),
+                        'nota_final'          => round($notaMediana, 2),
+                        'nps_medio'           => $medianaPares('nps_medio'),
+                        'var_faturamento_pct' => $medianaPares('var_faturamento_pct'),
+                        'var_margem_pct'      => $medianaPares('var_margem_pct'),
                     ],
                     'relativo' => [
-                        'score'                       => $relativo((float) $meuResultado['score'], (float) $scoresAll->median()),
-                        'crescimento_ajustado_pct'    => $relativo($meu('crescimento_ajustado_pct'), $medianaPares('crescimento_ajustado_pct')),
-                        'empresas_em_crescimento_pct' => $relativo($meu('empresas_em_crescimento.pct'), $medianaPares('empresas_em_crescimento.pct')),
-                        'atingimento_meta_pct'        => $relativo($meu('atingimento_meta.pct'), $medianaPares('atingimento_meta.pct')),
-                        'execucao_ads_pct'            => $relativo($meu('execucao_ads.pct'), $medianaPares('execucao_ads.pct')),
-                        'recuperacao_pct'             => $relativo($meu('recuperacao.pct'), $medianaPares('recuperacao.pct')),
+                        'nota_final'          => $relativo($minhaNota, $notaMediana),
+                        'nps_medio'           => $relativo($meuComponente('nps_medio'),           $medianaPares('nps_medio')),
+                        'var_faturamento_pct' => $relativo($meuComponente('var_faturamento_pct'), $medianaPares('var_faturamento_pct')),
+                        'var_margem_pct'      => $relativo($meuComponente('var_margem_pct'),      $medianaPares('var_margem_pct')),
                     ],
                 ];
             }
@@ -895,7 +900,7 @@ class PortfolioController extends Controller
         // ── Phase 48 — Historico NPS mensal do profissional ──
         // Agrupa surveys completadas por month_reference, calculando a media do
         // score do profissional (score_estrategista ou score_analista conforme cargo).
-        // Mesmo criterio de campo ja usado no PortfolioScoreService linha 258.
+        // Mesmo criterio de campo ja usado no DesempenhoScoreService.
         $npsScoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
         $npsHistory = NpsSurvey::with('response')
             ->whereIn('company_id', $companyIdsAll)

@@ -745,11 +745,15 @@ class DashboardController extends Controller
             && ($cacheHitsCount === $custIdsValidos)
             && ($investHitsCount === $custIdsValidos);
 
-        // Quick 260623 — Performance da equipe: 1 score por membro do setor
+        // Phase 74 D-05 — Performance da equipe: 1 nota por membro do setor
         // Performance (analistas + estrategistas via cargo slug). Lider de setor
         // ve so a equipe que ele lidera; admin ve todos. Alimenta o widget que
         // substituiu NPS Distribuicao em Dashboard/Admin.jsx.
-        $scoreService = app(\App\Services\PortfolioScoreService::class);
+        // Motor v2: DesempenhoScoreService::compute($u, $mesEmCurso) retorna
+        // nota_final (0-5) + faixa_bonus (slug). DESEMP-10 filtra users sem
+        // carteira antes do ranking.
+        $scoreService = app(\App\Services\DesempenhoScoreService::class);
+        $mesReferenciaPerf = Carbon::now()->startOfMonth();
         $perfMembrosQuery = User::where('active', true)
             ->whereExists(function ($q) {
                 $q->from('user_setores as us')
@@ -767,16 +771,20 @@ class DashboardController extends Controller
             });
         }
         $perfMembros = $perfMembrosQuery->orderBy('name')->get(['id', 'name'])
-            ->map(function ($u) use ($scoreService) {
-                $r = $scoreService->compute($u);
+            ->map(function ($u) use ($scoreService, $mesReferenciaPerf) {
+                $r = $scoreService->compute($u, $mesReferenciaPerf);
                 return [
-                    'id'            => $u->id,
-                    'name'          => $u->name,
-                    'score'         => (float) $r['score'],
-                    'classificacao' => $r['classificacao'],
+                    'id'              => $u->id,
+                    'name'            => $u->name,
+                    'nota_final'      => $r['nota_final'] ?? null,
+                    'faixa_bonus'     => $r['faixa_bonus'] ?? null,
+                    'faixa_promovida' => (bool) ($r['faixa_promovida'] ?? false),
+                    'sem_carteira'    => (bool) ($r['sem_carteira'] ?? false),
                 ];
             })
-            ->sortByDesc('score')
+            // DESEMP-10 — remove users sem carteira do ranking.
+            ->reject(fn ($r) => $r['sem_carteira'] === true)
+            ->sortByDesc(fn ($r) => $r['nota_final'] ?? -1)
             ->values();
 
         // Phase 61 Plan 61-01 — enriquecimento condicional com `source` por
