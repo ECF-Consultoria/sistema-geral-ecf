@@ -35,6 +35,9 @@ class Company extends Model
         'marketplaces_extras', 'email_colaborador',
         // Phase 34 Plan 34-01 — tag "Empresa nova" (D-06).
         'empresa_nova', 'empresa_nova_visto_em', 'empresa_nova_visto_por',
+        // v15.5 — Mapeamento Digisac (grupo WhatsApp por empresa).
+        'digisac_service_id', 'digisac_group_contact_id', 'digisac_group_name_snapshot',
+        'digisac_group_mapped_at', 'digisac_group_verified_at', 'digisac_group_mapping_status',
     ];
 
     protected $casts = [
@@ -49,6 +52,9 @@ class Company extends Model
         'empresa_nova_visto_em' => 'datetime',
         'faturamento_mensal'    => 'decimal:2',
         'empresa_nova_visto_por'=> 'integer',
+        // v15.5 — Timestamps do mapeamento Digisac.
+        'digisac_group_mapped_at'   => 'datetime',
+        'digisac_group_verified_at' => 'datetime',
     ];
 
     /**

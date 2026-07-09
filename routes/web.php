@@ -29,6 +29,7 @@ use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
+use App\Http\Controllers\NpsEnvioAutomaticoController;
 use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
@@ -239,6 +240,29 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     Route::patch('/nps/configuracao/dia-cobranca',
         [NpsController::class, 'atualizarDiaCobranca'])
         ->name('nps.configuracao.dia-cobranca.update');
+
+    // ─── v15.5 — Envio automático NPS (email + WhatsApp/Digisac) ────────
+    // Página dedicada admin-only para gerenciar canais, mapeamento Digisac
+    // e auditoria unificada. Deve ficar ANTES de /nps/{token}.
+    Route::get   ('/nps/envio-automatico',
+        [NpsEnvioAutomaticoController::class, 'index'])
+        ->name('nps.envio-automatico.index');
+
+    Route::patch ('/nps/envio-automatico/config',
+        [NpsEnvioAutomaticoController::class, 'atualizarConfig'])
+        ->name('nps.envio-automatico.config.update');
+
+    Route::get   ('/nps/envio-automatico/digisac/grupos',
+        [NpsEnvioAutomaticoController::class, 'listarGrupos'])
+        ->name('nps.envio-automatico.digisac.grupos');
+
+    Route::put   ('/nps/envio-automatico/empresas/{company}/mapeamento',
+        [NpsEnvioAutomaticoController::class, 'mapearGrupo'])
+        ->name('nps.envio-automatico.mapeamento.update');
+
+    Route::delete('/nps/envio-automatico/empresas/{company}/mapeamento',
+        [NpsEnvioAutomaticoController::class, 'desmapearGrupo'])
+        ->name('nps.envio-automatico.mapeamento.destroy');
 
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.

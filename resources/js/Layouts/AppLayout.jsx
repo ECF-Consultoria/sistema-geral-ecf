@@ -141,6 +141,7 @@ const NAV_TREE = [
         children: [
             { label: 'Pesquisas',        routeName: 'nps.index',                  page: 'Nps/Index',           icon: Star,     permission: 'core.nps' },
             { label: 'Configuração NPS', routeName: 'nps.configuracao.index',     page: 'Nps/Configuracao',    icon: Settings, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            { label: 'Envio automático', routeName: 'nps.envio-automatico.index', page: 'Nps/EnvioAutomatico', icon: Send,     excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
             { label: 'Emails enviados',  routeName: 'nps.emails-enviados.index',  page: 'Nps/EmailsEnviados',  icon: Inbox,    excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },

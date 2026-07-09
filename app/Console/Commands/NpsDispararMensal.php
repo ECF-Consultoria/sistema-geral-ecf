@@ -4,8 +4,10 @@ namespace App\Console\Commands;
 
 use App\Mail\NpsMonthlyMail;
 use App\Models\Company;
+use App\Models\Configuracao;
 use App\Models\NpsEmailEnvio;
 use App\Models\NpsSurvey;
+use App\Services\Digisac\NpsDigisacDispatchService;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
@@ -60,8 +62,17 @@ class NpsDispararMensal extends Command
      * `parent::__construct()` é obrigatório — sem ele o Console\Command não
      * registra `signature` nem `description` corretamente.
      */
-    public function __construct(private NpsTemplateService $templateService)
-    {
+    /**
+     * v15.5 — DI adicional do NpsDigisacDispatchService.
+     *
+     * O canal WhatsApp é opt-in (Configuracao::nps_envio_digisac_ativo). O
+     * dispatcher é injetado sempre; a decisão de chamá-lo por empresa acontece
+     * dentro do loop após checar as flags.
+     */
+    public function __construct(
+        private NpsTemplateService $templateService,
+        private NpsDigisacDispatchService $digisacDispatch,
+    ) {
         parent::__construct();
     }
 
@@ -91,17 +102,61 @@ class NpsDispararMensal extends Command
         // de uma empresa isolada — apenas pula + loga warning.
         $puladosSemTemplate = 0;
 
+        // v15.5 — Flags de canal (opt-in explícito por Configuracao).
+        // Email default '1' (comportamento atual). Digisac default '0' (opt-in).
+        // Skip email = comando ainda cria surveys + tenta WhatsApp, se ativo.
+        $canalEmailAtivo   = Configuracao::get('nps_envio_email_ativo', '1') === '1';
+        $canalDigisacAtivo = Configuracao::get('nps_envio_digisac_ativo', '0') === '1';
+
+        // v15.5 — Contadores por canal Digisac.
+        $digisacEnviados = 0;
+        $digisacFalhas   = 0;
+        $digisacSkipped  = 0;
+
         $this->info("Iniciando disparo NPS mensal — hoje={$hoje->toDateString()}, mes_ref={$mesAtual}" . ($dryRun ? ' [DRY-RUN]' : ''));
+        $this->info(sprintf(
+            'Canais: email=%s | digisac=%s',
+            $canalEmailAtivo ? 'ON' : 'OFF',
+            $canalDigisacAtivo ? 'ON' : 'OFF',
+        ));
+
+        // v15.5 — Query base ajustada:
+        //  - se canal digisac está ativo, empresas SEM email_cliente mas COM grupo
+        //    mapeado ainda são elegíveis (envio só pra WhatsApp).
+        //  - se só email está ativo, mantemos o filtro histórico (email_cliente).
+        //  - se AMBOS desligados, o comando sai imediatamente sem tocar em nada.
+        if (! $canalEmailAtivo && ! $canalDigisacAtivo) {
+            $this->warn('Ambos os canais desligados (nps_envio_email_ativo=0 e nps_envio_digisac_ativo=0). Nada a disparar.');
+            return self::SUCCESS;
+        }
+
+        $query = Company::where('active', true);
+        if ($canalEmailAtivo && ! $canalDigisacAtivo) {
+            $query->whereNotNull('email_cliente')->where('email_cliente', '!=', '');
+        } elseif (! $canalEmailAtivo && $canalDigisacAtivo) {
+            $query->whereNotNull('digisac_group_contact_id')
+                  ->where('digisac_group_contact_id', '!=', '');
+        } else {
+            // Ambos ativos: elegível se tem email OU grupo. Se não tem nem um, não
+            // adianta criar survey (não haveria como avisar o cliente).
+            $query->where(function ($q) {
+                $q->where(function ($sub) {
+                    $sub->whereNotNull('email_cliente')->where('email_cliente', '!=', '');
+                })->orWhere(function ($sub) {
+                    $sub->whereNotNull('digisac_group_contact_id')
+                        ->where('digisac_group_contact_id', '!=', '');
+                });
+            });
+        }
 
         // Itera em chunks para evitar carregar todas as empresas na memória de uma vez
-        Company::where('active', true)
-            ->whereNotNull('email_cliente')
-            ->where('email_cliente', '!=', '')
-            ->chunkById(50, function ($empresas) use (
+        $query->chunkById(50, function ($empresas) use (
                 $hoje, $mesAtual, $dryRun, $textos, $mesReferencia,
+                $canalEmailAtivo, $canalDigisacAtivo,
                 &$enviados, &$criados, &$elegiveisHoje,
                 &$puladosSemEstrategista, &$puladosIdempotencia,
-                &$puladosSemTemplate
+                &$puladosSemTemplate,
+                &$digisacEnviados, &$digisacFalhas, &$digisacSkipped
             ) {
                 foreach ($empresas as $empresa) {
                     try {
@@ -158,7 +213,17 @@ class NpsDispararMensal extends Command
                         }
 
                         if ($dryRun) {
-                            $this->line("[DRY] empresa #{$empresa->id} ({$empresa->name}) dispararia para {$empresa->email_cliente} usando template #{$template->id} ({$template->nome})");
+                            $canais = [];
+                            if ($canalEmailAtivo && ! empty($empresa->email_cliente)) {
+                                $canais[] = "email={$empresa->email_cliente}";
+                            }
+                            if ($canalDigisacAtivo) {
+                                $canais[] = ! empty($empresa->digisac_group_contact_id)
+                                    ? "digisac={$empresa->digisac_group_contact_id}"
+                                    : 'digisac=SKIP_sem_grupo';
+                            }
+                            $canaisStr = $canais ? implode(', ', $canais) : 'nenhum';
+                            $this->line("[DRY] empresa #{$empresa->id} ({$empresa->name}) dispararia canais [{$canaisStr}] usando template #{$template->id} ({$template->nome})");
                             continue;
                         }
 
@@ -215,33 +280,64 @@ class NpsDispararMensal extends Command
                             'mesReferencia'    => $mesReferencia,
                         ];
 
-                        // Phase 32 D-04 — envia + grava log (sucesso ou falha) no mesmo bloco
-                        // pra garantir que o NpsEmailEnvio existe mesmo quando o Mailable lança.
-                        try {
-                            Mail::to($empresa->email_cliente)->send(new NpsMonthlyMail($mailVars));
+                        // v15.5 — Envio email fica dentro de guard de canal + presença de email_cliente.
+                        // Empresa elegível só por WhatsApp (email_cliente vazio) NÃO tem email disparado.
+                        if ($canalEmailAtivo && ! empty($empresa->email_cliente)) {
+                            // Phase 32 D-04 — envia + grava log (sucesso ou falha) no mesmo bloco
+                            // pra garantir que o NpsEmailEnvio existe mesmo quando o Mailable lança.
+                            try {
+                                Mail::to($empresa->email_cliente)->send(new NpsMonthlyMail($mailVars));
 
-                            NpsEmailEnvio::create([
-                                'survey_id'    => $survey->id,
-                                'company_id'   => $empresa->id,
-                                'destinatario' => $empresa->email_cliente,
-                                'assunto'      => $assuntoRender,
-                                'status'       => 'enviado',
-                                'erro_msg'     => null,
-                            ]);
-                            $enviados++;
+                                NpsEmailEnvio::create([
+                                    'survey_id'    => $survey->id,
+                                    'company_id'   => $empresa->id,
+                                    'destinatario' => $empresa->email_cliente,
+                                    'assunto'      => $assuntoRender,
+                                    'status'       => 'enviado',
+                                    'erro_msg'     => null,
+                                ]);
+                                $enviados++;
 
-                            Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) email={$empresa->email_cliente} survey_id={$survey->id}");
-                        } catch (\Throwable $mailErr) {
-                            // Grava log de falha — substring(65000) cobre TEXT MySQL sem cortar UTF-8.
-                            NpsEmailEnvio::create([
-                                'survey_id'    => $survey->id,
-                                'company_id'   => $empresa->id,
-                                'destinatario' => $empresa->email_cliente,
-                                'assunto'      => $assuntoRender,
-                                'status'       => 'falha',
-                                'erro_msg'     => substr($mailErr->getMessage(), 0, 65000),
-                            ]);
-                            Log::error("[NPS Mensal] falha no envio empresa {$empresa->id} survey_id={$survey->id}: " . $mailErr->getMessage());
+                                Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) email={$empresa->email_cliente} survey_id={$survey->id}");
+                            } catch (\Throwable $mailErr) {
+                                // Grava log de falha — substring(65000) cobre TEXT MySQL sem cortar UTF-8.
+                                NpsEmailEnvio::create([
+                                    'survey_id'    => $survey->id,
+                                    'company_id'   => $empresa->id,
+                                    'destinatario' => $empresa->email_cliente,
+                                    'assunto'      => $assuntoRender,
+                                    'status'       => 'falha',
+                                    'erro_msg'     => substr($mailErr->getMessage(), 0, 65000),
+                                ]);
+                                Log::error("[NPS Mensal] falha no envio empresa {$empresa->id} survey_id={$survey->id}: " . $mailErr->getMessage());
+                            }
+                        }
+
+                        // v15.5 — Envio WhatsApp via Digisac, ISOLADO do email.
+                        // Falhas aqui NÃO afetam o log de email nem o próximo passo do batch.
+                        // O dispatcher decide internamente skip (sem grupo) vs falha (API erro).
+                        if ($canalDigisacAtivo) {
+                            $varsDigisac = [
+                                'nome_empresa'      => $empresa->name,
+                                'nome_estrategista' => $estrategista->name,
+                                'nome_analista'     => $analista?->name ?? '',
+                                'mes_referencia'    => $mesReferencia,
+                                'link_nps'          => $linkPesquisa,
+                            ];
+                            try {
+                                $envio = $this->digisacDispatch->send($survey, $empresa, $template, $varsDigisac);
+                                match ($envio->status) {
+                                    'enviado' => $digisacEnviados++,
+                                    'falha'   => $digisacFalhas++,
+                                    'skipped' => $digisacSkipped++,
+                                    default   => null,
+                                };
+                            } catch (\Throwable $digisacErr) {
+                                // Defesa em profundidade: o dispatcher já persiste falha; se estourou
+                                // ainda assim, loga sem quebrar o batch.
+                                $digisacFalhas++;
+                                Log::error("[NPS Mensal] excecao nao tratada no digisac empresa {$empresa->id}: " . $digisacErr->getMessage());
+                            }
                         }
 
                     } catch (\Throwable $e) {
@@ -263,8 +359,11 @@ class NpsDispararMensal extends Command
         if ($puladosSemTemplate > 0) {
             $this->line("  ↳ {$puladosSemTemplate} pulada(s) por nao ter template NPS aplicavel.");
         }
+        if ($canalDigisacAtivo) {
+            $this->line("  ↳ Digisac: {$digisacEnviados} enviadas, {$digisacFalhas} falha(s), {$digisacSkipped} sem grupo mapeado.");
+        }
 
-        Log::info("[NPS Mensal] Concluído: {$criados} surveys, {$enviados} emails, {$elegiveisHoje} elegíveis, {$puladosIdempotencia} idempotentes, {$puladosSemEstrategista} sem estrategista, {$puladosSemTemplate} sem template");
+        Log::info("[NPS Mensal] Concluído: {$criados} surveys, {$enviados} emails, {$elegiveisHoje} elegíveis, {$puladosIdempotencia} idempotentes, {$puladosSemEstrategista} sem estrategista, {$puladosSemTemplate} sem template, digisac[enviados={$digisacEnviados} falhas={$digisacFalhas} skipped={$digisacSkipped}]");
 
         return self::SUCCESS;
     }

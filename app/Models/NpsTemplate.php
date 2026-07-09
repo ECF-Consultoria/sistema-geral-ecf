@@ -48,6 +48,9 @@ class NpsTemplate extends Model
         'is_default',
         'priority',
         'envio_automatico_mensal',
+        // v15.5 — Mensagem WhatsApp por template com placeholders.
+        // Null = usa Configuracao::get('nps_digisac_mensagem_default').
+        'mensagem_whatsapp',
     ];
 
     protected $casts = [
