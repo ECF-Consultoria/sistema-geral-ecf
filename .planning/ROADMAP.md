@@ -13,7 +13,8 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 **Phase Numbering:**
 - Continuidade monotônica após v14.0 (última phase planejada: 67). v15.0 começa em Phase 68.
 - Reservado 68–73 para os 6 blocos NPS-A a NPS-F
-- Integer phases (68-73): trabalho planejado da milestone
+- Phase 74 adicionada 2026-07-09 — módulo Desempenho (bloco DESEMP) fora da milestone NPS original, mas anexado à v15.0 como tail
+- Integer phases (68-74): trabalho planejado da milestone
 - Decimal phases (68.1, 69.2…): reservadas para inserções urgentes durante execução
 
 - [ ] **Phase 68: Schema, modelos e seed retroativo "NPS Padrão"** — 5 tabelas novas (`nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes`, `nps_response_answers`) + alter em `nps_surveys`/`nps_responses` + seed retro-associa 100% do histórico legado ao template padrão
@@ -130,6 +131,29 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 - [x] 73-04-PLAN.md — Suite E2E Phase73 (NpsV15E2ETest 5 tests linear + NpsGoalMetricNpsTest 3 tests) (COMPLETO — commit d8d0c39, 8 tests / 83 assertions)
 **UI hint**: yes
 
+### Phase 74: Módulo Desempenho — simplificação para 4 parâmetros + bonificação
+**Goal**: Substituir o `PortfolioScoreService` atual (6 métricas ponderadas com pesos por categoria) por um `DesempenhoScoreService` de **4 parâmetros** (NPS médio, % variação de faturamento vs mês anterior, % variação de margem de contribuição vs mês anterior, absenteísmo em standby), com cálculo por **média direta em escalas naturais**, consolidação **mensal fechada** (dia 1 do mês seguinte após sync Adman), faixas de bônus editáveis pelo admin via UI dedicada e artigo dinâmico no `/manual` sincronizado com a config.
+**Depends on**: Phase 72 (`NpsScoreCalculator` dual-path); MetricsProviderFactory (Phase 61 flow ML-first + Adman fallback)
+**Requirements**: DESEMP-01, DESEMP-02, DESEMP-03, DESEMP-04, DESEMP-05, DESEMP-06, DESEMP-07, DESEMP-08, DESEMP-09, DESEMP-10, DESEMP-11, DESEMP-12, DESEMP-13, DESEMP-14
+**Success Criteria** (o que deve ser VERDADE):
+  1. Fixture Carlos (NPS 4.25 + var_fat 3% + var_margem 2.8%) retorna `nota_final = 3.35` e `faixa_bonus = 'sem_bonus'` em teste feature
+  2. Tabela `bonus_faixas` criada com 4 rows seed (`sem_bonus`, `basico`, `intermediario`, `maximo`) editáveis via `/desempenho/configuracao` (role:admin)
+  3. Comando `desempenho:consolidar-mes` roda dia 1 de cada mês às 14:00 BRT (`monthlyOn(1, '14:00')`) e grava snapshot com `mes_referencia = YYYY-MM-01`; comando `desempenho:snapshot-scores` (diário 13:30) PRESERVA schedule e grava com `mes_referencia = NULL`
+  4. Regra "2 meses consecutivos intermediário → máximo" testada com snapshot [junho: intermediario, julho: intermediario] → julho retorna `maximo`
+  5. `grep -r "PortfolioScoreService" app/ resources/js/` retorna 0 matches ativos (código v1 deletado); dashboard `Performance/Dashboard.jsx` filtra `mes_referencia >= '2026-08-01'` e Absenteísmo mostra placeholder "Em breve"; artigo `/manual/desempenho-bonificacao` renderiza faixas em tempo real
+**Plans**: 10 plans em 5 waves — Wave 1 paralelo (74-01 ALTER desempenho_score_snapshots + 74-02 CREATE bonus_faixas + Model BonusFaixa + seed) → Wave 2 (74-03 DesempenhoScoreService) → Wave 3 paralelo (74-04 refactor 3 controllers + reescrita SnapshotDesempenhoScores + novo ConsolidarMesDesempenho + delete v1 + 74-05 DesempenhoConfigController + FormRequest + rotas + sidebar) → Wave 4 paralelo (74-06 Performance/{Dashboard,Index,Show}.jsx reescritas + 74-07 Desempenho/Configuracao.jsx + 74-08 Manual/Artigos/DesempenhoBonificacao.jsx + ManualController::show evoluído) → Wave 5 paralelo (74-09 DesempenhoScoreServiceTest fixture Carlos + 11 testes + 74-10 DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + regressão zero)
+- [ ] 74-01-PLAN.md — Migration ALTER desempenho_score_snapshots (add mes_referencia + drop/create unique + índice mes_referencia+score) + Model DesempenhoScoreSnapshot (fillable/cast + scopes mensal/diario)
+- [ ] 74-02-PLAN.md — Migration CREATE bonus_faixas + migration seed 4 faixas + Model BonusFaixa (LogsActivity + classificar static) + Factory
+- [ ] 74-03-PLAN.md — DesempenhoScoreService completo (compute + computeNpsMedio + computeVarFaturamento ML-first + computeVarMargem Adman-only + computeAbsenteismo null placeholder + computeNotaFinal média direta + classificarFaixa + promoverPor2MesesConsecutivos + computeUniverso sem_carteira)
+- [ ] 74-04-PLAN.md — Refactor 3 controllers para DesempenhoScoreService + reescrita interna SnapshotDesempenhoScores + novo ConsolidarMesDesempenho + schedule mensal `monthlyOn(1,'14:00')` + DELETE PortfolioScoreService.php
+- [ ] 74-05-PLAN.md — DesempenhoConfigController (index/updateFaixa/toggleActive) + UpdateBonusFaixaRequest (validação range + sobreposição pt-BR) + 3 rotas admin + sidebar "Configuração Desempenho"
+- [ ] 74-06-PLAN.md — Performance/{Dashboard,Index,Show}.jsx reescritas — 4 cards de parâmetros + faixa de bônus + toggle mês fechado/parcial/diário + filtro sem_carteira no ranking + badge "Em breve" no Absenteísmo
+- [ ] 74-07-PLAN.md — Desempenho/Configuracao.jsx (UI React admin — CRUD faixas inline + validação inline + toast + toggle ativo/inativo)
+- [ ] 74-08-PLAN.md — Manual/Artigos/DesempenhoBonificacao.jsx + artigos.js entry + ManualController::show evoluído (passa bonus_faixas prop) + Manual/Show.jsx spread artigoProps
+- [ ] 74-09-PLAN.md — Suite tests/Feature/Phase74/DesempenhoScoreServiceTest (11+ testes: fixture Carlos âncora, dual-path NPS, empresa nova, provider ML-first/Adman-fallback, promoção 2 meses, sem_carteira)
+- [ ] 74-10-PLAN.md — Suites tests/Feature/Phase74/DesempenhoConfigControllerTest (11 testes: 403 não-admin, CRUD, sobreposição, toggle) + ConsolidarMesDesempenhoCommandTest (7 testes: --mes flag, idempotência, sem_carteira pula, ranking_pos, diário preservado com mes_referencia=null) + validação regressão zero
+**UI hint**: yes
+
 ## Phase Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -140,6 +164,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 | 71. Formulário público | 3/3 | Complete | 2026-07-08 |
 | 72. Dashboards + pendências | 4/4 | Complete | 2026-07-08 |
 | 73. Limpeza legado + testes E2E | 4/4 | Complete | 2026-07-08 |
+| 74. Módulo Desempenho (4 parâmetros + bonificação) | 0/10 | Planned | |
 
 ## Dependencies
 
@@ -149,13 +174,15 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 - **69 → 72** — dashboards precisam de `NpsScoreCalculator` + `NpsPendingService`
 - **70 → 71** — form público reusa componentes do preview live de config
 - **72 → 73** — limpeza só depois que todos os novos consumers estiverem em cima
+- **72 → 74** — Phase 74 reusa `NpsScoreCalculator` dual-path da Phase 72; Phase 61 fornece `MetricsProviderFactory` ML-first + Adman fallback
 
 **Paralelizáveis:**
 - **70 e 72** podem rodar em paralelo após 69 (UI Config e dashboards não se tocam)
+- **74** é independente de 68/69 (não usa templates NPS; consome apenas o `NpsScoreCalculator` API estável)
 
 ## Coverage Map
 
-Todas as 29 REQs de v15.0 mapeadas para exatamente uma phase:
+Todas as 29 REQs de v15.0 NPS + 14 REQs de DESEMP mapeadas para exatamente uma phase:
 
 | Categoria | REQ | Phase |
 |-----------|-----|-------|
@@ -188,8 +215,22 @@ Todas as 29 REQs de v15.0 mapeadas para exatamente uma phase:
 | NPS-F | NPS-F-02 | Phase 73 |
 | NPS-F | NPS-F-03 | Phase 73 |
 | NPS-F | NPS-F-04 | Phase 73 |
+| DESEMP (Desempenho v2) | DESEMP-01 | Phase 74 |
+| DESEMP | DESEMP-02 | Phase 74 |
+| DESEMP | DESEMP-03 | Phase 74 |
+| DESEMP | DESEMP-04 | Phase 74 |
+| DESEMP | DESEMP-05 | Phase 74 |
+| DESEMP | DESEMP-06 | Phase 74 |
+| DESEMP | DESEMP-07 | Phase 74 |
+| DESEMP | DESEMP-08 | Phase 74 |
+| DESEMP | DESEMP-09 | Phase 74 |
+| DESEMP | DESEMP-10 | Phase 74 |
+| DESEMP | DESEMP-11 | Phase 74 |
+| DESEMP | DESEMP-12 | Phase 74 |
+| DESEMP | DESEMP-13 | Phase 74 |
+| DESEMP | DESEMP-14 | Phase 74 |
 
-**Cobertura:** 29/29 v15.0 REQs mapeadas ✓ — zero órfãos, zero duplicatas.
+**Cobertura:** 29/29 v15.0 NPS REQs + 14/14 DESEMP REQs mapeadas ✓ — zero órfãos, zero duplicatas.
 
 ## Decisões técnicas travadas (research)
 
@@ -200,6 +241,13 @@ Ver `.planning/research/v15-nps-templates-schema.md` para detalhes:
 3. **Drag-and-drop = sem library** — Up/Down buttons + input `type="number"` de ordem, mantém padrão zero-deps v13/v14
 4. **Precedência via `priority` DESC + `is_default` fallback** — determinístico, sem depender de `pivot.created_at`
 5. **`escala` = 5 opções auto-geradas + editáveis** — 1 tabela `nps_template_options` unificada, `NpsScoreCalculator` uniforme via `AVG(option_peso_snapshot)`
+
+**Phase 74 (Desempenho v2)** — decisões locked em `.planning/phases/74-.../74-SPEC.md` + `74-CONTEXT.md`:
+
+6. **`bonus_faixas` como tabela dedicada** (não `Configuracao` key/value) — permite LogsActivity + validação de sobreposição + join direto para artigo dinâmico do Manual
+7. **Big bang v1→v2 no mesmo commit** (D-06/DESEMP-14) — sem `@deprecated`, sem coexistência; snapshots antigos ficam preservados mas UI filtra `mes_referencia >= '2026-08-01'`
+8. **Duas modalidades coexistindo na mesma tabela** (D-02) — snapshot diário (`mes_referencia=NULL`) + mensal (`mes_referencia=YYYY-MM-01`); unique key novo `(user_id, ref_date, mes_referencia)` permite ambos
+9. **Fixture Carlos como âncora bloqueante** (D-28/DESEMP-01) — teste dedicado que trava `nota_final=3.35` + `faixa_bonus=sem_bonus`; se este falha, cálculo divergiu da decisão da diretoria
 
 ## Constraints herdadas
 
@@ -212,3 +260,4 @@ Ver `.planning/research/v15-nps-templates-schema.md` para detalhes:
 
 ---
 *Roadmap criado: 2026-07-07 — Milestone v15.0 (NPS Templates) — 6 phases (68-73) cobrindo 29 REQs; granularity=standard*
+*Roadmap atualizado: 2026-07-09 — Phase 74 (Módulo Desempenho v2) adicionada como tail da milestone, cobrindo 14 REQs DESEMP em 10 plans / 5 waves*
