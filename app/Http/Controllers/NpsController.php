@@ -149,6 +149,7 @@ class NpsController extends Controller
             ]);
             // v15: TODAS as answers do template (ordena por id do
             // template_question para preservar sequência da configuração).
+            // 2026-07-08: incluir `peso` para o modal exibir "Label = peso".
             $v15 = $response->answers
                 ->sortBy('template_question_id')
                 ->map(fn($a) => [
@@ -158,6 +159,7 @@ class NpsController extends Controller
                     'dimensao'       => $a->question_dimensao_snapshot,
                     'tipo'           => 'opcoes',
                     'valor'          => $a->option_label_snapshot,
+                    'peso'           => $a->option_peso_snapshot,
                 ]);
             return $legacy->concat($v15)->values();
         };

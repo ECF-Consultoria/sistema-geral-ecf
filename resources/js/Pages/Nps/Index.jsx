@@ -26,13 +26,16 @@ function NpsScore({ score }) {
     if (score === null || score === undefined) {
         return <span className="text-muted-foreground">—</span>;
     }
+    const n = Number(score);
+    // Padrão 2026-07-08: sempre 2 casas decimais (4 → "4.00", 3.6666 → "3.67").
+    const label = Number.isNaN(n) ? String(score) : n.toFixed(2);
     const color =
-        score >= 5 ? 'text-emerald-400' :
-        score >= 4 ? 'text-lime-400'    :
-        score >= 3 ? 'text-yellow-400'  :
-        score >= 2 ? 'text-orange-400'  :
-                     'text-red-400';
-    return <span className={cn('font-bold', color)}>{score}</span>;
+        n >= 4.5 ? 'text-emerald-400' :
+        n >= 3.5 ? 'text-lime-400'    :
+        n >= 2.5 ? 'text-yellow-400'  :
+        n >= 1.5 ? 'text-orange-400'  :
+                   'text-red-400';
+    return <span className={cn('font-bold', color)}>{label}</span>;
 }
 
 // Card de média do mês — uma das 3 dimensões (estrategista/analista/empresa).
@@ -80,14 +83,13 @@ const chartStyle = {
 
 // Card de nota individual (Estrategista/Analista/Empresa) — escala 1-5 colorida.
 // Renderiza "—" quando o score é null/undefined (analista em mentoria pura, etc).
-// Bugfix 2026-07-08 — formatValor arredonda floats vindos do NpsScoreCalculator
-// (ex.: 3.6666666666666665 → "3.7") pra caber no card sem overflow visual.
+// Padrão 2026-07-08 (atualizado): notas de NPS sempre em 3 dígitos (2 casas
+// decimais). 4 → "4.00", 4.25 → "4.25", 3.6666… → "3.67".
 function formatValor(valor) {
     if (valor === null || valor === undefined) return null;
     const n = Number(valor);
     if (Number.isNaN(n)) return String(valor);
-    // Se for inteiro, mantém sem casas ("5" não "5.00"). Se decimal, 1 casa.
-    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+    return n.toFixed(2);
 }
 function NotaCard({ label, valor }) {
     if (valor === null || valor === undefined) {
@@ -138,10 +140,32 @@ function DimensaoBadge({ dimensao }) {
     );
 }
 
+// Sentiment palette igual à página pública (Respond.jsx) — cor baseada no peso.
+// 2026-07-08: usada para colorir tanto o pill do valor quanto o badge de peso.
+const SENTIMENT_TEXT = ['text-rose-400', 'text-orange-400', 'text-amber-400', 'text-lime-400', 'text-emerald-400'];
+const SENTIMENT_RING = ['border-rose-500/30 bg-rose-500/10', 'border-orange-500/30 bg-orange-500/10', 'border-amber-500/30 bg-amber-500/10', 'border-lime-500/30 bg-lime-500/10', 'border-emerald-500/30 bg-emerald-500/10'];
+const sentClsFor = (peso, arr) => arr[Math.max(0, Math.min(4, (peso ?? 3) - 1))];
+
+// Badge do peso "= N" — só exibe quando peso é conhecido (v15). Cor casa
+// com a paleta sentiment; pesos ausentes (legacy) não mostram badge.
+function PesoBadge({ peso }) {
+    if (peso === null || peso === undefined) return null;
+    return (
+        <span className={cn(
+            'inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10.5px] font-semibold border font-mono',
+            sentClsFor(peso, SENTIMENT_RING),
+            sentClsFor(peso, SENTIMENT_TEXT),
+        )}>
+            = {peso}
+        </span>
+    );
+}
+
 // Renderiza o valor de uma resposta extra conforme o tipo da pergunta.
 // `tipo` é o snapshot congelado no momento da resposta (defesa contra edicao
-// posterior da pergunta). Tipos suportados: escala_1_5, sim_nao, multipla, texto.
-function RespostaExtraValor({ tipo, valor }) {
+// posterior da pergunta). Tipos suportados: escala_1_5, sim_nao, multipla, texto, opcoes.
+// 2026-07-08: exibe o peso ao lado do valor ("Totalmente = 5") quando disponível.
+function RespostaExtraValor({ tipo, valor, peso }) {
     if (tipo === 'escala_1_5') {
         const n = parseInt(valor, 10);
         const cor = n <= 2 ? 'text-rose-400'
@@ -151,24 +175,36 @@ function RespostaExtraValor({ tipo, valor }) {
     }
     if (tipo === 'sim_nao') {
         return (
-            <span className={cn(
-                'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border',
-                valor === 'sim'
-                    ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
-                    : 'bg-rose-500/15 text-rose-400 border-rose-500/25'
-            )}>
-                {valor === 'sim' ? '✓ Sim' : '✗ Não'}
-            </span>
+            <div className="inline-flex items-center gap-2">
+                <span className={cn(
+                    'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border',
+                    valor === 'sim'
+                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/25'
+                        : 'bg-rose-500/15 text-rose-400 border-rose-500/25'
+                )}>
+                    {valor === 'sim' ? '✓ Sim' : '✗ Não'}
+                </span>
+                <PesoBadge peso={peso} />
+            </div>
         );
     }
-    if (tipo === 'multipla') {
+    if (tipo === 'multipla' || tipo === 'opcoes') {
+        // v15 sempre serializa via 'opcoes'; 'multipla' preserva compat legacy.
         return (
-            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-white/[0.06] border border-white/[0.08] text-white/80">
-                {valor}
-            </span>
+            <div className="inline-flex items-center gap-2 flex-wrap">
+                <span className={cn(
+                    'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border',
+                    peso != null
+                        ? cn(sentClsFor(peso, SENTIMENT_RING), sentClsFor(peso, SENTIMENT_TEXT))
+                        : 'bg-white/[0.06] border-white/[0.10] text-white/85',
+                )}>
+                    {valor}
+                </span>
+                <PesoBadge peso={peso} />
+            </div>
         );
     }
-    // tipo === 'texto' (ou fallback defensivo)
+    // tipo === 'texto' (ou fallback defensivo — não tem peso)
     return (
         <p className="text-sm text-white/80 whitespace-pre-wrap break-words">
             {valor || <span className="text-white/30 italic">Não informado</span>}
@@ -588,7 +624,7 @@ export default function NpsIndex({
                                                     <p className="text-xs text-white/60 leading-snug">{r.pergunta_texto}</p>
                                                     <DimensaoBadge dimensao={r.dimensao} />
                                                 </div>
-                                                <RespostaExtraValor tipo={r.tipo} valor={r.valor} />
+                                                <RespostaExtraValor tipo={r.tipo} valor={r.valor} peso={r.peso} />
                                             </div>
                                         ))}
                                     </div>
