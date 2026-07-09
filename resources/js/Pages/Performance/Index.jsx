@@ -1,25 +1,35 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import {
     Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, X,
     Users, Target, CheckCircle2, Crown, Award, ShoppingCart, Percent,
     ArrowUp, ArrowDown, Minus, Flame, Clock, Megaphone, BarChart3,
-    Gauge, Activity, Tv, TrendingDown, Rocket,
+    Gauge, Activity, Tv, TrendingDown, Rocket, Sparkles, Info, BookOpen,
+    UserX, ChevronsUp,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
-import { cn, formatPercent, formatCurrency } from '@/lib/utils';
+import { cn, formatPercent as fmtPctUtil, formatCurrency } from '@/lib/utils';
 import HeroKpi from '@/Pages/Polos/components/HeroKpi';
 import RadialGauge from '@/Pages/Polos/components/RadialGauge';
 
-const PERIOD_OPTIONS = [
-    { value: '7',   label: 'Últimos 7 dias' },
-    { value: '30',  label: 'Últimos 30 dias' },
-    { value: '90',  label: 'Últimos 90 dias' },
-    { value: '180', label: 'Últimos 6 meses' },
-];
+// ═══════════════════════════════════════════════════════════════════════
+// Phase 74 (D-18/D-19/D-20) — Ranking de Desempenho v2
+//
+// Reescreve a seção Consultoria pra consumir shape v2 do DesempenhoScoreService
+// (nota_final, faixa_bonus, componentes.*). Preserva por completo a seção
+// Publicações (POLOS) — dashboard executivo de TV — usada em rota separada.
+//
+// Regras da Phase 74:
+//  - DESEMP-10 — usuários com sem_carteira=true SÃO removidos do ranking
+//    exibido. O bloco de transparência "excluídos" lista os nomes ao fim
+//    da página pra o admin saber quem ficou fora e por quê.
+//  - DESEMP-14 — filtro mes_referencia >= 2026-08-01 é responsabilidade do
+//    controller (Plan 74-04). Aqui só renderizamos o que veio.
+//  - Ranking do MÊS FECHADO mais recente (D-20). Se não houver fechamento
+//    ainda, subtítulo indica "mês em curso (parcial)".
+// ═══════════════════════════════════════════════════════════════════════
 
-const roleLabel    = { consultor: 'Analista', mentor: 'Estrategista' };
 const pubRoleLabel = { publicador: 'Publicador', lider: 'Líder POLOS' };
 
 const STATUS_COLOR = {
@@ -28,30 +38,19 @@ const STATUS_COLOR = {
     'Abaixo da meta': 'text-red-400',
 };
 
-function NpsTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const color = value >= 9 ? 'text-emerald-400' : value >= 7 ? 'text-ecf-yellow' : 'text-red-400';
-    return <span className={cn('font-display font-extrabold text-lg', color)}>{value}</span>;
-}
-
-function GrowthTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const color = value > 10 ? 'text-emerald-400' : value > 0 ? 'text-ecf-yellow' : 'text-red-400';
-    const sign = value > 0 ? '+' : '';
-    return <span className={cn('font-semibold text-[13px]', color)}>{sign}{value}%</span>;
-}
-
-function PpaTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const color = value >= 70 ? 'text-emerald-400' : value >= 40 ? 'text-ecf-yellow' : 'text-red-400';
-    return <span className={cn('font-semibold text-[13px]', color)}>{value}%</span>;
-}
-
-function PercentTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const color = value >= 100 ? 'text-emerald-400' : value >= 70 ? 'text-ecf-yellow' : 'text-red-400';
-    return <span className={cn('font-semibold text-[13px]', color)}>{value}%</span>;
-}
+// ─── Labels/cores das faixas de bônus (Phase 74 D-07) ────────────────────
+const FAIXA_LABEL = {
+    sem_bonus:     'Sem bônus',
+    basico:        'Básico',
+    intermediario: 'Intermediário',
+    maximo:        'Máximo',
+};
+const FAIXA_BADGE_CLS = {
+    sem_bonus:     'bg-white/[0.04] text-white/60 border-white/[0.08]',
+    basico:        'bg-sky-500/15 text-sky-300 border-sky-500/30',
+    intermediario: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+    maximo:        'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/40',
+};
 
 function MedalBadge({ idx }) {
     if (idx === 0) return <span className="text-ecf-yellow font-display font-extrabold text-xl">🥇</span>;
@@ -81,13 +80,38 @@ function formatMesLabel(mes) {
     return `${meses[parseInt(month, 10) - 1]} ${year}`;
 }
 
-export default function PerformanceIndex({ ranking = [], period = '30', setor = 'consultoria', cargo = null, mes, meses = [] }) {
+// Formata "YYYY-MM-01" em "julho/2026" (pt-BR).
+function mesExtensoDate(iso) {
+    if (!iso) return '—';
+    try {
+        const [y, m] = String(iso).split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    } catch {
+        return String(iso);
+    }
+}
+
+// % com sinal + 1 casa; null → "—".
+function formatPercent(v) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    const n = Number(v);
+    return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+}
+
+export default function PerformanceIndex({
+    ranking = [],
+    period = '30',       // preservado por compat com Polos (não usado no v2 de Consultoria)
+    setor = 'consultoria',
+    cargo = null,
+    mes_fechado = null,   // 'YYYY-MM-01' | null — D-20
+    mes,                  // Polos
+    meses = [],           // Polos
+}) {
     const isPolos = setor === 'polos';
 
     // Cada setor tem rota própria: POLOS → publicacao.desempenho.index e
-    // consultoria → performance.index. Sem separar, mudar o mês na aba POLOS
-    // caía em performance.index (que força setor=consultoria) e jogava o
-    // usuário para o ranking de consultoria — "muda a data e vai pra outra aba".
+    // consultoria → performance.index.
     const applyFilter = (params) => {
         router.get(
             route(isPolos ? 'publicacao.desempenho.index' : 'performance.index'),
@@ -107,28 +131,50 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
         return () => window.removeEventListener('keydown', onKey);
     }, [userSelecionado]);
 
-    const allRankingIds = ranking.map((r) => r.id);
+    // ── DESEMP-10 · separação sem_carteira / rankable ────────────────────
+    const rankingFiltrado = useMemo(
+        () => ranking.filter(r => !r.sem_carteira),
+        [ranking],
+    );
+    const semCarteira = useMemo(
+        () => ranking.filter(r => r.sem_carteira),
+        [ranking],
+    );
 
-    // Publicações — dashboard executivo de TV (bloco próprio, largura ampla).
-    // O próprio PolosDashboard decide o "chrome": AppLayout (normal) ou overlay
-    // fullscreen (Modo TV), então NÃO envolvemos em AppLayout aqui.
+    const allRankingIds = rankingFiltrado.map((r) => r.id);
+
+    // Como calculamos? — collapsible
+    const [howOpen, setHowOpen] = useState(false);
+
+    // Publicações — dashboard executivo de TV (rota separada).
     if (isPolos) {
         return <PolosDashboard ranking={ranking} mes={mes} meses={meses} />;
     }
 
-    // Consultoria — ranking por score composto (layout original).
+    // Consultoria — ranking v2 da Phase 74.
     return (
         <AppLayout title="Desempenho">
-            <div className="space-y-5 max-w-[1100px]">
+            <div className="space-y-5 max-w-[1200px]">
                 {/* Header */}
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                    <div className="flex items-center gap-2.5">
-                        <Trophy size={18} className="text-ecf-yellow/70" />
-                        <p className="text-white/50 text-sm">Ranking de desempenho</p>
+                <div className="flex items-start justify-between flex-wrap gap-3">
+                    <div className="flex items-start gap-3">
+                        <span className="grid h-11 w-11 place-items-center rounded-xl bg-ecf-yellow/10 text-ecf-yellow shrink-0">
+                            <Trophy size={20} />
+                        </span>
+                        <div>
+                            <h1 className="text-white text-xl font-display font-extrabold leading-tight">
+                                Ranking Performance — {mes_fechado ? mesExtensoDate(mes_fechado) : 'mês em curso'}
+                            </h1>
+                            <p className="text-white/50 text-sm mt-0.5">
+                                {mes_fechado
+                                    ? 'Ranking do mês fechado mais recente.'
+                                    : 'Ranking do mês em curso (parcial) — a consolidação mensal fecha dia 1 do mês seguinte.'}
+                            </p>
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Filtro por cargo */}
+                        {/* Filtro por cargo — Geral/Analista/Estrategista */}
                         <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
                             {[
                                 { label: 'Geral',         value: null },
@@ -139,8 +185,8 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                                     <button
                                         onClick={() => applyFilter(
                                             opt.value
-                                                ? { setor: 'consultoria', period, cargo: opt.value }
-                                                : { setor: 'consultoria', period }
+                                                ? { setor: 'consultoria', cargo: opt.value }
+                                                : { setor: 'consultoria' }
                                         )}
                                         className={cn(
                                             'px-3 h-9 text-[13px] font-medium transition-colors',
@@ -155,26 +201,88 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
                                 </div>
                             ))}
                         </div>
-
-                        <SelectBox value={period} onChange={v => applyFilter({ setor: 'consultoria', period: v })}>
-                            {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </SelectBox>
                     </div>
                 </div>
 
-                {/* Legend — quick 260623 ranking por score */}
-                <div className="flex flex-wrap gap-4 text-[11px] text-white/30">
-                    <span className="flex items-center gap-1.5"><TrendingUp size={12} /> Score: 30% cresc. ajustado + 20% empresas crescendo + 20% meta + 15% recuperação + 5% qualidade · pesos redistribuem quando faltam dados</span>
-                    <span>Click na linha → carteira individual com detalhe da nota</span>
+                {/* Bloco "Como calculamos?" — collapsible */}
+                <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden">
+                    <button
+                        type="button"
+                        onClick={() => setHowOpen(v => !v)}
+                        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors"
+                    >
+                        <span className="flex items-center gap-2 text-white/70 text-sm">
+                            <Info size={14} className="text-ecf-yellow/70" />
+                            Como calculamos a nota final?
+                        </span>
+                        <ChevronDown
+                            size={16}
+                            className={cn(
+                                'text-white/40 transition-transform',
+                                howOpen && 'rotate-180'
+                            )}
+                        />
+                    </button>
+                    {howOpen && (
+                        <div className="px-4 pb-4 pt-1 border-t border-white/[0.05] space-y-2 text-[13px] text-white/60 leading-relaxed">
+                            <p>
+                                <strong className="text-white/80">Nota final = média direta</strong> dos componentes disponíveis: NPS médio,
+                                variação de faturamento vs mês anterior, variação de margem de contribuição vs mês anterior.
+                                Absenteísmo em <em>standby</em> — não participa desta versão.
+                            </p>
+                            <p>
+                                A <strong className="text-white/80">faixa de bônus</strong> é atribuída em ordem crescente
+                                (Sem bônus → Básico → Intermediário → Máximo) a partir da nota final. 2 meses consecutivos em Intermediário
+                                promovem automaticamente para Máximo.
+                            </p>
+                            <p className="text-white/50 text-xs pt-1">
+                                As faixas são configuráveis por administradores em{' '}
+                                <Link href="/desempenho/configuracao" className="text-ecf-yellow hover:underline">
+                                    /desempenho/configuracao
+                                </Link>{' '}
+                                · veja o detalhamento em{' '}
+                                <Link href="/manual/desempenho-bonificacao" className="text-ecf-yellow hover:underline">
+                                    /manual/desempenho-bonificacao
+                                </Link>.
+                            </p>
+                        </div>
+                    )}
                 </div>
 
-                {ranking.length === 0 ? (
-                    <div className="card-ecf rounded-2xl p-12 text-center">
+                {rankingFiltrado.length === 0 ? (
+                    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
                         <Trophy size={32} className="mx-auto mb-3 text-white/20" />
-                        <p className="text-white/40 text-sm">Nenhum dado disponível para o período selecionado</p>
+                        <p className="text-white/40 text-sm">
+                            Nenhum profissional com dados de desempenho para o período.
+                        </p>
                     </div>
                 ) : (
-                    <RankingConsultoria ranking={ranking} onSelectUser={setUserSelecionado} />
+                    <RankingConsultoria ranking={rankingFiltrado} onSelectUser={setUserSelecionado} />
+                )}
+
+                {/* DESEMP-10 · Bloco de transparência — excluídos por falta de carteira */}
+                {semCarteira.length > 0 && (
+                    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.015] p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <UserX size={14} className="text-white/40" />
+                            <span className="text-white/60 text-xs font-semibold uppercase tracking-wider">
+                                Excluídos do ranking · sem carteira no período
+                            </span>
+                            <span className="text-white/30 text-xs">({semCarteira.length})</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {semCarteira.map(u => (
+                                <span
+                                    key={u.id}
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.08] text-white/60 text-xs"
+                                    title={u.motivo ?? 'Sem carteira no período'}
+                                >
+                                    <span className="w-1.5 h-1.5 rounded-full bg-white/30" />
+                                    {u.name}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -190,156 +298,167 @@ export default function PerformanceIndex({ ranking = [], period = '30', setor = 
     );
 }
 
-// Quick 260623 — ranking justo por SCORE (não por faturamento bruto).
-// Colunas conforme metodologia-desempenho-carteira.md. Click leva pra
-// carteira individual onde o profissional ve o detalhe da nota.
-
-const CLASSIF_CFG = {
-    excelente: { label: 'Excelente', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' },
-    bom:       { label: 'Bom',       cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30' },
-    atencao:   { label: 'Atenção',   cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
-    critico:   { label: 'Crítico',   cls: 'bg-red-500/15 text-red-300 border-red-500/30' },
-};
-
-function ScorePill({ score, classif }) {
-    const cfg = CLASSIF_CFG[classif] ?? CLASSIF_CFG.atencao;
-    return (
-        <div className="flex items-center gap-1.5">
-            <span className={cn('inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full border', cfg.cls)}>
-                {cfg.label}
-            </span>
-            <span className="text-white tabular-nums font-bold text-[13px]">{score}</span>
-        </div>
-    );
-}
-
-function PctTone({ value, good = 60, okay = 40, suffix = '%' }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const tone = value >= good ? 'text-emerald-300' : value >= okay ? 'text-amber-300' : 'text-red-300';
-    return <span className={cn('font-semibold tabular-nums text-[12px]', tone)}>{value.toFixed(0)}{suffix}</span>;
-}
-
-function GrowthTone({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20 font-bold">—</span>;
-    const tone = value >= 5 ? 'text-emerald-300' : value <= -5 ? 'text-red-300' : 'text-white/60';
-    const sign = value > 0 ? '+' : '';
-    return <span className={cn('font-semibold tabular-nums text-[12px]', tone)}>{sign}{value.toFixed(1)}%</span>;
-}
-
-function Tendencia({ value }) {
-    const cfg = {
-        subindo:  { label: '↑ subindo',  cls: 'text-emerald-300' },
-        estavel:  { label: '— estável',  cls: 'text-white/60' },
-        descendo: { label: '↓ descendo', cls: 'text-red-300' },
-        sem_dado: { label: '—',          cls: 'text-white/20' },
-    }[value] ?? { label: '—', cls: 'text-white/20' };
-    return <span className={cn('text-[11px] font-semibold', cfg.cls)}>{cfg.label}</span>;
-}
-
-// Phase 46-03 — micro-indicador de delta vs snapshot anterior (paleta espelha SparklineCrescimento).
-// Threshold ±1 ponto de score (escala 0..100) e seta Unicode ↑/↓/→.
-function ScoreDelta({ delta, label }) {
-    if (delta === null || delta === undefined) {
-        return <span className="text-white/20 font-semibold tabular-nums text-[10px]">{label ? `${label}: ` : ''}—</span>;
-    }
-    const cls   = delta > 1 ? 'text-emerald-300' : delta < -1 ? 'text-red-300' : 'text-white/40';
-    const arrow = delta > 1 ? '↑' : delta < -1 ? '↓' : '→';
-    const sign  = delta > 0 ? '+' : '';
-    return (
-        <span className={cn('inline-flex items-center gap-0.5 text-[10px] font-semibold tabular-nums', cls)}>
-            <span aria-hidden="true">{arrow}</span>
-            <span>{sign}{delta.toFixed(1)}</span>
-            {label && <span className="text-white/30 ml-0.5">{label}</span>}
-        </span>
-    );
-}
-
+// ═══════════════════════════════════════════════════════════════════════
+// RankingConsultoria — Tabela do ranking v2 (Phase 74 · Plan 74-06)
+//
+// Colunas: Posição · Nome+cargo · Nota final + delta · Faixa · Δ mês
+//          NPS · Var Fat · Var Margem · Empresas · Detalhes
+//
+// Sem menções às métricas v1 (crescimento_ajustado_pct, atingimento_meta_pct,
+// recuperacao, execucao_ads) — big bang DESEMP-14.
+// ═══════════════════════════════════════════════════════════════════════
 function RankingConsultoria({ ranking, onSelectUser }) {
     return (
-        <div className="card-ecf rounded-2xl overflow-hidden">
-            <div className="grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
+        <div className="rounded-2xl border border-white/[0.06] bg-ecf-card overflow-hidden">
+            <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 border-b border-white/[0.06] text-white/40 text-[11px] font-semibold uppercase tracking-wide">
                 <span>#</span>
                 <span>Nome</span>
-                <span className="text-right cursor-help" title="Empresas elegíveis (revenue > 0 no período atual ou anterior) / total de empresas ativas na carteira.">Empresas ⓘ</span>
-                <span className="cursor-help" title="Score 0-100 ponderado: 30% crescimento ajustado + 20% empresas crescendo + 20% atingimento de meta + 15% recuperação + 5% qualidade (NPS+reuniões). Cobertura Ads descontinuada — peso redistribuído. Categorias sem dado também redistribuem automaticamente.">Score ⓘ</span>
-                <span className="text-right cursor-help" title="Crescimento ajustado da carteira: revenue dos últimos 30d vs revenue_prev_period reportado pela Adman pra mesma janela.">Cresc. ⓘ</span>
-                <span className="text-right cursor-help" title="% de empresas elegíveis que tiveram revenue atual > revenue do período anterior.">Crescendo ⓘ</span>
-                <span className="text-right cursor-help" title="Atingimento da meta: usa PortfolioGoal de revenue ativo, ou soma das metas individuais (Goal de revenue por empresa) ativas se não houver meta de carteira.">Meta ⓘ</span>
-                <span className="text-right cursor-help" title="NPS médio das respostas dos últimos 30d (escala 1-5).">NPS ⓘ</span>
-                <span className="cursor-help" title="Tendência baseada no crescimento ajustado: ≥+5% subindo, ≤-5% descendo, no meio estável.">Tend. ⓘ</span>
+                <span className="text-right" title="Nota final do mês (média direta dos parâmetros disponíveis, escala 0-5).">Nota</span>
+                <span title="Faixa de bônus (configurável pelo admin em /desempenho/configuracao).">Faixa</span>
+                <span className="text-right" title="Delta vs mês passado fechado.">Δ mês</span>
+                <span className="text-right" title="NPS médio das respostas do mês (escala 0-5). Sem respostas → 0.">NPS</span>
+                <span className="text-right" title="% variação faturamento vs mês anterior (média das % por empresa; empresas novas excluídas).">Var Fat</span>
+                <span className="text-right" title="% variação margem de contribuição vs mês anterior (fonte Adman canônica).">Var Margem</span>
+                <span className="text-right" title="Empresas com baseline / total na carteira.">Empresas</span>
                 <span />
             </div>
 
             <div className="divide-y divide-white/[0.04]">
-                {ranking.map((u, idx) => (
-                    <div
-                        key={u.id}
-                        className={cn(
-                            'grid grid-cols-[2.5rem_1fr_5rem_8rem_5rem_5rem_5rem_4.5rem_4.5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04]',
-                            idx === 0 && u.tem_base_comparativa && 'bg-ecf-yellow/[0.03]',
-                            !u.tem_base_comparativa && 'opacity-60'
-                        )}
-                        title={!u.tem_base_comparativa ? 'Carteira < 5 empresas elegíveis — score sem base comparativa robusta' : undefined}
-                    >
-                        <div className="flex items-center justify-center">
-                            {idx < 3 && u.tem_base_comparativa
-                                ? <MedalBadge idx={idx} />
-                                : <span className="text-white/40 font-semibold text-[12px] tabular-nums">{u.posicao}</span>}
-                        </div>
+                {ranking.map((u, idx) => {
+                    const faixaSlug = u.faixa_bonus ?? 'sem_bonus';
+                    const faixaCls = FAIXA_BADGE_CLS[faixaSlug] ?? FAIXA_BADGE_CLS.sem_bonus;
+                    const faixaLbl = FAIXA_LABEL[faixaSlug] ?? faixaSlug;
+                    const nota = u.nota_final != null ? Number(u.nota_final).toFixed(2) : '—';
 
-                        {/* Phase 46-03 — Click no nome abre EvolucaoDrawer (não navega para portfolio). */}
+                    return (
                         <div
+                            key={u.id}
+                            className={cn(
+                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
+                                idx === 0 && 'bg-ecf-yellow/[0.03]',
+                            )}
                             onClick={() => onSelectUser?.(u)}
-                            className="cursor-pointer hover:underline"
                         >
-                            <p className="text-white font-semibold text-[13px]">{u.name}</p>
-                            <p className="text-white/30 text-[11px]">
-                                {u.cargo_label}
-                                {!u.tem_base_comparativa && <span className="text-amber-300/70"> · base insuficiente</span>}
-                            </p>
-                        </div>
+                            {/* Posição */}
+                            <div className="flex items-center justify-center">
+                                {idx < 3
+                                    ? <MedalBadge idx={idx} />
+                                    : <span className="text-white/40 font-semibold text-[12px] tabular-nums">{u.posicao ?? idx + 1}</span>}
+                            </div>
 
-                        <div className="text-right text-white/70 tabular-nums text-[12px]">
-                            {u.empresas_eligiveis}/{u.empresas_carteira}
-                        </div>
+                            {/* Nome + cargo */}
+                            <div className="min-w-0">
+                                <p className="text-white font-semibold text-[13px] truncate">{u.name}</p>
+                                <p className="text-white/40 text-[11px]">{u.cargo_label ?? '—'}</p>
+                            </div>
 
-                        {/* Phase 46-03 — Score + micro-deltas vs ontem e vs semana passada */}
-                        <div className="flex flex-col gap-0.5">
-                            <ScorePill score={u.score} classif={u.classificacao} />
-                            <div className="flex items-center gap-1.5">
-                                <ScoreDelta delta={u.delta_vs_ontem}          label="hoje" />
-                                <span className="text-white/15">·</span>
-                                <ScoreDelta delta={u.delta_vs_semana_passada} label="sem." />
+                            {/* Nota final */}
+                            <div className="text-right">
+                                <span className="text-white font-display font-extrabold text-[16px] tabular-nums">{nota}</span>
+                                <span className="text-white/30 text-[10px] block leading-none mt-0.5">/ 5,00</span>
+                            </div>
+
+                            {/* Faixa + promovida */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className={cn(
+                                    'inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                                    faixaCls,
+                                )}>
+                                    {faixaLbl}
+                                </span>
+                                {u.faixa_promovida && (
+                                    <span
+                                        className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                        title="Promovida por 2 meses consecutivos em Intermediário"
+                                    >
+                                        <Sparkles size={9} />
+                                        PROMOVIDA
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Delta vs mês passado */}
+                            <div className="text-right">
+                                <DeltaMes delta={u.delta_vs_mes_passado} />
+                            </div>
+
+                            {/* NPS médio */}
+                            <div className="text-right">
+                                {u.componentes?.nps_medio != null ? (
+                                    <span className="text-white/85 font-semibold tabular-nums text-[12px]">
+                                        {Number(u.componentes.nps_medio).toFixed(2)}
+                                    </span>
+                                ) : (
+                                    <span className="text-white/20 font-bold">—</span>
+                                )}
+                            </div>
+
+                            {/* Var Faturamento */}
+                            <div className="text-right">
+                                <PctToneCell value={u.componentes?.var_faturamento_pct} />
+                            </div>
+
+                            {/* Var Margem */}
+                            <div className="text-right">
+                                <PctToneCell value={u.componentes?.var_margem_pct} />
+                            </div>
+
+                            {/* Empresas */}
+                            <div className="text-right text-white/70 tabular-nums text-[12px]">
+                                {u.empresas_com_baseline ?? 0}/{u.empresas_carteira ?? 0}
+                            </div>
+
+                            {/* Chevron para portfolio individual */}
+                            <div className="flex items-center justify-end">
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        router.visit(route('performance.show', u.id));
+                                    }}
+                                    className="rounded-md p-1 text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
+                                    title="Ver detalhes"
+                                >
+                                    <ChevronRight size={14} />
+                                </button>
                             </div>
                         </div>
-
-                        <div className="text-right"><GrowthTone value={u.crescimento_ajustado_pct} /></div>
-                        <div className="text-right"><PctTone value={u.empresas_em_crescimento_pct} good={60} okay={40} /></div>
-                        <div className="text-right"><PctTone value={u.atingimento_meta_pct} good={80} okay={50} /></div>
-
-                        <div className="text-right">
-                            {u.avg_nps !== null && u.avg_nps !== undefined
-                                ? <span className="text-white/85 font-semibold tabular-nums text-[12px]">{u.avg_nps.toFixed(1)}</span>
-                                : <span className="text-white/20 font-bold">—</span>}
-                        </div>
-
-                        <div><Tendencia value={u.tendencia} /></div>
-
-                        {/* Phase 46-03 — ChevronRight preserva acesso ao portfolio individual. */}
-                        <div className="flex items-center justify-end">
-                            <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); router.visit(route('portfolio.show', u.id)); }}
-                                className="rounded-md p-1 text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-                                title="Abrir carteira individual"
-                            >
-                                <ChevronRight size={14} />
-                            </button>
-                        </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
+    );
+}
+
+// Célula de delta mensal (nota_final vs mês passado). null = "—".
+function DeltaMes({ delta }) {
+    if (delta == null || Number.isNaN(Number(delta))) {
+        return <span className="text-white/20 font-bold tabular-nums text-[11px]">—</span>;
+    }
+    const n = Number(delta);
+    const cls = n > 0.05 ? 'text-emerald-300' : n < -0.05 ? 'text-rose-300' : 'text-white/50';
+    const arrow = n > 0.05 ? '↑' : n < -0.05 ? '↓' : '—';
+    const sign = n > 0 ? '+' : '';
+    return (
+        <span className={cn('inline-flex items-center gap-0.5 font-semibold tabular-nums text-[11px]', cls)}>
+            <span aria-hidden="true">{arrow}</span>
+            {sign}{n.toFixed(2)}
+        </span>
+    );
+}
+
+// Célula de % com tom (verde/vermelho/neutro).
+function PctToneCell({ value }) {
+    if (value == null || Number.isNaN(Number(value))) {
+        return <span className="text-white/20 font-bold">—</span>;
+    }
+    const n = Number(value);
+    const cls = n > 0.5 ? 'text-emerald-300' : n < -0.5 ? 'text-rose-300' : 'text-white/60';
+    const sign = n > 0 ? '+' : '';
+    return (
+        <span className={cn('font-semibold tabular-nums text-[12px]', cls)}>
+            {sign}{n.toFixed(1)}%
+        </span>
     );
 }
 
@@ -414,6 +533,13 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
     }));
 
     const delta = rankingItem.delta_vs_ontem;
+    // Phase 74 D-05 · o payload v2 do controller passa `nota_final` (0-5).
+    // Preservamos fallback para `score` (0-100) caso venha de contexto legacy.
+    const notaAtual = rankingItem.nota_final != null
+        ? Number(rankingItem.nota_final).toFixed(2)
+        : rankingItem.score != null
+            ? Number(rankingItem.score).toFixed(0)
+            : '—';
 
     return (
         <div className="fixed inset-0 z-50 flex justify-end">
@@ -425,8 +551,8 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
                     <div>
                         <h2 className="text-white font-display font-extrabold text-lg leading-tight">{rankingItem.name}</h2>
                         <p className="text-white/40 text-xs">
-                            {rankingItem.cargo_label} · Score atual:{' '}
-                            <span className="text-white/70 font-semibold tabular-nums">{rankingItem.score}</span>
+                            {rankingItem.cargo_label} · Nota final:{' '}
+                            <span className="text-white/70 font-semibold tabular-nums">{notaAtual}</span>
                         </p>
                     </div>
                     <button
@@ -442,8 +568,8 @@ function EvolucaoDrawer({ rankingItem, allRankingIds, onClose }) {
                 {/* KPI cards */}
                 <div className="grid grid-cols-2 gap-2 px-5 py-4 border-b border-white/[0.06]">
                     <div>
-                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Score hoje</p>
-                        <p className="text-ecf-yellow font-display font-extrabold text-2xl mt-0.5 tabular-nums">{rankingItem.score}</p>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Nota atual</p>
+                        <p className="text-ecf-yellow font-display font-extrabold text-2xl mt-0.5 tabular-nums">{notaAtual}</p>
                     </div>
                     <div>
                         <p className="text-white/30 text-[10px] uppercase tracking-wider">vs ontem</p>
