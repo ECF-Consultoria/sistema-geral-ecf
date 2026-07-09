@@ -6,7 +6,13 @@ import { ArrowLeft, BookOpen } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { buscarArtigo } from './artigos';
 
-export default function Show({ slug }) {
+// Phase 74 D-22/D-23 · assinatura estendida com `artigoProps` (default {}).
+// Recebido do `ManualController::show()` — quando o slug precisa de dados do
+// backend (ex.: 'desempenho-bonificacao' carrega `bonus_faixas`), esses dados
+// vêm aqui e são espalhados no componente do artigo via spread. Se ausente,
+// spread `{}` = artigos que não precisam de props (ex.: Cronograma) seguem
+// funcionando sem breaking change.
+export default function Show({ slug, artigoProps = {} }) {
     const artigo = buscarArtigo(slug);
 
     if (!artigo) {
@@ -46,8 +52,11 @@ export default function Show({ slug }) {
                     <span className="text-white/70">{artigo.titulo}</span>
                 </nav>
 
-                {/* Conteúdo do artigo (componente próprio) */}
-                <Component />
+                {/* Conteúdo do artigo (componente próprio).
+                    Phase 74 D-22 · spread de `artigoProps` — permite artigos
+                    dinâmicos consumirem dados do backend. Artigos legados
+                    (ex.: Cronograma) ignoram por não declararem props. */}
+                <Component {...artigoProps} />
             </div>
         </AppLayout>
     );
