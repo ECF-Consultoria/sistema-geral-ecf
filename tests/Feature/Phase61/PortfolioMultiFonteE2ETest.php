@@ -175,7 +175,11 @@ class PortfolioMultiFonteE2ETest extends TestCase
         $this->attachCarteira($analista, $adman);
         $this->attachCarteira($analista, $ml);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado abrindo própria carteira)
+        // continua renderizando Portfolio/Show. Admin abrindo OUTRO user agora
+        // vai para Portfolio/AdminCarteira (view enxuta). Aqui testamos o shape
+        // do renderPortfolio, então usamos o próprio analista.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk();
@@ -209,7 +213,11 @@ class PortfolioMultiFonteE2ETest extends TestCase
             $this->attachCarteira($analista, $c);
         }
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado abrindo própria carteira)
+        // continua renderizando Portfolio/Show. Admin abrindo OUTRO user agora
+        // vai para Portfolio/AdminCarteira (view enxuta). Aqui testamos o shape
+        // do renderPortfolio, então usamos o próprio analista.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk();
@@ -250,7 +258,11 @@ class PortfolioMultiFonteE2ETest extends TestCase
         $mlOnly = $this->criarEmpresaPorCaso('so-ml', '999');
         $this->attachCarteira($analista, $mlOnly);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado abrindo própria carteira)
+        // continua renderizando Portfolio/Show. Admin abrindo OUTRO user agora
+        // vai para Portfolio/AdminCarteira (view enxuta). Aqui testamos o shape
+        // do renderPortfolio, então usamos o próprio analista.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk(); // sem 500 / exception / 422 mascarado
@@ -362,7 +374,11 @@ class PortfolioMultiFonteE2ETest extends TestCase
         $none = $this->criarEmpresaPorCaso('none', '000');
         $this->attachCarteira($analista, $none);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado abrindo própria carteira)
+        // continua renderizando Portfolio/Show. Admin abrindo OUTRO user agora
+        // vai para Portfolio/AdminCarteira (view enxuta). Aqui testamos o shape
+        // do renderPortfolio, então usamos o próprio analista.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk();

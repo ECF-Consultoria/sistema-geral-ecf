@@ -197,7 +197,11 @@ class DashboardPendencyPropsTest extends TestCase
             'assigned_at' => now()->toDateString(),
         ]);
 
-        $response = $this->actingAs($admin)->get(
+        // Ajuste 2026-07-09 — auto-view do owner preserva Portfolio/Show
+        // (renderPortfolio + injeção de nps_pendentes). Admin abrindo OUTRO
+        // user vai para Portfolio/AdminCarteira (view enxuta). Aqui testamos
+        // que o widget de pendências NPS aparece no shape do renderPortfolio.
+        $response = $this->actingAs($ownerConsultor)->get(
             route('portfolio.show', $ownerConsultor)
         );
 

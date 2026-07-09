@@ -134,7 +134,10 @@ class PortfolioSourceEnrichmentTest extends TestCase
         $company  = Company::factory()->create(['adman_account_id' => '12345']);
         $this->attachCarteira($analista, $company);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado) preserva shape original
+        // de Portfolio/Show. Admin abrindo OUTRO user vai para Portfolio/AdminCarteira
+        // (view enxuta). Aqui testamos o shape do renderPortfolio.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk();
@@ -168,7 +171,10 @@ class PortfolioSourceEnrichmentTest extends TestCase
         $this->attachCarteira($analista, $ambos);
         $this->attachCarteira($analista, $soMl);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado) preserva shape original
+        // de Portfolio/Show. Admin abrindo OUTRO user vai para Portfolio/AdminCarteira
+        // (view enxuta). Aqui testamos o shape do renderPortfolio.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk();
@@ -262,7 +268,10 @@ class PortfolioSourceEnrichmentTest extends TestCase
         $this->attachMlToken($mlOnly);
         $this->attachCarteira($analista, $mlOnly);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado) preserva shape original
+        // de Portfolio/Show. Admin abrindo OUTRO user vai para Portfolio/AdminCarteira
+        // (view enxuta). Aqui testamos o shape do renderPortfolio.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk(); // sem exception, sem 422/500
@@ -293,7 +302,10 @@ class PortfolioSourceEnrichmentTest extends TestCase
         ]);
         $this->attachCarteira($analista, $none);
 
-        $response = $this->actingAs($this->admin)
+        // Ajuste 2026-07-09 — auto-view (analista logado) preserva shape original
+        // de Portfolio/Show. Admin abrindo OUTRO user vai para Portfolio/AdminCarteira
+        // (view enxuta). Aqui testamos o shape do renderPortfolio.
+        $response = $this->actingAs($analista)
             ->get(route('portfolio.show', $analista));
 
         $response->assertOk();

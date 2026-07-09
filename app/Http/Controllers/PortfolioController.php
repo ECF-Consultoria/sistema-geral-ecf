@@ -66,6 +66,13 @@ class PortfolioController extends Controller
     //  - Líder de setor: somente users vinculados (user_setores) ao(s) setor(es)
     //    que ele lidera.
     //  - Próprio user (auto-visualização também funciona).
+    //
+    // Ajuste 2026-07-09 (v3) — Admin/Líder abrindo carteira de OUTRO profissional
+    // vai para a nova página `Portfolio/AdminCarteira.jsx`, enxuta e focada nos
+    // dados que o admin precisa (total faturamento, variação margem, listagem
+    // de empresas com badge ML + variação % individual). Portfolio/Show.jsx
+    // legada (1000+ linhas de shape v1 + widgets do próprio profissional) fica
+    // reservada só para auto-visualização (`/portfolio`).
     public function show(Request $request, User $user)
     {
         $atual = $request->user();
@@ -80,7 +87,143 @@ class PortfolioController extends Controller
             );
         abort_unless($autorizado, 403);
 
+        // Admin/líder abrindo OUTRO profissional → view enxuta dedicada.
+        if ($atual->id !== $user->id) {
+            return $this->renderAdminCarteira($request, $user);
+        }
+
         return $this->renderPortfolio($request, $user);
+    }
+
+    /**
+     * Página enxuta para admin/líder visualizarem a carteira de um profissional.
+     *
+     * Requisitos explícitos (2026-07-09):
+     *  - Total de faturamento somado de todas empresas em carteira
+     *  - Variação % da margem de contribuição vs mesmo intervalo mês anterior
+     *  - Listagem de empresas com faturamento, badge ML SVG quando OAuth ativo,
+     *    e % variação de margem individual vs mesmo intervalo mês anterior
+     *
+     * Comparação SEMPRE dia-a-dia acumulada (janela justa mesmo em mês em curso).
+     */
+    private function renderAdminCarteira(Request $request, User $user): \Inertia\Response
+    {
+        // Comparação sempre acumulada dia-a-dia: dia 1..hoje do mês corrente vs
+        // dia 1..mesmo dia do mês anterior. Evita queda artificial no início do
+        // mês (que era o problema reportado quando comparávamos 9 dias vs 30).
+        $hoje         = now();
+        $inicioMes    = $hoje->copy()->startOfMonth();
+        $inicioAnter  = $inicioMes->copy()->subMonth();
+        $fimAnter     = $inicioAnter->copy()
+            ->setDay(min($hoje->day, $inicioAnter->daysInMonth))
+            ->endOfDay();
+        $dateFrom     = $inicioMes->toDateString();
+        $dateTo       = $hoje->toDateString();
+        $dateFromPrev = $inicioAnter->toDateString();
+        $dateToPrev   = $fimAnter->toDateString();
+
+        // Empresas da carteira ativas + eager-load mlToken pra badge OAuth.
+        $rawCompanies = $user->companies()
+            ->with('mlToken')
+            ->where('active', true)
+            ->orderBy('name')
+            ->get();
+        $companyIds = $rawCompanies->pluck('id');
+
+        // Metrics agregados por empresa nas duas janelas (Adman é canônico
+        // pra margem — ML não expõe custo unitário).
+        $atualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$dateFrom, $dateTo])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+        $anteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$dateFromPrev, $dateToPrev])
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
+        // Cache Adman gross (fonte preferencial de revenue no mês atual —
+        // mais completa que SUM DB local; hotfix 2026-06-19).
+        $custIds = $rawCompanies->map(fn ($c) => $c->cust_id)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $grossAtual = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+
+        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual) {
+            $custId       = $c->cust_id;
+            $rowAtual     = $atualPorEmpresa->get($c->id);
+            $rowAnterior  = $anteriorPorEmpresa->get($c->id);
+
+            // Revenue prioriza cache Adman; fallback SUM DB local.
+            $revenue = null;
+            if ($custId && isset($grossAtual[$custId]) && ($grossAtual[$custId]['value'] ?? null) !== null) {
+                $revenue = (float) $grossAtual[$custId]['value'];
+            }
+            if ($revenue === null) {
+                $revenue = $rowAtual ? (float) $rowAtual->rev : null;
+            }
+
+            $margemAtual    = (float) ($rowAtual?->margem ?? 0);
+            $margemAnterior = (float) ($rowAnterior?->margem ?? 0);
+            $margemVarPct   = $margemAnterior > 0
+                ? round((($margemAtual - $margemAnterior) / $margemAnterior) * 100, 2)
+                : null;
+
+            return [
+                'id'                          => $c->id,
+                'name'                        => $c->name,
+                'faturamento'                 => $revenue !== null ? round($revenue, 2) : null,
+                'margem_contribuicao'         => round($margemAtual, 2),
+                'margem_contribuicao_anterior'=> $margemAnterior > 0 ? round($margemAnterior, 2) : null,
+                'margem_variacao_pct'         => $margemVarPct,
+                'has_ml_oauth'                => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+            ];
+        })->values();
+
+        // Totais consolidados da carteira.
+        $totalFaturamento    = (float) $empresas->sum('faturamento');
+        $totalMargemAtual    = (float) $empresas->sum('margem_contribuicao');
+        $totalMargemAnterior = (float) $empresas->sum('margem_contribuicao_anterior');
+        $variacaoMargemPct   = $totalMargemAnterior > 0
+            ? round((($totalMargemAtual - $totalMargemAnterior) / $totalMargemAnterior) * 100, 2)
+            : null;
+
+        // Cargo pt-BR pra header (mesmo padrão do resto do módulo).
+        $cargoSlug = DB::table('user_setores as us')
+            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+            ->where('us.user_id', $user->id)
+            ->whereIn('c.slug', ['analista', 'estrategista'])
+            ->value('c.slug');
+        $cargoLabel = $cargoSlug === 'estrategista' ? 'Estrategista' : ($cargoSlug === 'analista' ? 'Analista' : 'Profissional');
+
+        return Inertia::render('Portfolio/AdminCarteira', [
+            'profissional' => [
+                'id'          => $user->id,
+                'name'        => $user->name,
+                'cargo_label' => $cargoLabel,
+            ],
+            'resumo' => [
+                'total_empresas'      => $empresas->count(),
+                'empresas_ml_oauth'   => (int) $empresas->where('has_ml_oauth', true)->count(),
+                'total_faturamento'   => round($totalFaturamento, 2),
+                'total_margem_atual'  => round($totalMargemAtual, 2),
+                'total_margem_anterior' => round($totalMargemAnterior, 2),
+                'variacao_margem_pct' => $variacaoMargemPct,
+            ],
+            'empresas' => $empresas,
+            'periodo' => [
+                'dia_atual'      => $hoje->day,
+                'dias_no_mes'    => $hoje->daysInMonth,
+                'mes_label'      => $hoje->translatedFormat('F Y'),
+                'range_atual'    => sprintf('%s até %s', $inicioMes->format('d/m'), $hoje->format('d/m')),
+                'range_anterior' => sprintf('%s até %s', $inicioAnter->format('d/m'), $fimAnter->format('d/m')),
+            ],
+        ]);
     }
 
     // Aba "Carteira" no sidebar — bifurca por papel (quick 260610-lj6 + 260623):
