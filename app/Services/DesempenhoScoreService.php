@@ -149,6 +149,13 @@ class DesempenhoScoreService
             $faixaPromovida = $promocao['promovida'];
         }
 
+        // ── Metadados do período (UI mostra aviso "mês em curso") ─────────────
+        $hoje          = now();
+        $mesCorrente   = $mes->copy()->startOfMonth();
+        $ehMesEmCurso  = $hoje->between($mesCorrente, $mesCorrente->copy()->endOfMonth());
+        $diasDecorridos = $ehMesEmCurso ? $hoje->day : $mesCorrente->daysInMonth;
+        $diasNoMes      = $mesCorrente->daysInMonth;
+
         return [
             'user_id'               => $user->id,
             'user_name'             => $user->name,
@@ -166,6 +173,15 @@ class DesempenhoScoreService
             'nota_final'      => $nota,
             'faixa_bonus'     => $faixaFinal,
             'faixa_promovida' => $faixaPromovida,
+            // Metadata para UI mostrar aviso e ajudar analistas a entender por
+            // que variações podem parecer baixas no início do mês. Comparação
+            // já é justa (dia 1..hoje vs mesmo range mês anterior), mas número
+            // de dias na amostra afeta significância estatística.
+            'periodo_meta' => [
+                'em_curso'        => $ehMesEmCurso,
+                'dias_decorridos' => $diasDecorridos,
+                'dias_no_mes'     => $diasNoMes,
+            ],
         ];
     }
 
@@ -323,10 +339,32 @@ class DesempenhoScoreService
         }
 
         $companyIds  = $companiesQualificadas->pluck('id');
-        $inicioMes   = $mes->copy()->startOfMonth();
-        $fimMes      = $mes->copy()->endOfMonth();
-        $inicioAnter = $mes->copy()->subMonth()->startOfMonth();
-        $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
+
+        // ── Comparação JUSTA de período (Ajuste 2026-07-09) ──────────────────
+        // Quando o mês de referência é o MÊS CORRENTE (ainda não fechou), comparar
+        // o intervalo dia 1 até HOJE com o MESMO range no mês anterior — evita a
+        // distorção de comparar "9 dias de julho" com "30 dias de junho" que
+        // gerava variações artificialmente negativas (-70%+) e distorcia toda a
+        // régua de bônus dos analistas/estrategistas.
+        //
+        // Quando o mês de referência é um MÊS FECHADO (passado), usar meses
+        // calendário completos (comportamento original).
+        $hoje       = now();
+        $mesCorrente = $mes->copy()->startOfMonth();
+        $ehMesEmCurso = $hoje->between($mesCorrente, $mesCorrente->copy()->endOfMonth());
+
+        if ($ehMesEmCurso) {
+            $diaAtual   = $hoje->day;
+            $inicioMes  = $mesCorrente->copy();
+            $fimMes     = $hoje->copy()->endOfDay();
+            $inicioAnter = $mesCorrente->copy()->subMonth();
+            $fimAnter    = $inicioAnter->copy()->setDay(min($diaAtual, $inicioAnter->daysInMonth))->endOfDay();
+        } else {
+            $inicioMes   = $mes->copy()->startOfMonth();
+            $fimMes      = $mes->copy()->endOfMonth();
+            $inicioAnter = $mes->copy()->subMonth()->startOfMonth();
+            $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
+        }
 
         // Adman fallback: 2 queries agregadas (mês atual + anterior).
         // whereDate para robustez SQLite (padrão SnapshotDesempenhoScores).
@@ -409,10 +447,27 @@ class DesempenhoScoreService
         }
 
         $companyIds  = $companies->pluck('id');
-        $inicioMes   = $mes->copy()->startOfMonth();
-        $fimMes      = $mes->copy()->endOfMonth();
-        $inicioAnter = $mes->copy()->subMonth()->startOfMonth();
-        $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
+
+        // ── Comparação JUSTA de período (Ajuste 2026-07-09) ──────────────────
+        // Mesmo pattern de computeVarFaturamento: mês em curso compara dia 1..hoje
+        // vs mesmo range no mês anterior, evitando queda artificial de margem
+        // por diferença de dias entre mês corrente parcial e mês passado completo.
+        $hoje         = now();
+        $mesCorrente  = $mes->copy()->startOfMonth();
+        $ehMesEmCurso = $hoje->between($mesCorrente, $mesCorrente->copy()->endOfMonth());
+
+        if ($ehMesEmCurso) {
+            $diaAtual   = $hoje->day;
+            $inicioMes  = $mesCorrente->copy();
+            $fimMes     = $hoje->copy()->endOfDay();
+            $inicioAnter = $mesCorrente->copy()->subMonth();
+            $fimAnter    = $inicioAnter->copy()->setDay(min($diaAtual, $inicioAnter->daysInMonth))->endOfDay();
+        } else {
+            $inicioMes   = $mes->copy()->startOfMonth();
+            $fimMes      = $mes->copy()->endOfMonth();
+            $inicioAnter = $mes->copy()->subMonth()->startOfMonth();
+            $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
+        }
 
         $margemAtual = AdmanMetric::whereIn('company_id', $companyIds)
             ->whereDate('reference_date', '>=', $inicioMes->toDateString())

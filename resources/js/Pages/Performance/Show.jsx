@@ -234,6 +234,29 @@ export default function PerformanceShow({
                     )}
                 </div>
 
+                {/* Banner "mês em curso — dados parciais" (Ajuste 2026-07-09) */}
+                {!semCarteira && resultado?.periodo_meta?.em_curso && (
+                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                            <Calendar size={16} className="text-amber-300" />
+                        </div>
+                        <div className="text-sm">
+                            <div className="text-amber-200 font-semibold">
+                                Mês em curso — dados parciais
+                            </div>
+                            <div className="text-amber-100/70 text-xs mt-1 leading-relaxed">
+                                As variações de faturamento e margem comparam
+                                <span className="text-white font-medium"> dia 1 até {resultado.periodo_meta.dias_decorridos} </span>
+                                do mês atual com o
+                                <span className="text-white font-medium"> mesmo intervalo do mês anterior </span>
+                                — comparação justa dia-a-dia.
+                                A nota consolidada oficial (usada para bônus) só é calculada quando o mês fecha
+                                ({resultado.periodo_meta.dias_no_mes} dias completos).
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* SEM CARTEIRA — bloco amarelo grande (DESEMP-10) */}
                 {semCarteira ? (
                     <div className="rounded-2xl border border-ecf-yellow/30 bg-ecf-yellow/[0.05] p-10 flex flex-col items-center text-center gap-3">

@@ -64,9 +64,15 @@ class PortfolioController extends Controller
     // Carteira individual de um profissional. Acesso (quick 260623):
     //  - Admin: qualquer user (compat).
     //  - Líder de setor: somente users vinculados (user_setores) ao(s) setor(es)
-    //    que ele lidera. Líder de Performance vê a carteira da equipe Performance,
-    //    líder de Polos vê a equipe Polos, etc.
+    //    que ele lidera.
     //  - Próprio user (auto-visualização também funciona).
+    //
+    // Ajuste 2026-07-09 pós Phase 74: quando um ADMIN ou LÍDER acessa a carteira
+    // de OUTRO profissional (não a própria), redirecionamos para a nova página
+    // de Desempenho (Performance/Show.jsx) que já consome o shape v2 completo
+    // do DesempenhoScoreService com os 4 parâmetros + faixa de bônus + snapshot
+    // mensal. O legado Portfolio/Show.jsx continua ativo apenas para o próprio
+    // user acessar a própria carteira (via /portfolio).
     public function show(Request $request, User $user)
     {
         $atual = $request->user();
@@ -80,6 +86,12 @@ class PortfolioController extends Controller
                     ->exists()
             );
         abort_unless($autorizado, 403);
+
+        // Admin/líder viewing outro user → dashboard v2 do analista/estrategista.
+        // Auto-view do próprio user preserva o Portfolio/Show.jsx histórico.
+        if ($atual->id !== $user->id) {
+            return redirect()->route('performance.show', $user->id);
+        }
 
         return $this->renderPortfolio($request, $user);
     }
