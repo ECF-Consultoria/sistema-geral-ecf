@@ -203,18 +203,6 @@ function NotaCard({ label, valor }) {
     );
 }
 
-// ═══ AmbientOrbs — fundo com 4 orbs difusas ══════════════════════════════
-function AmbientOrbs() {
-    return (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ zIndex: 0 }} aria-hidden>
-            <div style={{ position: 'absolute', top: -120, right: 120, width: 420, height: 420, borderRadius: '50%', background: '#1e5ef3', filter: 'blur(140px)', opacity: 0.20 }} />
-            <div style={{ position: 'absolute', top: 60, right: -80, width: 360, height: 360, borderRadius: '50%', background: '#e84393', filter: 'blur(150px)', opacity: 0.16 }} />
-            <div style={{ position: 'absolute', top: 280, left: -60, width: 340, height: 340, borderRadius: '50%', background: '#f97316', filter: 'blur(150px)', opacity: 0.12 }} />
-            <div style={{ position: 'absolute', bottom: -40, left: 340, width: 300, height: 300, borderRadius: '50%', background: '#facc15', filter: 'blur(150px)', opacity: 0.08 }} />
-        </div>
-    );
-}
-
 // ═══ Sparkline mini (AreaChart Recharts, 100×36 sem eixos) ═══════════════
 function Sparkline({ data, color, gradientId }) {
     if (!data || data.length === 0) return <div style={{ width: 100, height: 36 }} />;
@@ -919,10 +907,8 @@ export default function NpsIndex({
     // ─── Render ──────────────────────────────────────────────────────────
     return (
         <AppLayout title="NPS">
-            <div className="relative min-h-full" style={{ background: '#050508' }}>
-                <AmbientOrbs />
-
-                <div className="relative" style={{ zIndex: 2, padding: '22px 26px 34px' }}>
+            <div className="relative">
+                <div style={{ padding: '22px 0 34px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
                         {/* ─── Filter bar ────────────────────────────────────── */}
