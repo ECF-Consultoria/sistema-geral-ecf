@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: executing
-stopped_at: Completed 74-06 + 74-07 + 74-08 (Wave 4 Phase 74 — Frontend: Ranking/Dashboard/Show v2 + Configuracao admin + artigo Manual dinâmico)
-last_updated: "2026-07-09T22:30:00.000Z"
+stopped_at: Completed 74-09 + 74-10 (Wave 5 Phase 74 — Testes bloqueantes DesempenhoScoreService + DesempenhoConfigController + ConsolidarMesDesempenho + adaptação regressão zero)
+last_updated: "2026-07-09T23:45:00.000Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 7
-  completed_phases: 6
-  total_plans: 42
-  completed_plans: 42
-  percent: 90
+  completed_phases: 7
+  total_plans: 44
+  completed_plans: 44
+  percent: 100
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 74 (Módulo Desempenho — simplificação para 4 parâmetros + bonificação) — EXECUTING
-Plan: 9 of 10 (Wave 4 fechada: 06/07/08 entregues; falta Wave 5 testes 74-09/74-10)
-Status: Ready to execute (74-09 · testes DesempenhoScoreService Feature)
+Phase: 74 (Módulo Desempenho — simplificação para 4 parâmetros + bonificação) — COMPLETED
+Plan: 10 of 10 (Wave 5 fechada: 74-09 fixture Carlos como âncora + 74-10 config admin + comando mensal + regressão zero em 4 suites legadas)
+Status: Phase 74 complete — 50 testes verdes (30 Phase74 + 32 regressão), 310 asserções
 Last activity: 2026-07-09
 
 ## Performance Metrics
@@ -128,6 +128,8 @@ Last activity: 2026-07-09
 | Phase 74 P06 | 45min | 3 tasks (Dashboard/Index/Show reescritos + PerformanceController::show Rule 2) | 4 files |
 | Phase 74 P07 | 20min | 1 task (Desempenho/Configuracao.jsx) | 1 file (new) |
 | Phase 74 P08 | 25min | 3 tasks (ManualController + Show wrapper + artigos.js + DesempenhoBonificacao) | 4 files (3 modified, 1 new) |
+| Phase 74 P09 | 30min | 1 task (DesempenhoScoreServiceTest com fixture Carlos âncora — 12 testes 38 asserções) | 1 file (new) |
+| Phase 74 P10 | 55min | 3 tasks (DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + adaptação regressão 4 suites legadas) | 6 files (2 new + 4 modified) |
 
 ## Accumulated Context
 
@@ -586,8 +588,20 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-09T18:22:25.789Z
-Stopped at: Completed 74-01 e 74-02 (Wave 1 Phase 74)
+Last session: 2026-07-09T23:45:00.000Z
+Stopped at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
+
+**Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
+
+Contadores finais Phase 74:
+- 30 testes novos em `tests/Feature/Phase74/` (112 asserções)
+- 32 testes regressão adaptados minimamente ao shape v2 (198 asserções)
+- Total: 50 testes verdes, 310 asserções — fixture Carlos assert `nota_final=3.35` + `faixa_bonus='sem_bonus'`
+
+Pré-existente identificado (fora do escopo Phase 74):
+- `PublicacaoDesempenhoRouteTest::test_user_com_mlb_dashboard_acessa_rota_e_recebe_200` falha com 403 esperado 200; validado via `git stash` que falha na main sem mudanças de Phase 74 — permission `mlb.dashboard` wiring do Setor "Publicação".
+
+Legado antigo desta seção (Phase 39):
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
 

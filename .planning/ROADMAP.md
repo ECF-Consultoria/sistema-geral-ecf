@@ -150,8 +150,8 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 - [x] 74-06-PLAN.md — Performance/{Dashboard,Index,Show}.jsx reescritas — 4 cards de parâmetros + faixa de bônus + toggle mês fechado/parcial/diário + filtro sem_carteira no ranking + badge "Em breve" no Absenteísmo (COMPLETO 2026-07-09 — commits 7b5cf38 + 8a0fd84 + 6c49160; PerformanceController::show() adaptado como Rule 2 deviation)
 - [x] 74-07-PLAN.md — Desempenho/Configuracao.jsx (UI React admin — CRUD faixas inline + validação inline + toast + toggle ativo/inativo) (COMPLETO 2026-07-09 — commit a257441)
 - [x] 74-08-PLAN.md — Manual/Artigos/DesempenhoBonificacao.jsx + artigos.js entry + ManualController::show evoluído (passa bonus_faixas prop) + Manual/Show.jsx spread artigoProps (COMPLETO 2026-07-09 — commit 1d42f92; artigo dinâmico em sync com bonus_faixas, sem cache)
-- [ ] 74-09-PLAN.md — Suite tests/Feature/Phase74/DesempenhoScoreServiceTest (11+ testes: fixture Carlos âncora, dual-path NPS, empresa nova, provider ML-first/Adman-fallback, promoção 2 meses, sem_carteira)
-- [ ] 74-10-PLAN.md — Suites tests/Feature/Phase74/DesempenhoConfigControllerTest (11 testes: 403 não-admin, CRUD, sobreposição, toggle) + ConsolidarMesDesempenhoCommandTest (7 testes: --mes flag, idempotência, sem_carteira pula, ranking_pos, diário preservado com mes_referencia=null) + validação regressão zero
+- [x] 74-09-PLAN.md — Suite tests/Feature/Phase74/DesempenhoScoreServiceTest (12 testes verdes / 38 asserções — fixture Carlos âncora `nota_final=3.35 sem_bonus`, dual-path NPS legacy, empresa nova, provider ML-first/Adman-fallback, promoção 2 meses, sem_carteira pt-BR) (COMPLETO 2026-07-09 — commit 980c013)
+- [x] 74-10-PLAN.md — Suites tests/Feature/Phase74/DesempenhoConfigControllerTest (11 testes verdes: 403 não-admin, CRUD, sobreposição, toggle) + ConsolidarMesDesempenhoCommandTest (7 testes verdes: --mes flag, idempotência, sem_carteira pula, ranking_pos, diário preservado com mes_referencia=null) + regressão zero em 4 suites Feature legadas adaptadas ao shape v2 (32 testes verdes / 198 asserções) (COMPLETO 2026-07-09 — commits 24134c0 + 096d72f)
 **UI hint**: yes
 
 ## Phase Progress
@@ -164,7 +164,7 @@ Histórico completo dos milestones anteriores (v1.0–v13.0): `.planning/MILESTO
 | 71. Formulário público | 3/3 | Complete | 2026-07-08 |
 | 72. Dashboards + pendências | 4/4 | Complete | 2026-07-08 |
 | 73. Limpeza legado + testes E2E | 4/4 | Complete | 2026-07-08 |
-| 74. Módulo Desempenho (4 parâmetros + bonificação) | 8/10 | In Progress|  |
+| 74. Módulo Desempenho (4 parâmetros + bonificação) | 10/10 | Complete | 2026-07-09 |
 
 ## Dependencies
 
