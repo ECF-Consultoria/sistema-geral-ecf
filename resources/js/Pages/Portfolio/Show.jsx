@@ -430,8 +430,8 @@ export default function PortfolioShow({
     periodo_amostra = { from_label: '—', to_label: '—', mes_label: '—', is_mes_atual: true },
     prioridade_do_dia = 0,
     prioridade_lista = [],
-    performance_profissional = null,
-    comparacao_contextual = null,
+    performance_profissional: performance_profissional_v2 = null,
+    comparacao_contextual: comparacao_contextual_v2 = null,
     // Props diferenciados por cargo (Plan 48-01)
     cargo_slug = null,
     sugador_counters = null,
@@ -443,6 +443,80 @@ export default function PortfolioShow({
     //   [{ company_id, name, template_id, template_nome, month_reference, dias_atraso }, ...]
     nps_pendentes = [],
 }) {
+    // ── Compat v2→v1 (Ajuste 2026-07-09) ──────────────────────────────────
+    // Phase 74 substituiu o PortfolioScoreService (6 métricas ponderadas, escala
+    // 0-100) por DesempenhoScoreService (4 parâmetros, escala 1-5 pós réguas).
+    // O shape das props de `performance_profissional` e `comparacao_contextual`
+    // mudou; o JSX legado abaixo espera o formato v1 (.score, .classificacao,
+    // .metricas.*, .relativo.score, .medianas.score). Em vez de reescrever
+    // ~42 refs, mapeamos v2 → shape v1 aqui e o JSX antigo consome sem mudança.
+    //
+    // Regras de mapeamento:
+    //   nota_final (1-5) → score (0-100)  via `Math.round(nota_final * 20)`
+    //   faixa_bonus (slug) → classificacao (label legado):
+    //     'maximo'        → 'excelente'
+    //     'intermediario' → 'bom'
+    //     'basico'        → 'atencao'
+    //     'sem_bonus'     → 'critico'
+    //   componentes.var_faturamento_pct → metricas.crescimento_ajustado_pct
+    //   Campos v1 sem equivalente v2 (empresas_em_crescimento, atingimento_meta,
+    //   recuperacao, execucao_ads, qualidade) → null / defaults (JSX degrada
+    //   graciosamente para "—").
+    const FAIXA_TO_CLASSIF = {
+        maximo:        'excelente',
+        intermediario: 'bom',
+        basico:        'atencao',
+        sem_bonus:     'critico',
+    };
+    const RELATIVO_MAP = {
+        acima:    'acima',
+        abaixo:   'abaixo',
+        na_media: 'na_media',
+        sem_dado: 'sem_dado',
+    };
+
+    const performance_profissional = useMemo(() => {
+        if (!performance_profissional_v2) return null;
+        const v2 = performance_profissional_v2;
+        const nota = v2.nota_final;
+        const scoreLegacy = nota != null ? Math.round(nota * 20) : null;
+        return {
+            ...v2,
+            score: scoreLegacy,
+            nota_final: nota,
+            classificacao: FAIXA_TO_CLASSIF[v2.faixa_bonus] ?? 'atencao',
+            metricas: {
+                crescimento_ajustado_pct: v2.componentes?.var_faturamento_pct ?? null,
+                empresas_em_crescimento:  { pct: null, count: 0, total: v2.empresas_carteira ?? 0 },
+                atingimento_meta:         { pct: null, has_goal: false, target: null, realizado: null, origem: null },
+                recuperacao:              { pct: null, em_queda: 0, recuperadas: 0 },
+                execucao_ads:             { pct: null, ativou: 0, sem_ads_anterior: 0 },
+                qualidade:                { nps: v2.componentes?.nps_medio ?? null, reunioes: 0, absenteismo_pct: null },
+            },
+        };
+    }, [performance_profissional_v2]);
+
+    const comparacao_contextual = useMemo(() => {
+        if (!comparacao_contextual_v2) return null;
+        const v2 = comparacao_contextual_v2;
+        // O v2 já entrega `medianas.nota_final`, mas o JSX legado lê `medianas.score`.
+        // Espelhamos os campos legado + mantemos os v2 pra ambos os consumidores.
+        const notaMediana = v2.medianas?.nota_final ?? null;
+        return {
+            ...v2,
+            medianas: {
+                ...(v2.medianas ?? {}),
+                score: notaMediana != null ? notaMediana * 20 : null,
+                crescimento_ajustado_pct: v2.medianas?.var_faturamento_pct ?? null,
+            },
+            relativo: {
+                ...(v2.relativo ?? {}),
+                score: RELATIVO_MAP[v2.relativo?.nota_final] ?? 'sem_dado',
+                crescimento_ajustado_pct: RELATIVO_MAP[v2.relativo?.var_faturamento_pct] ?? 'sem_dado',
+            },
+        };
+    }, [comparacao_contextual_v2]);
+
     // Guard defensivo — se backend legado não injetar, seguir com lista vazia
     const npsPendentesList = nps_pendentes ?? [];
 

@@ -469,11 +469,25 @@ class DesempenhoScoreService
      * DESEMP-02: sem normalização régua 1-5, sem redistribuição de pesos.
      * Absenteísmo NUNCA entra no cálculo — é excluído por spec (DESEMP-06).
      *
-     * @return ?float 2 decimais; null quando TODOS os componentes são null
+     * Ajuste 2026-07-09 (pós-deploy): variação bruta em % permitia notas fora
+     * do range [1, 5] (ex: analista com var_fat=-15% + var_margem=-20% ficava
+     * com nota ~-10) e distorcia toda a régua de bônus. Fix: as variações
+     * passam pelas réguas 1-5 antes de entrar na média — todos os 3 componentes
+     * ficam na mesma escala 1-5, e a nota final SEMPRE fica em [1.0, 5.0].
+     *
+     * @return ?float 2 decimais em [1.0, 5.0]; null quando TODOS os componentes são null
      */
     private function computeNotaFinal(?float $nps, ?float $varFat, ?float $varMargem): ?float
     {
-        $componentes = collect([$nps, $varFat, $varMargem])
+        // NPS já é 1-5 (escala do formulário) — clamp defensivo.
+        $npsPts = $nps !== null ? max(1.0, min(5.0, $nps)) : null;
+
+        // Variações passam pelas réguas 1-5 (SPEC-04/SPEC-05) para caber na
+        // mesma escala do NPS e produzir média significativa.
+        $fatPts    = $this->reguaFaturamento($varFat);
+        $margemPts = $this->reguaMargem($varMargem);
+
+        $componentes = collect([$npsPts, $fatPts, $margemPts])
             ->reject(fn ($v) => $v === null);
 
         if ($componentes->isEmpty()) {
@@ -481,6 +495,49 @@ class DesempenhoScoreService
         }
 
         return round($componentes->sum() / $componentes->count(), 2);
+    }
+
+    /**
+     * Régua de FATURAMENTO — aplica pontuação 1-5 pts à % de variação de faturamento
+     * vs mês anterior por empresa (média da carteira).
+     *
+     * Ancorada no SPEC-04 "Régua de Faturamento" da diretoria, adaptada à
+     * interpretação vs-mês-anterior escolhida em spec-phase Q1:
+     *   ≤ -6%  → 1 pt (queda severa)
+     *   ≤ -1%  → 2 pts (queda leve)
+     *   <  1%  → 3 pts (estável / meta)
+     *   ≤  5%  → 4 pts (crescimento saudável)
+     *   >  5%  → 5 pts (crescimento excelente)
+     */
+    private function reguaFaturamento(?float $pct): ?float
+    {
+        if ($pct === null) return null;
+        if ($pct <= -6)    return 1.0;
+        if ($pct <= -1)    return 2.0;
+        if ($pct <   1)    return 3.0;
+        if ($pct <=  5)    return 4.0;
+        return 5.0;
+    }
+
+    /**
+     * Régua de MARGEM DE CONTRIBUIÇÃO — aplica pontuação 1-5 pts à % de variação
+     * de margem vs mês anterior por empresa (média da carteira).
+     *
+     * Ancorada no SPEC-05 "Régua de Margem" da diretoria:
+     *   ≤ -5%  → 1 pt
+     *   ≤ -2%  → 2 pts
+     *   ≤  1%  → 3 pts
+     *   ≤  4%  → 4 pts
+     *   >  4%  → 5 pts
+     */
+    private function reguaMargem(?float $pct): ?float
+    {
+        if ($pct === null) return null;
+        if ($pct <= -5)    return 1.0;
+        if ($pct <= -2)    return 2.0;
+        if ($pct <=  1)    return 3.0;
+        if ($pct <=  4)    return 4.0;
+        return 5.0;
     }
 
     /**

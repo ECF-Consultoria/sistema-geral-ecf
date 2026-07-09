@@ -220,12 +220,20 @@ class DesempenhoScoreServiceTest extends TestCase
     /**
      * Fixture Carlos — DESEMP-01 âncora bloqueante.
      *
-     * Espec da diretoria (74-SPEC.md DESEMP-01):
-     *  - NPS médio: 4.25
-     *  - % var faturamento: 3.00
-     *  - % var margem contribuição: 2.80
-     *  - nota_final = round((4.25 + 3.00 + 2.80) / 3, 2) = 3.35
-     *  - faixa_bonus = 'sem_bonus'
+     * Espec da diretoria (74-SPEC.md DESEMP-01) + Ajuste 2026-07-09:
+     *  - NPS médio: 4.25 → 4.25 pts (já é escala 1-5)
+     *  - % var faturamento: 3.00 → régua faturamento retorna 4 pts (faixa 1% a 5%)
+     *  - % var margem contribuição: 2.80 → régua margem retorna 4 pts (faixa 2% a 4%)
+     *  - nota_final = round((4.25 + 4 + 4) / 3, 2) = 4.08
+     *  - faixa_bonus = 'basico' (faixa 4.00 a 4.49)
+     *
+     * IMPORTANTE: Depois do primeiro deploy em prod, ficou claro que o cálculo
+     * "média direta em escalas naturais" (raw %) permitia notas fora do range
+     * [1, 5]: analistas com var_fat=-15% + var_margem=-20% ficavam com nota
+     * ~-10, distorcendo toda a régua de bônus. Fix: variações passam pelas
+     * réguas 1-5 (SPEC-04/SPEC-05) antes de entrar na média. Isso levou o
+     * fixture Carlos de 3.35 (sem bônus) para 4.08 (básico) — mudança
+     * intencional aprovada pela diretoria em 2026-07-09.
      *
      * Distribuição escolhida para determinismo (evita drift de arredondamento
      * float): as 3 empresas convergem para os mesmos deltas — o cerne do
@@ -271,17 +279,21 @@ class DesempenhoScoreServiceTest extends TestCase
     // ─── DESEMP-01 · Fixture Carlos — âncora bloqueante ─────────────────────
 
     #[Test]
-    public function test_fixture_carlos_retorna_nota_3_35_sem_bonus(): void
+    public function test_fixture_carlos_retorna_nota_4_08_basico(): void
     {
         // DESEMP-01 — contra regressão silenciosa. Se este teste quebra,
         // é sinal de que a matemática da engine v2 divergiu da spec.
+        //
+        // Ajuste 2026-07-09: fixture Carlos passou de 3.35 (sem_bonus) para
+        // 4.08 (basico) quando as réguas 1-5 foram aplicadas às variações
+        // antes da média. Ver comentário no criarCarlosCompleto().
         $carlos = $this->criarCarlosCompleto();
 
         /** @var DesempenhoScoreService $service */
         $service = app(DesempenhoScoreService::class);
         $result  = $service->compute($carlos, Carbon::parse('2026-07-01'));
 
-        // Componentes na escala natural (não normalizados régua 1-5).
+        // Componentes na escala natural (RAW % antes da normalização régua).
         $this->assertEqualsWithDelta(4.25, $result['componentes']['nps_medio'], 0.001,
             'NPS médio Carlos deve ser exatamente 4.25 (média legacy [5,4,4,4]).');
         $this->assertEqualsWithDelta(3.00, $result['componentes']['var_faturamento_pct'], 0.001,
@@ -291,13 +303,15 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->assertNull($result['componentes']['absenteismo_pct'],
             'Absenteísmo sempre null nesta phase (DESEMP-06).');
 
-        // Nota final — âncora bloqueante da diretoria (2026-07-09).
-        $this->assertEqualsWithDelta(3.35, $result['nota_final'], 0.001,
-            'Nota final Carlos deve ser exatamente 3.35 (média direta em escalas naturais).');
+        // Nota final — âncora bloqueante ajustada em 2026-07-09.
+        // Cálculo: NPS 4.25 + régua_fat(+3%) = 4 pts + régua_margem(+2.8%) = 4 pts
+        //          → média = (4.25 + 4 + 4) / 3 = 4.0833 → round(2) = 4.08.
+        $this->assertEqualsWithDelta(4.08, $result['nota_final'], 0.001,
+            'Nota final Carlos deve ser 4.08 (NPS 4.25 + régua_fat 4 + régua_margem 4 → média).');
 
-        // Classificação — piso da régua ([0, 3.99]).
-        $this->assertSame('sem_bonus', $result['faixa_bonus'],
-            'Faixa Carlos deve ser sem_bonus (3.35 abaixo do piso 4.00).');
+        // Classificação — faixa básico ([4.00, 4.49]).
+        $this->assertSame('basico', $result['faixa_bonus'],
+            'Faixa Carlos deve ser basico (4.08 dentro de [4.00, 4.49]).');
         $this->assertFalse($result['sem_carteira']);
         $this->assertFalse($result['faixa_promovida']);
         $this->assertSame(3, $result['empresas_carteira']);
@@ -307,27 +321,41 @@ class DesempenhoScoreServiceTest extends TestCase
     // ─── DESEMP-02 · Fórmula da nota final (média direta) ───────────────────
 
     #[Test]
-    public function test_nota_final_e_media_direta_em_escalas_naturais(): void
+    public function test_nota_final_aplica_reguas_1_5_e_media(): void
     {
-        // DESEMP-02 — chamada isolada do método privado computeNotaFinal
-        // via reflection: (4.25, 3.0, 2.8) → 3.35; nulls parciais viram
-        // média dos não-null; todos null → null.
+        // DESEMP-02 (ajuste 2026-07-09) — chamada isolada do método privado
+        // computeNotaFinal via reflection. Após o fix das réguas:
+        //   (4.25, +3%, +2.8%) → (4.25, 4, 4) → média 4.08 (fixture Carlos)
+        //   (null, +3%, +2.8%) → (—, 4, 4) → média 4.00 (nulls parciais viram média dos não-null)
+        //   (4.25, null, null) → 4.25 (só NPS)
+        //   (null, null, null) → null
         /** @var DesempenhoScoreService $service */
         $service = app(DesempenhoScoreService::class);
         $method  = new ReflectionMethod($service, 'computeNotaFinal');
         $method->setAccessible(true);
 
-        $this->assertEqualsWithDelta(3.35, $method->invoke($service, 4.25, 3.0, 2.8), 0.001,
-            'computeNotaFinal(4.25, 3.0, 2.8) deve retornar exatamente 3.35 (fixture Carlos).');
+        $this->assertEqualsWithDelta(4.08, $method->invoke($service, 4.25, 3.0, 2.8), 0.001,
+            'computeNotaFinal(4.25, 3.0, 2.8) → 4.08 (NPS + régua_fat + régua_margem / 3).');
 
-        $this->assertEqualsWithDelta(2.90, $method->invoke($service, null, 3.0, 2.8), 0.001,
-            'Componente NPS null → média dos restantes ((3.0 + 2.8) / 2 = 2.90).');
+        $this->assertEqualsWithDelta(4.00, $method->invoke($service, null, 3.0, 2.8), 0.001,
+            'NPS null → média dos restantes ((régua_fat 4 + régua_margem 4) / 2 = 4.00).');
 
         $this->assertEqualsWithDelta(4.25, $method->invoke($service, 4.25, null, null), 0.001,
             'Somente NPS presente → nota_final = próprio NPS (média de 1 elemento).');
 
         $this->assertNull($method->invoke($service, null, null, null),
             'Todos componentes null → nota_final = null.');
+
+        // Casos extremos que motivaram o fix (variações negativas grandes):
+        // (NPS 4 + régua_fat 1 + régua_margem 1) / 3 = 6/3 = 2.00.
+        $this->assertEqualsWithDelta(2.00, $method->invoke($service, 4.0, -15.0, -20.0), 0.001,
+            'Variações negativas fortes → régua 1+1 pt; nota final = 2.00, NUNCA negativa.');
+
+        $this->assertEqualsWithDelta(1.00, $method->invoke($service, 1.0, -50.0, -50.0), 0.001,
+            'Cenário pior caso → nota mínima absoluta = 1.00 (nunca abaixo).');
+
+        $this->assertEqualsWithDelta(5.00, $method->invoke($service, 5.0, 100.0, 100.0), 0.001,
+            'Cenário melhor caso → nota máxima = 5.00 (nunca acima).');
     }
 
     // ─── DESEMP-03 · NPS = média das notas do mês; sem notas força 0 ────────
@@ -491,9 +519,9 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->criarSnapshotMensal($u, '2026-06-01', 'intermediario', 95);
 
         // 3 empresas na carteira com faturamento/margem que geram nota_final
-        // dentro da faixa intermediario (4.50-4.99). Calibragem para 4.75:
-        //   NPS 5.00 + var_fat 4.75 + var_margem 4.50 → média 4.75 (intermediario).
-        // Escolho valores altos de variação para caber na régua natural.
+        // dentro da faixa intermediario (4.50-4.99). Calibragem pós réguas 1-5:
+        //   NPS 5.00 + régua_fat(+4.75%) = 4 pts + régua_margem(+4.50%) = 5 pts
+        //   → média = (5 + 4 + 5) / 3 = 14/3 ≈ 4.67 (intermediario).
         $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
@@ -504,8 +532,8 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->mockNpsRespostaLegacy($c3, '2026-07', 5);
 
         // Var faturamento: 4.75% (3 empresas variando +4.75% cada).
-        // Revenue prev 10.000 → current 10.475
-        // Var margem: 4.50% (margem prev 10.000 → current 10.450)
+        // Revenue prev 10.000 → current 10.475 → régua_fat 4 pts (faixa 1% a 5%)
+        // Var margem: 4.50% (margem prev 10.000 → current 10.450) → régua_margem 5 pts (>4%)
         foreach ([$c1, $c2, $c3] as $c) {
             $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 10475, margem: 10450);
             $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
@@ -514,9 +542,9 @@ class DesempenhoScoreServiceTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
-        // Nota esperada: (5.00 + 4.75 + 4.50) / 3 = 14.25 / 3 = 4.75 (intermediario natural).
-        $this->assertEqualsWithDelta(4.75, $r['nota_final'], 0.01,
-            'Nota Julho deve cair dentro da faixa intermediario (4.75 esperado).');
+        // Nota esperada pós réguas: (5.00 + 4 + 5) / 3 = 4.67 (intermediario natural).
+        $this->assertEqualsWithDelta(4.67, $r['nota_final'], 0.01,
+            'Nota Julho deve cair dentro da faixa intermediario (4.67 esperado após réguas 1-5).');
         $this->assertSame('maximo', $r['faixa_bonus'],
             'DESEMP-08: Junho intermediario + Julho intermediario → promove para maximo.');
         $this->assertTrue($r['faixa_promovida'],
@@ -606,16 +634,18 @@ class DesempenhoScoreServiceTest extends TestCase
         // promoverPor2MesesConsecutivos indiretamente via classificação
         // canônica da régua ([5.00, 5.00] é a faixa 'maximo' do seed).
         //
-        // Fabricamos NPS = 5, var_fat = 5, var_margem = 5 → média = 5.00.
+        // Fabricamos NPS = 5, var_fat > 5% → régua_fat 5 pts, var_margem > 4% → régua_margem 5 pts.
+        // Média = (5 + 5 + 5) / 3 = 5.00 exato → faixa maximo direto.
         $u = $this->criarUserAnalista('Analista Nota Cheia');
 
         $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
 
+        // Revenue +10% (>5% → 5 pts), margem +5% (>4% → 5 pts).
         foreach ([$c1, $c2, $c3] as $c) {
             $this->mockNpsRespostaLegacy($c, '2026-07', 5);
-            $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 10500, margem: 10500);
+            $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 11000, margem: 10500);
             $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
         }
 
@@ -623,7 +653,7 @@ class DesempenhoScoreServiceTest extends TestCase
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
         $this->assertEqualsWithDelta(5.00, $r['nota_final'], 0.001,
-            'Nota final = 5.00 exata (fixtures uniformes em NPS/fat/margem).');
+            'Nota final = 5.00 exata (NPS 5 + régua_fat 5 + régua_margem 5).');
         $this->assertSame('maximo', $r['faixa_bonus'],
             'Faixa 5.00 exata cai em maximo (régua seed [5.00, 5.00]).');
     }
