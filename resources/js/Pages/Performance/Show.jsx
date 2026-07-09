@@ -1,192 +1,331 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { router } from '@inertiajs/react';
+import { router, Link } from '@inertiajs/react';
 import {
-    ArrowLeft, Trophy, ChevronDown, TrendingUp, Building2,
-    CheckSquare, Users, CheckCircle2, XCircle
+    ArrowLeft, Star, TrendingUp, TrendingDown, Coins, Calendar,
+    Trophy, Sparkles, UserX, BookOpen, Info,
 } from 'lucide-react';
-import { cn, formatCurrency, formatPercent } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
-const PERIOD_OPTIONS = [
-    { value: '7', label: 'Últimos 7 dias' },
-    { value: '30', label: 'Últimos 30 dias' },
-    { value: '90', label: 'Últimos 90 dias' },
-    { value: '180', label: 'Últimos 6 meses' },
-];
+/**
+ * Phase 74 D-19 · Plan 74-06 · view individual (analista/estrategista).
+ *
+ * Consome o shape v2 do DesempenhoScoreService:
+ *   { user, resultado (compute() shape), mes_selecionado, mes_fechado,
+ *     meses_disponiveis: string[] }
+ *
+ * Card por parâmetro (NPS/Faturamento/Margem/Absenteísmo) + card destaque
+ * Faixa de bônus + placeholder "Em breve" no Absenteísmo (DESEMP-06) + toggle
+ * de mês para navegar em fechamentos anteriores (D-19). Sem carteira →
+ * badge amarelo grande "Sem carteira em {mês}" (DESEMP-10).
+ */
 
-const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
+// ─── Helpers ─────────────────────────────────────────────────────────────
 
-const ppaStatusLabel = { completed: 'Concluído', active: 'Em andamento', draft: 'Rascunho' };
-const ppaStatusColor = { completed: 'text-emerald-400', active: 'text-ecf-yellow', draft: 'text-white/40' };
+const FAIXA_LABEL = {
+    sem_bonus:     'Sem bônus',
+    basico:        'Básico',
+    intermediario: 'Intermediário',
+    maximo:        'Máximo',
+};
+const FAIXA_COR = {
+    sem_bonus:     { bg: 'bg-white/[0.04]',   border: 'border-white/[0.08]',   text: 'text-white/60' },
+    basico:        { bg: 'bg-sky-500/10',     border: 'border-sky-500/30',     text: 'text-sky-300' },
+    intermediario: { bg: 'bg-violet-500/10',  border: 'border-violet-500/30',  text: 'text-violet-300' },
+    maximo:        { bg: 'bg-ecf-yellow/10',  border: 'border-ecf-yellow/40',  text: 'text-ecf-yellow' },
+};
+function faixaLabel(slug) {
+    if (!slug) return 'Sem classificação';
+    return FAIXA_LABEL[slug] ?? slug;
+}
+function corFaixa(slug) {
+    return FAIXA_COR[slug] ?? FAIXA_COR.sem_bonus;
+}
 
-function SummaryCard({ label, value, color = 'text-white', sub }) {
+function mesExtenso(iso) {
+    if (!iso) return '—';
+    try {
+        const [y, m] = String(iso).split('-');
+        const d = new Date(Number(y), Number(m) - 1, 1);
+        return d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    } catch {
+        return String(iso);
+    }
+}
+
+function formatPercent(v) {
+    if (v == null || Number.isNaN(Number(v))) return '—';
+    const n = Number(v);
+    return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
+}
+
+// ─── Card de parâmetro ───────────────────────────────────────────────────
+function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'ecf-yellow', emBreve = false, trendDir }) {
     return (
-        <div className="card-ecf rounded-2xl p-5">
-            <p className="text-white/40 text-[11px] font-semibold uppercase tracking-wide mb-2">{label}</p>
-            <p className={cn('font-display font-extrabold text-2xl leading-none', color)}>{value ?? '—'}</p>
-            {sub && <p className="text-white/30 text-[11px] mt-1.5">{sub}</p>}
+        <div className="relative overflow-hidden rounded-2xl bg-ecf-card border border-white/[0.08] p-6 min-h-[168px] flex flex-col">
+            <div
+                className={cn(
+                    'absolute -top-16 -right-16 w-40 h-40 rounded-full blur-3xl pointer-events-none opacity-40',
+                    accentColor === 'ecf-yellow' && 'bg-ecf-yellow/20',
+                    accentColor === 'emerald'    && 'bg-emerald-500/20',
+                    accentColor === 'blue'       && 'bg-blue-500/20',
+                    accentColor === 'amber'      && 'bg-amber-500/20',
+                )}
+            />
+
+            <div className="relative flex items-center justify-between gap-2">
+                <span className={cn(
+                    'text-[10px] uppercase tracking-wider font-bold',
+                    accentColor === 'ecf-yellow' && 'text-ecf-yellow',
+                    accentColor === 'emerald'    && 'text-emerald-300',
+                    accentColor === 'blue'       && 'text-blue-300',
+                    accentColor === 'amber'      && 'text-amber-300',
+                )}>
+                    {titulo}
+                </span>
+                {Icone && <Icone size={16} className="text-white/50" />}
+            </div>
+
+            <div className="relative mt-4 flex items-baseline gap-2 flex-wrap">
+                <strong className="text-white text-4xl font-display font-black tabular-nums leading-none">
+                    {valor ?? '—'}
+                </strong>
+                {trendDir === 'up'   && <TrendingUp   size={18} className="text-emerald-300" />}
+                {trendDir === 'down' && <TrendingDown size={18} className="text-rose-300" />}
+                {emBreve && (
+                    <span className="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-ecf-yellow/10 text-ecf-yellow border border-ecf-yellow/30">
+                        Em breve
+                    </span>
+                )}
+            </div>
+
+            {sublabel && (
+                <p className="relative mt-auto text-white/50 text-xs pt-3">
+                    {sublabel}
+                </p>
+            )}
         </div>
     );
 }
 
-function NpsTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20">—</span>;
-    const color = value >= 9 ? 'text-emerald-400' : value >= 7 ? 'text-ecf-yellow' : 'text-red-400';
-    return <span className={cn('font-bold text-[13px]', color)}>{value}</span>;
+// ─── Card destaque Faixa de bônus ────────────────────────────────────────
+function FaixaBonusCard({ resultado }) {
+    const slug = resultado?.faixa_bonus;
+    const nota = resultado?.nota_final;
+    const promovida = resultado?.faixa_promovida === true;
+    const cor = corFaixa(slug);
+
+    return (
+        <div className={cn(
+            'relative overflow-hidden rounded-2xl border p-6 md:col-span-2 xl:col-span-4',
+            cor.bg,
+            cor.border,
+        )}>
+            <div className="absolute -top-24 -right-24 w-72 h-72 bg-ecf-yellow/[0.05] rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative flex flex-col md:flex-row md:items-center gap-6">
+                <div className="flex items-center gap-4">
+                    <span className={cn(
+                        'w-16 h-16 rounded-2xl flex items-center justify-center border',
+                        cor.bg, cor.border,
+                    )}>
+                        <Trophy size={26} className={cor.text} />
+                    </span>
+                    <div>
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-white/50">
+                            Faixa de bônus
+                        </span>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                            <h2 className={cn('text-3xl font-display font-black leading-none', cor.text)}>
+                                {faixaLabel(slug)}
+                            </h2>
+                            {promovida && (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+                                    <Sparkles size={11} />
+                                    Promovida (2 meses consecutivos)
+                                </span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="md:ml-auto flex items-baseline gap-2">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-white/50">
+                        Nota final
+                    </span>
+                    <span className="text-white text-4xl font-display font-black tabular-nums leading-none">
+                        {nota != null ? Number(nota).toFixed(2) : '—'}
+                    </span>
+                    <span className="text-white/40 text-sm">/ 5,00</span>
+                </div>
+            </div>
+
+            {nota == null && (
+                <p className="relative mt-4 text-white/60 text-sm">
+                    Sem dados suficientes para classificação no mês selecionado.
+                </p>
+            )}
+        </div>
+    );
 }
 
-function GrowthTag({ value }) {
-    if (value === null || value === undefined) return <span className="text-white/20">—</span>;
-    const color = value > 10 ? 'text-emerald-400' : value > 0 ? 'text-ecf-yellow' : 'text-red-400';
-    return <span className={cn('font-semibold text-[13px]', color)}>{value > 0 ? '+' : ''}{value}%</span>;
-}
+// ─── Página principal ────────────────────────────────────────────────────
+export default function PerformanceShow({
+    user,
+    resultado = {},
+    mes_selecionado,
+    mes_fechado,
+    meses_disponiveis = [],
+}) {
+    const c = resultado?.componentes ?? {};
+    const semCarteira = resultado?.sem_carteira === true;
 
-export default function PerformanceShow({ profile_user, companies = [], summary = {}, period = '30' }) {
-    const applyPeriod = (value) => {
-        router.get(route('performance.show', profile_user.id), { period: value }, { preserveState: true });
+    // Handler de troca de mês (query param).
+    const trocarMes = (iso) => {
+        router.get(
+            route('performance.show', user.id),
+            { mes: iso },
+            { preserveState: false, preserveScroll: true },
+        );
     };
 
     return (
-        <AppLayout title={`Desempenho — ${profile_user.name}`}>
-            <div className="space-y-5 max-w-[1200px]">
+        <AppLayout title={`Desempenho — ${user?.name ?? 'Analista'}`}>
+            <div className="space-y-6 max-w-6xl mx-auto">
 
-                {/* Breadcrumb + Header */}
-                <div className="flex items-center justify-between flex-wrap gap-3">
+                {/* Breadcrumb + Header + Toggle de mês */}
+                <div className="flex items-start justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
                         <button
+                            type="button"
                             onClick={() => router.visit(route('performance.index'))}
                             className="flex items-center gap-1.5 text-white/40 hover:text-white text-[13px] transition-colors"
                         >
                             <ArrowLeft size={14} /> Ranking
                         </button>
                         <span className="text-white/20">/</span>
-                        <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-lg bg-ecf-yellow/10 border border-ecf-yellow/20 flex items-center justify-center">
-                                <Users size={14} className="text-ecf-yellow/70" />
-                            </div>
-                            <div>
-                                <p className="text-white font-display font-bold text-base leading-tight">{profile_user.name}</p>
-                                <p className="text-white/40 text-[11px]">{roleLabel[profile_user.role] || profile_user.role} · {summary.companies_count} empresa{summary.companies_count !== 1 ? 's' : ''}</p>
-                            </div>
+                        <div>
+                            <h1 className="text-white text-xl font-display font-extrabold leading-none">
+                                Desempenho de {user?.name}
+                            </h1>
+                            <p className="text-white/50 text-sm mt-1">
+                                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.04] border border-white/[0.08] px-2 py-0.5 text-[11px] font-semibold text-white/70">
+                                    {user?.cargo_label ?? 'Analista'}
+                                </span>
+                                <span className="text-white/30 mx-2">·</span>
+                                <span className="text-white/70">{mesExtenso(mes_selecionado ?? resultado?.mes_referencia)}</span>
+                            </p>
                         </div>
                     </div>
-                    <div className="relative">
-                        <select
-                            value={period}
-                            onChange={e => applyPeriod(e.target.value)}
-                            className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 transition-all cursor-pointer"
-                        >
-                            {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-                        </select>
-                        <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-                    </div>
+
+                    {/* Toggle de mês fechado (D-19) */}
+                    {Array.isArray(meses_disponiveis) && meses_disponiveis.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <label className="text-white/50 text-xs">Mês:</label>
+                            <select
+                                value={mes_selecionado ?? ''}
+                                onChange={(e) => trocarMes(e.target.value)}
+                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
+                            >
+                                {meses_disponiveis.map(m => (
+                                    <option key={m} value={m}>{mesExtenso(m)}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
                 </div>
 
-                {/* Cards de resumo */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    <SummaryCard
-                        label="NPS Médio"
-                        value={summary.avg_nps ?? '—'}
-                        color={summary.avg_nps >= 9 ? 'text-emerald-400' : summary.avg_nps >= 7 ? 'text-ecf-yellow' : summary.avg_nps != null ? 'text-red-400' : 'text-white/30'}
-                    />
-                    <SummaryCard
-                        label="Faturamento Total"
-                        value={summary.total_revenue ? formatCurrency(summary.total_revenue) : '—'}
-                        color="text-blue-400"
-                    />
-                    <SummaryCard
-                        label="TACOS Médio"
-                        value={summary.avg_tacos != null ? `${summary.avg_tacos}%` : '—'}
-                        color={summary.avg_tacos > 10 ? 'text-red-400' : 'text-ecf-yellow'}
-                    />
-                    <SummaryCard
-                        label="Reuniões"
-                        value={summary.total_meetings}
-                        color="text-white/70"
-                        sub={`no período`}
-                    />
-                </div>
-
-                {/* Tabela por empresa */}
-                {companies.length === 0 ? (
-                    <div className="card-ecf rounded-2xl p-12 text-center">
-                        <Building2 size={32} className="mx-auto mb-3 text-white/20" />
-                        <p className="text-white/40 text-sm">Nenhuma empresa na carteira deste profissional</p>
+                {/* SEM CARTEIRA — bloco amarelo grande (DESEMP-10) */}
+                {semCarteira ? (
+                    <div className="rounded-2xl border border-ecf-yellow/30 bg-ecf-yellow/[0.05] p-10 flex flex-col items-center text-center gap-3">
+                        <UserX size={40} className="text-ecf-yellow" />
+                        <h3 className="text-white text-2xl font-display font-bold">
+                            Sem carteira em {mesExtenso(resultado?.mes_referencia ?? mes_selecionado)}
+                        </h3>
+                        <p className="text-white/70 text-sm max-w-md">
+                            {resultado?.motivo ?? 'Este profissional não possui empresas atribuídas no mês selecionado.'}
+                        </p>
                     </div>
                 ) : (
-                    <div className="card-ecf rounded-2xl overflow-hidden">
-                        <div className="flex items-center gap-2 px-5 py-4 border-b border-white/[0.06]">
-                            <Building2 size={14} className="text-white/40" />
-                            <p className="text-white/50 text-sm">Carteira de clientes</p>
+                    <>
+                        {/* 4 CARDS DE PARÂMETROS */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                            <ParametroCard
+                                icone={Star}
+                                titulo="NPS médio"
+                                valor={c.nps_medio != null ? Number(c.nps_medio).toFixed(2) : '—'}
+                                sublabel="Média das respostas NPS no mês (escala 0-5). Sem respostas → 0."
+                                accentColor="ecf-yellow"
+                            />
+
+                            <ParametroCard
+                                icone={c.var_faturamento_pct != null && c.var_faturamento_pct >= 0 ? TrendingUp : TrendingDown}
+                                titulo="Faturamento"
+                                valor={formatPercent(c.var_faturamento_pct)}
+                                sublabel="Variação vs mês anterior · média das % por empresa da carteira"
+                                accentColor="emerald"
+                                trendDir={c.var_faturamento_pct != null ? (c.var_faturamento_pct >= 0 ? 'up' : 'down') : null}
+                            />
+
+                            <ParametroCard
+                                icone={Coins}
+                                titulo="Margem de contribuição"
+                                valor={formatPercent(c.var_margem_pct)}
+                                sublabel="Variação vs mês anterior · fonte Adman canônica"
+                                accentColor="blue"
+                                trendDir={c.var_margem_pct != null ? (c.var_margem_pct >= 0 ? 'up' : 'down') : null}
+                            />
+
+                            <ParametroCard
+                                icone={Calendar}
+                                titulo="Absenteísmo"
+                                valor="—"
+                                sublabel="Fonte de dados em definição"
+                                accentColor="amber"
+                                emBreve
+                            />
+
+                            {/* Faixa de bônus */}
+                            <FaixaBonusCard resultado={resultado} />
                         </div>
 
-                        {/* Header */}
-                        <div className="grid grid-cols-[1fr_5rem_5rem_5rem_5rem_5rem_5rem_6rem] gap-2 px-5 py-3 border-b border-white/[0.04] text-white/30 text-[11px] font-semibold uppercase tracking-wide">
-                            <span>Empresa</span>
-                            <span className="text-right">NPS</span>
-                            <span className="text-right">TACOS</span>
-                            <span className="text-right">Fat.</span>
-                            <span className="text-right">Cresc.</span>
-                            <span className="text-right">Reuniões</span>
-                            <span className="text-right">Absent.</span>
-                            <span className="text-right">PPA</span>
+                        {/* Info carteira */}
+                        <div className="rounded-2xl bg-ecf-card border border-white/[0.08] p-5 flex items-center justify-between gap-4 flex-wrap">
+                            <div className="flex items-center gap-3">
+                                <Info size={16} className="text-white/40" />
+                                <p className="text-white/70 text-sm">
+                                    <strong className="text-white">{resultado?.empresas_com_baseline ?? 0}</strong>
+                                    <span className="text-white/50"> empresas com baseline · </span>
+                                    <strong className="text-white">{resultado?.empresas_carteira ?? 0}</strong>
+                                    <span className="text-white/50"> na carteira</span>
+                                </p>
+                            </div>
+                            <Link
+                                href="/manual/desempenho-bonificacao"
+                                className="inline-flex items-center gap-1.5 text-ecf-yellow text-xs font-semibold hover:underline"
+                            >
+                                <BookOpen size={12} />
+                                Como calculamos?
+                            </Link>
                         </div>
-
-                        <div className="divide-y divide-white/[0.03]">
-                            {companies.map(c => (
-                                <div
-                                    key={c.id}
-                                    className="grid grid-cols-[1fr_5rem_5rem_5rem_5rem_5rem_5rem_6rem] gap-2 px-5 py-3.5 items-center hover:bg-white/[0.02] transition-colors"
-                                >
-                                    <div>
-                                        <p className="text-white font-semibold text-[13px] truncate">{c.name}</p>
-                                        <p className="text-white/30 text-[11px]">{c.nps_responses} resp. NPS</p>
-                                    </div>
-
-                                    <div className="text-right">
-                                        <NpsTag value={c.avg_nps} />
-                                    </div>
-
-                                    <div className="text-right">
-                                        {c.tacos != null
-                                            ? <span className={cn('font-semibold text-[13px]', c.tacos > 10 ? 'text-red-400' : 'text-ecf-yellow')}>{formatPercent(c.tacos)}</span>
-                                            : <span className="text-white/20">—</span>}
-                                    </div>
-
-                                    <div className="text-right">
-                                        {c.revenue != null
-                                            ? <span className="text-blue-400 font-semibold text-[12px]">{formatCurrency(c.revenue)}</span>
-                                            : <span className="text-white/20">—</span>}
-                                    </div>
-
-                                    <div className="text-right">
-                                        <GrowthTag value={c.revenue_growth} />
-                                    </div>
-
-                                    <div className="text-right">
-                                        <span className="text-white/60 font-semibold text-[13px]">{c.total_meetings}</span>
-                                    </div>
-
-                                    <div className="text-right">
-                                        {c.absenteeism_rate != null ? (
-                                            <span className={cn('font-semibold text-[13px]',
-                                                c.absenteeism_rate > 20 ? 'text-red-400' : c.absenteeism_rate > 10 ? 'text-ecf-yellow' : 'text-emerald-400')}>
-                                                {formatPercent(c.absenteeism_rate)}
-                                            </span>
-                                        ) : <span className="text-white/20">—</span>}
-                                    </div>
-
-                                    <div className="text-right">
-                                        {c.ppa_status ? (
-                                            <span className={cn('text-[11px] font-semibold', ppaStatusColor[c.ppa_status] || 'text-white/30')}>
-                                                {ppaStatusLabel[c.ppa_status] || c.ppa_status}
-                                            </span>
-                                        ) : <span className="text-white/20 text-[11px]">—</span>}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                    </>
                 )}
+
+                {/* Bloco explicativo permanente */}
+                <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5">
+                    <div className="flex items-center gap-2 mb-2">
+                        <Info size={14} className="text-ecf-yellow/70" />
+                        <span className="text-white/70 text-sm font-semibold">Como interpretar</span>
+                    </div>
+                    <p className="text-white/60 text-sm leading-relaxed">
+                        A nota final é a média direta dos parâmetros disponíveis (NPS · Var. Faturamento · Var. Margem). O
+                        Absenteísmo está em <em>standby</em> nesta versão. A faixa de bônus é configurável pelo admin —
+                        detalhes em{' '}
+                        <Link href="/manual/desempenho-bonificacao" className="text-ecf-yellow hover:underline">
+                            /manual/desempenho-bonificacao
+                        </Link>.
+                    </p>
+                </div>
+
             </div>
         </AppLayout>
     );

@@ -720,91 +720,82 @@ class PerformanceController extends Controller
         return $count;
     }
 
+    /**
+     * Phase 74 D-19/Plan 74-06 · view individual do analista/estrategista.
+     *
+     * Renderiza `Performance/Show.jsx` (reescrito) com o shape v2 do
+     * DesempenhoScoreService — 4 parâmetros (NPS/Faturamento/Margem/Absenteísmo)
+     * + faixa de bônus. Toggle de mês via query param `?mes=YYYY-MM-01` permite
+     * o usuário navegar em meses fechados anteriores (default = último fechado
+     * ou o mês em curso quando ainda não há consolidação).
+     *
+     * Fonte do resultado:
+     *  - Snapshot mensal do mês selecionado quando existe (`breakdown_json`);
+     *  - Fallback ao `compute()` on-the-fly (mês em curso parcial).
+     *
+     * Fonte dos meses disponíveis (para o toggle):
+     *  - `desempenho_score_snapshots` filtrado por `user_id` + `mes_referencia`
+     *     não-null + `>= 2026-08-01` (DESEMP-14).
+     */
     public function show(Request $request, User $user): \Inertia\Response
     {
-        $period = $request->get('period', '30');
-        $since = match ($period) {
-            '7'   => now()->subDays(7),
-            '30'  => now()->subDays(30),
-            '90'  => now()->subDays(90),
-            '180' => now()->subDays(180),
-            default => now()->subDays(30),
-        };
+        // Meses fechados disponíveis para este user (DESEMP-14 · >= 2026-08-01).
+        $mesesFechados = DesempenhoScoreSnapshot::mensal()
+            ->where('user_id', $user->id)
+            ->whereDate('mes_referencia', '>=', '2026-08-01')
+            ->orderByDesc('mes_referencia')
+            ->pluck('mes_referencia')
+            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->unique()
+            ->values();
 
-        $companyIds = $user->isMentor()
-            ? $user->estrategistaCompanies()->pluck('companies.id')
-            : $user->consultorCompanies()->pluck('companies.id');
+        $mesFechadoMaisRecente = $mesesFechados->first(); // string YYYY-MM-01 ou null
 
-        if ($companyIds->isEmpty()) {
-            $companyIds = $user->companies()->pluck('companies.id');
+        // Mês selecionado — via query, com fallback para o mais recente fechado
+        // ou para o mês em curso quando ainda não há fechamento.
+        $mesQuery = $request->query('mes');
+        if ($mesQuery && preg_match('/^\d{4}-\d{2}-\d{2}$/', $mesQuery)) {
+            $mesSelecionado = Carbon::parse($mesQuery)->startOfMonth();
+        } elseif ($mesFechadoMaisRecente) {
+            $mesSelecionado = Carbon::parse($mesFechadoMaisRecente)->startOfMonth();
+        } else {
+            $mesSelecionado = Carbon::now()->startOfMonth();
         }
 
-        // Phase 31 (Plan 05) — taxonomia nova (idem ranking acima).
-        $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
+        // Resolve cargo canônico via user_setores → cargos (padrão do projeto).
+        $cargoRow = DB::table('user_setores as us')
+            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+            ->where('us.user_id', $user->id)
+            ->whereIn('c.slug', ['analista', 'estrategista'])
+            ->select('c.slug', 'c.nome')
+            ->first();
+        $cargoSlug  = $cargoRow?->slug ?? ($user->isMentor() ? 'estrategista' : 'analista');
+        $cargoLabel = $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista';
 
-        $companies = Company::whereIn('id', $companyIds)
-            ->where('active', true)
-            ->orderBy('name')
-            ->get()
-            ->map(function ($c) use ($since, $scoreField) {
-                $surveys = NpsSurvey::with('response')
-                    ->where('company_id', $c->id)
-                    ->where('status', 'completed')
-                    ->where('completed_at', '>=', $since)
-                    ->get();
+        // Tenta usar snapshot mensal do mês selecionado; senão compute() on-the-fly.
+        $snap = DesempenhoScoreSnapshot::mensal()
+            ->where('user_id', $user->id)
+            ->whereDate('mes_referencia', $mesSelecionado->toDateString())
+            ->first();
 
-                $avgNps = $surveys->count() > 0
-                    ? round($surveys->avg(fn($s) => $s->response?->$scoreField ?? 0), 1)
-                    : null;
-
-                $meetings = Meeting::where('company_id', $c->id)
-                    ->where('status', 'completed')
-                    ->where('scheduled_at', '>=', $since)
-                    ->get();
-
-                $absences = $meetings->filter(fn($m) => !$m->consultant_present || !$m->mentor_present)->count();
-                $absenteeism = $meetings->count() > 0
-                    ? round($absences / $meetings->count() * 100, 1)
-                    : null;
-
-                $metric = AdmanMetric::where('company_id', $c->id)
-                    ->where('reference_date', '>=', $since)
-                    ->latest('reference_date')
-                    ->first();
-
-                $ppa = Ppa::where('company_id', $c->id)
-                    ->latest('created_at')
-                    ->first();
-
-                return [
-                    'id'               => $c->id,
-                    'name'             => $c->name,
-                    'avg_nps'          => $avgNps,
-                    'nps_responses'    => $surveys->count(),
-                    'total_meetings'   => $meetings->count(),
-                    'absenteeism_rate' => $absenteeism,
-                    'revenue'          => $metric?->revenue,
-                    'revenue_growth'   => $metric?->revenue_prev_period > 0 ? round($metric->revenue_growth, 1) : null,
-                    'tacos'            => $metric?->tacos,
-                    'ppa_status'       => $ppa?->status,
-                ];
-            });
-
-        // Resumo agregado
-        $withNps = $companies->whereNotNull('avg_nps');
-        $summary = [
-            'avg_nps'          => $withNps->count() > 0 ? round($withNps->avg('avg_nps'), 1) : null,
-            'total_revenue'    => $companies->sum('revenue') ?: null,
-            'avg_tacos'        => $companies->whereNotNull('tacos')->avg('tacos') ? round($companies->whereNotNull('tacos')->avg('tacos'), 2) : null,
-            'total_meetings'   => $companies->sum('total_meetings'),
-            'companies_count'  => $companies->count(),
-        ];
+        if ($snap && is_array($snap->breakdown_json) && isset($snap->breakdown_json['componentes'])) {
+            $resultado = $snap->breakdown_json;
+        } else {
+            $resultado = $this->scoreService->compute($user, $mesSelecionado);
+        }
 
         return Inertia::render('Performance/Show', [
-            'profile_user' => ['id' => $user->id, 'name' => $user->name, 'role' => $user->role],
-            'companies'    => $companies->values(),
-            'summary'      => $summary,
-            'period'       => $period,
+            'user' => [
+                'id'          => $user->id,
+                'name'        => $user->name,
+                'role'        => $user->role,
+                'cargo_slug'  => $cargoSlug,
+                'cargo_label' => $cargoLabel,
+            ],
+            'resultado'         => $resultado,
+            'mes_selecionado'   => $mesSelecionado->toDateString(),
+            'mes_fechado'       => $mesFechadoMaisRecente,
+            'meses_disponiveis' => $mesesFechados->values(),
         ]);
     }
 }
