@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: executing
-stopped_at: Completed 74-01 e 74-02 (Wave 1 Phase 74)
-last_updated: "2026-07-09T18:22:25.855Z"
+stopped_at: Completed 74-04 (Wave 3 Phase 74 — big bang v2 backend + cron mensal)
+last_updated: "2026-07-09T21:00:00.000Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 38
-  completed_plans: 38
-  percent: 86
+  total_plans: 39
+  completed_plans: 39
+  percent: 88
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 74 (Módulo Desempenho — simplificação para 4 parâmetros + bonificação) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-07-09
 
@@ -124,6 +124,7 @@ Last activity: 2026-07-09
 | Phase 74 P02 | 15min | 3 tasks | 4 files |
 | Phase 74 P03 | 25min | 1 tasks | 1 files |
 | Phase 74 P05 | 20min | 3 tasks | 4 files |
+| Phase 74 P04 | 25min | 2 tasks (Big bang + cron mensal) | 6 files (5 modified, 1 deleted) |
 
 ## Accumulated Context
 
