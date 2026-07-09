@@ -167,9 +167,22 @@ Schedule::command('sugadores:shadow-ml --company=all --days=1')
 // Roda às 13:30 BRT, logo após a cascata D-1 terminar (SyncPolosFaturamentoJob 13:00).
 // Lê dados já consolidados do dia + persiste em desempenho_score_snapshots para
 // alimentar deltas (vs ontem / vs semana passada) e gráfico de evolução temporal.
+// Phase 74 D-08 — motor internamente reescrito para o DesempenhoScoreService v2;
+// snapshot diário grava mes_referencia=NULL (modo D-02).
 Schedule::command('desempenho:snapshot-scores')
     ->dailyAt('13:30')
     ->timezone('America/Sao_Paulo')
     ->name('desempenho-snapshot-scores')
+    ->onOneServer()
+    ->withoutOverlapping();
+
+// Phase 74 D-08 / DESEMP-09 — Consolida snapshot mensal fechado no dia 1 às 14:00 BRT,
+// após o sync Adman D-1 (11:00) do dia anterior estar completo. Idempotente via
+// updateOrCreate((user_id, mes_referencia)). Aceita --mes=YYYY-MM para reprocessamento
+// manual (catch-up pós-incident). Users sem carteira são pulados (DESEMP-10).
+Schedule::command('desempenho:consolidar-mes')
+    ->monthlyOn(1, '14:00')
+    ->timezone('America/Sao_Paulo')
+    ->name('desempenho-consolidar-mes')
     ->onOneServer()
     ->withoutOverlapping();
