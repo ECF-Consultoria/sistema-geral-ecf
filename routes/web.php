@@ -267,6 +267,22 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     // Quick task 260612-flt — admin exclui resposta de uma pesquisa NPS
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
     Route::delete('/nps/{survey}/response', [NpsController::class, 'excluirResposta'])->name('nps.responses.destroy');
+
+    // ─── Phase 74 D-10/D-12 — Configuração da régua de bônus do módulo Desempenho ──
+    // Admin edita faixas de bônus (BonusFaixa) via UI dedicada. Validação de
+    // sobreposição + range [0,5] via UpdateBonusFaixaRequest. Toggle-active
+    // preserva histórico sem apagar row. Route model binding em `{faixa}`
+    // resolve para App\Models\BonusFaixa implicitamente. Reaproveita o grupo
+    // `role:admin` existente para consistência com nps.configuracao.*.
+    Route::get   ('/desempenho/configuracao',
+        [\App\Http\Controllers\DesempenhoConfigController::class, 'index'])
+        ->name('desempenho.configuracao.index');
+    Route::patch ('/desempenho/configuracao/faixas/{faixa}',
+        [\App\Http\Controllers\DesempenhoConfigController::class, 'updateFaixa'])
+        ->name('desempenho.configuracao.faixas.update');
+    Route::patch ('/desempenho/configuracao/faixas/{faixa}/toggle-active',
+        [\App\Http\Controllers\DesempenhoConfigController::class, 'toggleActive'])
+        ->name('desempenho.configuracao.faixas.toggle');
 });
 
 // NPS público (sem autenticação) — token vem DEPOIS do /generate
