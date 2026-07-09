@@ -66,8 +66,7 @@ class NpsEnvioAutomaticoControllerTest extends TestCase
                  ->has('config')
                  ->has('stats')
                  ->has('mapeamentos')
-                 ->has('auditoria')
-                 ->has('meses_disponiveis')
+                 ->has('empresas_sem_mapeamento_total')
                  ->has('digisac_configurado')
         );
     }

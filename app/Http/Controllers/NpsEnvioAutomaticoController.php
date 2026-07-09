@@ -7,10 +7,8 @@ use App\Models\Configuracao;
 use App\Models\NpsDigisacEnvio;
 use App\Models\NpsEmailEnvio;
 use App\Services\Digisac\DigisacClient;
-use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use RuntimeException;
 
@@ -36,28 +34,23 @@ class NpsEnvioAutomaticoController extends Controller
      * Props Inertia:
      *   - config: valores atuais das Configuracao keys do módulo
      *   - stats: contadores do mês corrente (email/digisac por status)
-     *   - empresas_sem_mapeamento: empresas ativas c/ envio WhatsApp habilitado sem group_contact_id
+     *   - empresas_sem_mapeamento_total: empresas ativas ainda sem grupo Digisac
      *   - mapeamentos: paginação de mapeamentos existentes
-     *   - auditoria: últimos envios (email + digisac) intercalados por data
-     *   - filtros: query params do request (mes, busca, canal)
+     *   - filtros: query params (só `q` para busca de mapeamento; auditoria
+     *     detalhada mora em `/nps/emails-enviados`)
      */
     public function index(Request $request)
     {
         $config = $this->carregarConfig();
 
-        // Filtros
-        $mes = $request->input('mes', now()->format('Y-m'));
-        if (! preg_match('/^\d{4}-\d{2}$/', (string) $mes)) {
-            $mes = now()->format('Y-m');
-        }
-        $inicioMes = Carbon::parse($mes . '-01')->startOfMonth();
-        $fimMes    = $inicioMes->copy()->endOfMonth();
+        // Stats sempre calculadas sobre o mês corrente — auditoria detalhada
+        // (com filtros por canal/status/mês) fica em /nps/emails-enviados.
+        $inicioMes = now()->startOfMonth();
+        $fimMes    = now()->endOfMonth();
 
-        $q      = trim((string) $request->input('q', ''));
-        $canal  = $request->input('canal'); // null|email|digisac
-        $status = $request->input('status'); // null|enviado|falha|skipped
+        $q = trim((string) $request->input('q', ''));
 
-        // ─── Stats do mês ──────────────────────────────────────────────────
+        // ─── Stats do mês corrente ─────────────────────────────────────────
         $stats = [
             'email' => [
                 'enviados' => NpsEmailEnvio::whereBetween('created_at', [$inicioMes, $fimMes])->where('status', 'enviado')->count(),
@@ -70,19 +63,16 @@ class NpsEnvioAutomaticoController extends Controller
             ],
         ];
 
-        // ─── Empresas sem mapeamento (relevante quando canal digisac está ativo) ─
-        // Empresa ativa cuja mapping_status != 'mapped' aparece como pendência.
-        // Contamos todas + traz sample para exibir no card.
-        $empresasSemMapeamentoQuery = Company::where('active', true)
-            ->where(function ($q) {
-                $q->whereNull('digisac_group_contact_id')
+        // ─── Empresas sem mapeamento (pendência do canal Digisac) ──────────
+        $empresasSemMapeamentoTotal = Company::where('active', true)
+            ->where(function ($sub) {
+                $sub->whereNull('digisac_group_contact_id')
                     ->orWhere('digisac_group_contact_id', '')
                     ->orWhere('digisac_group_mapping_status', '!=', 'mapped');
-            });
+            })
+            ->count();
 
-        $empresasSemMapeamentoTotal = (clone $empresasSemMapeamentoQuery)->count();
-
-        // ─── Tabela de mapeamento (paginada + busca) ────────────────────────
+        // ─── Tabela de mapeamento (paginada + busca) ───────────────────────
         $mapeamentosQuery = Company::query()
             ->select([
                 'id', 'name', 'email_cliente',
@@ -103,84 +93,15 @@ class NpsEnvioAutomaticoController extends Controller
 
         $mapeamentos = $mapeamentosQuery->paginate(25)->withQueryString();
 
-        // ─── Auditoria unificada (últimos 100 do mês) ───────────────────────
-        // Fazemos duas queries paralelas e intercalamos em PHP — simples e barato.
-        $limite = 100;
-        $emailQuery = NpsEmailEnvio::with('company:id,name')
-            ->whereBetween('created_at', [$inicioMes, $fimMes]);
-        if ($status && in_array($status, ['enviado', 'falha'], true)) {
-            $emailQuery->where('status', $status);
-        }
-        if ($q !== '') {
-            $emailQuery->whereHas('company', fn($sub) => $sub->where('name', 'like', "%{$q}%"));
-        }
-
-        $digisacQuery = NpsDigisacEnvio::with('company:id,name')
-            ->whereBetween('created_at', [$inicioMes, $fimMes]);
-        if ($status && in_array($status, ['enviado', 'falha', 'skipped'], true)) {
-            $digisacQuery->where('status', $status);
-        }
-        if ($q !== '') {
-            $digisacQuery->whereHas('company', fn($sub) => $sub->where('name', 'like', "%{$q}%"));
-        }
-
-        $emailItems   = ($canal === 'digisac') ? collect() : $emailQuery->latest()->limit($limite)->get();
-        $digisacItems = ($canal === 'email')   ? collect() : $digisacQuery->latest()->limit($limite)->get();
-
-        $auditoria = $emailItems
-            ->map(fn($e) => [
-                'id'          => 'email-' . $e->id,
-                'canal'       => 'email',
-                'company_id'  => $e->company_id,
-                'company'     => $e->company?->name ?? '—',
-                'destino'     => $e->destinatario,
-                'assunto'     => $e->assunto,
-                'status'      => $e->status,
-                'erro_msg'    => $e->erro_msg,
-                'created_at'  => $e->created_at?->toIso8601String(),
-            ])
-            ->concat(
-                $digisacItems->map(fn($d) => [
-                    'id'          => 'digisac-' . $d->id,
-                    'canal'       => 'digisac',
-                    'company_id'  => $d->company_id,
-                    'company'     => $d->company?->name ?? '—',
-                    'destino'     => $d->contact_id,
-                    'grupo_nome'  => $d->grupo_nome_snapshot,
-                    'status'      => $d->status,
-                    'erro_msg'    => $d->erro_msg,
-                    'created_at'  => $d->created_at?->toIso8601String(),
-                    'provider_message_id' => $d->provider_message_id,
-                ])
-            )
-            ->sortByDesc('created_at')
-            ->values()
-            ->all();
-
-        // ─── Meses disponíveis para o Select (últimos 12) ───────────────────
-        $mesesDisponiveis = [];
-        for ($i = 0; $i < 12; $i++) {
-            $data = now()->startOfMonth()->subMonths($i);
-            $mesesDisponiveis[] = [
-                'value' => $data->format('Y-m'),
-                'label' => $this->mesLabelPt($data),
-            ];
-        }
-
         return Inertia::render('Nps/EnvioAutomatico', [
-            'config'                       => $config,
-            'stats'                        => $stats,
+            'config'                        => $config,
+            'stats'                         => $stats,
             'empresas_sem_mapeamento_total' => $empresasSemMapeamentoTotal,
-            'mapeamentos'                  => $mapeamentos,
-            'auditoria'                    => $auditoria,
-            'meses_disponiveis'            => $mesesDisponiveis,
-            'filtros'                      => [
-                'mes'    => $mes,
-                'q'      => $q,
-                'canal'  => $canal,
-                'status' => $status,
+            'mapeamentos'                   => $mapeamentos,
+            'filtros'                       => [
+                'q' => $q,
             ],
-            'digisac_configurado'          => $this->digisacConfigurado(),
+            'digisac_configurado'           => $this->digisacConfigurado(),
         ]);
     }
 
@@ -315,16 +236,4 @@ class NpsEnvioAutomaticoController extends Controller
             && trim((string) config('digisac.token', '')) !== '';
     }
 
-    /**
-     * Duplicação consciente do helper de NpsDispararMensal — 5 linhas, mesmo formato.
-     */
-    private function mesLabelPt(Carbon $data): string
-    {
-        $meses = [
-            'janeiro', 'fevereiro', 'março', 'abril',
-            'maio', 'junho', 'julho', 'agosto',
-            'setembro', 'outubro', 'novembro', 'dezembro',
-        ];
-        return $meses[$data->month - 1] . '/' . $data->year;
-    }
 }

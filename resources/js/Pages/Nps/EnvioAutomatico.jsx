@@ -1,12 +1,8 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { Card, CardContent } from '@/Components/ui/card';
 import { Button } from '@/Components/ui/button';
 import { Badge } from '@/Components/ui/badge';
 import { Input } from '@/Components/ui/input';
 import { Textarea } from '@/Components/ui/textarea';
-import {
-    Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/Components/ui/select';
 import {
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/Components/ui/table';
@@ -15,6 +11,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Mail, MessageCircle, AlertTriangle, Search, RefreshCw,
     Check, X, Link2, ExternalLink, Inbox, ShieldAlert,
+    ArrowRight, FileText,
 } from 'lucide-react';
 import { cn, formatDateTime } from '@/lib/utils';
 
@@ -33,37 +30,6 @@ import { cn, formatDateTime } from '@/lib/utils';
 
 // ─── Formatação numérica curta ─────────────────────────────────────────────
 const fmtNum = (n) => (n == null ? '0' : new Intl.NumberFormat('pt-BR').format(n));
-
-// ─── Chip de status coloridos ──────────────────────────────────────────────
-function StatusChip({ status }) {
-    const map = {
-        enviado: { label: 'Enviado', className: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/25' },
-        falha:   { label: 'Falha',   className: 'bg-red-500/15 text-red-300 border-red-500/25' },
-        skipped: { label: 'Pulado',  className: 'bg-white/[0.08] text-white/60 border-white/10' },
-    };
-    const cfg = map[status] ?? { label: status, className: 'bg-white/[0.08] text-white/60 border-white/10' };
-    return (
-        <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border', cfg.className)}>
-            {cfg.label}
-        </span>
-    );
-}
-
-// ─── Chip de canal ─────────────────────────────────────────────────────────
-function CanalChip({ canal }) {
-    const map = {
-        email:   { label: 'Email',    icon: Mail,          className: 'bg-blue-500/15 text-blue-300 border-blue-500/25' },
-        digisac: { label: 'WhatsApp', icon: MessageCircle, className: 'bg-green-500/15 text-green-300 border-green-500/25' },
-    };
-    const cfg = map[canal] ?? { label: canal, icon: Inbox, className: 'bg-white/[0.08] text-white/60 border-white/10' };
-    const Icon = cfg.icon;
-    return (
-        <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border', cfg.className)}>
-            <Icon className="w-3 h-3" />
-            {cfg.label}
-        </span>
-    );
-}
 
 // ─── Toggle switch simples ─────────────────────────────────────────────────
 function Toggle({ checked, onChange, label, description, disabled }) {
@@ -126,8 +92,6 @@ export default function EnvioAutomatico({
     stats,
     empresas_sem_mapeamento_total = 0,
     mapeamentos,
-    auditoria = [],
-    meses_disponiveis = [],
     filtros = {},
     digisac_configurado = false,
 }) {
@@ -145,7 +109,7 @@ export default function EnvioAutomatico({
         patch(route('nps.envio-automatico.config.update'), { preserveScroll: true });
     };
 
-    // ─── Filtros da tabela de auditoria + mapeamento ────────────────────
+    // ─── Filtro de busca da tabela de mapeamento ────────────────────────
     const [busca, setBusca] = useState(filtros.q ?? '');
     const debounceRef = useRef(null);
 
@@ -163,10 +127,11 @@ export default function EnvioAutomatico({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [busca]);
 
-    const trocarFiltro = (chave, valor) => {
+    // Muda de página preservando o filtro de busca.
+    const irParaPagina = (pagina) => {
         router.get(
             route('nps.envio-automatico.index'),
-            { ...filtros, [chave]: valor, page: 1 },
+            { ...filtros, page: pagina },
             { preserveState: true, preserveScroll: true },
         );
     };
@@ -246,11 +211,6 @@ export default function EnvioAutomatico({
         );
     };
 
-    const mesLabel = useMemo(() => {
-        const opt = meses_disponiveis.find(m => m.value === filtros.mes);
-        return opt?.label ?? filtros.mes ?? '';
-    }, [meses_disponiveis, filtros.mes]);
-
     const dataMapeamentos = mapeamentos?.data ?? [];
 
     return (
@@ -284,8 +244,8 @@ export default function EnvioAutomatico({
                     </div>
                 )}
 
-                {/* ─── Cards de status ────────────────────────────────── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {/* ─── Cards de status (3 cards do mês corrente) ───────── */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <StatsCard
                         icon={Mail}
                         label="Email (mês)"
@@ -311,12 +271,44 @@ export default function EnvioAutomatico({
                         sub="ainda não vinculadas ao Digisac"
                         tone={empresas_sem_mapeamento_total > 0 ? 'warn' : 'good'}
                     />
-                    <StatsCard
-                        icon={Inbox}
-                        label="Referência"
-                        value={mesLabel || '—'}
-                        sub="mês em análise"
-                    />
+                </div>
+
+                {/* ─── Ver também: links relacionados ─────────────────── */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <Link
+                        href={route('nps.configuracao.textos-legado')}
+                        className="group rounded-2xl border border-white/[0.08] bg-ecf-card p-5 flex items-start gap-4 hover:border-ecf-yellow/40 hover:bg-white/[0.04] transition-colors"
+                    >
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/25 flex items-center justify-center shrink-0">
+                            <FileText className="w-5 h-5 text-blue-300" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-white font-semibold text-sm">
+                                Personalização do email
+                            </div>
+                            <div className="text-white/50 text-xs mt-0.5">
+                                Editar assunto, saudação, corpo e assinatura do email NPS mensal.
+                            </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-white/40 group-hover:text-ecf-yellow shrink-0 mt-1" />
+                    </Link>
+                    <Link
+                        href={route('nps.emails-enviados.index')}
+                        className="group rounded-2xl border border-white/[0.08] bg-ecf-card p-5 flex items-start gap-4 hover:border-ecf-yellow/40 hover:bg-white/[0.04] transition-colors"
+                    >
+                        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                            <Inbox className="w-5 h-5 text-emerald-300" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <div className="text-white font-semibold text-sm">
+                                Emails enviados
+                            </div>
+                            <div className="text-white/50 text-xs mt-0.5">
+                                Ver histórico completo dos disparos por email, com filtros e detalhes de falha.
+                            </div>
+                        </div>
+                        <ArrowRight className="w-4 h-4 text-white/40 group-hover:text-ecf-yellow shrink-0 mt-1" />
+                    </Link>
                 </div>
 
                 {/* ─── Configurações ──────────────────────────────────── */}
@@ -534,7 +526,7 @@ export default function EnvioAutomatico({
                                     variant="outline"
                                     size="sm"
                                     disabled={mapeamentos.current_page <= 1}
-                                    onClick={() => trocarFiltro('page', mapeamentos.current_page - 1)}
+                                    onClick={() => irParaPagina(mapeamentos.current_page - 1)}
                                     className="border-white/[0.08]"
                                 >
                                     Anterior
@@ -544,7 +536,7 @@ export default function EnvioAutomatico({
                                     variant="outline"
                                     size="sm"
                                     disabled={mapeamentos.current_page >= mapeamentos.last_page}
-                                    onClick={() => trocarFiltro('page', mapeamentos.current_page + 1)}
+                                    onClick={() => irParaPagina(mapeamentos.current_page + 1)}
                                     className="border-white/[0.08]"
                                 >
                                     Próxima
@@ -554,117 +546,6 @@ export default function EnvioAutomatico({
                     )}
                 </section>
 
-                {/* ─── Auditoria ──────────────────────────────────────── */}
-                <section className="rounded-2xl border border-white/[0.08] bg-ecf-card p-6 space-y-4">
-                    <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div>
-                            <h2 className="text-white font-semibold text-lg">Auditoria de envios</h2>
-                            <p className="text-white/50 text-sm mt-1">
-                                Últimos disparos automáticos por canal em {mesLabel}.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <Select value={filtros.mes ?? ''} onValueChange={(v) => trocarFiltro('mes', v)}>
-                                <SelectTrigger className="w-[160px] bg-white/[0.03] border-white/[0.08]">
-                                    <SelectValue placeholder="Mês…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {meses_disponiveis.map(m => (
-                                        <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                            <Select value={filtros.canal ?? '__all__'} onValueChange={(v) => trocarFiltro('canal', v === '__all__' ? null : v)}>
-                                <SelectTrigger className="w-[140px] bg-white/[0.03] border-white/[0.08]">
-                                    <SelectValue placeholder="Canal…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__all__">Todos canais</SelectItem>
-                                    <SelectItem value="email">Email</SelectItem>
-                                    <SelectItem value="digisac">WhatsApp</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Select value={filtros.status ?? '__all__'} onValueChange={(v) => trocarFiltro('status', v === '__all__' ? null : v)}>
-                                <SelectTrigger className="w-[140px] bg-white/[0.03] border-white/[0.08]">
-                                    <SelectValue placeholder="Status…" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__all__">Todos status</SelectItem>
-                                    <SelectItem value="enviado">Enviado</SelectItem>
-                                    <SelectItem value="falha">Falha</SelectItem>
-                                    <SelectItem value="skipped">Pulado</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Data</TableHead>
-                                    <TableHead>Canal</TableHead>
-                                    <TableHead>Empresa</TableHead>
-                                    <TableHead>Destino</TableHead>
-                                    <TableHead>Status</TableHead>
-                                    <TableHead>Detalhes</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {auditoria.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={6} className="text-center py-10 text-white/40">
-                                            <Inbox className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                                            Nenhum envio no período selecionado.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
-                                {auditoria.map(item => (
-                                    <TableRow key={item.id} className={cn(item.status === 'falha' && 'bg-red-500/[0.02]')}>
-                                        <TableCell className="text-sm whitespace-nowrap">
-                                            {formatDateTime(item.created_at)}
-                                        </TableCell>
-                                        <TableCell><CanalChip canal={item.canal} /></TableCell>
-                                        <TableCell>
-                                            <Link
-                                                href={`/companies/${item.company_id}`}
-                                                target="_blank"
-                                                className="text-white hover:text-ecf-yellow inline-flex items-center gap-1 text-sm"
-                                            >
-                                                {item.company}
-                                                <ExternalLink className="w-3 h-3 opacity-60" />
-                                            </Link>
-                                        </TableCell>
-                                        <TableCell className="text-sm text-white/70">
-                                            {item.canal === 'digisac'
-                                                ? (item.grupo_nome ?? item.destino ?? '—')
-                                                : (item.destino ?? '—')
-                                            }
-                                        </TableCell>
-                                        <TableCell><StatusChip status={item.status} /></TableCell>
-                                        <TableCell className="text-xs text-white/50 max-w-[300px]">
-                                            {item.status === 'falha' && item.erro_msg && (
-                                                <span className="text-red-300/80 break-all" title={item.erro_msg}>
-                                                    {item.erro_msg.slice(0, 140)}{item.erro_msg.length > 140 ? '…' : ''}
-                                                </span>
-                                            )}
-                                            {item.status === 'skipped' && item.erro_msg && (
-                                                <span className="text-amber-300/80 break-all" title={item.erro_msg}>
-                                                    {item.erro_msg}
-                                                </span>
-                                            )}
-                                            {item.provider_message_id && (
-                                                <div className="text-white/30 text-[10px] font-mono mt-0.5">
-                                                    msg: {item.provider_message_id}
-                                                </div>
-                                            )}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
-                    </div>
-                </section>
             </div>
 
             {/* ─── Modal de vincular grupo ────────────────────────────── */}
