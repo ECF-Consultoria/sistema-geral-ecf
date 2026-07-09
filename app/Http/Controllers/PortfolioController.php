@@ -66,13 +66,6 @@ class PortfolioController extends Controller
     //  - Líder de setor: somente users vinculados (user_setores) ao(s) setor(es)
     //    que ele lidera.
     //  - Próprio user (auto-visualização também funciona).
-    //
-    // Ajuste 2026-07-09 pós Phase 74: quando um ADMIN ou LÍDER acessa a carteira
-    // de OUTRO profissional (não a própria), redirecionamos para a nova página
-    // de Desempenho (Performance/Show.jsx) que já consome o shape v2 completo
-    // do DesempenhoScoreService com os 4 parâmetros + faixa de bônus + snapshot
-    // mensal. O legado Portfolio/Show.jsx continua ativo apenas para o próprio
-    // user acessar a própria carteira (via /portfolio).
     public function show(Request $request, User $user)
     {
         $atual = $request->user();
@@ -86,12 +79,6 @@ class PortfolioController extends Controller
                     ->exists()
             );
         abort_unless($autorizado, 403);
-
-        // Admin/líder viewing outro user → dashboard v2 do analista/estrategista.
-        // Auto-view do próprio user preserva o Portfolio/Show.jsx histórico.
-        if ($atual->id !== $user->id) {
-            return redirect()->route('performance.show', $user->id);
-        }
 
         return $this->renderPortfolio($request, $user);
     }
@@ -308,13 +295,23 @@ class PortfolioController extends Controller
         $refDate    = Carbon::create($year, $month, 1);
         $isMesAtual = $refDate->isSameMonth(now());
 
-        // Janelas pro faturamento. Mês atual = últimos 30 dias rolling (cache
-        // grossBilling Adman); mês passado = mês calendário (SUM DB histórico).
+        // Janelas pro faturamento — Ajuste 2026-07-09: comparação ACUMULADA
+        // dia-a-dia quando o mês está em curso, alinhando com a mesma lógica
+        // do DesempenhoScoreService. Se hoje é dia 9 de julho, comparamos
+        // "01/jul até 09/jul" com "01/jun até 09/jun" — janelas do mesmo
+        // tamanho, evitando queda artificial por diferença de dias.
+        // Mês passado (fechado): usa o mês calendário inteiro (comportamento
+        // original), pois ambos meses são completos.
         if ($isMesAtual) {
-            $dateFrom         = now()->subDays(30)->toDateString();
+            $diaAtual         = now()->day;
+            $refInicioAtual   = now()->startOfMonth();
+            $refInicioAnter   = $refInicioAtual->copy()->subMonth();
+            $dateFrom         = $refInicioAtual->toDateString();
             $dateTo           = now()->toDateString();
-            $dateFromAnterior = now()->subDays(60)->toDateString();
-            $dateToAnterior   = now()->subDays(30)->toDateString();
+            $dateFromAnterior = $refInicioAnter->toDateString();
+            $dateToAnterior   = $refInicioAnter->copy()
+                ->setDay(min($diaAtual, $refInicioAnter->daysInMonth))
+                ->toDateString();
         } else {
             $dateFrom         = $refDate->copy()->startOfMonth()->toDateString();
             $dateTo           = $refDate->copy()->endOfMonth()->toDateString();
@@ -333,12 +330,15 @@ class PortfolioController extends Controller
             ->get();
 
         // Pre-calcula SUM DB por empresa (fallback / mês passado)
+        // Ajuste 2026-07-09: também trazemos SUM(contribution_margin) do mês
+        // corrente E do mês anterior para calcular variação % por empresa
+        // (usado na coluna "Margem" da tabela de carteira).
         $companyIdsAll = $rawCompanies->pluck('id');
         $sumDbAtual = AdmanMetric::query()
             ->whereIn('company_id', $companyIdsAll)
             ->whereBetween('reference_date', [$dateFrom, $dateTo])
             ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total, SUM(ad_spend) as ads, AVG(tacos) as tacos, AVG(contribution_margin_pct) as margem')
+            ->selectRaw('company_id, SUM(revenue) as total, SUM(ad_spend) as ads, AVG(tacos) as tacos, AVG(contribution_margin_pct) as margem, SUM(contribution_margin) as margem_abs')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
@@ -346,9 +346,24 @@ class PortfolioController extends Controller
             ->whereIn('company_id', $companyIdsAll)
             ->whereBetween('reference_date', [$dateFromAnterior, $dateToAnterior])
             ->whereNotNull('revenue')
-            ->selectRaw('company_id, SUM(revenue) as total')
+            ->selectRaw('company_id, SUM(revenue) as total, SUM(contribution_margin) as margem_abs')
             ->groupBy('company_id')
-            ->pluck('total', 'company_id');
+            ->get()
+            ->keyBy('company_id');
+
+        // Margem absoluta anterior separada (para calcular variação por empresa
+        // na função map abaixo). $sumDbAnterior mudou de collection de floats
+        // (keyBy pluck) para collection de objetos — preservamos ambas as
+        // vistas para não quebrar código que já lia .pluck('total').
+        $revAnteriorPorEmpresa = $sumDbAnterior->mapWithKeys(
+            fn ($row, $id) => [$id => (float) ($row->total ?? 0)]
+        );
+        $margemAnteriorPorEmpresa = $sumDbAnterior->mapWithKeys(
+            fn ($row, $id) => [$id => (float) ($row->margem_abs ?? 0)]
+        );
+        // Preserva o nome legado usado logo abaixo (sumDbAnterior antes era
+        // pluck('total', 'company_id') — mantemos essa view compatível).
+        $sumDbAnterior = $revAnteriorPorEmpresa;
 
         // Cache batch da Adman (somente no mês atual — mês passado é histórico).
         // Hotfix 2026-06-19 auditoria — usa o accessor cust_id (adman_account_id
@@ -424,6 +439,22 @@ class PortfolioController extends Controller
                 ? round((($revenue - $revAnterior) / $revAnterior) * 100, 2)
                 : null;
 
+            // Ajuste 2026-07-09 · variação de margem de contribuição por empresa:
+            // ABSOLUTA (`SUM(contribution_margin)` — valor em R$) vs mesmo range
+            // no mês anterior. Fonte SEMPRE Adman (ML não expõe custo unitário;
+            // gap conhecido documentado no DESEMP-05). Descartar quando margem
+            // anterior <= 0 (mês em que não houve venda com margem cadastrada).
+            $margemAtualAbs    = $sumRow ? (float) $sumRow->margem_abs : 0.0;
+            $margemAnteriorAbs = (float) ($margemAnteriorPorEmpresa[$c->id] ?? 0.0);
+            $margemVariacaoPct = $margemAnteriorAbs > 0
+                ? round((($margemAtualAbs - $margemAnteriorAbs) / $margemAnteriorAbs) * 100, 2)
+                : null;
+
+            // Badge ML: conexão OAuth ativa via mlToken.status === 'active'.
+            // Empresas com dados só do Adman API NÃO ganham badge (mesma regra
+            // do dashboard PerformanceController::dashboardCarteira).
+            $hasMlOauth = (bool) ($c->mlToken && $c->mlToken->status === 'active');
+
             return [
                 'id'                  => $c->id,
                 'name'                => $c->name,
@@ -432,7 +463,11 @@ class PortfolioController extends Controller
                 'revenue'             => $revenue,
                 'revenue_anterior'    => $revAnterior > 0 ? (float) $revAnterior : null,
                 'queda_mom_pct'       => $quedaMomPct,
-                'contribution_margin_pct' => $sumRow ? round((float) $sumRow->margem, 2) : $c->latestMetrics?->contribution_margin_pct,
+                'contribution_margin_pct'    => $sumRow ? round((float) $sumRow->margem, 2) : $c->latestMetrics?->contribution_margin_pct,
+                'contribution_margin_abs'    => $margemAtualAbs,
+                'contribution_margin_prev'   => $margemAnteriorAbs > 0 ? $margemAnteriorAbs : null,
+                'contribution_margin_var_pct'=> $margemVariacaoPct,
+                'has_ml_oauth'        => $hasMlOauth,
                 'ad_spend'            => $adSpendNum,
                 'grant_status'        => $activeGrant?->status,
                 'grant_expires_at'    => $activeGrant?->expires_at?->toDateString(),
@@ -571,6 +606,21 @@ class PortfolioController extends Controller
             $revenueGrowthPct = round((($totalRevenueAtual - $totalRevenueAnterior) / $totalRevenueAnterior) * 100, 2);
         }
 
+        // Ajuste 2026-07-09 · Totais de margem de contribuição da carteira +
+        // variação vs mesmo período do mês anterior. Média das % de variação
+        // por empresa (mesma metodologia do DesempenhoScoreService, mas exposta
+        // no shape da carteira para exibição na UI).
+        $totalMargemAbsAtual    = (float) $companies->sum('contribution_margin_abs');
+        $totalMargemAbsAnterior = (float) $companies->sum(fn ($c) => $c['contribution_margin_prev'] ?? 0);
+        $margemGrowthPct        = null;
+        if ($totalMargemAbsAnterior > 0) {
+            $margemGrowthPct = round((($totalMargemAbsAtual - $totalMargemAbsAnterior) / $totalMargemAbsAnterior) * 100, 2);
+        }
+        $margemVarMediaEmpresas = $companies
+            ->pluck('contribution_margin_var_pct')
+            ->filter(fn ($v) => $v !== null)
+            ->avg();
+
         $summary = [
             'total_companies'         => $companies->count(),
             'avg_tacos'               => $companies->whereNotNull('tacos')->avg('tacos'),
@@ -578,6 +628,13 @@ class PortfolioController extends Controller
             'total_revenue_anterior'  => $totalRevenueAnterior,
             'revenue_growth_pct'      => $revenueGrowthPct,
             'avg_margin'              => $companies->whereNotNull('contribution_margin_pct')->avg('contribution_margin_pct'),
+            // Novas keys (Ajuste 2026-07-09) — expostas para o Portfolio/Show.jsx
+            // renderizar os KPIs "Total Faturamento", "Variação de Margem" etc.
+            'total_margin_abs'                    => round($totalMargemAbsAtual, 2),
+            'total_margin_abs_anterior'           => round($totalMargemAbsAnterior, 2),
+            'margin_growth_pct'                   => $margemGrowthPct,
+            'margin_growth_avg_per_company_pct'   => $margemVarMediaEmpresas !== null ? round((float) $margemVarMediaEmpresas, 2) : null,
+            'companies_ml_oauth'                  => (int) $companies->where('has_ml_oauth', true)->count(),
             'total_ad_spend'          => (float) $companies->sum('ad_spend'),
         ];
 

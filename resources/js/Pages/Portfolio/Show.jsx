@@ -8,6 +8,7 @@ import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Target, AlertTriangle,
     Trophy, Briefcase, Building2, ShoppingCart, Award, Users, Minus,
+    Coins, Percent,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
@@ -752,6 +753,46 @@ export default function PortfolioShow({
                     />
                 </div>
 
+                {/* ── 3.1 KPIs de Margem de Contribuição (Ajuste 2026-07-09) ──
+                    Total absoluto + variação vs mesmo intervalo do mês anterior.
+                    Métrica-chave da nova régua de bônus + resposta à pergunta:
+                    "por que a margem está aparecendo negativa?" O KPI mostra
+                    a comparação dia-a-dia justa; se ainda estiver negativo,
+                    é queda real. */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <KpiCard
+                        label="Margem de contribuição total"
+                        value={formatCurrencyCompact(summary?.total_margin_abs ?? 0)}
+                        sub="soma das empresas no período"
+                        icon={Coins}
+                        help="Soma de contribution_margin (Adman) de todas as empresas da carteira no intervalo do período selecionado."
+                    />
+                    <KpiCard
+                        label="Variação de margem (carteira)"
+                        value={summary?.margin_growth_pct !== null && summary?.margin_growth_pct !== undefined
+                            ? `${summary.margin_growth_pct >= 0 ? '+' : ''}${summary.margin_growth_pct.toFixed(1)}%`
+                            : '—'}
+                        sub="total atual vs mesmo intervalo mês anterior"
+                        icon={summary?.margin_growth_pct != null && summary.margin_growth_pct >= 0 ? TrendingUp : TrendingDown}
+                        accent={summary?.margin_growth_pct == null
+                            ? 'text-white/40'
+                            : summary.margin_growth_pct >= 0 ? 'text-emerald-300' : 'text-rose-300'}
+                        help="Comparação da soma de contribution_margin de TODAS as empresas: período atual vs mesmo intervalo do mês anterior."
+                    />
+                    <KpiCard
+                        label="Média por empresa"
+                        value={summary?.margin_growth_avg_per_company_pct !== null && summary?.margin_growth_avg_per_company_pct !== undefined
+                            ? `${summary.margin_growth_avg_per_company_pct >= 0 ? '+' : ''}${summary.margin_growth_avg_per_company_pct.toFixed(1)}%`
+                            : '—'}
+                        sub={`${summary?.companies_ml_oauth ?? 0} conectadas ao ML`}
+                        icon={Percent}
+                        accent={summary?.margin_growth_avg_per_company_pct == null
+                            ? 'text-white/40'
+                            : summary.margin_growth_avg_per_company_pct >= 0 ? 'text-emerald-300' : 'text-rose-300'}
+                        help="Média das variações percentuais de margem por empresa (mesma metodologia usada na régua de bônus DESEMP-05)."
+                    />
+                </div>
+
                 {/* ── 3.5 Performance do profissional (redesign visual 2026-06-23)
                     Radial chart (score 0-100) + Radar (6 dimensões) + cards menores. */}
                 {performance_profissional && (
@@ -942,6 +983,8 @@ export default function PortfolioShow({
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('revenue')}>Faturamento</th>
                                             <th className="text-right font-medium px-2 py-2">Meta</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('contribution_margin_pct')}>Margem</th>
+                                            {/* Ajuste 2026-07-09 · variação de margem vs mesmo período mês anterior */}
+                                            <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('contribution_margin_var_pct')} title="Variação de margem de contribuição vs mesmo intervalo do mês anterior">Var. margem</th>
                                             <th className="text-right font-medium px-2 py-2 cursor-pointer" onClick={() => toggleSort('ad_spend')}>Ads</th>
                                             <th className="text-left font-medium px-2 py-2">Ação</th>
                                             <th className="text-right font-medium px-2 py-2">Crescimento</th>
@@ -964,6 +1007,16 @@ export default function PortfolioShow({
                                                         >
                                                             {c.name}
                                                         </Link>
+                                                        {/* Ajuste 2026-07-09 · Badge ML SVG — empresa com OAuth vendedor ML ativo */}
+                                                        {c.has_ml_oauth && (
+                                                            <img
+                                                                src="/images/mercado-livre-87.svg"
+                                                                alt="Conectada ao Mercado Livre"
+                                                                title="Conectada ao Mercado Livre"
+                                                                className="inline-block shrink-0"
+                                                                style={{ width: 16, height: 16 }}
+                                                            />
+                                                        )}
                                                         {/* Phase 72 Plan 03 v15.0 — Badge NPS pendente (variant inline pra desktop) */}
                                                         <NpsPendingBadge companyId={c.id} pendentes={npsPendentesList} variant="inline" />
                                                         {/* Badge de origem multi-fonte (Phase 61) — guarda defensiva:
@@ -1011,6 +1064,20 @@ export default function PortfolioShow({
                                                         ? formatPercent(c.contribution_margin_pct)
                                                         : '—'}
                                                 </td>
+                                                {/* Ajuste 2026-07-09 · Coluna Variação de margem — comparação
+                                                    dia-a-dia acumulada (mesmo range do mês anterior). */}
+                                                <td className={cn(
+                                                    'px-2 py-2 text-right tabular-nums font-medium',
+                                                    c.contribution_margin_var_pct == null
+                                                        ? 'text-white/40'
+                                                        : c.contribution_margin_var_pct >= 0
+                                                            ? 'text-emerald-300'
+                                                            : 'text-rose-300'
+                                                )}>
+                                                    {c.contribution_margin_var_pct !== null && c.contribution_margin_var_pct !== undefined
+                                                        ? `${c.contribution_margin_var_pct >= 0 ? '+' : ''}${c.contribution_margin_var_pct.toFixed(1)}%`
+                                                        : '—'}
+                                                </td>
                                                 <td className="px-2 py-2 text-right text-white/70 tabular-nums">
                                                     {(c.ad_spend ?? 0) > 0 ? formatCurrencyCompact(c.ad_spend) : 'R$ 0,00'}
                                                 </td>
@@ -1036,7 +1103,7 @@ export default function PortfolioShow({
                                         })}
                                         {empresasView.length === 0 && (
                                             <tr>
-                                                <td colSpan={8} className="text-center text-white/40 py-8">
+                                                <td colSpan={9} className="text-center text-white/40 py-8">
                                                     Nenhuma empresa encontrada com os filtros.
                                                 </td>
                                             </tr>
