@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: executing
-stopped_at: Completed 74-04 (Wave 3 Phase 74 — big bang v2 backend + cron mensal)
-last_updated: "2026-07-09T21:00:00.000Z"
+stopped_at: Completed 74-06 + 74-07 + 74-08 (Wave 4 Phase 74 — Frontend: Ranking/Dashboard/Show v2 + Configuracao admin + artigo Manual dinâmico)
+last_updated: "2026-07-09T22:30:00.000Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 7
   completed_phases: 6
-  total_plans: 39
-  completed_plans: 39
-  percent: 88
+  total_plans: 42
+  completed_plans: 42
+  percent: 90
 ---
 
 # Project State
@@ -26,8 +26,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 74 (Módulo Desempenho — simplificação para 4 parâmetros + bonificação) — EXECUTING
-Plan: 7 of 10
-Status: Ready to execute
+Plan: 9 of 10 (Wave 4 fechada: 06/07/08 entregues; falta Wave 5 testes 74-09/74-10)
+Status: Ready to execute (74-09 · testes DesempenhoScoreService Feature)
 Last activity: 2026-07-09
 
 ## Performance Metrics
@@ -125,6 +125,9 @@ Last activity: 2026-07-09
 | Phase 74 P03 | 25min | 1 tasks | 1 files |
 | Phase 74 P05 | 20min | 3 tasks | 4 files |
 | Phase 74 P04 | 25min | 2 tasks (Big bang + cron mensal) | 6 files (5 modified, 1 deleted) |
+| Phase 74 P06 | 45min | 3 tasks (Dashboard/Index/Show reescritos + PerformanceController::show Rule 2) | 4 files |
+| Phase 74 P07 | 20min | 1 task (Desempenho/Configuracao.jsx) | 1 file (new) |
+| Phase 74 P08 | 25min | 3 tasks (ManualController + Show wrapper + artigos.js + DesempenhoBonificacao) | 4 files (3 modified, 1 new) |
 
 ## Accumulated Context
 
