@@ -3,7 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\PortfolioScoreService;
+use App\Services\DesempenhoScoreService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -119,30 +120,42 @@ class DesempenhoEvolucaoTest extends TestCase
     }
 
     /**
-     * Substitui PortfolioScoreService no container por uma fake controlada
-     * via $this->fakeScores. Users sem fake retornam payload com score 0.
+     * Substitui DesempenhoScoreService no container por uma fake controlada
+     * via $this->fakeScores. Users sem fake retornam payload sem_carteira=true
+     * (mesma semântica v2 do DESEMP-10 — user default é pulado no ranking).
+     *
+     * Phase 74 D-05/D-06 — v1 (`PortfolioScoreService`) apagado; v2
+     * (`DesempenhoScoreService`) tem assinatura `compute(User, Carbon)`.
      */
     private function bindarScoreServiceFake(): void
     {
         $self = $this;
-        $this->app->bind(PortfolioScoreService::class, function () use ($self) {
-            return new class($self) extends PortfolioScoreService {
+        $this->app->bind(DesempenhoScoreService::class, function () use ($self) {
+            return new class($self) extends DesempenhoScoreService {
                 public function __construct(private DesempenhoEvolucaoTest $owner) {}
 
-                public function compute(User $user): array
+                public function compute(User $user, Carbon $mesReferencia): array
                 {
                     if (isset($this->owner->fakeScoresPublic()[$user->id])) {
                         return $this->owner->fakeScoresPublic()[$user->id];
                     }
                     return [
-                        'tem_base_comparativa' => false,
-                        'empresas_eligiveis'   => 0,
-                        'empresas_carteira'    => 0,
-                        'metricas'             => [],
-                        'pontos_categoria'     => [],
-                        'score'                => 0.0,
-                        'classificacao'        => 'critico',
-                        'periodo'              => [],
+                        'user_id'               => $user->id,
+                        'user_name'             => $user->name,
+                        'mes_referencia'        => $mesReferencia->toDateString(),
+                        'sem_carteira'          => true,
+                        'motivo'                => 'default fake — sem carteira',
+                        'empresas_carteira'     => 0,
+                        'empresas_com_baseline' => 0,
+                        'componentes'           => [
+                            'nps_medio'           => null,
+                            'var_faturamento_pct' => null,
+                            'var_margem_pct'      => null,
+                            'absenteismo_pct'     => null,
+                        ],
+                        'nota_final'      => null,
+                        'faixa_bonus'     => null,
+                        'faixa_promovida' => false,
                     ];
                 }
             };
@@ -155,28 +168,35 @@ class DesempenhoEvolucaoTest extends TestCase
     }
 
     /**
-     * Payload mínimo aceito pelo PerformanceController::index() (chaves
-     * obrigatórias do array 'metricas' pra evitar undefined offset).
+     * Payload mínimo aceito pelo PerformanceController::index() no shape v2
+     * (Phase 74 D-07). Cada teste usa este helper para descrever a nota do
+     * user "hoje" e comparar contra snapshots históricos inseridos direto na
+     * tabela (que continuam com colunas legacy `score` int 0-100).
+     *
+     * @param float  $score          score legado 0-100 (compat) — usado como
+     *                                base para `nota_final = score / 20`.
+     * @param string $classificacao  slug da faixa de bônus.
      */
-    private function payloadFake(float $score, string $classificacao = 'bom'): array
+    private function payloadFake(float $score, string $classificacao = 'basico'): array
     {
+        $nota = round($score / 20, 2);
         return [
-            'tem_base_comparativa' => true,
-            'empresas_eligiveis'   => 3,
-            'empresas_carteira'    => 5,
-            'metricas' => [
-                'crescimento_ajustado_pct' => 5.0,
-                'empresas_em_crescimento'  => ['count' => 2, 'total' => 5, 'pct' => 40.0],
-                'atingimento_meta'         => ['pct' => 80.0],
-                'recuperacao'              => ['pct' => 50.0],
-                'execucao_ads'             => ['pct' => 70.0],
-                'qualidade'                => ['avg_nps' => 4.0, 'meetings' => 10, 'absenteismo_pct' => 5.0],
-                'faturamento'              => ['atual' => 100000.0, 'anterior' => 95000.0],
+            'user_id'               => 0,
+            'user_name'             => '',
+            'mes_referencia'        => now()->startOfMonth()->toDateString(),
+            'sem_carteira'          => false,
+            'motivo'                => null,
+            'empresas_carteira'     => 5,
+            'empresas_com_baseline' => 3,
+            'componentes' => [
+                'nps_medio'           => 4.0,
+                'var_faturamento_pct' => 3.0,
+                'var_margem_pct'      => 2.8,
+                'absenteismo_pct'     => null,
             ],
-            'pontos_categoria' => [],
-            'score'            => $score,
-            'classificacao'    => $classificacao,
-            'periodo'          => [],
+            'nota_final'      => $nota,
+            'faixa_bonus'     => $classificacao,
+            'faixa_promovida' => false,
         ];
     }
 
@@ -254,8 +274,10 @@ class DesempenhoEvolucaoTest extends TestCase
 
         $item = $this->itemDoRanking($response, $u->id);
         $this->assertNotNull($item);
-        // 75 - 70 = 5.0
-        $this->assertSame(5.0, $item['delta_vs_ontem']);
+        // Phase 74 D-07 · deltas ficam expressos na ESCALA 0-5 da nota_final.
+        // Hoje: score=75 → nota=3.75. Snap ontem: score=70 → nota=3.50.
+        // delta = 3.75 - 3.50 = 0.25
+        $this->assertSame(0.25, $item['delta_vs_ontem']);
     }
 
     public function test_delta_vs_semana_passada_usa_mais_recente_dentro_da_janela(): void
@@ -267,7 +289,8 @@ class DesempenhoEvolucaoTest extends TestCase
         $this->fakeScores = [$u->id => $this->payloadFake(80.0)];
 
         // Snapshots: D-7 score 60, D-8 score 50, D-9 score 40.
-        // delta_vs_semana_passada deve usar D-7 (mais recente <= today-7d) → 80-60=20.
+        // delta_vs_semana_passada deve usar D-7 (mais recente <= today-7d).
+        // Hoje nota=4.00; D-7 nota=3.00 → delta = 1.00.
         $this->inserirSnapshot($u->id, now()->subDays(7)->toDateString(), 60.0);
         $this->inserirSnapshot($u->id, now()->subDays(8)->toDateString(), 50.0);
         $this->inserirSnapshot($u->id, now()->subDays(9)->toDateString(), 40.0);
@@ -277,10 +300,10 @@ class DesempenhoEvolucaoTest extends TestCase
 
         $item = $this->itemDoRanking($response, $u->id);
         $this->assertNotNull($item);
-        $this->assertSame(20.0, $item['delta_vs_semana_passada'],
+        // Phase 74 D-07 · escala 0-5. 80/20=4.00; 60/20=3.00 → delta=1.00.
+        $this->assertSame(1.0, $item['delta_vs_semana_passada'],
             'Deve usar snapshot D-7 (mais recente dentro da janela <= today-7d).');
-        // delta_vs_ontem usa D-7 também (snapshot mais recente strict < hoje).
-        $this->assertSame(20.0, $item['delta_vs_ontem']);
+        $this->assertSame(1.0, $item['delta_vs_ontem']);
     }
 
     public function test_delta_vs_ontem_pode_ser_negativo(): void
@@ -298,8 +321,8 @@ class DesempenhoEvolucaoTest extends TestCase
 
         $item = $this->itemDoRanking($response, $u->id);
         $this->assertNotNull($item);
-        // 70 - 80 = -10.0
-        $this->assertSame(-10.0, $item['delta_vs_ontem']);
+        // Phase 74 D-07 · escala 0-5. 70/20=3.50; 80/20=4.00 → delta=-0.50.
+        $this->assertSame(-0.5, $item['delta_vs_ontem']);
     }
 
     public function test_delta_vs_ontem_pega_anterior_disponivel_se_cron_falhou(): void
@@ -318,8 +341,8 @@ class DesempenhoEvolucaoTest extends TestCase
 
         $item = $this->itemDoRanking($response, $u->id);
         $this->assertNotNull($item);
-        // 75 - 65 = 10.0 (usa D-3 porque é o mais recente strict < hoje).
-        $this->assertSame(10.0, $item['delta_vs_ontem']);
+        // Phase 74 D-07 · escala 0-5. 75/20=3.75; 65/20=3.25 → delta=0.50.
+        $this->assertSame(0.5, $item['delta_vs_ontem']);
         // delta_vs_semana_passada → null (D-3 não cabe na janela <= today-7d).
         $this->assertNull($item['delta_vs_semana_passada']);
     }

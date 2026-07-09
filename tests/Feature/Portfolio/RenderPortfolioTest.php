@@ -8,7 +8,8 @@ use App\Models\NpsSurvey;
 use App\Models\NpsResponse;
 use App\Models\Sugador;
 use App\Models\User;
-use App\Services\PortfolioScoreService;
+use App\Services\DesempenhoScoreService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -336,36 +337,38 @@ class RenderPortfolioTest extends TestCase
     }
 
     /**
-     * Teste 7 — PortfolioScoreService::compute() nunca retorna metaOrigem='portfolio'.
-     * Garante que o Caminho A (PortfolioGoal) foi removido do service.
+     * Teste 7 — v2 shape do `DesempenhoScoreService::compute()` NÃO contém
+     * a chave legada `metricas.atingimento_meta` (Phase 74 D-06 substituiu
+     * a engine v1 completa por 4 parâmetros em `componentes`).
+     *
+     * O intent original do teste era "caminho A do PortfolioGoal removido do
+     * PortfolioScoreService" (Phase 48). Phase 74 vai além: apagou o service
+     * inteiro (`PortfolioScoreService` → `DesempenhoScoreService`) e o
+     * conceito de `atingimento_meta`. Este teste agora garante que o shape
+     * v2 canônico está em vigor e que nenhum resquício de v1 sobrevive na
+     * chave `metricas.atingimento_meta`.
      */
-    public function test_portfolio_score_service_nao_retorna_meta_origem_portfolio(): void
+    public function test_desempenho_score_service_v2_nao_retorna_atingimento_meta(): void
     {
         $user    = $this->criarAnalista();
         $empresa = $this->criarEmpresaParaUser($user, 'consultor');
 
-        // Goal de revenue para que Caminho B retorne metaOrigem='empresas:1'
         $this->criarGoalRevenue($empresa->id, 50000.00);
 
-        /** @var PortfolioScoreService $service */
-        $service = app(PortfolioScoreService::class);
-        $result  = $service->compute($user);
+        /** @var DesempenhoScoreService $service */
+        $service = app(DesempenhoScoreService::class);
+        $result  = $service->compute($user, Carbon::now()->startOfMonth());
 
-        $metaOrigem = $result['metricas']['atingimento_meta']['origem'] ?? null;
+        // Shape v2 canônico — 4 componentes + nota_final + faixa_bonus.
+        $this->assertArrayHasKey('componentes', $result,
+            'v2 shape deve conter chave "componentes" com 4 parâmetros.');
+        $this->assertArrayHasKey('nota_final', $result);
+        $this->assertArrayHasKey('faixa_bonus', $result);
 
-        $this->assertNotEquals(
-            'portfolio',
-            $metaOrigem,
-            "metaOrigem nao deve ser 'portfolio' apos remocao do Caminho A (Phase 48)"
-        );
-
-        // Com Goal de revenue, metaOrigem deve ser 'empresas:1'
-        if ($metaOrigem !== null) {
-            $this->assertStringStartsWith(
-                'empresas:',
-                $metaOrigem,
-                "metaOrigem deve comecar com 'empresas:' quando ha Goals de revenue"
-            );
-        }
+        // Chaves v1 EXPURGADAS — v1 tinha `metricas.atingimento_meta.origem`
+        // que representava o caminho A/B do PortfolioGoal (Phase 48). Phase
+        // 74 apagou o conceito inteiro.
+        $this->assertArrayNotHasKey('metricas', $result,
+            'v1 legacy: shape v2 NÃO deve mais expor `metricas` (D-06 big bang).');
     }
 }

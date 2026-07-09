@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -93,6 +94,13 @@ class PerformanceCargoFilterTest extends TestCase
 
     /**
      * Cria um user consultor e o vincula ao setor com cargo analista ou estrategista.
+     *
+     * Phase 74 D-10 (DESEMP-10) — o `PerformanceController::index` remove do
+     * ranking usuários com `sem_carteira=true`. Para manter o teste focado
+     * no FILTRO POR CARGO (sem mudar o intent), damos ao user uma empresa
+     * ativa via pivot `company_users` — assim ele passa pelo filtro sem_carteira
+     * e entra no ranking. A empresa é criada há -3 meses para não cair no
+     * filtro "empresa nova" do DESEMP-04.
      */
     private function criarUserComCargo(string $cargoSlug): User
     {
@@ -116,6 +124,19 @@ class PerformanceCargoFilterTest extends TestCase
             'assigned_at'  => now(),
             'created_at'   => now(),
             'updated_at'   => now(),
+        ]);
+
+        // Attach empresa ativa para o user passar pelo filtro DESEMP-10
+        // (sem_carteira=false).
+        $company = Company::factory()->create();
+        $ts = now()->subMonths(3)->toDateTimeString();
+        DB::table('company_users')->insert([
+            'company_id'  => $company->id,
+            'user_id'     => $user->id,
+            'role'        => 'consultor',
+            'assigned_at' => $ts,
+            'created_at'  => $ts,
+            'updated_at'  => $ts,
         ]);
 
         return $user;

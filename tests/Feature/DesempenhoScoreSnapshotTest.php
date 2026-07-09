@@ -3,7 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\User;
-use App\Services\PortfolioScoreService;
+use App\Services\DesempenhoScoreService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -122,31 +123,48 @@ class DesempenhoScoreSnapshotTest extends TestCase
     }
 
     /**
-     * Substitui PortfolioScoreService no container por uma fake controlada
+     * Substitui DesempenhoScoreService no container por uma fake controlada
      * via $this->fakeScores. Cada user_id mapeia pro próprio payload retornado
      * em compute(). Users sem fake retornam payload default (score 0).
+     *
+     * Phase 74 D-05/D-06 — o serviço v1 (`PortfolioScoreService`) foi apagado
+     * e substituído pelo `DesempenhoScoreService` no mesmo commit. A assinatura
+     * de compute() ganhou `Carbon $mesReferencia` como 2º parâmetro (D-07).
      */
     private function bindarScoreServiceFake(): void
     {
         $self = $this;
-        $this->app->bind(PortfolioScoreService::class, function () use ($self) {
-            return new class($self) extends PortfolioScoreService {
+        $this->app->bind(DesempenhoScoreService::class, function () use ($self) {
+            return new class($self) extends DesempenhoScoreService {
                 public function __construct(private DesempenhoScoreSnapshotTest $owner) {}
 
-                public function compute(User $user): array
+                public function compute(User $user, Carbon $mesReferencia): array
                 {
                     if (isset($this->owner->fakeScoresPublic()[$user->id])) {
                         return $this->owner->fakeScoresPublic()[$user->id];
                     }
+                    // Payload default — user sem fake vira `sem_carteira=true`
+                    // (spec DESEMP-10), garantindo que ele NÃO é gravado no
+                    // snapshot pelo command (mesmo comportamento anterior:
+                    // score=0/classificacao=critico faziam o Model create,
+                    // mas em v2 com DESEMP-10 os users default são pulados).
                     return [
-                        'tem_base_comparativa' => false,
-                        'empresas_eligiveis'   => 0,
-                        'empresas_carteira'    => 0,
-                        'metricas'             => [],
-                        'pontos_categoria'     => [],
-                        'score'                => 0.0,
-                        'classificacao'        => 'critico',
-                        'periodo'              => [],
+                        'user_id'               => $user->id,
+                        'user_name'             => $user->name,
+                        'mes_referencia'        => $mesReferencia->toDateString(),
+                        'sem_carteira'          => true,
+                        'motivo'                => 'default fake — sem carteira',
+                        'empresas_carteira'     => 0,
+                        'empresas_com_baseline' => 0,
+                        'componentes'           => [
+                            'nps_medio'           => null,
+                            'var_faturamento_pct' => null,
+                            'var_margem_pct'      => null,
+                            'absenteismo_pct'     => null,
+                        ],
+                        'nota_final'      => null,
+                        'faixa_bonus'     => null,
+                        'faixa_promovida' => false,
                     ];
                 }
             };
@@ -163,30 +181,38 @@ class DesempenhoScoreSnapshotTest extends TestCase
     }
 
     /**
-     * Constrói um payload de PortfolioScoreService::compute() fake.
+     * Constrói um payload de `DesempenhoScoreService::compute()` fake no
+     * shape v2 (Phase 74 D-07).
+     *
+     * @param float  $score          score legado 0-100 (compat) — usado pra
+     *                                calcular `nota_final = score / 20`
+     * @param string $classificacao  slug da faixa de bônus (ex. `sem_bonus`,
+     *                                `basico`, `intermediario`, `maximo`)
+     * @param array  $componentes    override dos 4 componentes (default:
+     *                                nps=4.0, var_fat=3.0, var_margem=2.8,
+     *                                absenteismo=null)
      */
-    private function payloadFake(float $score, string $classificacao = 'bom', array $metricasExtras = []): array
+    private function payloadFake(float $score, string $classificacao = 'basico', array $componentes = []): array
     {
+        $nota = round($score / 20, 2);
+
         return [
-            'tem_base_comparativa' => true,
-            'empresas_eligiveis'   => 5,
-            'empresas_carteira'    => 7,
-            'metricas' => array_merge([
-                'crescimento_ajustado_pct' => 7.5,
-                'empresas_em_crescimento'  => ['count' => 3, 'total' => 5, 'pct' => 60.0],
-                'atingimento_meta'         => ['pct' => 82.0, 'target_value' => 100000, 'realized_value' => 82000, 'origem' => 'portfolio'],
-                'recuperacao'              => ['recuperadas' => 1, 'em_queda' => 2, 'pct' => 50.0],
-                'execucao_ads'             => ['com_ads_ativos' => 4, 'total' => 5, 'pct' => 80.0],
-                'qualidade'                => ['avg_nps' => 4.2, 'meetings' => 12, 'absenteismo_pct' => 8.3],
-                'faturamento'              => ['atual' => 120000.0, 'anterior' => 110000.0],
-            ], $metricasExtras),
-            'pontos_categoria' => [],
-            'score'            => $score,
-            'classificacao'    => $classificacao,
-            'periodo'          => [
-                'from' => '2026-05-31',
-                'to'   => '2026-06-30',
-            ],
+            'user_id'               => 0,   // populado pelo compute() fake usando $user
+            'user_name'             => '',
+            'mes_referencia'        => now()->startOfMonth()->toDateString(),
+            'sem_carteira'          => false,
+            'motivo'                => null,
+            'empresas_carteira'     => 7,
+            'empresas_com_baseline' => 5,
+            'componentes' => array_merge([
+                'nps_medio'           => 4.0,
+                'var_faturamento_pct' => 3.0,
+                'var_margem_pct'      => 2.8,
+                'absenteismo_pct'     => null,
+            ], $componentes),
+            'nota_final'      => $nota,
+            'faixa_bonus'     => $classificacao,
+            'faixa_promovida' => false,
         ];
     }
 
@@ -220,15 +246,24 @@ class DesempenhoScoreSnapshotTest extends TestCase
         );
     }
 
-    public function test_unique_constraint_user_id_ref_date(): void
+    public function test_unique_constraint_user_id_ref_date_mes_referencia(): void
     {
+        // Phase 74 D-03 · o unique legado `(user_id, ref_date)` foi substituído
+        // pelo unique `(user_id, ref_date, mes_referencia)` — permite que a
+        // MESMA dupla (user, ref_date) apareça 1x como diário
+        // (`mes_referencia=NULL`) e 1x como mensal (`mes_referencia=YYYY-MM-01`).
+        //
+        // Este teste valida que 2 rows MENSAIS iguais (mesmo mes_referencia)
+        // colidem no unique. NULL vs NULL não colide (SQL padrão trata NULL
+        // como distinto), então testamos com mes_referencia populado.
         $user = $this->criarUserComCargo('analista');
 
         DB::table('desempenho_score_snapshots')->insert([
             'user_id'              => $user->id,
-            'ref_date'             => '2026-06-30',
+            'ref_date'             => '2026-06-01',
+            'mes_referencia'       => '2026-06-01',
             'score'                => 70,
-            'classificacao'        => 'bom',
+            'classificacao'        => 'basico',
             'tem_base_comparativa' => true,
             'empresas_carteira'    => 5,
             'empresas_eligiveis'   => 4,
@@ -241,9 +276,10 @@ class DesempenhoScoreSnapshotTest extends TestCase
 
         DB::table('desempenho_score_snapshots')->insert([
             'user_id'              => $user->id,
-            'ref_date'             => '2026-06-30',
+            'ref_date'             => '2026-06-01',
+            'mes_referencia'       => '2026-06-01',
             'score'                => 80,
-            'classificacao'        => 'bom',
+            'classificacao'        => 'intermediario',
             'tem_base_comparativa' => true,
             'empresas_carteira'    => 5,
             'empresas_eligiveis'   => 4,
@@ -264,9 +300,11 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $u1 = $this->criarUserComCargo('analista');
         $u2 = $this->criarUserComCargo('estrategista');
 
+        // Phase 74 D-07 · shape v2 usa `faixa_bonus` como slug e `nota_final`
+        // como escala 0-5 (score legado = nota_final * 20).
         $this->fakeScores = [
-            $u1->id => $this->payloadFake(72.0, 'bom'),
-            $u2->id => $this->payloadFake(88.0, 'excelente'),
+            $u1->id => $this->payloadFake(72.0, 'basico'),         // nota_final 3.60
+            $u2->id => $this->payloadFake(88.0, 'intermediario'),  // nota_final 4.40
         ];
 
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
@@ -283,7 +321,7 @@ class DesempenhoScoreSnapshotTest extends TestCase
             ->first();
         $this->assertNotNull($snap1, 'Snapshot do analista deve existir.');
         $this->assertSame(72, (int) $snap1->score);
-        $this->assertSame('bom', $snap1->classificacao);
+        $this->assertSame('basico', $snap1->classificacao);
         $this->assertTrue((bool) $snap1->tem_base_comparativa);
         $this->assertSame(7, (int) $snap1->empresas_carteira);
         $this->assertSame(5, (int) $snap1->empresas_eligiveis);
@@ -295,7 +333,7 @@ class DesempenhoScoreSnapshotTest extends TestCase
 
         $u = $this->criarUserComCargo('analista');
         $this->fakeScores = [
-            $u->id => $this->payloadFake(60.0, 'atencao'),
+            $u->id => $this->payloadFake(60.0, 'sem_bonus'),
         ];
 
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
@@ -306,7 +344,7 @@ class DesempenhoScoreSnapshotTest extends TestCase
 
         // Segundo run — score atualizado, mas continua 1 linha por (user, data).
         $this->fakeScores = [
-            $u->id => $this->payloadFake(85.0, 'excelente'),
+            $u->id => $this->payloadFake(85.0, 'intermediario'),
         ];
 
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
@@ -320,7 +358,7 @@ class DesempenhoScoreSnapshotTest extends TestCase
             ->whereDate('ref_date', '2026-06-30')
             ->firstOrFail();
         $this->assertSame(85, (int) $snap->score, 'Score deve refletir o 2º run.');
-        $this->assertSame('excelente', $snap->classificacao);
+        $this->assertSame('intermediario', $snap->classificacao);
     }
 
     public function test_breakdown_json_persistido_como_array(): void
@@ -329,7 +367,7 @@ class DesempenhoScoreSnapshotTest extends TestCase
 
         $u = $this->criarUserComCargo('analista');
         $this->fakeScores = [
-            $u->id => $this->payloadFake(70.0, 'bom'),
+            $u->id => $this->payloadFake(70.0, 'basico'),
         ];
 
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
@@ -341,10 +379,13 @@ class DesempenhoScoreSnapshotTest extends TestCase
 
         $this->assertIsArray($model->breakdown_json,
             'Cast breakdown_json => array deve devolver array PHP.');
-        $this->assertArrayHasKey('crescimento_ajustado_pct', $model->breakdown_json);
-        $this->assertArrayHasKey('atingimento_meta', $model->breakdown_json);
-        // PHP normaliza JSON 82.0 → 82 (int) ao decodificar; usamos comparação numérica.
-        $this->assertEqualsWithDelta(82.0, $model->breakdown_json['atingimento_meta']['pct'], 0.001);
+        // Phase 74 D-07 · shape v2 — chaves canônicas do compute()
+        // (`componentes`, `nota_final`, `faixa_bonus`).
+        $this->assertArrayHasKey('componentes', $model->breakdown_json);
+        $this->assertArrayHasKey('nota_final', $model->breakdown_json);
+        $this->assertArrayHasKey('faixa_bonus', $model->breakdown_json);
+        $this->assertEqualsWithDelta(3.50, $model->breakdown_json['nota_final'], 0.001,
+            'Nota final = score/20 = 70/20 = 3.50 no payload fake.');
     }
 
     public function test_ranking_pos_ordenado_por_score_desc(): void
@@ -356,9 +397,9 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $u3 = $this->criarUserComCargo('estrategista');  // score 65 → 2º
 
         $this->fakeScores = [
-            $u1->id => $this->payloadFake(50.0, 'atencao'),
-            $u2->id => $this->payloadFake(80.0, 'bom'),
-            $u3->id => $this->payloadFake(65.0, 'bom'),
+            $u1->id => $this->payloadFake(50.0, 'sem_bonus'),
+            $u2->id => $this->payloadFake(80.0, 'basico'),
+            $u3->id => $this->payloadFake(65.0, 'sem_bonus'),
         ];
 
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
@@ -384,8 +425,8 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $publicador = $this->criarUserComCargo('publicador');
 
         $this->fakeScores = [
-            $analista->id   => $this->payloadFake(70.0, 'bom'),
-            $publicador->id => $this->payloadFake(90.0, 'excelente'),
+            $analista->id   => $this->payloadFake(70.0, 'basico'),
+            $publicador->id => $this->payloadFake(90.0, 'intermediario'),
         ];
 
         $this->artisan('desempenho:snapshot-scores', ['--data' => '2026-06-30'])
@@ -413,8 +454,8 @@ class DesempenhoScoreSnapshotTest extends TestCase
         $u2 = $this->criarUserComCargo('analista');
 
         $this->fakeScores = [
-            $u1->id => $this->payloadFake(60.0, 'atencao'),
-            $u2->id => $this->payloadFake(75.0, 'bom'),
+            $u1->id => $this->payloadFake(60.0, 'sem_bonus'),
+            $u2->id => $this->payloadFake(75.0, 'basico'),
         ];
 
         $this->artisan('desempenho:snapshot-scores', [
