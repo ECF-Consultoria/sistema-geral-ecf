@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: executing
-stopped_at: Phase 74 context gathered
-last_updated: "2026-07-09T16:36:35.246Z"
-last_activity: 2026-07-09 -- Phase 74 planning complete
+stopped_at: Completed 74-01 e 74-02 (Wave 1 Phase 74)
+last_updated: "2026-07-09T18:08:44.948Z"
+last_activity: 2026-07-09
 progress:
   total_phases: 7
   completed_phases: 6
   total_plans: 38
-  completed_plans: 34
+  completed_plans: 36
   percent: 86
 ---
 
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 72 — Dashboards + pendências + dia de cobrança — 4/4 plans FECHADOS; Phase 73 (cleanup legado + E2E) desbloqueada
+**Current focus:** Phase 74 — Módulo Desempenho — simplificação para 4 parâmetros + bonificação
 
 ## Current Position
 
-Phase: Phase 73 — Limpeza legado + testes E2E (EM ANDAMENTO — 1/4 plans concluídos)
-Plan: 73-01 COMPLETO — Wave 1/3 fechada; Plan 73-02 e 73-03 desbloqueados
+Phase: 74 (Módulo Desempenho — simplificação para 4 parâmetros + bonificação) — EXECUTING
+Plan: 3 of 10
 Status: Ready to execute
-Last activity: 2026-07-09 -- Phase 74 planning complete
+Last activity: 2026-07-09
 
 ## Performance Metrics
 
@@ -120,6 +120,8 @@ Last activity: 2026-07-09 -- Phase 74 planning complete
 | Phase 69 P05 | ~10min | 2 tasks (TDD RED+GREEN) | 2 files |
 | Phase 69 P03 | ~7min | 2 tasks (TDD RED+GREEN) | 2 files |
 | Phase 73 P01 | ~6min | 4 tasks | 2 files |
+| Phase 74 P01 | 10min | 2 tasks | 2 files |
+| Phase 74 P02 | 15min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -578,8 +580,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-09T16:06:16.623Z
-Stopped at: Phase 74 context gathered
+Last session: 2026-07-09T18:08:18.675Z
+Stopped at: Completed 74-01 e 74-02 (Wave 1 Phase 74)
 
 **Estado para próxima sessão retomar (Phase 39 Wave 2):**
 
