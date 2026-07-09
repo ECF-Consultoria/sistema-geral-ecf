@@ -63,6 +63,11 @@ const NAV_TREE = [
             // Desempenho fica com array explícito das páginas do ranking
             // (Index + Show) pra não engolir Performance/Dashboard acima.
             { label: 'Desempenho',  routeName: 'performance.index',   page: ['Performance/Index', 'Performance/Show'],  icon: Trophy,          permission: 'core.performance' },
+            // Phase 74 D-21 — item admin-only para UI de configuração das faixas de
+            // bônus (BonusFaixa) editáveis. Fica ao lado do irmão `performance.index`
+            // dentro do grupo Mercado Livre (o "grupo Desempenho" mencionado na
+            // decisão D-21 na prática vive aqui). SlidersHorizontal já importado.
+            { label: 'Configuração Desempenho', routeName: 'desempenho.configuracao.index', page: 'Desempenho/Configuracao', icon: SlidersHorizontal, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
