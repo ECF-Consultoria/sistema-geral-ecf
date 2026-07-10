@@ -16,7 +16,7 @@ class MlItemPayloadValidator
      * A ordem importa: o mais específico vem primeiro (str_contains casa o 1º).
      */
     private const TRADUCOES = [
-        'lost_me1_by_user'                 => 'A conta do cliente está em migração no Mercado Envios (Flex 2) e o ML ainda não libera publicar por API. Conclua a migração ou fale com o suporte do ML. (Confira também se o peso e as dimensões do pacote estão preenchidos.)',
+        'lost_me1_by_user'                 => 'Aviso de frete na validação — nem sempre é real. O Mercado Livre costuma recusar aqui mas ACEITAR na publicação. Confira o peso/dimensões do pacote e pode tentar publicar mesmo assim.',
         'lost_me2_by_catalog'              => 'Este produto de catálogo não aceita Mercado Envios 2 nesta conta.',
         'family_name'                      => 'Falta o nome do produto — obrigatório em contas no modelo novo do ML (User Products).',
         'seller_package'                   => 'Informe o peso e as dimensões do pacote (necessário para calcular o frete).',

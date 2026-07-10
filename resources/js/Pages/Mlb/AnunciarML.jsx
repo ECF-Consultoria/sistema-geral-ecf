@@ -179,9 +179,15 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
         setBusy('publicar');
         try {
             const r = await window.axios.post(route('mlb.anuncios.publicar', { rascunho: id }));
-            if (r.data.ok) { setErros({ valido: true, erros: [] }); setFlash('Publicação enfileirada! O anúncio aparecerá na conta do cliente em instantes.'); }
+            if (r.data.ok) {
+                setErros({ valido: true, erros: [] });
+                setFlash(`Publicado! Anúncio ${r.data.ml_item_id || ''} criado na conta do cliente.`);
+            } else {
+                setErros({ valido: false, erros: r.data.erros ?? [] });
+                setFlash('Não foi possível publicar — veja as pendências ao lado.');
+            }
         } catch (e) {
-            if (e.response?.status === 422) { setErros({ valido: false, erros: e.response.data.erros ?? [] }); setFlash('Corrija as pendências antes de publicar.'); }
+            if (e.response?.status === 422) { setErros({ valido: false, erros: e.response.data.erros ?? [] }); setFlash('Não foi possível publicar — veja as pendências ao lado.'); }
             else { setFlash('Falha ao publicar — tente novamente.'); }
         } finally { setBusy(''); }
     };

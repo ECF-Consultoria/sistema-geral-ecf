@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\PublicarAnuncioMlJob;
 use App\Models\Company;
 use App\Models\MlAnuncioRascunho;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
@@ -80,18 +79,34 @@ class MlbAnuncioController extends Controller
         return response()->json($this->publicacao->validar($rascunho));
     }
 
-    /** Publica o rascunho (valida antes; publicação assíncrona via fila). */
+    /**
+     * Publica o rascunho de verdade (POST /items).
+     *
+     * NÃO bloqueia pelo /items/validate: esse endpoint dá falso-positivo em
+     * algumas contas (ex.: `shipping.lost_me1_by_user` em contas com Full/Flex),
+     * enquanto o POST /items real cria o anúncio normalmente. O POST é a fonte
+     * da verdade — se falhar de fato, o service grava o erro real no rascunho.
+     */
     public function publicar(MlAnuncioRascunho $rascunho)
     {
-        $resultado = $this->publicacao->validar($rascunho);
+        try {
+            $r = $this->publicacao->publicar($rascunho);
 
-        if (! $resultado['valido']) {
-            return response()->json(['ok' => false, 'erros' => $resultado['erros']], 422);
+            return response()->json([
+                'ok'         => $r->status === MlAnuncioRascunho::STATUS_PUBLICADO,
+                'status'     => $r->status,
+                'ml_item_id' => $r->ml_item_id,
+                'erros'      => $r->validation_errors,
+            ]);
+        } catch (\Throwable $e) {
+            $fresh = $rascunho->fresh();
+
+            return response()->json([
+                'ok'     => false,
+                'status' => $fresh?->status,
+                'erros'  => $fresh?->validation_errors ?? [['mensagem' => 'Falha ao publicar. Tente novamente.']],
+            ], 422);
         }
-
-        PublicarAnuncioMlJob::dispatch($rascunho->id);
-
-        return response()->json(['ok' => true, 'mensagem' => 'Publicação enfileirada.']);
     }
 
     // ─── Metadados do wizard (JSON, via app token cacheado) ───
