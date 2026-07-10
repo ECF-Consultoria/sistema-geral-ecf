@@ -399,26 +399,41 @@ class DesempenhoScoreService
         foreach ($companiesQualificadas as $company) {
             $case = $this->metricsFactory->caseFor($company);
 
-            // Revenue atual: prefere ML quando disponível; senão Adman local.
-            $revAtual = (float) ($admanAtual->get($company->id)?->rev ?? 0.0);
+            // Ajuste 2026-07-09 (fix Luiz): baseline (revenue anterior) deve vir
+            // da MESMA fonte que o atual. Antes, atual vinha do ML (real, fresh)
+            // e anterior sempre do Adman local — quando Adman sincronizou pouco
+            // no mês passado pra empresa OAuth, o baseline ficava ridículo
+            // (LAURA LAR: Adman R$ 299 vs ML R$ 632.601 → +211.189% distorção).
+            //
+            // Regra nova: se a empresa é lida via ML no atual, TAMBÉM ler o
+            // baseline via ML. Se ML falhar em qualquer janela, cair para Adman
+            // em AMBAS (nunca misturar fontes = evita bug de baseline).
+            $revAtual    = null;
+            $revAnterior = null;
+            $fonteConsistente = null;
 
             if (in_array($case, ['ambos', 'so-ml'], true)) {
                 $providers = $this->metricsFactory->forCompany($company);
                 if (! empty($providers)) {
                     try {
-                        $dto = $providers[0]->readForCompany($company, $inicioMes, $fimMes);
-                        if ($dto->revenue !== null) {
-                            $revAtual = (float) $dto->revenue;
+                        $dtoAtual  = $providers[0]->readForCompany($company, $inicioMes,  $fimMes);
+                        $dtoAnter  = $providers[0]->readForCompany($company, $inicioAnter, $fimAnter);
+                        if ($dtoAtual->revenue !== null && $dtoAnter->revenue !== null) {
+                            $revAtual         = (float) $dtoAtual->revenue;
+                            $revAnterior      = (float) $dtoAnter->revenue;
+                            $fonteConsistente = 'ml';
                         }
                     } catch (\Throwable $e) {
-                        // ML provider já loga internamente; mantém fallback Adman.
+                        // ML provider já loga internamente; cai pro Adman abaixo.
                     }
                 }
             }
 
-            // Revenue anterior: SEMPRE Adman local (baseline histórico
-            // consolidado — não vale a pena chamar ML para o mês passado).
-            $revAnterior = (float) ($admanAnterior->get($company->id)?->rev ?? 0.0);
+            // Fallback (ou fonte única para so-adman): Adman em AMBAS as janelas.
+            if ($fonteConsistente === null) {
+                $revAtual    = (float) ($admanAtual->get($company->id)?->rev ?? 0.0);
+                $revAnterior = (float) ($admanAnterior->get($company->id)?->rev ?? 0.0);
+            }
 
             if ($revAnterior <= 0) {
                 continue; // sem baseline — descarta (DESEMP-04)

@@ -362,7 +362,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                             )}
-                            onClick={() => onSelectUser?.(u)}
+                            onClick={() => router.visit(route('portfolio.show', u.id))}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
