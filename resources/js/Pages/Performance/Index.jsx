@@ -403,10 +403,22 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 <p className="text-white/40 text-[11px]">{u.cargo_label ?? '—'}</p>
                             </div>
 
-                            {/* Nota final */}
+                            {/* Nota final + conta que gerou (ex: "(3+5+4)/3") */}
                             <div className="text-right">
                                 <span className="text-white font-display font-extrabold text-[16px] tabular-nums">{nota}</span>
-                                <span className="text-white/30 text-[10px] block leading-none mt-0.5">/ 5,00</span>
+                                <span
+                                    className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
+                                    title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                                >
+                                    {(() => {
+                                        const p = u.pontos_componentes;
+                                        if (!p) return '/ 5,00';
+                                        const pts = [p.nps, p.faturamento, p.margem].filter((v) => v != null);
+                                        if (pts.length === 0) return '/ 5,00';
+                                        const fmt = (v) => Number.isInteger(v) ? String(v) : Number(v).toFixed(1).replace('.', ',');
+                                        return `(${pts.map(fmt).join('+')})/${pts.length}`;
+                                    })()}
+                                </span>
                             </div>
 
                             {/* Faixa + promovida */}

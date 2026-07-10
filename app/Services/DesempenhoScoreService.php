@@ -170,6 +170,15 @@ class DesempenhoScoreService
                 'var_margem_pct'      => $varMargem,
                 'absenteismo_pct'     => $absent,
             ],
+            // Ajuste 2026-07-10 · pontos 1-5 por componente (após régua), pra
+            // UI expor a conta que gerou a nota (ex: "(3+5+4)/3 = 4,00") em
+            // vez do denominador fixo "/5,00". Nulls preservados — só entram
+            // na média os componentes disponíveis.
+            'pontos_componentes' => [
+                'nps'         => $nps !== null ? max(1.0, min(5.0, $nps)) : null,
+                'faturamento' => $this->reguaFaturamento($varFat),
+                'margem'      => $this->reguaMargem($varMargem),
+            ],
             'nota_final'      => $nota,
             'faixa_bonus'     => $faixaFinal,
             'faixa_promovida' => $faixaPromovida,
@@ -790,6 +799,11 @@ class DesempenhoScoreService
                 'var_faturamento_pct' => null,
                 'var_margem_pct'      => null,
                 'absenteismo_pct'     => null,
+            ],
+            'pontos_componentes' => [
+                'nps'         => null,
+                'faturamento' => null,
+                'margem'      => null,
             ],
             'nota_final'      => null,
             'faixa_bonus'     => null,

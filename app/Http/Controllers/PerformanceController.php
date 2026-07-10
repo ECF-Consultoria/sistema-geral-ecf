@@ -131,6 +131,7 @@ class PerformanceController extends Controller
                     'var_margem_pct'      => $componentes['var_margem_pct']      ?? null,
                     'absenteismo_pct'     => $componentes['absenteismo_pct']     ?? null,
                 ],
+                'pontos_componentes'    => $resultado['pontos_componentes'] ?? null,
                 'mes_referencia'        => $resultado['mes_referencia'] ?? $mesReferencia->toDateString(),
             ];
         });
