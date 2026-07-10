@@ -316,6 +316,80 @@ class MercadoLivreService
         return $response->json();
     }
 
+    // ═══ HTTP: escrita autenticada (POST/PUT) ═════════════════════════════════
+
+    /**
+     * POST autenticado à API ML com renovação automática de token.
+     * Espelha o get(): tenta um refresh em caso de 401 e relança em erro.
+     *
+     * @param  array  $body     Corpo da requisição (enviado como JSON)
+     * @throws \RuntimeException
+     */
+    public function post(Company $company, string $endpoint, array $body = [], array $headers = []): array
+    {
+        return $this->write('post', $company, $endpoint, $body, $headers);
+    }
+
+    /**
+     * PUT autenticado à API ML com renovação automática de token.
+     *
+     * @param  array  $body     Corpo da requisição (enviado como JSON)
+     * @throws \RuntimeException
+     */
+    public function put(Company $company, string $endpoint, array $body = [], array $headers = []): array
+    {
+        return $this->write('put', $company, $endpoint, $body, $headers);
+    }
+
+    /**
+     * Núcleo compartilhado de POST/PUT autenticado — evita duplicar a lógica de
+     * token/refresh/erro do get(). $method aceita 'post' ou 'put'.
+     *
+     * Respostas sem corpo (ex.: 204 do /items/validate quando o payload é
+     * válido) retornam array vazio. Erros HTTP (4xx/5xx) sobem como
+     * \RuntimeException com o corpo da resposta — o chamador decide como tratar
+     * (ex.: parsear os erros de validação do ML).
+     *
+     * @throws \RuntimeException
+     */
+    private function write(string $method, Company $company, string $endpoint, array $body, array $headers): array
+    {
+        $token = $this->ensureValidToken($company);
+
+        if (! $token) {
+            throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
+        }
+
+        $send = fn (MlToken $t) => Http::withToken($t->access_token)
+            ->withHeaders($headers)
+            ->{$method}(self::API_BASE . $endpoint, $body);
+
+        $response = $send($token);
+
+        if ($response->status() === 401) {
+            Log::warning("[MercadoLivre] 401 em {$method} {$endpoint} empresa {$company->id} — tentando refresh", [
+                'body' => $response->body(),
+            ]);
+
+            // Tenta renovar o token antes de desistir (mesmo fluxo do get()).
+            try {
+                $token    = $this->refreshToken($token);
+                $response = $send($token);
+            } catch (\RuntimeException) {
+                // refreshToken já marcou como revoked e logou
+                throw new \RuntimeException("[MercadoLivre] Token inválido para {$company->name}.");
+            }
+        }
+
+        if (! $response->successful()) {
+            throw new \RuntimeException(
+                "[MercadoLivre] Erro {$response->status()} em {$method} {$endpoint}: {$response->body()}"
+            );
+        }
+
+        return $response->json() ?? [];
+    }
+
     // ═══ Dados: status individual do MLB (Phase 53-01) ════════════════════════
 
     /**
