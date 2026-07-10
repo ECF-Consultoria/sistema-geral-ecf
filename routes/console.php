@@ -186,3 +186,18 @@ Schedule::command('desempenho:consolidar-mes')
     ->name('desempenho-consolidar-mes')
     ->onOneServer()
     ->withoutOverlapping();
+
+// Ajuste 2026-07-10 (audit performance-lentidao) — pré-aquece o cache Redis do
+// compute() de desempenho a cada 8min. TTL do cache é 10min (mês em curso),
+// então 8min garante 2min de margem antes de expirar. Faz o custo pesado
+// (~70s cold, ~150+ HTTP calls ao ML) rodar em background e nenhum user cai
+// em cold miss. Roda entre 7h e 22h (horário útil) — fora disso deixa o cache
+// naturalmente expirar (sem gasto de rate limit).
+Schedule::command('desempenho:warm-cache')
+    ->cron('*/8 * * * *')
+    ->between('7:00', '22:00')
+    ->timezone('America/Sao_Paulo')
+    ->name('desempenho-warm-cache')
+    ->onOneServer()
+    ->withoutOverlapping()
+    ->runInBackground();
