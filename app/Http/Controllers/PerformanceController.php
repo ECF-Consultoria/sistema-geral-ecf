@@ -61,11 +61,22 @@ class PerformanceController extends Controller
         // último mês fechado (DESEMP-14); fallback a compute() do mês em curso
         // parcial quando o user ainda não tem snapshot mensal (transição).
         //
+        // Ajuste 2026-07-09 — filtro de mês (?mes=YYYY-MM). Se ausente ou
+        // igual ao mês em curso, calcula ao vivo (parcial). Se passado (mês
+        // fechado), carrega snapshot mensal — permite auditar rankings de
+        // meses passados pra consolidação de bônus.
+        //
         // DESEMP-10 · users com sem_carteira=true são REMOVIDOS do ranking.
         // Identifica cargo (analista/estrategista) via user_setores → cargos
         // (fonte da verdade desde quick 260610-f69). users.role eh legacy.
-        $mesReferencia    = Carbon::now()->startOfMonth();
-        $mesFechadoStr    = $mesReferencia->copy()->subMonth()->startOfMonth()->toDateString();
+        $mesQuery = $request->query('mes');
+        $mesCorrente = Carbon::now()->startOfMonth();
+        if ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+            $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
+        } else {
+            $mesReferencia = $mesCorrente->copy();
+        }
+        $ehMesEmCurso = $mesReferencia->equalTo($mesCorrente);
 
         $cargosPorUser = DB::table('user_setores as us')
             ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
@@ -74,22 +85,24 @@ class PerformanceController extends Controller
             ->get()
             ->keyBy('user_id');
 
-        // Snapshot mensal do último mês fechado (se existir) — evita recomputar.
+        // Snapshot mensal do mês selecionado (se existir) — evita recomputar
+        // em meses passados fechados. Para o mês em curso, snapshot ainda
+        // não existe (fecha só dia 1 do mês seguinte) → compute() live.
         $snapshotsMensal = DesempenhoScoreSnapshot::mensal()
             ->whereIn('user_id', $users->pluck('id'))
-            ->whereDate('mes_referencia', $mesFechadoStr)
+            ->whereDate('mes_referencia', $mesReferencia->toDateString())
             ->get()
             ->keyBy('user_id');
 
-        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia) {
+        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
 
-            // Prefere snapshot mensal fechado; senão calcula on-the-fly (parcial).
+            // Mês em curso → compute live. Mês passado → prefere snapshot mensal
+            // fechado; se não existe (user sem snapshot naquele mês), compute
+            // como fallback.
             $snap = $snapshotsMensal->get($u->id);
-            if ($snap) {
+            if (! $ehMesEmCurso && $snap) {
                 $resultado = $snap->breakdown_json ?? [];
-                // Compat: alguns snapshots antigos podem estar num shape v1;
-                // se não tem `componentes`, cai no compute() v2 pra garantir.
                 if (! isset($resultado['componentes'])) {
                     $resultado = $this->scoreService->compute($u, $mesReferencia);
                 }
@@ -198,11 +211,26 @@ class PerformanceController extends Controller
             $ranking = $ranking->filter(fn ($r) => $r['cargo_slug'] === $cargo)->values();
         }
 
+        // Meses disponíveis pro filtro — últimos 6 meses (mês corrente +
+        // 5 anteriores), permitindo consulta histórica pra auditar bônus.
+        $mesesDisponiveis = [];
+        for ($i = 0; $i < 6; $i++) {
+            $m = $mesCorrente->copy()->subMonths($i);
+            $mesesDisponiveis[] = [
+                'value' => $m->format('Y-m'),
+                'label' => mb_strtolower($m->translatedFormat('F/Y')),
+                'em_curso' => $m->equalTo($mesCorrente),
+            ];
+        }
+
         return Inertia::render('Performance/Index', [
-            'ranking' => $ranking,
-            'period'  => $period,
-            'setor'   => 'consultoria',
-            'cargo'   => $cargo,
+            'ranking'            => $ranking,
+            'period'             => $period,
+            'setor'              => 'consultoria',
+            'cargo'              => $cargo,
+            'mes_selecionado'    => $mesReferencia->format('Y-m'),
+            'mes_em_curso'       => $ehMesEmCurso,
+            'meses_disponiveis'  => $mesesDisponiveis,
         ]);
     }
 

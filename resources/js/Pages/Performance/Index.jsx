@@ -107,6 +107,10 @@ export default function PerformanceIndex({
     mes_fechado = null,   // 'YYYY-MM-01' | null — D-20
     mes,                  // Polos
     meses = [],           // Polos
+    // Ajuste 2026-07-09 — filtro de mês
+    mes_selecionado = null,      // 'YYYY-MM' — mês atualmente exibido
+    mes_em_curso = true,          // true se mes_selecionado é o mês corrente
+    meses_disponiveis = [],       // [{ value: 'YYYY-MM', label: 'julho/2026', em_curso: bool }]
 }) {
     const isPolos = setor === 'polos';
 
@@ -168,27 +172,43 @@ export default function PerformanceIndex({
                         <div>
                             <div className="flex items-center gap-2 flex-wrap">
                                 <h1 className="text-white text-xl font-display font-extrabold leading-tight">
-                                    Ranking Performance{mes_fechado ? ` — ${mesExtensoDate(mes_fechado)}` : ''}
+                                    Ranking Performance
                                 </h1>
-                                {!mes_fechado && (
+                                {mes_em_curso ? (
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 tracking-wider">
                                         Mês em curso
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 tracking-wider">
+                                        Mês fechado
                                     </span>
                                 )}
                             </div>
                             <p className="text-white/50 text-sm mt-0.5">
-                                {mes_fechado
-                                    ? 'Ranking do mês fechado mais recente.'
-                                    : 'Ranking parcial — a consolidação mensal fecha dia 1 do mês seguinte.'}
+                                {mes_em_curso
+                                    ? 'Ranking parcial — a consolidação mensal fecha dia 1 do mês seguinte.'
+                                    : 'Ranking consolidado — dados do mês fechado (usados na régua de bônus).'}
                             </p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                        {/* Botão admin-only: acesso à configuração das faixas de bônus.
-                            Removido da sidebar 2026-07-09 pra não confundir analistas
-                            /estrategistas que não têm permissão. Fica aqui pra admin
-                            acessar diretamente da página onde vê o efeito da régua. */}
+                        {/* Ajuste 2026-07-09 — Filtro de mês (auditar bônus consolidados) */}
+                        {Array.isArray(meses_disponiveis) && meses_disponiveis.length > 0 && (
+                            <select
+                                value={mes_selecionado ?? ''}
+                                onChange={(e) => applyFilter({ setor, cargo, mes: e.target.value })}
+                                title="Selecionar mês do ranking"
+                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
+                            >
+                                {meses_disponiveis.map((m) => (
+                                    <option key={m.value} value={m.value}>
+                                        {m.label}{m.em_curso ? ' (em curso)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        {/* Botão admin-only: acesso à configuração das faixas de bônus. */}
                         {isAdmin && (
                             <Link
                                 href={route('desempenho.configuracao.index')}
@@ -210,8 +230,8 @@ export default function PerformanceIndex({
                                     <button
                                         onClick={() => applyFilter(
                                             opt.value
-                                                ? { setor: 'consultoria', cargo: opt.value }
-                                                : { setor: 'consultoria' }
+                                                ? { setor: 'consultoria', cargo: opt.value, mes: mes_selecionado }
+                                                : { setor: 'consultoria', mes: mes_selecionado }
                                         )}
                                         className={cn(
                                             'px-3 h-9 text-[13px] font-medium transition-colors',

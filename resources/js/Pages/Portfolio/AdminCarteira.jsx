@@ -111,48 +111,106 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
             <div className="max-w-[1400px] mx-auto p-6 space-y-6">
 
                 {/* ─── Cabeçalho ─────────────────────────────────────────── */}
-                <header className="flex items-center gap-4">
-                    <button
-                        type="button"
-                        onClick={() => router.visit(route('portfolio.own'))}
-                        className="inline-flex items-center gap-1.5 text-white/50 hover:text-white text-[13px] transition-colors"
-                    >
-                        <ArrowLeft size={14} /> Voltar
-                    </button>
-                    <span className="text-white/20">/</span>
-                    <div className="flex items-center gap-3">
-                        <div className="h-11 w-11 rounded-xl bg-ecf-yellow/10 border border-ecf-yellow/25 flex items-center justify-center">
-                            <Briefcase className="h-5 w-5 text-ecf-yellow" />
-                        </div>
-                        <div>
-                            <div className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">
-                                Carteira do profissional
+                <header className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-4">
+                        <button
+                            type="button"
+                            onClick={() => router.visit(route('portfolio.own'))}
+                            className="inline-flex items-center gap-1.5 text-white/50 hover:text-white text-[13px] transition-colors"
+                        >
+                            <ArrowLeft size={14} /> Voltar
+                        </button>
+                        <span className="text-white/20">/</span>
+                        <div className="flex items-center gap-3">
+                            <div className="h-11 w-11 rounded-xl bg-ecf-yellow/10 border border-ecf-yellow/25 flex items-center justify-center">
+                                <Briefcase className="h-5 w-5 text-ecf-yellow" />
                             </div>
-                            <h1 className="text-white text-xl font-display font-extrabold leading-none mt-1">
-                                {profissional?.name}
-                            </h1>
-                            <div className="text-white/50 text-xs mt-1">
-                                {profissional?.cargo_label} · {resumo?.total_empresas ?? 0} empresa{resumo?.total_empresas === 1 ? '' : 's'} em carteira
+                            <div>
+                                <div className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">
+                                    Carteira do profissional
+                                </div>
+                                <h1 className="text-white text-xl font-display font-extrabold leading-none mt-1">
+                                    {profissional?.name}
+                                </h1>
+                                <div className="text-white/50 text-xs mt-1">
+                                    {profissional?.cargo_label} · {resumo?.total_empresas ?? 0} empresa{resumo?.total_empresas === 1 ? '' : 's'} em carteira
+                                </div>
                             </div>
                         </div>
                     </div>
+
+                    {/* Ajuste 2026-07-09 · filtro de mês (audita bônus consolidados) */}
+                    {Array.isArray(periodo?.meses_disponiveis) && periodo.meses_disponiveis.length > 0 && (
+                        <div className="flex items-center gap-2">
+                            <span className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">Mês</span>
+                            <select
+                                value={periodo?.mes_selecionado ?? ''}
+                                onChange={(e) => {
+                                    const target = e.target.value;
+                                    const currentPath = window.location.pathname;
+                                    router.visit(currentPath + '?mes=' + target, { preserveScroll: false });
+                                }}
+                                title="Selecionar mês da carteira"
+                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
+                            >
+                                {periodo.meses_disponiveis.map((m) => (
+                                    <option key={m.value} value={m.value}>
+                                        {m.label}{m.em_curso ? ' (em curso)' : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {periodo?.em_curso ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 tracking-wider">
+                                    Em curso
+                                </span>
+                            ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 tracking-wider">
+                                    Fechado
+                                </span>
+                            )}
+                        </div>
+                    )}
                 </header>
 
-                {/* ─── Banner "mês em curso" — comparação dia-a-dia justa ── */}
-                <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.05] p-4 flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
-                        <Calendar size={16} className="text-amber-300" />
+                {/* ─── Banner de contexto do período — muda conforme mês em curso vs fechado ─── */}
+                <div className={cn(
+                    'rounded-xl border p-4 flex items-start gap-3',
+                    periodo?.em_curso
+                        ? 'border-amber-500/25 bg-amber-500/[0.05]'
+                        : 'border-emerald-500/25 bg-emerald-500/[0.05]',
+                )}>
+                    <div className={cn(
+                        'w-8 h-8 rounded-lg flex items-center justify-center shrink-0',
+                        periodo?.em_curso ? 'bg-amber-500/15' : 'bg-emerald-500/15',
+                    )}>
+                        <Calendar size={16} className={periodo?.em_curso ? 'text-amber-300' : 'text-emerald-300'} />
                     </div>
                     <div className="text-sm">
-                        <div className="text-amber-200 font-semibold capitalize">
-                            {periodo?.mes_label ?? 'Mês em curso'} — comparação dia-a-dia
+                        <div className={cn(
+                            'font-semibold capitalize',
+                            periodo?.em_curso ? 'text-amber-200' : 'text-emerald-200',
+                        )}>
+                            {periodo?.mes_label ?? 'Mês em curso'} {periodo?.em_curso ? '— comparação dia-a-dia' : '— mês fechado'}
                         </div>
-                        <div className="text-amber-100/70 text-xs mt-1 leading-relaxed">
-                            Faturamento e margem comparam <span className="text-white font-medium">{periodo?.range_atual}</span>
-                            {' '}com <span className="text-white font-medium">{periodo?.range_anterior}</span> do mês anterior — janela
-                            do mesmo tamanho ({periodo?.dia_atual} dia{periodo?.dia_atual === 1 ? '' : 's'})
-                            para evitar queda artificial. Nota consolidada oficial (para bônus) sai quando o mês fecha
-                            ({periodo?.dias_no_mes} dias).
+                        <div className={cn(
+                            'text-xs mt-1 leading-relaxed',
+                            periodo?.em_curso ? 'text-amber-100/70' : 'text-emerald-100/70',
+                        )}>
+                            {periodo?.em_curso ? (
+                                <>
+                                    Faturamento e margem comparam <span className="text-white font-medium">{periodo?.range_atual}</span>
+                                    {' '}com <span className="text-white font-medium">{periodo?.range_anterior}</span> do mês anterior — janela
+                                    do mesmo tamanho ({periodo?.dia_atual} dia{periodo?.dia_atual === 1 ? '' : 's'})
+                                    para evitar queda artificial. Nota consolidada oficial (para bônus) sai quando o mês fecha
+                                    ({periodo?.dias_no_mes} dias).
+                                </>
+                            ) : (
+                                <>
+                                    Dados consolidados do mês fechado — comparam <span className="text-white font-medium">{periodo?.range_atual}</span>
+                                    {' '}com <span className="text-white font-medium">{periodo?.range_anterior}</span>.
+                                    Estes são os valores usados na régua de bônus daquele mês.
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

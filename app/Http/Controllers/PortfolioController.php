@@ -113,17 +113,42 @@ class PortfolioController extends Controller
      */
     private function renderCarteiraProfissional(Request $request, User $user): \Inertia\Response
     {
-        // Comparação sempre acumulada dia-a-dia: dia 1..hoje do mês corrente vs
-        // dia 1..mesmo dia do mês anterior. Evita queda artificial no início do
-        // mês (que era o problema reportado quando comparávamos 9 dias vs 30).
+        // Ajuste 2026-07-09 — filtro de mês (?mes=YYYY-MM). Permite ao dono
+        // da empresa auditar meses FECHADOS pós-consolidação de bônus. Quando
+        // ausente, usa o mês em curso (comportamento original).
+        //
+        // Regras de comparação:
+        //  - Mês em curso: dia 1..HOJE vs dia 1..MESMO_DIA do mês anterior
+        //    (janela justa dia-a-dia, evita queda artificial no início do mês).
+        //  - Mês fechado (passado): mês calendário completo vs mês calendário
+        //    anterior completo (ambos fechados, comparação natural).
         $hoje         = now();
-        $inicioMes    = $hoje->copy()->startOfMonth();
-        $inicioAnter  = $inicioMes->copy()->subMonth();
-        $fimAnter     = $inicioAnter->copy()
-            ->setDay(min($hoje->day, $inicioAnter->daysInMonth))
-            ->endOfDay();
+        $mesQuery     = $request->query('mes');
+        $mesCorrente  = $hoje->copy()->startOfMonth();
+
+        if ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+            $mesSelecionado = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
+        } else {
+            $mesSelecionado = $mesCorrente->copy();
+        }
+        $ehMesEmCurso = $mesSelecionado->equalTo($mesCorrente);
+
+        if ($ehMesEmCurso) {
+            $inicioMes   = $mesSelecionado->copy();
+            $fimMes      = $hoje->copy()->endOfDay();
+            $inicioAnter = $mesSelecionado->copy()->subMonth();
+            $fimAnter    = $inicioAnter->copy()
+                ->setDay(min($hoje->day, $inicioAnter->daysInMonth))
+                ->endOfDay();
+        } else {
+            $inicioMes   = $mesSelecionado->copy();
+            $fimMes      = $mesSelecionado->copy()->endOfMonth();
+            $inicioAnter = $mesSelecionado->copy()->subMonth();
+            $fimAnter    = $inicioAnter->copy()->endOfMonth();
+        }
+
         $dateFrom     = $inicioMes->toDateString();
-        $dateTo       = $hoje->toDateString();
+        $dateTo       = $fimMes->toDateString();
         $dateFromPrev = $inicioAnter->toDateString();
         $dateToPrev   = $fimAnter->toDateString();
 
@@ -242,6 +267,17 @@ class PortfolioController extends Controller
             ->value('c.slug');
         $cargoLabel = $cargoSlug === 'estrategista' ? 'Estrategista' : ($cargoSlug === 'analista' ? 'Analista' : 'Profissional');
 
+        // Meses disponíveis pro filtro (últimos 6 meses — mesma janela do ranking).
+        $mesesDisponiveis = [];
+        for ($i = 0; $i < 6; $i++) {
+            $m = $mesCorrente->copy()->subMonths($i);
+            $mesesDisponiveis[] = [
+                'value'    => $m->format('Y-m'),
+                'label'    => mb_strtolower($m->translatedFormat('F/Y')),
+                'em_curso' => $m->equalTo($mesCorrente),
+            ];
+        }
+
         return Inertia::render('Portfolio/AdminCarteira', [
             'profissional' => [
                 'id'          => $user->id,
@@ -259,11 +295,14 @@ class PortfolioController extends Controller
             ],
             'empresas' => $empresas,
             'periodo' => [
-                'dia_atual'      => $hoje->day,
-                'dias_no_mes'    => $hoje->daysInMonth,
-                'mes_label'      => $hoje->translatedFormat('F Y'),
-                'range_atual'    => sprintf('%s até %s', $inicioMes->format('d/m'), $hoje->format('d/m')),
-                'range_anterior' => sprintf('%s até %s', $inicioAnter->format('d/m'), $fimAnter->format('d/m')),
+                'em_curso'         => $ehMesEmCurso,
+                'mes_selecionado'  => $mesSelecionado->format('Y-m'),
+                'meses_disponiveis' => $mesesDisponiveis,
+                'dia_atual'        => $ehMesEmCurso ? $hoje->day : $mesSelecionado->daysInMonth,
+                'dias_no_mes'      => $mesSelecionado->daysInMonth,
+                'mes_label'        => mb_strtolower($mesSelecionado->translatedFormat('F Y')),
+                'range_atual'      => sprintf('%s até %s', $inicioMes->format('d/m'), $fimMes->format('d/m')),
+                'range_anterior'   => sprintf('%s até %s', $inicioAnter->format('d/m'), $fimAnter->format('d/m')),
             ],
         ]);
     }
