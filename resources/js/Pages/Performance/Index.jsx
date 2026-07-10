@@ -99,6 +99,20 @@ function formatPercent(v) {
     return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 }
 
+// Conta usada pra montar a nota final ("(3+5+4)/3"). Fallback pro "/ 5,00" antigo
+// quando o backend não expõe o breakdown (snapshots antigos, users sem carteira).
+function formatContaNota(pontos) {
+    if (!pontos) return '/ 5,00';
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
+    if (pts.length === 0) return '/ 5,00';
+    const fmt = (v) => {
+        const n = Number(v);
+        if (Number.isNaN(n)) return '?';
+        return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+    };
+    return `(${pts.map(fmt).join('+')})/${pts.length}`;
+}
+
 export default function PerformanceIndex({
     ranking = [],
     period = '30',       // preservado por compat com Polos (não usado no v2 de Consultoria)
@@ -410,14 +424,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                     className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
                                     title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
                                 >
-                                    {(() => {
-                                        const p = u.pontos_componentes;
-                                        if (!p) return '/ 5,00';
-                                        const pts = [p.nps, p.faturamento, p.margem].filter((v) => v != null);
-                                        if (pts.length === 0) return '/ 5,00';
-                                        const fmt = (v) => Number.isInteger(v) ? String(v) : Number(v).toFixed(1).replace('.', ',');
-                                        return `(${pts.map(fmt).join('+')})/${pts.length}`;
-                                    })()}
+                                    {formatContaNota(u.pontos_componentes)}
                                 </span>
                             </div>
 
