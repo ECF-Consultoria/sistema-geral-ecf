@@ -11,9 +11,10 @@ use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\MlbTreinamento;
 use App\Models\Publicacao;
+use App\Models\PublicacaoAbsenteismo;
 use App\Models\User;
 use App\Services\AdmanService;
-use App\Services\PublicadorScoreService;
+use App\Services\PlanoMetasPublicacaoService;
 use App\Services\VendasSyncService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -617,14 +618,32 @@ class MlbController extends Controller
         $meses  = $this->mesesDisponiveis($user->id);
         $kpis   = $this->calcularKpis($user->id, $ref, $meta);
 
-        // Fase 38 — score 0-100 + 5 eixos do publicador (Painel do Publicador).
-        // feito/vendas/meta vêm de calcularKpis()/metaParaMes() — o Service não recalcula.
-        $scoreData = (new PublicadorScoreService())->compute(
-            $user->id, $mesRef, (int) $kpis['feito'], (int) $kpis['vendas'], (int) $meta
+        // Plano de Metas do Time de Publicação — nota 0-5 + faixa de bônus (régua
+        // canônica, a mesma do dashboard "Desempenho"). feito/vendas/dias úteis
+        // vêm de calcularKpis() — o Service só busca pontualidade e absenteísmo.
+        $planoMetas = (new PlanoMetasPublicacaoService())->compute(
+            $user->id, $mesRef, (int) $kpis['feito'], (int) $kpis['vendas'], (int) $kpis['dias_uteis_decorridos']
         );
 
         $primeiro = $ref->copy()->startOfMonth()->toDateString();
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
+
+        // Pontualidade — anúncios do mês com o prazo combinado (editável pelo líder).
+        // Alimenta o card de prazos: on-time = data <= prazo.
+        $anunciosPrazo = Publicacao::where('user_id', $user->id)
+            ->whereBetween('data', [$primeiro, $ultimo])
+            ->where('tipo', '!=', 'variacao')
+            ->orderByDesc('data')
+            ->orderByDesc('id')
+            ->get(['id', 'empresa', 'mlb_code', 'data', 'prazo'])
+            ->map(fn ($p) => [
+                'id'       => $p->id,
+                'empresa'  => $p->empresa,
+                'mlb_code' => $p->mlb_code,
+                'data'     => $p->data?->format('Y-m-d'),
+                'prazo'    => $p->prazo?->format('Y-m-d'),
+                'no_prazo' => $p->prazo ? $p->data->lte($p->prazo) : null,
+            ]);
 
         $evolucaoDiaria = Publicacao::where('user_id', $user->id)
             ->whereBetween('data', [$primeiro, $ultimo])
@@ -742,8 +761,11 @@ class MlbController extends Controller
             ],
             'ticketEvolucao'  => $ticketEvolucao,
             'ticketAtual'     => $ticketAtual,
-            // Fase 38 — Painel do Publicador (score + radar + KPIs + evolução do faturamento)
-            'score_publicador'       => $scoreData,
+            // Plano de Metas do Time de Publicação — nota 0-5 + faixa de bônus + KPIs
+            'plano_metas'            => $planoMetas,
+            'anuncios_prazo'         => $anunciosPrazo,
+            'pode_gerir_metas'       => $verTodos, // líder/gestor/admin editam prazo e absenteísmo
+            'alvo_id'                => $user->id,
             'faturamento_mes'        => $faturamentoMes,
             'anuncios_feitos'        => $kpis['feito'],
             'vendas_mes'             => $kpis['vendas'],
@@ -764,14 +786,14 @@ class MlbController extends Controller
      */
     private function meuPainelVisaoGeral(Collection $publicadoresCol, string $mesRef, Carbon $ref): Response
     {
-        $scoreService = new PublicadorScoreService();
-        $primeiro     = $ref->copy()->startOfMonth()->toDateString();
-        $ultimo       = $ref->copy()->endOfMonth()->toDateString();
+        $plano    = new PlanoMetasPublicacaoService();
+        $primeiro = $ref->copy()->startOfMonth()->toDateString();
+        $ultimo   = $ref->copy()->endOfMonth()->toDateString();
 
-        $cards = $publicadoresCol->map(function ($p) use ($mesRef, $ref, $primeiro, $ultimo, $scoreService) {
+        $cards = $publicadoresCol->map(function ($p) use ($mesRef, $ref, $primeiro, $ultimo, $plano) {
             $meta  = $this->metaParaMes($p->id, $mesRef);
             $kpis  = $this->calcularKpis($p->id, $ref, $meta);
-            $score = $scoreService->compute($p->id, $mesRef, (int) $kpis['feito'], (int) $kpis['vendas'], (int) $meta);
+            $pm    = $plano->compute($p->id, $mesRef, (int) $kpis['feito'], (int) $kpis['vendas'], (int) $kpis['dias_uteis_decorridos']);
 
             $faturamento = (float) (Publicacao::where('user_id', $p->id)
                 ->whereBetween('data', [$primeiro, $ultimo])
@@ -781,8 +803,8 @@ class MlbController extends Controller
             return [
                 'id'            => $p->id,
                 'nome'          => $p->name,
-                'score'         => $score['score'],
-                'classificacao' => $score['classificacao'],
+                'nota'          => $pm['nota'],
+                'faixa'         => $pm['faixa'],
                 'meta_pct'      => $kpis['percentual'],
                 'feito'         => $kpis['feito'],
                 'meta'          => $meta,
@@ -790,7 +812,7 @@ class MlbController extends Controller
                 'faturamento'   => $faturamento,
             ];
         })
-        ->sortByDesc('score')
+        ->sortByDesc('nota')
         ->values();
 
         return Inertia::render('Mlb/MeuPainel', [
@@ -1533,6 +1555,62 @@ class MlbController extends Controller
         $this->checkPubAccess();
         $pub->delete();
         return back()->with('success', 'Publicação removida.');
+    }
+
+    /**
+     * Plano de Metas — Pontualidade: define/limpa o prazo combinado de um anúncio.
+     * Só líder/gestor/admin (podeVerTodosPub). A nota é derivada em
+     * PlanoMetasPublicacaoService (on-time = data <= prazo).
+     */
+    public function salvarPrazo(Request $request, Publicacao $pub)
+    {
+        $this->checkPubAccess('meu_painel');
+        if (!$this->podeVerTodosPub($request->user())) {
+            abort(403, 'Somente líder, gestor ou admin definem prazos.');
+        }
+
+        $data = $request->validate(['prazo' => 'nullable|date']);
+        $pub->update(['prazo' => $data['prazo'] ?? null]);
+
+        return back();
+    }
+
+    /**
+     * Plano de Metas — Absenteísmo: registra faltas/atrasos de um publicador no
+     * mês (não há controle de ponto no sistema). Só líder/gestor/admin.
+     */
+    public function salvarAbsenteismo(Request $request)
+    {
+        $this->checkPubAccess('meu_painel');
+        if (!$this->podeVerTodosPub($request->user())) {
+            abort(403, 'Somente líder, gestor ou admin registram absenteísmo.');
+        }
+
+        $data = $request->validate([
+            'user_id'                 => 'required|integer|exists:users,id',
+            'mes'                     => ['required', 'regex:/^\d{4}-(0[1-9]|1[0-2])$/'],
+            'faltas_nao_justificadas' => 'required|integer|min:0|max:31',
+            'atrasos_pontuais'        => 'boolean',
+            'observacao'              => 'nullable|string|max:255',
+        ]);
+
+        // O alvo precisa ser um publicador do setor (mesma fonte do seletor ?pub),
+        // senão gravaríamos absenteísmo órfão para alguém fora do time.
+        if (!$this->publicadores()->contains('id', $data['user_id'])) {
+            abort(422, 'Usuário não é um publicador.');
+        }
+
+        PublicacaoAbsenteismo::updateOrCreate(
+            ['user_id' => $data['user_id'], 'mes' => $data['mes']],
+            [
+                'faltas_nao_justificadas' => $data['faltas_nao_justificadas'],
+                'atrasos_pontuais'        => $request->boolean('atrasos_pontuais'),
+                'observacao'              => $data['observacao'] ?? null,
+                'registrado_por'          => $request->user()->id,
+            ],
+        );
+
+        return back();
     }
 
     // =========================================================================

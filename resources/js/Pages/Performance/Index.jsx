@@ -862,7 +862,46 @@ const STATUS_PILL = {
 const fmtScore = (n) => Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmtInt   = (n) => Number(n ?? 0).toLocaleString('pt-BR');
 const fmtPct1  = (n) => `${Number(n ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+const fmtNota  = (n) => n == null ? '—' : Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const primeiroNome = (nome = '') => (nome.trim().split(/\s+/)[0] || '—');
+
+// Plano de Metas do Time de Publicação — faixas de bônus (mesma régua do Meu Painel).
+const FAIXA = {
+    sem_bonus:     { label: 'Sem bônus',           cor: '#6b7280' },
+    base:          { label: 'Bônus base',          cor: '#38bdf8' },
+    intermediario: { label: 'Bônus intermediário', cor: '#a78bfa' },
+    maximo:        { label: 'Bônus máximo',        cor: '#10b981' },
+};
+const faixaCor = (f) => (FAIXA[f] ?? FAIXA.sem_bonus).cor;
+
+function FaixaBadge({ faixa, size = 'md' }) {
+    const f = FAIXA[faixa] ?? FAIXA.sem_bonus;
+    return (
+        <span className={cn('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full font-semibold',
+            size === 'sm' ? 'px-2 py-0.5 text-[10px]' : 'px-2.5 py-1 text-[11px]')}
+              style={{ background: `${f.cor}1f`, color: f.cor }}>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: f.cor }} />
+            {f.label}
+        </span>
+    );
+}
+
+// Célula de Nota (0-5) do ranking: barra por faixa + número na cor da faixa.
+function NotaCell({ nota, faixa, score100, mounted, delay = 0 }) {
+    const cor = faixaCor(faixa);
+    const w = mounted ? Math.min(score100 ?? 0, 100) : 0;
+    return (
+        <div className="flex items-center justify-end gap-2.5">
+            <div className="relative h-2 w-14 overflow-hidden rounded-full bg-white/[0.08]">
+                <div className="h-full rounded-full transition-[width] duration-[900ms] ease-out"
+                     style={{ width: `${w}%`, background: `linear-gradient(90deg, ${cor}aa, ${cor})`, boxShadow: `0 0 10px ${cor}66`, transitionDelay: `${delay}ms` }} />
+            </div>
+            <span className="w-12 text-right font-display text-[16px] font-extrabold leading-none tabular-nums" style={{ color: cor }}>
+                {fmtNota(nota)}
+            </span>
+        </div>
+    );
+}
 
 function iniciais(nome = '') {
     const p = nome.trim().split(/\s+/).filter(Boolean);
@@ -1000,16 +1039,19 @@ function LiveClock() {
     return <span className="tabular-nums">{now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>;
 }
 
-// Score circular grande (reaproveita RadialGauge da Torre de Comando).
-function ScoreGauge({ value, size = 116 }) {
+// Score/nota circular grande (reaproveita RadialGauge da Torre de Comando).
+// O arco usa score100 (0-100); o centro mostra a nota do plano (0-5) quando dada.
+function ScoreGauge({ value, nota = null, size = 116 }) {
     const pct = Math.min(Math.max(value ?? 0, 0), 100);
+    const mostraNota = nota !== null && nota !== undefined;
     return (
         <div className="relative grid shrink-0 place-items-center" style={{ width: size, height: size }}>
             <RadialGauge pct={pct} size={size} />
             <div className="absolute inset-0 flex flex-col items-center justify-center leading-none">
-                {/* text-xl deixa bom respiro do "72,9" pro arco; text-lg só no caso 5-char "100,0". */}
-                <span className={cn('font-display font-extrabold leading-none tabular-nums text-white', String(fmtScore(value)).length > 4 ? 'text-lg' : 'text-xl')}>{fmtScore(value)}</span>
-                <span className="mt-0.5 text-[10px] uppercase leading-none tracking-wider text-white/35">/ 100</span>
+                <span className="font-display font-extrabold leading-none tabular-nums text-white text-xl">
+                    {mostraNota ? fmtNota(nota) : fmtScore(value)}
+                </span>
+                <span className="mt-0.5 text-[10px] uppercase leading-none tracking-wider text-white/35">{mostraNota ? '/ 5' : '/ 100'}</span>
             </div>
         </div>
     );
@@ -1067,12 +1109,12 @@ function LeaderHero({ lider, mounted, animar }) {
                 <div className="min-w-0">
                     <h2 className="truncate font-display text-2xl font-extrabold leading-tight text-white">{lider.name}</h2>
                     <p className="text-[13px] text-white/45">{pubRoleLabel[lider.pub_role] ?? 'Publicador'}</p>
-                    <div className="mt-2"><StatusPill status={lider.status} /></div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2"><StatusPill status={lider.status} /><FaixaBadge faixa={lider.faixa} size="sm" /></div>
                 </div>
             </div>
 
             <div className="flex items-center gap-5">
-                <ScoreGauge value={lider.score_final} size={116} />
+                <ScoreGauge value={lider.score_final} nota={lider.nota} size={116} />
                 <div className="grid flex-1 grid-cols-2 gap-2.5">
                     <MiniStat label="Produção" icon={CheckCircle2} value={<AnimatedNumber value={lider.feito} animar={animar} />} sub={`meta ${fmtInt(lider.meta)}`} />
                     <MiniStat label="Vendas" icon={ShoppingCart} accent={ACCENTS.blue} value={<AnimatedNumber value={lider.vendas} animar={animar} />} />
@@ -1204,7 +1246,7 @@ function RankingModerno({ ranking, mounted, metaUniforme }) {
                         <span className="text-right">% da meta</span>
                         <span className="text-right">Vendas</span>
                         <span className="text-right">Conv.</span>
-                        <span className="text-right">Score</span>
+                        <span className="text-right">Nota</span>
                         <span className="text-center">Status</span>
                         <span className="text-center">Evol.</span>
                     </div>
@@ -1235,7 +1277,7 @@ function RankingModerno({ ranking, mounted, metaUniforme }) {
                                     <div className="flex justify-end"><MetaMiniBar value={u.percentual} mounted={mounted} delay={idx * 60} /></div>
                                     <div className="text-right text-[13px] font-semibold tabular-nums text-blue-400">{fmtInt(u.vendas)}</div>
                                     <div className="flex justify-end"><ConversaoCell value={u.conversao} /></div>
-                                    <div className="flex justify-end"><ScoreBarra value={u.score_final} mounted={mounted} delay={idx * 60} /></div>
+                                    <div className="flex justify-end"><NotaCell nota={u.nota} faixa={u.faixa} score100={u.score_final} mounted={mounted} delay={idx * 60} /></div>
                                     <div className="flex justify-center"><StatusPill status={u.status} /></div>
                                     <div className="flex justify-center"><Evolucao delta={u.evolucao_delta} /></div>
                                 </div>
@@ -1252,7 +1294,7 @@ function RankingModerno({ ranking, mounted, metaUniforme }) {
 function construirDestaques(ranking, resumo) {
     const arr = [];
     const { lider, totalVendas, pctMeta } = resumo;
-    if (lider) arr.push({ icon: Crown, text: `${lider.name} lidera com score ${fmtScore(lider.score_final)}` });
+    if (lider) arr.push({ icon: Crown, text: `${lider.name} lidera com nota ${fmtNota(lider.nota)} (${(FAIXA[lider.faixa] ?? FAIXA.sem_bonus).label})` });
 
     const maisProd = [...ranking].sort((a, b) => (b.feito ?? 0) - (a.feito ?? 0))[0];
     if (maisProd) arr.push({ icon: Flame, text: `${maisProd.name} é quem mais produz: ${fmtInt(maisProd.feito)} publicações` });
@@ -1516,7 +1558,6 @@ function PolosDashboard({ ranking, mes, meses = [] }) {
     }
 
     const { lider } = resumo;
-    const bandaLider = bandaScore(lider.score_final);
 
     const conteudo = (
         <div className="relative w-full">
@@ -1551,9 +1592,9 @@ function PolosDashboard({ ranking, mes, meses = [] }) {
                         gauge={Math.min(resumo.pctMeta, 100)} sublabel="atingimento geral da equipe"
                     />
                     <HeroKpi
-                        titulo="Melhor Score" icone={Award} glow="yellow" accentColor={bandaLider.cor}
-                        valor={fmtScore(lider.score_final)} sublabel={`${primeiroNome(lider.name)} lidera`}
-                        extra={<ScoreBandMini value={lider.score_final} />}
+                        titulo="Melhor Nota" icone={Award} glow="yellow" accentColor={faixaCor(lider.faixa)}
+                        valor={fmtNota(lider.nota)} sublabel={`${primeiroNome(lider.name)} · nota de 0 a 5`}
+                        extra={<FaixaBadge faixa={lider.faixa} size="sm" />}
                     />
                     <HeroKpi
                         titulo="Líder" icone={Crown} glow="yellow" accentColor={ACCENTS.yellow}

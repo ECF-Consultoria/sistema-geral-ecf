@@ -1,5 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
+import { useState, useMemo } from 'react';
 import { TicketIndividualChart } from '@/Components/TicketMedioChart';
 import {
     AreaChart, Area, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
@@ -7,7 +8,7 @@ import {
 } from 'recharts';
 import {
     CheckCircle, MessageSquare, ShoppingCart,
-    CheckCheck, AlertTriangle, DollarSign, Award,
+    CheckCheck, AlertTriangle, DollarSign, Award, Target, CalendarClock, Save, Lock, Search,
 } from 'lucide-react';
 import { cn, formatCurrencyCompact } from '@/lib/utils';
 
@@ -25,27 +26,50 @@ function nomeMes(ym) {
 
 function fmt(n) { return Number(n ?? 0).toLocaleString('pt-BR'); }
 function fmtDec(n) { return Number(n ?? 0).toFixed(1).replace('.', ','); }
+function fmtNota(n) { return n === null || n === undefined ? '—' : Number(n).toFixed(2).replace('.', ','); }
 function pct0(n) { return n === null || n === undefined ? '—' : `${Number(n).toFixed(0)}%`; }
 
-// ── Lookup tables de classificação (espelhadas de Portfolio/Show.jsx) ─────────
-const CLASSIF_LABEL = { excelente:'Excelente', bom:'Bom', atencao:'Atenção', critico:'Crítico' };
-const CLASSIF_CLS   = { excelente:'text-emerald-300', bom:'text-sky-300', atencao:'text-amber-300', critico:'text-red-300' };
-const CLASSIF_BG    = {
-    excelente:'bg-emerald-500/10 border-emerald-500/30',
-    bom:'bg-sky-500/10 border-sky-500/30',
-    atencao:'bg-amber-500/10 border-amber-500/30',
-    critico:'bg-red-500/10 border-red-500/30',
+// ── Plano de Metas do Time de Publicação — faixas de bônus ────────────────────
+const FAIXA_LABEL = { sem_bonus:'Sem bônus', base:'Bônus base', intermediario:'Bônus intermediário', maximo:'Bônus máximo' };
+const FAIXA_CLS   = { sem_bonus:'text-white/50', base:'text-sky-300', intermediario:'text-violet-300', maximo:'text-emerald-300' };
+const FAIXA_BG    = {
+    sem_bonus:'bg-white/[0.03] border-white/[0.08]',
+    base:'bg-sky-500/10 border-sky-500/30',
+    intermediario:'bg-violet-500/10 border-violet-500/30',
+    maximo:'bg-emerald-500/10 border-emerald-500/30',
 };
-const SCORE_COLOR   = { excelente:'#10b981', bom:'#38bdf8', atencao:'#f59e0b', critico:'#ef4444' };
+const FAIXA_COLOR = { sem_bonus:'#6b7280', base:'#38bdf8', intermediario:'#a78bfa', maximo:'#10b981' };
 
-// Explicações curtas para o tooltip de cada eixo/minimétrica do publicador.
+// Cor da nota 1-5 de cada indicador (vermelho→verde).
+const NOTA_COLOR = { 1:'#ef4444', 2:'#f97316', 3:'#eab308', 4:'#38bdf8', 5:'#10b981' };
+function notaColor(n) { return n == null ? '#4b5563' : (NOTA_COLOR[Math.round(n)] ?? '#eab308'); }
+
+// Config dos 5 indicadores do plano: rótulo, peso e como formatar o valor apurado.
+const INDICADORES = [
+    { key:'publicacoes',   label:'Nº de publicações', peso:30,
+      valorFmt:(v) => v == null ? '—' : `${fmt(v)}`,        metaFmt:(m) => `cota ${fmt(m)}`,
+      regua:'<280 → 1 · 280-319 → 2 · 320 → 3 · 321-369 → 4 · ≥370 → 5' },
+    { key:'conversao',     label:'Conversão',          peso:30,
+      valorFmt:(v) => v == null ? '—' : `${fmtDec(v)}%`,    metaFmt:(m) => `meta ${fmt(m)}%`,
+      regua:'<30% → 1 · 30-39,99% → 3 · ≥40% → 5' },
+    { key:'produtividade', label:'Produtividade',      peso:15,
+      valorFmt:(v) => v == null ? '—' : `${fmtDec(v)}/dia`, metaFmt:(m) => `ref ${fmt(m)}/dia útil`,
+      regua:'≤12 → 1 · 13-15 → 2 · 16 → 3 · 17-19 → 4 · ≥20 → 5' },
+    { key:'pontualidade',  label:'Pontualidade',       peso:15,
+      valorFmt:(v) => v == null ? '—' : `${fmtDec(v)}%`,    metaFmt:(m) => `meta ${fmt(m)}%`,
+      regua:'<70% → 1 · 70-79 → 2 · 80-89 → 3 · 90-96 → 4 · 97-100 → 5' },
+    { key:'absenteismo',   label:'Absenteísmo',        peso:10,
+      valorFmt:null,                                        metaFmt:() => 'sem faltas',
+      regua:'3+ faltas → 1 · 2 → 2 · 1 → 3 · atrasos pontuais → 4 · sem faltas/atrasos → 5' },
+];
+
 const METRIC_HELP = {
-    score: 'Score 0-100 ponderado: 35% Meta + 25% Produtividade + 20% Pontualidade + 10% Conversão + 10% Qualidade. Eixos sem dado têm o peso redistribuído.',
-    meta: 'Atingimento da meta de anúncios do mês (feito ÷ meta).',
-    produtividade: 'Volume de anúncios em relação à meta (0%→0, 100%→80, ≥130%→100 pts).',
-    pontualidade: 'SKUs entregues sem atraso nas empresas onde você é o responsável.',
+    score: 'Nota 0-5 ponderada do Plano de Metas: 30% Publicações + 30% Conversão + 15% Produtividade + 15% Pontualidade + 10% Absenteísmo. Indicadores sem dado no mês têm o peso redistribuído.',
+    publicacoes: 'Total de anúncios publicados no mês (cota de 320).',
     conversao: 'Anúncios que geraram pelo menos uma venda no mês (vendidos ÷ feitos).',
-    qualidade: 'Anúncios sem problema (60%) + feedbacks do líder resolvidos (40%).',
+    produtividade: 'Média de anúncios por dia útil trabalhado (referência 16/dia).',
+    pontualidade: 'Anúncios com prazo combinado publicados dentro dele (data ≤ prazo).',
+    absenteismo: 'Faltas e atrasos não justificados no mês (registrados pelo líder).',
 };
 
 const chartCfg = {
@@ -99,35 +123,66 @@ function MiniMetric({ label, value, sub, help }) {
     );
 }
 
-// ── Section de desempenho: Radial (score) + Radar (5 eixos) ──────────────────
-function PerformanceSection({ data }) {
-    const pts = data.pontos_categoria ?? {};
-    const m   = data.metricas ?? {};
-    const cor = SCORE_COLOR[data.classificacao] ?? '#3b82f6';
-
-    const dimensoes = [
-        { dim: 'Meta',          valor: pts.meta?.valor ?? 0,          bruto: m.meta?.pct,                  sufixo: '%' },
-        { dim: 'Produtividade', valor: pts.produtividade?.valor ?? 0, bruto: m.produtividade?.pct,         sufixo: '%' },
-        { dim: 'Pontualidade',  valor: pts.pontualidade?.valor ?? 0,  bruto: m.pontualidade?.pct_no_prazo, sufixo: '%' },
-        { dim: 'Conversão',     valor: pts.conversao?.valor ?? 0,     bruto: m.conversao?.pct,             sufixo: '%' },
-        { dim: 'Qualidade',     valor: pts.qualidade?.valor ?? 0,     bruto: m.qualidade?.pct_sem_problema, sufixo: '%' },
-    ];
-    const radialData = [{ name: 'Score', value: data.score, fill: cor }];
-    const semDados = !data.score;
+// ── Card de 1 indicador do plano: nota 1-5 + valor apurado + régua ──────────
+function IndicadorCard({ cfg, ind }) {
+    const nota = ind?.nota ?? null;
+    const cor  = notaColor(nota);
+    const valorStr = cfg.key === 'absenteismo'
+        ? (ind?.registrado
+            ? (ind.faltas > 0 ? `${fmt(ind.faltas)} falta${ind.faltas !== 1 ? 's' : ''}` : (ind.atrasos ? 'só atrasos' : 'sem faltas'))
+            : 'sem registro')
+        : cfg.valorFmt(ind?.valor);
+    const meta = cfg.key === 'absenteismo' ? cfg.metaFmt() : cfg.metaFmt(ind?.meta);
 
     return (
-        <div className={cn('rounded-2xl border p-4 md:p-5 mb-6', CLASSIF_BG[data.classificacao] ?? 'border-white/[0.06] bg-ecf-card/60')}>
+        <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3" title={`${cfg.regua}\n\n${METRIC_HELP[cfg.key]}`}>
+            <div className="flex items-center justify-between gap-2">
+                <span className="text-white/60 text-[11px] font-semibold uppercase tracking-wide truncate">{cfg.label}</span>
+                <span className="text-white/25 text-[10px] tabular-nums">{cfg.peso}%</span>
+            </div>
+            <div className="flex items-baseline gap-2 mt-1.5">
+                <span className="font-display font-extrabold text-2xl tabular-nums leading-none" style={{ color: cor }}>
+                    {nota == null ? '—' : nota}
+                </span>
+                <span className="text-white/30 text-[11px]">/ 5</span>
+                <span className="ml-auto text-white/70 text-[13px] font-semibold tabular-nums">{valorStr}</span>
+            </div>
+            {/* barra de nota 1-5 */}
+            <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden mt-2">
+                <div className="h-full rounded-full" style={{ width: `${nota == null ? 0 : (nota / 5) * 100}%`, backgroundColor: cor }} />
+            </div>
+            <p className="text-white/30 text-[10px] mt-1.5">{meta}{nota == null ? ' · sem dado (peso redistribuído)' : ''}</p>
+        </div>
+    );
+}
+
+// ── Section do Plano de Metas: nota 0-5 + faixa de bônus + radar + indicadores ─
+function PlanoMetasSection({ data }) {
+    const faixa = data.faixa ?? 'sem_bonus';
+    const cor   = FAIXA_COLOR[faixa] ?? '#6b7280';
+    const inds  = data.indicadores ?? {};
+    const radialData = [{ name: 'Nota', value: data.score100 ?? 0, fill: cor }];
+    const rebaixado  = data.faixa !== data.faixa_por_nota;
+
+    const dimensoes = INDICADORES.map((c) => ({
+        dim: c.label.replace('Nº de ', ''),
+        valor: inds[c.key]?.nota ?? 0,
+        temDado: inds[c.key]?.nota != null,
+    }));
+
+    return (
+        <div className={cn('rounded-2xl border p-4 md:p-5 mb-6', FAIXA_BG[faixa])}>
             <div className="flex items-center gap-2 mb-3">
-                <Award size={16} className={CLASSIF_CLS[data.classificacao]} />
+                <Award size={16} className={FAIXA_CLS[faixa]} />
                 <h3 className="text-white text-sm font-semibold cursor-help" title={METRIC_HELP.score}>
-                    Desempenho do Publicador <span className="text-white/30 text-[10px]">ⓘ</span>
+                    Plano de Metas · Nota do mês <span className="text-white/30 text-[10px]">ⓘ</span>
                 </h3>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-4">
-                {/* Radial score */}
+            <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-4">
+                {/* Radial nota 0-5 + faixa de bônus */}
                 <div className="relative rounded-xl bg-white/[0.02] border border-white/[0.04] p-3 flex items-center justify-center">
-                    <div className="h-56 w-full relative">
+                    <div className="h-52 w-full relative">
                         <ResponsiveContainer width="100%" height="100%">
                             <RadialBarChart cx="50%" cy="50%" innerRadius="70%" outerRadius="100%" barSize={18}
                                 data={radialData} startAngle={90} endAngle={-270}>
@@ -136,35 +191,30 @@ function PerformanceSection({ data }) {
                             </RadialBarChart>
                         </ResponsiveContainer>
                         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                            <div className={cn('text-5xl font-extrabold tabular-nums leading-none', CLASSIF_CLS[data.classificacao])}>
-                                {Math.round(data.score)}
+                            <div className="text-5xl font-extrabold tabular-nums leading-none" style={{ color: cor }}>
+                                {fmtNota(data.nota)}
                             </div>
-                            <div className="text-white/40 text-[11px] mt-0.5">de 100 pts</div>
-                            <div className={cn('text-[12px] font-semibold mt-1.5', CLASSIF_CLS[data.classificacao])}>
-                                {CLASSIF_LABEL[data.classificacao]}
+                            <div className="text-white/40 text-[11px] mt-0.5">de 5,00</div>
+                            <div className="text-[12px] font-semibold mt-1.5" style={{ color: cor }}>
+                                {FAIXA_LABEL[faixa]}
                             </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Radar das 5 dimensões */}
+                {/* Radar das 5 notas (0-5) */}
                 <div className="rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
-                    <div className="h-56 w-full">
+                    <div className="h-52 w-full">
                         <ResponsiveContainer width="100%" height="100%">
                             <RadarChart data={dimensoes} margin={{ top: 10, right: 30, bottom: 10, left: 30 }}>
                                 <PolarGrid stroke="rgba(255,255,255,0.08)" />
                                 <PolarAngleAxis dataKey="dim" tick={{ fill: 'rgba(255,255,255,0.55)', fontSize: 10 }} />
-                                <PolarRadiusAxis domain={[0, 100]} tick={false} axisLine={false} />
-                                <Radar name="Pontuação" dataKey="valor" stroke={cor} fill={cor} fillOpacity={0.35} dot={{ r: 3, fill: cor }} />
+                                <PolarRadiusAxis domain={[0, 5]} tick={false} axisLine={false} />
+                                <Radar name="Nota" dataKey="valor" stroke={cor} fill={cor} fillOpacity={0.35} dot={{ r: 3, fill: cor }} />
                                 <Tooltip
                                     cursor={false}
                                     contentStyle={{ backgroundColor:'rgba(15,16,22,0.95)', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, fontSize:12 }}
-                                    formatter={(value, name, props) => {
-                                        const bruto = props?.payload?.bruto;
-                                        const suf   = props?.payload?.sufixo;
-                                        if (bruto === null || bruto === undefined) return ['sem dado', 'Valor'];
-                                        return [`${typeof bruto === 'number' ? bruto.toFixed(1) : bruto}${suf} (${Math.round(value)} pts)`, 'Valor'];
-                                    }}
+                                    formatter={(value, name, props) => props?.payload?.temDado ? [`nota ${value}`, 'Indicador'] : ['sem dado', 'Indicador']}
                                     labelStyle={{ color: 'rgba(255,255,255,0.9)' }}
                                 />
                             </RadarChart>
@@ -173,46 +223,153 @@ function PerformanceSection({ data }) {
                 </div>
             </div>
 
-            {/* Cards detalhados (substituem Cresc.ajustado/Crescendo/Meta/Recuperação/NPS da Carteira) */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-3">
-                <MiniMetric
-                    label="Atingimento da meta"
-                    value={pct0(m.meta?.pct)}
-                    sub={`${fmt(m.meta?.feito)}/${fmt(m.meta?.alvo)} anúncios`}
-                    help={METRIC_HELP.meta}
-                />
-                <MiniMetric
-                    label="Produtividade"
-                    value={pts.produtividade?.valor !== null && pts.produtividade?.valor !== undefined ? `${Math.round(pts.produtividade.valor)} pts` : '—'}
-                    sub={m.produtividade?.pct !== null && m.produtividade?.pct !== undefined ? `${m.produtividade.pct.toFixed(0)}% da meta` : 'sem meta'}
-                    help={METRIC_HELP.produtividade}
-                />
-                <MiniMetric
-                    label="Entregas com atraso"
-                    value={`${fmt(m.pontualidade?.atrasados)}/${fmt(m.pontualidade?.total_skus)}`}
-                    sub={m.pontualidade?.pct_no_prazo !== null && m.pontualidade?.pct_no_prazo !== undefined ? `${m.pontualidade.pct_no_prazo.toFixed(0)}% no prazo` : 'sem SKUs'}
-                    help={METRIC_HELP.pontualidade}
-                />
-                <MiniMetric
-                    label="Conversão"
-                    value={pct0(m.conversao?.pct)}
-                    sub={`${fmt(m.conversao?.vendidos)}/${fmt(m.conversao?.feito)} vendidos`}
-                    help={METRIC_HELP.conversao}
-                />
-                <MiniMetric
-                    label="Qualidade"
-                    value={pct0(m.qualidade?.pct_sem_problema)}
-                    sub={m.qualidade?.pct_feedbacks_resolvidos !== null && m.qualidade?.pct_feedbacks_resolvidos !== undefined ? `${m.qualidade.pct_feedbacks_resolvidos.toFixed(0)}% feedbacks ok` : 'sem feedbacks'}
-                    help={METRIC_HELP.qualidade}
-                />
+            {/* 5 indicadores com nota, valor apurado e régua */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 mt-3">
+                {INDICADORES.map((c) => <IndicadorCard key={c.key} cfg={c} ind={inds[c.key]} />)}
             </div>
 
-            {semDados && (
-                <p className="mt-3 text-white/40 text-[11px]">
-                    <AlertTriangle size={10} className="inline mr-1" />
-                    Sem dados suficientes no período — o score aparece conforme você publica e recebe vendas/feedbacks.
-                </p>
+            {/* Travas de elegibilidade aplicadas (rebaixaram a faixa) */}
+            {rebaixado && data.travas?.length > 0 && (
+                <div className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2">
+                    <p className="text-amber-300 text-[11px] font-semibold flex items-center gap-1.5">
+                        <Lock size={11} /> Faixa por nota seria {FAIXA_LABEL[data.faixa_por_nota]} — rebaixada por travas:
+                    </p>
+                    <ul className="mt-1 space-y-0.5">
+                        {data.travas.map((t, i) => (
+                            <li key={i} className="text-white/55 text-[11px] pl-4">• {t}</li>
+                        ))}
+                    </ul>
+                </div>
             )}
+        </div>
+    );
+}
+
+// ── Card editor de Absenteísmo (líder/gestor) ────────────────────────────────
+function AbsenteismoCard({ ind, alvoId, mesRef }) {
+    const [faltas, setFaltas]   = useState(ind?.faltas ?? 0);
+    const [atrasos, setAtrasos] = useState(ind?.atrasos ?? false);
+    const [obs, setObs]         = useState(ind?.observacao ?? '');
+    const [salvando, setSalvando] = useState(false);
+
+    const salvar = () => {
+        setSalvando(true);
+        router.put(route('mlb.absenteismo'), {
+            user_id: alvoId, mes: mesRef,
+            faltas_nao_justificadas: Number(faltas) || 0,
+            atrasos_pontuais: !!atrasos,
+            observacao: obs || null,
+        }, {
+            preserveScroll: true,
+            onFinish: () => setSalvando(false),
+        });
+    };
+
+    const notaPrevista = Number(faltas) >= 3 ? 1 : Number(faltas) === 2 ? 2 : Number(faltas) === 1 ? 3 : (atrasos ? 4 : 5);
+
+    return (
+        <div className="card-ecf rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+                <CalendarClock size={16} className="text-violet-300" />
+                <p className="text-white font-semibold text-sm">Absenteísmo do mês</p>
+                <span className="ml-auto text-[11px] text-white/40">{ind?.registrado ? 'registrado' : 'sem registro'}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] gap-3 items-end">
+                <div>
+                    <label className="text-white/45 text-[11px] block mb-1">Faltas não justificadas</label>
+                    <input type="number" min="0" max="31" value={faltas}
+                        onChange={(e) => setFaltas(e.target.value)}
+                        className="w-full h-9 px-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/90 text-sm focus:outline-none" />
+                </div>
+                <label className="flex items-center gap-2 h-9 text-white/70 text-[13px] cursor-pointer select-none">
+                    <input type="checkbox" checked={atrasos} disabled={Number(faltas) > 0}
+                        onChange={(e) => setAtrasos(e.target.checked)}
+                        className="h-4 w-4 rounded border-white/20 bg-transparent" />
+                    Houve pequenos atrasos pontuais (sem faltas)
+                </label>
+            </div>
+            <input type="text" value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Observação (opcional)"
+                className="w-full h-9 px-3 mt-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/90 text-sm focus:outline-none" />
+            <div className="flex items-center justify-between mt-3">
+                <span className="text-[12px] text-white/50">Nota prevista: <span className="font-bold" style={{ color: notaColor(notaPrevista) }}>{notaPrevista}/5</span></span>
+                <button onClick={salvar} disabled={salvando}
+                    className="inline-flex items-center gap-1.5 px-3 h-9 rounded-lg text-[13px] font-bold border border-violet-500/30 text-violet-200 bg-violet-500/10 hover:bg-violet-500/20 transition-colors disabled:opacity-50">
+                    <Save size={13} /> {salvando ? 'Salvando…' : 'Salvar'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ── Card de Pontualidade: prazos combinados por anúncio (líder edita) ────────
+function PrazosCard({ anuncios = [], ind, editavel }) {
+    const [busca, setBusca] = useState('');
+    const total   = ind?.total ?? 0;
+    const noPrazo = ind?.no_prazo ?? 0;
+
+    const setPrazo = (id, prazo) => {
+        router.patch(route('mlb.pub.prazo', id), { prazo: prazo || null }, { preserveScroll: true, preserveState: true });
+    };
+
+    const lista = useMemo(() => {
+        // Publicador (read-only) vê só os anúncios com prazo combinado; o líder
+        // vê todos para poder atribuir prazo a qualquer um.
+        const base = editavel ? anuncios : anuncios.filter(a => a.prazo != null);
+        const q = busca.trim().toLowerCase();
+        const arr = q ? base.filter(a => (a.empresa || '').toLowerCase().includes(q) || (a.mlb_code || '').toLowerCase().includes(q)) : base;
+        // prioriza anúncios com prazo definido no topo
+        return [...arr].sort((a, b) => (b.prazo ? 1 : 0) - (a.prazo ? 1 : 0));
+    }, [anuncios, busca, editavel]);
+
+    return (
+        <div className="card-ecf rounded-2xl p-5 mb-6">
+            <div className="flex items-center gap-2 mb-1">
+                <Target size={16} className="text-sky-300" />
+                <p className="text-white font-semibold text-sm">Pontualidade · prazos combinados</p>
+                <span className="ml-auto text-[12px] text-white/50 tabular-nums">
+                    {total > 0 ? `${fmt(noPrazo)}/${fmt(total)} no prazo · ${fmtDec(ind?.valor)}%` : 'nenhum prazo definido'}
+                </span>
+            </div>
+            <p className="text-white/35 text-[11px] mb-3">
+                {editavel ? 'Defina o prazo de cada anúncio; publicações até o prazo contam como pontuais.' : 'Anúncios com prazo combinado e sua situação.'}
+            </p>
+
+            {anuncios.length > 6 && (
+                <div className="relative mb-2">
+                    <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+                    <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Filtrar por empresa ou MLB…"
+                        className="w-full h-8 pl-8 pr-3 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/90 text-[13px] focus:outline-none" />
+                </div>
+            )}
+
+            <div className="max-h-72 overflow-y-auto pr-1 space-y-1.5">
+                {lista.length === 0 && <p className="text-white/25 text-sm text-center py-6">Nenhum anúncio neste mês</p>}
+                {lista.map((a) => {
+                    const status = a.prazo == null ? null : a.no_prazo;
+                    return (
+                        <div key={a.id} className="flex items-center gap-2 rounded-lg border border-white/[0.05] bg-white/[0.02] px-3 py-2">
+                            <div className="min-w-0 flex-1">
+                                <p className="text-white/85 text-[13px] truncate">{a.empresa}</p>
+                                <p className="text-white/35 text-[11px] font-mono">{a.mlb_code} · pub {a.data ? a.data.slice(8,10)+'/'+a.data.slice(5,7) : '—'}</p>
+                            </div>
+                            {status !== null && (
+                                <span className={cn('shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded border',
+                                    status ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-red-300 bg-red-500/10 border-red-500/30')}>
+                                    {status ? 'no prazo' : 'atrasado'}
+                                </span>
+                            )}
+                            {editavel ? (
+                                <input type="date" defaultValue={a.prazo ?? ''} onChange={(e) => setPrazo(a.id, e.target.value)}
+                                    className="shrink-0 h-8 px-2 rounded-lg border border-white/[0.08] bg-white/[0.03] text-white/80 text-[12px] focus:outline-none" />
+                            ) : (
+                                <span className="shrink-0 text-white/50 text-[12px] tabular-nums w-24 text-right">
+                                    {a.prazo ? 'prazo ' + a.prazo.slice(8,10)+'/'+a.prazo.slice(5,7) : 'sem prazo'}
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 }
@@ -337,7 +494,7 @@ function VisaoGeralPublicadores({ cards = [], onAbrir }) {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {cards.map((c) => {
-                const cor = SCORE_COLOR[c.classificacao] ?? '#3b82f6';
+                const cor = FAIXA_COLOR[c.faixa] ?? '#6b7280';
                 const metaPct = Math.min(100, Math.max(0, Math.round(c.meta_pct ?? 0)));
                 return (
                     <button
@@ -345,20 +502,20 @@ function VisaoGeralPublicadores({ cards = [], onAbrir }) {
                         onClick={() => onAbrir(c.id)}
                         className={cn(
                             'text-left rounded-2xl border p-4 transition hover:border-white/20 hover:bg-white/[0.04]',
-                            CLASSIF_BG[c.classificacao] ?? 'border-white/[0.06] bg-ecf-card/60',
+                            FAIXA_BG[c.faixa] ?? 'border-white/[0.06] bg-ecf-card/60',
                         )}
                     >
                         <div className="flex items-start justify-between gap-2 mb-3">
                             <p className="text-white font-semibold text-sm leading-tight truncate">{c.nome}</p>
-                            <span className={cn('text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap', CLASSIF_CLS[c.classificacao])}>
-                                {CLASSIF_LABEL[c.classificacao] ?? '—'}
+                            <span className={cn('text-[10px] font-semibold uppercase tracking-wide whitespace-nowrap', FAIXA_CLS[c.faixa])}>
+                                {FAIXA_LABEL[c.faixa] ?? '—'}
                             </span>
                         </div>
                         <div className="flex items-baseline gap-1 mb-3">
                             <span className="font-display font-extrabold text-3xl tabular-nums" style={{ color: cor }}>
-                                {Math.round(c.score ?? 0)}
+                                {fmtNota(c.nota)}
                             </span>
-                            <span className="text-white/30 text-xs">/ 100</span>
+                            <span className="text-white/30 text-xs">/ 5</span>
                         </div>
                         <div className="mb-3">
                             <div className="flex justify-between text-[10px] text-white/40 mb-1">
@@ -395,8 +552,9 @@ function VisaoGeralPublicadores({ cards = [], onAbrir }) {
 export default function MeuPainel({
     kpis, evolucaoDiaria, topEmpresas, feedbacks, meta, mesRef, meses, problemas,
     ticketEvolucao = [], ticketAtual = 0,
-    // Fase 38 — Painel do Publicador
-    score_publicador = null, faturamento_mes = 0, anuncios_feitos = 0, vendas_mes = 0,
+    // Plano de Metas do Time de Publicação
+    plano_metas = null, anuncios_prazo = [], pode_gerir_metas = false, alvo_id = null,
+    faturamento_mes = 0, anuncios_feitos = 0, vendas_mes = 0,
     net_billing_timeseries = [],
     // Supervisão — seletor de publicador (admin/gestor/líder); publicador/analista veem o próprio
     publicadores = [], pubFiltro = null, podeFiltrar = false, alvoNome = '',
@@ -506,8 +664,20 @@ export default function MeuPainel({
                 />
             </div>
 
-            {/* Desempenho: score + radar de 5 eixos */}
-            {score_publicador && <PerformanceSection data={score_publicador} />}
+            {/* Plano de Metas: nota 0-5 + faixa de bônus + 5 indicadores */}
+            {plano_metas && <PlanoMetasSection data={plano_metas} />}
+
+            {/* Pontualidade — prazos combinados (líder edita; publicador vê a situação) */}
+            <PrazosCard
+                anuncios={anuncios_prazo}
+                ind={plano_metas?.indicadores?.pontualidade}
+                editavel={pode_gerir_metas}
+            />
+
+            {/* Absenteísmo — só o líder/gestor/admin registra */}
+            {pode_gerir_metas && alvo_id && (
+                <AbsenteismoCard ind={plano_metas?.indicadores?.absenteismo} alvoId={alvo_id} mesRef={mesRef} />
+            )}
 
             {/* Evolução do faturamento */}
             <div className="card-ecf rounded-2xl p-5 mb-6">

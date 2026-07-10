@@ -721,6 +721,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::patch('/pub/{pub}/comentario',        [MlbController::class, 'salvarComentario'])->name('comentario');
     Route::patch('/pub/{pub}/resolver',          [MlbController::class, 'resolverComentario'])->name('resolver');
     Route::patch('/pub/{pub}/problema',          [MlbController::class, 'marcarProblema'])->name('problema');
+    // Plano de Metas — pontualidade (prazo por anúncio) e absenteísmo (por publicador/mês).
+    Route::patch('/pub/{pub}/prazo',             [MlbController::class, 'salvarPrazo'])->name('pub.prazo');
+    Route::put('/absenteismo',                   [MlbController::class, 'salvarAbsenteismo'])->name('absenteismo');
     Route::delete('/pub/{pub}',                  [MlbController::class, 'destroy'])->name('destroy');
 
     // Empresas MLB (Analista / Líder / Gestor)

@@ -30,6 +30,7 @@ class Publicacao extends Model
 
     protected $fillable = [
         'data',
+        'prazo',
         'user_id',
         'empresa',
         'cust_id',
@@ -52,6 +53,7 @@ class Publicacao extends Model
 
     protected $casts = [
         'data'                 => 'date',
+        'prazo'                => 'date',
         'vendido'              => 'boolean',
         'vendas_qty'           => 'integer',
         'revisado'             => 'boolean',

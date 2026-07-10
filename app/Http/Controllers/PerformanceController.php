@@ -11,6 +11,7 @@ use App\Models\Ppa;
 use App\Models\Publicacao;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
+use App\Services\PlanoMetasPublicacaoService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -626,14 +627,40 @@ class PerformanceController extends Controller
     private function indexPolos(Request $request): \Inertia\Response
     {
         $mesRef = $request->get('mes', now()->format('Y-m'));
+        // Valida 'YYYY-MM' com mês 01-12 antes do Carbon — evita 500 (formato inválido)
+        // e o overflow silencioso de mês (ex.: '2026-13' viraria 2027-01).
+        if (!preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $mesRef)) {
+            $mesRef = now()->format('Y-m');
+        }
         $ref    = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
         $primeiro = $ref->copy()->startOfMonth()->toDateString();
         $ultimo   = $ref->copy()->endOfMonth()->toDateString();
 
-        $users = User::where('active', true)
-            ->whereIn('publication_role', ['publicador', 'lider'])
+        // Fonte CANÔNICA de publicadores (mesma do Meu Painel): pivot user_setores
+        // → cargos do setor 'publicacao'. Substitui a coluna legada publication_role
+        // (que dessincronizava o roster entre as duas telas). cargo_slug alimenta o
+        // rótulo de papel (publicador/líder).
+        $users = User::query()
+            ->where('active', true)
+            ->whereExists(function ($q) {
+                $q->from('user_setores')
+                  ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+                  ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+                  ->whereColumn('user_setores.user_id', 'users.id')
+                  ->where('setores.slug', 'publicacao')
+                  ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao']);
+            })
+            ->select(['id', 'name', 'avatar_url'])
+            ->addSelect(['cargo_slug' => DB::table('user_setores')
+                ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+                ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+                ->whereColumn('user_setores.user_id', 'users.id')
+                ->where('setores.slug', 'publicacao')
+                ->whereIn('cargos.slug', ['publicador', 'lider-de-publicacao'])
+                ->select('cargos.slug')
+                ->limit(1)])
             ->orderBy('name')
-            ->get(['id', 'name', 'publication_role', 'publication_meta', 'avatar_url']);
+            ->get();
 
         $hoje      = Carbon::today();
         $primeiroC = $ref->copy()->startOfMonth();
@@ -643,17 +670,22 @@ class PerformanceController extends Controller
         $diasRestantes  = $hoje->lt($ultimoC) ? $this->diasUteis($hoje->copy()->addDay(), $ultimoC) : 0;
         $diasTotal      = max($diasDecorridos + $diasRestantes, 1);
 
-        $rawRanking = $users->map(function ($u) use ($primeiro, $ultimo, $diasDecorridos, $diasTotal, $mesRef) {
-            $meta       = $this->metaParaMes($u->id, $mesRef);
-            $feito      = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->count();
-            $vendas     = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('vendido', true)->count();
+        // Plano de Metas do Time de Publicação — nota 0-5 + faixa de bônus é a
+        // régua canônica (a MESMA do "Meu Painel"). O ranking passa a ser ordenado
+        // pela nota do plano (antes: score normalizado por grupo, exclusivo daqui).
+        $plano = new PlanoMetasPublicacaoService();
 
-            $percentual_meta = $meta > 0 ? $feito / $meta : 0.0;
-            $conversao_raw   = $feito > 0 ? $vendas / $feito : 0.0;
+        $ranking = $users->map(function ($u) use ($primeiro, $ultimo, $diasDecorridos, $diasTotal, $mesRef, $plano) {
+            $meta       = $this->metaParaMes($u->id, $mesRef);
+            $feito      = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->count();
+            $vendas     = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->where('vendido', true)->count();
+
+            $pm = $plano->compute($u->id, $mesRef, $feito, $vendas, $diasDecorridos);
 
             $mediaAtual = $diasDecorridos > 0 ? round($feito / $diasDecorridos, 1) : 0.0;
             $projecao   = (int) round($mediaAtual * $diasTotal);
 
+            // Semáforo operacional (mantém a leitura "no trilho?" vs a meta configurada).
             if ($feito >= $meta) {
                 $status = 'Acima da meta';
             } elseif ($projecao >= $meta * 0.95) {
@@ -665,49 +697,30 @@ class PerformanceController extends Controller
             return [
                 'id'              => $u->id,
                 'name'            => $u->name,
-                'pub_role'        => $u->publication_role,
+                'pub_role'        => $u->cargo_slug === 'lider-de-publicacao' ? 'lider' : 'publicador',
                 'foto'            => $u->avatar_url,
                 'meta'            => $meta,
                 'feito'           => $feito,
                 'vendas'          => $vendas,
-                'percentual'      => $meta > 0 ? round($percentual_meta * 100, 1) : 0.0,
-                'conversao'       => round($conversao_raw * 100, 1),
+                'percentual'      => $meta > 0 ? round($feito / $meta * 100, 1) : 0.0,
+                'conversao'       => $pm['indicadores']['conversao']['valor'] ?? 0.0,
                 'projecao'        => $projecao,
                 'status'          => $status,
-                // campos intermediários para normalização
-                '_pct_meta'       => $percentual_meta,
-                '_conversao_raw'  => $conversao_raw,
+                // Plano de Metas: nota 0-5, faixa de bônus e detalhamento por indicador.
+                'nota'            => $pm['nota'],
+                'faixa'           => $pm['faixa'],
+                'travas'          => $pm['travas'],
+                'indicadores'     => $pm['indicadores'],
+                'score_final'     => $pm['score100'], // 0-100 p/ reuso dos gauges
             ];
-        });
-
-        // Normalização por grupo e cálculo do score final
-        $maxVendas    = max((int) $rawRanking->max('vendas'),   1);
-        $maxConversao = max($rawRanking->max('_conversao_raw'), 0.0001);
-
-        $ranking = $rawRanking->map(function ($u) use ($maxVendas, $maxConversao) {
-            $score = self::scorePublicador($u['_pct_meta'], $u['vendas'], $maxVendas, $u['_conversao_raw'], $maxConversao);
-
-            return [
-                'id'              => $u['id'],
-                'name'            => $u['name'],
-                'pub_role'        => $u['pub_role'],
-                'foto'            => $u['foto'],
-                'meta'            => $u['meta'],
-                'feito'           => $u['feito'],
-                'vendas'          => $u['vendas'],
-                'percentual'      => $u['percentual'],
-                'conversao'       => $u['conversao'],
-                'projecao'        => $u['projecao'],
-                'status'          => $u['status'],
-                'score_final'     => $score,
-            ];
-        })->sortByDesc('score_final')->values();
+        })
+        ->sort(fn ($a, $b) => [$b['nota'], $b['feito']] <=> [$a['nota'], $a['feito']])
+        ->values();
 
         // ── Evolução mês a mês (coluna "Evolução" do dashboard) ──
-        // Compara a posição atual de cada publicador com a do mês anterior (mesma
-        // fórmula de score). delta > 0 = subiu no ranking; < 0 = caiu; 0 = manteve.
-        // Se o mês anterior não teve produção alguma, não há base comparativa →
-        // delta null e a UI mostra "—" (estrutura pronta, sem inventar movimento).
+        // Compara a posição atual com a do mês anterior (mesma nota do plano).
+        // delta > 0 = subiu no ranking; < 0 = caiu; 0 = manteve. Sem produção no
+        // mês anterior → sem base → delta null e a UI mostra "—".
         $mesAnterior = Carbon::createFromFormat('Y-m', $mesRef)->subMonthNoOverflow()->format('Y-m');
         $posAnterior = $this->posicoesDoMes($users, $mesAnterior);
 
@@ -737,45 +750,28 @@ class PerformanceController extends Controller
     }
 
     /**
-     * Fórmula única do score do publicador (0–100): 40% atingimento de meta
-     * (limitado em 100%) + 40% vendas normalizadas + 20% conversão normalizada.
-     * Extraída para servir tanto o ranking do mês corrente quanto o cálculo de
-     * posições do mês anterior (evolução) sem risco de divergência de fórmula.
-     */
-    private static function scorePublicador(float $pctMeta, int $vendas, int $maxVendas, float $conversaoRaw, float $maxConversao): float
-    {
-        $pctMetaCap    = min($pctMeta, 1.0);
-        $vendasNorm    = $maxVendas    > 0 ? $vendas       / $maxVendas    : 0.0;
-        $conversaoNorm = $maxConversao > 0 ? $conversaoRaw / $maxConversao : 0.0;
-
-        return round(($pctMetaCap * 0.4 + $vendasNorm * 0.4 + $conversaoNorm * 0.2) * 100, 1);
-    }
-
-    /**
-     * Calcula a posição (1-based) de cada publicador no ranking de um mês,
-     * usando a mesma fórmula de score. Retorna [user_id => posição].
-     * Se o mês não teve produção alguma, retorna [] (sem base para evolução).
+     * Calcula a posição (1-based) de cada publicador no ranking de um mês, usando
+     * a MESMA nota do Plano de Metas (PlanoMetasPublicacaoService). Retorna
+     * [user_id => posição]. Sem produção no mês → [] (sem base para evolução).
+     * Como o mês já está fechado, a produtividade usa os dias úteis totais do mês.
      *
      * @param  \Illuminate\Support\Collection  $users  publicadores ativos (id)
      */
     private function posicoesDoMes($users, string $mesRef): array
     {
-        $ref      = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
-        $primeiro = $ref->copy()->startOfMonth()->toDateString();
-        $ultimo   = $ref->copy()->endOfMonth()->toDateString();
+        $ref       = Carbon::createFromFormat('Y-m', $mesRef)->startOfMonth();
+        $primeiro  = $ref->copy()->startOfMonth()->toDateString();
+        $ultimo    = $ref->copy()->endOfMonth()->toDateString();
+        $diasUteis = $this->diasUteis($ref->copy()->startOfMonth(), $ref->copy()->endOfMonth());
 
-        $raw = $users->map(function ($u) use ($primeiro, $ultimo, $mesRef) {
-            $meta   = $this->metaParaMes($u->id, $mesRef);
-            $feito  = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->count();
-            $vendas = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('vendido', true)->count();
+        $plano = new PlanoMetasPublicacaoService();
 
-            return [
-                'id'      => $u->id,
-                'vendas'  => $vendas,
-                'feito'   => $feito,
-                '_pct'    => $meta  > 0 ? $feito  / $meta  : 0.0,
-                '_conv'   => $feito > 0 ? $vendas / $feito : 0.0,
-            ];
+        $raw = $users->map(function ($u) use ($primeiro, $ultimo, $mesRef, $diasUteis, $plano) {
+            $feito  = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->count();
+            $vendas = Publicacao::where('user_id', $u->id)->whereBetween('data', [$primeiro, $ultimo])->where('tipo', '!=', 'variacao')->where('vendido', true)->count();
+            $pm     = $plano->compute($u->id, $mesRef, $feito, $vendas, $diasUteis);
+
+            return ['id' => $u->id, 'feito' => $feito, 'nota' => $pm['nota']];
         });
 
         // Sem produção no mês → nada a comparar.
@@ -783,12 +779,8 @@ class PerformanceController extends Controller
             return [];
         }
 
-        $maxVendas    = max((int) $raw->max('vendas'), 1);
-        $maxConversao = max($raw->max('_conv'), 0.0001);
-
         return $raw
-            ->map(fn ($u) => ['id' => $u['id'], 's' => self::scorePublicador($u['_pct'], $u['vendas'], $maxVendas, $u['_conv'], $maxConversao)])
-            ->sortByDesc('s')
+            ->sort(fn ($a, $b) => [$b['nota'], $b['feito']] <=> [$a['nota'], $a['feito']])
             ->values()
             ->mapWithKeys(fn ($u, $i) => [$u['id'] => $i + 1])
             ->all();
@@ -804,7 +796,15 @@ class PerformanceController extends Controller
 
         if ($registro !== null) return (int) $registro;
 
-        return (int) (User::find($userId)?->publication_meta ?? 220);
+        // Fallback CANÔNICO (igual ao MlbController): meta do cargo no setor Publicação.
+        $meta = DB::table('user_setores')
+            ->join('setores', 'setores.id', '=', 'user_setores.setor_id')
+            ->join('cargos', 'cargos.id', '=', 'user_setores.cargo_id')
+            ->where('user_setores.user_id', $userId)
+            ->where('setores.slug', 'publicacao')
+            ->value('cargos.meta_publicacoes');
+
+        return (int) ($meta ?? 220);
     }
 
     private function diasUteis(Carbon $start, Carbon $end): int
