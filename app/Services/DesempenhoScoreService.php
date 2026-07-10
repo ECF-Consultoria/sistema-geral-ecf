@@ -493,10 +493,15 @@ class DesempenhoScoreService
             $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
         }
 
+        // Ajuste 2026-07-09 (fix Luiz): traz margem_dias (COUNT de linhas com
+        // contribution_margin NOT NULL) para distinguir "sem dados Adman" de
+        // "margem zero real". Sem esse guard, empresas OAuth com Adman
+        // sincronizado só numa das duas janelas puxavam a média para -100%
+        // artificial (via 0/positive = -100%).
         $margemAtual = AdmanMetric::whereIn('company_id', $companyIds)
             ->whereDate('reference_date', '>=', $inicioMes->toDateString())
             ->whereDate('reference_date', '<=', $fimMes->toDateString())
-            ->selectRaw('company_id, SUM(contribution_margin) as margem')
+            ->selectRaw('company_id, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
@@ -504,7 +509,7 @@ class DesempenhoScoreService
         $margemAnterior = AdmanMetric::whereIn('company_id', $companyIds)
             ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
             ->whereDate('reference_date', '<=', $fimAnter->toDateString())
-            ->selectRaw('company_id, SUM(contribution_margin) as margem')
+            ->selectRaw('company_id, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
@@ -512,8 +517,19 @@ class DesempenhoScoreService
         $vars = collect();
 
         foreach ($companies as $company) {
-            $atual    = (float) ($margemAtual->get($company->id)?->margem ?? 0.0);
-            $anterior = (float) ($margemAnterior->get($company->id)?->margem ?? 0.0);
+            $rowAtual    = $margemAtual->get($company->id);
+            $rowAnterior = $margemAnterior->get($company->id);
+
+            // Precisa TER dados de margem em AMBAS as janelas — senão pula
+            // (evita o -100% artificial quando Adman sincronizou só uma delas).
+            $temDadosAtual    = $rowAtual    !== null && (int) $rowAtual->margem_dias    > 0;
+            $temDadosAnterior = $rowAnterior !== null && (int) $rowAnterior->margem_dias > 0;
+            if (! $temDadosAtual || ! $temDadosAnterior) {
+                continue;
+            }
+
+            $atual    = (float) $rowAtual->margem;
+            $anterior = (float) $rowAnterior->margem;
 
             if ($anterior <= 0) {
                 continue; // sem baseline de margem — descarta
