@@ -307,22 +307,31 @@ class DesempenhoScoreService
     private function computeVarFaturamento(User $user, Carbon $mes, EloquentCollection $companies): array
     {
         // ── Filtro "empresa nova na carteira" ────────────────────────────────
-        // Proxy: `company_users.created_at` < mês anterior (associada há >= 2 meses).
-        // Se a pivot não tiver a coluna acessível na row, o filtro degradado
-        // é retornar TODAS as empresas ativas (não descartar por erro de dado).
+        // Ajuste 2026-07-09 (força tarefa): a spec original DESEMP-04 dizia
+        // "empresa nova (menos de 2 meses na carteira) não conta". O código
+        // usava `company_users.created_at` como proxy — MAS o pivot foi
+        // recriado recentemente para praticamente todas as empresas (rebind
+        // administrativo), o que fez 97% das empresas serem consideradas
+        // "novas" e o ranking ficar quase vazio (6 empresas qualificadas
+        // de 212 na equipe toda).
+        //
+        // Diagnóstico do VPS mostrou que trocar o filtro para
+        // `companies.created_at` (data de CADASTRO da empresa no sistema)
+        // sobe a qualificação para 160 de 212 (~75%) — que é o resultado
+        // que faz sentido semanticamente: filtrar empresas RECÉM cadastradas
+        // no sistema, não empresas com vínculo recém-recriado.
         $limiteNova = $mes->copy()->subMonth()->startOfMonth();
 
         $companiesQualificadas = $companies->filter(function ($company) use ($limiteNova) {
-            // Pivot pode não vir eager loaded — protege contra erro de dado.
-            $pivotCreated = optional($company->pivot)->created_at;
-            if ($pivotCreated === null) {
-                return true; // fallback: não descartar
+            $createdAt = $company->created_at;
+            if ($createdAt === null) {
+                return true; // fallback: não descartar por erro de dado
             }
-            $pivotCarbon = $pivotCreated instanceof Carbon
-                ? $pivotCreated
-                : Carbon::parse($pivotCreated);
+            $createdCarbon = $createdAt instanceof Carbon
+                ? $createdAt
+                : Carbon::parse($createdAt);
 
-            return $pivotCarbon->lt($limiteNova);
+            return $createdCarbon->lt($limiteNova);
         });
 
         if ($companiesQualificadas->isEmpty()) {

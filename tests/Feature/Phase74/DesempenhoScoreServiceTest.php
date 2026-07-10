@@ -149,8 +149,19 @@ class DesempenhoScoreServiceTest extends TestCase
      */
     private function criarEmpresaNaCarteira(User $user, string $pivotCreatedAt = '-3 months', string $role = 'consultor'): Company
     {
-        $company = Company::factory()->create();
+        // Ajuste 2026-07-09 (força tarefa): o filtro "empresa nova" agora usa
+        // companies.created_at (não pivot->created_at). Continuamos aceitando
+        // $pivotCreatedAt como parâmetro para preservar a API dos testes, mas
+        // aplicamos o timestamp EM AMBOS os lugares (company + pivot) para o
+        // cenário de teste bater com a lógica de produção.
         $ts = Carbon::parse($pivotCreatedAt)->toDateTimeString();
+
+        $company = Company::factory()->create();
+        // Força companies.created_at no timestamp fixture-controlado.
+        $company->timestamps = false;
+        $company->forceFill(['created_at' => $ts, 'updated_at' => $ts])->save();
+        $company->timestamps = true;
+
         DB::table('company_users')->insert([
             'company_id'  => $company->id,
             'user_id'     => $user->id,
