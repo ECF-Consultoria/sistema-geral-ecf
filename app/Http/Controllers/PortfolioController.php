@@ -299,8 +299,20 @@ class PortfolioController extends Controller
         $totalFaturamento    = (float) $empresas->sum('faturamento');
         $totalMargemAtual    = (float) $empresas->sum(fn ($e) => $e['margem_contribuicao'] ?? 0);
         $totalMargemAnterior = (float) $empresas->sum(fn ($e) => $e['margem_contribuicao_anterior'] ?? 0);
-        $variacaoMargemPct   = $totalMargemAnterior > 0
-            ? round((($totalMargemAtual - $totalMargemAnterior) / $totalMargemAnterior) * 100, 2)
+
+        // Ajuste 2026-07-10 (audit Gabriela): variação % agora é a MÉDIA das
+        // variações POR EMPRESA — mesma fórmula que DesempenhoScoreService::
+        // computeVarMargem usa no ranking. Antes usava variação do total
+        // agregado (SUM/SUM), que pesava empresas grandes e podia divergir do
+        // ranking em sinal (Gabriela: ranking +18,2% vs carteira -16,6%).
+        // Alinhamento com ranking = fonte de verdade da nota / bônus.
+        // Totais em R$ acima continuam agregados (info factual de volume).
+        $variacoesPorEmpresa = $empresas
+            ->pluck('margem_variacao_pct')
+            ->filter(fn ($v) => $v !== null);
+
+        $variacaoMargemPct = $variacoesPorEmpresa->isNotEmpty()
+            ? round((float) $variacoesPorEmpresa->avg(), 2)
             : null;
 
         // Contadores pra UI expor transparência sobre qualidade dos dados.
