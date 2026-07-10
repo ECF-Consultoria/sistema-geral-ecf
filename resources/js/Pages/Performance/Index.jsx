@@ -117,6 +117,11 @@ export default function PerformanceIndex({
     // Usuário logado (para gate do botão "Configuração" admin-only).
     const { auth } = usePage().props;
     const isAdmin = auth?.user?.role === 'admin';
+    // Ajuste 2026-07-10 · só admin/líder podem abrir a carteira de outro
+    // profissional (portfolio.show). Pro resto, o clique na linha do ranking
+    // seria bloqueado por 403 no server — em vez de mostrar erro, deixamos
+    // a linha não-clicável.
+    const podeAbrirCarteira = !!(auth?.user?.is_admin || auth?.user?.is_lider);
 
     // Cada setor tem rota própria: POLOS → publicacao.desempenho.index e
     // consultoria → performance.index.
@@ -379,10 +384,11 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                         <div
                             key={u.id}
                             className={cn(
-                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
+                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors',
+                                podeAbrirCarteira && 'hover:bg-white/[0.04] cursor-pointer',
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                             )}
-                            onClick={() => router.visit(route('portfolio.show', u.id))}
+                            onClick={podeAbrirCarteira ? () => router.visit(route('portfolio.show', u.id)) : undefined}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">

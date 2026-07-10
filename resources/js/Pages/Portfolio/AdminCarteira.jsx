@@ -233,7 +233,7 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                 ? `${resumo.variacao_margem_pct >= 0 ? '+' : ''}${resumo.variacao_margem_pct.toFixed(1)}%`
                                 : '—'
                         }
-                        sub="Média das variações por empresa (mesma métrica do ranking)"
+                        sub="Média das variações por empresa"
                         icon={resumo?.variacao_margem_pct != null && resumo.variacao_margem_pct >= 0 ? TrendingUp : TrendingDown}
                         accent={
                             resumo?.variacao_margem_pct == null
