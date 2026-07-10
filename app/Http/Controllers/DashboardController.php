@@ -783,7 +783,9 @@ class DashboardController extends Controller
 
         $perfMembros = $perfMembrosQuery->orderBy('name')->get(['id', 'name'])
             ->map(function ($u) use ($scoreService, $mesReferenciaPerf, $faixaParaClassificacao) {
-                $r = $scoreService->compute($u, $mesReferenciaPerf);
+                // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
+                // Antes: 11 users × até 4 HTTP calls por empresa = 70s cold.
+                $r = $scoreService->computeCached($u, $mesReferenciaPerf);
                 $notaFinal   = $r['nota_final'] ?? null;
                 $faixaSlug   = $r['faixa_bonus'] ?? null;
                 return [

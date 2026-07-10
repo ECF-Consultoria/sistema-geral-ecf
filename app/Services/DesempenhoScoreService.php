@@ -13,6 +13,7 @@ use App\Services\Nps\NpsScoreCalculator;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Engine v2 de score do módulo Desempenho — Phase 74 (D-05, D-06, D-07, D-17).
@@ -112,6 +113,46 @@ class DesempenhoScoreService
      *  4. `classificarFaixa` + `promoverPor2MesesConsecutivos` — DESEMP-08.
      *  5. Monta shape final.
      */
+    /**
+     * Versão cacheada de `compute()` — mesma resposta, envolvida em cache
+     * Redis com TTL adaptativo (mês fechado = 7 dias / mês em curso = 10 min).
+     *
+     * Ajuste 2026-07-10 (audit performance-lentidao): antes o `/dashboard`,
+     * `/dashboard/mercadolivre` (admin) e `/performance` chamavam
+     * `compute()` sequencialmente pros 11 analistas/estrategistas a cada
+     * request, e cada compute() fazia até 4 HTTP calls síncronas por
+     * empresa à API do Mercado Livre. Cold cache = 70s pra carregar uma
+     * página. Com este cache, requests subsequentes lêem direto do Redis
+     * (~1s pra o dashboard inteiro).
+     *
+     * Cache é INVALIDADO naturalmente pelo TTL curto (mês em curso) ou
+     * pelo passar do tempo (mês fechado). Não precisa invalidar
+     * explicitamente — dado se atualiza a cada 10min pro mês em curso.
+     *
+     * Não use dentro de jobs/commands de snapshot ou consolidação —
+     * chame `compute()` direto pra garantir dado fresco.
+     */
+    public function computeCached(User $user, Carbon $mesReferencia): array
+    {
+        $mes         = $mesReferencia->copy()->startOfMonth();
+        $mesCorrente = Carbon::now()->startOfMonth();
+        $cacheKey    = sprintf('desempenho.compute.v1.%d.%s', $user->id, $mes->format('Y-m'));
+
+        // Mês fechado (passado): dado estável, cache longo — invalida só quando
+        // rodar o snapshot mensal ou passar do TTL.
+        // Mês em curso: dado evolui hora-a-hora conforme vendas entram na Adman/ML,
+        // 10min garante frescor razoável sem estourar as HTTP calls remotas.
+        $ttl = $mes->lt($mesCorrente)
+            ? now()->addDays(7)
+            : now()->addMinutes(10);
+
+        return Cache::remember(
+            $cacheKey,
+            $ttl,
+            fn () => $this->compute($user, $mesReferencia),
+        );
+    }
+
     public function compute(User $user, Carbon $mesReferencia): array
     {
         $mes = $mesReferencia->copy()->startOfMonth();

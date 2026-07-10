@@ -1191,7 +1191,8 @@ class PortfolioController extends Controller
         // Comparação contextual usa `nota_final` e componentes.* (nps_medio,
         // var_faturamento_pct, var_margem_pct) em vez do shape v1.
         $mesReferencia = Carbon::now()->startOfMonth();
-        $performanceProfissional = $this->scoreService->compute($user, $mesReferencia);
+        // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
+        $performanceProfissional = $this->scoreService->computeCached($user, $mesReferencia);
 
         // Comparacao contextual com pares do mesmo cargo (analista x analista
         // ou estrategista x estrategista). Identifica cargo via user_setores
@@ -1216,7 +1217,8 @@ class PortfolioController extends Controller
             // Calcula nota v2 de cada par (N+1 mas N tipicamente <= 10).
             $scoresPares = collect();
             foreach (User::whereIn('id', $paresIds)->get() as $par) {
-                $resultadoPar = $this->scoreService->compute($par, $mesReferencia);
+                // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
+                $resultadoPar = $this->scoreService->computeCached($par, $mesReferencia);
                 // Sem carteira → filtra do grupo (não entra na mediana).
                 if (($resultadoPar['sem_carteira'] ?? false) === true) {
                     continue;

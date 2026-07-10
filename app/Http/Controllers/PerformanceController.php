@@ -105,10 +105,13 @@ class PerformanceController extends Controller
             if (! $ehMesEmCurso && $snap) {
                 $resultado = $snap->breakdown_json ?? [];
                 if (! isset($resultado['componentes'])) {
-                    $resultado = $this->scoreService->compute($u, $mesReferencia);
+                    $resultado = $this->scoreService->computeCached($u, $mesReferencia);
                 }
             } else {
-                $resultado = $this->scoreService->compute($u, $mesReferencia);
+                // Ajuste 2026-07-10 (audit performance-lentidao): usa versão
+                // cacheada — antes cold cache demorava 70s pra 11 users;
+                // agora resposta subsequente <1s.
+                $resultado = $this->scoreService->computeCached($u, $mesReferencia);
             }
 
             $componentes = $resultado['componentes'] ?? [];
@@ -265,7 +268,8 @@ class PerformanceController extends Controller
 
         // ── Score + métricas agregadas de carteira ──
         $mesReferencia = Carbon::now()->startOfMonth();
-        $data = $this->scoreService->compute($user, $mesReferencia);
+        // Ajuste 2026-07-10 (audit performance-lentidao): usa cache Redis.
+        $data = $this->scoreService->computeCached($user, $mesReferencia);
 
         // ── Empresas em carteira (todas, ativas) ──
         // Eager-load mlToken pra detectar conexão OAuth ativa (badge ML).
@@ -881,7 +885,8 @@ class PerformanceController extends Controller
         if ($snap && is_array($snap->breakdown_json) && isset($snap->breakdown_json['componentes'])) {
             $resultado = $snap->breakdown_json;
         } else {
-            $resultado = $this->scoreService->compute($user, $mesSelecionado);
+            // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
+            $resultado = $this->scoreService->computeCached($user, $mesSelecionado);
         }
 
         return Inertia::render('Performance/Show', [
