@@ -176,6 +176,89 @@ class AdmanService
         }
     }
 
+    /**
+     * Sync SÓ dos campos de custo/margem que o ML API não expõe.
+     *
+     * Ajuste 2026-07-10 (audit margem-luiz-ana): pós-cutover Adman→ML
+     * (commit c85b86f, 01/06/2026), empresas com OAuth ML ativo pararam
+     * de rodar `adman:sync` e passaram a ser sincronizadas SÓ pelo
+     * `MercadoLivreService::syncCompany`, que não popula `contribution_margin`
+     * nem `product_cost` porque a API do ML não expõe CMV do vendedor.
+     * Resultado: 59 empresas com margem NULL system-wide desde 30/06.
+     *
+     * Este método complementa o cutover: mantém revenue/ad_spend/tacos vindo
+     * do ML (mais fresco), e busca APENAS os campos de custo direto na Adman
+     * via `fetchPerformance` (mesma API do adman:sync). O `updateOrCreate`
+     * usa atributos PARCIAIS — só os campos de custo/margem —, então não
+     * sobrescreve os dados que o ML já populou.
+     *
+     * Retorna null quando: empresa sem cust_id, Adman não devolveu nem
+     * `productCost` nem `profitMargin`, ou nenhum dos updates é aplicável.
+     * Nesses casos NÃO grava — evita poluir `AdmanMetric` com row sem
+     * dados úteis.
+     */
+    public function syncCompanyMarginOnly(Company $company, ?string $date = null): ?AdmanMetric
+    {
+        $date   = $date ?? now()->subDay()->toDateString();
+        $custId = $company->adman_account_id ?: $company->ml_store_id;
+
+        if (! $custId) {
+            return null;
+        }
+
+        $marketplace = $company->marketplace ?? 'meli';
+
+        try {
+            $performance = $this->fetchPerformance($custId, $date, $date, 3, $marketplace);
+            $summarized  = $performance['summarizedData'] ?? [];
+            $items       = $performance['items'] ?? [];
+
+            $grossBilling = $summarized['grossBilling']['value']  ?? null;
+            $productCost  = $summarized['productCost']['value']   ?? null;
+            $taxes        = $summarized['taxes']['value']         ?? null;
+            $shippingCost = $summarized['shippingCost']['value']  ?? null;
+            $returnCost   = $summarized['returnCost']['value']    ?? null;
+            $profitMargin = $summarized['profitMargin']['value']  ?? null;
+
+            // Só grava se Adman devolveu AO MENOS profitMargin ou productCost —
+            // sem esses campos o call não agrega valor sobre o que ML já traz.
+            if ($productCost === null && $profitMargin === null) {
+                return null;
+            }
+
+            $marginPct = ($grossBilling !== null && $grossBilling > 0 && $profitMargin !== null)
+                ? round(($profitMargin / $grossBilling) * 100, 4)
+                : null;
+
+            $productsTotal       = count($items);
+            $productsWithoutCost = collect($items)->filter(fn ($i) => ($i['cost']['value'] ?? 0) == 0)->count();
+
+            // Atributos PARCIAIS — só campos de custo/margem. Laravel updateOrCreate
+            // só toca os campos passados, preservando revenue/ad_spend/tacos que o
+            // ML populou.
+            $updates = [
+                'product_cost'            => $productCost,
+                'taxes'                   => $taxes,
+                'shipping_cost'           => $shippingCost,
+                'return_cost'             => $returnCost,
+                'contribution_margin'     => $profitMargin,
+                'contribution_margin_pct' => $marginPct,
+            ];
+            if ($productsTotal > 0) {
+                $updates['products_total']        = $productsTotal;
+                $updates['products_without_cost'] = $productsWithoutCost;
+            }
+
+            return AdmanMetric::updateOrCreate(
+                ['company_id' => $company->id, 'reference_date' => $date],
+                $updates,
+            );
+        } catch (\Throwable $e) {
+            Log::warning("[Adman margem-only] Falha empresa {$company->id} ({$company->name}) em {$date}: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
     public function syncCampaigns(Company $company, string $custId, string $date, string $marketplace = 'meli'): void
     {
         $campaigns = $this->fetchCampaigns($custId, $marketplace);

@@ -187,6 +187,18 @@ Schedule::command('desempenho:consolidar-mes')
     ->onOneServer()
     ->withoutOverlapping();
 
+// Ajuste 2026-07-10 (audit margem-luiz-ana) — sincroniza custo/margem via Adman
+// para empresas com OAuth ML ativo. Após o cutover Adman→ML (commit c85b86f,
+// 01/06), essas empresas ficaram sem `contribution_margin` porque a API do ML
+// não expõe CMV. Roda 11:20 BRT, 15min após o ml:sync (11:05) — mesmo horário
+// da cascata D-1, complementa sem sobrescrever revenue/ad_spend do ML.
+Schedule::command('adman:sync-margem')
+    ->dailyAt('11:20')
+    ->timezone('America/Sao_Paulo')
+    ->name('sync-adman-margem-oauth-ml')
+    ->onOneServer()
+    ->withoutOverlapping();
+
 // Ajuste 2026-07-10 (audit performance-lentidao) — pré-aquece o cache Redis do
 // compute() de desempenho a cada 8min. TTL do cache é 10min (mês em curso),
 // então 8min garante 2min de margem antes de expirar. Faz o custo pesado
