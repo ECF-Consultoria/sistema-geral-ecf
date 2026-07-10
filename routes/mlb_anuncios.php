@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\MlbAnuncioController;
-use App\Support\Permissions;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -10,12 +9,13 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | Em arquivo próprio (registrado no bootstrap/app.php via `then`) para não
-| colidir com edições concorrentes em routes/web.php. O grupo mlb.anuncios.*
-| é gateado pela permissão mlb.anunciar (admin faz bypass em hasPermission()).
+| colidir com edições concorrentes em routes/web.php. Por ora o módulo é
+| ADMIN-ONLY (role:admin) — "em Dev", para teste isolado antes de liberar à
+| equipe de publicação (quando abrir, trocar para permission:mlb.anunciar).
 |
 */
 
-Route::middleware(['auth', 'verified', 'permission:' . Permissions::MLB_ANUNCIAR])
+Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('mlb/anuncios')
     ->name('mlb.anuncios.')
     ->group(function () {
