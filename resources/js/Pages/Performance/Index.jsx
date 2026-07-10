@@ -388,22 +388,15 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                     const faixaCls = FAIXA_BADGE_CLS[faixaSlug] ?? FAIXA_BADGE_CLS.sem_bonus;
                     const faixaLbl = FAIXA_LABEL[faixaSlug] ?? faixaSlug;
                     const nota = u.nota_final != null ? Number(u.nota_final).toFixed(2) : '—';
-                    // Ajuste 2026-07-10 · gate de clique na linha (só admin/líder
-                    // conseguem abrir carteira de outro profissional; pros demais
-                    // deixamos a linha não-clicável em vez de bater no 403).
-                    // Computado DENTRO do map pra evitar quirk do minifier em que
-                    // a declaração era eliminada mas os usos preservados.
-                    const canOpen = auth?.user?.is_admin === true || auth?.user?.is_lider === true;
 
                     return (
                         <div
                             key={u.id}
                             className={cn(
-                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors',
-                                canOpen && 'hover:bg-white/[0.04] cursor-pointer',
+                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                             )}
-                            onClick={canOpen ? () => router.visit(route('portfolio.show', u.id)) : undefined}
+                            onClick={() => router.visit(route('portfolio.show', u.id))}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
