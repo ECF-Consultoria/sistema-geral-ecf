@@ -401,12 +401,15 @@ class PerformanceController extends Controller
         }
 
         // Meses do range (6 meses) — sempre presentes na UI mesmo sem dados.
+        // Bugfix 2026-07-09: usar $mesCursor em vez de $data pra NÃO sobrescrever
+        // o $data original (retorno do scoreService->compute lá em cima) — isso
+        // quebrava a tela do estrategista/analista com 500 (Carbon usado como array).
         $mesesHeatmap = collect();
         for ($i = 5; $i >= 0; $i--) {
-            $data = now()->copy()->subMonths($i);
+            $mesCursor = now()->copy()->subMonths($i);
             $mesesHeatmap->push([
-                'chave' => $data->format('Y-m'),
-                'label' => mb_strtolower($data->translatedFormat('M/y')),
+                'chave' => $mesCursor->format('Y-m'),
+                'label' => mb_strtolower($mesCursor->translatedFormat('M/y')),
             ]);
         }
 
