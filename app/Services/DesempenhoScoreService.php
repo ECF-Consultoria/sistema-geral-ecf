@@ -514,6 +514,33 @@ class DesempenhoScoreService
             ->get()
             ->keyBy('company_id');
 
+        // Ajuste 2026-07-10 (fix Tomelin — auditoria margem invertida): quando
+        // o mês está EM CURSO, a Adman frequentemente atrasa o cálculo de
+        // `profitMargin` em relação ao `revenue` (custo/produto exige
+        // processamento adicional) — os últimos 1-3 dias da janela chegam com
+        // `contribution_margin = NULL` mesmo já tendo revenue sincronizado.
+        // O SUM ignora esses dias (NULL não soma), então a janela ATUAL fica
+        // artificialmente menor que a janela ANTERIOR (histórico fechado, sem
+        // lag) — produzindo variação % negativa/invertida que não reflete a
+        // realidade (TOMELIN ARAMADOS: sistema mostrava -43,7% com tendência
+        // real de +42%). Descobrimos, por empresa, o último dia com margem
+        // disponível na janela atual e recortamos a MESMA quantidade de dias
+        // do fim da janela anterior — mantém a contagem de dias comparável.
+        //
+        // Limitação conhecida: só corrige gap NO FINAL da janela (padrão
+        // observado / lag estrutural da Adman). Gap NO MEIO da janela (outage
+        // pontual) não é coberto por este fix.
+        $ultimoDiaComMargemPorEmpresa = collect();
+        if ($ehMesEmCurso) {
+            $ultimoDiaComMargemPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+                ->whereDate('reference_date', '>=', $inicioMes->toDateString())
+                ->whereDate('reference_date', '<=', $fimMes->toDateString())
+                ->whereNotNull('contribution_margin')
+                ->selectRaw('company_id, MAX(reference_date) as ultimo_dia')
+                ->groupBy('company_id')
+                ->pluck('ultimo_dia', 'company_id');
+        }
+
         $vars = collect();
 
         foreach ($companies as $company) {
@@ -530,6 +557,30 @@ class DesempenhoScoreService
 
             $atual    = (float) $rowAtual->margem;
             $anterior = (float) $rowAnterior->margem;
+
+            // Recorte de dias-fim (fix Tomelin): se a janela atual tem dias
+            // finais sem margem (lag da Adman), recorta a MESMA quantidade de
+            // dias no fim da janela anterior antes de comparar.
+            if ($ehMesEmCurso && $ultimoDiaComMargemPorEmpresa->has($company->id)) {
+                $ultimoDia     = Carbon::parse($ultimoDiaComMargemPorEmpresa->get($company->id))->startOfDay();
+                $diasSemDados  = (int) $ultimoDia->diffInDays($fimMes->copy()->startOfDay());
+
+                if ($diasSemDados > 0) {
+                    $fimAnterRecortado = $fimAnter->copy()->subDays($diasSemDados)->endOfDay();
+
+                    $rowAnteriorRecortado = AdmanMetric::where('company_id', $company->id)
+                        ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
+                        ->whereDate('reference_date', '<=', $fimAnterRecortado->toDateString())
+                        ->selectRaw('SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
+                        ->first();
+
+                    if ($rowAnteriorRecortado === null || (int) $rowAnteriorRecortado->margem_dias === 0) {
+                        continue; // sem baseline comparável após o recorte
+                    }
+
+                    $anterior = (float) $rowAnteriorRecortado->margem;
+                }
+            }
 
             if ($anterior <= 0) {
                 continue; // sem baseline de margem — descarta

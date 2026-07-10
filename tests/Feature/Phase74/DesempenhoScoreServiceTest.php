@@ -502,6 +502,58 @@ class DesempenhoScoreServiceTest extends TestCase
             'Margem vem sempre do Adman (contribution_margin), mesmo com caseFor=so-ml.');
     }
 
+    #[Test]
+    public function test_var_margem_nao_inverte_sinal_quando_janela_atual_tem_dias_finais_sem_margem(): void
+    {
+        // Regressão · bug "Tomelin Aramados" (audit-ranking-margem-tomelin,
+        // 2026-07-10): mês EM CURSO, Adman atrasa profitMargin vs revenue —
+        // últimos dias da janela atual chegam com contribution_margin NULL
+        // (revenue presente). Sem o fix, SUM(margem) da janela atual (só 5
+        // dos 9 dias) era comparado contra a janela anterior COMPLETA (9
+        // dias), invertendo o sinal da variação (real: melhora diária de
+        // +50%; sem fix: aparecia como queda de ~-16,67%).
+        //
+        // "Agora" congelado em 09/07 10:00 → mês de referência (julho) fica
+        // EM CURSO, janela atual = dia 1..9, janela anterior = dia 1..9 de
+        // junho (mesmo range relativo) — replica exatamente o cenário real.
+        Carbon::setTestNow(Carbon::parse('2026-07-09 10:00:00'));
+
+        $u = $this->criarUserAnalista('Analista Margem Lag Adman');
+        $c = $this->criarEmpresaNaCarteira($u, '-3 months');
+
+        // Junho (janela anterior): 9 dias completos, margem 100/dia → soma 900.
+        for ($dia = 1; $dia <= 9; $dia++) {
+            AdmanMetric::create([
+                'company_id'          => $c->id,
+                'reference_date'      => Carbon::parse("2026-06-{$dia}")->toDateString(),
+                'revenue'             => 1000,
+                'contribution_margin' => 100,
+            ]);
+        }
+
+        // Julho (janela atual): dias 1-5 com margem 150/dia (melhora real de
+        // +50% vs junho); dias 6-9 com revenue sincronizado mas margem NULL
+        // (lag da Adman — cenário exato do bug).
+        for ($dia = 1; $dia <= 9; $dia++) {
+            AdmanMetric::create([
+                'company_id'          => $c->id,
+                'reference_date'      => Carbon::parse("2026-07-{$dia}")->toDateString(),
+                'revenue'             => 1000,
+                'contribution_margin' => $dia <= 5 ? 150 : null,
+            ]);
+        }
+
+        $service = app(DesempenhoScoreService::class);
+        $r = $service->compute($u, Carbon::parse('2026-07-01'));
+
+        // Fix: janela anterior recortada para os mesmos 5 dias (100*5=500) —
+        // var = (750-500)/500 = +50.00% (positiva, reflete a melhora real).
+        // Sem o fix, o valor seria (750-900)/900 = -16.67% (sinal invertido).
+        $this->assertEqualsWithDelta(50.00, $r['componentes']['var_margem_pct'], 0.01,
+            'Dias finais sem margem na janela atual NÃO devem inverter o sinal da variação — '
+            .'janela anterior deve ser recortada pra mesma contagem de dias (fix Tomelin).');
+    }
+
     // ─── DESEMP-06 · Absenteísmo em standby ─────────────────────────────────
 
     #[Test]

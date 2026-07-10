@@ -182,6 +182,29 @@ class PortfolioController extends Controller
             ->get()
             ->keyBy('company_id');
 
+        // Ajuste 2026-07-10 (fix Tomelin — auditoria margem invertida): quando
+        // o mês está EM CURSO, a Adman frequentemente atrasa o cálculo de
+        // `profitMargin` em relação ao `revenue` — os últimos 1-3 dias da
+        // janela chegam com `contribution_margin = NULL` mesmo já tendo
+        // revenue sincronizado. Sem tratamento, a janela ATUAL fica
+        // artificialmente menor que a ANTERIOR (histórico fechado, sem lag),
+        // invertendo o sinal da variação (ex: TOMELIN ARAMADOS mostrava
+        // -43,7% com tendência real de +42%). Descobrimos, por empresa, o
+        // último dia com margem disponível na janela atual — usado abaixo
+        // pra recortar a MESMA quantidade de dias do fim da janela anterior.
+        //
+        // Limitação conhecida: só corrige gap NO FINAL da janela (padrão
+        // observado / lag estrutural da Adman), não gap no MEIO da janela.
+        $ultimoDiaComMargemPorEmpresa = collect();
+        if ($ehMesEmCurso) {
+            $ultimoDiaComMargemPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+                ->whereBetween('reference_date', [$dateFrom, $dateTo])
+                ->whereNotNull('contribution_margin')
+                ->selectRaw('company_id, MAX(reference_date) as ultimo_dia')
+                ->groupBy('company_id')
+                ->pluck('ultimo_dia', 'company_id');
+        }
+
         // Cache Adman gross (fonte preferencial de revenue no mês atual —
         // mais completa que SUM DB local; hotfix 2026-06-19).
         $custIds = $rawCompanies->map(fn ($c) => $c->cust_id)
@@ -191,7 +214,7 @@ class PortfolioController extends Controller
             ->all();
         $grossAtual = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
 
-        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual) {
+        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $ultimoDiaComMargemPorEmpresa, $ehMesEmCurso, $inicioAnter, $fimAnter, $fimMes) {
             $custId       = $c->cust_id;
             $rowAtual     = $atualPorEmpresa->get($c->id);
             $rowAnterior  = $anteriorPorEmpresa->get($c->id);
@@ -214,6 +237,30 @@ class PortfolioController extends Controller
             $temMargemAnterior = $rowAnterior !== null && (int) $rowAnterior->margem_dias > 0;
             $margemAtual       = $temMargemAtual    ? (float) $rowAtual->margem    : null;
             $margemAnterior    = $temMargemAnterior ? (float) $rowAnterior->margem : null;
+
+            // Recorte de dias-fim (fix Tomelin): se a janela atual tem dias
+            // finais sem margem (lag da Adman), recorta a MESMA quantidade de
+            // dias no fim da janela anterior antes de comparar.
+            if ($ehMesEmCurso && $temMargemAtual && $temMargemAnterior && $ultimoDiaComMargemPorEmpresa->has($c->id)) {
+                $ultimoDia    = Carbon::parse($ultimoDiaComMargemPorEmpresa->get($c->id))->startOfDay();
+                $diasSemDados = (int) $ultimoDia->diffInDays($fimMes->copy()->startOfDay());
+
+                if ($diasSemDados > 0) {
+                    $fimAnterRecortado = $fimAnter->copy()->subDays($diasSemDados)->endOfDay();
+
+                    $rowAnteriorRecortado = AdmanMetric::where('company_id', $c->id)
+                        ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
+                        ->whereDate('reference_date', '<=', $fimAnterRecortado->toDateString())
+                        ->selectRaw('SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
+                        ->first();
+
+                    if ($rowAnteriorRecortado === null || (int) $rowAnteriorRecortado->margem_dias === 0) {
+                        $margemAnterior = null; // sem baseline comparável após o recorte
+                    } else {
+                        $margemAnterior = (float) $rowAnteriorRecortado->margem;
+                    }
+                }
+            }
 
             // Só calcula variação quando temos dados válidos EM AMBAS as janelas
             // E a baseline anterior é > 0. Caso contrário mostra "—" (evita o
@@ -617,8 +664,25 @@ class PortfolioController extends Controller
         // (consumido na derivacao de status + acao_recomendada abaixo).
         $sumDbAnteriorPorEmpresa = $sumDbAnterior; // keyed by company_id
 
+        // Ajuste 2026-07-10 (fix Tomelin — audit-ranking-margem-tomelin):
+        // mesmo bug já corrigido em renderCarteiraProfissional. No mês em curso
+        // a Adman atrasa `profitMargin` 1-3 dias em relação a `revenue`, então
+        // a janela ATUAL soma menos dias que a ANTERIOR (histórico fechado, sem
+        // lag), invertendo o sinal da variação. Descobrimos o último dia com
+        // margem disponível por empresa e recortamos a MESMA quantidade de dias
+        // do fim da janela anterior antes de comparar.
+        $ultimoDiaComMargemPorEmpresa = collect();
+        if ($isMesAtual) {
+            $ultimoDiaComMargemPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsAll)
+                ->whereBetween('reference_date', [$dateFrom, $dateTo])
+                ->whereNotNull('contribution_margin')
+                ->selectRaw('company_id, MAX(reference_date) as ultimo_dia')
+                ->groupBy('company_id')
+                ->pluck('ultimo_dia', 'company_id');
+        }
+
         // Mapeia cada empresa pro array final
-        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa, $accountAtual) {
+        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa, $accountAtual, $margemAnteriorPorEmpresa, $ultimoDiaComMargemPorEmpresa, $dateFromAnterior, $dateToAnterior, $dateTo) {
             $activeGrant = $c->grants->where('status', 'active')->first();
             $custId      = $c->cust_id; // accessor: adman_account_id ?: ml_store_id
 
@@ -676,6 +740,32 @@ class PortfolioController extends Controller
             // anterior <= 0 (mês em que não houve venda com margem cadastrada).
             $margemAtualAbs    = $sumRow ? (float) $sumRow->margem_abs : 0.0;
             $margemAnteriorAbs = (float) ($margemAnteriorPorEmpresa[$c->id] ?? 0.0);
+
+            // Recorte de dias-fim (fix Tomelin 2026-07-10): se a janela atual
+            // tem dias finais sem margem (lag da Adman), recorta a MESMA
+            // quantidade de dias do fim da janela anterior antes de comparar.
+            if ($isMesAtual && $margemAtualAbs > 0 && $margemAnteriorAbs > 0 && $ultimoDiaComMargemPorEmpresa->has($c->id)) {
+                $ultimoDia    = Carbon::parse($ultimoDiaComMargemPorEmpresa->get($c->id))->startOfDay();
+                $fimAtualCarbon = Carbon::parse($dateTo)->startOfDay();
+                $diasSemDados = (int) $ultimoDia->diffInDays($fimAtualCarbon);
+
+                if ($diasSemDados > 0) {
+                    $fimAnterRecortado = Carbon::parse($dateToAnterior)->subDays($diasSemDados)->toDateString();
+
+                    $rowAnteriorRecortado = AdmanMetric::where('company_id', $c->id)
+                        ->whereBetween('reference_date', [$dateFromAnterior, $fimAnterRecortado])
+                        ->whereNotNull('revenue')
+                        ->selectRaw('SUM(contribution_margin) as margem_abs, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
+                        ->first();
+
+                    if ($rowAnteriorRecortado !== null && (int) $rowAnteriorRecortado->margem_dias > 0) {
+                        $margemAnteriorAbs = (float) $rowAnteriorRecortado->margem_abs;
+                    } else {
+                        $margemAnteriorAbs = 0.0; // sem baseline comparável após o recorte
+                    }
+                }
+            }
+
             $margemVariacaoPct = $margemAnteriorAbs > 0
                 ? round((($margemAtualAbs - $margemAnteriorAbs) / $margemAnteriorAbs) * 100, 2)
                 : null;
