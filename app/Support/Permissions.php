@@ -56,6 +56,8 @@ class Permissions
     public const MLB_METAS                 = 'mlb.metas';
     /** Inteligência de anúncios MLB — coleta e mineração de keywords de concorrentes. */
     public const MLB_COLETA                = 'mlb.coleta';
+    /** Anunciar no Mercado Livre — criar e publicar anúncios na conta do cliente via API. */
+    public const MLB_ANUNCIAR              = 'mlb.anunciar';
 
     public const ADMIN_EMPRESAS            = 'admin.empresas';
     public const ADMIN_RELATORIO           = 'admin.relatorio';
@@ -148,6 +150,7 @@ class Permissions
                 ['key' => self::MLB_IMPLEMENTACAO, 'label' => 'Pub · Onboarding',     'description' => 'Onboarding de novas empresas'],
                 ['key' => self::MLB_METAS,         'label' => 'Pub · Metas',          'description' => 'Configuração de metas de publicação'],
                 ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
+                ['key' => self::MLB_ANUNCIAR,      'label' => 'Pub · Anunciar ML',    'description' => 'Criar e publicar anúncios na conta do cliente via API'],
             ],
             'Administrativo' => [
                 ['key' => self::ADMIN_EMPRESAS,    'label' => 'Adm · Empresas',    'description' => 'Cadastro administrativo de empresas'],

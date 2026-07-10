@@ -9,6 +9,13 @@ return Application::configure(basePath: dirname(__DIR__))
         web: __DIR__.'/../routes/web.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        // Módulo "Anunciar Mercado Livre" em arquivo próprio (evita colisão de
+        // merge com edições concorrentes em routes/web.php). Registrado no grupo
+        // web para ter sessão/CSRF/Inertia; o próprio arquivo aplica auth+permissão.
+        then: function (): void {
+            \Illuminate\Support\Facades\Route::middleware('web')
+                ->group(__DIR__.'/../routes/mlb_anuncios.php');
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->validateCsrfTokens(except: [
