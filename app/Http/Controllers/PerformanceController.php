@@ -361,6 +361,73 @@ class PerformanceController extends Controller
             ];
         })->filter()->values();
 
+        // ── NPS heatmap (empresa × mês) ─────────────────────────────────
+        // Ajuste 2026-07-09: novo widget visual — linhas = empresas, colunas =
+        // últimos 6 meses, células = média das notas NPS. Intensidade da cor
+        // proporcional à nota (baixa vermelho → alta laranja/amarelo ECF).
+        //
+        // Escopo: últimos 6 meses (janela suficiente pra ver tendências sem
+        // sobrecarregar o widget). Dual-path v15/legacy no cálculo da nota.
+        $seisMesesAtras = now()->copy()->subMonths(5)->startOfMonth();
+
+        $surveysHeatmap = \App\Models\NpsSurvey::with(['response', 'company:id,name'])
+            ->whereIn('company_id', $companyIds)
+            ->where('status', 'completed')
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $seisMesesAtras)
+            ->get();
+
+        // Agrupa por (company_id, mês YYYY-MM) → média das notas.
+        $matriz = $surveysHeatmap
+            ->map(function ($s) use ($calculator, $dimensao, $npsField) {
+                $nota = ($s->template_id !== null && $s->response)
+                    ? $calculator->compute($s->response, $dimensao)
+                    : $s->response?->$npsField;
+                return [
+                    'company_id' => $s->company_id,
+                    'mes'        => $s->completed_at->format('Y-m'),
+                    'nota'       => $nota !== null ? (float) $nota : null,
+                ];
+            })
+            ->filter(fn ($r) => $r['nota'] !== null)
+            ->groupBy(fn ($r) => $r['company_id'] . '|' . $r['mes'])
+            ->map(fn ($group) => round($group->avg('nota'), 2));
+
+        // Reorganiza: {company_id: {mes: media}}
+        $notasPorEmpresaMes = [];
+        foreach ($matriz as $chave => $media) {
+            [$cid, $mes] = explode('|', $chave);
+            $notasPorEmpresaMes[$cid][$mes] = $media;
+        }
+
+        // Meses do range (6 meses) — sempre presentes na UI mesmo sem dados.
+        $mesesHeatmap = collect();
+        for ($i = 5; $i >= 0; $i--) {
+            $data = now()->copy()->subMonths($i);
+            $mesesHeatmap->push([
+                'chave' => $data->format('Y-m'),
+                'label' => mb_strtolower($data->translatedFormat('M/y')),
+            ]);
+        }
+
+        // Empresas com pelo menos 1 nota no range (para não poluir com linhas
+        // vazias). Se todas na carteira sem notas, mostra as 10 primeiras
+        // ativas para o widget não ficar completamente vazio.
+        $companiesComDados = collect(array_keys($notasPorEmpresaMes));
+        $empresasHeatmap = $companies->whereIn('id', $companiesComDados)->values();
+        if ($empresasHeatmap->isEmpty()) {
+            $empresasHeatmap = $companies->take(10)->values();
+        }
+
+        $heatmap = [
+            'meses'    => $mesesHeatmap->values(),
+            'empresas' => $empresasHeatmap->map(fn ($c) => [
+                'id'    => $c->id,
+                'name'  => $c->name,
+                'notas' => $notasPorEmpresaMes[$c->id] ?? [],
+            ])->values(),
+        ];
+
         // ── Métricas derivadas legadas (transição pra Plan 74-06) ────────────
         // Shape v2 do compute() não expõe atingimento_meta/empresas_em_crescimento
         // /faturamento agregados; recalculamos inline pra manter o payload
@@ -454,6 +521,7 @@ class PerformanceController extends Controller
             'nps' => [
                 'media'     => $npsMedio,
                 'respostas' => $npsRespostas,
+                'heatmap'   => $heatmap,
             ],
             'metas' => $metasWidget,
             'empresas' => $empresas,

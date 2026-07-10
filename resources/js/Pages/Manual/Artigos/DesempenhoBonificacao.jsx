@@ -1,14 +1,6 @@
-// Phase 74 D-22/D-25 · Plan 74-08 · DESEMP-13.
-//
-// Artigo dinâmico "/manual/desempenho-bonificacao" — texto estático explicativo
-// dos 4 parâmetros da nota final + tabela DINÂMICA de faixas de bônus
-// alimentada por `bonus_faixas` (rows ativas, ordem crescente) via
-// ManualController::show().
-//
-// Sem cache/staleness (D-25) — a query BonusFaixa::where('ativo', true)
-// roda na render do controller a cada page load. Admin edita em
-// /desempenho/configuracao → recarrega este artigo → tabela reflete o
-// novo valor sem precisar de deploy.
+// Artigo dinâmico "/manual/desempenho-bonificacao" — explicação da régua
+// de bonificação da equipe Performance, com tabela dinâmica de faixas
+// alimentada por `bonus_faixas` via ManualController::show().
 
 import { Star, TrendingUp, Coins, Calendar, Info, Trophy, Sparkles } from 'lucide-react';
 
@@ -22,7 +14,7 @@ export default function DesempenhoBonificacao({ bonus_faixas = [], metodologia_t
                         <Trophy size={20} />
                     </span>
                     <h1 className="text-white text-2xl font-display font-bold tracking-tight">
-                        Régua de Bonificação — Desempenho
+                        Regra de Bonificação — Performance
                     </h1>
                 </div>
                 {metodologia_texto && (
@@ -41,22 +33,22 @@ export default function DesempenhoBonificacao({ bonus_faixas = [], metodologia_t
                     <ParametroItem
                         icone={Star}
                         titulo="NPS médio (0-5)"
-                        texto="Média das notas NPS que o analista/estrategista recebeu no mês. Sem respostas no mês → nota 0 (penaliza)."
+                        texto="Média das notas NPS que o analista/estrategista recebeu no mês. Sem respostas no mês → nota 0."
                     />
                     <ParametroItem
                         icone={TrendingUp}
-                        titulo="Var. Faturamento (%)"
-                        texto="Média das variações percentuais de faturamento vs mês anterior por empresa da carteira. Empresas novas (menos de 2 meses na carteira) não contam. Fonte: ML OAuth primeiro, Adman fallback."
+                        titulo="Variação de Faturamento (%)"
+                        texto="Média das variações percentuais de faturamento vs mês anterior por empresa da carteira. Empresas com menos de 2 meses na carteira não entram no cálculo."
                     />
                     <ParametroItem
                         icone={Coins}
-                        titulo="Var. Margem (%)"
-                        texto="Análogo do faturamento, para margem de contribuição. Fonte: Adman canônico (ML OAuth não expõe custo)."
+                        titulo="Variação de Margem (%)"
+                        texto="Média das variações percentuais da margem de contribuição vs mês anterior por empresa."
                     />
                     <ParametroItem
                         icone={Calendar}
                         titulo="Absenteísmo"
-                        texto="Em standby nesta versão. Fonte de dados em definição pela diretoria (biometria da porta ou login-based)."
+                        texto="Em preparação — ainda não participa do cálculo desta versão."
                         emBreve
                     />
                 </div>
@@ -65,15 +57,15 @@ export default function DesempenhoBonificacao({ bonus_faixas = [], metodologia_t
             {/* ═══ Fórmula da nota final ═══════════════════════════════ */}
             <section className="space-y-3">
                 <h2 className="text-ecf-yellow text-xs uppercase tracking-wider font-bold">
-                    Fórmula da nota final
+                    Como calculamos a nota final
                 </h2>
                 <div className="bg-ecf-yellow/[0.05] border border-ecf-yellow/20 rounded-2xl p-4 space-y-2">
                     <code className="block text-white/90 text-[15px] font-mono">
-                        nota_final = média(NPS, Var. Faturamento, Var. Margem)
+                        nota_final = média(NPS, Variação Faturamento, Variação Margem)
                     </code>
                     <p className="text-white/60 text-xs">
-                        Média direta em escalas naturais — sem normalização régua 1-5, sem pesos por categoria.
-                        Absenteísmo <strong className="text-white/80">NÃO participa</strong> nesta versão (DESEMP-06).
+                        A nota fica sempre entre <strong className="text-white/80">1,00 e 5,00</strong>.
+                        O absenteísmo <strong className="text-white/80">ainda não participa</strong> desta versão.
                     </p>
                 </div>
             </section>
@@ -103,9 +95,6 @@ export default function DesempenhoBonificacao({ bonus_faixas = [], metodologia_t
                                     <tr key={f.id} className="border-t border-white/[0.05] hover:bg-white/[0.02] transition-colors">
                                         <td className="px-4 py-3.5 align-top">
                                             <span className="text-white font-semibold text-[14px] block">{f.nome}</span>
-                                            <span className="text-white/40 text-[10px] block font-mono uppercase tracking-wider mt-0.5">
-                                                {f.slug}
-                                            </span>
                                         </td>
                                         <td className="px-4 py-3.5 align-top text-right text-white/80 font-mono tabular-nums">
                                             {Number(f.nota_min).toFixed(2)}
@@ -136,27 +125,9 @@ export default function DesempenhoBonificacao({ bonus_faixas = [], metodologia_t
                             2 meses consecutivos em <strong className="text-emerald-300">Intermediário</strong> promovem
                             automaticamente para <strong className="text-ecf-yellow">Máximo</strong> no mês corrente.
                         </p>
-                        <p className="text-white/50 text-xs">
-                            A promoção é aplicada pelo <code className="text-emerald-300/80 font-mono">DesempenhoScoreService</code> ao
-                            classificar a faixa — o Ranking e o Dashboard sinalizam com badge "PROMOVIDA".
-                        </p>
                     </div>
                 </div>
             </section>
-
-            {/* ═══ Rodapé do artigo ══════════════════════════════════ */}
-            <footer className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 flex items-start gap-3 text-[12.5px] text-white/60 leading-relaxed">
-                <Info size={14} className="text-white/40 shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                    <p>
-                        <strong className="text-white/80">Régua editada pela administração</strong> em{' '}
-                        <code className="text-ecf-yellow font-mono">/desempenho/configuracao</code>.
-                    </p>
-                    <p className="text-white/40">
-                        Mudanças refletem imediatamente aqui — sem cache, sem deploy.
-                    </p>
-                </div>
-            </footer>
         </article>
     );
 }

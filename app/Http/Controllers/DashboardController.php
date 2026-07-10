@@ -770,16 +770,32 @@ class DashboardController extends Controller
                   ->whereIn('us2.setor_id', $setoresIds);
             });
         }
+        // Ajuste 2026-07-09 — envia também `score` (0-100 = nota_final × 20)
+        // e `classificacao` (mapeamento do faixa_bonus para labels legados)
+        // para o widget BarChart em Dashboard/Admin.jsx que ainda consome
+        // esses campos. Preserva compat visual do widget sem reescrita.
+        $faixaParaClassificacao = [
+            'maximo'        => 'excelente',
+            'intermediario' => 'bom',
+            'basico'        => 'atencao',
+            'sem_bonus'     => 'critico',
+        ];
+
         $perfMembros = $perfMembrosQuery->orderBy('name')->get(['id', 'name'])
-            ->map(function ($u) use ($scoreService, $mesReferenciaPerf) {
+            ->map(function ($u) use ($scoreService, $mesReferenciaPerf, $faixaParaClassificacao) {
                 $r = $scoreService->compute($u, $mesReferenciaPerf);
+                $notaFinal   = $r['nota_final'] ?? null;
+                $faixaSlug   = $r['faixa_bonus'] ?? null;
                 return [
                     'id'              => $u->id,
                     'name'            => $u->name,
-                    'nota_final'      => $r['nota_final'] ?? null,
-                    'faixa_bonus'     => $r['faixa_bonus'] ?? null,
+                    'nota_final'      => $notaFinal,
+                    'faixa_bonus'     => $faixaSlug,
                     'faixa_promovida' => (bool) ($r['faixa_promovida'] ?? false),
                     'sem_carteira'    => (bool) ($r['sem_carteira'] ?? false),
+                    // Campos legados pra compat visual do widget Admin.jsx:
+                    'score'           => $notaFinal !== null ? round($notaFinal * 20, 0) : null,
+                    'classificacao'   => $faixaParaClassificacao[$faixaSlug] ?? 'critico',
                 ];
             })
             // DESEMP-10 — remove users sem carteira do ranking.

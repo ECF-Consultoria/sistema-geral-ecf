@@ -62,12 +62,12 @@ const NAV_TREE = [
             { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: ['Dashboard/Admin', 'Performance/Dashboard'], icon: LayoutDashboard, permission: 'core.dashboard' },
             // Desempenho fica com array explícito das páginas do ranking
             // (Index + Show) pra não engolir Performance/Dashboard acima.
-            { label: 'Desempenho',  routeName: 'performance.index',   page: ['Performance/Index', 'Performance/Show'],  icon: Trophy,          permission: 'core.performance' },
-            // Phase 74 D-21 — item admin-only para UI de configuração das faixas de
-            // bônus (BonusFaixa) editáveis. Fica ao lado do irmão `performance.index`
-            // dentro do grupo Mercado Livre (o "grupo Desempenho" mencionado na
-            // decisão D-21 na prática vive aqui). SlidersHorizontal já importado.
-            { label: 'Configuração Desempenho', routeName: 'desempenho.configuracao.index', page: 'Desempenho/Configuracao', icon: SlidersHorizontal, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Desempenho: ranking (Index) + view individual (Show). Ajuste 2026-07-09:
+            // a página Desempenho/Configuracao passou a ser acessada via botão no
+            // header da própria página de Desempenho (visível só para admin) —
+            // não fica mais como item separado na sidebar pra não confundir
+            // analistas/estrategistas que não têm permissão de configurar.
+            { label: 'Desempenho',  routeName: 'performance.index',   page: ['Performance/Index', 'Performance/Show', 'Desempenho/Configuracao'],  icon: Trophy,          permission: 'core.performance' },
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
             { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },

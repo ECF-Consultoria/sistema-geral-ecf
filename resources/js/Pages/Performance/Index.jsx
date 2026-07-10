@@ -1,12 +1,12 @@
 import AppLayout from '@/Layouts/AppLayout';
-import { router, Link } from '@inertiajs/react';
+import { router, Link, usePage } from '@inertiajs/react';
 import { useState, useEffect, useMemo } from 'react';
 import {
     Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, X,
     Users, Target, CheckCircle2, Crown, Award, ShoppingCart, Percent,
     ArrowUp, ArrowDown, Minus, Flame, Clock, Megaphone, BarChart3,
     Gauge, Activity, Tv, TrendingDown, Rocket, Sparkles, Info, BookOpen,
-    UserX, ChevronsUp,
+    UserX, ChevronsUp, Settings,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { cn, formatPercent as fmtPctUtil, formatCurrency } from '@/lib/utils';
@@ -110,6 +110,10 @@ export default function PerformanceIndex({
 }) {
     const isPolos = setor === 'polos';
 
+    // Usuário logado (para gate do botão "Configuração" admin-only).
+    const { auth } = usePage().props;
+    const isAdmin = auth?.user?.role === 'admin';
+
     // Cada setor tem rota própria: POLOS → publicacao.desempenho.index e
     // consultoria → performance.index.
     const applyFilter = (params) => {
@@ -162,18 +166,39 @@ export default function PerformanceIndex({
                             <Trophy size={20} />
                         </span>
                         <div>
-                            <h1 className="text-white text-xl font-display font-extrabold leading-tight">
-                                Ranking Performance — {mes_fechado ? mesExtensoDate(mes_fechado) : 'mês em curso'}
-                            </h1>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h1 className="text-white text-xl font-display font-extrabold leading-tight">
+                                    Ranking Performance{mes_fechado ? ` — ${mesExtensoDate(mes_fechado)}` : ''}
+                                </h1>
+                                {!mes_fechado && (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 tracking-wider">
+                                        Mês em curso
+                                    </span>
+                                )}
+                            </div>
                             <p className="text-white/50 text-sm mt-0.5">
                                 {mes_fechado
                                     ? 'Ranking do mês fechado mais recente.'
-                                    : 'Ranking do mês em curso (parcial) — a consolidação mensal fecha dia 1 do mês seguinte.'}
+                                    : 'Ranking parcial — a consolidação mensal fecha dia 1 do mês seguinte.'}
                             </p>
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* Botão admin-only: acesso à configuração das faixas de bônus.
+                            Removido da sidebar 2026-07-09 pra não confundir analistas
+                            /estrategistas que não têm permissão. Fica aqui pra admin
+                            acessar diretamente da página onde vê o efeito da régua. */}
+                        {isAdmin && (
+                            <Link
+                                href={route('desempenho.configuracao.index')}
+                                title="Configurar régua de bonificação (admin)"
+                                className="flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] text-white/60 hover:text-white hover:border-white/25 hover:bg-white/[0.03] transition-colors text-[13px]"
+                            >
+                                <Settings size={14} />
+                                <span className="hidden sm:inline">Configurar régua</span>
+                            </Link>
+                        )}
                         {/* Filtro por cargo — Geral/Analista/Estrategista */}
                         <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
                             {[
@@ -314,12 +339,12 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                 <span>#</span>
                 <span>Nome</span>
                 <span className="text-right" title="Nota final do mês (média direta dos parâmetros disponíveis, escala 0-5).">Nota</span>
-                <span title="Faixa de bônus (configurável pelo admin em /desempenho/configuracao).">Faixa</span>
+                <span title="Faixa de bônus com base na nota final do mês.">Faixa</span>
                 <span className="text-right" title="Delta vs mês passado fechado.">Δ mês</span>
                 <span className="text-right" title="NPS médio das respostas do mês (escala 0-5). Sem respostas → 0.">NPS</span>
                 <span className="text-right" title="% variação faturamento vs mês anterior (média das % por empresa; empresas novas excluídas).">Var Fat</span>
                 <span className="text-right" title="% variação margem de contribuição vs mês anterior (fonte Adman canônica).">Var Margem</span>
-                <span className="text-right" title="Empresas com baseline / total na carteira.">Empresas</span>
+                <span className="text-right" title="Empresas usadas no cálculo / total na carteira. As não usadas são empresas novas (menos de 2 meses) ou sem dados do mês anterior para comparar.">Empresas</span>
                 <span />
             </div>
 

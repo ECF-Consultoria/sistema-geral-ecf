@@ -463,8 +463,19 @@ export default function AdminDashboard({
                                             labelStyle={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, marginBottom: 4 }}
                                             itemStyle={{ color: 'rgba(255,255,255,0.85)' }}
                                             formatter={(value, _name, props) => {
-                                                const c = props?.payload?.classificacao ?? '';
-                                                return [`${Math.round(value)} pts · ${c}`, 'Score'];
+                                                // Ajuste 2026-07-09: exibe nota real (1-5) em vez de "pts" (0-100).
+                                                // O value do bar é score (0-100 = nota × 20); dividimos por 20 para
+                                                // mostrar a nota que o time entende.
+                                                const p = props?.payload ?? {};
+                                                const nota = p.nota_final != null ? Number(p.nota_final).toFixed(2) : '—';
+                                                const faixa = p.faixa_bonus ?? '';
+                                                const faixaLabel = {
+                                                    maximo:        'Máximo',
+                                                    intermediario: 'Intermediário',
+                                                    basico:        'Básico',
+                                                    sem_bonus:     'Sem bônus',
+                                                }[faixa] ?? faixa;
+                                                return [`${nota} / 5,00 · ${faixaLabel}`, 'Nota'];
                                             }}
                                         />
                                         <Bar
@@ -481,11 +492,11 @@ export default function AdminDashboard({
                                                 } />
                                             ))}
                                             <LabelList
-                                                dataKey="score"
+                                                dataKey="nota_final"
                                                 position="right"
                                                 fill="rgba(255,255,255,0.85)"
                                                 fontSize={11}
-                                                formatter={(v) => Math.round(v)}
+                                                formatter={(v) => v != null ? Number(v).toFixed(2) : '—'}
                                             />
                                         </Bar>
                                     </BarChart>

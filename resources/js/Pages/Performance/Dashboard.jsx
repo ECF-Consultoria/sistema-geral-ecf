@@ -33,12 +33,22 @@ const fmtBRLCompact = (n) => {
     return `R$ ${n.toLocaleString('pt-BR')}`;
 };
 
-// Classificação de score → cor
-const scoreClasse = (score) => {
-    if (score >= 85) return { cor: 'emerald', label: 'Excelente' };
-    if (score >= 70) return { cor: 'lime',    label: 'Bom' };
-    if (score >= 55) return { cor: 'amber',   label: 'Atenção' };
-    return                { cor: 'rose',    label: 'Crítico' };
+// Ajuste 2026-07-09: escala v2 é 1-5 (nota_final do DesempenhoScoreService).
+// A cor/label vem da FAIXA_BONUS quando disponível (slug do BonusFaixa) ou do
+// fallback por threshold da nota. Preservamos a assinatura scoreClasse(score)
+// mas o `score` agora é a nota_final 1-5 (não 0-100).
+const scoreClasse = (nota, faixaSlug = null) => {
+    // Faixa vinda do backend (BonusFaixa) tem prioridade sobre threshold interno.
+    if (faixaSlug === 'maximo')        return { cor: 'emerald', label: 'Máximo' };
+    if (faixaSlug === 'intermediario') return { cor: 'lime',    label: 'Intermediário' };
+    if (faixaSlug === 'basico')        return { cor: 'amber',   label: 'Básico' };
+    if (faixaSlug === 'sem_bonus')     return { cor: 'rose',    label: 'Sem bônus' };
+    // Fallback por threshold da nota (1-5) — matches faixas seed.
+    const n = Number(nota ?? 0);
+    if (n >= 5.00) return { cor: 'emerald', label: 'Máximo' };
+    if (n >= 4.50) return { cor: 'lime',    label: 'Intermediário' };
+    if (n >= 4.00) return { cor: 'amber',   label: 'Básico' };
+    return              { cor: 'rose',    label: 'Sem bônus' };
 };
 
 // Status → cor de chip
@@ -91,16 +101,20 @@ function MlBadge({ size = 18 }) {
     );
 }
 
-// Velocímetro/gauge do card Score
-function Speedometer({ score }) {
-    const { cor } = scoreClasse(score);
+// Velocímetro/gauge do card Score.
+// Ajuste 2026-07-09: recebe `nota` na escala 1-5 (v2). Internamente converte para
+// 0-100 (nota × 20) para preservar o visual do velocímetro sem mudar o SVG.
+function Speedometer({ nota, faixaSlug = null }) {
+    const { cor } = scoreClasse(nota, faixaSlug);
     const strokeMap = {
         emerald: '#10b981',
         lime:    '#84cc16',
         amber:   '#f59e0b',
         rose:    '#e11d48',
     };
-    const angulo = -90 + (Math.min(100, Math.max(0, score)) / 100) * 180;
+    // 1-5 → 0-100 pra manter o velocímetro visual. Clamp defensivo.
+    const score = Math.min(100, Math.max(0, Number(nota ?? 0) * 20));
+    const angulo = -90 + (score / 100) * 180;
     const dashLen = 166 * (score / 100);
 
     return (
@@ -173,6 +187,144 @@ function GrowthBackground() {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// Widget NPS Heatmap — Sentiment Grid (2026-07-09)
+//
+// Uma linha por empresa (últimos 6 meses de dados); uma coluna por mês.
+// Cada célula: média das notas NPS do mês (escala 1-5). Intensidade da
+// cor cresce com a nota — baixa = cinza escuro, alta = laranja/amarelo ECF.
+// ═══════════════════════════════════════════════════════════════
+
+// Mapa de cor por nota — degradê visual, notas altas mais vivas.
+// Segue a mesma paleta usada no restante do dashboard (yellows/oranges
+// ECF pra evitar dissonância com o resto da interface).
+function corDaCelula(nota) {
+    if (nota == null) {
+        return { bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.06)', text: 'rgba(255,255,255,0.30)' };
+    }
+    const n = Number(nota);
+    // Rampa 1-5 mapeada em 5 níveis de laranja/amarelo (ECF brand).
+    if (n >= 4.5)  return { bg: 'rgba(250,204,21,0.85)', border: 'rgba(250,204,21,0.7)', text: '#1a1a00' }; // yellow-400
+    if (n >= 4.0)  return { bg: 'rgba(251,146,60,0.75)', border: 'rgba(251,146,60,0.6)', text: '#1a0500' }; // orange-400
+    if (n >= 3.5)  return { bg: 'rgba(249,115,22,0.60)', border: 'rgba(249,115,22,0.4)', text: '#ffffff' }; // orange-500
+    if (n >= 2.5)  return { bg: 'rgba(234,88,12,0.45)',  border: 'rgba(234,88,12,0.3)',  text: '#ffffff' }; // orange-600
+    if (n >= 1.0)  return { bg: 'rgba(180,60,20,0.30)',  border: 'rgba(180,60,20,0.2)',  text: '#ffcfb0' }; // darker orange
+    return              { bg: 'rgba(255,255,255,0.03)', border: 'rgba(255,255,255,0.06)', text: 'rgba(255,255,255,0.30)' };
+}
+
+function NpsHeatmapWidget({ nps }) {
+    const heatmap = nps?.heatmap ?? { meses: [], empresas: [] };
+    const meses    = heatmap.meses ?? [];
+    const empresas = heatmap.empresas ?? [];
+    const media    = nps?.media ?? null;
+    const semDados = empresas.length === 0 || empresas.every(e => Object.keys(e.notas ?? {}).length === 0);
+
+    return (
+        <Link
+            href={route('nps.index')}
+            className="group bg-ecf-card border border-white/[0.08] rounded-xl overflow-hidden hover:border-orange-500/40 transition-colors flex flex-col"
+        >
+            <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                    <MessageSquare size={16} className="text-orange-400" />
+                    <h3 className="text-white text-sm font-bold">NPS · Últimos 6 meses</h3>
+                </div>
+                {media !== null && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-200 font-semibold">
+                        Média {Number(media).toFixed(2)}
+                    </span>
+                )}
+            </div>
+
+            {semDados ? (
+                <div className="p-8 flex flex-col items-center justify-center text-center gap-2 min-h-[220px]">
+                    <MessageCircleOff size={28} className="text-white/20" />
+                    <p className="text-white/60 text-sm font-semibold">Sem respostas de NPS ainda</p>
+                    <p className="text-white/35 text-xs max-w-[240px]">
+                        Quando os clientes responderem à pesquisa, as notas aparecem aqui por mês.
+                    </p>
+                </div>
+            ) : (
+                <div className="p-4 space-y-3 overflow-x-auto">
+                    <div className="min-w-fit">
+                        {/* Header dos meses */}
+                        <div className="grid grid-cols-[minmax(140px,180px)_repeat(6,minmax(56px,1fr))] gap-1.5">
+                            <div />
+                            {meses.map((m) => (
+                                <div
+                                    key={m.chave}
+                                    className="text-center text-white/50 text-[10px] uppercase tracking-wider font-semibold py-1"
+                                >
+                                    {m.label}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Linhas por empresa */}
+                        <div className="space-y-1.5 mt-1">
+                            {empresas.map((e) => (
+                                <div
+                                    key={e.id}
+                                    className="grid grid-cols-[minmax(140px,180px)_repeat(6,minmax(56px,1fr))] gap-1.5 items-center"
+                                >
+                                    <div
+                                        className="text-white/80 text-[12px] font-medium truncate pr-2"
+                                        title={e.name}
+                                    >
+                                        {e.name}
+                                    </div>
+                                    {meses.map((m) => {
+                                        const nota = e.notas?.[m.chave] ?? null;
+                                        const cor  = corDaCelula(nota);
+                                        return (
+                                            <div
+                                                key={m.chave}
+                                                className="h-9 rounded-md flex items-center justify-center text-[12px] font-bold tabular-nums transition-transform hover:scale-110"
+                                                style={{
+                                                    backgroundColor: cor.bg,
+                                                    borderWidth: '1px',
+                                                    borderStyle: 'solid',
+                                                    borderColor: cor.border,
+                                                    color: cor.text,
+                                                }}
+                                                title={
+                                                    nota != null
+                                                        ? `${e.name} · ${m.label}: ${Number(nota).toFixed(2)}`
+                                                        : `${e.name} · ${m.label}: sem resposta`
+                                                }
+                                            >
+                                                {nota != null ? Number(nota).toFixed(1) : '—'}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Legenda */}
+                        <div className="pt-3 mt-2 border-t border-white/[0.05] flex items-center gap-3 text-[10px] text-white/50">
+                            <span className="font-semibold uppercase tracking-wider">Nota baixa</span>
+                            <div className="flex gap-0.5">
+                                {[1.5, 2.5, 3.5, 4.0, 4.5].map((n) => {
+                                    const c = corDaCelula(n);
+                                    return (
+                                        <div
+                                            key={n}
+                                            className="w-6 h-3 rounded-sm"
+                                            style={{ backgroundColor: c.bg, border: `1px solid ${c.border}` }}
+                                        />
+                                    );
+                                })}
+                            </div>
+                            <span className="font-semibold uppercase tracking-wider">Nota alta</span>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </Link>
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Página principal
 // ═══════════════════════════════════════════════════════════════
 
@@ -196,7 +348,11 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
         });
     }, [empresas, busca, statusFilter]);
 
-    const { cor: scoreCor, label: scoreLabel } = scoreClasse(kpis.score);
+    // Ajuste 2026-07-09: backend v2 envia nota_final (1-5) + faixa_bonus (slug).
+    // Antes usava kpis.score (0-100) que não existe mais → widget quebrava.
+    const notaFinal   = kpis?.nota_final ?? null;
+    const faixaSlug   = kpis?.faixa_bonus ?? null;
+    const { cor: scoreCor, label: scoreLabel } = scoreClasse(notaFinal, faixaSlug);
     const chipScoreClasses = {
         emerald: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300',
         lime:    'bg-lime-500/15 border-lime-500/30 text-lime-300',
@@ -307,27 +463,28 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                         </p>
                     </Link>
 
-                    {/* Card 3 — Score (link → performance) */}
+                    {/* Card 3 — Pontuação (link → performance) */}
                     <Link
                         href={route('performance.index')}
                         className="group relative overflow-hidden rounded-xl bg-ecf-card border border-white/[0.08] p-5 min-h-[160px] flex flex-col justify-between hover:border-ecf-yellow/40 transition-all"
                     >
-                        <Speedometer score={kpis.score} />
+                        <Speedometer nota={notaFinal} faixaSlug={faixaSlug} />
                         <div className="relative">
                             <span className="text-[10px] uppercase tracking-wider text-white/60 font-bold">
-                                Score
+                                Pontuação
                             </span>
                             <div className="flex items-baseline gap-3 mt-3 flex-wrap">
                                 <strong className="text-4xl font-black text-white tabular-nums leading-none">
-                                    {kpis.score}
+                                    {notaFinal != null ? Number(notaFinal).toFixed(2) : '—'}
                                 </strong>
+                                <span className="text-lg text-white/40 tabular-nums">/ 5,00</span>
                                 <span className={cn('text-xs px-2 py-0.5 rounded-full border font-semibold', chipScoreClasses)}>
                                     {scoreLabel}
                                 </span>
                             </div>
                         </div>
                         <p className="relative text-xs text-white/50 max-w-[65%]">
-                            Ponderado por crescimento, meta, execução e NPS.
+                            Média de NPS, variação de faturamento e variação de margem.
                         </p>
                     </Link>
                 </div>
@@ -335,49 +492,13 @@ export default function DashboardCarteira({ pessoa, periodo, kpis, nps, metas, e
                 {/* ═══ NPS + METAS (grid 2 cols) ═════════════════════ */}
                 <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.15fr)] gap-4">
                     {/* Widget NPS (link → /nps) */}
-                    <Link
-                        href={route('nps.index')}
-                        className="group bg-ecf-card border border-white/[0.08] rounded-xl overflow-hidden hover:border-emerald-500/40 transition-colors flex flex-col"
-                    >
-                        <div className="px-5 py-4 border-b border-white/[0.06] flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2">
-                                <MessageSquare size={16} className="text-emerald-400" />
-                                <h3 className="text-white text-sm font-bold">NPS</h3>
-                            </div>
-                            {nps.media !== null && (
-                                <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-semibold">
-                                    Média {nps.media}
-                                </span>
-                            )}
-                        </div>
-                        {nps.respostas && nps.respostas.length > 0 ? (
-                            <div className="p-4 space-y-2.5">
-                                {nps.respostas.map((r, i) => (
-                                    <div key={i} className="flex items-center gap-3 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.04]">
-                                        {/* Phase 73 Plan 03 — badge de nota com cor por threshold (sem 'classe' textual) */}
-                                        <span className={cn(
-                                            'w-9 h-9 rounded-lg flex items-center justify-center font-black text-sm border',
-                                            corPorNota(r.nota),
-                                        )}>
-                                            {r.nota != null ? Number(r.nota).toFixed(1) : '—'}
-                                        </span>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-white text-sm font-semibold truncate">{r.empresa}</div>
-                                            <div className="text-white/40 text-[11px] mt-0.5">{r.quando}</div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="p-8 flex flex-col items-center justify-center text-center gap-2 min-h-[220px]">
-                                <MessageCircleOff size={28} className="text-white/20" />
-                                <p className="text-white/60 text-sm font-semibold">Sem respostas de NPS ainda</p>
-                                <p className="text-white/35 text-xs max-w-[240px]">
-                                    Quando os clientes responderem à pesquisa, as últimas notas aparecem aqui.
-                                </p>
-                            </div>
-                        )}
-                    </Link>
+                    {/* Widget NPS Heatmap — redesign 2026-07-09.
+                        Linhas = empresas, Colunas = últimos 6 meses, Células = média
+                        das notas do NPS no mês. Intensidade da cor proporcional à
+                        nota (baixa cinza, alta laranja/amarelo ECF).
+                        Sem dados → célula fica escura vazia. */}
+                    <NpsHeatmapWidget nps={nps} />
+
 
                     {/* Widget Metas (link → /goals) */}
                     <Link
