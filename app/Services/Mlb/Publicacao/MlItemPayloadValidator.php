@@ -11,14 +11,24 @@ namespace App\Services\Mlb\Publicacao;
  */
 class MlItemPayloadValidator
 {
-    /** Trecho de código conhecido → mensagem pt-BR. Testado por str_contains. */
+    /**
+     * Trecho conhecido (no código OU na mensagem do ML) → mensagem pt-BR.
+     * A ordem importa: o mais específico vem primeiro (str_contains casa o 1º).
+     */
     private const TRADUCOES = [
-        'item.attributes.missing_required' => 'Faltam atributos obrigatórios da categoria.',
-        'item.title'                       => 'Título inválido (evite telefone, e-mail ou texto promocional).',
+        'lost_me1_by_user'                 => 'A conta do cliente está em migração no Mercado Envios (Flex 2) e o ML ainda não libera publicar por API. Conclua a migração ou fale com o suporte do ML. (Confira também se o peso e as dimensões do pacote estão preenchidos.)',
+        'lost_me2_by_catalog'              => 'Este produto de catálogo não aceita Mercado Envios 2 nesta conta.',
+        'family_name'                      => 'Falta o nome do produto — obrigatório em contas no modelo novo do ML (User Products).',
+        'seller_package'                   => 'Informe o peso e as dimensões do pacote (necessário para calcular o frete).',
         'fashion_grid'                     => 'Esta categoria de moda exige uma grade de tamanho (tabela de medidas).',
-        'shipping.lost_me1_by_user'        => 'A conta do cliente está sem uma opção de frete válida. Configure o Mercado Envios na conta.',
-        'shipping'                         => 'Há um problema na configuração de frete do anúncio.',
+        'size_grid'                        => 'Esta categoria de moda exige uma grade de tamanho (tabela de medidas).',
+        'picture_not_found'                => 'A imagem não foi encontrada — use o endereço (URL) de uma imagem pública válida.',
+        'mandatory_free_shipping'          => 'Nesta categoria/preço o frete grátis é obrigatório — ative o frete grátis.',
+        'invalid.item.attribute'           => 'Um atributo está com valor inválido — escolha um valor da lista.',
+        'item.attributes.missing_required' => 'Faltam atributos obrigatórios da categoria (preencha todos os campos marcados).',
+        'item.title'                       => 'Título inválido (evite telefone, e-mail ou texto promocional).',
         'pictures'                         => 'Há um problema nas imagens do anúncio.',
+        'shipping'                         => 'Há um problema na configuração de frete do anúncio.',
         'sale_terms'                       => 'Verifique a garantia (tipo e tempo).',
         'price'                            => 'Preço inválido para esta categoria.',
         'available_quantity'               => 'Quantidade em estoque inválida.',
@@ -51,11 +61,17 @@ class MlItemPayloadValidator
         return $saida;
     }
 
-    /** Escolhe a tradução pt-BR pelo código; cai na mensagem original se desconhecido. */
+    /**
+     * Escolhe a tradução pt-BR procurando o trecho conhecido no código E na
+     * mensagem original do ML (ex.: [family_name] e [SELLER_PACKAGE_*] vêm na
+     * mensagem, não no código). Cai na mensagem original se não reconhecer.
+     */
     private function mensagemDe(string $code, string $original): string
     {
+        $palheiro = strtolower($code . ' ' . $original);
+
         foreach (self::TRADUCOES as $trecho => $traducao) {
-            if ($code !== '' && str_contains($code, $trecho)) {
+            if (str_contains($palheiro, strtolower($trecho))) {
                 return $traducao;
             }
         }

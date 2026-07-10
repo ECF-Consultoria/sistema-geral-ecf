@@ -52,6 +52,11 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
     const [imagemUrl, setImagemUrl]   = useState('');
     const [garantia, setGarantia]     = useState('30 dias');
     const [descricao, setDescricao]   = useState('');
+    // Peso e dimensões do pacote — necessários para o ML calcular o frete me2
+    const [pesoG, setPesoG]                 = useState('');
+    const [comprimentoCm, setComprimentoCm] = useState('');
+    const [larguraCm, setLarguraCm]         = useState('');
+    const [alturaCm, setAlturaCm]           = useState('');
 
     const [candidatos, setCandidatos] = useState([]);
     const [tipos, setTipos]           = useState([]);
@@ -107,6 +112,13 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
             .filter(([, v]) => v && (v.value_id || v.value_name))
             .map(([id, v]) => (v.value_id ? { id, value_id: v.value_id } : { id, value_name: v.value_name }));
 
+        // Peso e dimensões do pacote viram atributos SELLER_PACKAGE_* (habilitam o me2)
+        const pacote = [];
+        if (pesoG)         pacote.push({ id: 'SELLER_PACKAGE_WEIGHT', value_name: `${pesoG} g` });
+        if (alturaCm)      pacote.push({ id: 'SELLER_PACKAGE_HEIGHT', value_name: `${alturaCm} cm` });
+        if (comprimentoCm) pacote.push({ id: 'SELLER_PACKAGE_LENGTH', value_name: `${comprimentoCm} cm` });
+        if (larguraCm)     pacote.push({ id: 'SELLER_PACKAGE_WIDTH',  value_name: `${larguraCm} cm` });
+
         return {
             title: titulo,
             category_id: categoryId,
@@ -115,7 +127,7 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
             available_quantity: estoque ? Number(estoque) : null,
             condition: condicao,
             listing_type_id: tipoAnuncio,
-            attributes,
+            attributes: [...attributes, ...pacote],
             pictures: imagemUrl ? [{ source: imagemUrl }] : [],
             sale_terms: garantia
                 ? [{ id: 'WARRANTY_TYPE', value_name: 'Garantia do vendedor' }, { id: 'WARRANTY_TIME', value_name: garantia }]
@@ -304,6 +316,18 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                                 <Campo label="Descrição">
                                     <textarea className={cn(inputCls, 'min-h-[100px] resize-y')} value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Descreva o produto…" />
                                 </Campo>
+                            </div>
+                        </section>
+
+                        {/* Peso e dimensões do pacote (habilitam o frete me2) */}
+                        <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
+                            <h2 className="mb-1 text-sm font-semibold text-white">6. Peso e dimensões do pacote</h2>
+                            <p className="mb-3 text-[11px] text-white/40">O Mercado Livre precisa disso para calcular o frete (Mercado Envios). Sem preencher, a publicação falha.</p>
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <Campo label="Peso (g)"><input className={inputCls} type="number" min="1" value={pesoG} onChange={e => setPesoG(e.target.value)} placeholder="300" /></Campo>
+                                <Campo label="Comprimento (cm)"><input className={inputCls} type="number" min="1" value={comprimentoCm} onChange={e => setComprimentoCm(e.target.value)} placeholder="20" /></Campo>
+                                <Campo label="Largura (cm)"><input className={inputCls} type="number" min="1" value={larguraCm} onChange={e => setLarguraCm(e.target.value)} placeholder="15" /></Campo>
+                                <Campo label="Altura (cm)"><input className={inputCls} type="number" min="1" value={alturaCm} onChange={e => setAlturaCm(e.target.value)} placeholder="10" /></Campo>
                             </div>
                         </section>
 
