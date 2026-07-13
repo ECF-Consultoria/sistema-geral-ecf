@@ -1,22 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useForm, Head } from '@inertiajs/react';
 import RespondLegado from './RespondLegado';
-
-// Detecta viewport mobile (≤ 640px) via matchMedia. Guard `typeof window` pra
-// não quebrar em SSR; inicia false e ajusta no mount + em resize.
-function useIsMobile(maxWidth = 640) {
-    const query = `(max-width: ${maxWidth}px)`;
-    const [isMobile, setIsMobile] = useState(false);
-    useEffect(() => {
-        if (typeof window === 'undefined' || !window.matchMedia) return;
-        const mql = window.matchMedia(query);
-        const onChange = () => setIsMobile(mql.matches);
-        onChange();
-        mql.addEventListener('change', onChange);
-        return () => mql.removeEventListener('change', onChange);
-    }, [query]);
-    return isMobile;
-}
 
 /**
  * Nps/Respond — formulário público v15.0 (redesenho 2026-07-08).
@@ -458,100 +442,52 @@ function QuestionCard({ numero, pergunta, selecionadoId, missing, onPick, error 
 
 // ─── Escala 1-5 com cores de sentimento ──────────────────────────────────
 function ScaleRow({ options, selecionadoId, onPick }) {
-    const isMobile = useIsMobile();
-
-    // Ordena por peso ASC (1..5) para garantir gradient da esquerda pra direita.
-    const ordered = [...options].sort((a, b) => (a.peso ?? 0) - (b.peso ?? 0));
-
-    // No mobile a linha horizontal estoura a largura do card (labels de texto
-    // tipo "Discordo parcialmente"). Empilha uma opção embaixo da outra, da
-    // MELHOR (Excelente, peso 5) pra PIOR (Ruim, peso 1) — boas opções primeiro.
-    const list = isMobile ? [...ordered].reverse() : ordered;
-
-    // Ajuste 2026-07-13 · quando existe algum label longo (labels de texto tipo
-    // "Discordo parcialmente" no lugar do número), reduz fontSize e permite
-    // quebra de linha pra não quebrar a palavra ao meio no botão de 20% da
-    // largura. Números como "1", "2" ficam com o tamanho grande original.
-    const maxLabelLen = ordered.reduce((m, o) => Math.max(m, (o.label ?? '').length), 0);
-    // Escala de tamanho por comprimento máximo do label:
-    //   ≤ 3 → 18px (números 1..5 e labels curtinhas)
-    //   4-6 → 15px
-    //   7-10 → 13px
-    //   > 10 → 11.5px
-    const labelFontSize = maxLabelLen <= 3
-        ? 18
-        : maxLabelLen <= 6
-            ? 15
-            : maxLabelLen <= 10
-                ? 13
-                : 11.5;
-    const podeQuebrar = maxLabelLen > 3;
+    // Ajuste 2026-07-13 · empilha vertical em TODAS as telas (feedback do
+    // usuário). Da MELHOR (Excelente, peso 5) pra PIOR (Ruim, peso 1) — boas
+    // opções primeiro. Cada botão ocupa a largura toda, então cabe numa linha
+    // só e não precisamos mais do caption Ruim↔Excelente nem do downscale de
+    // fonte por comprimento de label.
+    const list = [...options].sort((a, b) => (b.peso ?? 0) - (a.peso ?? 0));
 
     return (
-        <>
-            <div style={{
-                display: 'flex',
-                flexDirection: isMobile ? 'column' : 'row',
-                gap: 10,
-            }}>
-                {list.map((o) => {
-                    const sel = selecionadoId === o.id;
-                    const col = sentimentForPeso(o.peso);
-                    return (
-                        <button
-                            type="button"
-                            key={o.id}
-                            onClick={() => onPick(o.id)}
-                            style={{
-                                flex: isMobile ? 'none' : 1,
-                                width: isMobile ? '100%' : 'auto',
-                                minWidth: 0, // deixa o flex distribuir sem overflow horizontal
-                                height: 52,
-                                padding: isMobile ? '4px 12px' : (podeQuebrar ? '4px 6px' : 0),
-                                borderRadius: 12,
-                                cursor: 'pointer',
-                                fontFamily: "'Space Grotesk', sans-serif",
-                                fontWeight: 700,
-                                // No mobile cada opção tem a largura toda; usa fonte
-                                // cheia (18px) já que o texto cabe numa linha só.
-                                fontSize: isMobile ? 16 : labelFontSize,
-                                lineHeight: 1.15,
-                                textAlign: 'center',
-                                whiteSpace: isMobile ? 'nowrap' : (podeQuebrar ? 'normal' : 'nowrap'),
-                                overflowWrap: 'break-word',
-                                wordBreak: 'break-word',
-                                hyphens: 'auto',
-                                border: '1px solid ' + (sel ? col : 'rgba(255,255,255,.09)'),
-                                background: sel ? col : 'rgba(255,255,255,.03)',
-                                color: sel ? '#fff' : '#B7B7C0',
-                                boxShadow: sel ? `0 8px 22px ${col}55` : 'none',
-                                transform: sel ? 'translateY(-2px)' : 'none',
-                                transition: 'all .18s ease',
-                            }}
-                        >
-                            {o.label}
-                        </button>
-                    );
-                })}
-            </div>
-            {/* Caption Ruim↔Excelente só faz sentido na linha horizontal; no
-                empilhamento vertical cada botão já carrega seu próprio label. */}
-            {!isMobile && (
-                <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginTop: 11,
-                    padding: '0 2px',
-                }}>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: .3, color: '#6E6E77' }}>
-                        Ruim
-                    </span>
-                    <span style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: .3, color: '#6E6E77' }}>
-                        Excelente
-                    </span>
-                </div>
-            )}
-        </>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {list.map((o) => {
+                const sel = selecionadoId === o.id;
+                const col = sentimentForPeso(o.peso);
+                return (
+                    <button
+                        type="button"
+                        key={o.id}
+                        onClick={() => onPick(o.id)}
+                        style={{
+                            width: '100%',
+                            minWidth: 0,
+                            height: 52,
+                            padding: '4px 12px',
+                            borderRadius: 12,
+                            cursor: 'pointer',
+                            fontFamily: "'Space Grotesk', sans-serif",
+                            fontWeight: 700,
+                            fontSize: 16,
+                            lineHeight: 1.15,
+                            textAlign: 'center',
+                            whiteSpace: 'nowrap',
+                            overflowWrap: 'break-word',
+                            wordBreak: 'break-word',
+                            hyphens: 'auto',
+                            border: '1px solid ' + (sel ? col : 'rgba(255,255,255,.09)'),
+                            background: sel ? col : 'rgba(255,255,255,.03)',
+                            color: sel ? '#fff' : '#B7B7C0',
+                            boxShadow: sel ? `0 8px 22px ${col}55` : 'none',
+                            transform: sel ? 'translateY(-2px)' : 'none',
+                            transition: 'all .18s ease',
+                        }}
+                    >
+                        {o.label}
+                    </button>
+                );
+            })}
+        </div>
     );
 }
 
