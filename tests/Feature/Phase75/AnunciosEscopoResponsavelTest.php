@@ -3,20 +3,17 @@
 namespace Tests\Feature\Phase75;
 
 use App\Models\Company;
-use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Phase 75 Plan 02 — Escopo por responsavel_id no painel de cards de anúncios.
+ * Phase 75 — Painel de cards de anúncios ancorado em Company+MlToken.
  *
- * O módulo é admin-only (gate role:admin) nesta milestone — por isso as rotas
- * HTTP são exercitadas como admin. O escopo por responsavel_id (SEL-02) é
- * provado DIRETAMENTE no query scope `MlbEmpresa::visiveisPara()`, que impõe o
- * filtro NA QUERY DO BANCO (Armadilha 2 do PATTERNS.md §2) e já vale quando o
- * gate abrir para permission:mlb.anunciar.
+ * O módulo lista `companies` que têm ml_token (não mais mlb_empresas). O wizard
+ * recebe route model binding de Company. Escopo por responsavel_id foi deferido —
+ * gate role:admin garante que todo acessante é admin e vê todas as contas.
  *
  * @group phase75
  */
@@ -36,14 +33,19 @@ class AnunciosEscopoResponsavelTest extends TestCase
         return User::factory()->create(['role' => 'consultor']);
     }
 
-    /** Cria uma MlbEmpresa com Company + MlToken e responsavel_id definido. */
-    private function criarEmpresaComToken(int $responsavelId, bool $tokenExpirado = false): MlbEmpresa
+    /**
+     * Cria uma Company com MlToken associado.
+     *
+     * @param  bool $tokenExpirado  Quando true, expires_at é colocado no passado.
+     * @return Company
+     */
+    private function criarCompanyComToken(bool $tokenExpirado = false): Company
     {
         $company = Company::factory()->create();
 
         MlToken::create([
             'company_id'    => $company->id,
-            'ml_user_id'    => 'USER_' . $company->id,
+            'ml_user_id'    => 'USER_' . uniqid(),
             'access_token'  => 'token_test',
             'refresh_token' => 'refresh_test',
             'status'        => 'active',
@@ -51,30 +53,19 @@ class AnunciosEscopoResponsavelTest extends TestCase
             'connected_at'  => now()->subDays(5),
         ]);
 
-        return MlbEmpresa::create([
-            'nome'           => 'Empresa Teste ' . $company->id,
-            'tipo'           => 'ASSESSORIA',
-            'company_id'     => $company->id,
-            'responsavel_id' => $responsavelId,
-        ]);
+        return $company;
     }
 
-    /** Cria uma MlbEmpresa SEM company_id (empresa POLOS sem conta ML). */
-    private function criarEmpresaSemToken(int $responsavelId): MlbEmpresa
+    /** Cria uma Company SEM MlToken. */
+    private function criarCompanySemToken(): Company
     {
-        return MlbEmpresa::create([
-            'nome'           => 'Empresa Sem ML',
-            'tipo'           => 'POLOS',
-            'company_id'     => null,
-            'responsavel_id' => $responsavelId,
-        ]);
+        return Company::factory()->create();
     }
 
     // ─── Testes HTTP (admin, gate role:admin) ───
 
     /**
-     * SEL-01: index() renderiza o componente Mlb/AnunciosEmpresas (painel de cards),
-     * NÃO o wizard.
+     * SEL-01: index() renderiza o componente Mlb/AnunciosEmpresas (painel de cards).
      */
     public function test_index_renderiza_painel_de_cards(): void
     {
@@ -90,8 +81,7 @@ class AnunciosEscopoResponsavelTest extends TestCase
     }
 
     /**
-     * Gate admin-only (decisão de escopo v16.0): um usuário sem role admin é
-     * bloqueado pelo middleware antes de alcançar o painel.
+     * Gate admin-only: um usuário sem role admin é bloqueado pelo middleware.
      */
     public function test_nao_admin_bloqueado_pelo_gate(): void
     {
@@ -103,54 +93,35 @@ class AnunciosEscopoResponsavelTest extends TestCase
     }
 
     /**
-     * SEL-02: admin vê TODAS as empresas.
+     * SEL-02: admin vê TODAS as companies com ml_token (e só as com token).
+     *
+     * 2 companies COM MlToken + 1 SEM → painel lista 2.
      */
-    public function test_admin_ve_todas_empresas(): void
+    public function test_admin_ve_apenas_companies_com_ml_token(): void
     {
         $admin = $this->criarAdmin();
-        $pub   = $this->criarPublicador();
 
-        $this->criarEmpresaComToken($pub->id);
-        $this->criarEmpresaComToken($pub->id);
-        $this->criarEmpresaComToken($admin->id);
+        $this->criarCompanyComToken();
+        $this->criarCompanyComToken();
+        $this->criarCompanySemToken(); // não deve aparecer no painel
 
         $this->actingAs($admin)
             ->get('/mlb/anuncios')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Mlb/AnunciosEmpresas')
-                ->has('empresas', 3)
+                ->has('empresas', 2)
             );
     }
 
     /**
-     * SEL-06: empresa com company_id=null (POLOS sem conta ML) aparece no painel
-     * com tem_token=false — NÃO é filtrada fora da lista.
-     */
-    public function test_empresa_sem_conta_ml_aparece_com_tem_token_false(): void
-    {
-        $admin = $this->criarAdmin();
-
-        $this->criarEmpresaSemToken($admin->id);
-
-        $this->actingAs($admin)
-            ->get('/mlb/anuncios')
-            ->assertOk()
-            ->assertInertia(fn ($page) => $page
-                ->component('Mlb/AnunciosEmpresas')
-                ->has('empresas', 1)
-                ->where('empresas.0.tem_token', false)
-            );
-    }
-
-    /**
-     * SEL-06: empresa cujo MlToken->isExpired()===true sai com token_expirado=true.
+     * SEL-06: company cujo MlToken->isExpired()===true sai com token_expirado=true.
      */
     public function test_token_expirado_marca_token_expirado_true(): void
     {
         $admin = $this->criarAdmin();
 
-        $this->criarEmpresaComToken($admin->id, tokenExpirado: true);
+        $this->criarCompanyComToken(tokenExpirado: true);
 
         $this->actingAs($admin)
             ->get('/mlb/anuncios')
@@ -163,55 +134,37 @@ class AnunciosEscopoResponsavelTest extends TestCase
             );
     }
 
-    // ─── Teste direto do escopo (SEL-02, prova de filtro-no-banco) ───
-
     /**
-     * SEL-02: o query scope visiveisPara() filtra por responsavel_id NA QUERY.
+     * SEL-07: wizard de company COM token abre (200) e renderiza Mlb/AnunciarML.
      *
-     * Prova de banco: existem 3 empresas no banco, mas visiveisPara($publicador)
-     * retorna apenas as 2 do publicador (a 3ª, de outro responsável, é descartada
-     * na cláusula WHERE — não em PHP pós-busca). Admin recebe as 3.
+     * empresa.id no prop deve ser o company_id (âncora do novo modelo).
      */
-    public function test_scope_visiveis_para_filtra_por_responsavel(): void
-    {
-        $pub   = $this->criarPublicador();
-        $outro = $this->criarPublicador();
-
-        $e1 = $this->criarEmpresaComToken($pub->id);
-        $e2 = $this->criarEmpresaComToken($pub->id);
-        $e3 = $this->criarEmpresaComToken($outro->id);
-
-        $this->assertDatabaseCount('mlb_empresas', 3);
-
-        $idsPub = MlbEmpresa::visiveisPara($pub)->pluck('id')->all();
-        sort($idsPub);
-        $this->assertSame([$e1->id, $e2->id], $idsPub, 'Publicador deve ver só as 2 empresas dele');
-        $this->assertNotContains($e3->id, $idsPub, 'Empresa de outro responsável não pode aparecer');
-
-        $idsAdmin = MlbEmpresa::visiveisPara($this->criarAdmin())->pluck('id')->all();
-        $this->assertCount(3, $idsAdmin, 'Admin vê todas as empresas');
-    }
-
-    /**
-     * SEL-07 + T-75-05: o double-check do wizard rejeita empresa não atribuída.
-     *
-     * Sob o gate role:admin não é possível exercitar o ramo de publicador via HTTP
-     * (o middleware bloqueia antes do controller), então validamos o admin abrindo
-     * o wizard de qualquer empresa. O ramo 403 por responsavel_id fica coberto pela
-     * lógica do controller + pelo teste direto do escopo acima, e passa a valer via
-     * HTTP quando o gate abrir para permission:mlb.anunciar.
-     */
-    public function test_wizard_admin_abre_qualquer_empresa(): void
+    public function test_wizard_company_com_token_abre_ok(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComToken($admin->id);
+        $company = $this->criarCompanyComToken();
 
         $this->actingAs($admin)
-            ->get("/mlb/anuncios/wizard/{$empresa->id}")
+            ->get("/mlb/anuncios/wizard/{$company->id}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Mlb/AnunciarML')
-                ->where('empresa.id', $empresa->id)
+                ->where('empresa.id', $company->id)
+                ->where('empresa.company_id', $company->id)
+                ->where('empresa.tem_token', true)
             );
+    }
+
+    /**
+     * SEL-07: wizard de company SEM token retorna 404.
+     */
+    public function test_wizard_company_sem_token_retorna_404(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = $this->criarCompanySemToken();
+
+        $this->actingAs($admin)
+            ->get("/mlb/anuncios/wizard/{$company->id}")
+            ->assertNotFound();
     }
 }

@@ -230,7 +230,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         setFlash('');
         try {
             const r = await window.axios.post(
-                route('mlb.anuncios.rascunho.por-produto', { mlbEmpresa: empresa.id }),
+                route('mlb.anuncios.rascunho.por-produto', { company: empresa.id }),
                 { sku: produto.sku },
             );
             hidratarDoRascunho(r.data.rascunho);
@@ -324,9 +324,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             const payload = montarPayload();
             let id = rascunhoId;
             if (!id) {
-                // SEL-07: envia mlb_empresa_id (não company_id) — empresa fixada na criação
+                // Envia company_id (âncora = empresa com conta ML) — fixada na criação
                 const r = await window.axios.post(route('mlb.anuncios.rascunho.store'), {
-                    mlb_empresa_id: empresa.id, category_id: categoryId || null, payload,
+                    company_id: empresa.id, category_id: categoryId || null, payload,
                 });
                 id = r.data.rascunho.id;
                 setRascunhoId(id);

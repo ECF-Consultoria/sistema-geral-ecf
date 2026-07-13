@@ -4,17 +4,17 @@ namespace Tests\Feature\Phase75;
 
 use App\Models\Company;
 use App\Models\MlAnuncioRascunho;
-use App\Models\MlbEmpresa;
 use App\Models\MlToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Phase 75 Plan 03 — SEL-03: company_id e mlb_empresa_id imutáveis após criação.
+ * Phase 75 — SEL-03: company_id e mlb_empresa_id imutáveis após criação do rascunho.
  *
- * Prova que o PUT /rascunho/{id} ignora qualquer company_id/mlb_empresa_id
- * enviado no corpo — a empresa fixada na criação nunca muda.
+ * O POST /mlb/anuncios/rascunho agora recebe `company_id` (não mlb_empresa_id).
+ * A âncora é a Company com ml_token; mlb_empresa_id é derivado server-side (opcional).
+ * O PUT /rascunho/{id} ignora qualquer company_id/mlb_empresa_id enviado no corpo.
  *
  * @group phase75
  */
@@ -24,94 +24,116 @@ class RascunhoCompanyIdImutavelTest extends TestCase
 
     // ─── Helpers ───
 
-    /** Cria um usuário admin. */
     private function criarAdmin(): User
     {
         return User::factory()->create(['role' => 'admin']);
     }
 
     /**
-     * Cria uma MlbEmpresa com Company associada e responsavel_id definido.
+     * Cria uma Company com MlToken associado.
      *
-     * Não cria MlToken — os testes desta suite não precisam de token ML.
+     * salvarRascunho() aborta 422 quando a company não tem ml_token, então
+     * os testes desta suite precisam de token para que o rascunho seja gravado.
      */
-    private function criarEmpresa(int $responsavelId): MlbEmpresa
+    private function criarCompanyComToken(): Company
     {
         $company = Company::factory()->create();
 
-        return MlbEmpresa::create([
-            'nome'           => 'Empresa Teste ' . $company->id,
-            'tipo'           => 'ASSESSORIA',
-            'company_id'     => $company->id,
-            'responsavel_id' => $responsavelId,
+        MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => 'USER_' . uniqid(),
+            'access_token'  => 'token_test',
+            'refresh_token' => 'refresh_test',
+            'status'        => 'active',
+            'expires_at'    => now()->addDays(30),
+            'connected_at'  => now()->subDays(5),
         ]);
+
+        return $company;
     }
 
     // ─── Testes ───
 
     /**
-     * SEL-07: salvarRascunho() grava mlb_empresa_id e company_id derivado da empresa.
+     * POST rascunho com company_id de company COM token grava company_id correto.
      *
-     * Prova que o rascunho nasce ancorado na empresa: mlb_empresa_id obrigatório,
-     * company_id copiado da empresa (não enviado pelo cliente).
+     * Valida que:
+     * - company_id é gravado no banco
+     * - user_id é derivado server-side (não enviado pelo cliente)
+     * - status nasce como 'rascunho'
      */
-    public function test_salvar_rascunho_grava_mlb_empresa_id_e_company_id(): void
+    public function test_salvar_rascunho_grava_company_id_e_user_id(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresa($admin->id);
+        $company = $this->criarCompanyComToken();
 
         $response = $this->actingAs($admin)
             ->postJson('/mlb/anuncios/rascunho', [
-                'mlb_empresa_id' => $empresa->id,
-                'payload'        => ['title' => 'Produto Teste'],
+                'company_id' => $company->id,
+                'payload'    => ['title' => 'Produto Teste'],
             ]);
 
         $response->assertOk();
 
-        // Verifica que mlb_empresa_id e company_id foram gravados corretamente no banco
+        // company_id e user_id são gravados corretamente; mlb_empresa_id pode ser null
         $this->assertDatabaseHas('ml_anuncio_rascunhos', [
-            'mlb_empresa_id' => $empresa->id,
-            'company_id'     => $empresa->company_id,
-            'user_id'        => $admin->id,
+            'company_id' => $company->id,
+            'user_id'    => $admin->id,
+            'status'     => MlAnuncioRascunho::STATUS_RASCUNHO,
         ]);
     }
 
     /**
-     * SEL-03: atualizarRascunho() ignora company_id e mlb_empresa_id enviados no corpo.
+     * POST rascunho com company SEM ml_token → 422 (company sem conta ML).
+     */
+    public function test_salvar_rascunho_company_sem_token_retorna_422(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = Company::factory()->create(); // sem MlToken
+
+        $this->actingAs($admin)
+            ->postJson('/mlb/anuncios/rascunho', [
+                'company_id' => $company->id,
+                'payload'    => ['title' => 'Produto Sem Conta'],
+            ])
+            ->assertStatus(422);
+    }
+
+    /**
+     * SEL-03: PUT rascunho tentando trocar company_id/mlb_empresa_id → ignorado (imutável).
      *
-     * Mesmo que o cliente envie company_id/mlb_empresa_id da empresa B, o rascunho
-     * criado na empresa A permanece vinculado à empresa A (mudança rejeitada silenciosamente).
+     * Cria rascunho na company A e tenta alterar company_id para company B no PUT.
+     * O rascunho deve permanecer vinculado à company A.
      */
     public function test_atualizar_rascunho_ignora_company_id_e_mlb_empresa_id(): void
     {
         $admin    = $this->criarAdmin();
-        $empresaA = $this->criarEmpresa($admin->id);
-        $empresaB = $this->criarEmpresa($admin->id);
+        $companyA = $this->criarCompanyComToken();
+        $companyB = $this->criarCompanyComToken();
 
-        // Cria o rascunho na empresa A via POST
+        // Cria o rascunho na company A via POST
         $criarResponse = $this->actingAs($admin)
             ->postJson('/mlb/anuncios/rascunho', [
-                'mlb_empresa_id' => $empresaA->id,
-                'payload'        => ['title' => 'Produto Original'],
+                'company_id' => $companyA->id,
+                'payload'    => ['title' => 'Produto Original'],
             ]);
 
         $criarResponse->assertOk();
         $rascunhoId = $criarResponse->json('rascunho.id');
         $this->assertNotNull($rascunhoId, 'ID do rascunho deve ser retornado no POST');
 
-        // Tenta trocar para empresa B enviando company_id e mlb_empresa_id da B no PUT
+        // Tenta trocar para company B enviando company_id e mlb_empresa_id da B no PUT
         $this->actingAs($admin)
             ->putJson("/mlb/anuncios/rascunho/{$rascunhoId}", [
-                'company_id'     => $empresaB->company_id,   // tentativa de troca — deve ser ignorada
-                'mlb_empresa_id' => $empresaB->id,           // tentativa de troca — deve ser ignorada
+                'company_id'     => $companyB->id,   // tentativa de troca — deve ser ignorada
+                'mlb_empresa_id' => 9999,             // tentativa de troca — deve ser ignorada
                 'category_id'    => 'MLB1234',
                 'payload'        => ['title' => 'Produto Atualizado'],
             ])
             ->assertOk();
 
-        // SEL-03: o rascunho deve permanecer vinculado à empresa A (troca ignorada silenciosamente)
+        // SEL-03: o rascunho deve permanecer vinculado à company A (troca ignorada)
         $rascunho = MlAnuncioRascunho::find($rascunhoId);
-        $this->assertEquals($empresaA->id, $rascunho->mlb_empresa_id, 'mlb_empresa_id NÃO deve mudar');
-        $this->assertEquals($empresaA->company_id, $rascunho->company_id, 'company_id NÃO deve mudar');
+        $this->assertEquals($companyA->id, $rascunho->company_id, 'company_id NÃO deve mudar');
     }
 }

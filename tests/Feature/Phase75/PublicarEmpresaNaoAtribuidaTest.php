@@ -10,14 +10,13 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * Phase 75 Plan 03 — SEL-04: 403 em empresa não atribuída ao publicador.
+ * Phase 75 — SEL-04: gate role:admin bloqueia não-admin; admin sempre passa no double-check.
  *
- * Prova que atualizarRascunho() e publicar() retornam 403 quando a empresa
- * do rascunho não está atribuída ao publicador autenticado.
- * Admin e o publicador dono da empresa passam sem 403.
- *
- * PATTERNS.md §8 — double-check canônico:
- *   abort_unless(isAdmin() || mlbEmpresa->responsavel_id === user->id, 403)
+ * O novo modelo ancora o rascunho em Company+MlToken; o double-check de responsavel_id
+ * usa $rascunho->mlbEmpresa->responsavel_id (quando mlb_empresa_id está preenchido).
+ * Sob o gate role:admin todo acessante é admin — o caminho de 403 por responsavel_id
+ * é provado de forma indireta: não-admins (consultor) são bloqueados pelo middleware antes
+ * do controller. Admin sempre passa (isAdmin()===true no abort_unless).
  *
  * @group phase75
  */

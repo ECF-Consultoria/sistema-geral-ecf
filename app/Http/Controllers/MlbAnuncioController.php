@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Company;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
@@ -55,33 +56,32 @@ class MlbAnuncioController extends Controller
      * Double-check de pertencimento: admin passa sempre; publicador só acessa
      * se a empresa foi atribuída a ele (abort 403 caso contrário — T-75-05).
      */
-    public function wizard(Request $request, MlbEmpresa $mlbEmpresa)
+    public function wizard(Request $request, Company $company)
     {
-        // T-75-05: empresa deve pertencer ao publicador ou o usuário é admin
-        abort_unless(
-            $request->user()->isAdmin() || $mlbEmpresa->responsavel_id === $request->user()->id,
-            403,
-            'Empresa não atribuída a este publicador.'
-        );
+        // Só empresas com conta ML conectada podem publicar
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+        // (escopo por publicador deferido — gate role:admin garante que é admin)
 
-        // Carrega token ML e implementacao em uma única chamada (evita N+1)
-        $mlbEmpresa->loadMissing(['company.mlToken', 'implementacao']);
+        // mlb_empresa ligada (se houver) → dados do cliente para pré-preenchimento (Phase 76)
+        $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)
+            ->with('implementacao')
+            ->first();
 
         return Inertia::render('Mlb/AnunciarML', [
             'empresa' => [
-                'id'         => $mlbEmpresa->id,
-                'nome'       => $mlbEmpresa->nome,
-                'company_id' => $mlbEmpresa->company_id,
-                'tem_token'  => $mlbEmpresa->company_id !== null
-                    && $mlbEmpresa->company?->mlToken !== null,
+                'id'         => $company->id,   // âncora = company_id
+                'nome'       => $company->name,
+                'company_id' => $company->id,
+                'tem_token'  => true,
             ],
-            'rascunhos' => MlAnuncioRascunho::where('mlb_empresa_id', $mlbEmpresa->id)
+            'rascunhos' => MlAnuncioRascunho::where('company_id', $company->id)
                 ->latest()
                 ->limit(50)
                 ->get(['id', 'company_id', 'mlb_empresa_id', 'user_id', 'status',
                        'category_id', 'ml_item_id', 'updated_at', 'sku_origem', 'listing_tier']),
-            // DRAFT-01: produtos do cliente lidos de mlb_implementacoes.dados
-            'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa->implementacao?->dados),
+            // DRAFT-01: produtos do cliente lidos de mlb_implementacoes.dados (se houver vínculo)
+            'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
         ]);
     }
 
@@ -97,25 +97,25 @@ class MlbAnuncioController extends Controller
     public function salvarRascunho(Request $request)
     {
         $dados = $request->validate([
-            // SEL-07: mlb_empresa_id obrigatório — empresa fixada na criação
-            'mlb_empresa_id' => ['required', 'integer', 'exists:mlb_empresas,id'],
-            'category_id'    => ['nullable', 'string', 'max:20'],
-            'payload'        => ['nullable', 'array'],
+            // Âncora = company_id (empresa com conta ML conectada)
+            'company_id'  => ['required', 'integer', 'exists:companies,id'],
+            'category_id' => ['nullable', 'string', 'max:20'],
+            'payload'     => ['nullable', 'array'],
         ]);
 
-        $mlbEmpresa = MlbEmpresa::findOrFail($dados['mlb_empresa_id']);
+        $company = Company::findOrFail($dados['company_id']);
 
-        // T-75-06: SEL-04 — empresa deve pertencer ao publicador autenticado ou usuário é admin
-        abort_unless(
-            $request->user()->isAdmin() || $mlbEmpresa->responsavel_id === $request->user()->id,
-            403,
-            'Empresa não atribuída a este publicador.'
-        );
+        // Só empresas com conta ML conectada podem receber rascunho
+        abort_unless($company->mlToken !== null, 422, 'Empresa sem conta ML conectada.');
+        // (escopo por publicador deferido — gate role:admin)
 
-        // company_id derivado da empresa; user_id do publicador autenticado (não do cliente)
+        // mlb_empresa ligada (se houver) — vínculo opcional para dados do cliente
+        $mlbEmpresaId = MlbEmpresa::where('company_id', $company->id)->value('id');
+
+        // company_id da âncora; user_id do publicador autenticado (não do cliente)
         $rascunho = MlAnuncioRascunho::create([
-            'mlb_empresa_id' => $mlbEmpresa->id,
-            'company_id'     => $mlbEmpresa->company_id,
+            'company_id'     => $company->id,
+            'mlb_empresa_id' => $mlbEmpresaId,
             'user_id'        => $request->user()->id,
             'category_id'    => $dados['category_id'] ?? null,
             'payload'        => $dados['payload'] ?? [],
@@ -244,14 +244,12 @@ class MlbAnuncioController extends Controller
      * T-76-02: company_id e user_id derivados server-side (nunca do request).
      * T-76-03: sku e tier validados; sku casado por comparação exata na planilha.
      */
-    public function rascunhoPorProduto(Request $request, MlbEmpresa $mlbEmpresa): JsonResponse
+    public function rascunhoPorProduto(Request $request, Company $company): JsonResponse
     {
-        // T-76-01: double-check idêntico ao wizard() — empresa deve pertencer ao publicador ou usuário é admin
-        abort_unless(
-            $request->user()->isAdmin() || $mlbEmpresa->responsavel_id === $request->user()->id,
-            403,
-            'Empresa não atribuída a este publicador.'
-        );
+        // Só empresas com conta ML conectada
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+        // (escopo por publicador deferido — gate role:admin)
 
         // T-76-03: valida apenas sku e tier — company_id/user_id derivados server-side (T-76-02)
         $dados = $request->validate([
@@ -259,10 +257,11 @@ class MlbAnuncioController extends Controller
             'tier' => ['nullable', 'string', 'in:classico,premium'],
         ]);
 
-        $mlbEmpresa->loadMissing('implementacao');
+        // mlb_empresa ligada (se houver) → dados do cliente
+        $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)->with('implementacao')->first();
 
         // Monta a lista de produtos com preços e busca o produto solicitado por SKU
-        $produtos = $this->montarProdutosDoCliente($mlbEmpresa->implementacao?->dados);
+        $produtos = $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados);
         $skuBusca = trim($dados['sku']);
         $produto  = collect($produtos)->first(fn ($p) => trim($p['sku']) === $skuBusca);
 
@@ -340,8 +339,8 @@ class MlbAnuncioController extends Controller
 
         // T-76-02: company_id e user_id derivados server-side (NUNCA do request)
         $rascunho = MlAnuncioRascunho::create([
-            'mlb_empresa_id' => $mlbEmpresa->id,
-            'company_id'     => $mlbEmpresa->company_id,
+            'company_id'     => $company->id,
+            'mlb_empresa_id' => $mlbEmpresa?->id,   // vínculo opcional
             'user_id'        => $request->user()->id,
             'category_id'    => null,
             'payload'        => $payload,
@@ -517,29 +516,32 @@ class MlbAnuncioController extends Controller
     }
 
     /**
-     * Retorna a coleção de empresas MLB com estado do token ML serializado.
+     * Retorna as empresas que PODEM receber publicação: as `companies` com conta
+     * ML conectada (ml_token ativo). Esta é a fonte de verdade do painel — o que
+     * "pode publicar" de fato é a conta que fez OAuth, não a régua do onboarding.
      *
-     * Escopo imposto NA QUERY DO BANCO (não em PHP pós-busca — Armadilha 2):
-     * - Publicador: só empresas onde responsavel_id === seu id
-     * - Admin: todas as empresas
+     * Escopo por publicador está DEFERIDO: sob o gate role:admin todo acessante é
+     * admin e vê todas as contas conectadas. Quando o vínculo publicador→conta ML
+     * for modelado, o filtro entra aqui.
      *
-     * Empresa com company_id=null ou sem MlToken aparece com tem_token=false,
-     * mas NÃO é filtrada fora da lista (SEL-06 — card de "sem conta ML").
+     * `tem_dados_cliente` indica se existe uma mlb_empresa ligada a esta company
+     * (via company_id) com implementação preenchida — habilita o pré-preenchimento
+     * do rascunho a partir da planilha do cliente (Phase 76). Onde não há vínculo,
+     * o wizard abre em branco (degradação graciosa).
      *
-     * @return Collection<int, array{id: int, nome: string, company_id: int|null, tem_token: bool, token_expirado: bool, rascunhos_abertos: int}>
+     * @return Collection<int, array{id: int, nome: string, company_id: int, tem_token: bool, token_expirado: bool, tem_dados_cliente: bool, rascunhos_abertos: int}>
      */
     private function empresas(Request $request): Collection
     {
-        // SEL-02: escopo por responsavel_id via query scope reutilizável (filtro no banco).
-        // Gate atual role:admin mantém o filtro dormant (todo acessante é admin); o scope
-        // já vale quando o gate abrir para permission:mlb.anunciar.
-        return MlbEmpresa::with(['company.mlToken'])
-            ->visiveisPara($request->user())
-            ->orderBy('nome')
+        // Fonte: companies com ml_token. O whereHas filtra no banco — só conectadas.
+        return Company::query()
+            ->whereHas('mlToken')
+            ->with('mlToken')
+            ->orderBy('name')
             ->get()
-            ->map(function ($e) {
-                // Contagem de rascunhos em aberto (rascunho, validado ou erro) para este empresa
-                $abertos = MlAnuncioRascunho::where('mlb_empresa_id', $e->id)
+            ->map(function ($c) {
+                // Rascunhos em aberto contados por company_id (âncora do rascunho)
+                $abertos = MlAnuncioRascunho::where('company_id', $c->id)
                     ->whereIn('status', [
                         MlAnuncioRascunho::STATUS_RASCUNHO,
                         MlAnuncioRascunho::STATUS_VALIDADO,
@@ -547,13 +549,19 @@ class MlbAnuncioController extends Controller
                     ])
                     ->count();
 
+                // mlb_empresa ligada (se houver) → habilita dados do cliente (Phase 76)
+                $mlbEmp = MlbEmpresa::where('company_id', $c->id)
+                    ->with('implementacao')
+                    ->first();
+
                 return [
-                    'id'              => $e->id,
-                    'nome'            => $e->nome,
-                    'company_id'      => $e->company_id,
-                    // T-75-03: expõe apenas booleans — access_token permanece hidden
-                    'tem_token'       => $e->company_id !== null && $e->company?->mlToken !== null,
-                    'token_expirado'  => $e->company?->mlToken?->isExpired() ?? false,
+                    'id'                => $c->id,   // âncora = company_id
+                    'nome'              => $c->name,
+                    'company_id'        => $c->id,
+                    // Expõe apenas booleans — access_token permanece hidden
+                    'tem_token'         => true,     // filtrado por whereHas('mlToken')
+                    'token_expirado'    => $c->mlToken?->isExpired() ?? false,
+                    'tem_dados_cliente' => $mlbEmp?->implementacao !== null,
                     'rascunhos_abertos' => (int) $abertos,
                 ];
             });

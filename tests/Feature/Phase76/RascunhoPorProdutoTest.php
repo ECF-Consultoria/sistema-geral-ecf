@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\MlToken;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -13,8 +14,15 @@ use Tests\TestCase;
 /**
  * Phase 76 Plan 01 — rascunhoPorProduto() e wizard() estendido.
  *
+ * A rota usa route model binding de Company:
+ *   POST /mlb/anuncios/wizard/{company}/rascunho-por-produto
+ *   GET  /mlb/anuncios/wizard/{company}
+ *
+ * O {company} é o id da Company (não da MlbEmpresa). A company DEVE ter MlToken
+ * para que o controller não retorne 404 de imediato.
+ * A MlbEmpresa ligada (via company_id) fornece os produtos via MlbImplementacao.
+ *
  * Usa SQLite in-memory com RefreshDatabase.
- * Seed mínimo: MlbEmpresa + MlbImplementacao com dados fixos (2 produtos, 1 com preço, 1 sem).
  *
  * @group phase76
  */
@@ -93,36 +101,66 @@ class RascunhoPorProdutoTest extends TestCase
         return User::factory()->create(['role' => 'consultor']);
     }
 
-    private function criarEmpresaComImplementacao(int $responsavelId, ?array $dados = null): MlbEmpresa
+    /**
+     * Cria uma Company com MlToken + MlbEmpresa ligada (company_id=company.id) +
+     * MlbImplementacao com dados de produtos.
+     *
+     * O wizard e o rascunhoPorProduto usam {company} → company.id na rota.
+     * A MlbEmpresa é o vínculo opcional que fornece os dados do cliente (planilha).
+     *
+     * @return array{company: Company, mlbEmpresa: MlbEmpresa}
+     */
+    private function criarCompanyComImplementacao(?array $dados = null): array
     {
         $company = Company::factory()->create();
 
-        $empresa = MlbEmpresa::create([
-            'nome'           => 'Empresa Teste',
-            'tipo'           => 'ASSESSORIA',
-            'company_id'     => $company->id,
-            'responsavel_id' => $responsavelId,
+        // MlToken obrigatório: o controller aborta 404 se ml_token for null
+        MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => 'USER_' . uniqid(),
+            'access_token'  => 'token_test',
+            'refresh_token' => 'refresh_test',
+            'status'        => 'active',
+            'expires_at'    => now()->addDays(30),
+            'connected_at'  => now()->subDays(5),
+        ]);
+
+        // MlbEmpresa ligada por company_id — fonte dos dados do cliente (planilha/precificação)
+        $mlbEmpresa = MlbEmpresa::create([
+            'nome'       => 'Empresa Teste',
+            'tipo'       => 'ASSESSORIA',
+            'company_id' => $company->id,
         ]);
 
         MlbImplementacao::create([
-            'empresa_id' => $empresa->id,
-            'token'      => 'tok_' . uniqid(),  // obrigatório NOT NULL UNIQUE na migration
+            'empresa_id' => $mlbEmpresa->id,
+            'token'      => 'tok_' . uniqid(),  // NOT NULL UNIQUE na migration
             'dados'      => $dados ?? $this->dadosFixos(),
         ]);
 
-        return $empresa;
+        return compact('company', 'mlbEmpresa');
     }
 
-    private function criarEmpresaSemImplementacao(int $responsavelId): MlbEmpresa
+    /**
+     * Cria uma Company com MlToken mas SEM MlbEmpresa ligada.
+     *
+     * Wizard não deve quebrar — produtos deve ser [].
+     */
+    private function criarCompanySemMlbEmpresa(): Company
     {
         $company = Company::factory()->create();
 
-        return MlbEmpresa::create([
-            'nome'           => 'Empresa Sem Impl',
-            'tipo'           => 'ASSESSORIA',
-            'company_id'     => $company->id,
-            'responsavel_id' => $responsavelId,
+        MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => 'USER_' . uniqid(),
+            'access_token'  => 'token_test',
+            'refresh_token' => 'refresh_test',
+            'status'        => 'active',
+            'expires_at'    => now()->addDays(30),
+            'connected_at'  => now()->subDays(5),
         ]);
+
+        return $company;
     }
 
     // ─── Testes de rascunhoPorProduto() ───
@@ -139,10 +177,10 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_cria_rascunho_com_seller_package_em_gramas_e_cm(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $response = $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU01',
                 'tier' => 'classico',
             ]);
@@ -176,10 +214,10 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_payload_price_igual_a_preco_anunciado(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $response = $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU01',
                 'tier' => 'classico',
             ]);
@@ -199,21 +237,21 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_sku_origem_e_listing_tier_gravados_no_banco(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU01',
                 'tier' => 'classico',
             ])
             ->assertOk();
 
         $this->assertDatabaseHas('ml_anuncio_rascunhos', [
-            'sku_origem'  => 'SKU01',
+            'sku_origem'   => 'SKU01',
             'listing_tier' => 'classico',
-            'company_id'  => $empresa->company_id,
-            'user_id'     => $admin->id,
-            'status'      => MlAnuncioRascunho::STATUS_RASCUNHO,
+            'company_id'   => $company->id,
+            'user_id'      => $admin->id,
+            'status'       => MlAnuncioRascunho::STATUS_RASCUNHO,
         ]);
     }
 
@@ -223,10 +261,10 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_estoque_e_descricao_no_payload(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $response = $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU01',
                 'tier' => 'classico',
             ])
@@ -243,10 +281,10 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_produto_sem_preco_cria_rascunho_com_price_null(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $response = $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU02',
                 'tier' => 'classico',
             ])
@@ -266,31 +304,29 @@ class RascunhoPorProdutoTest extends TestCase
     }
 
     /**
-     * T-76-01: publicador sem responsavel_id na empresa → 403.
+     * Não-admin (role consultor) é bloqueado pelo middleware role:admin → 403.
+     *
+     * Admin sempre passa (isAdmin()===true no abort_unless interno).
      */
-    public function test_publicador_sem_responsavel_id_recebe_403(): void
+    public function test_nao_admin_bloqueado_pelo_middleware(): void
     {
         $admin      = $this->criarAdmin();
         $publicador = $this->criarPublicador();
-        $empresa    = $this->criarEmpresaComImplementacao($admin->id); // responsavel = admin, não o publicador
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
-        // publicador tenta criar rascunho em empresa não atribuída a ele
-        // mas como o gate é role:admin o middleware já bloqueia, então testamos a lógica
-        // do abort_unless diretamente via actingAs admin acessando empresa com responsavel diferente
-        $outraEmpresa = $this->criarEmpresaComImplementacao($publicador->id);
-        $outraEmpresa->update(['responsavel_id' => $publicador->id]);
-
-        // Admin passa sempre (isAdmin() = true)
+        // Admin passa normalmente
         $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$outraEmpresa->id}/rascunho-por-produto", [
-                'sku' => 'SKU01',
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
+                'sku'  => 'SKU01',
+                'tier' => 'classico',
             ])
             ->assertOk();
 
-        // Não-admin (consultor sem role:admin) cai no middleware antes do controller
+        // Consultor (não-admin) é barrado pelo middleware role:admin
         $this->actingAs($publicador)
-            ->postJson("/mlb/anuncios/wizard/{$outraEmpresa->id}/rascunho-por-produto", [
-                'sku' => 'SKU01',
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
+                'sku'  => 'SKU01',
+                'tier' => 'classico',
             ])
             ->assertForbidden();
     }
@@ -301,10 +337,10 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_sku_inexistente_retorna_422(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $response = $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU_INEXISTENTE',
                 'tier' => 'classico',
             ]);
@@ -323,10 +359,10 @@ class RascunhoPorProdutoTest extends TestCase
     public function test_payload_tem_meta_campos_com_origem_cliente(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $response = $this->actingAs($admin)
-            ->postJson("/mlb/anuncios/wizard/{$empresa->id}/rascunho-por-produto", [
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
                 'sku'  => 'SKU01',
                 'tier' => 'classico',
             ])
@@ -347,14 +383,16 @@ class RascunhoPorProdutoTest extends TestCase
 
     /**
      * wizard() passa prop 'produtos' (array) vinda de montarProdutosDoCliente.
+     *
+     * Company com MlToken + MlbEmpresa ligada com implementação → 2 produtos nos dados fixos.
      */
     public function test_wizard_passa_produtos_ao_front(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaComImplementacao($admin->id);
+        ['company' => $company] = $this->criarCompanyComImplementacao();
 
         $this->actingAs($admin)
-            ->get("/mlb/anuncios/wizard/{$empresa->id}")
+            ->get("/mlb/anuncios/wizard/{$company->id}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Mlb/AnunciarML')
@@ -364,15 +402,15 @@ class RascunhoPorProdutoTest extends TestCase
     }
 
     /**
-     * Empresa sem implementação → wizard não quebra, produtos = [].
+     * Company com MlToken mas SEM MlbEmpresa ligada → wizard não quebra, produtos = [].
      */
-    public function test_wizard_empresa_sem_implementacao_produtos_vazio(): void
+    public function test_wizard_company_sem_mlb_empresa_produtos_vazio(): void
     {
         $admin   = $this->criarAdmin();
-        $empresa = $this->criarEmpresaSemImplementacao($admin->id);
+        $company = $this->criarCompanySemMlbEmpresa();
 
         $this->actingAs($admin)
-            ->get("/mlb/anuncios/wizard/{$empresa->id}")
+            ->get("/mlb/anuncios/wizard/{$company->id}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Mlb/AnunciarML')
@@ -382,19 +420,42 @@ class RascunhoPorProdutoTest extends TestCase
     }
 
     /**
-     * Empresa com implementação mas sem produtos na planilha → produtos = [].
+     * Company com MlbEmpresa + implementação mas sem produtos na planilha → produtos = [].
      */
     public function test_wizard_implementacao_sem_produtos_retorna_vazio(): void
     {
         $admin   = $this->criarAdmin();
         $dados   = ['itens' => ['planilha_produtos' => ['produtos' => []], 'precificacao' => []]];
-        $empresa = $this->criarEmpresaComImplementacao($admin->id, $dados);
+        ['company' => $company] = $this->criarCompanyComImplementacao($dados);
 
         $this->actingAs($admin)
-            ->get("/mlb/anuncios/wizard/{$empresa->id}")
+            ->get("/mlb/anuncios/wizard/{$company->id}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->where('produtos', [])
             );
+    }
+
+    /**
+     * rascunhoPorProduto() com company SEM MlbEmpresa ligada → produtos = [] → 422 (sku inexistente).
+     *
+     * Degrada graciosamente: sem MlbEmpresa não há planilha, então qualquer SKU
+     * será "não encontrado" e retorna 422 com mensagem clara (não 500).
+     */
+    public function test_rascunho_por_produto_sem_mlb_empresa_retorna_422(): void
+    {
+        $admin   = $this->criarAdmin();
+        $company = $this->criarCompanySemMlbEmpresa();
+
+        $response = $this->actingAs($admin)
+            ->postJson("/mlb/anuncios/wizard/{$company->id}/rascunho-por-produto", [
+                'sku'  => 'SKU01',
+                'tier' => 'classico',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('ok', false);
+
+        $this->assertStringContainsString('Produto não encontrado', $response->json('erro'));
     }
 }

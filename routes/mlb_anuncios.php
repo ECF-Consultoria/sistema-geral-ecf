@@ -28,13 +28,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // SEL-01: um card por empresa; escopo por responsavel_id no controller (SEL-02)
         Route::get('/', [MlbAnuncioController::class, 'index'])->name('index');
 
-        // ─── Momento 2: wizard com empresa fixada ───
-        // SEL-07: double-check 403 no controller (T-75-05)
-        Route::get('/wizard/{mlbEmpresa}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
+        // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
+        Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 
         // DRAFT-02: cria rascunho pré-preenchido a partir de produto da planilha do cliente (Phase 76)
         // Nome resolvido: mlb.anuncios.rascunho.por-produto (consumido pelo front em 76-02)
-        Route::post('/wizard/{mlbEmpresa}/rascunho-por-produto', [MlbAnuncioController::class, 'rascunhoPorProduto'])
+        Route::post('/wizard/{company}/rascunho-por-produto', [MlbAnuncioController::class, 'rascunhoPorProduto'])
             ->name('rascunho.por-produto');
 
         // Rascunho (autosave + ciclo de vida)
