@@ -147,7 +147,17 @@ export default function PreviewFormulario({
                             </span>
                         </label>
 
-                        {opcoes.length === 0 ? (
+                        {q.tipo === 'texto_livre' ? (
+                            // Ajuste 2026-07-13 · pergunta tipo texto_livre renderiza
+                            // uma textarea desabilitada no preview (respostas não são
+                            // salvas nesse modo — só demonstração visual pro admin).
+                            <textarea
+                                disabled
+                                rows={3}
+                                placeholder="Espaço para o cliente escrever a resposta…"
+                                className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12.5px] text-white/60 placeholder:text-white/25 resize-none"
+                            />
+                        ) : opcoes.length === 0 ? (
                             <p className="text-white/40 text-[11.5px] italic">
                                 Nenhuma opção cadastrada nesta pergunta.
                             </p>

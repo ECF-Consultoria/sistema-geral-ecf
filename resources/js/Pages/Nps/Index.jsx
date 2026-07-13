@@ -741,7 +741,11 @@ export default function NpsIndex({
     const [lines, setLines] = useState({ est: true, ana: true, emp: true });
     const [sort, setSort] = useState({ key: 'date', dir: 'desc' });
 
-    const { data, setData, post, processing, reset, errors } = useForm({ company_id: '' });
+    // Ajuste 2026-07-13 · admin pode escolher qual modelo NPS o link vai
+    // usar. Vazio = auto-resolve pelo NpsTemplateService (comportamento
+    // legacy). Só admin vê o campo (usuários normais não têm permissão de
+    // escolher template arbitrário — segurança em profundidade no controller).
+    const { data, setData, post, processing, reset, errors } = useForm({ company_id: '', template_id: '' });
 
     useEffect(() => {
         if (flash?.nps_link) {
@@ -978,15 +982,42 @@ export default function NpsIndex({
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submit} className="space-y-4">
-                        <Select value={data.company_id} onValueChange={v => setData('company_id', v)} required>
-                            <SelectTrigger><SelectValue placeholder="Selecionar empresa..." /></SelectTrigger>
-                            <SelectContent>
-                                {companies.map(c => (
-                                    <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
+                        <div className="space-y-1.5">
+                            <label className="text-xs text-white/70 font-medium">Empresa</label>
+                            <Select value={data.company_id} onValueChange={v => setData('company_id', v)} required>
+                                <SelectTrigger><SelectValue placeholder="Selecionar empresa..." /></SelectTrigger>
+                                <SelectContent>
+                                    {companies.map(c => (
+                                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
+                        </div>
+
+                        {/* Ajuste 2026-07-13 · escolha do modelo NPS. Só admin
+                            vê (usuário normal usa o auto-resolve por serviço da
+                            empresa). Opcional — se deixar em branco cai no
+                            NpsTemplateService::resolveForCompany. */}
+                        {isAdmin && templates.length > 1 && (
+                            <div className="space-y-1.5">
+                                <label className="text-xs text-white/70 font-medium">Modelo NPS (opcional)</label>
+                                <Select
+                                    value={data.template_id || '__auto__'}
+                                    onValueChange={v => setData('template_id', v === '__auto__' ? '' : v)}
+                                >
+                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__auto__">Automático (padrão da empresa)</SelectItem>
+                                        {templates.map(t => (
+                                            <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                {errors.template_id && <p className="text-destructive text-xs">{errors.template_id}</p>}
+                            </div>
+                        )}
+
                         <DialogFooter>
                             <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
                             <Button type="submit" disabled={processing || !data.company_id}>Gerar Link</Button>

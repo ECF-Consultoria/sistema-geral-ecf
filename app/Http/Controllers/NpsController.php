@@ -340,7 +340,12 @@ class NpsController extends Controller
     {
         $user = $request->user();
         $data = $request->validate([
-            'company_id' => 'required|exists:companies,id',
+            'company_id'  => 'required|exists:companies,id',
+            // Ajuste 2026-07-13 · admin pode escolher qual modelo NPS o link
+            // vai usar. Nullable — se ausente, cai no resolveForCompany
+            // (default por priority/serviço) preservando o comportamento
+            // original.
+            'template_id' => 'nullable|integer|exists:nps_templates,id',
         ]);
 
         // Auth: admin OR user com a empresa em qualquer role no pivot
@@ -359,8 +364,17 @@ class NpsController extends Controller
         // (priority DESC → is_default fallback). O survey nasce já com
         // template_id populado — sem este bind, a dedup unique parcial
         // (Plan 68-04) e o snapshot per-row (Phase 68) ficam degradados.
-        $company  = Company::findOrFail($data['company_id']);
-        $template = $templateService->resolveForCompany($company);
+        //
+        // Ajuste 2026-07-13: se o admin escolheu um template específico no
+        // dialog "Gerar link", usa esse — só admin pode override; usuários
+        // normais continuam com o auto-resolve por empresa.
+        $company = Company::findOrFail($data['company_id']);
+        if ($user->isAdmin() && !empty($data['template_id'])) {
+            $template = \App\Models\NpsTemplate::where('active', true)
+                ->findOrFail($data['template_id']);
+        } else {
+            $template = $templateService->resolveForCompany($company);
+        }
 
         $survey = NpsSurvey::create([
             'token'          => Str::uuid()->toString(),
