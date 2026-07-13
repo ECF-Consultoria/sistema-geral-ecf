@@ -1019,6 +1019,51 @@ class NpsController extends Controller
         return back()->with('success', 'Resposta excluída. A pesquisa voltou para pendente.');
     }
 
+    /**
+     * 2026-07-13 — DELETE /nps/{survey}. Admin exclusivo (route middleware
+     * role:admin + guard redundante). Apaga a pesquisa NPS inteira, de
+     * QUALQUER status (inclusive `pending`, que a UI antiga não deixava
+     * excluir). O cascade de FK no banco apaga em sequência:
+     *   nps_responses → nps_respostas_customizadas / nps_response_answers
+     *   nps_email_envios (survey_id cascadeOnDelete)
+     * Usa $survey->delete() (não mass-delete) para disparar o activitylog
+     * ('NPS excluído') e os cascades a nível de banco.
+     */
+    public function destroy(Request $request, NpsSurvey $survey)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $nome = $survey->company?->name ?? 'empresa';
+        $survey->delete();
+
+        return back()->with('success', "Pesquisa NPS de \"{$nome}\" excluída.");
+    }
+
+    /**
+     * 2026-07-13 — DELETE /nps/surveys/bulk. Exclusão em massa a partir dos
+     * checkboxes da listagem. Admin exclusivo. Itera com get()->each->delete()
+     * (em vez de whereIn->delete()) para preservar activitylog + cascades por
+     * row. Volumes esperados são baixos (página da listagem), então o custo é
+     * aceitável.
+     */
+    public function bulkDestroy(Request $request)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        $validated = $request->validate([
+            'ids'   => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer'],
+        ]);
+
+        $surveys = NpsSurvey::whereIn('id', $validated['ids'])->get();
+        $count   = $surveys->count();
+        $surveys->each->delete();
+
+        return back()->with('success', $count === 1
+            ? '1 pesquisa NPS excluída.'
+            : "{$count} pesquisas NPS excluídas.");
+    }
+
     public function emailsEnviados(Request $request)
     {
         // ─── Validação leve do parâmetro mes ─────────────────────────────────

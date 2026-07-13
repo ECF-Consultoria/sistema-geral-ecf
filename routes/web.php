@@ -276,6 +276,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
     Route::delete('/nps/{survey}/response', [NpsController::class, 'excluirResposta'])->name('nps.responses.destroy');
 
+    // 2026-07-13 — admin exclui a pesquisa NPS INTEIRA (qualquer status, inclusive
+    // pendente) + exclusão em massa via checkboxes da listagem. O bulk é
+    // registrado ANTES de /nps/{survey} para que "surveys/bulk" não caia no
+    // route model binding. `whereNumber` protege o binding de segmentos não
+    // numéricos (configuracao, emails-enviados, etc.). Antes de /nps/{token}.
+    Route::delete('/nps/surveys/bulk', [NpsController::class, 'bulkDestroy'])->name('nps.surveys.bulk-destroy');
+    Route::delete('/nps/{survey}',     [NpsController::class, 'destroy'])->whereNumber('survey')->name('nps.surveys.destroy');
+
     // ─── Phase 74 D-10/D-12 — Configuração da régua de bônus do módulo Desempenho ──
     // Admin edita faixas de bônus (BonusFaixa) via UI dedicada. Validação de
     // sobreposição + range [0,5] via UpdateBonusFaixaRequest. Toggle-active

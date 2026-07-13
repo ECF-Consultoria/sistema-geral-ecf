@@ -8,7 +8,7 @@ import {
     Plus, Copy, CheckCircle,
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
-    Calendar, Star,
+    Calendar, Star, Trash2,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -431,7 +431,7 @@ function ChartCard({ serie, cards, lines, setLines }) {
 const STATUS_LABEL = { pending: 'Pendente', completed: 'Respondido', expired: 'Expirado' };
 const STATUS_COLOR = { pending: '#ff8a3c', completed: '#19e06a', expired: '#f4436b' };
 
-function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink }) {
+function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, isAdmin }) {
     // Contagens client-side sobre a página atual.
     const contagens = useMemo(() => {
         const list = surveys.data ?? [];
@@ -457,6 +457,39 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
         });
     }, [surveys.data, activeStatus, sort]);
 
+    // ─── Seleção para exclusão em massa (admin) ──────────────────────────────
+    // 2026-07-13 · Set de ids selecionados. Reseta ao trocar de filtro ou de
+    // página (surveys.data muda) pra não excluir algo fora da vista.
+    const [selected, setSelected] = useState(new Set());
+    useEffect(() => { setSelected(new Set()); }, [activeStatus, surveys.data]);
+
+    const visibleIds = useMemo(() => filtrados.map(s => s.id), [filtrados]);
+    const allSelected = visibleIds.length > 0 && visibleIds.every(id => selected.has(id));
+
+    const toggleOne = (id) => setSelected(prev => {
+        const n = new Set(prev);
+        n.has(id) ? n.delete(id) : n.add(id);
+        return n;
+    });
+    const toggleAll = () => setSelected(allSelected ? new Set() : new Set(visibleIds));
+
+    const deleteOne = (s) => {
+        if (!confirm(`Excluir a pesquisa NPS de "${s.company_name}"? Esta ação é permanente e não pode ser desfeita.`)) return;
+        router.delete(route('nps.surveys.destroy', s.id), { preserveScroll: true });
+    };
+    const deleteBulk = () => {
+        const ids = [...selected];
+        if (ids.length === 0) return;
+        if (!confirm(`Excluir ${ids.length} pesquisa${ids.length === 1 ? '' : 's'} NPS selecionada${ids.length === 1 ? '' : 's'}? Esta ação é permanente e não pode ser desfeita.`)) return;
+        router.delete(route('nps.surveys.bulk-destroy'), {
+            data: { ids },
+            preserveScroll: true,
+            onSuccess: () => setSelected(new Set()),
+        });
+    };
+
+    const checkboxStyle = { accentColor: '#e84393', width: 15, height: 15, cursor: 'pointer', flexShrink: 0 };
+
     const chipStyle = (key) => {
         const active = activeStatus === key;
         return {
@@ -475,7 +508,11 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
         setSort(s => s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' });
     };
 
-    const gridCols = '1.5fr 1.4fr 1.2fr 1.7fr 1.1fr 1fr 60px';
+    // Admin ganha uma coluna de checkbox no início e a coluna de ação mais
+    // larga (2 botões: copiar/ver + excluir).
+    const gridCols = isAdmin
+        ? '32px 1.5fr 1.4fr 1.2fr 1.6fr 1.1fr 1fr 78px'
+        : '1.5fr 1.4fr 1.2fr 1.7fr 1.1fr 1fr 60px';
 
     return (
         <div style={{
@@ -517,12 +554,60 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                 </div>
             </div>
 
+            {/* Barra de exclusão em massa (admin, aparece com ≥1 selecionada) */}
+            {isAdmin && selected.size > 0 && (
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 12,
+                    padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(244,67,107,0.07)',
+                }}>
+                    <span style={{ color: '#fff', fontSize: 12.5, fontWeight: 600 }}>
+                        {selected.size} selecionada{selected.size === 1 ? '' : 's'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={deleteBulk}
+                        style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                            height: 30, padding: '0 12px', borderRadius: 8,
+                            border: '1px solid rgba(244,67,107,0.35)',
+                            background: 'rgba(244,67,107,0.18)', color: '#ffb3c4',
+                            fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
+                        }}
+                    >
+                        <Trash2 size={13} /> Excluir selecionadas
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setSelected(new Set())}
+                        style={{
+                            height: 30, padding: '0 12px', borderRadius: 8,
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.6)',
+                            fontSize: 12.5, fontWeight: 500, cursor: 'pointer',
+                        }}
+                    >
+                        Limpar
+                    </button>
+                </div>
+            )}
+
             {/* Header da grid */}
             <div style={{
                 display: 'grid', gridTemplateColumns: gridCols, gap: 12,
                 padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)',
                 background: 'rgba(255,255,255,0.015)',
+                alignItems: 'center',
             }}>
+                {isAdmin && (
+                    <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleAll}
+                        style={checkboxStyle}
+                        title="Selecionar todas as pesquisas visíveis"
+                    />
+                )}
                 <button type="button" onClick={() => toggleSort('company')} style={{
                     textAlign: 'left', background: 'none', border: 'none', padding: 0,
                     cursor: 'pointer', color: 'rgba(255,255,255,0.4)',
@@ -565,12 +650,23 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                     : s.status === 'completed' ? 'no prazo' : 'expirado';
                 const statusCol = STATUS_COLOR[s.status] ?? '#888';
 
+                const rowSelected = selected.has(s.id);
+
                 return (
                     <div key={s.id} style={{
                         display: 'grid', gridTemplateColumns: gridCols, gap: 12,
                         padding: '13px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
                         alignItems: 'center',
+                        background: rowSelected ? 'rgba(244,67,107,0.06)' : 'transparent',
                     }}>
+                        {isAdmin && (
+                            <input
+                                type="checkbox"
+                                checked={rowSelected}
+                                onChange={() => toggleOne(s.id)}
+                                style={checkboxStyle}
+                            />
+                        )}
                         <div style={{ minWidth: 0 }}>
                             <div style={{
                                 color: '#eef', fontSize: 13.5, fontWeight: 600,
@@ -620,7 +716,7 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                             </span>
                         </div>
 
-                        <div style={{ textAlign: 'right' }}>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
                             {s.status === 'pending' && (
                                 <button
                                     type="button"
@@ -653,6 +749,25 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                                     title="Ver respostas"
                                 >
                                     <Eye size={14} />
+                                </button>
+                            )}
+                            {/* Excluir a pesquisa inteira — admin, qualquer status
+                                (inclusive pendente). Cascade no banco limpa respostas. */}
+                            {isAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={() => deleteOne(s)}
+                                    style={{
+                                        width: 30, height: 30, borderRadius: 8,
+                                        border: '1px solid rgba(244,67,107,0.22)',
+                                        background: 'rgba(244,67,107,0.10)',
+                                        color: '#f4436b',
+                                        cursor: 'pointer',
+                                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                    }}
+                                    title="Excluir pesquisa"
+                                >
+                                    <Trash2 size={14} />
                                 </button>
                             )}
                         </div>
@@ -964,6 +1079,7 @@ export default function NpsIndex({
                             setSort={setSort}
                             onOpenSurvey={setModalSurvey}
                             onCopyLink={copyLink}
+                            isAdmin={isAdmin}
                         />
 
                     </div>
