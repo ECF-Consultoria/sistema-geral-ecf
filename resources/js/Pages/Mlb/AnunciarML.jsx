@@ -288,9 +288,27 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
 
     // ─── Monta o payload no shape que o backend (ItemBuilder) espera ───
     const montarPayload = () => {
+        // Mapa id → definição do atributo (value_type, default_unit) para normalizar unidades
+        const defAttr = {};
+        (atributos || []).forEach(a => { defAttr[a.id] = a; });
+
+        // Atributos number_unit (ex.: WIDTH/HEIGHT/DEPTH) exigem valor COM unidade no ML
+        // ("100 cm", não "100"). Se o publicador digitou só o número, anexa a unidade padrão.
+        const normalizarValor = (id, valueName) => {
+            const def = defAttr[id];
+            const bruto = String(valueName).trim();
+            if (def?.value_type === 'number_unit' && /^[\d.,]+$/.test(bruto)) {
+                const unidade = def.default_unit || 'cm';
+                return `${bruto} ${unidade}`;
+            }
+            return bruto;
+        };
+
         const attributes = Object.entries(valores)
             .filter(([, v]) => v && (v.value_id || v.value_name))
-            .map(([id, v]) => (v.value_id ? { id, value_id: v.value_id } : { id, value_name: v.value_name }));
+            .map(([id, v]) => (v.value_id
+                ? { id, value_id: v.value_id }
+                : { id, value_name: normalizarValor(id, v.value_name) }));
 
         // Peso e dimensões do pacote viram atributos SELLER_PACKAGE_* (habilitam o me2)
         const pacote = [];
