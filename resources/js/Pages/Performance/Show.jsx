@@ -2,9 +2,27 @@ import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
 import {
     ArrowLeft, Star, TrendingUp, TrendingDown, Coins, Calendar,
-    Trophy, Sparkles, UserX, BookOpen, Info,
+    Trophy, Sparkles, UserX, BookOpen, Info, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/**
+ * Formata a conta que produziu a nota (ex: "(3+5+4)/3 = 4"). Consumido em
+ * FaixaBonusCard abaixo da nota final — mesmo formato usado no Ranking
+ * (Performance/Index.jsx). Nulls (componentes indisponíveis) ficam de fora.
+ */
+function formatContaNota(pontos, notaFinal) {
+    if (!pontos) return null;
+    const pts = [pontos.nps, pontos.faturamento, pontos.margem].filter((v) => v != null);
+    if (pts.length === 0) return null;
+    const fmt = (v) => {
+        const n = Number(v);
+        if (Number.isNaN(n)) return '?';
+        return Number.isInteger(n) ? String(n) : n.toFixed(1).replace('.', ',');
+    };
+    const notaFmt = notaFinal != null ? Number(notaFinal).toFixed(2).replace('.', ',') : '?';
+    return `(${pts.map(fmt).join('+')})/${pts.length} = ${notaFmt}`;
+}
 
 /**
  * Phase 74 D-19 · Plan 74-06 · view individual (analista/estrategista).
@@ -108,11 +126,13 @@ function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'e
 }
 
 // ─── Card destaque Faixa de bônus ────────────────────────────────────────
-function FaixaBonusCard({ resultado }) {
+function FaixaBonusCard({ resultado, user }) {
     const slug = resultado?.faixa_bonus;
     const nota = resultado?.nota_final;
     const promovida = resultado?.faixa_promovida === true;
     const cor = corFaixa(slug);
+    // Ajuste 2026-07-13 · conta que gerou a nota (mesmo padrão do ranking).
+    const contaNota = formatContaNota(resultado?.pontos_componentes, nota);
 
     return (
         <div className={cn(
@@ -148,14 +168,27 @@ function FaixaBonusCard({ resultado }) {
                     </div>
                 </div>
 
-                <div className="md:ml-auto flex items-baseline gap-2">
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-white/50">
-                        Nota final
-                    </span>
-                    <span className="text-white text-4xl font-display font-black tabular-nums leading-none">
-                        {nota != null ? Number(nota).toFixed(2) : '—'}
-                    </span>
-                    <span className="text-white/40 text-sm">/ 5,00</span>
+                <div className="md:ml-auto flex flex-col md:items-end gap-1">
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-[10px] uppercase tracking-wider font-bold text-white/50">
+                            Nota final
+                        </span>
+                        <span className="text-white text-4xl font-display font-black tabular-nums leading-none">
+                            {nota != null ? Number(nota).toFixed(2) : '—'}
+                        </span>
+                        <span className="text-white/40 text-sm">/ 5,00</span>
+                    </div>
+                    {/* Ajuste 2026-07-13 · conta que gerou a nota. Mesma
+                        semântica do "( x+y+z )/n" mostrado abaixo do nome no
+                        ranking, agora com "= nota" pra fechar o cálculo. */}
+                    {contaNota && (
+                        <span
+                            className="text-white/40 text-xs tabular-nums"
+                            title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                        >
+                            {contaNota}
+                        </span>
+                    )}
                 </div>
             </div>
 
@@ -163,6 +196,22 @@ function FaixaBonusCard({ resultado }) {
                 <p className="relative mt-4 text-white/60 text-sm">
                     Sem dados suficientes para classificação no mês selecionado.
                 </p>
+            )}
+
+            {/* Ajuste 2026-07-13 · link pra carteira do profissional. Coloca a
+                nota em contexto: quais empresas geraram a média, faturamento,
+                margem etc. */}
+            {user?.id && (
+                <div className="relative mt-4 pt-4 border-t border-white/[0.06]">
+                    <Link
+                        href={route('portfolio.show', user.id)}
+                        className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors group"
+                    >
+                        <Briefcase size={14} className="text-ecf-yellow" />
+                        <span>Detalhes sobre as empresas da carteira</span>
+                        <ChevronRight size={14} className="text-white/40 group-hover:text-white/80 group-hover:translate-x-0.5 transition-all" />
+                    </Link>
+                </div>
             )}
         </div>
     );
@@ -308,7 +357,7 @@ export default function PerformanceShow({
                             />
 
                             {/* Faixa de bônus */}
-                            <FaixaBonusCard resultado={resultado} />
+                            <FaixaBonusCard resultado={resultado} user={user} />
                         </div>
 
                         {/* Info carteira */}

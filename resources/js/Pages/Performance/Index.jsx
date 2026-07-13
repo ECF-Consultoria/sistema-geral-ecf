@@ -396,7 +396,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
                             )}
-                            onClick={() => router.visit(route('portfolio.show', u.id))}
+                            onClick={() => router.visit(route('performance.show', u.id))}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
@@ -472,19 +472,10 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 {u.empresas_com_baseline ?? 0}/{u.empresas_carteira ?? 0}
                             </div>
 
-                            {/* Chevron para portfolio individual */}
+                            {/* Chevron visual apenas — a linha inteira é clicável e leva
+                                pra performance.show (detalhes da nota). Ajuste 2026-07-13. */}
                             <div className="flex items-center justify-end">
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        router.visit(route('performance.show', u.id));
-                                    }}
-                                    className="rounded-md p-1 text-white/30 hover:text-white hover:bg-white/[0.06] transition-colors cursor-pointer"
-                                    title="Ver detalhes"
-                                >
-                                    <ChevronRight size={14} />
-                                </button>
+                                <ChevronRight size={14} className="text-white/30" />
                             </div>
                         </div>
                     );
