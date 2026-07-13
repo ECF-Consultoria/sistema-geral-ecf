@@ -719,6 +719,7 @@ export default function NpsIndex({
     companies,
     estrategistas = [],
     analistas = [],
+    templates = [],
     pode_filtrar_por_pessoa = false,
     cards = {},
     serie_12m = [],
@@ -761,6 +762,7 @@ export default function NpsIndex({
             empresa_id: filtros.empresa_id || undefined,
             estrategista_id: filtros.estrategista_id || undefined,
             analista_id: filtros.analista_id || undefined,
+            template_id: filtros.template_id || undefined,
             ...overrides,
         };
         Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
@@ -771,6 +773,7 @@ export default function NpsIndex({
     const handleEmpresaChange = (v) => aplicarFiltros({ empresa_id: v === '__all__' ? undefined : v });
     const handleEstrategistaChange = (v) => aplicarFiltros({ estrategista_id: v === '__all__' ? undefined : v });
     const handleAnalistaChange = (v) => aplicarFiltros({ analista_id: v === '__all__' ? undefined : v });
+    const handleTemplateChange = (v) => aplicarFiltros({ template_id: v === '__all__' ? undefined : v });
 
     const submit = (e) => {
         e.preventDefault();
@@ -836,6 +839,23 @@ export default function NpsIndex({
                                     )),
                                 ]}
                             />
+                            {/* Ajuste 2026-07-13 · filtro por modelo NPS. Só
+                                aparece quando existe mais de 1 modelo cadastrado
+                                (com 1 só a lista é trivial e polui a UI). */}
+                            {templates.length > 1 && (
+                                <GlassSelect
+                                    value={filtros.template_id ? String(filtros.template_id) : '__all__'}
+                                    onValueChange={handleTemplateChange}
+                                    placeholder="Todos os modelos"
+                                    width={200}
+                                    options={[
+                                        <SelectItem key="__all__" value="__all__">Todos os modelos</SelectItem>,
+                                        ...templates.map(t => (
+                                            <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
+                                        )),
+                                    ]}
+                                />
+                            )}
                             {pode_filtrar_por_pessoa && (
                                 <>
                                     <GlassSelect

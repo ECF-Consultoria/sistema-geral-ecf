@@ -1,11 +1,24 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { router } from '@inertiajs/react';
-import { Plus, Trash2, ArrowUp, ArrowDown, ListChecks, MessageSquarePlus } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, ListChecks, MessageSquarePlus, Copy } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Textarea } from '@/Components/ui/textarea';
 import { Label } from '@/Components/ui/label';
 import { cn } from '@/lib/utils';
 import OptionsEditor from './OptionsEditor';
+
+// Ajuste 2026-07-13 · labels amigáveis pt-BR pros 3 tipos.
+const TIPO_LABEL_SELECT = {
+    escala:      'Escala 1 a 5 (auto-gera 5 opções)',
+    opcoes:      'Opções livres',
+    texto_livre: 'Texto livre (caixa de texto)',
+};
+
+const TIPO_LABEL_BADGE = {
+    escala:      'Escala 1-5',
+    opcoes:      'Opções livres',
+    texto_livre: 'Texto livre',
+};
 
 /**
  * QuestionEditor — Phase 70 Plan 05 v15.0 + UX refactor 2026-07-08.
@@ -94,6 +107,23 @@ export default function QuestionEditor({ template, tipos, dimensoesLabels, onCha
         );
     };
 
+    // Ajuste 2026-07-13 · duplicar pergunta preservando texto/tipo/dimensão/
+    // opções. Insere o clone logo depois da original — admin edita o texto/
+    // dimensão dele em seguida via auto-save.
+    const duplicar = (q) => {
+        router.post(
+            route('nps.configuracao.templates.perguntas.duplicar', [template.id, q.id]),
+            {},
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    mostrarToast && mostrarToast();
+                    onChange && onChange();
+                },
+            },
+        );
+    };
+
     // ─── Render ──────────────────────────────────────────────────────────
 
     return (
@@ -160,6 +190,7 @@ export default function QuestionEditor({ template, tipos, dimensoesLabels, onCha
                         onMoverUp={() => mover(q, 'up')}
                         onMoverDown={() => mover(q, 'down')}
                         onExcluir={() => excluir(q)}
+                        onDuplicar={() => duplicar(q)}
                         onChange={onChange}
                         mostrarToast={mostrarToast}
                     />
@@ -203,7 +234,7 @@ function FormNovaPergunta({
                         onChange={(v) => setFormNova({ ...formNova, tipo: v })}
                         options={tipos.map(t => ({
                             value: t,
-                            label: t === 'escala' ? 'Escala 1 a 5 (auto-gera 5 opções)' : 'Opções livres',
+                            label: TIPO_LABEL_SELECT[t] ?? t,
                         }))}
                     />
                     <p className="text-white/40 text-[10.5px] leading-relaxed">
@@ -266,7 +297,7 @@ function FormNovaPergunta({
 function PerguntaCard({
     template, pergunta,
     primeira, ultima, dimensoesLabels,
-    onMoverUp, onMoverDown, onExcluir,
+    onMoverUp, onMoverDown, onExcluir, onDuplicar,
     onChange, mostrarToast,
 }) {
     // Data inicial derivada da pergunta.
@@ -330,9 +361,10 @@ function PerguntaCard({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [data, pergunta.id]);
 
-    const tipoLabel   = pergunta.tipo === 'escala' ? 'Escala 1-5' : 'Opções livres';
-    const inputCls    = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
-    const textareaCls = cn(inputCls, 'min-h-[60px] font-sans text-[13.5px]');
+    const tipoLabel     = TIPO_LABEL_BADGE[pergunta.tipo] ?? pergunta.tipo;
+    const ehTextoLivre  = pergunta.tipo === 'texto_livre';
+    const inputCls      = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
+    const textareaCls   = cn(inputCls, 'min-h-[60px] font-sans text-[13.5px]');
 
     return (
         <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4 space-y-3">
@@ -420,25 +452,43 @@ function PerguntaCard({
                     )}
                 </div>
 
-                {/* Delete */}
-                <button
-                    type="button"
-                    onClick={onExcluir}
-                    className="h-8 w-8 rounded flex items-center justify-center text-red-300/70 hover:bg-red-500/[0.10] hover:text-red-200 shrink-0"
-                    title="Excluir pergunta"
-                >
-                    <Trash2 size={14} />
-                </button>
+                {/* Actions: duplicar + delete */}
+                <div className="flex items-center gap-1 shrink-0">
+                    <button
+                        type="button"
+                        onClick={onDuplicar}
+                        className="h-8 w-8 rounded flex items-center justify-center text-white/50 hover:bg-white/[0.06] hover:text-white/90"
+                        title="Duplicar pergunta"
+                    >
+                        <Copy size={14} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onExcluir}
+                        className="h-8 w-8 rounded flex items-center justify-center text-red-300/70 hover:bg-red-500/[0.10] hover:text-red-200"
+                        title="Excluir pergunta"
+                    >
+                        <Trash2 size={14} />
+                    </button>
+                </div>
             </div>
 
-            {/* Ajuste 2: OptionsEditor renderizado INLINE dentro do card da pergunta */}
+            {/* Ajuste 2: OptionsEditor renderizado INLINE dentro do card da pergunta.
+                Ajuste 2026-07-13: escondido para tipo=texto_livre (não tem opções) —
+                em vez disso mostra um hint pra deixar claro pro admin. */}
             <div className="pl-9">
-                <OptionsEditor
-                    template={template}
-                    question={pergunta}
-                    onChange={onChange}
-                    mostrarToast={mostrarToast}
-                />
+                {ehTextoLivre ? (
+                    <p className="text-white/40 text-[12px] italic">
+                        O respondente vai preencher uma caixa de texto livre. Sem opções para configurar.
+                    </p>
+                ) : (
+                    <OptionsEditor
+                        template={template}
+                        question={pergunta}
+                        onChange={onChange}
+                        mostrarToast={mostrarToast}
+                    />
+                )}
             </div>
         </div>
     );

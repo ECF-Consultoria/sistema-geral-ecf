@@ -187,6 +187,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         ->scopeBindings()
         ->name('nps.configuracao.templates.perguntas.mover');
 
+    // Ajuste 2026-07-13 — duplicar pergunta preservando texto/tipo/dimensão
+    // e todas as opções. Insere o clone logo após a pergunta original via
+    // SHIFT +1 nas ordens posteriores (ver NpsTemplateQuestionController::duplicar).
+    Route::post  ('/nps/configuracao/templates/{template}/perguntas/{pergunta}/duplicar',
+        [NpsTemplateQuestionController::class, 'duplicar'])
+        ->scopeBindings()
+        ->name('nps.configuracao.templates.perguntas.duplicar');
+
     // ─── Phase 70 Plan 03 — CRUD opções das perguntas ───────────────────
     // Rotas triplo-aninhadas sob {template}/perguntas/{pergunta}. scopeBindings()
     // resolve {pergunta} scoped por template_id E {opcao} scoped por question_id

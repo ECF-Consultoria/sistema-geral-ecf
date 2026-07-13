@@ -52,8 +52,15 @@ class NpsTemplateQuestion extends Model
     ];
 
     // ─── Tipos de pergunta (research §5) ────────────────────────────────
-    public const TIPO_ESCALA = 'escala';
-    public const TIPO_OPCOES = 'opcoes';
+    public const TIPO_ESCALA      = 'escala';
+    public const TIPO_OPCOES      = 'opcoes';
+    // Ajuste 2026-07-13: reintrodução do tipo texto livre (caixa de texto).
+    // Não tem `NpsTemplateOption` associada — o valor digitado pelo respondente
+    // é gravado direto em `nps_response_answers.comentario` com
+    // `template_option_id=null`, `option_label_snapshot=null` e
+    // `option_peso_snapshot=null` (nullable desde a migration
+    // 2026_07_13_094007). Não entra em AVG de score porque peso é NULL.
+    public const TIPO_TEXTO_LIVRE = 'texto_livre';
 
     /**
      * Lista canônica dos tipos válidos — usada pelo `Rule::in()` do
@@ -62,6 +69,7 @@ class NpsTemplateQuestion extends Model
     public const TIPOS = [
         self::TIPO_ESCALA,
         self::TIPO_OPCOES,
+        self::TIPO_TEXTO_LIVRE,
     ];
 
     // ─── Dimensões semânticas (research §1) ─────────────────────────────

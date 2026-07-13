@@ -57,17 +57,22 @@ function RespondV15({ survey, template }) {
         setData('answers', { ...data.answers, [questionId]: optionId });
     };
 
+    // Ajuste 2026-07-13 · pra texto_livre, resposta é uma STRING; "respondida"
+    // significa string não-vazia após trim. Pra escala/opcoes continua option_id.
+    const isRespondida = (v) => {
+        if (v == null) return false;
+        if (typeof v === 'string') return v.trim().length > 0;
+        return true;
+    };
+
     const answered = useMemo(
-        () => Object.keys(data.answers).filter((k) => data.answers[k] != null).length,
+        () => Object.keys(data.answers).filter((k) => isRespondida(data.answers[k])).length,
         [data.answers],
     );
     const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
 
     const obrigatorias = useMemo(() => perguntas.filter((q) => q.obrigatoria), [perguntas]);
-    const podeEnviar = obrigatorias.every((q) => {
-        const v = data.answers[q.id];
-        return v !== undefined && v !== null;
-    });
+    const podeEnviar = obrigatorias.every((q) => isRespondida(data.answers[q.id]));
     const completoTudo = answered === total && total > 0;
 
     // Erros server-side por pergunta — Laravel devolve `answers.{qid}`.
@@ -350,8 +355,16 @@ function IntroCard({ total, answered, pct, complete }) {
 
 // ─── Card de pergunta ────────────────────────────────────────────────────
 function QuestionCard({ numero, pergunta, selecionadoId, missing, onPick, error }) {
-    const chosenOption = pergunta.options?.find((o) => o.id === selecionadoId);
-    const marcada = chosenOption != null;
+    const isTextoLivre = pergunta.tipo === 'texto_livre';
+    const isEscala     = pergunta.tipo === 'escala';
+    // Pra texto_livre, "marcada" = string não-vazia. Pra escala/opcoes = option
+    // encontrada nas opções.
+    const chosenOption = isTextoLivre
+        ? null
+        : (pergunta.options?.find((o) => o.id === selecionadoId) ?? null);
+    const marcada = isTextoLivre
+        ? (typeof selecionadoId === 'string' && selecionadoId.trim().length > 0)
+        : chosenOption != null;
 
     const cardStyle = {
         background: 'linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.018))',
@@ -381,7 +394,6 @@ function QuestionCard({ numero, pergunta, selecionadoId, missing, onPick, error 
         transition: 'background .2s, color .2s',
     };
 
-    const isEscala = pergunta.tipo === 'escala';
     const options = pergunta.options ?? [];
 
     return (
@@ -408,7 +420,9 @@ function QuestionCard({ numero, pergunta, selecionadoId, missing, onPick, error 
                 </div>
             </div>
 
-            {isEscala ? (
+            {isTextoLivre ? (
+                <TextoLivreRow value={selecionadoId} onPick={onPick} />
+            ) : isEscala ? (
                 <ScaleRow options={options} selecionadoId={selecionadoId} onPick={onPick} />
             ) : (
                 <ChoiceRow options={options} selecionadoId={selecionadoId} onPick={onPick} />
@@ -516,6 +530,38 @@ function ChoiceRow({ options, selecionadoId, onPick }) {
                 );
             })}
         </div>
+    );
+}
+
+// ─── Texto livre (caixa de texto) — pergunta tipo texto_livre ────────────
+// Ajuste 2026-07-13: nova pergunta aberta. `value` chega e sai como STRING —
+// diferente das escala/opcoes que trabalham com option_id numérico. O parent
+// (RespondV15) trata a diferença ao contar respostas e validar podeEnviar.
+function TextoLivreRow({ value, onPick }) {
+    return (
+        <textarea
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => onPick(e.target.value)}
+            placeholder="Escreva sua resposta aqui…"
+            rows={4}
+            style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '12px 14px',
+                borderRadius: 12,
+                border: '1px solid rgba(255,255,255,.09)',
+                background: 'rgba(255,255,255,.03)',
+                color: '#F1F1F4',
+                fontFamily: "'Manrope', sans-serif",
+                fontSize: 14,
+                lineHeight: 1.5,
+                resize: 'vertical',
+                outline: 'none',
+                transition: 'border-color .2s',
+            }}
+            onFocus={(e) => (e.target.style.borderColor = 'rgba(255,90,25,.5)')}
+            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,.09)')}
+        />
     );
 }
 

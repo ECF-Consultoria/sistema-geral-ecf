@@ -145,6 +145,57 @@ class NpsTemplateQuestionController extends Controller
     }
 
     /**
+     * POST /nps/configuracao/templates/{template}/perguntas/{pergunta}/duplicar —
+     * clona a pergunta (texto + tipo + dimensão + obrigatoriedade) e todas as
+     * suas opções (label + peso + ordem), inserindo o clone logo depois da
+     * pergunta original.
+     *
+     * Ajuste 2026-07-13: acelera o setup de templates com várias perguntas
+     * similares (só varia o enunciado ou a dimensão). Admin duplica, edita o
+     * texto/dimensão do clone e pronto.
+     *
+     * Ordem: `original->ordem + 0.5` NÃO funciona (coluna int) — em vez disso
+     * fazemos SHIFT +1 em todas as perguntas com `ordem > original->ordem` e
+     * inserimos o clone em `original->ordem + 1`. Transação atômica evita
+     * estado intermediário quebrado.
+     */
+    public function duplicar(NpsTemplate $template, NpsTemplateQuestion $pergunta)
+    {
+        abort_if($pergunta->template_id !== $template->id, 404);
+
+        $pergunta->load('options');
+
+        DB::transaction(function () use ($template, $pergunta) {
+            // SHIFT +1 nas perguntas posteriores pra abrir espaço.
+            NpsTemplateQuestion::where('template_id', $template->id)
+                ->where('ordem', '>', $pergunta->ordem)
+                ->increment('ordem');
+
+            $novo = NpsTemplateQuestion::create([
+                'template_id' => $template->id,
+                'texto'       => $pergunta->texto,
+                'tipo'        => $pergunta->tipo,
+                'dimensao'    => $pergunta->dimensao,
+                'obrigatoria' => $pergunta->obrigatoria,
+                'ordem'       => $pergunta->ordem + 1,
+            ]);
+
+            // Clona todas as opções preservando label/peso/ordem — quando a
+            // origem é `texto_livre` a coleção é vazia, então o foreach vira no-op.
+            foreach ($pergunta->options as $opt) {
+                NpsTemplateOption::create([
+                    'question_id' => $novo->id,
+                    'label'       => $opt->label,
+                    'peso'        => $opt->peso,
+                    'ordem'       => $opt->ordem,
+                ]);
+            }
+        });
+
+        return back()->with('success', 'Pergunta duplicada.');
+    }
+
+    /**
      * POST /nps/configuracao/templates/{template}/perguntas/{pergunta}/mover —
      * troca `ordem` com a vizinha imediata na direção informada.
      *

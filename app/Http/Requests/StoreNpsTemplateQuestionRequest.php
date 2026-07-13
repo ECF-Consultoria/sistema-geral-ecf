@@ -64,7 +64,7 @@ class StoreNpsTemplateQuestionRequest extends FormRequest
             'texto.min'         => 'O texto precisa ter pelo menos 3 caracteres.',
             'texto.max'         => 'O texto pode ter no máximo 500 caracteres.',
             'tipo.required'     => 'O tipo da pergunta é obrigatório.',
-            'tipo.in'           => 'Tipo inválido — escolha entre escala ou opcoes.',
+            'tipo.in'           => 'Tipo inválido — escolha entre escala, opcoes ou texto_livre.',
             'dimensao.required' => 'A dimensão da pergunta é obrigatória.',
             'dimensao.in'       => 'Dimensão inválida — escolha entre estrategista, analista, empresa ou geral.',
         ];

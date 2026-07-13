@@ -58,10 +58,17 @@ class NpsController extends Controller
         $empresaId      = $request->integer('empresa_id') ?: null;
         $estrategistaId = $request->integer('estrategista_id') ?: null;
         $analistaId     = $request->integer('analista_id') ?: null;
+        // Ajuste 2026-07-13 · como agora existem múltiplos modelos NPS, o
+        // dashboard aceita filtrar por template_id. Aplicado em todos os blocos
+        // (lista, cards, série 12m) pra manter coerência visual.
+        $templateId     = $request->integer('template_id') ?: null;
 
-        $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId) {
+        $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId, $templateId) {
             if ($empresaId) {
                 $query->where('company_id', $empresaId);
+            }
+            if ($templateId) {
+                $query->where('template_id', $templateId);
             }
             if ($estrategistaId) {
                 $query->whereHas('company.users', function ($q) use ($estrategistaId) {
@@ -150,17 +157,26 @@ class NpsController extends Controller
             // v15: TODAS as answers do template (ordena por id do
             // template_question para preservar sequência da configuração).
             // 2026-07-08: incluir `peso` para o modal exibir "Label = peso".
+            // 2026-07-13: answers texto_livre (option_peso_snapshot NULL)
+            // reportam `tipo=texto_livre` + `valor` do `comentario` — o
+            // modal renderiza como texto puro (Nps/Index RespostaExtraValor
+            // cai no fallback).
             $v15 = $response->answers
                 ->sortBy('template_question_id')
-                ->map(fn($a) => [
-                    'id'             => 'v15_' . $a->id,
-                    'pergunta_id'    => $a->template_question_id,
-                    'pergunta_texto' => $a->question_texto_snapshot,
-                    'dimensao'       => $a->question_dimensao_snapshot,
-                    'tipo'           => 'opcoes',
-                    'valor'          => $a->option_label_snapshot,
-                    'peso'           => $a->option_peso_snapshot,
-                ]);
+                ->map(function ($a) {
+                    $ehTextoLivre = $a->option_peso_snapshot === null;
+                    return [
+                        'id'             => 'v15_' . $a->id,
+                        'pergunta_id'    => $a->template_question_id,
+                        'pergunta_texto' => $a->question_texto_snapshot,
+                        'dimensao'       => $a->question_dimensao_snapshot,
+                        'tipo'           => $ehTextoLivre ? 'texto_livre' : 'opcoes',
+                        'valor'          => $ehTextoLivre
+                            ? (string) ($a->comentario ?? '')
+                            : $a->option_label_snapshot,
+                        'peso'           => $a->option_peso_snapshot,
+                    ];
+                });
             return $legacy->concat($v15)->values();
         };
 
@@ -284,11 +300,21 @@ class NpsController extends Controller
         // NPS da sua carteira (linha 92-95), sem necessidade do filtro.
         $podeFiltrarPorPessoa = $user->isAdmin() || $user->isLider();
 
+        // Ajuste 2026-07-13 · lista de modelos NPS pro <select> de filtro.
+        // Só templates ATIVOS entram na lista de filtro (arquivados/desativados
+        // aparecem só se estiverem sendo filtrados no momento — a UI lida com
+        // isso via seleção controlada). Order alfabético pra facilitar busca.
+        $templates = \App\Models\NpsTemplate::query()
+            ->where('active', true)
+            ->orderBy('nome')
+            ->get(['id', 'nome']);
+
         return Inertia::render('Nps/Index', [
             'surveys'                => $surveys,
             'companies'              => $companies,
             'estrategistas'          => $estrategistas,
             'analistas'              => $analistas,
+            'templates'              => $templates,
             'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,
             'cards'          => $cards,
             'serie_12m'      => $serieMeses,
@@ -297,6 +323,7 @@ class NpsController extends Controller
                 'empresa_id'      => $empresaId,
                 'estrategista_id' => $estrategistaId,
                 'analista_id'     => $analistaId,
+                'template_id'     => $templateId,
             ],
         ]);
     }
@@ -575,10 +602,18 @@ class NpsController extends Controller
             $questionsById[$q->id]     = $q;
             $optionsByQuestion[$q->id] = $q->options->keyBy('id');
 
-            $optionIds = $q->options->pluck('id')->all();
-            $req       = $q->obrigatoria ? 'required' : 'nullable';
+            $req = $q->obrigatoria ? 'required' : 'nullable';
 
-            $rules["answers.{$q->id}"] = [$req, 'integer', Rule::in($optionIds)];
+            // Ajuste 2026-07-13 · tipo=texto_livre: aceita STRING em vez de
+            // option_id. Não tem `Rule::in()` porque não existe conjunto
+            // fechado de valores válidos (é campo aberto). Limite de 2000
+            // char pra evitar payload gigante e alinha com `comment`.
+            if ($q->tipo === \App\Models\NpsTemplateQuestion::TIPO_TEXTO_LIVRE) {
+                $rules["answers.{$q->id}"] = [$req, 'string', 'max:2000'];
+            } else {
+                $optionIds = $q->options->pluck('id')->all();
+                $rules["answers.{$q->id}"] = [$req, 'integer', Rule::in($optionIds)];
+            }
         }
 
         $validated = $request->validate($rules);
@@ -600,16 +635,37 @@ class NpsController extends Controller
                 ]);
 
                 // 1 NpsResponseAnswer por pergunta respondida — snapshot congelado.
-                foreach (($validated['answers'] ?? []) as $qid => $optionId) {
-                    if ($optionId === null || $optionId === '') {
+                foreach (($validated['answers'] ?? []) as $qid => $answerValue) {
+                    if ($answerValue === null || $answerValue === '') {
                         continue; // pergunta opcional sem resposta
                     }
 
                     // Defensivo: Rule::in ja barrou tampering; se por race chegou
                     // aqui com id fora do map, pula silenciosamente.
                     $question = $questionsById[$qid] ?? null;
-                    $option   = $optionsByQuestion[$qid][$optionId] ?? null;
-                    if (!$question || !$option) {
+                    if (!$question) {
+                        continue;
+                    }
+
+                    // Ajuste 2026-07-13 · tipo texto_livre grava o texto em
+                    // `comentario` e deixa option_label/peso NULL. Não entra
+                    // em AVG de score (peso NULL não conta em AVG do MySQL).
+                    if ($question->tipo === \App\Models\NpsTemplateQuestion::TIPO_TEXTO_LIVRE) {
+                        NpsResponseAnswer::create([
+                            'response_id'                => $response->id,
+                            'template_question_id'       => $question->id,
+                            'template_option_id'         => null,
+                            'question_texto_snapshot'    => $question->texto,
+                            'question_dimensao_snapshot' => $question->dimensao,
+                            'option_label_snapshot'      => null,
+                            'option_peso_snapshot'       => null,
+                            'comentario'                 => (string) $answerValue,
+                        ]);
+                        continue;
+                    }
+
+                    $option = $optionsByQuestion[$qid][$answerValue] ?? null;
+                    if (!$option) {
                         continue;
                     }
 
