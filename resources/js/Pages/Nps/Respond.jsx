@@ -445,6 +445,25 @@ function ScaleRow({ options, selecionadoId, onPick }) {
     // Ordena por peso ASC (1..5) para garantir gradient da esquerda pra direita.
     const ordered = [...options].sort((a, b) => (a.peso ?? 0) - (b.peso ?? 0));
 
+    // Ajuste 2026-07-13 · quando existe algum label longo (labels de texto tipo
+    // "Discordo parcialmente" no lugar do número), reduz fontSize e permite
+    // quebra de linha pra não quebrar a palavra ao meio no botão de 20% da
+    // largura. Números como "1", "2" ficam com o tamanho grande original.
+    const maxLabelLen = ordered.reduce((m, o) => Math.max(m, (o.label ?? '').length), 0);
+    // Escala de tamanho por comprimento máximo do label:
+    //   ≤ 3 → 18px (números 1..5 e labels curtinhas)
+    //   4-6 → 15px
+    //   7-10 → 13px
+    //   > 10 → 11.5px
+    const labelFontSize = maxLabelLen <= 3
+        ? 18
+        : maxLabelLen <= 6
+            ? 15
+            : maxLabelLen <= 10
+                ? 13
+                : 11.5;
+    const podeQuebrar = maxLabelLen > 3;
+
     return (
         <>
             <div style={{ display: 'flex', gap: 10 }}>
@@ -458,12 +477,20 @@ function ScaleRow({ options, selecionadoId, onPick }) {
                             onClick={() => onPick(o.id)}
                             style={{
                                 flex: 1,
+                                minWidth: 0, // deixa o flex distribuir sem overflow horizontal
                                 height: 52,
+                                padding: podeQuebrar ? '4px 6px' : 0,
                                 borderRadius: 12,
                                 cursor: 'pointer',
                                 fontFamily: "'Space Grotesk', sans-serif",
                                 fontWeight: 700,
-                                fontSize: 18,
+                                fontSize: labelFontSize,
+                                lineHeight: 1.15,
+                                textAlign: 'center',
+                                whiteSpace: podeQuebrar ? 'normal' : 'nowrap',
+                                overflowWrap: 'break-word',
+                                wordBreak: 'break-word',
+                                hyphens: 'auto',
                                 border: '1px solid ' + (sel ? col : 'rgba(255,255,255,.09)'),
                                 background: sel ? col : 'rgba(255,255,255,.03)',
                                 color: sel ? '#fff' : '#B7B7C0',
