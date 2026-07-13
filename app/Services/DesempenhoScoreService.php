@@ -564,31 +564,47 @@ class DesempenhoScoreService
             ->get()
             ->keyBy('company_id');
 
-        // Ajuste 2026-07-10 (fix Tomelin — auditoria margem invertida): quando
-        // o mês está EM CURSO, a Adman frequentemente atrasa o cálculo de
-        // `profitMargin` em relação ao `revenue` (custo/produto exige
-        // processamento adicional) — os últimos 1-3 dias da janela chegam com
-        // `contribution_margin = NULL` mesmo já tendo revenue sincronizado.
-        // O SUM ignora esses dias (NULL não soma), então a janela ATUAL fica
-        // artificialmente menor que a janela ANTERIOR (histórico fechado, sem
-        // lag) — produzindo variação % negativa/invertida que não reflete a
-        // realidade (TOMELIN ARAMADOS: sistema mostrava -43,7% com tendência
-        // real de +42%). Descobrimos, por empresa, o último dia com margem
-        // disponível na janela atual e recortamos a MESMA quantidade de dias
-        // do fim da janela anterior — mantém a contagem de dias comparável.
+        // Ajuste 2026-07-13 (audit LOJASINVAL + AVF2K): recorte por DIAS
+        // COMUNS. Substitui o fix Tomelin (2026-07-10, só gap-no-fim) por
+        // versão que cobre gap em qualquer posição em qualquer uma das
+        // duas janelas — inclusive empresas cadastradas em meio de mês
+        // (LOJASINVAL: 16/06 → dias 01-15/06 nunca tiveram sync) e
+        // incidentes de sync no meio da janela (AVF2K: 12-13/06 outage
+        // Adman rate-limit).
         //
-        // Limitação conhecida: só corrige gap NO FINAL da janela (padrão
-        // observado / lag estrutural da Adman). Gap NO MEIO da janela (outage
-        // pontual) não é coberto por este fix.
-        $ultimoDiaComMargemPorEmpresa = collect();
-        if ($ehMesEmCurso) {
-            $ultimoDiaComMargemPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+        // Estratégia: pra cada empresa, buscar os DAYs com margem em cada
+        // janela; usar SÓ o subconjunto que existe em ambas. Se junho tem
+        // dado só em 06-12 e 06-13 e julho tem 01-12, compara apenas o
+        // dia 12 vs dia 12.
+        // Helper cross-DB (SQLite não tem DAY()): agrega em PHP após pluck.
+        // Carbon lida com string ISO OU objeto Carbon (cast 'date' do model).
+        $extrairDiasDoMes = function ($rows) {
+            return $rows->pluck('reference_date')
+                ->map(fn ($d) => Carbon::parse($d)->day)
+                ->unique()
+                ->values()
+                ->all();
+        };
+
+        $diasComMargemAtualPorEmpresa    = collect();
+        $diasComMargemAnteriorPorEmpresa = collect();
+
+        if (! $companyIds->isEmpty()) {
+            $diasComMargemAtualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
                 ->whereDate('reference_date', '>=', $inicioMes->toDateString())
                 ->whereDate('reference_date', '<=', $fimMes->toDateString())
                 ->whereNotNull('contribution_margin')
-                ->selectRaw('company_id, MAX(reference_date) as ultimo_dia')
+                ->get(['company_id', 'reference_date'])
                 ->groupBy('company_id')
-                ->pluck('ultimo_dia', 'company_id');
+                ->map($extrairDiasDoMes);
+
+            $diasComMargemAnteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+                ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
+                ->whereDate('reference_date', '<=', $fimAnter->toDateString())
+                ->whereNotNull('contribution_margin')
+                ->get(['company_id', 'reference_date'])
+                ->groupBy('company_id')
+                ->map($extrairDiasDoMes);
         }
 
         $vars = collect();
@@ -608,28 +624,49 @@ class DesempenhoScoreService
             $atual    = (float) $rowAtual->margem;
             $anterior = (float) $rowAnterior->margem;
 
-            // Recorte de dias-fim (fix Tomelin): se a janela atual tem dias
-            // finais sem margem (lag da Adman), recorta a MESMA quantidade de
-            // dias no fim da janela anterior antes de comparar.
-            if ($ehMesEmCurso && $ultimoDiaComMargemPorEmpresa->has($company->id)) {
-                $ultimoDia     = Carbon::parse($ultimoDiaComMargemPorEmpresa->get($company->id))->startOfDay();
-                $diasSemDados  = (int) $ultimoDia->diffInDays($fimMes->copy()->startOfDay());
+            // Recorte por DIAS COMUNS (2026-07-13): se as duas janelas têm
+            // conjuntos de dias diferentes (por gap de sync ou empresa nova),
+            // reagrega SÓ pros dias presentes em AMBAS. Se não sobra nenhum
+            // dia coincidente, descarta empresa do cálculo.
+            $diasAtual  = $diasComMargemAtualPorEmpresa->get($company->id, []);
+            $diasAnter  = $diasComMargemAnteriorPorEmpresa->get($company->id, []);
+            $diasComuns = array_values(array_intersect($diasAtual, $diasAnter));
 
-                if ($diasSemDados > 0) {
-                    $fimAnterRecortado = $fimAnter->copy()->subDays($diasSemDados)->endOfDay();
+            if (empty($diasComuns)) {
+                continue; // sem dia coincidente → não é comparável
+            }
 
-                    $rowAnteriorRecortado = AdmanMetric::where('company_id', $company->id)
-                        ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
-                        ->whereDate('reference_date', '<=', $fimAnterRecortado->toDateString())
-                        ->selectRaw('SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
-                        ->first();
+            if (count($diasComuns) !== count($diasAtual) || count($diasComuns) !== count($diasAnter)) {
+                // Converte offset (dia do mês) em datas concretas — cross-DB.
+                $datasAtual = array_map(
+                    fn ($d) => $inicioMes->copy()->setDay($d)->toDateString(),
+                    $diasComuns,
+                );
+                $datasAnter = array_map(
+                    fn ($d) => $inicioAnter->copy()->setDay($d)->toDateString(),
+                    $diasComuns,
+                );
 
-                    if ($rowAnteriorRecortado === null || (int) $rowAnteriorRecortado->margem_dias === 0) {
-                        continue; // sem baseline comparável após o recorte
-                    }
+                // `whereIn(reference_date, [...])` não bate pois o cast 'date' do
+                // model serializa com timestamp ('YYYY-MM-DD 00:00:00'). whereDate
+                // aplica DATE() de ambos os lados e funciona em MySQL/SQLite.
+                $atual = (float) AdmanMetric::where('company_id', $company->id)
+                    ->where(function ($q) use ($datasAtual) {
+                        foreach ($datasAtual as $d) {
+                            $q->orWhereDate('reference_date', $d);
+                        }
+                    })
+                    ->whereNotNull('contribution_margin')
+                    ->sum('contribution_margin');
 
-                    $anterior = (float) $rowAnteriorRecortado->margem;
-                }
+                $anterior = (float) AdmanMetric::where('company_id', $company->id)
+                    ->where(function ($q) use ($datasAnter) {
+                        foreach ($datasAnter as $d) {
+                            $q->orWhereDate('reference_date', $d);
+                        }
+                    })
+                    ->whereNotNull('contribution_margin')
+                    ->sum('contribution_margin');
             }
 
             if ($anterior <= 0) {
