@@ -1357,27 +1357,34 @@ class PortfolioController extends Controller
         }
 
         // ── Phase 48 — Historico NPS mensal do profissional ──
-        // Agrupa surveys completadas por month_reference, calculando a media do
-        // score do profissional (score_estrategista ou score_analista conforme cargo).
-        // Mesmo criterio de campo ja usado no DesempenhoScoreService.
-        $npsScoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
-        $npsHistory = NpsSurvey::with('response')
+        // Agrupa surveys completadas por month_reference, calculando a media da
+        // nota do profissional (dimensao estrategista ou analista conforme cargo).
+        //
+        // 2026-07-13 — dois ajustes:
+        //  1. `->principal()` — só o modelo principal conta.
+        //  2. Dual-path via NpsScoreCalculator — o modelo principal é v15, cujas
+        //     notas vivem no snapshot `nps_response_answers`, NÃO nas colunas
+        //     `score_*` legadas (que ficam null). Ler direto o campo daria zero.
+        $npsDim = $user->isMentor() ? 'estrategista' : 'analista';
+        $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $npsHistory = NpsSurvey::with(['response.answers', 'response.survey'])
+            ->principal()
             ->whereIn('company_id', $companyIdsAll)
             ->where('status', 'completed')
             ->whereNotNull('completed_at')
             ->orderBy('month_reference')
             ->get()
             ->groupBy(fn ($s) => $s->month_reference?->format('Y-m') ?? $s->completed_at?->format('Y-m'))
-            ->map(function ($rows, $month) use ($npsScoreField) {
+            ->map(function ($rows, $month) use ($npsDim, $npsCalculator) {
                 $scores = $rows
-                    ->map(fn ($s) => $s->response?->$npsScoreField)
+                    ->map(fn ($s) => $s->response ? $npsCalculator->compute($s->response, $npsDim) : null)
                     ->filter(fn ($v) => $v !== null)
                     ->values();
                 return [
                     'month'       => $month,
-                    'avg'         => $scores->isNotEmpty() ? round($scores->avg(), 2) : null,
+                    'avg'         => $scores->isNotEmpty() ? round((float) $scores->avg(), 2) : null,
                     'count'       => $scores->count(),
-                    'ultima_nota' => $scores->isNotEmpty() ? (int) $scores->last() : null,
+                    'ultima_nota' => $scores->isNotEmpty() ? round((float) $scores->last(), 2) : null,
                 ];
             })
             ->values()

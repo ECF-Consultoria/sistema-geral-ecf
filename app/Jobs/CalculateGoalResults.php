@@ -204,9 +204,13 @@ class CalculateGoalResults implements ShouldQueue
      */
     private function computeNps(int $companyId, int $year, int $month): ?float
     {
+        // 2026-07-13 — metas de NPS contam apenas o modelo PRINCIPAL
+        // (scopePrincipal → template_id = principal). Modelos esporádicos e
+        // legados não entram no cálculo da meta.
         $responses = NpsResponse::query()
             ->whereHas('survey', function ($q) use ($companyId, $year, $month) {
-                $q->where('company_id', $companyId)
+                $q->principal()
+                  ->where('company_id', $companyId)
                   ->where('status', 'completed')
                   ->whereYear('completed_at', $year)
                   ->whereMonth('completed_at', $month);

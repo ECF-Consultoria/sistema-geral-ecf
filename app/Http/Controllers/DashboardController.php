@@ -529,7 +529,9 @@ class DashboardController extends Controller
         $revenueChart = $revenueChart->values();
         $tacosChart   = $tacosChart->values();
 
+        // 2026-07-13 — só o modelo PRINCIPAL alimenta os widgets da home.
         $npsResponses = NpsSurvey::with('response')
+            ->principal()
             ->whereIn('company_id', $companies->pluck('id'))
             ->where('status', 'completed')
             ->where('completed_at', '>=', $since)
@@ -1044,7 +1046,9 @@ class DashboardController extends Controller
             }
         }
 
+        // 2026-07-13 — só o modelo PRINCIPAL alimenta os widgets do dashboard.
         $npsResponses = NpsSurvey::with('response')
+            ->principal()
             ->whereIn('company_id', $companies->pluck('id'))
             ->where('status', 'completed')
             ->where('completed_at', '>=', $since)

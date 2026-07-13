@@ -161,6 +161,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         ->name('nps.configuracao.templates.update');
     Route::patch ('/nps/configuracao/templates/{template}/toggle-active', [NpsTemplateController::class, 'toggleActive'])
         ->name('nps.configuracao.templates.toggle-active');
+    // 2026-07-13 — promove o template a "modelo principal" (único que conta nas
+    // métricas + é enviado no disparo automático mensal). Troca atômica do
+    // is_default respeitando o unique parcial.
+    Route::patch ('/nps/configuracao/templates/{template}/set-principal', [NpsTemplateController::class, 'setPrincipal'])
+        ->name('nps.configuracao.templates.set-principal');
 
     // ─── Phase 70 Plan 02 — CRUD perguntas dos templates ────────────────
     // Rotas aninhadas sob {template}. scopeBindings() faz o Laravel resolver

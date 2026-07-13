@@ -95,8 +95,8 @@ export default function TemplatesList({ templates, selectedId, onSelect, onCreat
                             <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                                 {t.is_default && (
                                     <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-ecf-yellow/[0.14] text-ecf-yellow border border-ecf-yellow/25">
-                                        <Star size={9} />
-                                        padrão
+                                        <Star size={9} className="fill-current" />
+                                        principal
                                     </span>
                                 )}
                                 {!t.active && (

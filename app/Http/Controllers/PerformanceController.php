@@ -289,9 +289,14 @@ class PerformanceController extends Controller
             ->get()
             ->keyBy('company_id');
 
-        // NPS score mais recente por empresa (últimos 60d completed)
-        $npsField = $user->isMentor() ? 'score_estrategista' : 'score_analista';
-        $npsByCompany = \App\Models\NpsSurvey::with('response')
+        // NPS score mais recente por empresa (últimos 60d completed).
+        // 2026-07-13 — só o modelo PRINCIPAL conta (->principal()) e a nota vem
+        // via NpsScoreCalculator (dual-path): o principal é v15, cujas notas
+        // ficam no snapshot, não nas colunas score_* legadas.
+        $npsDim = $user->isMentor() ? 'estrategista' : 'analista';
+        $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $npsByCompany = \App\Models\NpsSurvey::with(['response.answers', 'response.survey'])
+            ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')
             ->where('completed_at', '>=', now()->subDays(60))
@@ -307,7 +312,7 @@ class PerformanceController extends Controller
             ->map(fn ($group) => $group->first());
 
         // Monta lista de empresas pra tabela
-        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany, $npsField) {
+        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany, $npsDim, $npsCalculator) {
             $row = $metricsByCompany->get($c->id);
             $rev     = (float) ($row->rev ?? 0);
             $revPrev = (float) ($row->rev_prev ?? 0);
@@ -325,8 +330,11 @@ class PerformanceController extends Controller
 
             $nps = null;
             $survey = $npsByCompany->get($c->id);
-            if ($survey && $survey->response && $survey->response->{$npsField} !== null) {
-                $nps = (int) $survey->response->{$npsField};
+            if ($survey && $survey->response) {
+                $nota = $npsCalculator->compute($survey->response, $npsDim);
+                if ($nota !== null) {
+                    $nps = round((float) $nota, 2);
+                }
             }
 
             // Status heurístico: baseado em crescimento + meta
@@ -365,7 +373,10 @@ class PerformanceController extends Controller
         })->values();
 
         // ── NPS widget: últimas 4 respostas completed ──
-        $recentSurveys = \App\Models\NpsSurvey::with(['response', 'company'])
+        // 2026-07-13 — só o modelo principal (->principal()). Eager load de
+        // answers+survey pro NpsScoreCalculator não fazer N+1.
+        $recentSurveys = \App\Models\NpsSurvey::with(['response.answers', 'response.survey', 'company'])
+            ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')
             ->orderByDesc('completed_at')
@@ -383,6 +394,9 @@ class PerformanceController extends Controller
         // (score_estrategista para mentor, score_analista caso contrario).
         $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
         $dimensao   = $user->isMentor() ? 'estrategista' : 'analista';
+        // Coluna legacy só como fallback defensivo — surveys principal são v15,
+        // então o branch legacy abaixo fica inativo na prática (dual-path).
+        $npsField   = $user->isMentor() ? 'score_estrategista' : 'score_analista';
         $npsRespostas = $recentSurveys->map(function ($s) use ($calculator, $dimensao, $npsField) {
             $nota = ($s->template_id !== null && $s->response)
                 ? $calculator->compute($s->response, $dimensao)
@@ -404,7 +418,8 @@ class PerformanceController extends Controller
         // sobrecarregar o widget). Dual-path v15/legacy no cálculo da nota.
         $seisMesesAtras = now()->copy()->subMonths(5)->startOfMonth();
 
-        $surveysHeatmap = \App\Models\NpsSurvey::with(['response', 'company:id,name'])
+        $surveysHeatmap = \App\Models\NpsSurvey::with(['response.answers', 'response.survey', 'company:id,name'])
+            ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')
             ->whereNotNull('completed_at')

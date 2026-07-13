@@ -229,14 +229,21 @@ class NpsV15E2ETest extends TestCase
         ]);
 
         // ─── FLUXO 4: dispatch mensal via artisan cria survey ──────────────
+        // 2026-07-13 · o disparo automático usa o modelo PRINCIPAL (is_default),
+        // não mais a resolução por serviço. Promovemos o template E2E a principal
+        // para o dispatch escolhê-lo e o resto do fluxo (cliente responde) valer.
+        NpsTemplate::query()->update(['is_default' => false]);
+        $templateE2E->update(['is_default' => true, 'active' => true]);
+        NpsTemplate::resetPrincipalCache();
+
         // NpsDispararMensal usa Carbon::now('America/Sao_Paulo'). Como o
         // Carbon::setTestNow está em UTC, a conversão vai bater no mesmo dia
         // (15) porque 10:00 UTC = 07:00 BRT, ainda dia 15.
         $this->artisan('nps:disparar-mensal')
             ->assertExitCode(0);
 
-        // Comando cria survey com auto_generated=true + template_id
-        // resolvido (que é o E2E, priority=100 vence o default priority=0).
+        // Comando cria survey com auto_generated=true + template_id do principal
+        // (o template E2E que promovemos acima).
         $this->assertDatabaseHas('nps_surveys', [
             'company_id'     => $company->id,
             'template_id'    => $templateE2E->id,

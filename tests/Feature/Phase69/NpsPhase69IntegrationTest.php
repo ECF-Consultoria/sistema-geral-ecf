@@ -507,49 +507,50 @@ class NpsPhase69IntegrationTest extends TestCase
         $padrao = NpsTemplate::default()->first();
         $this->assertNotNull($padrao);
 
-        // ─── Cenário 3A — 2 empresas OK: 1 scoped + 1 fallback padrão ──────
+        // ─── Cenário 3A — 2 empresas OK ────────────────────────────────────
+        // 2026-07-13 · disparo automático usa SEMPRE o principal (padrão),
+        // ignorando o template scoped mesmo quando a empresa contrata o serviço.
         $empresa1 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa1);
-        $this->contratarServico($empresa1, $servicoA); // empresa1 → templateScoped
+        $this->contratarServico($empresa1, $servicoA); // contrata A, mas recebe o principal
 
         $empresa2 = $this->criarEmpresaElegivelHoje();
-        $this->atribuirEstrategista($empresa2); // empresa2 sem serviço → padrão
+        $this->atribuirEstrategista($empresa2); // sem serviço → também o principal
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // 2 surveys criadas com os templates corretos
+        // 2 surveys criadas, AMBAS com o principal (padrão)
         $this->assertDatabaseCount('nps_surveys', 2);
         $this->assertDatabaseHas('nps_surveys', [
             'company_id'  => $empresa1->id,
-            'template_id' => $templateScoped->id,
+            'template_id' => $padrao->id,
         ]);
         $this->assertDatabaseHas('nps_surveys', [
             'company_id'  => $empresa2->id,
             'template_id' => $padrao->id,
         ]);
 
-        // ─── Cenário 3B — Empresa 3 SEM nenhum template disponível ──────────
-        // Apagamos TODOS os templates (inclusive o seed). O comando deve
-        // pular a nova empresa via RuntimeException do resolver + Log::warning
-        // estruturado. Comando termina exit=0 (batch resiliente).
+        // ─── Cenário 3B — sem modelo principal → comando aborta ─────────────
+        // Apagamos TODOS os templates (inclusive o seed) → não há principal
+        // (is_default). O comando aborta cedo (exit=0) sem criar nada e loga
+        // warning sobre a ausência de principal.
         NpsTemplate::query()->delete();
-        $this->assertSame(0, NpsTemplate::count(), 'baseline: zero templates para forçar RuntimeException');
+        NpsTemplate::resetPrincipalCache();
+        $this->assertSame(0, NpsTemplate::count(), 'baseline: zero templates → sem principal');
 
         $empresa3 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa3);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // Empresa 3 NÃO recebeu survey — batch pulou e continuou
+        // Empresa 3 NÃO recebeu survey — comando abortou
         $this->assertDatabaseMissing('nps_surveys', ['company_id' => $empresa3->id]);
         // Total ainda 2 (as criadas no Cenário 3A)
         $this->assertDatabaseCount('nps_surveys', 2);
 
-        // Warning estruturado com company_id (grep-friendly em prod)
-        Log::shouldHaveReceived('warning')->withArgs(function ($mensagem, $contexto = []) use ($empresa3) {
-            $textoBate  = str_contains(strtolower((string) $mensagem), 'sem template');
-            $contextoOk = is_array($contexto) && ($contexto['company_id'] ?? null) === $empresa3->id;
-            return $textoBate && $contextoOk;
+        // Warning sobre ausência de modelo principal
+        Log::shouldHaveReceived('warning')->withArgs(function ($mensagem) {
+            return str_contains(strtolower((string) $mensagem), 'principal');
         });
     }
 

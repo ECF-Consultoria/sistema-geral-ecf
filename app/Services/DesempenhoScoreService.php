@@ -288,7 +288,12 @@ class DesempenhoScoreService
             return 0.0;
         }
 
+        // 2026-07-13 — só o modelo PRINCIPAL conta nas métricas de desempenho.
+        // scopePrincipal filtra template_id = principal (força vazio se nenhum
+        // principal estiver marcado). Respostas de modelos esporádicos e
+        // legados ficam de fora do cálculo do score/bônus.
         $surveys = NpsSurvey::with('response')
+            ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')
             ->whereBetween('completed_at', [

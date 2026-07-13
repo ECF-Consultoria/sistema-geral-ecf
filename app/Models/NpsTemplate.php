@@ -159,4 +159,36 @@ class NpsTemplate extends Model
     {
         return $query->where('is_default', true);
     }
+
+    // ─── Template PRINCIPAL (2026-07-13) ─────────────────────────────────────
+    // Reaproveita a flag `is_default` (unique parcial garante 1 só) como o
+    // "modelo principal": o único cujas respostas contam nas métricas
+    // (dashboard NPS, widgets da home, desempenho, metas) e o que o disparo
+    // automático mensal envia para TODAS as empresas. Os demais templates
+    // ficam para geração manual/esporádica.
+
+    /**
+     * Id do template principal (is_default=true) ou null se — estado anômalo —
+     * nenhum estiver marcado.
+     *
+     * DELIBERADAMENTE sem memoização estática: os jobs de desempenho/metas
+     * rodam em queue workers de vida longa, onde um static cache ficaria
+     * STALE se o admin trocasse o principal (afetaria o cálculo de bônus até
+     * o worker reiniciar). A query é 1 lookup indexado (unique parcial em
+     * is_default) e as agregações chamam isto O(1) vez cada — custo desprezível.
+     */
+    public static function principalId(): ?int
+    {
+        return static::query()->where('is_default', true)->value('id');
+    }
+
+    /**
+     * No-op mantido por compatibilidade: não há mais cache de principalId()
+     * para invalidar. Preservado porque testes/controllers ainda chamam após
+     * promover um template — remover quebraria call-sites sem ganho.
+     */
+    public static function resetPrincipalCache(): void
+    {
+        // Sem cache — nada a fazer.
+    }
 }

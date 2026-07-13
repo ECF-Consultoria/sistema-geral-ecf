@@ -130,6 +130,18 @@ class NpsDispararMensal extends Command
             return self::SUCCESS;
         }
 
+        // 2026-07-13 — o disparo AUTOMÁTICO usa SEMPRE o modelo principal
+        // (is_default=true) para todas as empresas, ignorando a resolução por
+        // serviço (que agora vale só para geração manual esporádica). Sem
+        // principal marcado (estado anômalo) não há o que enviar — aborta cedo.
+        $principal = \App\Models\NpsTemplate::where('is_default', true)->first();
+        if (! $principal) {
+            $this->warn('Nenhum modelo NPS principal (is_default=true) encontrado. Nada a disparar.');
+            Log::warning('[NPS Mensal] abortado: nenhum template principal (is_default) marcado.');
+            return self::SUCCESS;
+        }
+        $this->info("Modelo principal: #{$principal->id} ({$principal->nome})");
+
         $query = Company::where('active', true);
         if ($canalEmailAtivo && ! $canalDigisacAtivo) {
             $query->whereNotNull('email_cliente')->where('email_cliente', '!=', '');
@@ -152,7 +164,7 @@ class NpsDispararMensal extends Command
         // Itera em chunks para evitar carregar todas as empresas na memória de uma vez
         $query->chunkById(50, function ($empresas) use (
                 $hoje, $mesAtual, $dryRun, $textos, $mesReferencia,
-                $canalEmailAtivo, $canalDigisacAtivo,
+                $canalEmailAtivo, $canalDigisacAtivo, $principal,
                 &$enviados, &$criados, &$elegiveisHoje,
                 &$puladosSemEstrategista, &$puladosIdempotencia,
                 &$puladosSemTemplate,
@@ -193,24 +205,11 @@ class NpsDispararMensal extends Command
                         // D-07 Phase 31 — Analista é opcional (mentoria pura). Pode ser null.
                         $analista = $empresa->consultor()->first();
 
-                        // Phase 69 Plan 05 (REQ NPS-B-04) — resolve template aplicável.
-                        // Empresa sem NENHUM template (nem scope + nem seed padrão) é
-                        // pulada com Log::warning estruturado; o batch continua para
-                        // as próximas. Situação anômala: sinaliza seed 100004 revertido.
-                        try {
-                            $template = $this->templateService->resolveForCompany($empresa);
-                        } catch (RuntimeException $e) {
-                            Log::warning(
-                                "[NPS Mensal] empresa {$empresa->id} ({$empresa->name}) sem template aplicavel — pulando disparo",
-                                [
-                                    'company_id'   => $empresa->id,
-                                    'company_name' => $empresa->name,
-                                    'reason'       => $e->getMessage(),
-                                ]
-                            );
-                            $puladosSemTemplate++;
-                            continue;
-                        }
+                        // 2026-07-13 — disparo automático usa SEMPRE o modelo
+                        // principal (resolvido uma vez antes do loop). Não há
+                        // mais resolução por serviço aqui: os demais modelos são
+                        // só para geração manual esporádica.
+                        $template = $principal;
 
                         if ($dryRun) {
                             $canais = [];

@@ -58,10 +58,20 @@ class NpsController extends Controller
         $empresaId      = $request->integer('empresa_id') ?: null;
         $estrategistaId = $request->integer('estrategista_id') ?: null;
         $analistaId     = $request->integer('analista_id') ?: null;
-        // Ajuste 2026-07-13 · como agora existem múltiplos modelos NPS, o
-        // dashboard aceita filtrar por template_id. Aplicado em todos os blocos
-        // (lista, cards, série 12m) pra manter coerência visual.
-        $templateId     = $request->integer('template_id') ?: null;
+        // Ajuste 2026-07-13 · por padrão o dashboard NPS conta apenas o modelo
+        // PRINCIPAL (is_default) — decisão de produto: só o principal alimenta
+        // métricas. O <select> "Todos os modelos" envia template_id=__todos__
+        // para ver tudo; um id numérico filtra por aquele modelo específico.
+        // Ausência do parâmetro (carga inicial) cai no principal.
+        $templateParam = $request->input('template_id');
+        $templateTodos = ($templateParam === '__todos__');
+        if ($templateTodos) {
+            $templateId = null;                                   // sem filtro — todos
+        } elseif (is_numeric($templateParam)) {
+            $templateId = (int) $templateParam;                   // modelo específico
+        } else {
+            $templateId = \App\Models\NpsTemplate::principalId();  // default — principal
+        }
 
         $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId, $templateId) {
             if ($empresaId) {
@@ -324,7 +334,11 @@ class NpsController extends Controller
                 'estrategista_id' => $estrategistaId,
                 'analista_id'     => $analistaId,
                 'template_id'     => $templateId,
+                // 2026-07-13 · estado do filtro de modelo pro <select> refletir
+                // "Todos os modelos" vs. principal (default) vs. específico.
+                'template_todos'  => $templateTodos,
             ],
+            'principal_template_id' => \App\Models\NpsTemplate::principalId(),
         ]);
     }
 

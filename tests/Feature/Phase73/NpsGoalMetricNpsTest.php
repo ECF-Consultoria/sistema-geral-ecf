@@ -89,6 +89,18 @@ class NpsGoalMetricNpsTest extends TestCase
      * templates ativos (Gestão, Publicação, etc.), cada um gerando 1 survey
      * mensal, todos agregados pelo computeNps na média final.
      */
+    /**
+     * 2026-07-13 — promove um template a PRINCIPAL (is_default). Desmarca o
+     * atual antes (unique parcial em is_default) e invalida o memo de
+     * principalId() para o scopePrincipal enxergar o novo.
+     */
+    private function promoverAPrincipal(NpsTemplate $template): void
+    {
+        NpsTemplate::query()->update(['is_default' => false]);
+        $template->update(['is_default' => true, 'active' => true]);
+        NpsTemplate::resetPrincipalCache();
+    }
+
     private function templateComPerguntaEmpresa(string $nome = 'Template Goal NPS'): array
     {
         $template = NpsTemplate::factory()->create(['nome' => $nome]);
@@ -189,30 +201,26 @@ class NpsGoalMetricNpsTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Teste 1 — 3 responses v15 no período → média correta
+    // Teste 1 — 2026-07-13: computeNps conta APENAS o modelo principal;
+    //           surveys de outros modelos (esporádicos) são ignorados
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_computeNps_com_3_responses_v15_retorna_media_correta(): void
+    public function test_computeNps_conta_apenas_o_modelo_principal(): void
     {
-        // Setup: 1 company + 3 surveys completed no mesmo mês (2026-07)
-        // com answers de pesos 5, 3, 4. Média aritmética = (5+3+4)/3 = 4.0.
-        //
-        // Cada survey usa um template diferente para respeitar o dedup unique
-        // parcial (company_id, month_reference, template_id) — cenário real de
-        // empresa com múltiplos templates ativos (ex: Gestão, Publicação).
+        // Sob o contrato novo, só o modelo principal alimenta a meta de NPS.
+        // Na prática o dedup unique (company, mês, template) garante 1 survey
+        // principal por mês por empresa. Aqui: 1 survey principal (peso 4) +
+        // 1 survey de outro modelo (peso 1) que deve ser IGNORADO.
         $company = Company::factory()->create(['name' => 'Empresa Metric NPS']);
 
-        [$tA, $qA] = $this->templateComPerguntaEmpresa('Template A');
-        [$tB, $qB] = $this->templateComPerguntaEmpresa('Template B');
-        [$tC, $qC] = $this->templateComPerguntaEmpresa('Template C');
+        [$tPrincipal, $qP] = $this->templateComPerguntaEmpresa('Principal');
+        [$tOutro, $qO]     = $this->templateComPerguntaEmpresa('Esporadico');
+        $this->promoverAPrincipal($tPrincipal);
 
-        $this->surveyCompletedComPeso($company, $tA, $qA, 5, Carbon::parse('2026-07-05 10:00:00'));
-        $this->surveyCompletedComPeso($company, $tB, $qB, 3, Carbon::parse('2026-07-15 10:00:00'));
-        $this->surveyCompletedComPeso($company, $tC, $qC, 4, Carbon::parse('2026-07-25 10:00:00'));
+        $this->surveyCompletedComPeso($company, $tPrincipal, $qP, 4, Carbon::parse('2026-07-05 10:00:00'));
+        $this->surveyCompletedComPeso($company, $tOutro, $qO, 1, Carbon::parse('2026-07-15 10:00:00')); // ignorado
 
-        // Goal fixture para linkagem — não usada pelo computeNps direto, mas
-        // documenta o contrato: Goal existe → job cai no branch metric='nps'.
         Goal::create([
             'company_id'   => $company->id,
             'metric'       => 'nps',
@@ -225,7 +233,7 @@ class NpsGoalMetricNpsTest extends TestCase
         $media = $this->computeNps($company->id, 2026, 7);
 
         $this->assertNotNull($media, 'computeNps deve retornar float, não null');
-        $this->assertEquals(4.0, $media, 'AVG dos pesos snapshot (5+3+4)/3 = 4.0');
+        $this->assertEquals(4.0, $media, 'só o principal (peso 4) conta; o esporádico (peso 1) é ignorado');
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -259,41 +267,33 @@ class NpsGoalMetricNpsTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Teste 3 — Dual-path v15 + legacy → média mistura corretamente
+    // Teste 3 — 2026-07-13: respostas LEGACY (sem template) são excluídas;
+    //           só o principal (v15) conta
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_computeNps_dual_path_mistura_v15_e_legacy(): void
+    public function test_computeNps_exclui_legacy_e_conta_so_o_principal(): void
     {
-        // Cenário coexistência (Phase 68/69 até Phase 73): mesma empresa tem
-        // responses novas (v15, template_id) E antigas (legacy, score_empresa).
-        // Ambos os paths devem entrar na mesma média — sem esse dual-path, o
-        // migrator perderia visibilidade histórica no primeiro mês pós-deploy.
-        //
-        // 2 templates diferentes para os surveys v15 (dedup unique respeitado);
-        // 1 survey legacy tem template_id=NULL — chave dedup vira 'x|y|0' via
-        // COALESCE, então não colide com os v15 (mas colidiria com outro legacy;
-        // aqui só temos 1 legacy → OK).
+        // Antes o computeNps misturava v15 + legacy. Sob o contrato novo, só o
+        // modelo principal (v15) conta — respostas legadas (template_id=NULL)
+        // ficam de fora.
         $company = Company::factory()->create();
-        [$tA, $qA] = $this->templateComPerguntaEmpresa('Template Dual A');
-        [$tB, $qB] = $this->templateComPerguntaEmpresa('Template Dual B');
+        [$tPrincipal, $qP] = $this->templateComPerguntaEmpresa('Principal');
+        $this->promoverAPrincipal($tPrincipal);
 
-        // 2 responses v15 com peso 4 cada (dimensão 'empresa'), templates
-        // distintos para evitar colisão no dedup unique.
-        $this->surveyCompletedComPeso($company, $tA, $qA, 4, Carbon::parse('2026-07-05 09:00:00'));
-        $this->surveyCompletedComPeso($company, $tB, $qB, 4, Carbon::parse('2026-07-10 09:00:00'));
+        // 1 response principal (v15) com peso 4.
+        $this->surveyCompletedComPeso($company, $tPrincipal, $qP, 4, Carbon::parse('2026-07-05 09:00:00'));
 
-        // 1 response legacy (sem template) com score_empresa=2.
+        // 1 response legacy (sem template) com score_empresa=2 → IGNORADA.
         $this->surveyLegacyComScoreEmpresa($company, 2, Carbon::parse('2026-07-20 09:00:00'));
 
         $media = $this->computeNps($company->id, 2026, 7);
 
-        // Média aritmética: (4 + 4 + 2) / 3 = 3.333... → round(2) = 3.33
         $this->assertNotNull($media);
         $this->assertSame(
-            3.33,
+            4.0,
             $media,
-            'Dual-path mistura: (v15=4, v15=4, legacy=2) / 3 = 3.33 (round 2 casas)'
+            'só o principal (v15 peso 4) conta; a resposta legacy (2) é excluída'
         );
     }
 }

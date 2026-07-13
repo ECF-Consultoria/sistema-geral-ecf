@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { Power, PowerOff, Info, Link2, HelpCircle } from 'lucide-react';
+import { Power, PowerOff, Info, Link2, HelpCircle, Star } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Textarea } from '@/Components/ui/textarea';
@@ -232,6 +232,27 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
     // pra evitar bater no server e receber um flash de erro.
     const bloquearDesativacao = template.is_default && template.active;
 
+    // 2026-07-13 — promove este modelo a PRINCIPAL (is_default). Só o principal
+    // conta nas métricas (dashboard NPS, home, desempenho, metas) e é enviado
+    // no disparo automático mensal. Confirmação porque muda o que alimenta
+    // dashboards e e-mails automáticos de todos os clientes.
+    const definirPrincipal = () => {
+        const nome = template.nome || `Modelo #${template.id}`;
+        if (! confirm(
+            `Definir "${nome}" como modelo principal?\n\n` +
+            `Só o principal conta nas métricas (dashboard NPS, widgets da home, ` +
+            `desempenho e metas) e é o modelo enviado no disparo automático mensal ` +
+            `para todos os clientes. O modelo principal atual deixa de ter essas funções.`
+        )) return;
+        router.patch(route('nps.configuracao.templates.set-principal', template.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                mostrarToast && mostrarToast();
+                onSaved && onSaved(template.id);
+            },
+        });
+    };
+
     const inputCls    = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
     const textareaCls = cn(inputCls, 'min-h-[70px] font-sans text-[13px]');
 
@@ -246,7 +267,7 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
                         </h2>
                         {template.is_default && (
                             <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-ecf-yellow/[0.14] text-ecf-yellow border border-ecf-yellow/25">
-                                Modelo padrão
+                                <Star size={10} className="fill-current" /> Principal
                             </span>
                         )}
                         {!template.active && (
@@ -260,8 +281,19 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
                     </div>
                 </div>
 
-                {/* Botão Serviços cobertos + toggle active */}
+                {/* Botão Serviços cobertos + definir principal + toggle active */}
                 <div className="flex items-center gap-2 flex-wrap">
+                    {! template.is_default && (
+                        <Button
+                            type="button"
+                            onClick={definirPrincipal}
+                            className="bg-ecf-yellow/[0.12] text-ecf-yellow border border-ecf-yellow/25 hover:bg-ecf-yellow/20 font-semibold"
+                            title="Tornar este o modelo principal (métricas + disparo automático)"
+                        >
+                            <Star size={13} />
+                            Definir como principal
+                        </Button>
+                    )}
                     <Button
                         type="button"
                         onClick={onOpenServicos}
@@ -276,7 +308,7 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
                         onClick={alternarAtivo}
                         disabled={bloquearDesativacao}
                         title={bloquearDesativacao
-                            ? 'O modelo padrão não pode ser desativado.'
+                            ? 'O modelo principal não pode ser desativado. Defina outro como principal antes.'
                             : (template.active ? 'Desativar modelo' : 'Ativar modelo')}
                         className={cn(
                             'font-semibold',
@@ -292,9 +324,13 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
                 </div>
             </div>
 
-            {bloquearDesativacao && (
+            {template.is_default ? (
                 <p className="inline-flex items-center gap-1 text-[11px] text-white/40">
-                    <Info size={11} /> Modelo padrão sempre ativo — é o fallback do NPS mensal.
+                    <Info size={11} /> Modelo principal: só as respostas dele contam nas métricas (dashboard NPS, home, desempenho) e é o enviado no disparo automático mensal. Não pode ser desativado.
+                </p>
+            ) : (
+                <p className="inline-flex items-center gap-1 text-[11px] text-white/40">
+                    <Info size={11} /> Modelo esporádico: usado só em geração manual de link. Não conta nas métricas nem é enviado automaticamente.
                 </p>
             )}
 

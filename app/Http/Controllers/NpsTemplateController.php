@@ -13,6 +13,7 @@ use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
 use App\Services\Nps\NpsTemplateService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use RuntimeException;
 
@@ -136,7 +137,7 @@ class NpsTemplateController extends Controller
             && ($activeInput === false || $activeInput === 0 || $activeInput === '0' || $activeInput === 'false');
 
         if ($template->is_default && $tentandoDesativar) {
-            abort(422, 'O template padrão não pode ser desativado.');
+            abort(422, 'O modelo principal não pode ser desativado. Defina outro modelo como principal antes.');
         }
 
         $template->update($request->validated());
@@ -160,7 +161,7 @@ class NpsTemplateController extends Controller
         // Guard: is_default=true + active=true → tentativa de desativar
         // (o toggle inverte o valor atual) → bloqueia.
         if ($template->is_default && $template->active) {
-            abort(422, 'O template padrão não pode ser desativado.');
+            abort(422, 'O modelo principal não pode ser desativado. Defina outro modelo como principal antes.');
         }
 
         $template->update(['active' => ! $template->active]);
@@ -169,6 +170,43 @@ class NpsTemplateController extends Controller
             'success',
             $template->active ? 'Template ativado.' : 'Template desativado.'
         );
+    }
+
+    /**
+     * PATCH /nps/configuracao/templates/{template}/set-principal (2026-07-13).
+     *
+     * Promove ESTE template a "modelo principal" — o único cujas respostas
+     * contam nas métricas (dashboard NPS, widgets da home, desempenho, metas)
+     * e o que o disparo automático mensal envia para todas as empresas.
+     *
+     * Reaproveita a flag `is_default` (unique parcial em is_default garante 1
+     * só). A troca é ATÔMICA e ordenada: desmarca o principal atual ANTES de
+     * marcar o novo, senão o INSERT/UPDATE do 2º is_default=true colide no
+     * índice único (QueryException 23000). Ativa o novo principal se estiver
+     * inativo — um principal precisa estar ativo para ser resolvido.
+     */
+    public function setPrincipal(NpsTemplate $template)
+    {
+        if ($template->is_default) {
+            return back()->with('success', "\"{$template->nome}\" já é o modelo principal.");
+        }
+
+        DB::transaction(function () use ($template) {
+            NpsTemplate::where('is_default', true)
+                ->where('id', '!=', $template->id)
+                ->get()
+                ->each->update(['is_default' => false]);
+
+            $template->update([
+                'is_default' => true,
+                'active'     => true,
+            ]);
+        });
+
+        // Invalida o memo de principalId() caso algo mais nesta request agregue.
+        NpsTemplate::resetPrincipalCache();
+
+        return back()->with('success', "\"{$template->nome}\" agora é o modelo principal.");
     }
 
     /**

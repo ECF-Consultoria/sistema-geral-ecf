@@ -87,8 +87,8 @@ export default function TemplatesGrid({ templates, onEdit, onCreate }) {
                             <div className="flex flex-wrap items-center gap-1.5 mt-3">
                                 {t.is_default && (
                                     <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-ecf-yellow/[0.14] text-ecf-yellow border border-ecf-yellow/25">
-                                        <Star size={10} />
-                                        padrão
+                                        <Star size={10} className="fill-current" />
+                                        principal
                                     </span>
                                 )}
                                 {!t.active && (

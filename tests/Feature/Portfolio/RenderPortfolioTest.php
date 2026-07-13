@@ -4,8 +4,12 @@ namespace Tests\Feature\Portfolio;
 
 use App\Models\Company;
 use App\Models\Goal;
-use App\Models\NpsSurvey;
 use App\Models\NpsResponse;
+use App\Models\NpsResponseAnswer;
+use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
+use App\Models\NpsTemplateOption;
+use App\Models\NpsTemplateQuestion;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
@@ -310,20 +314,58 @@ class RenderPortfolioTest extends TestCase
         $user    = $this->criarAnalista();
         $empresa = $this->criarEmpresaParaUser($user, 'consultor');
 
-        // Survey completada com resposta para o mes atual
+        // 2026-07-13 — npsHistory agora conta só o modelo PRINCIPAL (v15) e usa
+        // o NpsScoreCalculator. Montamos um template principal com pergunta
+        // dimensão 'analista' (cargo do user) e uma resposta v15 peso 5.
+        NpsTemplate::query()->update(['is_default' => false]);
+        $template = NpsTemplate::factory()->create([
+            'nome'       => 'Principal Portfolio',
+            'is_default' => true,
+            'active'     => true,
+        ]);
+        $pergunta = NpsTemplateQuestion::create([
+            'template_id' => $template->id,
+            'texto'       => 'Nota do analista?',
+            'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+            'dimensao'    => NpsTemplateQuestion::DIMENSAO_ANALISTA,
+            'obrigatoria' => true,
+            'ordem'       => 1,
+        ]);
+        $opcao5 = null;
+        for ($p = 1; $p <= 5; $p++) {
+            $opt = NpsTemplateOption::create([
+                'question_id' => $pergunta->id,
+                'label'       => (string) $p,
+                'peso'        => $p,
+                'ordem'       => $p,
+            ]);
+            if ($p === 5) {
+                $opcao5 = $opt;
+            }
+        }
+        NpsTemplate::resetPrincipalCache();
+
+        // Survey completada (v15, principal) com resposta para o mes atual.
         $survey = NpsSurvey::create([
             'token'          => 'tok-' . uniqid(),
             'company_id'     => $empresa->id,
+            'template_id'    => $template->id,
             'generated_by'   => null,
             'status'         => 'completed',
             'completed_at'   => now(),
             'month_reference'=> now()->startOfMonth()->toDateString(),
         ]);
-        NpsResponse::create([
-            'survey_id'          => $survey->id,
-            'score_estrategista' => 4,
-            'score_analista'     => 5,
-            'score_empresa'      => 4,
+        $response = NpsResponse::create([
+            'survey_id' => $survey->id,
+        ]);
+        NpsResponseAnswer::create([
+            'response_id'                => $response->id,
+            'template_question_id'       => $pergunta->id,
+            'template_option_id'         => $opcao5->id,
+            'question_texto_snapshot'    => $pergunta->texto,
+            'question_dimensao_snapshot' => 'analista',
+            'option_label_snapshot'      => '5',
+            'option_peso_snapshot'       => 5,
         ]);
 
         $this->actingAs($user)

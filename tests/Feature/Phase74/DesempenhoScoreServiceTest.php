@@ -7,7 +7,11 @@ use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
+use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
+use App\Models\NpsTemplateOption;
+use App\Models\NpsTemplateQuestion;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricsProviderFactory;
@@ -188,25 +192,93 @@ class DesempenhoScoreServiceTest extends TestCase
         ]);
     }
 
+    // Cache do template principal do teste (1 pergunta dimensão 'analista').
+    private ?NpsTemplate $principalTpl = null;
+    private ?NpsTemplateQuestion $principalQuestion = null;
+
     /**
-     * Cria 1 NpsSurvey completed no mês + 1 NpsResponse com `score_analista`
-     * populado (legacy path — Phase 72/73 dual-path). O NpsScoreCalculator
-     * retorna null quando o survey não tem template; o service cai no
-     * fallback legacy.
+     * Template PRINCIPAL de teste com 1 pergunta escala dimensão 'analista' e
+     * opções 1..5. 2026-07-13 — só o principal conta no desempenho, então as
+     * respostas do fixture precisam ser v15 sob este template (não mais legacy).
      */
-    private function mockNpsRespostaLegacy(Company $c, string $mesYm, int $scoreAnalista): NpsResponse
+    private function principalTemplateAnalista(): array
     {
+        if ($this->principalTpl) {
+            return [$this->principalTpl, $this->principalQuestion];
+        }
+
+        // Desmarca o seed padrão (unique parcial em is_default) e cria o principal.
+        NpsTemplate::query()->update(['is_default' => false]);
+        $template = NpsTemplate::factory()->create([
+            'nome'       => 'Principal Desempenho',
+            'is_default' => true,
+            'active'     => true,
+        ]);
+        $pergunta = NpsTemplateQuestion::create([
+            'template_id' => $template->id,
+            'texto'       => 'Nota do analista?',
+            'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+            'dimensao'    => NpsTemplateQuestion::DIMENSAO_ANALISTA,
+            'obrigatoria' => true,
+            'ordem'       => 1,
+        ]);
+        for ($p = 1; $p <= 5; $p++) {
+            NpsTemplateOption::create([
+                'question_id' => $pergunta->id,
+                'label'       => (string) $p,
+                'peso'        => $p,
+                'ordem'       => $p,
+            ]);
+        }
+        NpsTemplate::resetPrincipalCache();
+
+        $this->principalTpl      = $template;
+        $this->principalQuestion = $pergunta;
+        return [$template, $pergunta];
+    }
+
+    /**
+     * Cria 1 NpsSurvey completed no mês sob o template PRINCIPAL (v15) + 1
+     * NpsResponse + 1 answer dimensão 'analista' com o peso informado.
+     *
+     * `month_reference` fica NULL de propósito: como o índice de dedup é
+     * (company_id, month_reference, template_id) WHERE completed, e o SQLite
+     * trata NULL como distinto, isso permite múltiplas respostas principal no
+     * mesmo mês para a mesma empresa (cenário do fixture Carlos).
+     */
+    private function mockNpsRespostaPrincipal(Company $c, string $mesYm, int $scoreAnalista): NpsResponse
+    {
+        [$template, $pergunta] = $this->principalTemplateAnalista();
+
         $completedAt = Carbon::parse($mesYm . '-10 09:00:00');
         $survey = NpsSurvey::factory()
             ->for($c)
             ->completed()
             ->create([
-                'completed_at' => $completedAt,
+                'template_id'     => $template->id,
+                'month_reference' => null,
+                'completed_at'    => $completedAt,
             ]);
-        return NpsResponse::factory()->create([
-            'survey_id'      => $survey->id,
-            'score_analista' => $scoreAnalista,
+
+        $response = NpsResponse::factory()->create([
+            'survey_id' => $survey->id,
         ]);
+
+        $option = NpsTemplateOption::where('question_id', $pergunta->id)
+            ->where('peso', $scoreAnalista)
+            ->firstOrFail();
+
+        NpsResponseAnswer::create([
+            'response_id'                => $response->id,
+            'template_question_id'       => $pergunta->id,
+            'template_option_id'         => $option->id,
+            'question_texto_snapshot'    => $pergunta->texto,
+            'question_dimensao_snapshot' => 'analista',
+            'option_label_snapshot'      => (string) $scoreAnalista,
+            'option_peso_snapshot'       => $scoreAnalista,
+        ]);
+
+        return $response;
     }
 
     /**
@@ -277,10 +349,10 @@ class DesempenhoScoreServiceTest extends TestCase
         // NPS: 4 respostas legacy [5, 4, 4, 4] distribuídas — média 4.25 exata.
         // Distribuição: empresa 0 recebe 2 surveys (scores 5 e 4); empresas 1
         // e 2 recebem 1 survey cada (score 4 em ambas).
-        $this->mockNpsRespostaLegacy($empresas[0], '2026-07', 5);
-        $this->mockNpsRespostaLegacy($empresas[0], '2026-07', 4);
-        $this->mockNpsRespostaLegacy($empresas[1], '2026-07', 4);
-        $this->mockNpsRespostaLegacy($empresas[2], '2026-07', 4);
+        $this->mockNpsRespostaPrincipal($empresas[0], '2026-07', 5);
+        $this->mockNpsRespostaPrincipal($empresas[0], '2026-07', 4);
+        $this->mockNpsRespostaPrincipal($empresas[1], '2026-07', 4);
+        $this->mockNpsRespostaPrincipal($empresas[2], '2026-07', 4);
 
         return $carlos;
     }
@@ -399,9 +471,9 @@ class DesempenhoScoreServiceTest extends TestCase
         $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
 
-        $this->mockNpsRespostaLegacy($c1, '2026-07', 5);
-        $this->mockNpsRespostaLegacy($c2, '2026-07', 4);
-        $this->mockNpsRespostaLegacy($c3, '2026-07', 3);
+        $this->mockNpsRespostaPrincipal($c1, '2026-07', 5);
+        $this->mockNpsRespostaPrincipal($c2, '2026-07', 4);
+        $this->mockNpsRespostaPrincipal($c3, '2026-07', 3);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
@@ -590,9 +662,9 @@ class DesempenhoScoreServiceTest extends TestCase
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
 
         // NPS 5.00 exato (3 respostas score_analista=5).
-        $this->mockNpsRespostaLegacy($c1, '2026-07', 5);
-        $this->mockNpsRespostaLegacy($c2, '2026-07', 5);
-        $this->mockNpsRespostaLegacy($c3, '2026-07', 5);
+        $this->mockNpsRespostaPrincipal($c1, '2026-07', 5);
+        $this->mockNpsRespostaPrincipal($c2, '2026-07', 5);
+        $this->mockNpsRespostaPrincipal($c3, '2026-07', 5);
 
         // Var faturamento: 4.75% (3 empresas variando +4.75% cada).
         // Revenue prev 10.000 → current 10.475 → régua_fat 4 pts (faixa 1% a 5%)
@@ -707,7 +779,7 @@ class DesempenhoScoreServiceTest extends TestCase
 
         // Revenue +10% (>5% → 5 pts), margem +5% (>4% → 5 pts).
         foreach ([$c1, $c2, $c3] as $c) {
-            $this->mockNpsRespostaLegacy($c, '2026-07', 5);
+            $this->mockNpsRespostaPrincipal($c, '2026-07', 5);
             $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 11000, margem: 10500);
             $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
         }

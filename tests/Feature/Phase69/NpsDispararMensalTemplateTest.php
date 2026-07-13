@@ -170,11 +170,12 @@ class NpsDispararMensalTemplateTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 2 — template scoped com priority alta vence o padrão no dispatch
+    // Test 2 — 2026-07-13: disparo automático usa SEMPRE o principal,
+    //          IGNORANDO scope/priority (contrato novo — antes preferia scope)
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_comando_prefere_template_de_maior_priority_quando_ha_scope(): void
+    public function test_comando_usa_principal_ignorando_template_scoped(): void
     {
         Mail::fake();
         Log::spy();
@@ -184,8 +185,11 @@ class NpsDispararMensalTemplateTest extends TestCase
         $empresa = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa);
 
-        // Empresa contrata Servico A → template scoped nele deve vencer o padrão
-        // (priority=0). Padrão continua no seed (não deletado).
+        // O principal continua sendo o seed NPS Padrão (is_default=true).
+        $padrao = NpsTemplate::default()->first();
+
+        // Mesmo com um template scoped de priority alta cobrindo o serviço da
+        // empresa, o disparo AUTOMÁTICO deve ignorá-lo e usar o principal.
         $servicoA = $this->servicosCatalogo(1)->first();
         $this->contratarServico($empresa, $servicoA);
 
@@ -202,18 +206,19 @@ class NpsDispararMensalTemplateTest extends TestCase
 
         $survey = NpsSurvey::first();
         $this->assertEquals(
-            $templateScoped->id,
+            $padrao->id,
             $survey->template_id,
-            'template scoped com priority=10 deveria vencer o padrão (priority=0)'
+            'disparo automático deve usar o principal (is_default), não o template scoped'
         );
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 3 — empresa sem template aplicável (nem default) → skip + warning
+    // Test 3 — 2026-07-13: sem modelo principal (is_default), o comando
+    //          aborta cedo sem criar nada e loga warning
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_comando_pula_empresa_sem_template_e_loga_warning_estruturado(): void
+    public function test_comando_aborta_quando_nao_ha_modelo_principal(): void
     {
         Mail::fake();
         Log::spy();
@@ -223,45 +228,42 @@ class NpsDispararMensalTemplateTest extends TestCase
         $empresa = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa);
 
-        // Cenário anômalo: zera TODOS os templates (inclusive o seed padrão).
-        // Resolver deve lançar RuntimeException; comando deve capturar +
-        // pular + logar warning estruturado — sem crashar o batch.
+        // Cenário anômalo: zera TODOS os templates (inclusive o seed padrão) →
+        // não há principal (is_default) → comando aborta antes do loop.
         NpsTemplate::query()->delete();
+        NpsTemplate::resetPrincipalCache();
         $this->assertEquals(0, NpsTemplate::count(), 'baseline: zero templates na base');
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // Empresa é pulada — nenhum survey criado
+        // Nada criado nem enviado
         $this->assertDatabaseCount('nps_surveys', 0);
         Mail::assertNothingSent();
 
-        // Log::warning estruturado com company_id (grep-friendly no log real)
-        Log::shouldHaveReceived('warning')->withArgs(function ($mensagem, $contexto = []) use ($empresa) {
-            $textoBate  = str_contains(strtolower((string) $mensagem), 'sem template');
-            $contextoOk = is_array($contexto) && ($contexto['company_id'] ?? null) === $empresa->id;
-            return $textoBate && $contextoOk;
+        // Warning sobre ausência de principal
+        Log::shouldHaveReceived('warning')->withArgs(function ($mensagem) {
+            return str_contains(strtolower((string) $mensagem), 'principal');
         });
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 4 — 1 empresa sem template NÃO derruba o batch (resiliência)
+    // Test 4 — 2026-07-13: TODAS as empresas elegíveis recebem o principal,
+    //          independentemente do serviço contratado
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_comando_nao_crasha_batch_quando_uma_empresa_sem_template(): void
+    public function test_comando_aplica_principal_para_todas_as_empresas(): void
     {
         Mail::fake();
         Log::spy();
 
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        // Zera padrão para forçar o cenário: apenas o template scoped existirá.
-        // Empresas SEM contrato ativo do serviço-alvo cairão em RuntimeException.
-        NpsTemplate::query()->delete();
+        // Principal = seed NPS Padrão (preservado). Um template scoped extra
+        // existe mas NÃO deve ser usado no disparo automático.
+        $padrao = NpsTemplate::default()->first();
 
         $servicoA = $this->servicosCatalogo(1)->first();
-
-        // Cria template ativo scoped SOMENTE ao Servico A — is_default=false
         $templateScoped = NpsTemplate::factory()->create([
             'nome'     => 'Template Servico A',
             'active'   => true,
@@ -269,41 +271,30 @@ class NpsDispararMensalTemplateTest extends TestCase
         ]);
         $templateScoped->serviceScopes()->attach($servicoA->id);
 
-        // Empresa 1: contrata Servico A → resolver retorna templateScoped
+        // Empresa 1: contrata Servico A (antes receberia o scoped).
         $empresa1 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa1);
         $this->contratarServico($empresa1, $servicoA);
 
-        // Empresa 2: SEM contrato ativo + SEM default → RuntimeException → pulada
+        // Empresa 2: sem contrato nenhum.
         $empresa2 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa2);
 
-        // Empresa 3: contrata Servico A → resolver retorna templateScoped
+        // Empresa 3: contrata Servico A também.
         $empresa3 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa3);
         $this->contratarServico($empresa3, $servicoA);
 
-        // Comando NÃO deve falhar — deve pular empresa 2 e continuar.
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // Surveys criados apenas para empresas 1 e 3
-        $this->assertDatabaseCount('nps_surveys', 2);
-        $this->assertDatabaseHas('nps_surveys', [
-            'company_id'  => $empresa1->id,
-            'template_id' => $templateScoped->id,
-        ]);
-        $this->assertDatabaseHas('nps_surveys', [
-            'company_id'  => $empresa3->id,
-            'template_id' => $templateScoped->id,
-        ]);
-        $this->assertDatabaseMissing('nps_surveys', ['company_id' => $empresa2->id]);
-
-        // Warning estruturado emitido para empresa 2
-        Log::shouldHaveReceived('warning')->withArgs(function ($mensagem, $contexto = []) use ($empresa2) {
-            $textoBate  = str_contains(strtolower((string) $mensagem), 'sem template');
-            $contextoOk = is_array($contexto) && ($contexto['company_id'] ?? null) === $empresa2->id;
-            return $textoBate && $contextoOk;
-        });
+        // Todas as 3 recebem o PRINCIPAL, ignorando o scope.
+        $this->assertDatabaseCount('nps_surveys', 3);
+        foreach ([$empresa1, $empresa2, $empresa3] as $emp) {
+            $this->assertDatabaseHas('nps_surveys', [
+                'company_id'  => $emp->id,
+                'template_id' => $padrao->id,
+            ]);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════

@@ -64,4 +64,25 @@ class NpsSurvey extends Model
     {
         return $this->expires_at && $this->expires_at->isPast() && $this->status === 'pending';
     }
+
+    /**
+     * Scope: apenas surveys do template PRINCIPAL (2026-07-13).
+     *
+     * Usado por todas as agregações de métricas (dashboard NPS, widgets da
+     * home, desempenho, metas) para que só as respostas do modelo principal
+     * contem. Quando NENHUM template está marcado como principal (estado
+     * anômalo) força conjunto vazio — nunca cai para "template_id IS NULL",
+     * que capturaria surveys legados por engano.
+     *
+     * Em queries de NpsResponse (sem template_id próprio) usar via relação:
+     *   NpsResponse::whereHas('survey', fn ($q) => $q->principal())
+     */
+    public function scopePrincipal($query)
+    {
+        $principalId = NpsTemplate::principalId();
+
+        return $principalId === null
+            ? $query->whereRaw('1 = 0')
+            : $query->where($this->getTable() . '.template_id', $principalId);
+    }
 }

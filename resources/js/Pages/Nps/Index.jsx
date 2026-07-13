@@ -840,6 +840,7 @@ export default function NpsIndex({
     serie_12m = [],
     mes_filtro = '',
     filtros = {},
+    principal_template_id = null,
 }) {
     const { flash, auth } = usePage().props;
     const isAdmin = auth?.user?.role === 'admin';
@@ -875,13 +876,23 @@ export default function NpsIndex({
         [serie_12m]
     );
 
+    // 2026-07-13 · valor efetivo do <select> de modelo. Default = principal
+    // (quando nenhum filtro explícito); '__todos__' = ver todos os modelos;
+    // id numérico = modelo específico. Sempre truthy, então persiste ao mudar
+    // outros filtros (não some no delete-falsy do aplicarFiltros).
+    const templateSelectValue = filtros.template_todos
+        ? '__todos__'
+        : (filtros.template_id != null
+            ? String(filtros.template_id)
+            : (principal_template_id != null ? String(principal_template_id) : '__todos__'));
+
     const aplicarFiltros = (overrides = {}) => {
         const payload = {
             mes: mes_filtro,
             empresa_id: filtros.empresa_id || undefined,
             estrategista_id: filtros.estrategista_id || undefined,
             analista_id: filtros.analista_id || undefined,
-            template_id: filtros.template_id || undefined,
+            template_id: templateSelectValue,
             ...overrides,
         };
         Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
@@ -892,7 +903,8 @@ export default function NpsIndex({
     const handleEmpresaChange = (v) => aplicarFiltros({ empresa_id: v === '__all__' ? undefined : v });
     const handleEstrategistaChange = (v) => aplicarFiltros({ estrategista_id: v === '__all__' ? undefined : v });
     const handleAnalistaChange = (v) => aplicarFiltros({ analista_id: v === '__all__' ? undefined : v });
-    const handleTemplateChange = (v) => aplicarFiltros({ template_id: v === '__all__' ? undefined : v });
+    // v é '__todos__' ou o id do modelo — ambos truthy, enviados literalmente.
+    const handleTemplateChange = (v) => aplicarFiltros({ template_id: v });
 
     const submit = (e) => {
         e.preventDefault();
@@ -963,14 +975,16 @@ export default function NpsIndex({
                                 (com 1 só a lista é trivial e polui a UI). */}
                             {templates.length > 1 && (
                                 <GlassSelect
-                                    value={filtros.template_id ? String(filtros.template_id) : '__all__'}
+                                    value={templateSelectValue}
                                     onValueChange={handleTemplateChange}
-                                    placeholder="Todos os modelos"
-                                    width={200}
+                                    placeholder="Modelo principal"
+                                    width={210}
                                     options={[
-                                        <SelectItem key="__all__" value="__all__">Todos os modelos</SelectItem>,
+                                        <SelectItem key="__todos__" value="__todos__">Todos os modelos</SelectItem>,
                                         ...templates.map(t => (
-                                            <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
+                                            <SelectItem key={t.id} value={String(t.id)}>
+                                                {t.nome}{Number(t.id) === Number(principal_template_id) ? ' (principal)' : ''}
+                                            </SelectItem>
                                         )),
                                     ]}
                                 />
