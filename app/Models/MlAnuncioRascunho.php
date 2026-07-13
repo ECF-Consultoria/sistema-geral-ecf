@@ -25,6 +25,9 @@ class MlAnuncioRascunho extends Model
 
     protected $fillable = [
         'company_id',
+        'mlb_empresa_id',
+        'sku_origem',
+        'listing_tier',
         'user_id',
         'status',
         'category_id',
@@ -50,5 +53,17 @@ class MlAnuncioRascunho extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Empresa MLB de destino do anúncio (fonte do escopo por responsavel_id).
+     *
+     * Usada no double-check de 403 (SEL-04): o controller verifica se
+     * $rascunho->mlbEmpresa->responsavel_id bate com o publicador logado.
+     * A coluna mlb_empresa_id e fixada na criacao e imutavel pelo publicador (SEL-03).
+     */
+    public function mlbEmpresa(): BelongsTo
+    {
+        return $this->belongsTo(MlbEmpresa::class, 'mlb_empresa_id');
     }
 }

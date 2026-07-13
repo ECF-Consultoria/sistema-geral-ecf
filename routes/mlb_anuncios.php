@@ -9,9 +9,14 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 |
 | Em arquivo próprio (registrado no bootstrap/app.php via `then`) para não
-| colidir com edições concorrentes em routes/web.php. Por ora o módulo é
-| ADMIN-ONLY (role:admin) — "em Dev", para teste isolado antes de liberar à
-| equipe de publicação (quando abrir, trocar para permission:mlb.anunciar).
+| colidir com edições concorrentes em routes/web.php.
+|
+| Estrutura de acesso (Phase 75):
+|   - TUDO admin-only (role:admin) — módulo "em Dev", acessado por URL, sem menu.
+|   - O escopo por `responsavel_id` já está construído no controller (dormant
+|     enquanto o gate é role:admin: todo admin vê todas). Quando o módulo abrir
+|     à equipe de publicação, trocar role:admin → permission:mlb.anunciar aqui;
+|     o filtro por responsavel_id passa a valer sem rework.
 |
 */
 
@@ -19,7 +24,18 @@ Route::middleware(['auth', 'verified', 'role:admin'])
     ->prefix('mlb/anuncios')
     ->name('mlb.anuncios.')
     ->group(function () {
+        // ─── Momento 1: painel de cards ───
+        // SEL-01: um card por empresa; escopo por responsavel_id no controller (SEL-02)
         Route::get('/', [MlbAnuncioController::class, 'index'])->name('index');
+
+        // ─── Momento 2: wizard com empresa fixada ───
+        // SEL-07: double-check 403 no controller (T-75-05)
+        Route::get('/wizard/{mlbEmpresa}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
+
+        // DRAFT-02: cria rascunho pré-preenchido a partir de produto da planilha do cliente (Phase 76)
+        // Nome resolvido: mlb.anuncios.rascunho.por-produto (consumido pelo front em 76-02)
+        Route::post('/wizard/{mlbEmpresa}/rascunho-por-produto', [MlbAnuncioController::class, 'rascunhoPorProduto'])
+            ->name('rascunho.por-produto');
 
         // Rascunho (autosave + ciclo de vida)
         Route::post('/rascunho', [MlbAnuncioController::class, 'salvarRascunho'])->name('rascunho.store');

@@ -1,7 +1,9 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo } from 'react';
-import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
+import { Button } from '@/Components/ui/button';
 
 // ─── Badges de status do rascunho ───
 const STATUS_BADGE = {
@@ -22,11 +24,75 @@ const CONDICOES = [
     { v: 'not_specified', l: 'Não especificado' },
 ];
 
-// Input padrão ECF
-function Campo({ label, children, dica }) {
+// ─── Fallback de cópia para contextos sem Clipboard API (ex.: http não-seguro) ───
+function fallbackCopiar(txt, done) {
+    try {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done?.();
+    } catch { /* silencioso: sem clipboard disponível */ }
+}
+
+// ─── Chip de SKU clicável — copia o SKU com um clique (DRAFT-05) ───
+function SkuCopyChip({ sku }) {
+    const [copiado, setCopiado] = useState(false);
+    if (!sku) return null;
+
+    const copiar = (ev) => {
+        ev.stopPropagation();
+        const txt = String(sku);
+        const ok = () => { setCopiado(true); setTimeout(() => setCopiado(false), 1200); };
+        if (navigator.clipboard?.writeText) {
+            navigator.clipboard.writeText(txt).then(ok).catch(() => fallbackCopiar(txt, ok));
+        } else {
+            fallbackCopiar(txt, ok);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={copiar}
+            title={copiado ? 'Copiado!' : `Copiar SKU (${sku})`}
+            className={cn(
+                'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-mono tabular-nums transition shrink-0',
+                copiado
+                    ? 'border-emerald-400/40 bg-emerald-500/[0.12] text-emerald-300'
+                    : 'border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80 hover:border-white/25',
+            )}
+        >
+            {copiado ? <Check size={10} /> : <Copy size={10} />}
+            {copiado ? 'copiado' : sku}
+        </button>
+    );
+}
+
+// ─── Input padrão ECF com badge de origem (DRAFT-04) ───
+// origem === 'cliente'    → badge violet
+// origem === 'publicador' → badge amber ('editado')
+// origem ausente          → sem badge (comportamento original preservado)
+function Campo({ label, children, dica, origem }) {
     return (
         <label className="block">
-            <span className="mb-1 block text-xs font-medium text-white/60">{label}</span>
+            <span className="mb-1 flex items-center gap-1.5 text-xs font-medium text-white/60">
+                {label}
+                {origem === 'cliente' && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-500/10 text-violet-300/80">
+                        cliente
+                    </span>
+                )}
+                {origem === 'publicador' && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80">
+                        editado
+                    </span>
+                )}
+            </span>
             {children}
             {dica && <span className="mt-1 block text-[11px] text-white/40">{dica}</span>}
         </label>
@@ -35,8 +101,24 @@ function Campo({ label, children, dica }) {
 
 const inputCls = 'w-full rounded-lg border border-white/[0.08] bg-ecf-bg px-3 py-2 text-sm text-white placeholder-white/30 focus:border-ecf-yellow/50 focus:outline-none';
 
-export default function AnunciarML({ empresas = [], rascunhos = [] }) {
-    const [empresaId, setEmpresaId]   = useState(empresas[0]?.id ?? '');
+// ─── Formata valor em BRL ───
+const fmtBRL = (n) => n != null ? `R$ ${Number(n).toFixed(2).replace('.', ',')}` : '—';
+
+/**
+ * Wizard de criação de anúncio — Momento 2 do módulo "Anunciar ML".
+ *
+ * Recebe `empresa` já fixada (passada pelo backend via rota mlb.anuncios.wizard).
+ * NÃO exibe seletor de empresa — a empresa de destino é imutável no wizard (SEL-01).
+ *
+ * SEL-01: empresa fixada no header; ausência de seleção inline.
+ * SEL-05: modal de confirmação antes de publicar, exibindo o nome da empresa.
+ * SEL-07: salvar() envia mlb_empresa_id (não company_id) no POST rascunho.store.
+ *
+ * DRAFT-01: lista de produtos do cliente exibida antes do formulário.
+ * DRAFT-04: badge violet 'cliente' / amber 'editado' por campo.
+ * DRAFT-05: SkuCopyChip — copiar SKU com um clique + fallback.
+ */
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [] }) {
     const [rascunhoId, setRascunhoId] = useState(null);
 
     // Campos do anúncio
@@ -58,11 +140,19 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
     const [larguraCm, setLarguraCm]         = useState('');
     const [alturaCm, setAlturaCm]           = useState('');
 
+    // ─── Rastreamento de origem dos campos (DRAFT-04) ───
+    // Mapa { campo: 'cliente' | 'publicador' } — populado por hidratarDoRascunho()
+    const [origemCampos, setOrigemCampos] = useState({});
+
     const [candidatos, setCandidatos] = useState([]);
     const [tipos, setTipos]           = useState([]);
     const [erros, setErros]           = useState(null);   // {valido, erros:[]}
-    const [busy, setBusy]             = useState('');      // '', 'prever', 'attrs', 'salvar', 'validar', 'publicar'
+    const [busy, setBusy]             = useState('');      // '', 'prever', 'attrs', 'salvar', 'validar', 'publicar', 'criar'
+
     const [flash, setFlash]           = useState('');
+
+    // SEL-05: modal de confirmação — null=fechado, true=aguardando confirmação
+    const [confirmPublicar, setConfirmPublicar] = useState(false);
 
     // Tipos de anúncio (uma vez)
     useEffect(() => {
@@ -70,6 +160,96 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
             .then(r => setTipos(Array.isArray(r.data) ? r.data : []))
             .catch(() => {});
     }, []);
+
+    // ─── Hidrata o formulário a partir de um rascunho pré-preenchido (DRAFT-01) ───
+    // Lê rascunho.payload e popula os estados existentes.
+    // parseFloat ignora sufixos ' g' / ' cm' nativamente — sem regex.
+    const hidratarDoRascunho = (rascunho) => {
+        const payload = rascunho.payload ?? {};
+
+        // Campos básicos
+        if (payload.title != null)              setTitulo(payload.title);
+        if (payload.price != null)              setPreco(String(payload.price));
+        if (payload.available_quantity != null) setEstoque(String(payload.available_quantity));
+        if (payload.description != null)        setDescricao(payload.description);
+
+        // Extrai SELLER_PACKAGE_* de payload.attributes → states individuais de dimensão
+        const attrs = Array.isArray(payload.attributes) ? payload.attributes : [];
+        attrs.forEach(attr => {
+            const v = parseFloat(attr.value_name); // parseFloat ignora sufixo ' g' / ' cm'
+            if (isNaN(v)) return;
+            if (attr.id === 'SELLER_PACKAGE_WEIGHT') setPesoG(String(v));
+            if (attr.id === 'SELLER_PACKAGE_HEIGHT') setAlturaCm(String(v));
+            if (attr.id === 'SELLER_PACKAGE_WIDTH')  setLarguraCm(String(v));
+            if (attr.id === 'SELLER_PACKAGE_LENGTH') setComprimentoCm(String(v));
+        });
+
+        // Popula origemCampos a partir de meta_campos gravado pelo backend
+        if (payload.meta_campos && typeof payload.meta_campos === 'object') {
+            setOrigemCampos({ ...payload.meta_campos });
+        }
+    };
+
+    // ─── Marca um campo como 'publicador' quando editado (DRAFT-04) ───
+    // Só age se o campo já estava mapeado como 'cliente' — não polui campos livres.
+    const marcarEditado = (campo) => {
+        setOrigemCampos(o => {
+            if (!o[campo]) return o; // campo não vem do cliente → sem badge
+            return { ...o, [campo]: 'publicador' };
+        });
+    };
+
+    // ─── Limpa o formulário para escolher outro produto ───
+    const limparFormulario = () => {
+        setRascunhoId(null);
+        setTitulo('');
+        setCategoryId('');
+        setCategoria(null);
+        setAtributos([]);
+        setValores({});
+        setPreco('');
+        setEstoque('1');
+        setCondicao('new');
+        setTipoAnuncio('gold_special');
+        setImagemUrl('');
+        setGarantia('30 dias');
+        setDescricao('');
+        setPesoG('');
+        setComprimentoCm('');
+        setLarguraCm('');
+        setAlturaCm('');
+        setOrigemCampos({});
+        setCandidatos([]);
+        setErros(null);
+        setFlash('');
+    };
+
+    // ─── Cria rascunho pré-preenchido a partir de um produto do cliente (DRAFT-01) ───
+    const criarRascunhoProduto = async (produto) => {
+        setBusy('criar');
+        setFlash('');
+        try {
+            const r = await window.axios.post(
+                route('mlb.anuncios.rascunho.por-produto', { mlbEmpresa: empresa.id }),
+                { sku: produto.sku },
+            );
+            hidratarDoRascunho(r.data.rascunho);
+            setRascunhoId(r.data.rascunho.id);
+            if (r.data.preco_indisponivel) {
+                setFlash('Rascunho criado — preço não calculado (custo ausente na precificação do cliente).');
+            } else {
+                setFlash('Rascunho criado com dados do cliente.');
+            }
+        } catch (e) {
+            if (e.response?.status === 422) {
+                setFlash('Produto não encontrado na precificação do cliente.');
+            } else {
+                setFlash('Erro ao criar rascunho — tente novamente.');
+            }
+        } finally {
+            setBusy('');
+        }
+    };
 
     // ─── Preditor de categoria ───
     const preverCategoria = async () => {
@@ -139,18 +319,19 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
 
     // ─── Salva/atualiza o rascunho ───
     const salvar = async () => {
-        if (!empresaId) { setFlash('Selecione a empresa (cliente).'); return null; }
         setBusy('salvar');
         try {
             const payload = montarPayload();
             let id = rascunhoId;
             if (!id) {
+                // SEL-07: envia mlb_empresa_id (não company_id) — empresa fixada na criação
                 const r = await window.axios.post(route('mlb.anuncios.rascunho.store'), {
-                    company_id: empresaId, category_id: categoryId || null, payload,
+                    mlb_empresa_id: empresa.id, category_id: categoryId || null, payload,
                 });
                 id = r.data.rascunho.id;
                 setRascunhoId(id);
             } else {
+                // SEL-03: update não envia empresa — company_id e mlb_empresa_id são imutáveis
                 await window.axios.put(route('mlb.anuncios.rascunho.update', { rascunho: id }), {
                     category_id: categoryId || null, payload,
                 });
@@ -172,7 +353,7 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
         } finally { setBusy(''); }
     };
 
-    // ─── Publica ───
+    // ─── Publica de verdade (chamado após confirmação no modal) ───
     const publicar = async () => {
         const id = await salvar();
         if (!id) return;
@@ -192,7 +373,24 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
         } finally { setBusy(''); }
     };
 
-    const empresaNome = empresas.find(e => e.id === Number(empresaId))?.name ?? '—';
+    // SEL-05: confirmar publicação no modal → fecha o modal e chama publicar()
+    const confirmarPublicacao = () => {
+        setConfirmPublicar(false);
+        publicar();
+    };
+
+    // Guarda de rota: se empresa não foi passada, o usuário acessou o wizard diretamente
+    if (!empresa) {
+        return (
+            <AppLayout>
+                <div className="mx-auto max-w-6xl px-4 py-6">
+                    <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-10 text-center text-white/40">
+                        Abra o wizard a partir do painel de empresas.
+                    </div>
+                </div>
+            </AppLayout>
+        );
+    }
 
     return (
         <AppLayout>
@@ -202,33 +400,121 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                         <Rocket size={20} className="text-ecf-yellow" /> Anunciar no Mercado Livre
                     </h1>
                     <p className="mt-1 text-sm text-white/50">Monte o anúncio aqui e publique direto na conta do cliente — sem entrar no painel do ML.</p>
+
+                    {/* SEL-01: empresa fixada — sempre visível no header do wizard */}
+                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-white/[0.08] bg-ecf-card px-4 py-2.5">
+                        <Store size={15} className="shrink-0 text-white/40" />
+                        <span className="text-xs text-white/50">Publicando na conta:</span>
+                        <span className="text-sm font-semibold text-white">{empresa?.nome ?? '—'}</span>
+                    </div>
                 </header>
 
                 {flash && (
                     <div className="mb-4 rounded-lg border border-ecf-yellow/30 bg-ecf-yellow/10 px-4 py-2 text-sm text-ecf-yellow">{flash}</div>
                 )}
 
+                {/* ─── Seção "Produtos do cliente" (DRAFT-01) ───
+                    Visível quando ainda não há rascunho aberto e a empresa tem produtos cadastrados.
+                    Ao clicar "Criar rascunho", o rascunho é criado (76-01) e o formulário é hidratado.
+                    A seção recolhe automaticamente quando rascunhoId é setado. */}
+                {!rascunhoId && produtos.length > 0 && (
+                    <div className="mb-6 rounded-xl border border-white/[0.08] bg-ecf-card p-4">
+                        <div className="mb-3">
+                            <h2 className="text-sm font-semibold text-white">Produtos do cliente</h2>
+                            <p className="mt-0.5 text-[11px] text-white/40">
+                                Dados que o cliente preencheu — clique em Criar rascunho para começar já preenchido.
+                            </p>
+                        </div>
+
+                        <div className="space-y-2">
+                            {produtos.map((p, idx) => (
+                                <div
+                                    key={p.sku ?? idx}
+                                    className="flex flex-wrap items-center gap-3 rounded-lg border border-white/[0.06] bg-ecf-bg px-3 py-2.5"
+                                >
+                                    {/* SKU copiável (DRAFT-05) */}
+                                    <SkuCopyChip sku={p.sku} />
+
+                                    {/* Nome do produto */}
+                                    <span className="flex-1 min-w-0 truncate text-sm text-white/80 font-medium">
+                                        {p.produto ?? '—'}
+                                    </span>
+
+                                    {/* Dimensões resumidas */}
+                                    {p.tem_dimensoes ? (
+                                        <span className="text-[11px] text-white/40 shrink-0">
+                                            {p.altura}×{p.largura}×{p.profundidade} cm · {p.peso_kg} kg
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 shrink-0">
+                                            <AlertTriangle size={10} /> dimensões incompletas
+                                        </span>
+                                    )}
+
+                                    {/* Estoque */}
+                                    {p.estoque != null && (
+                                        <span className="text-[11px] text-white/40 shrink-0">
+                                            estq {p.estoque}
+                                        </span>
+                                    )}
+
+                                    {/* Preço anunciado clássico */}
+                                    {p.tem_preco ? (
+                                        <span className="text-[11px] font-semibold text-ecf-yellow shrink-0">
+                                            {fmtBRL(p.preco_anunciado_c)}
+                                        </span>
+                                    ) : (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-500/10 text-amber-300/80 shrink-0">
+                                            sem preço
+                                        </span>
+                                    )}
+
+                                    {/* Botão Criar rascunho */}
+                                    <button
+                                        type="button"
+                                        onClick={() => criarRascunhoProduto(p)}
+                                        disabled={busy === 'criar'}
+                                        className="flex shrink-0 items-center gap-1.5 rounded-lg bg-ecf-yellow px-3 py-1.5 text-xs font-semibold text-black hover:brightness-95 disabled:opacity-40"
+                                    >
+                                        {busy === 'criar' ? <Loader2 size={12} className="animate-spin" /> : <Rocket size={12} />}
+                                        Criar rascunho
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
                     {/* ─── Coluna do formulário (wizard) ─── */}
                     <div className="space-y-5">
-                        {/* Empresa */}
-                        <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                            <h2 className="mb-3 text-sm font-semibold text-white">1. Cliente (conta do Mercado Livre)</h2>
-                            <Campo label="Empresa conectada">
-                                <select className={inputCls} value={empresaId} onChange={e => setEmpresaId(e.target.value)}>
-                                    {empresas.length === 0 && <option value="">Nenhuma empresa conectada ao ML</option>}
-                                    {empresas.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-                                </select>
-                            </Campo>
-                        </section>
+                        {/* Botão de voltar à lista de produtos (quando rascunho está aberto) */}
+                        {rascunhoId && produtos.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={limparFormulario}
+                                className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/70 transition mb-1"
+                            >
+                                <ChevronLeft size={14} /> Voltar aos produtos do cliente
+                            </button>
+                        )}
 
                         {/* Título + categoria */}
                         <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                            <h2 className="mb-3 text-sm font-semibold text-white">2. Título e categoria</h2>
-                            <Campo label="Título do anúncio" dica={categoria?.settings?.max_title_length ? `Máx. ${categoria.settings.max_title_length} caracteres` : null}>
+                            <h2 className="mb-3 text-sm font-semibold text-white">1. Título e categoria</h2>
+                            <Campo
+                                label="Título do anúncio"
+                                dica={categoria?.settings?.max_title_length ? `Máx. ${categoria.settings.max_title_length} caracteres` : null}
+                                origem={origemCampos['title']}
+                            >
                                 <div className="flex gap-2">
-                                    <input className={inputCls} value={titulo} maxLength={categoria?.settings?.max_title_length ?? 60}
-                                        onChange={e => setTitulo(e.target.value)} placeholder="Ex.: Tênis de corrida masculino leve" />
+                                    <input
+                                        className={inputCls}
+                                        value={titulo}
+                                        maxLength={categoria?.settings?.max_title_length ?? 60}
+                                        onChange={e => { setTitulo(e.target.value); marcarEditado('title'); }}
+                                        placeholder="Ex.: Tênis de corrida masculino leve"
+                                    />
                                     <button onClick={preverCategoria} disabled={busy === 'prever' || !titulo.trim()}
                                         className="flex shrink-0 items-center gap-1 rounded-lg bg-ecf-yellow px-3 py-2 text-sm font-medium text-black disabled:opacity-40">
                                         {busy === 'prever' ? <Loader2 size={15} className="animate-spin" /> : <Search size={15} />} Categoria
@@ -265,7 +551,7 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                         {/* Atributos obrigatórios (dinâmico) */}
                         {categoryId && (
                             <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                                <h2 className="mb-3 text-sm font-semibold text-white">3. Ficha técnica (obrigatórios)</h2>
+                                <h2 className="mb-3 text-sm font-semibold text-white">2. Ficha técnica (obrigatórios)</h2>
                                 {busy === 'attrs' ? (
                                     <p className="flex items-center gap-2 text-sm text-white/50"><Loader2 size={15} className="animate-spin" /> Carregando atributos…</p>
                                 ) : (
@@ -293,10 +579,27 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
 
                         {/* Preço, estoque, condição, tipo */}
                         <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                            <h2 className="mb-3 text-sm font-semibold text-white">4. Preço, estoque e exposição</h2>
+                            <h2 className="mb-3 text-sm font-semibold text-white">3. Preço, estoque e exposição</h2>
                             <div className="grid gap-3 sm:grid-cols-2">
-                                <Campo label="Preço (R$)"><input className={inputCls} type="number" step="0.01" value={preco} onChange={e => setPreco(e.target.value)} placeholder="0,00" /></Campo>
-                                <Campo label="Estoque"><input className={inputCls} type="number" min="1" value={estoque} onChange={e => setEstoque(e.target.value)} /></Campo>
+                                <Campo label="Preço (R$)" origem={origemCampos['price']}>
+                                    <input
+                                        className={inputCls}
+                                        type="number"
+                                        step="0.01"
+                                        value={preco}
+                                        onChange={e => { setPreco(e.target.value); marcarEditado('price'); }}
+                                        placeholder="0,00"
+                                    />
+                                </Campo>
+                                <Campo label="Estoque" origem={origemCampos['available_quantity']}>
+                                    <input
+                                        className={inputCls}
+                                        type="number"
+                                        min="1"
+                                        value={estoque}
+                                        onChange={e => { setEstoque(e.target.value); marcarEditado('available_quantity'); }}
+                                    />
+                                </Campo>
                                 <Campo label="Condição">
                                     <select className={inputCls} value={condicao} onChange={e => setCondicao(e.target.value)}>
                                         {CONDICOES.map(c => <option key={c.v} value={c.v}>{c.l}</option>)}
@@ -313,27 +616,69 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
 
                         {/* Imagem, garantia, descrição */}
                         <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                            <h2 className="mb-3 text-sm font-semibold text-white">5. Imagem, garantia e descrição</h2>
+                            <h2 className="mb-3 text-sm font-semibold text-white">4. Imagem, garantia e descrição</h2>
                             <div className="space-y-3">
                                 <Campo label="URL da imagem principal" dica="Upload direto será adicionado numa próxima versão">
                                     <input className={inputCls} value={imagemUrl} onChange={e => setImagemUrl(e.target.value)} placeholder="https://…" />
                                 </Campo>
                                 <Campo label="Garantia"><input className={inputCls} value={garantia} onChange={e => setGarantia(e.target.value)} placeholder="Ex.: 30 dias" /></Campo>
-                                <Campo label="Descrição">
-                                    <textarea className={cn(inputCls, 'min-h-[100px] resize-y')} value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="Descreva o produto…" />
+                                <Campo label="Descrição" origem={origemCampos['description']}>
+                                    <textarea
+                                        className={cn(inputCls, 'min-h-[100px] resize-y')}
+                                        value={descricao}
+                                        onChange={e => { setDescricao(e.target.value); marcarEditado('description'); }}
+                                        placeholder="Descreva o produto…"
+                                    />
                                 </Campo>
                             </div>
                         </section>
 
                         {/* Peso e dimensões do pacote (habilitam o frete me2) */}
                         <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                            <h2 className="mb-1 text-sm font-semibold text-white">6. Peso e dimensões do pacote</h2>
+                            <h2 className="mb-1 text-sm font-semibold text-white">5. Peso e dimensões do pacote</h2>
                             <p className="mb-3 text-[11px] text-white/40">O Mercado Livre precisa disso para calcular o frete (Mercado Envios). Sem preencher, a publicação falha.</p>
                             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                <Campo label="Peso (g)"><input className={inputCls} type="number" min="1" value={pesoG} onChange={e => setPesoG(e.target.value)} placeholder="300" /></Campo>
-                                <Campo label="Comprimento (cm)"><input className={inputCls} type="number" min="1" value={comprimentoCm} onChange={e => setComprimentoCm(e.target.value)} placeholder="20" /></Campo>
-                                <Campo label="Largura (cm)"><input className={inputCls} type="number" min="1" value={larguraCm} onChange={e => setLarguraCm(e.target.value)} placeholder="15" /></Campo>
-                                <Campo label="Altura (cm)"><input className={inputCls} type="number" min="1" value={alturaCm} onChange={e => setAlturaCm(e.target.value)} placeholder="10" /></Campo>
+                                {/* Cada campo de dimensão tem badge individual (DRAFT-04) */}
+                                <Campo label="Peso (g)" origem={origemCampos['pesoG']}>
+                                    <input
+                                        className={inputCls}
+                                        type="number"
+                                        min="1"
+                                        value={pesoG}
+                                        onChange={e => { setPesoG(e.target.value); marcarEditado('pesoG'); }}
+                                        placeholder="300"
+                                    />
+                                </Campo>
+                                <Campo label="Comprimento (cm)" origem={origemCampos['comprimentoCm']}>
+                                    <input
+                                        className={inputCls}
+                                        type="number"
+                                        min="1"
+                                        value={comprimentoCm}
+                                        onChange={e => { setComprimentoCm(e.target.value); marcarEditado('comprimentoCm'); }}
+                                        placeholder="20"
+                                    />
+                                </Campo>
+                                <Campo label="Largura (cm)" origem={origemCampos['larguraCm']}>
+                                    <input
+                                        className={inputCls}
+                                        type="number"
+                                        min="1"
+                                        value={larguraCm}
+                                        onChange={e => { setLarguraCm(e.target.value); marcarEditado('larguraCm'); }}
+                                        placeholder="15"
+                                    />
+                                </Campo>
+                                <Campo label="Altura (cm)" origem={origemCampos['alturaCm']}>
+                                    <input
+                                        className={inputCls}
+                                        type="number"
+                                        min="1"
+                                        value={alturaCm}
+                                        onChange={e => { setAlturaCm(e.target.value); marcarEditado('alturaCm'); }}
+                                        placeholder="10"
+                                    />
+                                </Campo>
                             </div>
                         </section>
 
@@ -347,8 +692,12 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                                 className="flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-4 py-2 text-sm font-medium text-blue-400 hover:bg-blue-500/20 disabled:opacity-40">
                                 {busy === 'validar' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Validar
                             </button>
-                            <button onClick={publicar} disabled={!!busy || !categoryId}
-                                className="flex items-center gap-2 rounded-lg bg-ecf-yellow px-4 py-2 text-sm font-semibold text-black hover:brightness-95 disabled:opacity-40">
+                            {/* SEL-05: publicar abre modal de confirmação em vez de publicar direto */}
+                            <button
+                                onClick={() => setConfirmPublicar(true)}
+                                disabled={!!busy || !categoryId}
+                                className="flex items-center gap-2 rounded-lg bg-ecf-yellow px-4 py-2 text-sm font-semibold text-black hover:brightness-95 disabled:opacity-40"
+                            >
                                 {busy === 'publicar' ? <Loader2 size={15} className="animate-spin" /> : <Rocket size={15} />} Publicar
                             </button>
                         </div>
@@ -364,7 +713,7 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                                 </div>
                                 <p className="line-clamp-2 text-sm font-medium text-white">{titulo || 'Título do anúncio'}</p>
                                 <p className="mt-1 text-lg font-semibold text-ecf-yellow">{preco ? `R$ ${Number(preco).toFixed(2)}` : 'R$ —'}</p>
-                                <p className="mt-1 text-[11px] text-white/40">{empresaNome} · {categoria?.name ?? 'sem categoria'}</p>
+                                <p className="mt-1 text-[11px] text-white/40">{empresa?.nome ?? '—'} · {categoria?.name ?? 'sem categoria'}</p>
                             </div>
                         </div>
 
@@ -384,7 +733,7 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                             </div>
                         )}
 
-                        {/* Rascunhos recentes */}
+                        {/* Rascunhos recentes desta empresa */}
                         {rascunhos.length > 0 && (
                             <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-white/40">Rascunhos recentes</p>
@@ -392,7 +741,7 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                                     {rascunhos.slice(0, 8).map(r => (
                                         <li key={r.id} className="flex items-center gap-2 text-sm">
                                             <span className={cn('rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status] ?? STATUS_BADGE.rascunho)}>{STATUS_LABEL[r.status] ?? r.status}</span>
-                                            <span className="truncate text-white/60">{r.company?.name ?? `Empresa ${r.company_id}`}</span>
+                                            <span className="truncate text-white/60">{empresa?.nome ?? `Empresa ${r.company_id}`}</span>
                                             {r.ml_item_id && <span className="ml-auto text-[10px] text-emerald-400/70">{r.ml_item_id}</span>}
                                         </li>
                                     ))}
@@ -402,6 +751,24 @@ export default function AnunciarML({ empresas = [], rascunhos = [] }) {
                     </aside>
                 </div>
             </div>
+
+            {/* SEL-05: modal de confirmação de publicação com nome da empresa */}
+            <Dialog open={confirmPublicar} onOpenChange={setConfirmPublicar}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader>
+                        <DialogTitle>Confirmar publicação</DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-white/60">
+                        O anúncio será publicado na conta{' '}
+                        <span className="font-semibold text-white">{empresa?.nome}</span>.
+                        {' '}Confirma?
+                    </p>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setConfirmPublicar(false)}>Cancelar</Button>
+                        <Button onClick={confirmarPublicacao}>Publicar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

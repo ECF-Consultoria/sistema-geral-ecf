@@ -73,9 +73,33 @@ class MlbEmpresa extends Model
         return $this->projeto ?: (self::FASE_PARA_PROJETO[$this->fase ?? ''] ?? null);
     }
 
+    /** Empresa cliente associada (pode ser NULL para POLOS sem Company cadastrada). */
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
+
     public function responsavel(): BelongsTo
     {
         return $this->belongsTo(User::class, 'responsavel_id');
+    }
+
+    /**
+     * Escopo de visibilidade por publicador (SEL-02).
+     *
+     * Admin vê todas; publicador vê apenas as empresas onde `responsavel_id`
+     * é o seu id. O filtro é aplicado NA QUERY DO BANCO (não em PHP pós-busca).
+     *
+     * Reutilizável e testável isoladamente — sob o gate atual `role:admin` o
+     * filtro fica dormant (todo acessante é admin), mas já valida quando o gate
+     * abrir para `permission:mlb.anunciar`.
+     */
+    public function scopeVisiveisPara(\Illuminate\Database\Eloquent\Builder $query, User $user): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->when(
+            !$user->isAdmin(),
+            fn ($q) => $q->where('responsavel_id', $user->id),
+        );
     }
 
     public function criadoPor(): BelongsTo
