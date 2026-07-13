@@ -1365,7 +1365,10 @@ class PortfolioController extends Controller
         //  2. Dual-path via NpsScoreCalculator — o modelo principal é v15, cujas
         //     notas vivem no snapshot `nps_response_answers`, NÃO nas colunas
         //     `score_*` legadas (que ficam null). Ler direto o campo daria zero.
-        $npsDim = $user->isMentor() ? 'estrategista' : 'analista';
+        // 2026-07-13 — dimensão por CARGO canônico (user_setores→cargos), não
+        // por isMentor(): estrategistas não têm role='mentor' e cairiam em
+        // 'analista', recebendo a nota errada.
+        $npsDim = $user->dimensaoNpsDesempenho();
         $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
         $npsHistory = NpsSurvey::with(['response.answers', 'response.survey'])
             ->principal()

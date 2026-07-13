@@ -147,6 +147,29 @@ class DesempenhoScoreServiceTest extends TestCase
     }
 
     /**
+     * Cria User com o cargo informado (via user_setores → cargos) — usado no
+     * teste de dimensão por cargo (estrategista vs analista).
+     */
+    private function criarUserComCargo(string $nome, int $cargoId, string $role = 'consultor'): User
+    {
+        $user = User::factory()->create([
+            'name'   => $nome,
+            'role'   => $role,
+            'active' => true,
+        ]);
+        DB::table('user_setores')->insert([
+            'user_id'      => $user->id,
+            'setor_id'     => $this->setorId,
+            'cargo_id'     => $cargoId,
+            'is_principal' => true,
+            'assigned_at'  => now(),
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+        return $user;
+    }
+
+    /**
      * Cria uma Company e attach ao user via pivot `company_users` com
      * `created_at` controlado — parâmetro chave para exercitar o filtro
      * "empresa nova" do DESEMP-04.
@@ -791,6 +814,90 @@ class DesempenhoScoreServiceTest extends TestCase
             'Nota final = 5.00 exata (NPS 5 + régua_fat 5 + régua_margem 5).');
         $this->assertSame('maximo', $r['faixa_bonus'],
             'Faixa 5.00 exata cai em maximo (régua seed [5.00, 5.00]).');
+    }
+
+    // ─── Bug 2026-07-13 · dimensão do NPS por CARGO (não por isMentor) ──────
+
+    #[Test]
+    public function test_nps_dimensao_por_cargo_estrategista_e_analista_diferem(): void
+    {
+        // Reproduz o bug relatado: estrategista (Douglas) e analista (Stefani)
+        // da MESMA empresa recebiam a mesma nota NPS (a da dimensão 'analista'),
+        // porque a dimensão era escolhida por isMentor() (role do sistema) e
+        // estrategistas não têm role='mentor'. Agora a dimensão vem do CARGO
+        // (user_setores→cargos), então cada um recebe a sua.
+        $estrategista = $this->criarUserComCargo('Douglas', $this->cargoEstrategistaId);
+        $analista     = $this->criarUserComCargo('Stefani', $this->cargoAnalistaId);
+
+        // Empresa compartilhada (created_at -3 meses → não é "nova" no DESEMP-04).
+        $ts = Carbon::parse('-3 months')->toDateTimeString();
+        $empresa = Company::factory()->create();
+        $empresa->timestamps = false;
+        $empresa->forceFill(['created_at' => $ts, 'updated_at' => $ts])->save();
+        $empresa->timestamps = true;
+        foreach ([[$estrategista, 'estrategista'], [$analista, 'consultor']] as [$u, $pivotRole]) {
+            DB::table('company_users')->insert([
+                'company_id'  => $empresa->id,
+                'user_id'     => $u->id,
+                'role'        => $pivotRole,
+                'assigned_at' => $ts,
+                'created_at'  => $ts,
+                'updated_at'  => $ts,
+            ]);
+        }
+
+        // Template principal com 1 pergunta 'estrategista' + 1 'analista'.
+        NpsTemplate::query()->update(['is_default' => false]);
+        $tpl = NpsTemplate::factory()->create(['nome' => 'Principal 2 dims', 'is_default' => true, 'active' => true]);
+        $mkPergunta = function (string $dim) use ($tpl) {
+            $q = NpsTemplateQuestion::create([
+                'template_id' => $tpl->id,
+                'texto'       => "Nota {$dim}?",
+                'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+                'dimensao'    => $dim,
+                'obrigatoria' => true,
+                'ordem'       => 1,
+            ]);
+            for ($p = 1; $p <= 5; $p++) {
+                NpsTemplateOption::create(['question_id' => $q->id, 'label' => (string) $p, 'peso' => $p, 'ordem' => $p]);
+            }
+            return $q;
+        };
+        $qEstr = $mkPergunta('estrategista');
+        $qAna  = $mkPergunta('analista');
+        NpsTemplate::resetPrincipalCache();
+
+        // 1 survey completed principal com respostas: estrategista=2, analista=4.
+        $survey = NpsSurvey::factory()->for($empresa)->completed()->create([
+            'template_id'     => $tpl->id,
+            'month_reference' => null,
+            'completed_at'    => Carbon::parse('2026-07-10 09:00:00'),
+        ]);
+        $response = NpsResponse::factory()->create(['survey_id' => $survey->id]);
+        foreach ([[$qEstr, 'estrategista', 2], [$qAna, 'analista', 4]] as [$q, $dim, $peso]) {
+            $opt = NpsTemplateOption::where('question_id', $q->id)->where('peso', $peso)->firstOrFail();
+            NpsResponseAnswer::create([
+                'response_id'                => $response->id,
+                'template_question_id'       => $q->id,
+                'template_option_id'         => $opt->id,
+                'question_texto_snapshot'    => $q->texto,
+                'question_dimensao_snapshot' => $dim,
+                'option_label_snapshot'      => (string) $peso,
+                'option_peso_snapshot'       => $peso,
+            ]);
+        }
+
+        // Invoca o computeNpsMedio privado por reflection para os 2 cargos.
+        $service = app(DesempenhoScoreService::class);
+        $ref = new ReflectionMethod(DesempenhoScoreService::class, 'computeNpsMedio');
+        $ref->setAccessible(true);
+
+        $notaEstr = $ref->invoke($service, $estrategista, Carbon::parse('2026-07-01'));
+        $notaAna  = $ref->invoke($service, $analista, Carbon::parse('2026-07-01'));
+
+        $this->assertSame(2.0, $notaEstr, 'Estrategista deve receber a nota da dimensão estrategista (2)');
+        $this->assertSame(4.0, $notaAna, 'Analista deve receber a nota da dimensão analista (4)');
+        $this->assertNotSame($notaEstr, $notaAna, 'notas de cargos diferentes NÃO podem ser iguais');
     }
 }
 

@@ -61,6 +61,42 @@ class User extends Authenticatable
     public function isConsultor(): bool { return $this->role === 'consultor'; }
     public function isMentor(): bool   { return $this->role === 'mentor'; }
 
+    /**
+     * Slug do cargo de Desempenho (`estrategista` | `analista`) via
+     * `user_setores → cargos` — fonte CANÔNICA desde a quick 260610-f69,
+     * a mesma usada pelo ranking em PerformanceController.
+     *
+     * 2026-07-13 — criado para corrigir a escolha da DIMENSÃO do NPS no
+     * desempenho: antes usava-se `isMentor()` (role do sistema), mas
+     * estrategistas NÃO têm role='mentor' → caíam na dimensão 'analista'
+     * (bug: estrategista e analista da mesma empresa recebiam a mesma nota).
+     * As notas de NPS são POR DIMENSÃO/cargo, individuais.
+     *
+     * Se o user tem os 2 cargos, prefere o marcado is_principal. Retorna null
+     * quando não há cargo analista/estrategista atribuído — o consumidor cai
+     * no fallback histórico (isMentor()).
+     */
+    public function cargoDesempenhoSlug(): ?string
+    {
+        return \Illuminate\Support\Facades\DB::table('user_setores as us')
+            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+            ->where('us.user_id', $this->id)
+            ->whereIn('c.slug', ['analista', 'estrategista'])
+            ->orderByDesc('us.is_principal')
+            ->value('c.slug');
+    }
+
+    /**
+     * Dimensão de NPS do user no módulo Desempenho: 'estrategista' ou
+     * 'analista'. Deriva do cargo canônico; fallback para isMentor() quando
+     * não há cargo atribuído (espelha PerformanceController linha 99).
+     */
+    public function dimensaoNpsDesempenho(): string
+    {
+        $cargo = $this->cargoDesempenhoSlug() ?? ($this->isMentor() ? 'estrategista' : 'analista');
+        return $cargo === 'estrategista' ? 'estrategista' : 'analista';
+    }
+
     // ─── Relacionamentos: setores e cargos ───────────────────────────────────
 
     /** Setores em que o user é MEMBRO (com cargo no pivot). */

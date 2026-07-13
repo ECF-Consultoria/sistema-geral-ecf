@@ -293,7 +293,9 @@ class PerformanceController extends Controller
         // 2026-07-13 — só o modelo PRINCIPAL conta (->principal()) e a nota vem
         // via NpsScoreCalculator (dual-path): o principal é v15, cujas notas
         // ficam no snapshot, não nas colunas score_* legadas.
-        $npsDim = $user->isMentor() ? 'estrategista' : 'analista';
+        // 2026-07-13 — dimensão por CARGO canônico (não isMentor(), que erra
+        // para estrategistas sem role='mentor').
+        $npsDim = $user->dimensaoNpsDesempenho();
         $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
         $npsByCompany = \App\Models\NpsSurvey::with(['response.answers', 'response.survey'])
             ->principal()
@@ -393,10 +395,11 @@ class PerformanceController extends Controller
         // define qual dimensao ler segundo o cargo do user logado
         // (score_estrategista para mentor, score_analista caso contrario).
         $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
-        $dimensao   = $user->isMentor() ? 'estrategista' : 'analista';
+        // 2026-07-13 — dimensão por CARGO canônico (não isMentor()).
+        $dimensao   = $user->dimensaoNpsDesempenho();
         // Coluna legacy só como fallback defensivo — surveys principal são v15,
         // então o branch legacy abaixo fica inativo na prática (dual-path).
-        $npsField   = $user->isMentor() ? 'score_estrategista' : 'score_analista';
+        $npsField   = $dimensao === 'estrategista' ? 'score_estrategista' : 'score_analista';
         $npsRespostas = $recentSurveys->map(function ($s) use ($calculator, $dimensao, $npsField) {
             $nota = ($s->template_id !== null && $s->response)
                 ? $calculator->compute($s->response, $dimensao)

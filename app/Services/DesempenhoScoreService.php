@@ -136,7 +136,9 @@ class DesempenhoScoreService
     {
         $mes         = $mesReferencia->copy()->startOfMonth();
         $mesCorrente = Carbon::now()->startOfMonth();
-        $cacheKey    = sprintf('desempenho.compute.v1.%d.%s', $user->id, $mes->format('Y-m'));
+        // Bump v1→v2 em 2026-07-13: correção da dimensão do NPS por cargo
+        // invalida os valores cacheados (estrategistas tinham a nota errada).
+        $cacheKey    = sprintf('desempenho.compute.v2.%d.%s', $user->id, $mes->format('Y-m'));
 
         // Mês fechado (passado): dado estável, cache longo — invalida só quando
         // rodar o snapshot mensal ou passar do TTL.
@@ -278,7 +280,11 @@ class DesempenhoScoreService
      */
     private function computeNpsMedio(User $user, Carbon $mes): float
     {
-        $dim = $user->isMentor() ? 'estrategista' : 'analista';
+        // 2026-07-13 — dimensão POR CARGO (estrategista/analista), fonte
+        // canônica user_setores→cargos. Antes usava isMentor() (role do
+        // sistema), o que fazia estrategistas caírem na dimensão 'analista' —
+        // estrategista e analista da mesma empresa recebiam a MESMA nota NPS.
+        $dim = $user->dimensaoNpsDesempenho();
 
         $companyIds = $user->companies()
             ->where('active', true)

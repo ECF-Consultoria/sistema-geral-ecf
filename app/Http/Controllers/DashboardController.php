@@ -940,8 +940,9 @@ class DashboardController extends Controller
             // dual-path). Taxonomia mantida: Estrategista (isMentor) →
             // dimensao 'estrategista'; Analista (consultor) → 'analista'.
             // Escala 1-5 uniforme, round(1) preserva precisao historica do widget.
-            $dimensao   = $u->isMentor() ? 'estrategista' : 'analista';
-            $scoreField = $u->isMentor() ? 'score_estrategista' : 'score_analista';  // fallback legacy
+            // 2026-07-13 — dimensão por CARGO canônico (não isMentor()).
+            $dimensao   = $u->dimensaoNpsDesempenho();
+            $scoreField = $dimensao === 'estrategista' ? 'score_estrategista' : 'score_analista';  // fallback legacy
             $avgNps = $surveys->count() > 0
                 ? $this->avgNotaDimensao($surveys, $dimensao, $scoreField)
                 : null;
@@ -1079,8 +1080,9 @@ class DashboardController extends Controller
         // (template_id != null); fallback direto na coluna legacy score_* para
         // surveys pre-v15 (Phase 31 preservado, dual-path). Helper
         // avgNotaDimensao centraliza a logica.
-        $dimensao   = $user->isMentor() ? 'estrategista' : 'analista';
-        $scoreField = $user->isMentor() ? 'score_estrategista' : 'score_analista';  // fallback legacy
+        // 2026-07-13 — dimensão por CARGO canônico (não isMentor()).
+        $dimensao   = $user->dimensaoNpsDesempenho();
+        $scoreField = $dimensao === 'estrategista' ? 'score_estrategista' : 'score_analista';  // fallback legacy
 
         // Phase 72 Plan 02 — SC#3: empresas pendentes de NPS restritas a
         // carteira do proprio usuario (forCarteira filtra por
