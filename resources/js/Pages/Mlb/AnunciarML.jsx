@@ -1017,7 +1017,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     );
 
     // WIZ-03: publicar fica bloqueado quando catálogo é obrigatório e não foi informado
-    const bloqueadoPorCatalogo = catalogRequired && !catalogPreenchido;
+    // DECISÃO DO NEGÓCIO: nunca publicamos vinculado ao catálogo do ML — sempre anúncio
+    // normal. A tag `catalog_required` em atributos NÃO significa que a categoria exige
+    // catálogo (só que o atributo é necessário SE fosse catálogo). Portanto NÃO bloqueamos.
+    const bloqueadoPorCatalogo = false;
 
     // ─── WIZ-06: busca grades quando entra na etapa de variações com exigeGrade=true ───
     // Requer que o rascunho exista (para resolver o token da empresa via rota autenticada).
@@ -1677,16 +1680,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                 <h2 className="mb-3 text-sm font-semibold text-white">2. Ficha técnica (obrigatórios)</h2>
 
-                                {/* WIZ-03: banner de bloqueio quando catalog_required e catálogo não informado */}
-                                {catalogRequired && !catalogPreenchido && (
-                                    <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-300">
-                                        <AlertTriangle size={15} className="shrink-0 mt-0.5 text-amber-400" />
-                                        <span>
-                                            Esta categoria exige vínculo ao catálogo do Mercado Livre.
-                                            A publicação fica bloqueada até informar o produto de catálogo (CATALOG_PRODUCT_ID).
-                                        </span>
-                                    </div>
-                                )}
+                                {/* Catálogo desativado por decisão do negócio — publicamos sempre como anúncio normal. */}
 
                                 {busy === 'attrs' ? (
                                     <p className="flex items-center gap-2 text-sm text-white/50"><Loader2 size={15} className="animate-spin" /> Carregando atributos…</p>
