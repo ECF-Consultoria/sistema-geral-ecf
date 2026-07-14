@@ -274,13 +274,16 @@ Plans:
 
 ### Phase 76: Responsáveis por serviço — company_users com dimensão de serviço (fundação v16.0)
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** A pivot company_users ganha dimensao de servico (servico_id): a atribuicao de responsaveis passa a ser por-servico (corrige o risco da Phase 75 — atribuir Shopee nao apaga o responsavel ML) e TODO o comportamento consolidado atual (carteira, pendencias, notificacoes, bonus) permanece identico, provado por teste de regressao.
+**Requirements**: DEC-A1, DEC-A2, DEC-A3
 **Depends on:** Phase 75
-**Plans:** 0 plans
+**Plans:** 4 plans
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 76 to break down)
+- [ ] 76-01-PLAN.md — Fundacao de testes V16 + migration cross-driver (servico_id + unique 4-col) + data-migration idempotente (DEC-A1)
+- [ ] 76-02-PLAN.md — Relacoes consolidadas blindadas (distinct) + variantes service-aware + invariante/carteira nao dobra (DEC-A2)
+- [ ] 76-03-PLAN.md — Reescrita das 3 escritas escopadas por servico_id + teste de isolamento ML×Shopee (DEC-A3)
+- [ ] 76-04-PLAN.md — Regressao dos leitores Grupo A/B + phase gate suite completa (DEC-A2)
 
 ### Phase 77: Setor Shopee organizacional — cargos e usuários (Felipe/Gustavo) (v16.0)
 
