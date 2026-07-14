@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: completed
-stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
-last_updated: "2026-07-14T20:04:03.891Z"
+stopped_at: Completed 76-02 (Wave 2 Phase 76 — carteira consolidada blindada por dedup + variantes por serviço)
+last_updated: "2026-07-14T20:21:06.821Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 47
-  completed_plans: 50
+  completed_plans: 51
   percent: 62
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 74
-Plan: Not started
-Status: Milestone complete
-Last activity: 2026-07-09
+Phase: 76
+Plan: 76-02 concluído (Wave 2)
+Status: Em execução (v16.0 — Responsáveis por serviço)
+Last activity: 2026-07-14
 
 ## Performance Metrics
 
