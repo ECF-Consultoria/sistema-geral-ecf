@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: milestone_complete
-stopped_at: Milestone complete (Phase 74 was final phase)
-last_updated: 2026-07-09T19:34:03.836Z
+status: completed
+stopped_at: Completed 75-01-PLAN.md (fundação de dados do setor Shopee — enum + seed + constante)
+last_updated: "2026-07-14T14:30:00.000Z"
 last_activity: 2026-07-09
 progress:
-  total_phases: 7
+  total_phases: 8
   completed_phases: 7
-  total_plans: 44
-  completed_plans: 61
-  percent: 100
+  total_plans: 43
+  completed_plans: 45
+  percent: 88
 ---
 
 # Project State
@@ -131,6 +131,7 @@ Last activity: 2026-07-09
 | Phase 74 P08 | 25min | 3 tasks (ManualController + Show wrapper + artigos.js + DesempenhoBonificacao) | 4 files (3 modified, 1 new) |
 | Phase 74 P09 | 30min | 1 task (DesempenhoScoreServiceTest com fixture Carlos âncora — 12 testes 38 asserções) | 1 file (new) |
 | Phase 74 P10 | 55min | 3 tasks (DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + adaptação regressão 4 suites legadas) | 6 files (2 new + 4 modified) |
+| Phase 75 P01 | ~12min | 3 tasks (TDD RED + enum cross-driver + seed idempotente) | 4 files (2 migrations, 1 model, 1 test) |
 
 ## Accumulated Context
 
@@ -590,17 +591,19 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-09T23:45:00.000Z
+Last session: 2026-07-14T13:59:55.262Z
 Stopped at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
 Contadores finais Phase 74:
+
 - 30 testes novos em `tests/Feature/Phase74/` (112 asserções)
 - 32 testes regressão adaptados minimamente ao shape v2 (198 asserções)
 - Total: 50 testes verdes, 310 asserções — fixture Carlos assert `nota_final=3.35` + `faixa_bonus='sem_bonus'`
 
 Pré-existente identificado (fora do escopo Phase 74):
+
 - `PublicacaoDesempenhoRouteTest::test_user_com_mlb_dashboard_acessa_rota_e_recebe_200` falha com 403 esperado 200; validado via `git stash` que falha na main sem mudanças de Phase 74 — permission `mlb.dashboard` wiring do Setor "Publicação".
 
 Legado antigo desta seção (Phase 39):
