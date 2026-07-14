@@ -41,6 +41,7 @@ use App\Http\Controllers\PpaController;
 use App\Http\Controllers\PpaTaskController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ServicoController;
+use App\Http\Controllers\ShopeeEmpresasController;
 use App\Http\Controllers\Sistema\HubspotLineItemMappingController;
 use App\Http\Controllers\SugadorConfigController;
 use App\Http\Controllers\SugadorController;
@@ -501,6 +502,15 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Mutations (PUT/DELETE/POST) ficam no grupo role:admin abaixo.
     Route::middleware('permission:core.empresas')->group(function () {
         Route::get('/companies',            [CompanyController::class, 'index'])->name('companies.index');
+    });
+
+    // ─── Shopee · Empresas (Phase 75 Plan 75-04 — DEC-4) ─────────────────────
+    // Aba enxuta das empresas atendidas na Shopee (habilita NPS). Gate DEDICADO
+    // permission:shopee.empresas — NUNCA core.empresas (T-75-09 EoP). bulkAssign
+    // tem guard de escopo anti-IDOR (T-75-10) dentro do controller.
+    Route::middleware('permission:shopee.empresas')->group(function () {
+        Route::get('/shopee/empresas',              [ShopeeEmpresasController::class, 'index'])->name('shopee.empresas.index');
+        Route::post('/shopee/empresas/bulk-assign', [ShopeeEmpresasController::class, 'bulkAssign'])->name('shopee.empresas.bulk-assign');
     });
 
     // ─── Sugadores ──────────────────────────────────────────────────────────
