@@ -1275,6 +1275,20 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             })
             : undefined;
 
+        // ML erro 146 (item.attributes.invalid): um mesmo atributo NÃO pode estar em
+        // item.attributes E nas variações ao mesmo tempo. Quando há variações, removemos
+        // do item-raiz os atributos já usados nelas (attribute_combinations = Cor/Tamanho;
+        // attributes = GTIN/SKU). SELLER_PACKAGE_* e SIZE_GRID_ID ficam (não vão na variação).
+        let attributesItem = [...attributes, ...pacote];
+        if (temVarsNoPayload && variacoesPayload) {
+            const idsNasVariacoes = new Set();
+            variacoesPayload.forEach(v => {
+                (v.attribute_combinations ?? []).forEach(ac => ac.id && idsNasVariacoes.add(ac.id));
+                (v.attributes ?? []).forEach(a => a.id && idsNasVariacoes.add(a.id));
+            });
+            attributesItem = attributesItem.filter(a => !idsNasVariacoes.has(a.id));
+        }
+
         return {
             title: titulo,
             category_id: categoryId,
@@ -1284,7 +1298,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             available_quantity: temVarsNoPayload ? 0 : (estoque ? Number(estoque) : null),
             condition: condicao,
             listing_type_id: tipoAnuncio,
-            attributes: [...attributes, ...pacote],
+            attributes: attributesItem,
             pictures: imagemUrl ? [{ source: imagemUrl }] : [],
             sale_terms: garantia
                 ? [{ id: 'WARRANTY_TYPE', value_name: 'Garantia do vendedor' }, { id: 'WARRANTY_TIME', value_name: garantia }]
