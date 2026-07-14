@@ -400,6 +400,9 @@ function VariacaoEditor({
 }) {
     // Estado de upload por índice de variação: { [idx]: 'enviando' | 'ok' | 'erro' }
     const [uploadStatus, setUploadStatus] = useState({});
+    // Arraste de fotos: quem está sendo arrastado e sobre qual alvo — { vIdx, fIdx }
+    const [arrastando, setArrastando] = useState(null);
+    const [alvoFoto, setAlvoFoto]     = useState(null);
 
     // ─── Adiciona uma nova variação vazia ───
     const adicionarVariacao = () => {
@@ -536,6 +539,23 @@ function VariacaoEditor({
             if (destino < 0 || destino >= ids.length) return v; // fora dos limites
             [ids[fotoIdx],  ids[destino]]  = [ids[destino],  ids[fotoIdx]];
             [urls[fotoIdx], urls[destino]] = [urls[destino], urls[fotoIdx]];
+            return { ...v, picture_ids: ids, picture_urls: urls };
+        }));
+    };
+
+    // ─── Reordena por arraste: tira a foto de 'de' e insere na posição 'para' ───
+    // Diferente do moverFoto (troca vizinhos), aqui pode mover para qualquer posição.
+    const reordenarFoto = (idx, de, para) => {
+        if (de === para) return;
+        setVariacoes(vs => vs.map((v, i) => {
+            if (i !== idx) return v;
+            const ids  = [...(v.picture_ids ?? [])];
+            const urls = [...(v.picture_urls ?? [])];
+            if (de < 0 || de >= ids.length || para < 0 || para >= ids.length) return v;
+            const [idMov]  = ids.splice(de, 1);
+            const [urlMov] = urls.splice(de, 1);
+            ids.splice(para, 0, idMov);
+            urls.splice(para, 0, urlMov);
             return { ...v, picture_ids: ids, picture_urls: urls };
         }));
     };
@@ -727,18 +747,48 @@ function VariacaoEditor({
                                 <>
                                     {v.picture_urls.length > 1 && (
                                         <p className="mb-1.5 text-[10px] text-white/30">
-                                            A 1ª foto é a <b className="text-ecf-yellow/70">capa</b>. Use ◀ ▶ para reordenar — o anúncio sai nesta mesma sequência.
+                                            A 1ª foto é a <b className="text-ecf-yellow/70">capa</b>. Arraste para reordenar (ou use ◀ ▶) — o anúncio sai nesta mesma sequência.
                                         </p>
                                     )}
                                     <div className="mb-2 flex flex-wrap gap-2">
-                                        {v.picture_urls.map((url, fi) => (
-                                            <div key={fi} className="relative group">
+                                        {v.picture_urls.map((url, fi) => {
+                                            const arrastandoEsta = arrastando?.vIdx === idx && arrastando?.fIdx === fi;
+                                            const alvoDesta      = alvoFoto?.vIdx === idx && alvoFoto?.fIdx === fi && !arrastandoEsta;
+                                            return (
+                                            <div
+                                                key={fi}
+                                                draggable
+                                                onDragStart={(e) => {
+                                                    setArrastando({ vIdx: idx, fIdx: fi });
+                                                    e.dataTransfer.effectAllowed = 'move';
+                                                }}
+                                                onDragOver={(e) => {
+                                                    // Só aceita arraste dentro da MESMA variação
+                                                    if (arrastando?.vIdx !== idx) return;
+                                                    e.preventDefault();
+                                                    e.dataTransfer.dropEffect = 'move';
+                                                    if (alvoFoto?.fIdx !== fi) setAlvoFoto({ vIdx: idx, fIdx: fi });
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    if (arrastando?.vIdx === idx) reordenarFoto(idx, arrastando.fIdx, fi);
+                                                    setArrastando(null);
+                                                    setAlvoFoto(null);
+                                                }}
+                                                onDragEnd={() => { setArrastando(null); setAlvoFoto(null); }}
+                                                className={cn(
+                                                    'relative group cursor-grab active:cursor-grabbing',
+                                                    arrastandoEsta && 'opacity-40',
+                                                )}
+                                            >
                                                 <img
                                                     src={url}
+                                                    draggable={false}
                                                     alt={fi === 0 ? `Capa — variação ${idx + 1}` : `Foto ${fi + 1} — variação ${idx + 1}`}
                                                     className={cn(
-                                                        'h-16 w-16 rounded-lg border object-cover',
+                                                        'h-16 w-16 rounded-lg border object-cover transition',
                                                         fi === 0 ? 'border-ecf-yellow/60' : 'border-white/10',
+                                                        alvoDesta && 'ring-2 ring-ecf-yellow ring-offset-1 ring-offset-ecf-card',
                                                     )}
                                                 />
                                                 {/* Selo: capa ou número da sequência */}
@@ -780,7 +830,8 @@ function VariacaoEditor({
                                                     </div>
                                                 )}
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </>
                             )}
