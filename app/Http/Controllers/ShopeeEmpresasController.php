@@ -176,9 +176,37 @@ class ShopeeEmpresasController extends Controller
         ]);
 
         foreach (Company::whereIn('id', $data['ids'])->get() as $c) {
-            // Remove só o papel alvo (mantém o outro) e atribui o novo responsável.
-            DB::table('company_users')->where('company_id', $c->id)->where('role', $data['role'])->delete();
-            $c->users()->attach($data['user_id'], ['role' => $data['role'], 'assigned_at' => now()->toDateString()]);
+            // Phase 76 (DEC-A3): escrita ESCOPADA por servico_id. Resolve o
+            // servico_id do contrato Shopee ATIVO da empresa (o guard IDOR
+            // :168-172 já garante que existe pelo menos um). Se por qualquer
+            // razão não resolver, pula a empresa — nunca grava linha órfã.
+            $servicoShopeeId = DB::table('contratos_servico as ct')
+                ->join('servicos as s', 's.id', '=', 'ct.servico_id')
+                ->where('ct.company_id', $c->id)
+                ->where('ct.ativo', true)
+                ->where('s.setor', Servico::SETOR_SHOPEE)
+                ->value('ct.servico_id');
+
+            if ($servicoShopeeId === null) {
+                continue; // sem contrato shopee ativo → não gravar linha órfã
+            }
+
+            // Apaga SÓ o slot Shopee daquele papel (company_id, role, servico_id
+            // shopee) — NUNCA por (company_id, role) apenas, para não tocar a
+            // linha ML/consolidada do outro canal (Pattern 4 / T-76-02).
+            DB::table('company_users')
+                ->where('company_id', $c->id)
+                ->where('role', $data['role'])
+                ->where('servico_id', $servicoShopeeId)
+                ->delete();
+
+            // Grava o novo responsável já com o servico_id no array de pivot
+            // (persiste a coluna independente de withPivot).
+            $c->users()->attach($data['user_id'], [
+                'role'        => $data['role'],
+                'servico_id'  => $servicoShopeeId,
+                'assigned_at' => now()->toDateString(),
+            ]);
         }
 
         $label = $data['role'] === 'consultor' ? 'Analista' : 'Estrategista';
