@@ -5,17 +5,19 @@ import { Input } from '@/Components/ui/input';
 import { Badge } from '@/Components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
-import { useForm, router, usePage } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
-import { Building2, Check, Copy, Send, Star } from 'lucide-react';
+import { useForm, router } from '@inertiajs/react';
+import { useState } from 'react';
+import { Building2, Check, Wrench, Trash2 } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
 
-// ─── Página "Empresas" da Shopee (Phase 75 Plan 75-05, DEC-3/4/5) ────────────
-// Versão ENXUTA de Companies/Index.jsx: SEM colunas de métrica/cust_id/grant,
-// SEM edição/exclusão de empresa. As únicas ações são atribuir responsável
-// (bulk-assign) e gerar NPS (motor existente). Empresas atendidas só na Shopee
-// ainda não têm API/métrica — a aba serve exclusivamente ao fluxo de NPS.
-// Rotas: shopee.empresas.* (gated por permission:shopee.empresas) + nps.generate.
+// ─── Página "Empresas" da Shopee (Phase 75; revisada na Phase 78 DEC-78-2/3/4) ─
+// Versão ENXUTA de Companies/Index.jsx: SEM colunas de métrica/cust_id/grant.
+// Ações: atribuir responsável em massa (bulk-assign), "Resolver" pendência
+// (popup: atribui Analista/Estrategista Shopee — selects JÁ escopados ao Setor
+// Shopee pelo backend — + contato) e "Excluir" (cancela SÓ o serviço Shopee,
+// não apaga a empresa). O "Gerar NPS" avulso foi removido (o NPS passa a ser
+// por modelo/disparo — Phase 79).
+// Rotas: shopee.empresas.* (index, bulk-assign, resolver, cancelar-servico).
 
 // Dicionário de pendências — SÓ as 3 chaves da DEC-2 (voltadas ao NPS).
 const PENDENCIAS = {
@@ -69,8 +71,6 @@ function ServicoBadges({ contratos }) {
 }
 
 export default function Empresas({ companies = [], estrategistas = [], analistas = [], grupos = [] }) {
-    const { flash } = usePage().props;
-
     // ── Abas Todas / Pendências ──────────────────────────────────────────────
     const [tab, setTab] = useState('todas');
     const [search, setSearch] = useState('');
@@ -127,30 +127,32 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         router.post(route('shopee.empresas.bulk-assign'), { ids, role, user_id: userId }, { preserveScroll: true, onSuccess: clearSelection });
     };
 
-    // ── Gerar NPS por linha (reaproveita POST /nps/generate) ─────────────────
-    // useForm.post com transform garante o company_id certo no submit (sem
-    // depender de setData assíncrono). O link volta em flash.nps_link.
-    const npsForm = useForm({ company_id: '', template_id: '' });
-    const gerarNps = (company) => {
-        npsForm.transform(() => ({ company_id: company.id, template_id: '' }));
-        npsForm.post(route('nps.generate'), { preserveScroll: true });
+    // ── Resolver pendência (DEC-78-2): popup de edição da empresa ────────────
+    // Atribui Analista/Estrategista Shopee (selects JÁ escopados ao Setor Shopee
+    // pelo backend) + edita o contato. Salva em shopee.empresas.resolver.
+    const [resolverEmpresa, setResolverEmpresa] = useState(null);
+    const resolverForm = useForm({ company_id: '', analista_id: '', estrategista_id: '', email_cliente: '' });
+    const abrirResolver = (company) => {
+        setResolverEmpresa(company);
+        resolverForm.setData({
+            company_id: company.id,
+            analista_id: company.consultor?.id ?? '',
+            estrategista_id: company.estrategista?.id ?? '',
+            email_cliente: company.email_cliente ?? '',
+        });
+    };
+    const salvarResolver = (e) => {
+        e.preventDefault();
+        resolverForm.post(route('shopee.empresas.resolver'), {
+            preserveScroll: true,
+            onSuccess: () => setResolverEmpresa(null),
+        });
     };
 
-    const [npsLink, setNpsLink] = useState('');
-    const [npsDialog, setNpsDialog] = useState(false);
-    const [npsCopied, setNpsCopied] = useState(false);
-    useEffect(() => {
-        if (flash?.nps_link) {
-            setNpsLink(flash.nps_link);
-            setNpsDialog(true);
-        }
-    }, [flash?.nps_link]);
-
-    const copiarNps = () => {
-        navigator.clipboard.writeText(npsLink).then(() => {
-            setNpsCopied(true);
-            setTimeout(() => setNpsCopied(false), 2000);
-        });
+    // ── Excluir = cancelar SÓ o serviço Shopee (DEC-78-4) ────────────────────
+    const excluirServico = (company) => {
+        if (!window.confirm(`Cancelar o serviço Shopee de "${company.name}"? A empresa NÃO será apagada — ela só sai da aba Shopee (permanece nos outros serviços/ML).`)) return;
+        router.post(route('shopee.empresas.cancelar-servico'), { company_id: company.id }, { preserveScroll: true });
     };
 
     const TABS = [
@@ -158,17 +160,16 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
         { key: 'pendencias', label: `Pendências (${pendentes.length})` },
     ];
 
-    // Botão "Gerar NPS" reutilizado nas duas abas.
-    const NpsButton = ({ company }) => (
+    // Botão "Excluir" (cancelar serviço Shopee) — reutilizado nas duas abas.
+    const ExcluirButton = ({ company }) => (
         <Button
             size="sm"
-            variant="outline"
-            className="gap-1.5 text-[12px] border-ecf-yellow/30 text-ecf-yellow hover:bg-ecf-yellow/10"
-            onClick={() => gerarNps(company)}
-            disabled={npsForm.processing}
-            title="Gerar link de NPS para esta empresa"
+            variant="ghost"
+            className="gap-1.5 text-[12px] text-red-400/80 hover:text-red-400 hover:bg-red-500/10"
+            onClick={() => excluirServico(company)}
+            title="Cancelar o serviço Shopee (não apaga a empresa)"
         >
-            <Star className="h-3.5 w-3.5" /> Gerar NPS
+            <Trash2 className="h-3.5 w-3.5" /> Excluir
         </Button>
     );
 
@@ -278,7 +279,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
-                                                        <NpsButton company={c} />
+                                                        <ExcluirButton company={c} />
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -355,7 +356,16 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                 <TableCell className="text-xs text-white/60">{c.email_cliente || <span className="text-white/25">—</span>}</TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="flex justify-end gap-1">
-                                                        <NpsButton company={c} />
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="gap-1.5 text-[12px] border-ecf-yellow/30 text-ecf-yellow hover:bg-ecf-yellow/10"
+                                                            onClick={() => abrirResolver(c)}
+                                                            title="Resolver pendência (atribuir responsáveis Shopee + contato)"
+                                                        >
+                                                            <Wrench className="h-3.5 w-3.5" /> Resolver
+                                                        </Button>
+                                                        <ExcluirButton company={c} />
                                                     </div>
                                                 </TableCell>
                                             </TableRow>
@@ -376,28 +386,55 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                 )}
             </div>
 
-            {/* Modal do link NPS gerado (captura flash.nps_link) */}
-            <Dialog open={npsDialog} onOpenChange={setNpsDialog}>
+            {/* Popup "Resolver pendência" — atribuir Analista/Estrategista Shopee + contato.
+                Os selects usam as options JÁ escopadas ao Setor Shopee pelo backend (78-01). */}
+            <Dialog open={!!resolverEmpresa} onOpenChange={(o) => { if (!o) setResolverEmpresa(null); }}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Send size={16} className="text-ecf-yellow/70" /> Link de NPS gerado
+                            <Wrench size={16} className="text-ecf-yellow/70" /> Resolver pendência — {resolverEmpresa?.name}
                         </DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
-                        <p className="text-white/55 text-[13px]">
-                            Envie este link ao cliente para coletar a avaliação (NPS). O link é único desta empresa.
-                        </p>
-                        <div className="flex gap-2">
-                            <input readOnly value={npsLink} onClick={e => e.target.select()} className="flex-1 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-[12px] text-white/70 font-mono focus:outline-none cursor-text" />
-                            <Button type="button" size="sm" variant="outline" className="shrink-0 gap-1.5 text-[12px]" onClick={copiarNps}>
-                                {npsCopied ? <><Check size={13} className="text-emerald-400" /> Copiado!</> : <><Copy size={13} /> Copiar</>}
-                            </Button>
+                    <form onSubmit={salvarResolver} className="space-y-4">
+                        <div>
+                            <label className="block text-[12px] text-white/60 mb-1">Analista Shopee</label>
+                            <select
+                                value={resolverForm.data.analista_id}
+                                onChange={e => resolverForm.setData('analista_id', e.target.value)}
+                                className="w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
+                            >
+                                <option value="" className="bg-[#0f1116]">— sem analista —</option>
+                                {analistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
+                            </select>
                         </div>
-                    </div>
-                    <DialogFooter>
-                        <Button variant="ghost" size="sm" onClick={() => setNpsDialog(false)}>Fechar</Button>
-                    </DialogFooter>
+                        <div>
+                            <label className="block text-[12px] text-white/60 mb-1">Estrategista Shopee</label>
+                            <select
+                                value={resolverForm.data.estrategista_id}
+                                onChange={e => resolverForm.setData('estrategista_id', e.target.value)}
+                                className="w-full h-9 pl-3 pr-8 rounded-lg border border-white/[0.1] bg-white/[0.05] text-[13px] text-white/80 focus:outline-none focus:border-ecf-yellow/40"
+                            >
+                                <option value="" className="bg-[#0f1116]">— sem estrategista —</option>
+                                {estrategistasOptions.map(u => <option key={u.id} value={u.id} className="bg-[#0f1116]">{u.name}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-[12px] text-white/60 mb-1">Email do cliente (contato)</label>
+                            <Input
+                                type="email"
+                                value={resolverForm.data.email_cliente}
+                                onChange={e => resolverForm.setData('email_cliente', e.target.value)}
+                                placeholder="contato@empresa.com"
+                            />
+                        </div>
+                        {resolverForm.errors.email_cliente && (
+                            <p className="text-[12px] text-red-400">{resolverForm.errors.email_cliente}</p>
+                        )}
+                        <DialogFooter>
+                            <Button type="button" variant="ghost" size="sm" onClick={() => setResolverEmpresa(null)}>Cancelar</Button>
+                            <Button type="submit" size="sm" disabled={resolverForm.processing}>Salvar</Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
 
