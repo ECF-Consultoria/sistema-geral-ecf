@@ -93,11 +93,21 @@ class MlbAnuncioController extends Controller
             'rascunhos' => MlAnuncioRascunho::where('company_id', $company->id)
                 ->latest()
                 ->limit(50)
-                // BULK-04: validation_errors incluído para o front ler erros por produto
-                // durante o poll de progresso da publicação em massa (Wave 2)
-                ->get(['id', 'company_id', 'mlb_empresa_id', 'user_id', 'status',
-                       'category_id', 'ml_item_id', 'updated_at', 'sku_origem', 'listing_tier',
-                       'validation_errors']),
+                ->get()
+                ->map(fn ($r) => [
+                    'id'            => $r->id,
+                    'status'        => $r->status,
+                    // Título do anúncio (para identificar o rascunho na lista, não só a empresa)
+                    'titulo'        => (string) data_get($r->payload, 'title', ''),
+                    'category_id'   => $r->category_id,
+                    'ml_item_id'    => $r->ml_item_id,
+                    'listing_tier'  => $r->listing_tier,
+                    'updated_at'    => $r->updated_at,
+                    // Erro resumido em 1 linha (o painel não mostra mais o JSON cru do ML)
+                    'erro_resumo'   => $this->resumoErro($r->validation_errors),
+                    // payload completo → permite Abrir/editar o rascunho no wizard
+                    'payload'       => $r->payload,
+                ]),
             // DRAFT-01: produtos do cliente lidos de mlb_implementacoes.dados (se houver vínculo)
             'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
         ]);
@@ -215,6 +225,34 @@ class MlbAnuncioController extends Controller
     public function validar(MlAnuncioRascunho $rascunho)
     {
         return response()->json($this->publicacao->validar($rascunho));
+    }
+
+    /**
+     * Exclui um rascunho (limpa a lista de "Rascunhos recentes").
+     *
+     * Double-check por empresa (SEL-04) antes de apagar. Não bloqueia por status —
+     * o publicador pode remover rascunhos com erro, em branco ou já publicados
+     * (apagar o rascunho NÃO remove o anúncio no ML, só a nossa cópia local).
+     */
+    public function excluirRascunho(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        if ($rascunho->mlb_empresa_id !== null) {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        $rascunho->delete();
+
+        return response()->json(['ok' => true]);
     }
 
     /**
@@ -1166,6 +1204,29 @@ class MlbAnuncioController extends Controller
      *
      * @return Collection<int, array{id: int, nome: string, company_id: int, tem_token: bool, token_expirado: bool, tem_dados_cliente: bool, rascunhos_abertos: int, publicando_count: int}>
      */
+    /**
+     * Resume os erros de publicação de um rascunho em uma única linha legível
+     * (o painel "Rascunhos recentes" não mostra mais o JSON cru do ML).
+     */
+    private function resumoErro(?array $errors): ?string
+    {
+        if (empty($errors)) {
+            return null;
+        }
+
+        $primeiro = $errors[0] ?? null;
+        $msg = is_array($primeiro)
+            ? ($primeiro['mensagem'] ?? $primeiro['message'] ?? '')
+            : (string) $primeiro;
+
+        $msg = trim(preg_replace('/\s+/', ' ', (string) $msg));
+        if ($msg === '') {
+            return 'Falha na publicação.';
+        }
+
+        return mb_strlen($msg) > 120 ? mb_substr($msg, 0, 117) . '…' : $msg;
+    }
+
     private function empresas(Request $request): Collection
     {
         // Fonte: companies com ml_token. O whereHas filtra no banco — só conectadas.

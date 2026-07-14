@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, Calculator, Plus, Trash2, Upload, Image } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, Calculator, Plus, Trash2, Upload, Image, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -875,6 +875,70 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         // Popula origemCampos a partir de meta_campos gravado pelo backend
         if (payload.meta_campos && typeof payload.meta_campos === 'object') {
             setOrigemCampos({ ...payload.meta_campos });
+        }
+    };
+
+    // ─── Abre um rascunho da lista para edição no wizard ───
+    // Restaura título, categoria (+ atributos da categoria), atributos do item,
+    // preço, estoque, dimensões, descrição, tipo e variações. rascunhoId passa a
+    // ser o do rascunho aberto — os saves seguintes ATUALIZAM ele (não criam novo).
+    const abrirRascunho = async (r) => {
+        const payload = r.payload ?? {};
+        limparFormulario();
+        setRascunhoId(r.id);
+        hidratarDoRascunho(r);
+
+        // Tipo de anúncio (Clássico/Premium)
+        if (payload.listing_type_id) setTipoAnuncio(payload.listing_type_id);
+
+        // Restaura os atributos do ITEM em `valores` (exceto pacote/grade)
+        const attrs = Array.isArray(payload.attributes) ? payload.attributes : [];
+        const vals = {};
+        attrs.forEach(a => {
+            const id = String(a.id);
+            if (id.startsWith('SELLER_PACKAGE_') || id.includes('GRID')) return;
+            vals[id] = a.value_id ? { value_id: a.value_id } : { value_name: a.value_name };
+        });
+        setValores(vals);
+
+        // Restaura variações (o que dá — attribute_combinations, GTIN/SKU, estoque, fotos)
+        if (Array.isArray(payload.variations) && payload.variations.length > 0) {
+            setVariacoes(payload.variations.map(v => ({
+                attribute_combinations: v.attribute_combinations ?? [],
+                attributes:             v.attributes ?? [],
+                available_quantity:     v.available_quantity != null ? String(v.available_quantity) : '',
+                size_grid_row_id:       '',
+                picture_ids:            v.picture_ids ?? [],
+                picture_urls:           [],
+            })));
+        }
+
+        // Restaura categoria + atributos do catálogo (para render dinâmico da Ficha técnica/Variações)
+        if (r.category_id) {
+            setCategoryId(r.category_id);
+            setBusy('attrs');
+            try {
+                const resp = await window.axios.get(route('mlb.anuncios.meta.atributos', { categoryId: r.category_id }));
+                setCategoria(resp.data.categoria ?? null);
+                setAtributos(Array.isArray(resp.data.atributos) ? resp.data.atributos : []);
+                setCatalogRequired(resp.data.catalog_required === true);
+            } catch { /* segue sem atributos */ } finally { setBusy(''); }
+        }
+
+        setEtapa(0);
+        setErros(null);
+        setFlash('Rascunho aberto para edição.');
+    };
+
+    // ─── Exclui um rascunho da lista (não remove o anúncio no ML, só a cópia local) ───
+    const excluirRascunho = async (r) => {
+        if (!window.confirm(`Excluir este rascunho${r.titulo ? ` (“${r.titulo}”)` : ''}? Isso não remove o anúncio já publicado no Mercado Livre.`)) return;
+        try {
+            await window.axios.delete(route('mlb.anuncios.rascunho.destroy', { rascunho: r.id }));
+            if (rascunhoId === r.id) limparFormulario();
+            router.reload({ only: ['rascunhos'] });
+        } catch {
+            setFlash('Não foi possível excluir o rascunho.');
         }
     };
 
@@ -2122,10 +2186,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 <ul className="space-y-2">
                                     {rascunhos.slice(0, 8).map(r => {
                                         const selecionavel = r.status !== 'publicando' && r.status !== 'publicado';
+                                        const abrivel = r.status !== 'publicando';
                                         return (
-                                            <li key={r.id}>
+                                            <li key={r.id} className="rounded-lg border border-white/[0.06] bg-ecf-bg/40 p-2">
+                                                {/* Linha 1: checkbox + status + TÍTULO do anúncio + MLB id */}
                                                 <div className="flex items-center gap-2 text-sm">
-                                                    {/* BULK-01: checkbox apenas para rascunhos selecionáveis */}
                                                     {selecionavel
                                                         ? (
                                                             <input
@@ -2137,45 +2202,63 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                         )
                                                         : <span className="h-3.5 w-3.5 shrink-0" />
                                                     }
-                                                    <span className={cn('rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status] ?? STATUS_BADGE.rascunho)}>
+                                                    <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status] ?? STATUS_BADGE.rascunho)}>
                                                         {STATUS_LABEL[r.status] ?? r.status}
                                                     </span>
-                                                    <span className="truncate text-white/60">
-                                                        {empresa?.nome ?? `Empresa ${r.company_id}`}
+                                                    {/* Título do anúncio (identifica o rascunho) */}
+                                                    <span className="min-w-0 flex-1 truncate font-medium text-white/80" title={r.titulo || ''}>
+                                                        {r.titulo?.trim() || '(sem título)'}
                                                     </span>
                                                     {r.ml_item_id && (
-                                                        <span className="ml-auto text-[10px] text-emerald-400/70">
+                                                        <a
+                                                            href={`https://www.mercadolivre.com.br/anuncios/${r.ml_item_id}`}
+                                                            target="_blank" rel="noreferrer"
+                                                            className="shrink-0 text-[10px] text-emerald-400/70 hover:underline"
+                                                        >
                                                             {r.ml_item_id}
-                                                        </span>
+                                                        </a>
                                                     )}
-                                                    {/* UX-03: botão "Usar como template" apenas para anúncios publicados */}
+                                                </div>
+
+                                                {/* Erro resumido em 1 linha (sem JSON cru) */}
+                                                {r.status === 'erro' && r.erro_resumo && (
+                                                    <p className="mt-1 pl-6 text-[11px] text-red-400" title={r.erro_resumo}>
+                                                        {r.erro_resumo}
+                                                    </p>
+                                                )}
+
+                                                {/* Linha 2: ações — Abrir / Template / Excluir */}
+                                                <div className="mt-1.5 flex items-center gap-1.5 pl-6">
+                                                    {abrivel && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => abrirRascunho(r)}
+                                                            title="Abrir este rascunho para editar"
+                                                            className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium text-white/70 transition hover:border-white/25 hover:text-white"
+                                                        >
+                                                            <Pencil size={10} /> Abrir
+                                                        </button>
+                                                    )}
                                                     {r.status === 'publicado' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => usarComoTemplate(r)}
                                                             disabled={busy === 'template'}
                                                             title="Criar novo rascunho a partir deste anúncio publicado"
-                                                            className={cn(
-                                                                'flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold transition',
-                                                                r.ml_item_id ? '' : 'ml-auto',
-                                                                'border border-ecf-yellow/30 bg-ecf-yellow/5 text-ecf-yellow/80 hover:bg-ecf-yellow/15 hover:border-ecf-yellow/50',
-                                                                'disabled:opacity-40 disabled:cursor-not-allowed',
-                                                            )}
+                                                            className="flex items-center gap-1 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/5 px-2 py-0.5 text-[10px] font-medium text-ecf-yellow/80 transition hover:border-ecf-yellow/50 hover:bg-ecf-yellow/15 disabled:opacity-40"
                                                         >
-                                                            {busy === 'template'
-                                                                ? <Loader2 size={10} className="animate-spin" />
-                                                                : <Copy size={10} />
-                                                            }
-                                                            Template
+                                                            {busy === 'template' ? <Loader2 size={10} className="animate-spin" /> : <Copy size={10} />} Template
                                                         </button>
                                                     )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => excluirRascunho(r)}
+                                                        title="Excluir este rascunho"
+                                                        className="ml-auto flex items-center gap-1 rounded-md border border-red-500/20 bg-red-500/[0.06] px-2 py-0.5 text-[10px] font-medium text-red-400/80 transition hover:border-red-500/40 hover:bg-red-500/15"
+                                                    >
+                                                        <Trash2 size={10} /> Excluir
+                                                    </button>
                                                 </div>
-                                                {/* BULK-04: erro por produto — mensagem do validation_errors do rascunho */}
-                                                {r.status === 'erro' && r.validation_errors?.length > 0 && (
-                                                    <p className="mt-0.5 pl-5 text-[11px] text-red-400">
-                                                        {r.validation_errors[0].mensagem ?? r.validation_errors[0]}
-                                                    </p>
-                                                )}
                                             </li>
                                         );
                                     })}

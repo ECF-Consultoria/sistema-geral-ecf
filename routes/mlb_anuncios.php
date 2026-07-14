@@ -39,6 +39,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Rascunho (autosave + ciclo de vida)
         Route::post('/rascunho', [MlbAnuncioController::class, 'salvarRascunho'])->name('rascunho.store');
         Route::put('/rascunho/{rascunho}', [MlbAnuncioController::class, 'atualizarRascunho'])->name('rascunho.update');
+        // Excluir rascunho (limpa a lista de "Rascunhos recentes"); double-check de empresa no controller
+        Route::delete('/rascunho/{rascunho}', [MlbAnuncioController::class, 'excluirRascunho'])->name('rascunho.destroy');
         // WIZ-05 (Phase 77 Plan 02): upload imediato de imagem por variação → devolve picture_id
         // T-77-04: double-check de empresa no controller antes de qualquer chamada ao ML
         Route::post('/rascunho/{rascunho}/imagem', [MlbAnuncioController::class, 'uploadImagem'])->name('rascunho.imagem');
