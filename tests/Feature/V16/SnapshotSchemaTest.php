@@ -3,6 +3,9 @@
 namespace Tests\Feature\V16;
 
 use App\Models\Company;
+use App\Models\NpsResponseCoveredService;
+use App\Models\NpsResponseScore;
+use App\Models\NpsScoreAssignment;
 use App\Models\Servico;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -161,5 +164,77 @@ class SnapshotSchemaTest extends TestCase
         $this->assertSame(0, DB::table('nps_response_scores')->count(), 'scores deveriam sumir no cascade');
         $this->assertSame(0, DB::table('nps_response_covered_services')->count(), 'covered_services deveriam sumir no cascade');
         $this->assertSame(0, DB::table('nps_score_assignments')->count(), 'assignments deveriam sumir no cascade');
+    }
+
+    /**
+     * Contrato Eloquent (Plano 79-04): os 3 models mapeiam as tabelas corretas,
+     * fazem cast dos decimais/timestamps e resolvem as relations — incluindo o
+     * key_link nps_score_assignments → nps_response_scores (nps_response_score_id).
+     */
+    public function test_models_mapeiam_tabelas_e_relations(): void
+    {
+        $company  = Company::factory()->create();
+        $gerador  = User::factory()->create();
+        $analista = User::factory()->create();
+        $servicoId = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+
+        $surveyId = DB::table('nps_surveys')->insertGetId([
+            'token'        => (string) Str::uuid(),
+            'company_id'   => $company->id,
+            'generated_by' => $gerador->id,
+            'status'       => 'completed',
+            'created_at'   => now(),
+            'updated_at'   => now(),
+        ]);
+
+        $responseId = DB::table('nps_responses')->insertGetId([
+            'survey_id'          => $surveyId,
+            'score_estrategista' => 5,
+            'score_empresa'      => 5,
+            'created_at'         => now(),
+            'updated_at'         => now(),
+        ]);
+
+        // Cria via Eloquent (prova fillable + $table).
+        $score = NpsResponseScore::create([
+            'nps_response_id' => $responseId,
+            'company_id'      => $company->id,
+            'dimensao'        => 'analista',
+            'score_sum'       => 8.00,
+            'question_count'  => 2,
+            'average_score'   => 4.00,
+            'calculated_at'   => now(),
+        ]);
+
+        $covered = NpsResponseCoveredService::create([
+            'nps_response_id' => $responseId,
+            'servico_id'      => $servicoId,
+            'service_setor'   => Servico::SETOR_PERFORMANCE,
+            'captured_at'     => now(),
+        ]);
+
+        $assignment = NpsScoreAssignment::create([
+            'nps_response_id'       => $responseId,
+            'nps_response_score_id' => $score->id,
+            'company_id'            => $company->id,
+            'servico_id'            => $servicoId,
+            'service_setor'         => Servico::SETOR_PERFORMANCE,
+            'role'                  => 'consultor',
+            'user_id'               => $analista->id,
+            'average_score'         => 4.00,
+            'assigned_at'           => now(),
+        ]);
+
+        // Casts: decimais viram float.
+        $this->assertIsFloat($score->fresh()->average_score);
+        $this->assertIsFloat($assignment->fresh()->average_score);
+
+        // key_link DEC-79-C: assignment.score() resolve o NpsResponseScore certo.
+        $this->assertTrue($assignment->score->is($score));
+        // hasMany inverso.
+        $this->assertTrue($score->assignments->first()->is($assignment));
+        // Relations auxiliares.
+        $this->assertTrue($covered->servico->is(Servico::find($servicoId)));
+        $this->assertTrue($assignment->user->is($analista));
     }
 }

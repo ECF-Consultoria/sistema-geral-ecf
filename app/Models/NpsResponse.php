@@ -65,4 +65,31 @@ class NpsResponse extends Model
     {
         return $this->hasMany(NpsResponseAnswer::class, 'response_id');
     }
+
+    /**
+     * Snapshot congelado das médias por dimensão (Phase 79 v16.0, DEC-79-C).
+     * Preenchido pelo NpsSnapshotService no submit; cascade on delete.
+     */
+    public function scores(): HasMany
+    {
+        return $this->hasMany(NpsResponseScore::class, 'nps_response_id');
+    }
+
+    /**
+     * Snapshot dos serviços cobertos pela empresa no momento da resposta
+     * (Phase 79 v16.0, DEC-79-C). Cascade on delete.
+     */
+    public function coveredServices(): HasMany
+    {
+        return $this->hasMany(NpsResponseCoveredService::class, 'nps_response_id');
+    }
+
+    /**
+     * Snapshot das atribuições média×pessoa×role×serviço (Phase 79 v16.0,
+     * DEC-79-C). Base do bônus da Fase 80. Cascade on delete.
+     */
+    public function scoreAssignments(): HasMany
+    {
+        return $this->hasMany(NpsScoreAssignment::class, 'nps_response_id');
+    }
 }
