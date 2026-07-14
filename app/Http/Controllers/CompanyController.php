@@ -623,7 +623,29 @@ class CompanyController extends Controller
         }
 
         if (!empty($sync)) {
-            $company->users()->detach();
+            // Phase 76 (DEC-A3 / Pitfall 3): escrita ESCOPADA por servico_id.
+            // Resolve o servico_id do contrato performance ATIVO (NULL p/ ML puro
+            // sem contrato performance = slot consolidado). NUNCA detach() de TUDO
+            // — isso apagaria o responsável Shopee (que vive em outro servico_id).
+            $servicoMlId = $this->servicoPerformanceAtivoId($company);
+
+            // Injeta o servico_id em cada linha do pivot a gravar (persiste a
+            // coluna independente de withPivot).
+            foreach ($sync as $userId => $pivot) {
+                $sync[$userId]['servico_id'] = $servicoMlId;
+            }
+
+            // Detach ESCOPADO ao slot performance/consolidado (roles consultor/
+            // estrategista), filtrando por servico_id — whereNull quando NULL
+            // (Pitfall 1: `= NULL` nunca casa). Linhas Shopee ficam intactas.
+            $detach = DB::table('company_users')
+                ->where('company_id', $company->id)
+                ->whereIn('role', ['consultor', 'estrategista']);
+            $servicoMlId === null
+                ? $detach->whereNull('servico_id')
+                : $detach->where('servico_id', $servicoMlId);
+            $detach->delete();
+
             $company->users()->attach($sync);
         }
 
@@ -677,6 +699,26 @@ class CompanyController extends Controller
     }
 
     /**
+     * Resolve o servico_id do contrato PERFORMANCE ativo da empresa.
+     *
+     * Retorna null para empresa ML pura sem contrato performance ativo — nesse
+     * caso a atribuição cai no slot consolidado (servico_id NULL), consistente
+     * com a data-migration do Plano 76-01 (DEC-A3 / Open Question 1). MIN()
+     * torna determinístico caso haja mais de um contrato performance ativo.
+     */
+    private function servicoPerformanceAtivoId(Company $company): ?int
+    {
+        $id = DB::table('contratos_servico as ct')
+            ->join('servicos as s', 's.id', '=', 'ct.servico_id')
+            ->where('ct.company_id', $company->id)
+            ->where('ct.ativo', true)
+            ->where('s.setor', Servico::SETOR_PERFORMANCE)
+            ->min('ct.servico_id');
+
+        return $id === null ? null : (int) $id;
+    }
+
+    /**
      * Atribuição em massa de Analista (role=consultor) ou Estrategista a várias
      * empresas. Substitui apenas o papel informado, preservando o outro.
      */
@@ -690,9 +732,25 @@ class CompanyController extends Controller
         ]);
 
         foreach (Company::whereIn('id', $data['ids'])->get() as $c) {
-            // Remove só o papel alvo (mantém o outro) e atribui o novo responsável.
-            DB::table('company_users')->where('company_id', $c->id)->where('role', $data['role'])->delete();
-            $c->users()->attach($data['user_id'], ['role' => $data['role'], 'assigned_at' => now()->toDateString()]);
+            // Phase 76 (DEC-A3): escrita ESCOPADA por servico_id do contrato
+            // performance ATIVO (NULL = slot consolidado p/ ML puro). Apaga só o
+            // slot performance/consolidado daquele papel — não toca linhas Shopee.
+            $servicoMlId = $this->servicoPerformanceAtivoId($c);
+
+            $del = DB::table('company_users')
+                ->where('company_id', $c->id)
+                ->where('role', $data['role']);
+            // Pitfall 1: `= NULL` nunca casa — usar whereNull no slot consolidado.
+            $servicoMlId === null
+                ? $del->whereNull('servico_id')
+                : $del->where('servico_id', $servicoMlId);
+            $del->delete();
+
+            $c->users()->attach($data['user_id'], [
+                'role'        => $data['role'],
+                'servico_id'  => $servicoMlId,
+                'assigned_at' => now()->toDateString(),
+            ]);
         }
 
         $label = $data['role'] === 'consultor' ? 'Analista' : 'Estrategista';
