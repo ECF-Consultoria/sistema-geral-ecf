@@ -198,9 +198,13 @@ class MlbAnuncioController extends Controller
             ],
         ]);
 
+        // GOTCHA Laravel: validar a chave aninhada `payload.title` faz $dados['payload']
+        // conter APENAS { title }, descartando o resto (category_id/price/available_quantity/
+        // attributes/shipping...). Por isso gravamos o payload COMPLETO via $request->input(),
+        // não $dados['payload']. A validação do título continua rodando acima, à parte.
         $rascunho->update([
             'category_id' => array_key_exists('category_id', $dados) ? $dados['category_id'] : $rascunho->category_id,
-            'payload'     => $dados['payload'] ?? $rascunho->payload,
+            'payload'     => $request->input('payload', $rascunho->payload),
             'status'      => MlAnuncioRascunho::STATUS_RASCUNHO,
         ]);
 
