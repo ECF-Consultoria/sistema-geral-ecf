@@ -287,13 +287,13 @@ Plans:
 
 ### Phase 77: Setor Shopee organizacional — cargos e usuários (Felipe/Gustavo) (v16.0)
 
-**Goal:** [To be planned]
-**Requirements**: TBD
+**Goal:** Existe um Setor organizacional "Shopee" (RBAC) com cargos analista/estrategista e a permission `shopee.empresas`; Felipe (`consultor.02`) é estrategista + líder do setor Shopee; Gustavo (`suporte.11`) é analista no setor Shopee e no Performance — tudo por migration idempotente que pula usuários ausentes sem erro.
+**Requirements**: DEC-77-1, DEC-77-2, DEC-77-3, DEC-77-4
 **Depends on:** Phase 76
-**Plans:** 0 plans
+**Plans:** 1 plan
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 77 to break down)
+- [ ] 77-01-PLAN.md — Migration idempotente do Setor Shopee (cargos + permissão + wiring Felipe/Gustavo por email) + suite Feature V16 provando os 6 pontos de validação
 
 ### Phase 78: Comercial e aba Shopee — gerenciar serviço/responsáveis e revisar ações (revisa Phase 75) (v16.0)
 
