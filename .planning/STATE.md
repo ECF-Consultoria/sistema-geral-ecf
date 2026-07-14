@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
-stopped_at: Completed 76-03 (Wave 2 Phase 76 — escritas de atribuição escopadas por servico_id)
-last_updated: "2026-07-14T20:35:52.356Z"
+stopped_at: Completed 76-04 (Wave 3 Phase 76 — regressão dos leitores consolidados + phase gate verde)
+last_updated: "2026-07-14T21:10:00.000Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 13
-  completed_phases: 8
+  completed_phases: 9
   total_plans: 47
-  completed_plans: 52
-  percent: 62
+  completed_plans: 53
+  percent: 69
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 76
-Plan: 76-03 concluído (Wave 2)
+Plan: 76-04 concluído (Wave 3 — phase gate)
 Status: Em execução (v16.0 — Responsáveis por serviço)
 Last activity: 2026-07-14
 
