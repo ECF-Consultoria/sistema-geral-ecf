@@ -924,7 +924,7 @@ function Grade({ aba, empresa, onEditarCelula, onAdicionarLinha, onRemoverLinha,
                                 Ficha técnica · {nomeCat}
                             </th>
                         )}
-                        <th className="sticky top-0 z-10 border-b border-white/[0.08] bg-ecf-card-2" />
+                        <th className="sticky right-0 top-0 z-20 border-b border-l border-white/[0.08] bg-ecf-card-2" />
                     </tr>
                     {/* Cabeçalhos das colunas */}
                     <tr className="[&>th]:sticky [&>th]:top-[30px] [&>th]:z-10 [&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-white/[0.08] [&>th]:bg-ecf-card-2 [&>th]:px-2.5 [&>th]:py-2 [&>th]:text-left [&>th]:text-[10px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide [&>th]:text-white/40">
@@ -941,7 +941,7 @@ function Grade({ aba, empresa, onEditarCelula, onAdicionarLinha, onRemoverLinha,
                         {obrig.map((o) => (
                             <Th key={o.id} req>{o.name}</Th>
                         ))}
-                        <Th>Ações</Th>
+                        <th className="!sticky !right-0 !z-20 !border-l !text-center">Ações</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1139,14 +1139,14 @@ function LinhaGrade({ linha: l, idx, aba, obrig, maxTitle, gtinsUsados, totalCol
                 </td>
             ))}
 
-            {/* Ações: remover linha */}
-            <td className="px-2 text-center">
+            {/* Ações: remover linha (coluna FIXA à direita — sempre visível no scroll) */}
+            <td className="sticky right-0 z-10 bg-ecf-card-2 px-2 text-center">
                 <button
                     onClick={() => onRemoverLinha?.(l.uid)}
                     title="Remover linha"
-                    className="text-white/30 hover:text-red-400"
+                    className="inline-flex items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] p-1.5 text-white/50 hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-400"
                 >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="h-4 w-4" />
                 </button>
             </td>
         </tr>
