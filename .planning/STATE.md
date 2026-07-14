@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: completed
-stopped_at: Completed 76-02 (Wave 2 Phase 76 — carteira consolidada blindada por dedup + variantes por serviço)
-last_updated: "2026-07-14T20:21:06.821Z"
-last_activity: 2026-07-09
+status: Em execução (v16.0 — Responsáveis por serviço)
+stopped_at: Completed 76-03 (Wave 2 Phase 76 — escritas de atribuição escopadas por servico_id)
+last_updated: "2026-07-14T20:35:52.356Z"
+last_activity: 2026-07-14
 progress:
   total_phases: 13
   completed_phases: 8
   total_plans: 47
-  completed_plans: 51
+  completed_plans: 52
   percent: 62
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 76
-Plan: 76-02 concluído (Wave 2)
+Plan: 76-03 concluído (Wave 2)
 Status: Em execução (v16.0 — Responsáveis por serviço)
 Last activity: 2026-07-14
 
@@ -596,7 +596,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-14T14:33:13.672Z
+Last session: 2026-07-14T20:35:52.323Z
 Stopped at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
