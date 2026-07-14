@@ -12,6 +12,7 @@ namespace App\Support;
  * Grupos (prefixos):
  *   core.*       — Sistema ECF Consultoria principal (dashboard, empresas, NPS, PPA, etc)
  *   mlb.*        — Módulo de Publicações Mercado Livre
+ *   shopee.*     — Módulo Shopee (aba Empresas para habilitar NPS)
  *   admin.*      — Módulo Administrativo (fechamento, relatórios, inventário)
  *   sistema.*    — Áreas internas (activity log, dev, config de setores)
  *   lideranca.*  — Habilidades de líder (atribuídas automaticamente a quem está em setor_lideres)
@@ -58,6 +59,9 @@ class Permissions
     public const MLB_COLETA                = 'mlb.coleta';
     /** Anunciar no Mercado Livre — criar e publicar anúncios na conta do cliente via API. */
     public const MLB_ANUNCIAR              = 'mlb.anunciar';
+
+    /** Aba Empresas do marketplace Shopee — listagem enxuta + atribuição p/ NPS. */
+    public const SHOPEE_EMPRESAS           = 'shopee.empresas';
 
     public const ADMIN_EMPRESAS            = 'admin.empresas';
     public const ADMIN_RELATORIO           = 'admin.relatorio';
@@ -151,6 +155,9 @@ class Permissions
                 ['key' => self::MLB_METAS,         'label' => 'Pub · Metas',          'description' => 'Configuração de metas de publicação'],
                 ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
                 ['key' => self::MLB_ANUNCIAR,      'label' => 'Pub · Anunciar ML',    'description' => 'Criar e publicar anúncios na conta do cliente via API'],
+            ],
+            'Shopee' => [
+                ['key' => self::SHOPEE_EMPRESAS, 'label' => 'Shopee · Empresas', 'description' => 'Empresas atendidas na Shopee (habilita NPS)'],
             ],
             'Administrativo' => [
                 ['key' => self::ADMIN_EMPRESAS,    'label' => 'Adm · Empresas',    'description' => 'Cadastro administrativo de empresas'],
