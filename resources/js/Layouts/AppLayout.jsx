@@ -94,7 +94,9 @@ const NAV_TREE = [
             { label: 'Painel Polos',      routeName: 'mlb.polos-painel',        page: 'Polos/Painel',      icon: LayoutDashboard, permission: 'mlb.projetos' },
             { label: 'Onboarding',        routeName: 'mlb.implementacao.index', page: 'Mlb/Implementacao', icon: ListChecks, permission: 'mlb.implementacao' },
             { label: 'Empresas Polos',    routeName: 'mlb.polos-empresas',      page: 'Polos/EmpresasPorM', icon: Building2,  permission: 'mlb.projetos' },
-            { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Gate por permission dedicada mlb.faturamento_polos (concedida ao setor Polos).
+            // Antes era excludeRoles admin-only; migrado p/ liberar o setor Polos ver o financeiro.
+            { label: 'Faturamento Polos', routeName: 'polos.index',             page: 'Polos/Index',        icon: PieChart,   permission: 'mlb.faturamento_polos' },
         ],
     },
 

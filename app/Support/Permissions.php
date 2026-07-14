@@ -58,6 +58,8 @@ class Permissions
     public const MLB_COLETA                = 'mlb.coleta';
     /** Anunciar no Mercado Livre — criar e publicar anúncios na conta do cliente via API. */
     public const MLB_ANUNCIAR              = 'mlb.anunciar';
+    /** Ver o Faturamento Polos (dados financeiros por polo). Escopado ao setor Polos — não vaza via mlb.projetos. */
+    public const MLB_FATURAMENTO_POLOS     = 'mlb.faturamento_polos';
 
     public const ADMIN_EMPRESAS            = 'admin.empresas';
     public const ADMIN_RELATORIO           = 'admin.relatorio';
@@ -151,6 +153,7 @@ class Permissions
                 ['key' => self::MLB_METAS,         'label' => 'Pub · Metas',          'description' => 'Configuração de metas de publicação'],
                 ['key' => self::MLB_COLETA,        'label' => 'Pub · Int. Anúncios',  'description' => 'Coleta e mineração de keywords de concorrentes MLB'],
                 ['key' => self::MLB_ANUNCIAR,      'label' => 'Pub · Anunciar ML',    'description' => 'Criar e publicar anúncios na conta do cliente via API'],
+                ['key' => self::MLB_FATURAMENTO_POLOS, 'label' => 'Pub · Faturamento Polos', 'description' => 'Ver a página Faturamento Polos (financeiro por polo) — libera o setor Polos sem depender de admin'],
             ],
             'Administrativo' => [
                 ['key' => self::ADMIN_EMPRESAS,    'label' => 'Adm · Empresas',    'description' => 'Cadastro administrativo de empresas'],
