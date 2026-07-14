@@ -457,11 +457,13 @@ function VariacaoEditor({
         setVariacoes(vs => vs.map((v, i) => i !== idx ? v : { ...v, [campo]: value }));
     };
 
-    // ─── Upload de foto para uma variação (WIZ-05) ───
-    // O upload é imediato: assim que o arquivo é selecionado, envia para a rota de imagem.
-    // Se o rascunho ainda não existe, cria antes de enviar.
-    const handleUploadFoto = async (idx, arquivo) => {
-        if (!arquivo) return;
+    // ─── Upload de foto(s) para uma variação (WIZ-05) ───
+    // O upload é imediato: assim que o(s) arquivo(s) são selecionados, envia cada um
+    // para a rota de imagem. Aceita múltiplos arquivos de uma vez (envio sequencial,
+    // preservando a ordem de seleção). Se o rascunho ainda não existe, cria antes.
+    const handleUploadFotos = async (idx, arquivos) => {
+        const lista = Array.from(arquivos ?? []).filter(Boolean);
+        if (lista.length === 0) return;
 
         // Garante que o rascunho existe antes de enviar
         let idRascunho = rascunhoId;
@@ -472,28 +474,41 @@ function VariacaoEditor({
 
         setUploadStatus(s => ({ ...s, [idx]: 'enviando' }));
 
-        try {
-            const r = await window.axios.postForm(
-                route('mlb.anuncios.rascunho.imagem', { rascunho: idRascunho }),
-                { imagem: arquivo },
-            );
-            const pictureId = r.data.picture_id;
+        let enviadas = 0;
+        let ultimoErro = null;
 
-            // Grava picture_id na variação e URL de pré-visualização (local, não vai no payload)
-            const previewUrl = URL.createObjectURL(arquivo);
-            setVariacoes(vs => vs.map((v, i) => {
-                if (i !== idx) return v;
-                return {
-                    ...v,
-                    picture_ids:  [...(v.picture_ids ?? []), pictureId],
-                    picture_urls: [...(v.picture_urls ?? []), previewUrl],
-                };
-            }));
+        // Envia uma a uma para manter a ordem e acumular os picture_ids conforme retornam
+        for (const arquivo of lista) {
+            try {
+                const r = await window.axios.postForm(
+                    route('mlb.anuncios.rascunho.imagem', { rascunho: idRascunho }),
+                    { imagem: arquivo },
+                );
+                const pictureId = r.data.picture_id;
+
+                // Grava picture_id na variação e URL de pré-visualização (local, não vai no payload)
+                const previewUrl = URL.createObjectURL(arquivo);
+                setVariacoes(vs => vs.map((v, i) => {
+                    if (i !== idx) return v;
+                    return {
+                        ...v,
+                        picture_ids:  [...(v.picture_ids ?? []), pictureId],
+                        picture_urls: [...(v.picture_urls ?? []), previewUrl],
+                    };
+                }));
+                enviadas++;
+            } catch (e) {
+                // Mensagem de erro em pt-BR vinda do backend (422) ou genérica
+                ultimoErro = e.response?.data?.message ?? 'Erro ao enviar foto — tente novamente.';
+            }
+        }
+
+        if (ultimoErro) {
+            // Se algumas subiram e outras não, informa o parcial junto do erro
+            const prefixo = enviadas > 0 ? `${enviadas} enviada(s), mas ` : '';
+            setUploadStatus(s => ({ ...s, [idx]: `erro: ${prefixo}${ultimoErro}` }));
+        } else {
             setUploadStatus(s => ({ ...s, [idx]: 'ok' }));
-        } catch (e) {
-            // Mensagem de erro em pt-BR vinda do backend (422) ou genérica
-            const msg = e.response?.data?.message ?? 'Erro ao enviar foto — tente novamente.';
-            setUploadStatus(s => ({ ...s, [idx]: `erro: ${msg}` }));
         }
     };
 
@@ -687,8 +702,8 @@ function VariacaoEditor({
                         {/* ─── Upload de foto por variação (WIZ-05) ─── */}
                         <div>
                             <span className="mb-1.5 block text-xs font-medium text-white/60">
-                                Foto desta variação
-                                <span className="ml-1 text-[10px] text-white/30">(enviada imediatamente ao ML)</span>
+                                Fotos desta variação
+                                <span className="ml-1 text-[10px] text-white/30">(pode selecionar várias; enviadas imediatamente ao ML)</span>
                             </span>
 
                             {/* Miniaturas das fotos já enviadas */}
@@ -727,21 +742,22 @@ function VariacaoEditor({
                                 {statusUpload === 'enviando' ? (
                                     <><Loader2 size={13} className="animate-spin" /> Enviando…</>
                                 ) : statusUpload === 'ok' ? (
-                                    <><CheckCircle2 size={13} /> Foto enviada — adicionar outra</>
+                                    <><CheckCircle2 size={13} /> Fotos enviadas — adicionar mais</>
                                 ) : statusUpload?.startsWith('erro') ? (
                                     <><AlertTriangle size={13} /> {statusUpload.replace('erro: ', '')}</>
                                 ) : (
-                                    <><Upload size={13} /> Selecionar foto</>
+                                    <><Upload size={13} /> Selecionar fotos</>
                                 )}
                                 <input
                                     type="file"
                                     accept="image/*"
+                                    multiple
                                     className="sr-only"
                                     disabled={statusUpload === 'enviando'}
                                     onChange={e => {
-                                        const arquivo = e.target.files?.[0];
-                                        if (arquivo) handleUploadFoto(idx, arquivo);
-                                        // Reseta o input para permitir re-envio do mesmo arquivo
+                                        const arquivos = e.target.files;
+                                        if (arquivos?.length) handleUploadFotos(idx, arquivos);
+                                        // Reseta o input para permitir re-envio dos mesmos arquivos
                                         e.target.value = '';
                                     }}
                                 />
