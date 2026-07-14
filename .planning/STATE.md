@@ -4,14 +4,14 @@ milestone: v15.0
 milestone_name: NPS Templates
 status: completed
 stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
-last_updated: "2026-07-14T14:41:09.252Z"
+last_updated: "2026-07-14T20:04:03.891Z"
 last_activity: 2026-07-09
 progress:
-  total_phases: 8
+  total_phases: 13
   completed_phases: 8
-  total_plans: 43
-  completed_plans: 49
-  percent: 100
+  total_plans: 47
+  completed_plans: 50
+  percent: 62
 ---
 
 # Project State
