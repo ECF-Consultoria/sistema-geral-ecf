@@ -124,32 +124,30 @@ class Phase75ShopeeEmpresasTest extends TestCase
      */
     private function criarUserComSetorShopee(): User
     {
-        $setorId = DB::table('setores')->insertGetId([
-            'nome'       => 'Shopee',
-            'slug'       => 'shopee',
-            'active'     => true,
-            'is_system'  => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        // O Setor Shopee + cargos + permissão shopee.empresas já são criados pela
+        // migration da Phase 77 (roda no RefreshDatabase). Fetch-or-create idempotente.
+        $setorId = (int) DB::table('setores')->where('slug', 'shopee')->value('id');
+        if (! $setorId) {
+            $setorId = (int) DB::table('setores')->insertGetId([
+                'nome' => 'Shopee', 'slug' => 'shopee', 'active' => true, 'is_system' => false,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
 
-        // Libera a permission key ao setor.
-        DB::table('setor_permissoes')->insert([
-            'setor_id'       => $setorId,
-            'permission_key' => 'shopee.empresas',
-            'created_at'     => now(),
-            'updated_at'     => now(),
-        ]);
+        if (! DB::table('setor_permissoes')->where('setor_id', $setorId)->where('permission_key', 'shopee.empresas')->exists()) {
+            DB::table('setor_permissoes')->insert([
+                'setor_id' => $setorId, 'permission_key' => 'shopee.empresas',
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
 
-        $cargoId = DB::table('cargos')->insertGetId([
-            'setor_id'   => $setorId,
-            'nome'       => 'Analista Shopee',
-            'slug'       => 'analista',
-            'active'     => true,
-            'ordem'      => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $cargoId = (int) DB::table('cargos')->where('setor_id', $setorId)->where('slug', 'analista')->value('id');
+        if (! $cargoId) {
+            $cargoId = (int) DB::table('cargos')->insertGetId([
+                'setor_id' => $setorId, 'nome' => 'Analista Shopee', 'slug' => 'analista', 'active' => true, 'ordem' => 1,
+                'created_at' => now(), 'updated_at' => now(),
+            ]);
+        }
 
         $user = User::create([
             'name'     => 'User Shopee ' . uniqid(),
@@ -330,14 +328,18 @@ class Phase75ShopeeEmpresasTest extends TestCase
             'name' => 'Estr ' . uniqid(), 'email' => 'estr.' . uniqid() . '@ecf.test',
             'password' => bcrypt('senha'), 'role' => 'consultor', 'active' => true,
         ]);
-        $empresa->users()->attach($estrategista->id, ['role' => 'estrategista', 'assigned_at' => now()->toDateString()]);
+        // Phase 78 (DEC-78-1/2): a pendência é POR-SERVIÇO Shopee — atribuir com o
+        // servico_id do contrato Shopee (não mais consolidado/NULL).
+        $empresa->users()->attach($estrategista->id, [
+            'role' => 'estrategista', 'servico_id' => $servico->id, 'assigned_at' => now()->toDateString(),
+        ]);
 
         $response = $this->getEmpresas();
         $alvo = $this->payloadCompanies($response)->firstWhere('id', $empresa->id);
 
         $this->assertNotNull($alvo);
         $this->assertNotContains('sem_responsavel', $alvo['pendencias'],
-            'Com estrategista atribuído não deve ter sem_responsavel');
+            'Com estrategista Shopee atribuído não deve ter sem_responsavel');
         $this->assertNotContains('sem_contato', $alvo['pendencias'],
             'Com email_cliente preenchido não deve ter sem_contato');
     }

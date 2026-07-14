@@ -60,15 +60,41 @@ class ShopeeEmpresasController extends Controller
     {
         $companies = $this->empresasShopeeBaseQuery()
             ->with([
-                'consultor',
-                'estrategista',
-                // Contratos ATIVOS com serviço embedado — alimenta a coluna "Serviço".
+                // Contratos ATIVOS com serviço embedado — alimenta a coluna "Serviço"
+                // e a resolução do servico_id Shopee por empresa (responsáveis por-serviço).
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
                 'grupo:id,name,color',
             ])
             // SEM ->withCount(grants), SEM 'mlToken', SEM ->whereDoesntHave('mlbEmpresa').
             ->orderBy('name')
             ->get();
+
+        // Phase 78 (DEC-78-1/2): responsáveis exibidos e a pendência sem_responsavel
+        // são POR-SERVIÇO Shopee — NÃO os consolidados (senão empresa ML+Shopee com
+        // analista ML mas sem analista Shopee não apareceria pendente). Resolve o
+        // servico_id Shopee de cada empresa e carrega os responsáveis daquele serviço
+        // em 1 query.
+        $servicoShopeePorEmpresa = [];
+        foreach ($companies as $c) {
+            $ct = $c->contratosServico->first(
+                fn($x) => $x->servico && $x->servico->setor === Servico::SETOR_SHOPEE
+            );
+            $servicoShopeePorEmpresa[$c->id] = $ct?->servico_id;
+        }
+
+        $respShopee = []; // [company_id][role] => ['id'=>..,'name'=>..]
+        $rows = DB::table('company_users as cu')
+            ->join('users as u', 'u.id', '=', 'cu.user_id')
+            ->whereIn('cu.company_id', $companies->pluck('id'))
+            ->whereNotNull('cu.servico_id')
+            ->whereIn('cu.role', ['consultor', 'estrategista'])
+            ->get(['cu.company_id', 'cu.role', 'cu.servico_id', 'u.id as user_id', 'u.name']);
+        foreach ($rows as $r) {
+            // Só o responsável cujo servico_id casa com o serviço Shopee daquela empresa.
+            if (($servicoShopeePorEmpresa[$r->company_id] ?? null) === $r->servico_id) {
+                $respShopee[$r->company_id][$r->role] = ['id' => $r->user_id, 'name' => $r->name];
+            }
+        }
 
         $companies = $companies->map(fn($c) => [
             'id'            => $c->id,
@@ -83,8 +109,9 @@ class ShopeeEmpresasController extends Controller
             'telefone'      => $c->telefone,
             // Tag "Empresa nova" (D-06) — badge na linha.
             'empresa_nova'  => (bool) $c->empresa_nova,
-            'consultor'     => $c->consultor->first()?->only(['id', 'name']),
-            'estrategista'  => $c->estrategista->first()?->only(['id', 'name']),
+            // Responsáveis POR-SERVIÇO Shopee (Analista = role consultor).
+            'consultor'     => $respShopee[$c->id]['consultor'] ?? null,
+            'estrategista'  => $respShopee[$c->id]['estrategista'] ?? null,
             // Contratos ativos: payload mínimo para a coluna Serviço (badges + tooltip).
             'contratos_servico' => $c->contratosServico->map(fn($ct) => [
                 'id'               => $ct->id,
@@ -107,7 +134,8 @@ class ShopeeEmpresasController extends Controller
             // Pendências mínimas pro NPS (DEC-2) — sem sem_cust_id/sem_grant_ativo
             // (não se aplicam à Shopee) nem qualquer pendência de métrica.
             'pendencias'       => array_values(array_filter([
-                ($c->consultor->isEmpty() && $c->estrategista->isEmpty()) ? 'sem_responsavel' : null,
+                // sem_responsavel POR-SERVIÇO Shopee (não consolidado).
+                (empty($respShopee[$c->id]['consultor']) && empty($respShopee[$c->id]['estrategista'])) ? 'sem_responsavel' : null,
                 // "sem_contato" = email_cliente vazio E digisac_group_contact_id vazio
                 // (as duas condições do disparo mensal — NpsDispararMensal.php:146-162).
                 (empty($c->email_cliente) && empty($c->digisac_group_contact_id)) ? 'sem_contato' : null,
@@ -115,23 +143,33 @@ class ShopeeEmpresasController extends Controller
             ])),
         ]);
 
-        // Users por CARGO no pivot user_setores. Helper local: pluck dos ids do
-        // cargo por slug (há slugs duplicados em prod, ex: 2x "analista" — por isso
-        // pluck/whereIn em vez de value('id'), que pegaria só um e perderia users).
-        $usersPorCargo = function (string $slug) {
-            $cargoIds = \App\Models\Cargo::where('slug', $slug)->pluck('id');
+        // Phase 78 (DEC-78-1): selects ESCOPADOS ao Setor Shopee — lista só quem tem
+        // o cargo analista/estrategista NO setor 'shopee' (não os cargos globais).
+        // Fonte: setores(slug=shopee) → cargos(setor_id,slug) → user_setores(setor_id,cargo_id).
+        $shopeeSetorId = DB::table('setores')->where('slug', 'shopee')->value('id');
+        $usersPorCargoShopee = function (string $slug) use ($shopeeSetorId) {
+            if (! $shopeeSetorId) {
+                return collect(); // Setor Shopee ainda não criado (Phase 77) → lista vazia.
+            }
+            $cargoIds = DB::table('cargos')
+                ->where('setor_id', $shopeeSetorId)
+                ->where('slug', $slug)
+                ->pluck('id');
             if ($cargoIds->isEmpty()) {
                 return collect();
             }
             return User::where('active', true)
-                ->whereIn('id', DB::table('user_setores')->whereIn('cargo_id', $cargoIds)->pluck('user_id'))
+                ->whereIn('id', DB::table('user_setores')
+                    ->where('setor_id', $shopeeSetorId)
+                    ->whereIn('cargo_id', $cargoIds)
+                    ->pluck('user_id'))
                 ->orderBy('name')
                 ->get(['id', 'name'])
                 ->values();
         };
 
-        $estrategistas = $usersPorCargo('estrategista');
-        $analistas     = $usersPorCargo('analista');
+        $estrategistas = $usersPorCargoShopee('estrategista');
+        $analistas     = $usersPorCargoShopee('analista');
 
         // Grupos nomeados (tipo carteira) — reaproveitados pelo modal de atribuição.
         $grupos = \App\Models\CompanyGroup::withCount('companies')
@@ -211,5 +249,118 @@ class ShopeeEmpresasController extends Controller
 
         $label = $data['role'] === 'consultor' ? 'Analista' : 'Estrategista';
         return back()->with('success', count($data['ids']) . " empresa(s) — {$label} atribuído.");
+    }
+
+    /**
+     * Resolver pendência (DEC-78-2): atribui Analista/Estrategista Shopee (por
+     * servico_id) e atualiza o contato (email do cliente) de UMA empresa. Gated
+     * por permission:shopee.empresas + guard de escopo (empresa fora do escopo
+     * Shopee → validação falha). Responsáveis são opcionais (parcial resolve
+     * parte da pendência).
+     */
+    public function resolver(Request $request)
+    {
+        $data = $request->validate([
+            'company_id'      => ['required', 'integer', $this->guardEscopoShopee()],
+            'analista_id'     => 'nullable|integer|exists:users,id',
+            'estrategista_id' => 'nullable|integer|exists:users,id',
+            'email_cliente'   => 'nullable|email',
+        ]);
+
+        $company         = Company::findOrFail($data['company_id']);
+        $servicoShopeeId = $this->servicoShopeeAtivoId($company->id);
+
+        if ($servicoShopeeId !== null) {
+            if (! empty($data['analista_id'])) {
+                $this->gravarResponsavelShopee($company, 'consultor', (int) $data['analista_id'], $servicoShopeeId);
+            }
+            if (! empty($data['estrategista_id'])) {
+                $this->gravarResponsavelShopee($company, 'estrategista', (int) $data['estrategista_id'], $servicoShopeeId);
+            }
+        }
+
+        if (! empty($data['email_cliente'])) {
+            $company->update(['email_cliente' => $data['email_cliente']]);
+        }
+
+        return back()->with('success', 'Pendência da empresa atualizada.');
+    }
+
+    /**
+     * Excluir na aba Shopee = CANCELAR só o contrato de serviço Shopee (DEC-78-4):
+     * `ativo=false` apenas no(s) contrato(s) de setor 'shopee' da empresa. NÃO
+     * deleta a empresa nem toca o contrato ML — a empresa some da aba Shopee mas
+     * continua existindo (e na aba ML, se tiver). Gated shopee.empresas + escopo.
+     */
+    public function cancelarServico(Request $request)
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'integer', $this->guardEscopoShopee()],
+        ]);
+
+        // Resolve os IDs dos contratos shopee ATIVOS e desativa por id (evita
+        // UPDATE com JOIN, que é driver-específico).
+        $contratoIds = DB::table('contratos_servico as ct')
+            ->join('servicos as s', 's.id', '=', 'ct.servico_id')
+            ->where('ct.company_id', $data['company_id'])
+            ->where('ct.ativo', true)
+            ->where('s.setor', Servico::SETOR_SHOPEE)
+            ->pluck('ct.id');
+
+        if ($contratoIds->isNotEmpty()) {
+            DB::table('contratos_servico')
+                ->whereIn('id', $contratoIds)
+                ->update(['ativo' => false, 'updated_at' => now()]);
+        }
+
+        return back()->with('success', 'Serviço Shopee cancelado (a empresa permanece).');
+    }
+
+    /**
+     * Guard de escopo Shopee reusável para validação de `company_id` (anti-IDOR):
+     * o id só passa se a empresa estiver no builder base da aba Shopee.
+     */
+    private function guardEscopoShopee(): callable
+    {
+        return function ($attribute, $value, $fail) {
+            if (! $this->empresasShopeeBaseQuery()->whereKey($value)->exists()) {
+                $fail('Empresa fora do escopo Shopee — ação não permitida.');
+            }
+        };
+    }
+
+    /**
+     * servico_id do contrato Shopee ATIVO da empresa (ou null).
+     */
+    private function servicoShopeeAtivoId(int $companyId): ?int
+    {
+        $id = DB::table('contratos_servico as ct')
+            ->join('servicos as s', 's.id', '=', 'ct.servico_id')
+            ->where('ct.company_id', $companyId)
+            ->where('ct.ativo', true)
+            ->where('s.setor', Servico::SETOR_SHOPEE)
+            ->value('ct.servico_id');
+
+        return $id !== null ? (int) $id : null;
+    }
+
+    /**
+     * Grava o responsável POR-SERVIÇO Shopee: apaga só o slot
+     * (company_id, role, servico_id shopee) e re-atribui — nunca toca a linha ML
+     * (Phase 76 / DEC-A3).
+     */
+    private function gravarResponsavelShopee(Company $company, string $role, int $userId, int $servicoShopeeId): void
+    {
+        DB::table('company_users')
+            ->where('company_id', $company->id)
+            ->where('role', $role)
+            ->where('servico_id', $servicoShopeeId)
+            ->delete();
+
+        $company->users()->attach($userId, [
+            'role'        => $role,
+            'servico_id'  => $servicoShopeeId,
+            'assigned_at' => now()->toDateString(),
+        ]);
     }
 }

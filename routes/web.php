@@ -509,8 +509,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // permission:shopee.empresas — NUNCA core.empresas (T-75-09 EoP). bulkAssign
     // tem guard de escopo anti-IDOR (T-75-10) dentro do controller.
     Route::middleware('permission:shopee.empresas')->group(function () {
-        Route::get('/shopee/empresas',              [ShopeeEmpresasController::class, 'index'])->name('shopee.empresas.index');
-        Route::post('/shopee/empresas/bulk-assign', [ShopeeEmpresasController::class, 'bulkAssign'])->name('shopee.empresas.bulk-assign');
+        Route::get('/shopee/empresas',                  [ShopeeEmpresasController::class, 'index'])->name('shopee.empresas.index');
+        Route::post('/shopee/empresas/bulk-assign',     [ShopeeEmpresasController::class, 'bulkAssign'])->name('shopee.empresas.bulk-assign');
+        // Phase 78 (DEC-78-2/4): resolver pendência (atribui responsáveis Shopee + email)
+        // e cancelar só o serviço Shopee. Ambos com guard de escopo no controller.
+        Route::post('/shopee/empresas/resolver',        [ShopeeEmpresasController::class, 'resolver'])->name('shopee.empresas.resolver');
+        Route::post('/shopee/empresas/cancelar-servico', [ShopeeEmpresasController::class, 'cancelarServico'])->name('shopee.empresas.cancelar-servico');
     });
 
     // ─── Sugadores ──────────────────────────────────────────────────────────
