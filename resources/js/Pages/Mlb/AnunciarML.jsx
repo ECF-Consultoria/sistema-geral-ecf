@@ -614,16 +614,8 @@ function VariacaoEditor({
                                     placeholder="SKU-AZUL-M"
                                 />
                             </Campo>
-                            <Campo label="Preço desta variação (R$)" dica="Deixe em branco para usar o preço do item">
-                                <input
-                                    className={inputCls}
-                                    type="number"
-                                    step="0.01"
-                                    value={v.price}
-                                    onChange={e => setCampoVariacao(idx, 'price', e.target.value)}
-                                    placeholder="0,00"
-                                />
-                            </Campo>
+                            {/* Sem preço por variação: no ML clássico todas herdam o preço do item
+                                (definido no passo "Preço e estoque"). Preços diferentes = erro 357. */}
                             <Campo label="Estoque desta variação">
                                 <input
                                     className={inputCls}
@@ -1274,7 +1266,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                     : attrsSimples;
 
                 return {
-                    price:               v.price ? Number(v.price) : undefined,
+                    // ML clássico: variações NÃO têm preço próprio — todas herdam o preço do
+                    // item (erro 357 item.variations.price.different quando divergem). O preço
+                    // fica no nível do item (campo Preço). Por isso não enviamos price aqui.
                     available_quantity:  v.available_quantity !== '' ? Number(v.available_quantity) : 1,
                     attribute_combinations: combValidas,
                     attributes:          attrsVar,
