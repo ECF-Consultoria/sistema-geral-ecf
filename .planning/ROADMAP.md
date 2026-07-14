@@ -297,15 +297,16 @@ Plans:
 
 ### Phase 78: Comercial e aba Shopee — gerenciar serviço/responsáveis e revisar ações (revisa Phase 75) (v16.0)
 
-**Goal:** Aba /shopee/empresas e Comercial gerenciam responsáveis POR SERVIÇO (Shopee): selects listam só profissionais do Setor Shopee; botão "Resolver" na aba Pendências abre popup (atribuir Analista/Estrategista Shopee + contato); remover "Gerar NPS"; Excluir = cancelar só o serviço Shopee.
-**Requirements**: DEC-78-1..DEC-78-5 (78-CONTEXT.md)
+**Goal:** Aba /shopee/empresas EXCLUSIVA do líder do Setor Shopee (+ admin): selects listam só profissionais do Setor Shopee; botão "Resolver" na aba Pendências abre popup (atribuir Analista/Estrategista Shopee + contato); remover "Gerar NPS"; Excluir = cancelar só o serviço Shopee. Comercial NÃO atribui responsável (empresa vai pra Pendências).
+**Requirements**: DEC-78-1..DEC-78-4 (78-CONTEXT.md). DEC-78-5 CANCELADO (correção do usuário: quem atribui é o líder, não o Comercial).
 **Depends on:** Phase 76 (por-serviço) + Phase 77 (Setor Shopee)
-**Plans:** 2/3 plans executed + DEPLOYADOS (78-01/02); 78-03 pendente. (Planejado/executado inline — subagentes indisponíveis por limite de sessão)
+**Plans:** COMPLETA (78-01/02 + acesso líder-only) — executada inline, deployada.
 
 Plans:
-- [x] 78-01-PLAN.md — Backend: selects escopados ao Setor Shopee + pendência sem_responsavel por-serviço + endpoints resolver() e cancelarServico() gated shopee.empresas [DEC-78-1,2,4] — 6 testes V16 + Phase 75 verde; deployado
-- [x] 78-02-PLAN.md — Frontend: remover Gerar NPS + botão Resolver → popup (selects Shopee + email) + Excluir=cancelar serviço [DEC-78-2,3,4] — build verde; deployado (checkpoint visual pendente)
-- [ ] 78-03-PLAN.md — Comercial: adicionar serviço Shopee com responsáveis por-serviço (AtribuirServico) [DEC-78-5]
+- [x] 78-01-PLAN.md — Backend: selects escopados ao Setor Shopee + pendência sem_responsavel por-serviço + endpoints resolver() e cancelarServico() [DEC-78-1,2,4] — deployado
+- [x] 78-02-PLAN.md — Frontend: remover Gerar NPS + botão Resolver → popup (selects Shopee + email) + Excluir=cancelar serviço [DEC-78-2,3,4] — deployado (checkpoint visual pendente)
+- [x] Acesso líder-only — /shopee/empresas exclusivo do líder do Setor Shopee (User::effectivePermissions + migration remove grant de membros); gate líder→200/membro→403
+- [~] 78-03 CANCELADO — Comercial NÃO atribui responsável (correção do usuário: quem atribui é o líder na aba Pendências)
 
 ### Phase 79: NPS multi-modelo — disparo por serviços cobertos + snapshot de atribuições por serviço (v16.0)
 
