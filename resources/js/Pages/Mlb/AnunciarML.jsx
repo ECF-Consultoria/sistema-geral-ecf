@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, Calculator, Plus, Trash2, Upload, Image, Pencil } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, Calculator, Plus, Trash2, Upload, Image, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -789,6 +789,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     // ─── Navegação do wizard (WIZ-01) ───
     const [etapa, setEtapa] = useState(0);
 
+    // Seção "Características secundárias" (atributos opcionais) recolhida por padrão —
+    // são complementares e nunca bloqueiam a publicação.
+    const [secundariasAbertas, setSecundariasAbertas] = useState(false);
+
     // Campos do anúncio
     const [titulo, setTitulo]         = useState('');
     const [categoryId, setCategoryId] = useState('');
@@ -1117,6 +1121,33 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     );
     // Categoria aceita variações quando existe ao menos um atributo allow_variations
     const temVariacoes = useMemo(() => atributosVar.length > 0, [atributosVar]);
+
+    // ─── Características secundárias: atributos OPCIONAIS/complementares ───
+    // Espelha a seção do próprio Mercado Livre ("Inclua mais informações sobre seu
+    // produto para complementar as características principais"). São tudo que NÃO é:
+    //   • obrigatório (já na Ficha técnica)      • de variação (allow_variations → etapa Variações)
+    //   • grade de moda (SIZE_GRID_ID/*GRID*)    • oculto/somente-leitura (não editável)
+    //   • catálogo (CATALOG_PRODUCT_ID — desligado por decisão do negócio)
+    //   • GTIN/SELLER_SKU (tratados no editor de variações, campo dedicado)
+    const opcionais = useMemo(
+        () => atributos.filter(a =>
+            !a.tags?.required
+            && !a.tags?.allow_variations
+            && !a.tags?.hidden
+            && !a.tags?.read_only
+            && a.id !== 'SIZE_GRID_ID'
+            && !String(a.id).includes('GRID')
+            && a.id !== 'CATALOG_PRODUCT_ID'
+            && a.id !== 'GTIN'
+            && a.id !== 'SELLER_SKU'
+        ),
+        [atributos],
+    );
+    // Quantos opcionais já foram preenchidos (contador no cabeçalho da seção)
+    const opcionaisPreenchidos = useMemo(
+        () => opcionais.filter(a => valores[a.id]?.value_id || valores[a.id]?.value_name).length,
+        [opcionais, valores],
+    );
 
     // ─── WIZ-03: catálogo preenchido quando CATALOG_PRODUCT_ID tiver value_id ou value_name ───
     const catalogPreenchido = useMemo(
@@ -1855,6 +1886,54 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                             </Campo>
                                         ))}
                                         {obrigatorios.length === 0 && <p className="text-sm text-white/40">Sem atributos obrigatórios nesta categoria.</p>}
+                                    </div>
+                                )}
+
+                                {/* ─── Características secundárias (atributos opcionais/complementares) ───
+                                    Recolhida por padrão; NÃO bloqueia a publicação. Espelha a seção
+                                    homônima do Mercado Livre. Reusa o mesmo Campo/select/input dos obrigatórios. */}
+                                {busy !== 'attrs' && opcionais.length > 0 && (
+                                    <div className="mt-4 border-t border-white/[0.06] pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSecundariasAbertas(o => !o)}
+                                            className="flex w-full items-center gap-2 text-left text-sm font-medium text-white/80 transition hover:text-white"
+                                        >
+                                            {secundariasAbertas ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+                                            <span>Características secundárias</span>
+                                            <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/50">opcional</span>
+                                            {opcionaisPreenchidos > 0 && (
+                                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-400">
+                                                    {opcionaisPreenchidos} preenchido{opcionaisPreenchidos > 1 ? 's' : ''}
+                                                </span>
+                                            )}
+                                            <span className="ml-auto text-[11px] text-white/30">{opcionais.length} campo{opcionais.length > 1 ? 's' : ''}</span>
+                                        </button>
+
+                                        {secundariasAbertas && (
+                                            <>
+                                                <p className="mt-2 mb-3 text-[12px] text-white/40">
+                                                    Inclua mais informações sobre seu produto para complementar as características principais.
+                                                </p>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    {opcionais.map(a => (
+                                                        <Campo key={a.id} label={a.name}>
+                                                            {(a.value_type === 'list' || a.value_type === 'boolean') && a.values?.length ? (
+                                                                <select className={inputCls} value={valores[a.id]?.value_id ?? ''}
+                                                                    onChange={e => setValor(a.id, { value_id: e.target.value, value_name: undefined })}>
+                                                                    <option value="">Selecione…</option>
+                                                                    {a.values.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                                                </select>
+                                                            ) : (
+                                                                <input className={inputCls} value={valores[a.id]?.value_name ?? ''}
+                                                                    placeholder={a.value_type === 'number_unit' ? `Ex.: 10 ${a.default_unit ?? ''}` : ''}
+                                                                    onChange={e => setValor(a.id, { value_name: e.target.value, value_id: undefined })} />
+                                                            )}
+                                                        </Campo>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </section>
