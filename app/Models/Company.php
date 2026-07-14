@@ -168,9 +168,11 @@ class Company extends Model
         // ganhar uma 2ª linha na pivot (servico_id Shopee), o servico_id NÃO está
         // no SELECT (não há withPivot('servico_id') aqui) → distinct colapsa ML+Shopee
         // para 1 responsável. Em Phase 76 (sem dupes) o resultado é idêntico ao de hoje.
+        // distinct('users.id') (e não distinct() boolean): garante COUNT(DISTINCT users.id)
+        // no ->count() — o distinct boolean+* compila COUNT(*) e NÃO deduplicaria.
         return $this->belongsToMany(User::class, 'company_users')
             ->wherePivot('role', 'consultor')
-            ->distinct();
+            ->distinct('users.id');
     }
 
     /**
@@ -183,7 +185,7 @@ class Company extends Model
         // Consolidado + dedup defensivo (ver comentário em consultor()).
         return $this->belongsToMany(User::class, 'company_users')
             ->wherePivot('role', 'estrategista')
-            ->distinct();
+            ->distinct('users.id');
     }
 
     /**

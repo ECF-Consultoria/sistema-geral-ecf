@@ -207,7 +207,7 @@ class User extends Authenticatable
         // (ex.: PortfolioController) re-declaram ->withPivot('role') por conta própria.
         return $this->belongsToMany(Company::class, 'company_users')
             ->select('companies.*')
-            ->distinct();
+            ->distinct('companies.id');
     }
 
     public function consultorCompanies()
@@ -217,7 +217,7 @@ class User extends Authenticatable
         return $this->belongsToMany(Company::class, 'company_users')
             ->wherePivot('role', 'consultor')
             ->select('companies.*')
-            ->distinct();
+            ->distinct('companies.id');
     }
 
     /**
@@ -230,7 +230,7 @@ class User extends Authenticatable
         return $this->belongsToMany(Company::class, 'company_users')
             ->wherePivot('role', 'estrategista')
             ->select('companies.*')
-            ->distinct();
+            ->distinct('companies.id');
     }
 
     public function generatedSurveys()
