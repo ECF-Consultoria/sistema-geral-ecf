@@ -1351,6 +1351,21 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     };
 
     // ─── Publica de verdade (chamado após confirmação no modal) ───
+    // Guarda de campos-base: o ML exige category_id + (preço/estoque quando NÃO há variações).
+    // Sem eles o ItemBuilder descarta os campos null e o ML devolve "body.required_fields".
+    // Bloqueamos ANTES de tocar o ML, com mensagem clara do que falta.
+    const camposBaseFaltando = () => {
+        const pl = montarPayload();
+        const temVars = !!(pl.variations && pl.variations.length);
+        const faltando = [];
+        if (!pl.category_id) faltando.push('categoria');
+        if (!temVars) {
+            if (pl.price == null) faltando.push('preço');
+            if (pl.available_quantity == null) faltando.push('estoque');
+        }
+        return faltando;
+    };
+
     const publicar = async () => {
         // WIZ-07: validação própria ANTES de publicar — mesma guarda que validar()
         if (temVariacoes && variacoes.length > 0) {
@@ -1360,6 +1375,13 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                 setFlash('Corrija as variações antes de publicar.');
                 return;
             }
+        }
+        // Guarda de campos-base (evita o erro body.required_fields do ML)
+        const faltando = camposBaseFaltando();
+        if (faltando.length > 0) {
+            setErros({ valido: false, erros: faltando.map(f => ({ campo: f, mensagem: 'obrigatório para publicar' })) });
+            setFlash('Preencha ' + faltando.join(', ') + ' antes de publicar.');
+            return;
         }
         const id = await salvar();
         if (!id) return;
@@ -1396,6 +1418,13 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                 setFlash('Corrija as variações antes de publicar.');
                 return;
             }
+        }
+        // Guarda de campos-base (evita o erro body.required_fields do ML)
+        const faltando = camposBaseFaltando();
+        if (faltando.length > 0) {
+            setErros({ valido: false, erros: faltando.map(f => ({ campo: f, mensagem: 'obrigatório para publicar' })) });
+            setFlash('Preencha ' + faltando.join(', ') + ' antes de publicar.');
+            return;
         }
         const id = await salvar();
         if (!id) return;
