@@ -47,10 +47,26 @@ use Inertia\Inertia;
  *   fonteFaturamento → 'adman' (mês corrente ao vivo) | 'csv' (mês fechado/oficial)
  *   erro             → string|null
  *
- * Acesso restrito a admin via middleware role:admin na rota.
+ * Acesso: admin OU permissão mlb.faturamento_polos (setor Polos). Gate inline
+ * via checkFaturamentoAccess() — as rotas polos.* NÃO estão mais no grupo role:admin.
  */
 class PolosController extends Controller
 {
+    /**
+     * Gate das telas de Faturamento Polos (index/todasEmpresas/sync/semanal).
+     * Admin sempre; demais precisam da permissão dedicada mlb.faturamento_polos,
+     * concedida ao setor Polos. NÃO reusa mlb.projetos p/ não vazar o financeiro
+     * a quem tem projetos de Publicação.
+     */
+    private function checkFaturamentoAccess(): void
+    {
+        $user = auth()->user();
+        abort_unless(
+            $user && ($user->isAdmin() || $user->hasPermission('mlb.faturamento_polos')),
+            403
+        );
+    }
+
     public function __construct(
         private EcfDriveService $ecf,
         private AdmanService $adman,
@@ -72,6 +88,8 @@ class PolosController extends Controller
      */
     public function index(): \Inertia\Response
     {
+        $this->checkFaturamentoAccess();
+
         // Wrapper fino: toda a montagem vive em montarCockpit() para ser reusada
         // pela aba unificada (painel()) sem duplicar lógica nem divergir de shape.
         return Inertia::render('Polos/Index', $this->montarCockpit(request('mes')));
@@ -684,6 +702,8 @@ class PolosController extends Controller
      */
     public function todasEmpresas(): \Inertia\Response
     {
+        $this->checkFaturamentoAccess();
+
         $vazio = [
             'empresas'       => [],
             'statusDist'     => ['Sim' => 0, 'Em progresso' => 0, 'Não' => 0, 'Problema' => 0, 'total' => 0],
@@ -813,6 +833,8 @@ class PolosController extends Controller
      */
     public function sync(Request $request): \Illuminate\Http\RedirectResponse
     {
+        $this->checkFaturamentoAccess();
+
         // Mês alvo: o selecionado (YYYYMM) ou o corrente como default.
         $mes = trim((string) $request->input('mes', ''));
         if (! preg_match('/^\d{6}$/', $mes)) {
@@ -839,6 +861,8 @@ class PolosController extends Controller
      */
     public function semanal(Request $request, string $cust): \Illuminate\Http\JsonResponse
     {
+        $this->checkFaturamentoAccess();
+
         $custId = CustId::normaliza($cust);
         $mes    = trim((string) $request->query('mes', ''));
         if (! preg_match('/^\d{6}$/', $mes)) {

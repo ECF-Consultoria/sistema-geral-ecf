@@ -20,6 +20,12 @@ class MlItemPayloadValidator
         'lost_me2_by_catalog'              => 'Este produto de catálogo não aceita Mercado Envios 2 nesta conta.',
         'family_name'                      => 'Falta o nome do produto — obrigatório em contas no modelo novo do ML (User Products).',
         'seller_package'                   => 'Informe o peso e as dimensões do pacote (necessário para calcular o frete).',
+        // Erros de variação — posicionados ANTES das entradas genéricas (pictures/shipping)
+        // para que str_contains case o mais específico primeiro (WIZ-07).
+        'variations.attribute_combinations' => 'Combinação de atributos de variação inválida.',
+        'variations.picture_ids'            => 'Uma ou mais variações têm foto inválida ou ausente.',
+        'invalid.variations'               => 'Configuração de variações inválida para esta categoria.',
+        'duplicated.variation'             => 'Há variações duplicadas — cada combinação (ex.: Azul+M) só pode aparecer uma vez.',
         'fashion_grid'                     => 'Esta categoria de moda exige uma grade de tamanho (tabela de medidas).',
         'size_grid'                        => 'Esta categoria de moda exige uma grade de tamanho (tabela de medidas).',
         'picture_not_found'                => 'A imagem não foi encontrada — use o endereço (URL) de uma imagem pública válida.',

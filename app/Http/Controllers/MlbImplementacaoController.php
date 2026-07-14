@@ -32,7 +32,10 @@ class MlbImplementacaoController extends Controller
         abort_unless(
             $user->role === 'admin'
             || in_array('empresas', $perms)
-            || in_array($role, ['gestor', 'analista', 'lider']),
+            || in_array($role, ['gestor', 'analista', 'lider'])
+            // Setor-based (novo): membros do setor Polos ganham mlb.implementacao e
+            // acessam o Onboarding sem depender dos campos legados publication_*.
+            || $user->hasPermission('mlb.implementacao'),
             403
         );
     }

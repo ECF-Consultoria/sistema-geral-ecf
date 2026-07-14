@@ -693,8 +693,10 @@ Route::middleware(['auth', 'verified', 'role:admin'])
 // ─── Polos — Faturamento por Polo vs Meta (Phase 38) ─────────────────────────
 // Consome o CSV POLOS MENSAL via EcfDriveService (listFiles + fileJson).
 // Agrega TGMV_LC por LOCALIDADE, calcula meta = ativos × R$/empresa (default 3000,
-// configurável por polo via Configuracao). Grade de donuts por polo. Apenas admin.
-Route::middleware(['auth', 'verified', 'role:admin'])
+// configurável por polo via Configuracao). Grade de donuts por polo.
+// Acesso: admin OU permissão mlb.faturamento_polos (setor Polos) — gate inline no controller
+// (RF: liberar o setor Polos ver o financeiro sem ser admin). Antes: role:admin no grupo.
+Route::middleware(['auth', 'verified'])
      ->prefix('polos')
      ->name('polos.')
      ->group(function () {

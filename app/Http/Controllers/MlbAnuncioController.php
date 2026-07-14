@@ -2,15 +2,22 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\PublicarAnuncioMlJob;
 use App\Models\Company;
 use App\Models\MlAnuncioRascunho;
 use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
+use App\Models\User;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
+use App\Services\Mlb\Publicacao\MlFreteService;
+use App\Services\Mlb\Publicacao\MlGradeService;
+use App\Services\Mlb\Publicacao\MlImagemService;
 use App\Services\Mlb\Publicacao\MlPublicacaoService;
+use App\Services\MercadoLivreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 /**
@@ -35,6 +42,14 @@ class MlbAnuncioController extends Controller
     public function __construct(
         private MlCatalogoMetaService $meta,
         private MlPublicacaoService $publicacao,
+        // WIZ-05: injetado para upload imediato de imagens por variação (Phase 77 Plan 02)
+        private MlImagemService $imagem,
+        // WIZ-06: service de grades de tamanho (Phase 77 Plan 03)
+        private MlGradeService $grade,
+        // SHIP-02: cotação automática de frete por dimensões/peso (Phase 78 Plan 01)
+        private MlFreteService $frete,
+        // BULK-02: pré-check de token 1x no lote antes de qualquer dispatch
+        private MercadoLivreService $ml,
     ) {}
 
     /**
@@ -78,8 +93,11 @@ class MlbAnuncioController extends Controller
             'rascunhos' => MlAnuncioRascunho::where('company_id', $company->id)
                 ->latest()
                 ->limit(50)
+                // BULK-04: validation_errors incluído para o front ler erros por produto
+                // durante o poll de progresso da publicação em massa (Wave 2)
                 ->get(['id', 'company_id', 'mlb_empresa_id', 'user_id', 'status',
-                       'category_id', 'ml_item_id', 'updated_at', 'sku_origem', 'listing_tier']),
+                       'category_id', 'ml_item_id', 'updated_at', 'sku_origem', 'listing_tier',
+                       'validation_errors']),
             // DRAFT-01: produtos do cliente lidos de mlb_implementacoes.dados (se houver vínculo)
             'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
         ]);
@@ -159,11 +177,34 @@ class MlbAnuncioController extends Controller
         $dados = $request->validate([
             'category_id' => ['nullable', 'string', 'max:20'],
             'payload'     => ['nullable', 'array'],
+            // WIZ-01: título validado contra max_title_length da categoria escolhida.
+            // Regra nullable para não bloquear autosave de outras etapas que não enviam título.
+            // Fallback 60 = limite padrão do ML quando a categoria não está no cache.
+            // Usa mb_strlen (não strlen) para contar caracteres, não bytes — pt-BR tem acentos.
+            'payload.title' => [
+                'nullable',
+                'string',
+                function (string $attr, mixed $val, \Closure $fail) use ($request) {
+                    $categoryId = $request->input('category_id') ?? '';
+                    $maxLen     = data_get(
+                        $this->meta->categoria($categoryId),
+                        'settings.max_title_length',
+                        60  // fallback ao limite padrão do ML
+                    );
+                    if (mb_strlen((string) $val) > $maxLen) {
+                        $fail("Título excede o limite de {$maxLen} caracteres para esta categoria.");
+                    }
+                },
+            ],
         ]);
 
+        // GOTCHA Laravel: validar a chave aninhada `payload.title` faz $dados['payload']
+        // conter APENAS { title }, descartando o resto (category_id/price/available_quantity/
+        // attributes/shipping...). Por isso gravamos o payload COMPLETO via $request->input(),
+        // não $dados['payload']. A validação do título continua rodando acima, à parte.
         $rascunho->update([
             'category_id' => array_key_exists('category_id', $dados) ? $dados['category_id'] : $rascunho->category_id,
-            'payload'     => $dados['payload'] ?? $rascunho->payload,
+            'payload'     => $request->input('payload', $rascunho->payload),
             'status'      => MlAnuncioRascunho::STATUS_RASCUNHO,
         ]);
 
@@ -226,6 +267,220 @@ class MlbAnuncioController extends Controller
                 'erros'  => $fresh?->validation_errors ?? [['mensagem' => 'Falha ao publicar. Tente novamente.']],
             ], 422);
         }
+    }
+
+    /**
+     * Cria um rascunho com o tier oposto ao do rascunho de origem.
+     *
+     * DUP-01: tier oposto usa gold_pro (premium) ou gold_special (clássico) com preço derivado.
+     * DUP-02: gera o par Clássico+Premium a partir de um único rascunho.
+     * DUP-03: título do novo rascunho recebe sufixo mínimo (" - Premium" ou " - Clássico")
+     *         com strip idempotente para garantir diferença e evitar cancelamento por duplicata no ML.
+     * DUP-04: ml_item_id_classico e ml_item_id_premium zerados no novo rascunho
+     *         (o rascunho duplicado ainda não foi publicado).
+     *
+     * SEL-04: double-check de pertencimento (cópia exata de publicar(), linhas 222–237)
+     *         antes de criar qualquer dado.
+     */
+    public function duplicarTier(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // SEL-04: double-check (cópia exata de publicar() — operação irreversível)
+        if ($rascunho->mlb_empresa_id !== null) {
+            // Caminho principal: usa responsavel_id da empresa (escopo correto por empresa)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            // Fallback para rascunhos legados criados antes do SEL-07 (sem mlb_empresa_id)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // criarDuplicataInterna lança InvalidArgumentException quando os títulos ficam idênticos
+        // Capturamos e retornamos 422 com mensagem pt-BR (DUP-03)
+        try {
+            $duplicado = $this->criarDuplicataInterna($rascunho, $request->user());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'ok'   => false,
+                'erros' => [['mensagem' => $e->getMessage()]],
+            ], 422);
+        }
+
+        $tierNovo = $duplicado->listing_tier;
+
+        return response()->json([
+            'ok'        => true,
+            'rascunho'  => $duplicado,
+            'tier_novo' => $tierNovo,
+        ]);
+    }
+
+    /**
+     * Cria um rascunho-template a partir de um anúncio publicado (UX-03 — Phase 81).
+     *
+     * Diferença em relação a duplicarTier(): NÃO troca o tier, NÃO adiciona sufixo
+     * de tier ao título e NÃO recalcula preço. É uma cópia fiel do payload do publicado
+     * (título, listing_type_id, price, atributos, etc.) com os três ml_item_id*
+     * zerados e status voltando a STATUS_RASCUNHO.
+     *
+     * SEL-04: double-check de pertencimento idêntico ao duplicarTier() antes de
+     * qualquer escrita.
+     */
+    public function duplicarComoTemplate(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // SEL-04: double-check (cópia exata de duplicarTier() — operação irreversível)
+        if ($rascunho->mlb_empresa_id !== null) {
+            // Caminho principal: usa responsavel_id da empresa (escopo correto por empresa)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            // Fallback para rascunhos legados criados antes do SEL-07 (sem mlb_empresa_id)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        $novo = $this->criarTemplateInterno($rascunho, $request->user());
+
+        return response()->json(['ok' => true, 'rascunho' => $novo]);
+    }
+
+    /**
+     * Publica o rascunho como Clássico E Premium em sequência (DUP-02).
+     *
+     * Fluxo:
+     *   1. SEL-04 double-check de empresa antes de qualquer chamada ML.
+     *   2. criarDuplicataInterna() cria o rascunho do tier oposto.
+     *   3. Publica os 2 rascunhos via tentarPublicar() — falha de um não aborta o outro.
+     *
+     * DUP-03: os dois rascunhos têm títulos diferentes (garantido em criarDuplicataInterna).
+     * DUP-04: cada publicação grava no campo do tier correto (MlPublicacaoService::publicar).
+     * DUP-02: falha de um tier não aborta o outro — resultado retorna ok_classico e ok_premium
+     *         independentes mapeados por listing_tier (não por posição de array).
+     */
+    public function publicarDuplo(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // T-79-02: SEL-04 — double-check (cópia exata de publicar()) antes de qualquer chamada ML
+        if ($rascunho->mlb_empresa_id !== null) {
+            // Caminho principal: usa responsavel_id da empresa (escopo correto por empresa)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            // Fallback para rascunhos legados criados antes do SEL-07 (sem mlb_empresa_id)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // Cria o rascunho do tier oposto (títulos idênticos retorna 422 antes de publicar qualquer coisa)
+        try {
+            $rascunhoDuplo = $this->criarDuplicataInterna($rascunho, $request->user());
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'ok'   => false,
+                'erros' => [['mensagem' => $e->getMessage()]],
+            ], 422);
+        }
+
+        // Publica os 2 rascunhos — DUP-04: falha de um não aborta o outro
+        $resultadoA = $this->tentarPublicar($rascunho);
+        $resultadoB = $this->tentarPublicar($rascunhoDuplo);
+
+        // Mapeia resultados por listing_tier (não por posição) — DUP-02
+        // Garante que 'classico' e 'premium' na resposta correspondem ao tier real
+        $resultados = collect([$resultadoA, $resultadoB])->keyBy('tier');
+        $classico   = $resultados->get('classico', $resultadoA);
+        $premium    = $resultados->get('premium',  $resultadoB);
+
+        return response()->json([
+            'ok'      => $classico['ok'] || $premium['ok'],
+            'classico' => $classico,
+            'premium'  => $premium,
+        ]);
+    }
+
+    /**
+     * Envia o binário de uma imagem para o ML e devolve o picture_id da variação.
+     *
+     * WIZ-05: upload imediato de imagem por variação — o front envia o arquivo ao
+     * criar/editar uma variação; o picture_id retornado é gravado no rascunho
+     * antes de chamar /items/validate ou /items (o ML exige picture_ids registrados,
+     * não URLs brutas, no campo variations[].picture_ids).
+     *
+     * T-77-04: double-check de empresa (cópia exata de atualizarRascunho, linhas 142-156)
+     *          antes de qualquer chamada à API ML — impede publicador sem atribuição de
+     *          fazer upload na conta do cliente.
+     * T-77-05: validação file+image+max:10240 (10 MB) antes de repassar ao ML.
+     * T-77-06: try/catch \Throwable → 422 pt-BR genérico; detalhe real apenas em Log
+     *          (o service pode lançar RuntimeException quando a empresa não tem token).
+     */
+    public function uploadImagem(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // T-77-04: double-check por empresa — cópia do bloco de atualizarRascunho (SEL-04)
+        if ($rascunho->mlb_empresa_id !== null) {
+            // Caminho principal: usa responsavel_id da empresa (escopo correto por empresa)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            // Fallback para rascunhos legados criados antes do SEL-07 (sem mlb_empresa_id)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // T-77-05: valida tipo e tamanho antes de enviar ao ML (10 MB máximo)
+        $request->validate([
+            'imagem' => ['required', 'file', 'image', 'max:10240'],
+        ]);
+
+        try {
+            // Monta os parâmetros de upload — binário + nome original do arquivo
+            $company   = $rascunho->company;
+            $arquivo   = $request->file('imagem');
+            $pictureId = $this->imagem->enviar($company, $arquivo->get(), $arquivo->getClientOriginalName());
+        } catch (\Throwable $e) {
+            // T-77-06: detalhe técnico apenas no log; resposta genérica em pt-BR para o front
+            \Illuminate\Support\Facades\Log::error(
+                "[MLB Publicacao] Falha no upload de imagem empresa {$rascunho->company_id}: {$e->getMessage()}"
+            );
+
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
+            ], 422);
+        }
+
+        // Retorna null quando o ML aceita a requisição mas não retorna um id (ex.: HTTP 2xx sem body)
+        if ($pictureId === null) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
+            ], 422);
+        }
+
+        // Sucesso: devolve o picture_id para o front gravar na variação correspondente
+        return response()->json(['ok' => true, 'picture_id' => $pictureId]);
     }
 
     /**
@@ -361,15 +616,161 @@ class MlbAnuncioController extends Controller
     /** Preditor de categoria pelo texto do título. */
     public function preverCategoria(Request $request)
     {
-        return response()->json($this->meta->preverCategoria((string) $request->query('q', '')));
+        $candidatos = $this->meta->preverCategoria((string) $request->query('q', ''));
+
+        // WIZ-02 (best-effort): enriquece cada candidato com o caminho da categoria
+        // usando apenas o cache — sem nova chamada HTTP. O custo é zero se já estiver
+        // em cache; se não estiver, o candidato fica sem "path" (degradação graciosa).
+        // O front pede o breadcrumb completo ao escolher a categoria via atributos().
+        $candidatos = array_map(function (array $candidato) {
+            $catId = $candidato['category_id'] ?? '';
+            if ($catId === '') {
+                return $candidato;
+            }
+
+            // Usa a chave interna do cache do MlCatalogoMetaService (ml_meta_categoria_{id})
+            $cached = \Illuminate\Support\Facades\Cache::get("ml_meta_categoria_{$catId}");
+            if (is_array($cached) && ! empty($cached['path_from_root'])) {
+                $candidato['path'] = array_column($cached['path_from_root'], 'name');
+            }
+
+            return $candidato;
+        }, $candidatos);
+
+        return response()->json($candidatos);
     }
 
     /** Detalhe da categoria + atributos (formulário dinâmico). */
     public function atributos(string $categoryId)
     {
+        $categoria = $this->meta->categoria($categoryId);
+        $atributos = $this->meta->atributos($categoryId);
+
+        // WIZ-03: catálogo obrigatório sinalizado para o front bloquear publicação
+        // sem catalog_product_id. Verdadeiro quando qualquer atributo da categoria
+        // tiver tags.catalog_required = true (ex.: eletrônicos de marca, instrumentos).
+        $catalogRequired = collect($atributos)->contains(
+            fn ($a) => data_get($a, 'tags.catalog_required') === true
+        );
+
         return response()->json([
-            'categoria' => $this->meta->categoria($categoryId),
-            'atributos' => $this->meta->atributos($categoryId),
+            'categoria'        => $categoria,
+            'atributos'        => $atributos,
+            'catalog_required' => $catalogRequired,
+        ]);
+    }
+
+    /**
+     * Lista as grades de tamanho disponíveis para o vendedor no domínio da categoria.
+     *
+     * WIZ-06: endpoint consumido pelo wizard quando a categoria exige grade de tamanho
+     * (atributo SIZE_GRID_ID / value_type grid_id). Retorna um select de grades em vez
+     * do aviso "próxima versão".
+     *
+     * T-77-08: double-check de empresa antes de consultar grades da conta ML do cliente.
+     * T-77-09: cache de 1h por company+domínio (feito no MlGradeService).
+     * T-77-10: domain_id validado (string max:60) — vem do front (input não confiável).
+     */
+    public function listarGrades(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // T-77-08: double-check por empresa (cópia exata do bloco de atualizarRascunho, linhas 142-156)
+        if ($rascunho->mlb_empresa_id !== null) {
+            // Caminho principal: usa responsavel_id da empresa (escopo correto por empresa)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            // Fallback para rascunhos legados criados antes do SEL-07 (sem mlb_empresa_id)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // T-77-10: valida domain_id — vem do front (não confiável), string curta esperada
+        $dados = $request->validate([
+            'domain_id' => ['required', 'string', 'max:60'],
+        ]);
+
+        $domainId = $dados['domain_id'];
+
+        try {
+            // T-77-09: cache de 1h por company+domínio feito dentro do service
+            $grades = $this->grade->listarGrades($rascunho->company, $domainId);
+
+            return response()->json([
+                'ok'     => true,
+                'grades' => $grades['results'] ?? [],
+            ]);
+        } catch (\Throwable $e) {
+            // Detalhe técnico apenas no log; resposta genérica em pt-BR para o front
+            \Illuminate\Support\Facades\Log::error(
+                "[MLB Grade] Falha ao listar grades rascunho {$rascunho->id}: {$e->getMessage()}"
+            );
+
+            return response()->json([
+                'ok'     => false,
+                'erros'  => [['mensagem' => 'Falha ao carregar grades do Mercado Livre.']],
+            ], 422);
+        }
+    }
+
+    /**
+     * Cota o frete automaticamente a partir das dimensões e peso do pacote.
+     *
+     * Endpoint informativo do simulador de preço (SHIP-02): retorna estimativa de frete
+     * via GET /users/{seller_id}/shipping_options/free. A estimativa é indicativa —
+     * ME2 pode ignorar as dimensões enviadas (CAVEAT STACK.md linha 329).
+     *
+     * A publicação NUNCA é bloqueada por falha de cotação: quando o ML não responde
+     * (conta sem ME, token expirado, endpoint fora do ar), o service retorna null e
+     * este método responde 200 com estimativa_frete=null (degradação graciosa SHIP-02).
+     *
+     * T-78-01: double-check de empresa (cópia exata do bloco de listarGrades, linhas 514-529)
+     *          antes de qualquer chamada à API ML via token de empresa.
+     * T-78-02: validação de params (peso/dims/preço/tipo) antes de repassar ao service.
+     */
+    public function cotarFrete(Request $request, MlAnuncioRascunho $rascunho): JsonResponse
+    {
+        // T-78-01: double-check por empresa (cópia exata do bloco de listarGrades)
+        if ($rascunho->mlb_empresa_id !== null) {
+            // Caminho principal: usa responsavel_id da empresa (escopo correto por empresa)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->mlbEmpresa?->responsavel_id === $request->user()->id,
+                403,
+                'Empresa não atribuída a este publicador.'
+            );
+        } else {
+            // Fallback para rascunhos legados criados antes do SEL-07 (sem mlb_empresa_id)
+            abort_unless(
+                $request->user()->isAdmin() || $rascunho->user_id === $request->user()->id,
+                403,
+                'Rascunho não pertence ao publicador autenticado.'
+            );
+        }
+
+        // T-78-02: valida parâmetros de cotação — vêm do front (não confiáveis)
+        $dados = $request->validate([
+            'peso_g'          => ['required', 'numeric', 'min:1'],
+            'altura_cm'       => ['required', 'numeric', 'min:1'],
+            'largura_cm'      => ['required', 'numeric', 'min:1'],
+            'comprimento_cm'  => ['required', 'numeric', 'min:1'],
+            'item_price'      => ['required', 'numeric', 'min:0.01'],
+            'listing_type_id' => ['required', 'string', 'in:gold_special,gold_pro'],
+        ]);
+
+        // MlFreteService retorna null em falha — não propaga exceção (SHIP-02)
+        $resultado = $this->frete->cotar($rascunho->company, $dados);
+
+        // Resposta sempre 200: estimativa_frete é float quando ML responde, null em falha
+        // O front exibe o campo vazio em vez de bloquear a publicação (degradação graciosa)
+        return response()->json([
+            'ok'               => true,
+            'estimativa_frete' => data_get($resultado, 'shipping_options.0.list_cost'),
+            'opcoes'           => $resultado['shipping_options'] ?? [],
         ]);
     }
 
@@ -377,6 +778,160 @@ class MlbAnuncioController extends Controller
     public function tiposAnuncio()
     {
         return response()->json($this->meta->tiposDeAnuncio());
+    }
+
+    // ─── Helpers privados — Phase 79 ───
+
+    /**
+     * Cria um rascunho com o tier oposto ao do rascunho de origem.
+     *
+     * Helper interno compartilhado por duplicarTier() e publicarDuplo().
+     * Não faz double-check de empresa nem retorna JsonResponse — esses cuidados
+     * ficam nos métodos públicos que chamam este helper.
+     *
+     * DUP-03: sufixo mínimo com strip idempotente:
+     *   - Remove qualquer sufixo de tier anterior antes de anexar o novo.
+     *   - Trunca a 60 chars (limite ML — mb_substr para acentos pt-BR).
+     *   - Lança InvalidArgumentException quando os títulos ficam idênticos
+     *     (capturada pelos métodos públicos que retornam 422).
+     *
+     * DUP-01: preço do tier oposto derivado de montarProdutosDoCliente() quando
+     *   sku_origem estiver preenchido; caso contrário, copia do payload original
+     *   (o publicador ajusta antes de publicar).
+     *
+     * DUP-04: ml_item_id_classico e ml_item_id_premium zerados — rascunho duplicado
+     *   ainda não foi publicado.
+     *
+     * @throws \InvalidArgumentException quando os dois títulos ficariam idênticos.
+     */
+    private function criarDuplicataInterna(MlAnuncioRascunho $rascunho, User $user): MlAnuncioRascunho
+    {
+        // Determina o tier oposto e o listing_type_id correspondente (DUP-01)
+        $tierAtual   = $rascunho->listing_tier ?? 'classico';
+        $tierNovo    = $tierAtual === 'classico' ? 'premium' : 'classico';
+        $listingNovo = $tierNovo === 'premium'   ? 'gold_pro' : 'gold_special';
+
+        // Copia o payload e troca o listing_type_id
+        $payloadNovo = $rascunho->payload ?? [];
+        $payloadNovo['listing_type_id'] = $listingNovo;
+
+        // DUP-03: strip idempotente de sufixos de tier conhecidos
+        // Remove qualquer variação do sufixo no FINAL da string antes de reanexar
+        $sufixosConhecidos = [' - Premium', ' - Clássico', ' - Classico', ' - Classic', ' - Pro'];
+        $tituloBase        = $payloadNovo['title'] ?? '';
+        foreach ($sufixosConhecidos as $s) {
+            // Usa preg_replace para remover o sufixo exato apenas no final da string (case-insensitive)
+            // Comentário: str_replace simples não garante remoção apenas no final; por isso usamos preg
+            $tituloBase = preg_replace('/' . preg_quote($s, '/') . '\s*$/ui', '', $tituloBase);
+        }
+        $tituloBase = trim($tituloBase);
+
+        $sufixoNovo          = $tierNovo === 'premium' ? ' - Premium' : ' - Clássico';
+        $tituloNovo          = mb_substr($tituloBase . $sufixoNovo, 0, 60);
+        $payloadNovo['title'] = $tituloNovo;
+
+        // DUP-03: defesa anti-duplicata — nunca publicar se os dois títulos são idênticos
+        // (compara o título GERADO com o título ORIGINAL do rascunho de origem)
+        $tituloOriginal = $rascunho->payload['title'] ?? '';
+        if ($tituloOriginal === $tituloNovo) {
+            throw new \InvalidArgumentException(
+                'Os dois títulos ficaram idênticos — ajuste o título antes de gerar o tier oposto.'
+            );
+        }
+
+        // DUP-01: preço do tier oposto a partir de montarProdutosDoCliente (se SKU disponível)
+        // Fallback: copia o preço do rascunho original (publicador ajusta antes de publicar)
+        if ($rascunho->sku_origem !== null) {
+            $mlbEmpresa = MlbEmpresa::where('id', $rascunho->mlb_empresa_id)->with('implementacao')->first();
+            $produtos   = $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados);
+            $produto    = collect($produtos)->first(fn ($p) => trim($p['sku']) === trim($rascunho->sku_origem));
+
+            if ($produto !== null) {
+                // Usa o preço do tier oposto calculado no servidor
+                $payloadNovo['price'] = $tierNovo === 'premium'
+                    ? $produto['preco_anunciado_p']
+                    : $produto['preco_anunciado_c'];
+            }
+            // Se o produto não for encontrado, mantém o preço do payload original (degradação graciosa)
+        }
+
+        // DUP-04: criação com ml_item_id_classico e ml_item_id_premium zerados
+        // company_id e mlb_empresa_id copiados do rascunho de origem (imutáveis — SEL-03)
+        return MlAnuncioRascunho::create([
+            'company_id'          => $rascunho->company_id,
+            'mlb_empresa_id'      => $rascunho->mlb_empresa_id,
+            'user_id'             => $user->id,
+            'category_id'         => $rascunho->category_id,
+            'payload'             => $payloadNovo,
+            'status'              => MlAnuncioRascunho::STATUS_RASCUNHO,
+            'sku_origem'          => $rascunho->sku_origem,
+            'listing_tier'        => $tierNovo,
+            'ml_item_id_classico' => null, // DUP-04: zerado — ainda não publicado
+            'ml_item_id_premium'  => null,
+        ]);
+    }
+
+    /**
+     * Cria um rascunho-template a partir do rascunho de origem (UX-03 — Phase 81).
+     *
+     * Template = cópia fiel do publicado: mantém título, listing_type_id, tier e
+     * todos os campos do payload intactos. Não adiciona sufixo, não troca tier,
+     * não recalcula preço. Os três ml_item_id* nascem null (novo anúncio, ainda
+     * não publicado). Status sempre STATUS_RASCUNHO.
+     *
+     * Não lança exceção — não há verificação de título idêntico neste caminho.
+     */
+    private function criarTemplateInterno(MlAnuncioRascunho $rascunho, User $user): MlAnuncioRascunho
+    {
+        return MlAnuncioRascunho::create([
+            'company_id'          => $rascunho->company_id,
+            'mlb_empresa_id'      => $rascunho->mlb_empresa_id,
+            'user_id'             => $user->id,
+            'category_id'         => $rascunho->category_id,
+            'sku_origem'          => $rascunho->sku_origem,
+            'listing_tier'        => $rascunho->listing_tier,
+            'payload'             => $rascunho->payload ?? [],
+            'status'              => MlAnuncioRascunho::STATUS_RASCUNHO,
+            'ml_item_id'          => null, // UX-03: zerado — novo anúncio não publicado
+            'ml_item_id_classico' => null,
+            'ml_item_id_premium'  => null,
+        ]);
+    }
+
+    /**
+     * Tenta publicar um rascunho ENGOLINDO a exceção (DUP-04: falha de um tier não aborta o outro).
+     *
+     * Diferença crítica em relação a MlPublicacaoService::publicar():
+     *   - publicar() RELANÇA a exceção (comportamento original preservado);
+     *   - tentarPublicar() ENGOLE e retorna array com ok=false + erros.
+     * Isso garante que a falha do 2º tier não interrompa o fluxo de publicarDuplo().
+     *
+     * @return array{ok: bool, status: ?string, ml_item_id: ?string, tier: ?string, erros: ?array}
+     */
+    private function tentarPublicar(MlAnuncioRascunho $r): array
+    {
+        try {
+            $publicado = $this->publicacao->publicar($r);
+
+            return [
+                'ok'         => $publicado->status === MlAnuncioRascunho::STATUS_PUBLICADO,
+                'status'     => $publicado->status,
+                'ml_item_id' => $publicado->ml_item_id,
+                'tier'       => $r->listing_tier,
+                'erros'      => $publicado->validation_errors,
+            ];
+        } catch (\Throwable $e) {
+            Log::error("[MLB Publicacao] Falha ao publicar tier {$r->listing_tier} rascunho {$r->id}: {$e->getMessage()}");
+            $fresh = $r->fresh();
+
+            return [
+                'ok'         => false,
+                'status'     => $fresh?->status,
+                'ml_item_id' => null,
+                'tier'       => $r->listing_tier,
+                'erros'      => $fresh?->validation_errors ?? [['mensagem' => 'Falha ao publicar. Tente novamente.']],
+            ];
+        }
     }
 
     // ─── Helpers privados ───
@@ -516,6 +1071,86 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * Publica um lote de rascunhos da mesma empresa de forma assíncrona.
+     *
+     * BULK-01: double-check de empresa (SEL-04) — rascunho_ids de outra empresa é 403.
+     * BULK-02: pré-check de token 1x antes de qualquer dispatch — conta desconectada é 422.
+     * BULK-02: fan-out com delay escalonado de 3s por posição respeita rate limit do ML.
+     * BULK-03: ShouldBeUnique no job garante que duplo-envio não duplica os jobs.
+     * BULK-04: cada rascunho recebe status=publicando imediatamente após o dispatch.
+     *
+     * Máximo de 50 rascunhos por chamada (T-80-03 — proteção contra DoS / flood 429).
+     */
+    public function publicarLote(Request $request): JsonResponse
+    {
+        // Valida a entrada — company_id + lista de ids de rascunhos
+        $dados = $request->validate([
+            'company_id'    => ['required', 'integer', 'exists:companies,id'],
+            'rascunho_ids'  => ['required', 'array', 'min:1', 'max:50'],
+            'rascunho_ids.*' => ['integer', 'exists:ml_anuncio_rascunhos,id'],
+        ]);
+
+        $company = Company::findOrFail($dados['company_id']);
+        $company->loadMissing('mlToken');
+
+        // SEL-04: double-check por empresa (BULK-01) — publicador só pode publicar em empresa atribuída
+        $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)->first();
+        abort_unless(
+            $request->user()->isAdmin() || $mlbEmpresa?->responsavel_id === $request->user()->id,
+            403,
+            'Empresa não atribuída a este publicador.'
+        );
+
+        // BULK-02: pré-check de token 1x — verificação única antes de qualquer dispatch
+        $token = $this->ml->ensureValidToken($company);
+        if (! $token) {
+            return response()->json([
+                'ok'   => false,
+                'erros' => [['mensagem' => "Conta ML {$company->name} desconectada — reconecte via Configurações."]],
+            ], 422);
+        }
+
+        // Double-check de pertencimento: TODOS os rascunho_ids devem ser da empresa informada (T-80-02)
+        $rascunhos = MlAnuncioRascunho::whereIn('id', $dados['rascunho_ids'])
+            ->where('company_id', $dados['company_id'])
+            ->get();
+
+        if ($rascunhos->count() !== count($dados['rascunho_ids'])) {
+            return response()->json([
+                'ok'   => false,
+                'erros' => [['mensagem' => 'Um ou mais rascunhos não pertencem à empresa informada.']],
+            ], 403);
+        }
+
+        // Fan-out com delay escalonado (BULK-02) + marca STATUS_PUBLICANDO (BULK-04)
+        // 3s por posição respeita rate limit do ML (~2 chamadas HTTP por publicação)
+        // ShouldBeUnique no job já evita duplicatas de dispatch
+        foreach ($rascunhos->values() as $i => $r) {
+            // Pula rascunhos que já estão em processo de publicação ou publicados
+            if (in_array($r->status, [MlAnuncioRascunho::STATUS_PUBLICANDO, MlAnuncioRascunho::STATUS_PUBLICADO], true)) {
+                continue;
+            }
+
+            // Marca como publicando imediatamente para feedback visual no painel (BULK-04)
+            $r->update(['status' => MlAnuncioRascunho::STATUS_PUBLICANDO]);
+
+            // Enfileira com delay escalonado para não saturar a API ML
+            PublicarAnuncioMlJob::dispatch($r->id)->delay(now()->addSeconds($i * 3));
+        }
+
+        $totalEnfileirado = $rascunhos->whereNotIn('status', [
+            MlAnuncioRascunho::STATUS_PUBLICANDO,
+            MlAnuncioRascunho::STATUS_PUBLICADO,
+        ])->count();
+
+        return response()->json([
+            'ok'          => true,
+            'enfileirados' => $rascunhos->count(),
+            'delays'      => ['inicio' => 0, 'fim' => max(0, ($rascunhos->count() - 1) * 3)],
+        ]);
+    }
+
+    /**
      * Retorna as empresas que PODEM receber publicação: as `companies` com conta
      * ML conectada (ml_token ativo). Esta é a fonte de verdade do painel — o que
      * "pode publicar" de fato é a conta que fez OAuth, não a régua do onboarding.
@@ -529,7 +1164,7 @@ class MlbAnuncioController extends Controller
      * do rascunho a partir da planilha do cliente (Phase 76). Onde não há vínculo,
      * o wizard abre em branco (degradação graciosa).
      *
-     * @return Collection<int, array{id: int, nome: string, company_id: int, tem_token: bool, token_expirado: bool, tem_dados_cliente: bool, rascunhos_abertos: int}>
+     * @return Collection<int, array{id: int, nome: string, company_id: int, tem_token: bool, token_expirado: bool, tem_dados_cliente: bool, rascunhos_abertos: int, publicando_count: int}>
      */
     private function empresas(Request $request): Collection
     {
@@ -549,6 +1184,11 @@ class MlbAnuncioController extends Controller
                     ])
                     ->count();
 
+                // BULK-04: contador de rascunhos em processo de publicação assíncrona
+                $publicando = MlAnuncioRascunho::where('company_id', $c->id)
+                    ->where('status', MlAnuncioRascunho::STATUS_PUBLICANDO)
+                    ->count();
+
                 // mlb_empresa ligada (se houver) → habilita dados do cliente (Phase 76)
                 $mlbEmp = MlbEmpresa::where('company_id', $c->id)
                     ->with('implementacao')
@@ -563,6 +1203,8 @@ class MlbAnuncioController extends Controller
                     'token_expirado'    => $c->mlToken?->isExpired() ?? false,
                     'tem_dados_cliente' => $mlbEmp?->implementacao !== null,
                     'rascunhos_abertos' => (int) $abertos,
+                    // BULK-04: quantos rascunhos estão em publicação assíncrona agora
+                    'publicando_count'  => (int) $publicando,
                 ];
             });
     }

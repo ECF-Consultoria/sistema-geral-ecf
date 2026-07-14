@@ -86,6 +86,13 @@ class DashboardController extends Controller
             }
         }
 
+        // Membro do setor Polos (não-admin): landing direto no Painel Polos — a
+        // equipe de Polos opera na seção Polos, não no dashboard de carteira/
+        // consultoria. Independe do cargo (permissão é concedida ao setor).
+        if (! $user->isAdmin() && $user->setores()->where('slug', 'polos')->exists()) {
+            return redirect()->route('mlb.polos-painel');
+        }
+
         $period = $request->get('period', '30');
         $since  = $this->getSince($period);
 
