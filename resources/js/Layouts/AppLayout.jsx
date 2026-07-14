@@ -105,13 +105,19 @@ const NAV_TREE = [
     // page: 'EmDesenvolvimento' idêntico — o que fazia isActive() casar os
     // dois simultaneamente. Agora cada um tem page própria.
     // Badge estatico "Em breve" via `badgeText` (distinto de `showBadge`).
+    // Phase 75 Plan 75-05 (DEC-3) — o stub de topo "Shopee — Em breve" virou um
+    // grupo real (espelhando "Mercado Livre"). Filho "Empresas" gate por
+    // permission:shopee.empresas (admin + Setor Shopee); o Dashboard segue como
+    // stub "Em breve" (rota shopee.dashboard já existe). itemVisivel() esconde
+    // "Empresas" de quem não tem a key e o grupo some se nenhum filho for visível.
     {
-        label: 'Shopee',
-        routeName: 'shopee.dashboard',
-        page: 'Dashboard/ShopeeShell',
+        group: 'Shopee',
         icon: ShoppingCart,
         iconSrc: '/images/shopee-icon.svg',
-        badgeText: 'Em breve',
+        children: [
+            { label: 'Empresas',  routeName: 'shopee.empresas.index', page: 'Shopee/Empresas',      icon: Building2,       permission: 'shopee.empresas' },
+            { label: 'Dashboard', routeName: 'shopee.dashboard',      page: 'Dashboard/ShopeeShell', icon: LayoutDashboard, badgeText: 'Em breve' },
+        ],
     },
     {
         label: 'Amazon',
