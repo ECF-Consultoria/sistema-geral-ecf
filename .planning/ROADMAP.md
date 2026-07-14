@@ -258,6 +258,16 @@ Ver `.planning/research/v15-nps-templates-schema.md` para detalhes:
 - Escala 1-5 SEMPRE — nunca 0-10 clássico NPS
 - Deploy gate ativo — perguntar antes de deploy.sh (outro dev em paralelo)
 
+### Phase 75: Empresas Shopee — habilitar NPS para clientes atendidos na Shopee (sem métricas/API)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Backend NPS (Phases 68–73). Independente do Desempenho v2 (Phase 74).
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 75 to break down)
+
 ---
 *Roadmap criado: 2026-07-07 — Milestone v15.0 (NPS Templates) — 6 phases (68-73) cobrindo 29 REQs; granularity=standard*
 *Roadmap atualizado: 2026-07-09 — Phase 74 (Módulo Desempenho v2) adicionada como tail da milestone, cobrindo 14 REQs DESEMP em 10 plans / 5 waves*
