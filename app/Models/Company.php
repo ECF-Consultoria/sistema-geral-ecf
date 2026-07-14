@@ -163,8 +163,14 @@ class Company extends Model
 
     public function consultor()
     {
+        // Leitura CONSOLIDADA do responsável (Analista de Performance).
+        // ->distinct() é a apólice para a Phase 78: quando a mesma empresa+role
+        // ganhar uma 2ª linha na pivot (servico_id Shopee), o servico_id NÃO está
+        // no SELECT (não há withPivot('servico_id') aqui) → distinct colapsa ML+Shopee
+        // para 1 responsável. Em Phase 76 (sem dupes) o resultado é idêntico ao de hoje.
         return $this->belongsToMany(User::class, 'company_users')
-            ->wherePivot('role', 'consultor');
+            ->wherePivot('role', 'consultor')
+            ->distinct();
     }
 
     /**
@@ -174,8 +180,30 @@ class Company extends Model
      */
     public function estrategista()
     {
+        // Consolidado + dedup defensivo (ver comentário em consultor()).
         return $this->belongsToMany(User::class, 'company_users')
-            ->wherePivot('role', 'estrategista');
+            ->wherePivot('role', 'estrategista')
+            ->distinct();
+    }
+
+    /**
+     * Variantes SERVICE-AWARE (por servico_id) — habilitam a aba Shopee da Phase 78.
+     * Os leitores consolidados atuais (carteira → bônus) NÃO usam estas relações;
+     * elas existem para quando a UI precisar do responsável de um serviço específico.
+     * Filtram a pivot company_users por (role, servico_id).
+     */
+    public function consultorDoServico(int $servicoId)
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', 'consultor')
+            ->wherePivot('servico_id', $servicoId);
+    }
+
+    public function estrategistaDoServico(int $servicoId)
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', 'estrategista')
+            ->wherePivot('servico_id', $servicoId);
     }
 
     public function meetings()

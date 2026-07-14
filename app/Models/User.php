@@ -194,16 +194,30 @@ class User extends Authenticatable
 
     public function companies()
     {
+        // Carteira CONSOLIDADA — alimenta o bônus. Blindagem contra a Phase 78
+        // (linha ML + linha Shopee do mesmo par): usamos ->select('companies.*')->distinct().
+        //
+        // Por que NÃO basta ->distinct() sozinho e por que removemos withPivot/withTimestamps:
+        // withPivot('assigned_at') e withTimestamps() reinjetam assigned_at/created_at/updated_at
+        // aliasados no SELECT (aliasedPivotColumns). Se a linha ML e a linha Shopee tiverem esses
+        // valores divergentes, o distinct NÃO colapsa → carteira dobrada → bônus dobrado (Pitfall 4).
+        // Restringir o SELECT a companies.* garante o dedup mesmo com pivot divergente.
+        // Assumption A2 confirmada por grep: nenhum consumidor lê ->pivot->role/->pivot->assigned_at
+        // desta relação (só pluck('companies.id')/get/exists). Call-sites que precisam do papel
+        // (ex.: PortfolioController) re-declaram ->withPivot('role') por conta própria.
         return $this->belongsToMany(Company::class, 'company_users')
-            ->withPivot('role', 'assigned_at')
-            ->withTimestamps();
+            ->select('companies.*')
+            ->distinct();
     }
 
     public function consultorCompanies()
     {
+        // Carteira do Analista (consolidada) — mesmo dedup defensivo do companies().
+        // role é fixado pelo wherePivot, não precisa vir no SELECT.
         return $this->belongsToMany(Company::class, 'company_users')
             ->wherePivot('role', 'consultor')
-            ->withPivot('role', 'assigned_at');
+            ->select('companies.*')
+            ->distinct();
     }
 
     /**
@@ -212,9 +226,11 @@ class User extends Authenticatable
      */
     public function estrategistaCompanies()
     {
+        // Carteira do Estrategista (consolidada) — mesmo dedup defensivo do companies().
         return $this->belongsToMany(Company::class, 'company_users')
             ->wherePivot('role', 'estrategista')
-            ->withPivot('role', 'assigned_at');
+            ->select('companies.*')
+            ->distinct();
     }
 
     public function generatedSurveys()
