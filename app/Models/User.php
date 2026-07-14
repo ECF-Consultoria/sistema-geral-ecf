@@ -185,6 +185,17 @@ class User extends Authenticatable
             if ($lideraPerformance) {
                 $keys = array_values(array_unique(array_merge($keys, Permissions::AUTO_LIDERANCA_PERFORMANCE)));
             }
+
+            // Phase 78 (v16.0): /shopee/empresas é EXCLUSIVO do líder do Setor Shopee
+            // (+ admin). A permission shopee.empresas NÃO é concedida aos membros do
+            // setor (removida de setor_permissoes por migration) — só o líder a recebe
+            // aqui. É o líder quem atribui a empresa a um analista/estrategista do setor.
+            $lideraShopee = $this->setoresLiderados()
+                ->where('setores.slug', 'shopee')
+                ->exists();
+            if ($lideraShopee) {
+                $keys = array_values(array_unique(array_merge($keys, [Permissions::SHOPEE_EMPRESAS])));
+            }
         }
 
         return $this->effectivePermissionsCache = $keys;

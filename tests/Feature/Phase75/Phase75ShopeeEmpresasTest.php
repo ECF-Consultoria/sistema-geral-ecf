@@ -119,13 +119,11 @@ class Phase75ShopeeEmpresasTest extends TestCase
     }
 
     /**
-     * Cria um user (não-admin) membro de um setor que possui a permission key
-     * shopee.empresas — prova o gate positivo sem depender de admin.
+     * Cria o Setor Shopee (fetch-or-create — a migration da Phase 77 já cria no
+     * RefreshDatabase) e retorna [setorId, cargoAnalistaId].
      */
-    private function criarUserComSetorShopee(): User
+    private function setorShopee(): array
     {
-        // O Setor Shopee + cargos + permissão shopee.empresas já são criados pela
-        // migration da Phase 77 (roda no RefreshDatabase). Fetch-or-create idempotente.
         $setorId = (int) DB::table('setores')->where('slug', 'shopee')->value('id');
         if (! $setorId) {
             $setorId = (int) DB::table('setores')->insertGetId([
@@ -133,14 +131,6 @@ class Phase75ShopeeEmpresasTest extends TestCase
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
-
-        if (! DB::table('setor_permissoes')->where('setor_id', $setorId)->where('permission_key', 'shopee.empresas')->exists()) {
-            DB::table('setor_permissoes')->insert([
-                'setor_id' => $setorId, 'permission_key' => 'shopee.empresas',
-                'created_at' => now(), 'updated_at' => now(),
-            ]);
-        }
-
         $cargoId = (int) DB::table('cargos')->where('setor_id', $setorId)->where('slug', 'analista')->value('id');
         if (! $cargoId) {
             $cargoId = (int) DB::table('cargos')->insertGetId([
@@ -148,25 +138,51 @@ class Phase75ShopeeEmpresasTest extends TestCase
                 'created_at' => now(), 'updated_at' => now(),
             ]);
         }
+        return [$setorId, $cargoId];
+    }
 
-        $user = User::create([
+    private function novoUser(): User
+    {
+        return User::create([
             'name'     => 'User Shopee ' . uniqid(),
             'email'    => 'user.shopee.' . uniqid() . '@ecf.test',
             'password' => bcrypt('senha'),
             'role'     => 'consultor',
             'active'   => true,
         ]);
+    }
+
+    /**
+     * Phase 78 (v16.0): /shopee/empresas é EXCLUSIVO do LÍDER do Setor Shopee.
+     * Cria um user membro do setor E líder (setor_lideres) — recebe shopee.empresas
+     * via User::effectivePermissions() (não via setor_permissoes de membro).
+     */
+    private function criarLiderSetorShopee(): User
+    {
+        [$setorId, $cargoId] = $this->setorShopee();
+        $user = $this->novoUser();
 
         DB::table('user_setores')->insert([
-            'user_id'      => $user->id,
-            'setor_id'     => $setorId,
-            'cargo_id'     => $cargoId,
-            'is_principal' => true,
-            'assigned_at'  => now(),
-            'created_at'   => now(),
-            'updated_at'   => now(),
+            'user_id' => $user->id, 'setor_id' => $setorId, 'cargo_id' => $cargoId, 'is_principal' => true,
+            'assigned_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        DB::table('setor_lideres')->insert([
+            'setor_id' => $setorId, 'user_id' => $user->id, 'assigned_at' => now(),
+            'created_at' => now(), 'updated_at' => now(),
         ]);
 
+        return $user;
+    }
+
+    /** Membro (analista) do Setor Shopee, NÃO líder — não deve acessar a aba. */
+    private function criarMembroSetorShopee(): User
+    {
+        [$setorId, $cargoId] = $this->setorShopee();
+        $user = $this->novoUser();
+        DB::table('user_setores')->insert([
+            'user_id' => $user->id, 'setor_id' => $setorId, 'cargo_id' => $cargoId, 'is_principal' => true,
+            'assigned_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+        ]);
         return $user;
     }
 
@@ -514,10 +530,18 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $this->getEmpresas()->assertStatus(200);
     }
 
-    public function test_gate_200_para_user_de_setor_com_a_key(): void
+    // Phase 78 (v16.0): /shopee/empresas é EXCLUSIVO do LÍDER do Setor Shopee.
+    public function test_gate_200_para_lider_do_setor_shopee(): void
     {
-        $user = $this->criarUserComSetorShopee();
-        $this->actingAs($user);
+        $lider = $this->criarLiderSetorShopee();
+        $this->actingAs($lider);
         $this->getEmpresas()->assertStatus(200);
+    }
+
+    public function test_gate_403_para_membro_nao_lider(): void
+    {
+        // Analista/estrategista membro do setor (não líder) NÃO acessa a aba.
+        $membro = $this->criarMembroSetorShopee();
+        $this->actingAs($membro)->get('/shopee/empresas')->assertStatus(403);
     }
 }

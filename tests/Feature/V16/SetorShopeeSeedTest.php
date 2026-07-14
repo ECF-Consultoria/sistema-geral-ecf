@@ -94,8 +94,12 @@ class SetorShopeeSeedTest extends TestCase
 
     // ─── 2: permissão exclusiva (T-77-01) ───────────────────────────────────
 
-    public function test_permissao_shopee_empresas_vinculada(): void
+    public function test_permissao_shopee_empresas_nao_e_de_membro(): void
     {
+        // Phase 78 (v16.0): a migration 2026_07_14_140000 REMOVE shopee.empresas do
+        // grant de MEMBROS do setor — a permissão passou a ser de LÍDER (concedida
+        // em User::effectivePermissions() só a quem lidera o setor). Após TODAS as
+        // migrations, o setor não deve mais ter shopee.empresas em setor_permissoes.
         $setorId = $this->setorShopeeId();
 
         $keys = DB::table('setor_permissoes')
@@ -103,7 +107,7 @@ class SetorShopeeSeedTest extends TestCase
             ->pluck('permission_key')
             ->all();
 
-        $this->assertSame(['shopee.empresas'], $keys, 'O setor Shopee deve ter SOMENTE a permissão shopee.empresas (T-77-01).');
+        $this->assertNotContains('shopee.empresas', $keys, 'shopee.empresas NÃO deve ser permissão de membro (é de líder — Phase 78).');
     }
 
     // ─── 3: wiring Felipe (estrategista + líder) ────────────────────────────
