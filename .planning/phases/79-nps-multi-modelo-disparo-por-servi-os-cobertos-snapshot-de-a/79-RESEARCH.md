@@ -269,9 +269,11 @@ if ($modelosAplicaveis->isEmpty()) {
 | A3 | A coluna `role` de `nps_score_assignments` deve espelhar os valores da pivot (`consultor`/`estrategista`) OU normalizar (`analyst`/`strategist`) — DEC-79-D deixa "analyst↔consultor, strategist↔estrategista" | Schema | Escolha de nomenclatura; Fase 80 (relatórios) precisa saber. Recomendo persistir o valor da pivot (`consultor`/`estrategista`) para JOIN direto, e mapear rótulo na leitura |
 | A4 | Título por área do email ("NPS Performance" vs "NPS Shopee") — os textos vêm de `Configuracao::nps_textos` (conjunto único global) | Open Questions | O disparo atual não diferencia título por template; ver Open Questions |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Título/textos do email por modelo**
+> Resoluções travadas nos plans (2026-07-14): (a) assunto do email = `$modelo->nome` (MVP, no 79-03); (b) display por-serviço no `respond()` → **DEFERIDO** (W3/W5 do plan-checker — Open Question, com fallback; não bundlar no wiring crítico; vira polish da Fase 80/quick task); (c) `role` em `nps_score_assignments` = valor da pivot `consultor`/`estrategista` + coluna `service_setor` (travado no 79-01). Nenhuma pendência bloqueante.
+
+1. **Título/textos do email por modelo** _(RESOLVED — assunto = `$modelo->nome`, MVP, 79-03)_
    - O que sabemos: `NpsDispararMensal` monta o assunto via `NpsTextRenderer::render($textos['email_assunto'])` — `$textos` vem de `Configuracao::nps_textos` (global, único). O `NpsTemplate` tem `mensagem_whatsapp` (por-template, p/ Digisac) mas **não** tem campo de assunto/corpo de email por-template.
    - O que não está claro: o brief pede títulos por área ("NPS ECF Performance" vs "NPS Gestão de ADS Shopee"). O CONTEXT (DEC-79-B) foca no seed, não no texto do email.
    - Recomendação: MVP desta fase pode usar `$template->nome` no assunto (ex.: prefixar com o nome do modelo) sem criar campos novos. Se a gerência exigir textos customizados por modelo, é um item pequeno para a Fase 80 ou um follow-up. **Confirmar com o usuário no discuss/plan.**
