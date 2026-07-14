@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: completed
-stopped_at: Completed 75-03 (prova cadastro Comercial Shopee sem ML — verificação-only)
-last_updated: "2026-07-14T00:00:00.000Z"
+stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
+last_updated: "2026-07-14T14:33:13.691Z"
 last_activity: 2026-07-09
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 43
-  completed_plans: 47
+  completed_plans: 48
   percent: 88
 ---
 
@@ -134,6 +134,7 @@ Last activity: 2026-07-09
 | Phase 75 P01 | ~12min | 3 tasks (TDD RED + enum cross-driver + seed idempotente) | 4 files (2 migrations, 1 model, 1 test) |
 | Phase 75 P02 | ~2min | 2 tasks (TDD RED + key shopee.empresas no catálogo) | 2 files (1 support, 1 test) |
 | Phase 75 P03 | ~15min | 1 task (verificação-only: Feature test cadastro Shopee sem ML) | 1 file (1 test new) |
+| Phase 75 P04 | ~15min | 3 tasks (TDD: testes RED + ShopeeEmpresasController enxuto/guard IDOR + rotas gated) | 4 files (1 controller, 1 route, 2 tests) |
 
 ## Accumulated Context
 
@@ -593,7 +594,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-14T13:59:55.262Z
+Last session: 2026-07-14T14:33:13.672Z
 Stopped at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
