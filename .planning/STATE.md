@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
-stopped_at: Completed 76-04 (Wave 3 Phase 76 — regressão dos leitores consolidados + phase gate verde)
-last_updated: "2026-07-14T21:10:00.000Z"
+stopped_at: Completed 77-01 (Wave 1 Phase 77 — seed Setor Shopee RBAC + wiring Felipe/Gustavo)
+last_updated: "2026-07-14T21:14:11.000Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 13
-  completed_phases: 9
-  total_plans: 47
-  completed_plans: 53
-  percent: 69
+  completed_phases: 10
+  total_plans: 48
+  completed_plans: 54
+  percent: 77
 ---
 
 # Project State
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 76
-Plan: 76-04 concluído (Wave 3 — phase gate)
+Phase: 77
+Plan: 77-01 concluído (Wave 1 — seed Setor Shopee RBAC + wiring Felipe/Gustavo)
 Status: Em execução (v16.0 — Responsáveis por serviço)
 Last activity: 2026-07-14
 
@@ -132,6 +132,7 @@ Last activity: 2026-07-14
 | Phase 74 P09 | 30min | 1 task (DesempenhoScoreServiceTest com fixture Carlos âncora — 12 testes 38 asserções) | 1 file (new) |
 | Phase 74 P10 | 55min | 3 tasks (DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + adaptação regressão 4 suites legadas) | 6 files (2 new + 4 modified) |
 | Phase 75 P01 | ~12min | 3 tasks (TDD RED + enum cross-driver + seed idempotente) | 4 files (2 migrations, 1 model, 1 test) |
+| Phase 77 P01 | ~15min | 2 tasks (migration idempotente Setor Shopee + suite Feature 9 testes) | 2 files (1 migration, 1 test) |
 | Phase 75 P02 | ~2min | 2 tasks (TDD RED + key shopee.empresas no catálogo) | 2 files (1 support, 1 test) |
 | Phase 75 P03 | ~15min | 1 task (verificação-only: Feature test cadastro Shopee sem ML) | 1 file (1 test new) |
 | Phase 75 P04 | ~15min | 3 tasks (TDD: testes RED + ShopeeEmpresasController enxuto/guard IDOR + rotas gated) | 4 files (1 controller, 1 route, 2 tests) |
