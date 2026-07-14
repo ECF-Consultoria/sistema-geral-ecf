@@ -300,11 +300,11 @@ Plans:
 **Goal:** Aba /shopee/empresas e Comercial gerenciam responsáveis POR SERVIÇO (Shopee): selects listam só profissionais do Setor Shopee; botão "Resolver" na aba Pendências abre popup (atribuir Analista/Estrategista Shopee + contato); remover "Gerar NPS"; Excluir = cancelar só o serviço Shopee.
 **Requirements**: DEC-78-1..DEC-78-5 (78-CONTEXT.md)
 **Depends on:** Phase 76 (por-serviço) + Phase 77 (Setor Shopee)
-**Plans:** 3 plans (planejados inline — subagentes indisponíveis por limite de sessão; RESEARCH parcial)
+**Plans:** 2/3 plans executed + DEPLOYADOS (78-01/02); 78-03 pendente. (Planejado/executado inline — subagentes indisponíveis por limite de sessão)
 
 Plans:
-- [ ] 78-01-PLAN.md — Backend: selects escopados ao Setor Shopee + pendência sem_responsavel por-serviço + endpoints resolver() e cancelarServico() gated shopee.empresas [DEC-78-1,2,4]
-- [ ] 78-02-PLAN.md — Frontend: remover Gerar NPS + botão Resolver → popup (selects Shopee + email) + Excluir=cancelar serviço (checkpoint visual) [DEC-78-2,3,4]
+- [x] 78-01-PLAN.md — Backend: selects escopados ao Setor Shopee + pendência sem_responsavel por-serviço + endpoints resolver() e cancelarServico() gated shopee.empresas [DEC-78-1,2,4] — 6 testes V16 + Phase 75 verde; deployado
+- [x] 78-02-PLAN.md — Frontend: remover Gerar NPS + botão Resolver → popup (selects Shopee + email) + Excluir=cancelar serviço [DEC-78-2,3,4] — build verde; deployado (checkpoint visual pendente)
 - [ ] 78-03-PLAN.md — Comercial: adicionar serviço Shopee com responsáveis por-serviço (AtribuirServico) [DEC-78-5]
 
 ### Phase 79: NPS multi-modelo — disparo por serviços cobertos + snapshot de atribuições por serviço (v16.0)
