@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: completed
-stopped_at: Completed 75-01-PLAN.md (fundação de dados do setor Shopee — enum + seed + constante)
-last_updated: "2026-07-14T14:30:00.000Z"
-last_activity: 2026-07-09
+stopped_at: Completed 75-02 (Phase 75 Wave 1 — key shopee.empresas no catálogo de permissões)
+last_updated: "2026-07-14T14:04:23.000Z"
+last_activity: 2026-07-14
 progress:
   total_phases: 8
   completed_phases: 7
   total_plans: 43
-  completed_plans: 45
+  completed_plans: 47
   percent: 88
 ---
 
@@ -132,6 +132,7 @@ Last activity: 2026-07-09
 | Phase 74 P09 | 30min | 1 task (DesempenhoScoreServiceTest com fixture Carlos âncora — 12 testes 38 asserções) | 1 file (new) |
 | Phase 74 P10 | 55min | 3 tasks (DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + adaptação regressão 4 suites legadas) | 6 files (2 new + 4 modified) |
 | Phase 75 P01 | ~12min | 3 tasks (TDD RED + enum cross-driver + seed idempotente) | 4 files (2 migrations, 1 model, 1 test) |
+| Phase 75 P02 | ~2min | 2 tasks (TDD RED + key shopee.empresas no catálogo) | 2 files (1 support, 1 test) |
 
 ## Accumulated Context
 
