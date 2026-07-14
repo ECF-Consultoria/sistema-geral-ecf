@@ -826,22 +826,6 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             .catch(() => {});
     }, []);
 
-    // ─── WIZ-06: busca grades quando entra na etapa de variações com exigeGrade=true ───
-    // Requer que o rascunho exista (para resolver o token da empresa via rota autenticada).
-    // Dispara apenas quando: etapa=2 + exigeGrade + rascunhoId disponível + grades ainda vazias.
-    // Se grades vier vazio, o VariacaoEditor exibe aviso pt-BR (não bloqueia o fluxo).
-    useEffect(() => {
-        if (etapa !== 2 || !exigeGrade || !rascunhoId || grades.length > 0) return;
-        setBusy('grade');
-        window.axios.get(
-            route('mlb.anuncios.rascunho.grades', { rascunho: rascunhoId }),
-            { params: domainId ? { domain_id: domainId } : {} },
-        )
-            .then(r => setGrades(Array.isArray(r.data.grades) ? r.data.grades : []))
-            .catch(() => { /* grade indisponível: aviso no VariacaoEditor */ })
-            .finally(() => setBusy(b => b === 'grade' ? '' : b));
-    }, [etapa, exigeGrade, rascunhoId, domainId]);
-
     // ─── SHIP-02: cotação automática de frete ao ter os 4 SELLER_PACKAGE_* + preço ───
     // Dispara com debounce de 800ms ao mudar peso/dimensões/preço/tipo.
     // Falha silenciosa: .catch vazio — nunca bloqueia a publicação.
@@ -1034,6 +1018,23 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
 
     // WIZ-03: publicar fica bloqueado quando catálogo é obrigatório e não foi informado
     const bloqueadoPorCatalogo = catalogRequired && !catalogPreenchido;
+
+    // ─── WIZ-06: busca grades quando entra na etapa de variações com exigeGrade=true ───
+    // Requer que o rascunho exista (para resolver o token da empresa via rota autenticada).
+    // Dispara apenas quando: etapa=2 + exigeGrade + rascunhoId disponível + grades ainda vazias.
+    // Se grades vier vazio, o VariacaoEditor exibe aviso pt-BR (não bloqueia o fluxo).
+    // NOTA: precisa ficar DEPOIS do useMemo `exigeGrade` (senão TDZ = tela preta na montagem).
+    useEffect(() => {
+        if (etapa !== 2 || !exigeGrade || !rascunhoId || grades.length > 0) return;
+        setBusy('grade');
+        window.axios.get(
+            route('mlb.anuncios.rascunho.grades', { rascunho: rascunhoId }),
+            { params: domainId ? { domain_id: domainId } : {} },
+        )
+            .then(r => setGrades(Array.isArray(r.data.grades) ? r.data.grades : []))
+            .catch(() => { /* grade indisponível: aviso no VariacaoEditor */ })
+            .finally(() => setBusy(b => b === 'grade' ? '' : b));
+    }, [etapa, exigeGrade, rascunhoId, domainId]);
 
     // ─── BULK-01: rascunhos que podem ser (re)enviados — exclui publicando/publicado ───
     const rascunhosSelecionaveis = useMemo(
