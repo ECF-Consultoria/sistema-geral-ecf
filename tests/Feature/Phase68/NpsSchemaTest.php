@@ -303,12 +303,15 @@ class NpsSchemaTest extends TestCase
     public function test_multiplos_templates_nao_default_coexistem_sem_erro(): void
     {
         // Sanity: unique parcial NAO bloqueia rows com is_default=false.
-        // Estado inicial: 1 template default (seed). Adicionamos 3 nao-default —
-        // deve funcionar sem exception.
+        // Estado inicial: 1 template default (seed "NPS Padrão") + 1 nao-default
+        // (seed "NPS Shopee", Phase 79). Contamos o baseline de nao-default antes
+        // de adicionar mais 3 pra o teste ser robusto a seeds aditivos.
+        $naoDefaultBaseline = NpsTemplate::where('is_default', false)->count();
+
         NpsTemplate::factory()->count(3)->create(['is_default' => false]);
 
         $this->assertEquals(1, NpsTemplate::where('is_default', true)->count());
-        $this->assertEquals(3, NpsTemplate::where('is_default', false)->count());
+        $this->assertEquals($naoDefaultBaseline + 3, NpsTemplate::where('is_default', false)->count());
     }
 
     // ═══════════════════════════════════════════════════════════════════

@@ -107,7 +107,18 @@ class SeedNpsShopeeTest extends TestCase
 
     public function test_scope_liga_nps_shopee_ao_servico_shopee(): void
     {
-        $servicoShopeeId = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        // O seed da Phase 75 (2026_07_14_100002) já pode ter semeado o serviço
+        // shopee durante o RefreshDatabase. Resolvemos o serviço shopee ativo do
+        // MESMO jeito que o seed resolve; só criamos manualmente se ausente
+        // (base de teste sem o seed da Phase 75).
+        $servicoShopeeId = DB::table('servicos')
+            ->where('setor', Servico::SETOR_SHOPEE)
+            ->where('ativo', true)
+            ->value('id');
+
+        if ($servicoShopeeId === null) {
+            $servicoShopeeId = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        }
 
         $this->rodarSeed();
 

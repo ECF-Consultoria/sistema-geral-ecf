@@ -70,9 +70,12 @@ class NpsTemplateCrudTest extends TestCase
     #[Test]
     public function test_index_retorna_inertia_com_templates_ordenados_por_is_default_priority_id(): void
     {
-        // Além do seed "NPS Padrão" (is_default=true), criamos 2 templates com
-        // priorities diferentes. O primeiro na listagem deve ser o default
-        // (is_default vence priority no ORDER BY).
+        // Seeds base: "NPS Padrão" (is_default=true) + "NPS Shopee" (Phase 79,
+        // is_default=false). Criamos 2 templates com priorities diferentes. O
+        // primeiro na listagem deve ser o default (is_default vence priority).
+        // Contamos o baseline pra o teste ser robusto a seeds aditivos.
+        $baseline = NpsTemplate::count();
+
         NpsTemplate::factory()->create([
             'nome'     => 'Template Alpha',
             'priority' => 10,
@@ -89,8 +92,8 @@ class NpsTemplateCrudTest extends TestCase
         $response->assertOk();
         $response->assertInertia(fn ($page) => $page
             ->component('Nps/Configuracao')
-            ->has('templates', 3) // 2 criados + seed NPS Padrão
-            ->where('templates.0.is_default', true) // seed vem 1º pelo ORDER BY is_default DESC
+            ->has('templates', $baseline + 2) // 2 criados + seeds base
+            ->where('templates.0.is_default', true) // seed padrão vem 1º pelo ORDER BY is_default DESC
         );
     }
 
