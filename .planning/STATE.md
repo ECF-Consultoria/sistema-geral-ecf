@@ -4,13 +4,13 @@ milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
 stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
-last_updated: "2026-07-14T23:22:20.601Z"
+last_updated: "2026-07-14T23:35:26.931Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 13
   completed_phases: 10
   total_plans: 54
-  completed_plans: 55
+  completed_plans: 56
   percent: 77
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 79
-Plan: 79-01 concluído (Wave 1 — fundação de persistência do snapshot NPS multi-modelo: 3 tabelas + 3 models)
+Plan: 79-02 concluído (Wave 1 — seed idempotente NPS Shopee + link performance ao NPS Padrão; habilita disparo estrito 79-03)
 Status: Em execução (v16.0 — Responsáveis por serviço)
 Last activity: 2026-07-14
 
@@ -137,6 +137,7 @@ Last activity: 2026-07-14
 | Phase 75 P02 | ~2min | 2 tasks (TDD RED + key shopee.empresas no catálogo) | 2 files (1 support, 1 test) |
 | Phase 75 P03 | ~15min | 1 task (verificação-only: Feature test cadastro Shopee sem ML) | 1 file (1 test new) |
 | Phase 75 P04 | ~15min | 3 tasks (TDD: testes RED + ShopeeEmpresasController enxuto/guard IDOR + rotas gated) | 4 files (1 controller, 1 route, 2 tests) |
+| Phase 79 P02 | ~9min | 2 tasks (TDD RED + seed idempotente NPS Shopee + link performance ao NPS Padrão) | 4 files (1 migration, 1 test new, 2 testes legados ajustados) |
 
 ## Accumulated Context
 
