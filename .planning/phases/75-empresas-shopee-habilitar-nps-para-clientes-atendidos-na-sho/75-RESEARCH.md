@@ -367,9 +367,11 @@ Já cobertos inline nos Patterns 1-6 (todos com `// Source:` apontando para o ar
 | A3 | Nome exato "Shopee" não casa prefixos ML em `servicoDisparaImplementacao`/`slugSetorParaServico` | Pitfall 3 | Verificado por leitura: `str_contains` só casa Polos/Assessoria/Incubadora/Publicação/Publicidade/Gestão |
 | A4 | Stub Dashboard Shopee (`shopee.dashboard`) permanece acessível como filho do grupo | Pattern 6 / DEC-3 | Baixo — rota já existe (`routes/web.php:325`) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
-1. **Branch SQLite: `enum()->change()` vs `string()->change()`?**
+> Resoluções adotadas nos plans (2026-07-14): Q1 → Plan 01 trava `string()->change()` no branch SQLite (com teste antes de seguir); Q2 → mantido `null` (sem notificação ao líder Shopee) — discricionário, fora de escopo; Q3 → Dashboard stub segue sem gate (só "Em breve"), grupo aparece pelo filho "Empresas" gated. Nenhuma pendência bloqueante.
+
+1. **Branch SQLite: `enum()->change()` vs `string()->change()`?** _(RESOLVED — `string()->change()`, Plan 01)_
    - What we know: SQLite enforça CHECK; `->change()` rebuilda a tabela.
    - What's unclear: se o rebuild do enum regenera o CHECK corretamente em todas as versões-patch do Laravel 12 instaladas (A1).
    - Recommendation: usar `string` sem CHECK no branch SQLite (mais robusto, encerra a classe de bug polos/shopee/próximos). O executor DEVE rodar o teste da migration antes de prosseguir.

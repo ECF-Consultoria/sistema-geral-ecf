@@ -1,8 +1,8 @@
 ---
 phase: 75
 slug: empresas-shopee-habilitar-nps-para-clientes-atendidos-na-sho
-status: draft
-nyquist_compliant: false
+status: approved
+nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-14
 ---
@@ -39,11 +39,12 @@ created: 2026-07-14
 
 ## Per-Task Verification Map
 
-> A preencher pelo planner (os task IDs ainda não existem). Cobertura mínima exigida pelo RESEARCH.md:
+> Cobertura embutida nos plans como primeira task TDD (RED) de cada plano — 75-01-T1 (migração+seed), 75-02-T1 (permission), 75-03-T1 (cadastro sem ML), 75-04-T1 (aba+pendências+gate+IDOR+NPS). Mapa por decisão:
 
 | Área (decisão) | Requisito | Tipo de prova | Comando |
 |---|---|---|---|
 | Migration enum→'shopee' persiste em **SQLite** (CHECK enforçado) | DEC-1 | Feature (migration + create Servico setor=shopee) | `php artisan test --filter=Phase75` |
+| Guard anti-IDOR no bulkAssign (empresa fora do escopo Shopee → 422) | DEC-4 | Feature (`Phase75ShopeeEmpresasTest`) | `php artisan test --filter=Phase75` |
 | Seed serviço "Shopee" idempotente (rodar up() 2× não duplica) | DEC-1 | Feature | idem |
 | Cadastro empresa Shopee **sem ML** não cria `MlbEmpresa` e salva | DEC-1 | Feature (`ComercialController::store`) | idem |
 | Aba Shopee filtra só contrato setor='shopee' (exclui ML-only) | DEC-4 | Feature (`ShopeeEmpresasController@index`) | idem |
