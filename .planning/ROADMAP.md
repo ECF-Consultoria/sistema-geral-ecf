@@ -272,6 +272,56 @@ Plans:
 - [x] 75-04-PLAN.md — Backend da aba: ShopeeEmpresasController + rotas gated + pendências + atribuição + NPS gerável [DEC-2, DEC-4, DEC-5]
 - [x] 75-05-PLAN.md — Frontend: página Shopee/Empresas.jsx enxuta + grupo Shopee no menu + verificação visual [DEC-3, DEC-4, DEC-5]
 
+### Phase 76: Responsáveis por serviço — company_users com dimensão de serviço (fundação v16.0)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 75
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 76 to break down)
+
+### Phase 77: Setor Shopee organizacional — cargos e usuários (Felipe/Gustavo) (v16.0)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 76
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 77 to break down)
+
+### Phase 78: Comercial e aba Shopee — gerenciar serviço/responsáveis e revisar ações (revisa Phase 75) (v16.0)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 77
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 78 to break down)
+
+### Phase 79: NPS multi-modelo — disparo por serviços cobertos + snapshot de atribuições por serviço (v16.0)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 78
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 79 to break down)
+
+### Phase 80: Bônus e relatórios — DesempenhoScoreService lê atribuições por serviço + recortes por papel/pessoa (v16.0)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 79
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 80 to break down)
+
 ---
 *Roadmap criado: 2026-07-07 — Milestone v15.0 (NPS Templates) — 6 phases (68-73) cobrindo 29 REQs; granularity=standard*
 *Roadmap atualizado: 2026-07-09 — Phase 74 (Módulo Desempenho v2) adicionada como tail da milestone, cobrindo 14 REQs DESEMP em 10 plans / 5 waves*
