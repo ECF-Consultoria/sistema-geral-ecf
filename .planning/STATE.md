@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
-stopped_at: Completed 77-01 (Wave 1 Phase 77 — seed Setor Shopee RBAC + wiring Felipe/Gustavo)
-last_updated: "2026-07-14T21:14:11.000Z"
+stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
+last_updated: "2026-07-14T23:22:20.601Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 13
   completed_phases: 10
-  total_plans: 48
-  completed_plans: 54
+  total_plans: 54
+  completed_plans: 55
   percent: 77
 ---
 
@@ -25,8 +25,8 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 77
-Plan: 77-01 concluído (Wave 1 — seed Setor Shopee RBAC + wiring Felipe/Gustavo)
+Phase: 79
+Plan: 79-01 concluído (Wave 1 — fundação de persistência do snapshot NPS multi-modelo: 3 tabelas + 3 models)
 Status: Em execução (v16.0 — Responsáveis por serviço)
 Last activity: 2026-07-14
 
@@ -128,6 +128,7 @@ Last activity: 2026-07-14
 | Phase 74 P04 | 25min | 2 tasks (Big bang + cron mensal) | 6 files (5 modified, 1 deleted) |
 | Phase 74 P06 | 45min | 3 tasks (Dashboard/Index/Show reescritos + PerformanceController::show Rule 2) | 4 files |
 | Phase 74 P07 | 20min | 1 task (Desempenho/Configuracao.jsx) | 1 file (new) |
+| Phase 79 P01 | ~6min | 3 tasks (RED test + migration cross-driver + 3 models) | 6 files |
 | Phase 74 P08 | 25min | 3 tasks (ManualController + Show wrapper + artigos.js + DesempenhoBonificacao) | 4 files (3 modified, 1 new) |
 | Phase 74 P09 | 30min | 1 task (DesempenhoScoreServiceTest com fixture Carlos âncora — 12 testes 38 asserções) | 1 file (new) |
 | Phase 74 P10 | 55min | 3 tasks (DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + adaptação regressão 4 suites legadas) | 6 files (2 new + 4 modified) |
