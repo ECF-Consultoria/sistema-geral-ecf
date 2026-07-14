@@ -524,6 +524,22 @@ function VariacaoEditor({
         }));
     };
 
+    // ─── Move uma foto na sequência (−1 = para trás/capa, +1 = para frente) ───
+    // A ordem das fotos aqui é EXATAMENTE a que vai para o anúncio (a 1ª é a capa).
+    // Reordena picture_ids e picture_urls juntos para manter id↔preview alinhados.
+    const moverFoto = (idx, fotoIdx, direcao) => {
+        setVariacoes(vs => vs.map((v, i) => {
+            if (i !== idx) return v;
+            const ids  = [...(v.picture_ids ?? [])];
+            const urls = [...(v.picture_urls ?? [])];
+            const destino = fotoIdx + direcao;
+            if (destino < 0 || destino >= ids.length) return v; // fora dos limites
+            [ids[fotoIdx],  ids[destino]]  = [ids[destino],  ids[fotoIdx]];
+            [urls[fotoIdx], urls[destino]] = [urls[destino], urls[fotoIdx]];
+            return { ...v, picture_ids: ids, picture_urls: urls };
+        }));
+    };
+
     // COLOR é identificado pelo id que contém 'COLOR' (o ML usa 'COLOR' em todas as categorias)
     const attrCor = atributosVar.find(a => a.id === 'COLOR' || a.id === 'Cor' || a.name?.toLowerCase().includes('cor'));
 
@@ -706,26 +722,67 @@ function VariacaoEditor({
                                 <span className="ml-1 text-[10px] text-white/30">(pode selecionar várias; enviadas imediatamente ao ML)</span>
                             </span>
 
-                            {/* Miniaturas das fotos já enviadas */}
+                            {/* Miniaturas das fotos já enviadas — a ordem aqui é a do anúncio (1ª = capa) */}
                             {v.picture_urls?.length > 0 && (
-                                <div className="mb-2 flex flex-wrap gap-2">
-                                    {v.picture_urls.map((url, fi) => (
-                                        <div key={fi} className="relative group">
-                                            <img
-                                                src={url}
-                                                alt={`Foto ${fi + 1} — variação ${idx + 1}`}
-                                                className="h-14 w-14 rounded-lg border border-white/10 object-cover"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => removerFoto(idx, fi)}
-                                                className="absolute -right-1.5 -top-1.5 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white"
-                                            >
-                                                <Trash2 size={9} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
+                                <>
+                                    {v.picture_urls.length > 1 && (
+                                        <p className="mb-1.5 text-[10px] text-white/30">
+                                            A 1ª foto é a <b className="text-ecf-yellow/70">capa</b>. Use ◀ ▶ para reordenar — o anúncio sai nesta mesma sequência.
+                                        </p>
+                                    )}
+                                    <div className="mb-2 flex flex-wrap gap-2">
+                                        {v.picture_urls.map((url, fi) => (
+                                            <div key={fi} className="relative group">
+                                                <img
+                                                    src={url}
+                                                    alt={fi === 0 ? `Capa — variação ${idx + 1}` : `Foto ${fi + 1} — variação ${idx + 1}`}
+                                                    className={cn(
+                                                        'h-16 w-16 rounded-lg border object-cover',
+                                                        fi === 0 ? 'border-ecf-yellow/60' : 'border-white/10',
+                                                    )}
+                                                />
+                                                {/* Selo: capa ou número da sequência */}
+                                                <span className={cn(
+                                                    'absolute left-0.5 top-0.5 rounded px-1 text-[9px] font-semibold leading-tight',
+                                                    fi === 0 ? 'bg-ecf-yellow text-black' : 'bg-black/70 text-white/80',
+                                                )}>
+                                                    {fi === 0 ? 'Capa' : fi + 1}
+                                                </span>
+                                                {/* Remover */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removerFoto(idx, fi)}
+                                                    className="absolute -right-1.5 -top-1.5 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white"
+                                                >
+                                                    <Trash2 size={9} />
+                                                </button>
+                                                {/* Mover na sequência (aparece no hover) */}
+                                                {v.picture_urls.length > 1 && (
+                                                    <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex overflow-hidden rounded-b-lg bg-black/75">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moverFoto(idx, fi, -1)}
+                                                            disabled={fi === 0}
+                                                            title="Mover para trás (mais perto da capa)"
+                                                            className="flex-1 flex items-center justify-center py-0.5 text-white/80 transition hover:text-ecf-yellow disabled:opacity-20 disabled:hover:text-white/80"
+                                                        >
+                                                            <ChevronLeft size={12} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moverFoto(idx, fi, 1)}
+                                                            disabled={fi === v.picture_urls.length - 1}
+                                                            title="Mover para frente"
+                                                            className="flex-1 flex items-center justify-center py-0.5 text-white/80 transition hover:text-ecf-yellow disabled:opacity-20 disabled:hover:text-white/80"
+                                                        >
+                                                            <ChevronRight size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
                             )}
 
                             {/* Input de arquivo + feedback de upload */}
