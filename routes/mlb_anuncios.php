@@ -39,8 +39,33 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Rascunho (autosave + ciclo de vida)
         Route::post('/rascunho', [MlbAnuncioController::class, 'salvarRascunho'])->name('rascunho.store');
         Route::put('/rascunho/{rascunho}', [MlbAnuncioController::class, 'atualizarRascunho'])->name('rascunho.update');
+        // WIZ-05 (Phase 77 Plan 02): upload imediato de imagem por variação → devolve picture_id
+        // T-77-04: double-check de empresa no controller antes de qualquer chamada ao ML
+        Route::post('/rascunho/{rascunho}/imagem', [MlbAnuncioController::class, 'uploadImagem'])->name('rascunho.imagem');
+        // WIZ-06 (Phase 77 Plan 03): lista grades de tamanho disponíveis no domínio da categoria
+        // T-77-08: double-check de empresa; T-77-09: cacheado 1h no service; T-77-10: domain_id validado
+        Route::get('/rascunho/{rascunho}/grades', [MlbAnuncioController::class, 'listarGrades'])->name('rascunho.grades');
+        // SHIP-02 (Phase 78 Plan 01): cotação de frete por dimensões/peso — informativo, não bloqueia publicação
+        // T-78-01: double-check de empresa no controller; degradação graciosa (null) se endpoint falhar
+        Route::get('/rascunho/{rascunho}/frete', [MlbAnuncioController::class, 'cotarFrete'])->name('rascunho.frete');
         Route::post('/rascunho/{rascunho}/validar', [MlbAnuncioController::class, 'validar'])->name('validar');
         Route::post('/rascunho/{rascunho}/publicar', [MlbAnuncioController::class, 'publicar'])->name('publicar');
+        // DUP-02 (Phase 79 Plan 01): cria rascunho do tier oposto (Clássico→Premium ou Premium→Clássico)
+        // DUP-03: título com sufixo mínimo e strip idempotente (anti-duplicata ML)
+        Route::post('/rascunho/{rascunho}/duplicar-tier', [MlbAnuncioController::class, 'duplicarTier'])
+            ->name('rascunho.duplicar-tier');
+        // UX-03 (Phase 81 Plan 01): duplica um anúncio publicado como template inicial
+        // Mantém título/tier intactos, zera os três ml_item_ids → novo rascunho do zero
+        Route::post('/rascunho/{rascunho}/duplicar-template', [MlbAnuncioController::class, 'duplicarComoTemplate'])
+            ->name('rascunho.duplicar-template');
+        // DUP-02 / DUP-04 (Phase 79 Plan 01): publica par Clássico+Premium em 1 chamada HTTP
+        // Falha de um tier não aborta o outro — resposta traz resultado independente por tier
+        Route::post('/rascunho/{rascunho}/publicar-duplo', [MlbAnuncioController::class, 'publicarDuplo'])
+            ->name('publicar-duplo');
+        // BULK-01/02 (Phase 80 Plan 01): enfileira N rascunhos da mesma empresa em lote
+        // ShouldBeUnique no job + delay escalonado evitam duplicatas e 429 no ML
+        Route::post('/empresa/{company}/publicar-lote', [MlbAnuncioController::class, 'publicarLote'])
+            ->name('publicar-lote');
 
         // Metadados do wizard (JSON)
         Route::get('/meta/prever-categoria', [MlbAnuncioController::class, 'preverCategoria'])->name('meta.prever');

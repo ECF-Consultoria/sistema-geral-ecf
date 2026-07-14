@@ -120,14 +120,24 @@ class MlPublicacaoService
                 $this->ml->post($company, "/items/{$itemId}/description", ['plain_text' => $descricao]);
             }
 
+            // DUP-04: gravar ml_item_id no campo do tier correto.
+            // ml_item_id legado também é preenchido para manter retrocompatibilidade
+            // com código que ainda lê $rascunho->ml_item_id (controller e wizard).
+            // A falha de um tier NÃO chega aqui — o catch abaixo não toca ml_item_id_*,
+            // preservando o campo do tier que publicou com sucesso (Phase 79).
+            $campoTier = $rascunho->listing_tier === 'premium'
+                ? 'ml_item_id_premium'
+                : 'ml_item_id_classico'; // fallback para 'classico' quando listing_tier é null (rascunho legado)
+
             $rascunho->update([
                 'status'            => MlAnuncioRascunho::STATUS_PUBLICADO,
-                'ml_item_id'        => $itemId,
+                'ml_item_id'        => $itemId,  // retrocompatibilidade (legado)
+                $campoTier          => $itemId,  // DUP-04: campo específico do tier
                 'published_at'      => now(),
                 'validation_errors' => null,
             ]);
 
-            Log::info("[MLB Publicacao] Anúncio {$itemId} publicado (empresa {$company->id}, rascunho {$rascunho->id})");
+            Log::info("[MLB Publicacao] Anúncio {$itemId} publicado (empresa {$company->id}, rascunho {$rascunho->id}, tier {$campoTier})");
         } catch (\Throwable $e) {
             $rascunho->update([
                 'status'            => MlAnuncioRascunho::STATUS_ERRO,

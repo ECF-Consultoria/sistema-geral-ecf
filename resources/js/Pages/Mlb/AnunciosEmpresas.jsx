@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
-import { Store, RefreshCw, Rocket, FileText, Search, PackageCheck } from 'lucide-react';
+import { Store, RefreshCw, Rocket, FileText, Search, PackageCheck, Loader2 } from 'lucide-react';
 
 // ─── Estado do token ML da empresa ───
 const TOKEN_BADGE = {
@@ -126,6 +126,13 @@ export default function AnunciosEmpresas({ empresas = [] }) {
                                         <div className="flex items-center gap-1 text-[11px] text-white/50">
                                             <FileText className="h-3 w-3" />
                                             <span>{e.rascunhos_abertos} rascunho{e.rascunhos_abertos !== 1 ? 's' : ''} em aberto</span>
+                                        </div>
+                                    )}
+                                    {/* BULK-04: contador de publicações em andamento — atualiza a cada reload do painel */}
+                                    {e.publicando_count > 0 && (
+                                        <div className="flex items-center gap-1 text-[11px] text-ecf-yellow/80">
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                            <span>{e.publicando_count} publicando…</span>
                                         </div>
                                     )}
                                 </div>

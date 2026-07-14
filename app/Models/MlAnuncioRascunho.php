@@ -34,6 +34,10 @@ class MlAnuncioRascunho extends Model
         'payload',
         'validation_errors',
         'ml_item_id',
+        // DUP-04: campos separados por tier — preenchidos por MlPublicacaoService::publicar().
+        // A falha de um tier nunca sobrescreve o campo do outro (campos independentes).
+        'ml_item_id_classico',
+        'ml_item_id_premium',
         'published_at',
     ];
 
