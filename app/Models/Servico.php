@@ -52,6 +52,9 @@ class Servico extends Model
     public const SETOR_PERFORMANCE = 'performance';
     public const SETOR_PUBLICACAO  = 'publicacao';
     public const SETOR_POLOS       = 'polos';
+    // Phase 75 Plan 75-01 (DEC-1): setor 'shopee' habilita empresas atendidas
+    // apenas na Shopee (sem métricas/API) — gatilho da aba Empresas Shopee + NPS.
+    public const SETOR_SHOPEE      = 'shopee';
     public const SETOR_OUTROS      = 'outros';
 
     /**
@@ -61,6 +64,7 @@ class Servico extends Model
         self::SETOR_PERFORMANCE,
         self::SETOR_PUBLICACAO,
         self::SETOR_POLOS,
+        self::SETOR_SHOPEE,
         self::SETOR_OUTROS,
     ];
 
@@ -84,6 +88,7 @@ class Servico extends Model
             self::SETOR_PERFORMANCE => 'Performance',
             self::SETOR_PUBLICACAO  => 'Publicação',
             self::SETOR_POLOS       => 'Polos',
+            self::SETOR_SHOPEE      => 'Shopee',
             self::SETOR_OUTROS      => 'Outros',
         ];
     }
@@ -142,5 +147,13 @@ class Servico extends Model
     public function isPublicacao(): bool
     {
         return $this->setor === self::SETOR_PUBLICACAO;
+    }
+
+    /**
+     * Helper: este serviço pertence ao setor Shopee? (Phase 75)
+     */
+    public function isShopee(): bool
+    {
+        return $this->setor === self::SETOR_SHOPEE;
     }
 }
