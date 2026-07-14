@@ -116,6 +116,100 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * Grade de anúncio em massa (SHEET-01) — a empresa é fixada ANTES da grade,
+     * mantendo a mesma proteção de "publicar na conta certa" do wizard (Phase 75).
+     *
+     * Espelha wizard(): loadMissing('mlToken') + abort_unless(mlToken, 404). O
+     * escopo por responsavel_id fica DORMANT sob o gate role:admin (todo acessante
+     * é admin e vê todas), igual ao resto do módulo — quando o gate abrir à equipe
+     * de publicação, o double-check por responsavel_id já vale sem rework.
+     *
+     * Props para a grade (Plan 02/03):
+     *   - empresa   : âncora company_id (mesmo shape do wizard)
+     *   - rascunhos : TODOS os rascunhos abertos da empresa (não só 50), com
+     *                 category_id e payload → a grade reconstrói as linhas por
+     *                 category_id (o "lote" de uma aba = category_id + empresa).
+     *   - produtos  : lista do cliente p/ pré-preenchimento por linha (SHEET-04).
+     */
+    public function massa(Request $request, Company $company)
+    {
+        // Só empresas com conta ML conectada podem publicar (mesma trava do wizard)
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+        // (escopo por publicador deferido — gate role:admin garante que é admin)
+
+        // mlb_empresa ligada (se houver) → dados do cliente para pré-preenchimento (Phase 76)
+        $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)
+            ->with('implementacao')
+            ->first();
+
+        return Inertia::render('Mlb/AnunciarMassa', [
+            'empresa' => [
+                'id'         => $company->id,   // âncora = company_id
+                'nome'       => $company->name,
+                'company_id' => $company->id,
+                'tem_token'  => true,
+            ],
+            // Rascunhos abertos da empresa (por company_id) para a grade reconstruir
+            // as linhas agrupadas por category_id. Inclui 'publicando' — a grade
+            // mostra o estado assíncrono (BULK-04) por linha ao reabrir a página.
+            'rascunhos' => MlAnuncioRascunho::where('company_id', $company->id)
+                ->whereIn('status', [
+                    MlAnuncioRascunho::STATUS_RASCUNHO,
+                    MlAnuncioRascunho::STATUS_VALIDADO,
+                    MlAnuncioRascunho::STATUS_ERRO,
+                    MlAnuncioRascunho::STATUS_PUBLICANDO,
+                ])
+                ->latest()
+                ->get()
+                ->map(fn ($r) => [
+                    'id'            => $r->id,
+                    'status'        => $r->status,
+                    'titulo'        => (string) data_get($r->payload, 'title', ''),
+                    // category_id agrupa os rascunhos por aba na grade (SHEET-02/03)
+                    'category_id'   => $r->category_id,
+                    'listing_tier'  => $r->listing_tier,
+                    'updated_at'    => $r->updated_at,
+                    // Erro resumido em 1 linha + completo expansível (reuso do wizard)
+                    'erro_resumo'   => $this->resumoErro($r->validation_errors),
+                    'erro_completo' => $this->erroCompleto($r->validation_errors),
+                    // payload completo → a grade reidrata cada célula da linha
+                    'payload'       => $r->payload,
+                ]),
+            // SHEET-04: produtos do cliente lidos de mlb_implementacoes.dados (se houver vínculo)
+            'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
+        ]);
+    }
+
+    /**
+     * Lista completa dos produtos do cliente para pré-preenchimento por linha (SHEET-01/SHEET-04).
+     *
+     * Endpoint JSON irmão de rascunhoPorProduto(): reusa o MESMO topo (loadMissing +
+     * abort_unless) e o MESMO helper montarProdutosDoCliente() — NÃO reimplementa o
+     * cálculo de preço. Diferença: aqui NÃO cria rascunho, só devolve a lista para a
+     * grade oferecer as opções de pré-preenchimento por SKU.
+     *
+     * A criação do rascunho por linha reusa rascunhoPorProduto (produto único por SKU)
+     * ou salvarRascunho — decisão do Plan 02/03. O badge de origem (cliente × publicador)
+     * virá de meta_campos no payload, já gravado por rascunhoPorProduto (Phase 76 DRAFT-04).
+     */
+    public function produtosDoClienteMassa(Request $request, Company $company): JsonResponse
+    {
+        // Só empresas com conta ML conectada (mesma trava do wizard / rascunhoPorProduto)
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+        // (escopo por publicador deferido — gate role:admin)
+
+        // mlb_empresa ligada (se houver) → dados do cliente
+        $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)->with('implementacao')->first();
+
+        return response()->json([
+            'ok'       => true,
+            'produtos' => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
+        ]);
+    }
+
+    /**
      * Cria um rascunho (início do wizard).
      *
      * SEL-07: mlb_empresa_id é obrigatório — o rascunho nasce ancorado na empresa.
@@ -697,6 +791,71 @@ class MlbAnuncioController extends Controller
             'categoria'        => $categoria,
             'atributos'        => $atributos,
             'catalog_required' => $catalogRequired,
+        ]);
+    }
+
+    /**
+     * Colunas da grade em massa para UMA categoria (SHEET-02, SHEET-03).
+     *
+     * SHEET-02: devolve APENAS os atributos obrigatórios desta categoria — nunca a
+     * união de 28 colunas de todas as categorias de móveis. Cada aba da grade tem
+     * só as suas colunas.
+     * SHEET-03: devolve o caminho completo (breadcrumb) da categoria, resolvendo a
+     * queixa do usuário de que só o `MLBxxxx` é confuso.
+     *
+     * O filtro de OBRIGATÓRIOS espelha EXATAMENTE o wizard (AnunciarML.jsx:1102):
+     *   required && !allow_variations && id !== 'SIZE_GRID_ID' && !contains(id,'GRID')
+     * — exclui Cor/Tamanho (vão em Variações, não na grade em massa) e a grade de
+     * moda (SIZE_GRID_ID / *GRID*). Cada coluna traz `values` só quando value_type
+     * == 'list', para a grade oferecer um <select> na célula.
+     */
+    public function colunasCategoria(string $categoryId): JsonResponse
+    {
+        $categoria = $this->meta->categoria($categoryId);
+        $atributos = $this->meta->atributos($categoryId);
+
+        // Breadcrumb: nomes de path_from_root (ex.: Casa, Móveis › … › Cadeiras) — SHEET-03
+        $caminho = array_column(
+            (array) data_get($categoria, 'path_from_root', []),
+            'name'
+        );
+
+        // Título máximo aceito pela categoria (fallback 60, igual à coluna base do sketch)
+        $maxTitulo = (int) (data_get($categoria, 'settings.max_title_length') ?: 60);
+
+        // Filtro de obrigatórios idêntico ao wizard — só o essencial da categoria ativa
+        $obrigatorios = collect($atributos)
+            ->filter(function ($a) {
+                $id = (string) data_get($a, 'id', '');
+
+                return data_get($a, 'tags.required') === true
+                    && data_get($a, 'tags.allow_variations') !== true
+                    && $id !== 'SIZE_GRID_ID'
+                    && ! str_contains($id, 'GRID');
+            })
+            ->map(fn ($a) => [
+                'id'         => data_get($a, 'id'),
+                'name'       => data_get($a, 'name'),
+                'value_type' => data_get($a, 'value_type'),
+                // values só faz sentido para listas (a grade monta o <select> a partir daqui)
+                'values'     => data_get($a, 'value_type') === 'list'
+                    ? array_values((array) data_get($a, 'values', []))
+                    : [],
+            ])
+            ->values()
+            ->all();
+
+        // WIZ-03 / catálogo obrigatório (mesma lógica de atributos()) — a grade bloqueia
+        // publicação sem catalog_product_id quando a categoria exige (ex.: eletrônicos).
+        $catalogRequired = collect($atributos)->contains(
+            fn ($a) => data_get($a, 'tags.catalog_required') === true
+        );
+
+        return response()->json([
+            'caminho'          => $caminho,          // array de strings (breadcrumb) — SHEET-03
+            'max_title_length' => $maxTitulo,        // int
+            'obrigatorios'     => $obrigatorios,     // só os obrigatórios da categoria — SHEET-02
+            'catalog_required' => $catalogRequired,  // bool
         ]);
     }
 

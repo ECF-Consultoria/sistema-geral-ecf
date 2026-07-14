@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/react';
 import { useMemo, useState } from 'react';
-import { Store, RefreshCw, Rocket, FileText, Search, PackageCheck, Loader2 } from 'lucide-react';
+import { Store, RefreshCw, Rocket, FileText, Search, PackageCheck, Loader2, Grid3x3 } from 'lucide-react';
 
 // ─── Estado do token ML da empresa ───
 const TOKEN_BADGE = {
@@ -42,6 +42,11 @@ export default function AnunciosEmpresas({ empresas = [] }) {
 
     function abrirWizard(empresa) {
         router.get(route('mlb.anuncios.wizard', { company: empresa.id }));
+    }
+
+    // Abre a grade de anúncio em massa da empresa (sem passar pelo wizard).
+    function abrirMassa(empresa) {
+        router.get(route('mlb.anuncios.massa', { company: empresa.id }));
     }
 
     const filtradas = useMemo(() => {
@@ -138,7 +143,19 @@ export default function AnunciosEmpresas({ empresas = [] }) {
                                 </div>
 
                                 {/* CTA */}
-                                <div className="mt-3 text-[11px] text-ecf-yellow/80">anunciar →</div>
+                                <div className="mt-3 flex items-center justify-between gap-2">
+                                    <span className="text-[11px] text-ecf-yellow/80">anunciar →</span>
+                                    {/* Atalho para a grade em massa — não dispara o abrir-wizard do card */}
+                                    <span
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(ev) => { ev.stopPropagation(); abrirMassa(e); }}
+                                        onKeyDown={(ev) => { if (ev.key === 'Enter') { ev.stopPropagation(); abrirMassa(e); } }}
+                                        className="inline-flex items-center gap-1 rounded-md border border-white/[0.1] bg-white/[0.03] px-2 py-1 text-[11px] text-white/60 hover:border-white/25 hover:text-white"
+                                    >
+                                        <Grid3x3 className="h-3 w-3" /> em massa
+                                    </span>
+                                </div>
                             </button>
                         ))}
                     </div>
