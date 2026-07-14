@@ -99,9 +99,23 @@ class Phase75ShopeeEmpresasTest extends TestCase
         ]);
     }
 
+    /**
+     * GET /shopee/empresas como requisição Inertia XHR — retorna JSON com as
+     * props, SEM renderizar o blade (que exige o asset da página no manifest
+     * Vite; a página React é o Plan 75-05, este plan é backend-only).
+     */
+    private function getEmpresas()
+    {
+        $version = app(\App\Http\Middleware\HandleInertiaRequests::class)->version(request());
+        return $this->withHeaders([
+            'X-Inertia'         => 'true',
+            'X-Inertia-Version' => (string) $version,
+        ])->get('/shopee/empresas');
+    }
+
     private function payloadCompanies($response): \Illuminate\Support\Collection
     {
-        return collect($response->viewData('page')['props']['companies']);
+        return collect($response->json('props.companies'));
     }
 
     /**
@@ -169,7 +183,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $empresa = $this->criarEmpresa();
         $this->criarContrato($empresa, $servico, true);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $response->assertStatus(200);
 
         $ids = $this->payloadCompanies($response)->pluck('id');
@@ -188,7 +202,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $empresa = $this->criarEmpresa();
         $this->criarContrato($empresa, $servico, true);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $ids = $this->payloadCompanies($response)->pluck('id');
 
         $this->assertNotContains($empresa->id, $ids->all(),
@@ -206,7 +220,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $empresa = $this->criarEmpresa();
         $this->criarContrato($empresa, $servico, false); // inativo
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $ids = $this->payloadCompanies($response)->pluck('id');
 
         $this->assertNotContains($empresa->id, $ids->all(),
@@ -222,7 +236,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $this->actingAsAdmin();
         $empresa = $this->criarEmpresa();
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $ids = $this->payloadCompanies($response)->pluck('id');
 
         $this->assertNotContains($empresa->id, $ids->all(),
@@ -243,7 +257,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $this->criarContrato($empresa, $performance, true);
         $this->criarContrato($empresa, $shopee, true);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $ids = $this->payloadCompanies($response)->pluck('id');
 
         $this->assertContains($empresa->id, $ids->all(),
@@ -262,7 +276,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $empresa = $this->criarEmpresa();
         $this->criarContrato($empresa, $servico, true);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $alvo = $this->payloadCompanies($response)->firstWhere('id', $empresa->id);
 
         $this->assertNotNull($alvo, 'Empresa deve estar no payload');
@@ -288,7 +302,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $empresa = $this->criarEmpresa(['empresa_nova' => true]);
         $this->criarContrato($empresa, $servico, true);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $alvo = $this->payloadCompanies($response)->firstWhere('id', $empresa->id);
 
         $this->assertNotNull($alvo);
@@ -318,7 +332,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         ]);
         $empresa->users()->attach($estrategista->id, ['role' => 'estrategista', 'assigned_at' => now()->toDateString()]);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $alvo = $this->payloadCompanies($response)->firstWhere('id', $empresa->id);
 
         $this->assertNotNull($alvo);
@@ -349,7 +363,7 @@ class Phase75ShopeeEmpresasTest extends TestCase
         $semNada = $this->criarEmpresa();
         $this->criarContrato($semNada, $servico, true);
 
-        $response = $this->get('/shopee/empresas');
+        $response = $this->getEmpresas();
         $payload = $this->payloadCompanies($response);
 
         $this->assertNotContains('sem_contato', $payload->firstWhere('id', $comEmail->id)['pendencias'],
@@ -495,12 +509,13 @@ class Phase75ShopeeEmpresasTest extends TestCase
     public function test_gate_200_para_admin(): void
     {
         $this->actingAsAdmin();
-        $this->get('/shopee/empresas')->assertStatus(200);
+        $this->getEmpresas()->assertStatus(200);
     }
 
     public function test_gate_200_para_user_de_setor_com_a_key(): void
     {
         $user = $this->criarUserComSetorShopee();
-        $this->actingAs($user)->get('/shopee/empresas')->assertStatus(200);
+        $this->actingAs($user);
+        $this->getEmpresas()->assertStatus(200);
     }
 }
