@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: completed
-stopped_at: Completed 75-02 (Phase 75 Wave 1 — key shopee.empresas no catálogo de permissões)
-last_updated: "2026-07-14T14:04:23.000Z"
-last_activity: 2026-07-14
+stopped_at: Completed 75-03 (prova cadastro Comercial Shopee sem ML — verificação-only)
+last_updated: "2026-07-14T00:00:00.000Z"
+last_activity: 2026-07-09
 progress:
   total_phases: 8
   completed_phases: 7
@@ -133,6 +133,7 @@ Last activity: 2026-07-09
 | Phase 74 P10 | 55min | 3 tasks (DesempenhoConfigControllerTest 11 + ConsolidarMesDesempenhoCommandTest 7 + adaptação regressão 4 suites legadas) | 6 files (2 new + 4 modified) |
 | Phase 75 P01 | ~12min | 3 tasks (TDD RED + enum cross-driver + seed idempotente) | 4 files (2 migrations, 1 model, 1 test) |
 | Phase 75 P02 | ~2min | 2 tasks (TDD RED + key shopee.empresas no catálogo) | 2 files (1 support, 1 test) |
+| Phase 75 P03 | ~15min | 1 task (verificação-only: Feature test cadastro Shopee sem ML) | 1 file (1 test new) |
 
 ## Accumulated Context
 
