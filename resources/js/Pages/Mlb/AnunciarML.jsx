@@ -324,12 +324,45 @@ function validarVariacoesLocalmente(variacoes) {
     return erros;
 }
 
+// ─── Gera um EAN-13 válido (padrão Mercado Livre) ───
+// Prefixo 789 (Brasil) + 9 dígitos aleatórios + dígito verificador (Módulo 10).
+// Mesma lógica do gerador do time: posição 1-indexada, ímpar ×1 e par ×3; o dígito
+// é (10 − soma%10) % 10. `existentes` (Set) evita repetir GTIN dentro do mesmo anúncio.
+function gerarEan13(existentes = new Set()) {
+    const digitoVerificador = (base12) => {
+        let soma = 0;
+        for (let i = 0; i < 12; i++) {
+            const mult = ((i + 1) % 2 === 0) ? 3 : 1; // par ×3, ímpar ×1
+            soma += Number(base12[i]) * mult;
+        }
+        const resto = soma % 10;
+        return resto === 0 ? 0 : 10 - resto;
+    };
+    for (let t = 0; t < 50; t++) {
+        let base = '789';
+        for (let i = 0; i < 9; i++) base += Math.floor(Math.random() * 10);
+        const ean = base + digitoVerificador(base);
+        if (!existentes.has(ean)) return ean;
+    }
+    // Fallback improvável (50 colisões seguidas)
+    let base = '789';
+    for (let i = 0; i < 9; i++) base += Math.floor(Math.random() * 10);
+    return base + digitoVerificador(base);
+}
+
+// ─── Coleta os GTINs já usados nas variações (para não gerar repetido) ───
+const gtinsUsados = (variacoes) =>
+    new Set((variacoes ?? [])
+        .map(v => v.attributes?.find(a => a.id === 'GTIN')?.value_name)
+        .filter(Boolean));
+
 // ─── Variação vazia (estrutura inicial de uma nova variação) ───
-function novaVariacao() {
+// Já nasce com o GTIN/EAN gerado (único no anúncio), como pediu o fluxo.
+function novaVariacao(existentes = new Set()) {
     return {
         attribute_combinations: [], // [{id,name,value_id,value_name}] — atributos allow_variations
         attributes: [               // GTIN e SELLER_SKU ficam aqui (não em combinations)
-            { id: 'GTIN',       value_name: '' },
+            { id: 'GTIN',       value_name: gerarEan13(existentes) },
             { id: 'SELLER_SKU', value_name: '' },
         ],
         picture_ids:      [],   // ids retornados pelo upload
@@ -370,7 +403,8 @@ function VariacaoEditor({
 
     // ─── Adiciona uma nova variação vazia ───
     const adicionarVariacao = () => {
-        setVariacoes(vs => [...vs, novaVariacao()]);
+        // Gera o GTIN/EAN da nova variação evitando repetir os já usados no anúncio
+        setVariacoes(vs => [...vs, novaVariacao(gtinsUsados(vs))]);
     };
 
     // ─── Remove variação pelo índice ───
@@ -598,13 +632,23 @@ function VariacaoEditor({
 
                         {/* ─── GTIN, SKU, preço, estoque ─── */}
                         <div className="grid gap-2 sm:grid-cols-2">
-                            <Campo label="GTIN / EAN (código de barras)" dica="Opcional, mas recomendado pelo ML">
-                                <input
-                                    className={inputCls}
-                                    value={getAttrSimples(v, 'GTIN')}
-                                    onChange={e => setAttrSimples(idx, 'GTIN', e.target.value)}
-                                    placeholder="7891234567890"
-                                />
+                            <Campo label="GTIN / EAN (código de barras)" dica="EAN-13 válido gerado automaticamente — pode editar ou gerar outro">
+                                <div className="flex gap-1.5">
+                                    <input
+                                        className={inputCls}
+                                        value={getAttrSimples(v, 'GTIN')}
+                                        onChange={e => setAttrSimples(idx, 'GTIN', e.target.value)}
+                                        placeholder="7891234567890"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setAttrSimples(idx, 'GTIN', gerarEan13(gtinsUsados(variacoes)))}
+                                        title="Gerar um EAN-13 válido novo (não repete os já usados)"
+                                        className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2 text-[11px] font-medium text-white/70 transition hover:border-ecf-yellow/40 hover:text-ecf-yellow"
+                                    >
+                                        Gerar
+                                    </button>
+                                </div>
                             </Campo>
                             <Campo label="SKU do vendedor (SELLER_SKU)">
                                 <input
