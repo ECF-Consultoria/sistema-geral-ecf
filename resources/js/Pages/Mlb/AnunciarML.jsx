@@ -992,8 +992,16 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     };
 
     // Só os atributos obrigatórios (o essencial do MVP), sem grade de moda
+    // Ficha técnica = atributos fixos obrigatórios (Marca, Modelo, material…).
+    // EXCLUI os que aceitam variação (Cor, Tamanho): esses vão na etapa de Variações,
+    // igual ao fluxo do próprio Mercado Livre (não duplicar aqui).
     const obrigatorios = useMemo(
-        () => atributos.filter(a => a.tags?.required && a.id !== 'SIZE_GRID_ID' && !String(a.id).includes('GRID')),
+        () => atributos.filter(a =>
+            a.tags?.required
+            && !a.tags?.allow_variations
+            && a.id !== 'SIZE_GRID_ID'
+            && !String(a.id).includes('GRID')
+        ),
         [atributos],
     );
     const exigeGrade = useMemo(
@@ -1845,9 +1853,18 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                     <h2 className="mb-3 text-sm font-semibold text-white">5. Imagem, garantia e descrição</h2>
                                     <div className="space-y-3">
-                                        <Campo label="URL da imagem principal" dica="Upload direto será adicionado numa próxima versão">
-                                            <input className={inputCls} value={imagemUrl} onChange={e => setImagemUrl(e.target.value)} placeholder="https://…" />
-                                        </Campo>
+                                        {/* Com variações, as fotos vêm da etapa de Variações (por variação).
+                                            A imagem principal aqui só aparece quando NÃO há variações. */}
+                                        {variacoes.length > 0 ? (
+                                            <div className="flex items-start gap-2 rounded-lg border border-white/[0.08] bg-ecf-bg px-3 py-2.5 text-[11px] text-white/50">
+                                                <PackageOpen size={14} className="mt-0.5 shrink-0 text-white/30" />
+                                                <span>As fotos deste anúncio vêm das <b className="text-white/70">variações</b> (uma ou mais por variação). Não é preciso imagem principal aqui.</span>
+                                            </div>
+                                        ) : (
+                                            <Campo label="URL da imagem principal" dica="Upload direto será adicionado numa próxima versão">
+                                                <input className={inputCls} value={imagemUrl} onChange={e => setImagemUrl(e.target.value)} placeholder="https://…" />
+                                            </Campo>
+                                        )}
                                         <Campo label="Garantia"><input className={inputCls} value={garantia} onChange={e => setGarantia(e.target.value)} placeholder="Ex.: 30 dias" /></Campo>
                                         <Campo label="Descrição" origem={origemCampos['description']}>
                                             <textarea
