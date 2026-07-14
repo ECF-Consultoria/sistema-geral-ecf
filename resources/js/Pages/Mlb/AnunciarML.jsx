@@ -2211,7 +2211,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                     </span>
                                                     {r.ml_item_id && (
                                                         <a
-                                                            href={`https://www.mercadolivre.com.br/anuncios/${r.ml_item_id}`}
+                                                            href={`https://produto.mercadolivre.com.br/MLB-${String(r.ml_item_id).replace(/^MLB-?/i, '')}`}
                                                             target="_blank" rel="noreferrer"
                                                             className="shrink-0 text-[10px] text-emerald-400/70 hover:underline"
                                                         >
@@ -2220,11 +2220,30 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                     )}
                                                 </div>
 
-                                                {/* Erro resumido em 1 linha (sem JSON cru) */}
+                                                {/* Erro: resumo em 1 linha por padrão; expande para o erro completo + copiar */}
                                                 {r.status === 'erro' && r.erro_resumo && (
-                                                    <p className="mt-1 pl-6 text-[11px] text-red-400" title={r.erro_resumo}>
-                                                        {r.erro_resumo}
-                                                    </p>
+                                                    <details className="mt-1 pl-6">
+                                                        <summary className="cursor-pointer text-[11px] text-red-400 marker:text-red-400/60">
+                                                            {r.erro_resumo}
+                                                        </summary>
+                                                        <div className="mt-1">
+                                                            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-red-500/20 bg-red-500/[0.05] p-2 text-[10px] leading-relaxed text-red-300/80">
+                                                                {r.erro_completo || r.erro_resumo}
+                                                            </pre>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const txt = r.erro_completo || r.erro_resumo || '';
+                                                                    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).catch(() => fallbackCopiar(txt));
+                                                                    else fallbackCopiar(txt);
+                                                                    setFlash('Erro copiado.');
+                                                                }}
+                                                                className="mt-1 flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60 hover:text-white/90"
+                                                            >
+                                                                <Copy size={10} /> Copiar erro
+                                                            </button>
+                                                        </div>
+                                                    </details>
                                                 )}
 
                                                 {/* Linha 2: ações — Abrir / Template / Excluir */}

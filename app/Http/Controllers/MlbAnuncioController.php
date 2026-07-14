@@ -103,8 +103,10 @@ class MlbAnuncioController extends Controller
                     'ml_item_id'    => $r->ml_item_id,
                     'listing_tier'  => $r->listing_tier,
                     'updated_at'    => $r->updated_at,
-                    // Erro resumido em 1 linha (o painel não mostra mais o JSON cru do ML)
+                    // Erro resumido em 1 linha (o painel mostra isso por padrão)…
                     'erro_resumo'   => $this->resumoErro($r->validation_errors),
+                    // …e o erro completo, que o publicador pode expandir/copiar quando precisar depurar
+                    'erro_completo' => $this->erroCompleto($r->validation_errors),
                     // payload completo → permite Abrir/editar o rascunho no wizard
                     'payload'       => $r->payload,
                 ]),
@@ -1225,6 +1227,23 @@ class MlbAnuncioController extends Controller
         }
 
         return mb_strlen($msg) > 120 ? mb_substr($msg, 0, 117) . '…' : $msg;
+    }
+
+    /**
+     * Texto completo dos erros de publicação (todas as causas), para o publicador
+     * expandir/copiar quando precisar depurar. Uma causa por linha.
+     */
+    private function erroCompleto(?array $errors): ?string
+    {
+        if (empty($errors)) {
+            return null;
+        }
+
+        return collect($errors)
+            ->map(fn ($e) => is_array($e)
+                ? ($e['mensagem'] ?? $e['message'] ?? json_encode($e, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES))
+                : (string) $e)
+            ->implode("\n");
     }
 
     private function empresas(Request $request): Collection
