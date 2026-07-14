@@ -31,6 +31,18 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // ─── Momento 2: wizard com empresa fixada (âncora = company com ml_token) ───
         Route::get('/wizard/{company}', [MlbAnuncioController::class, 'wizard'])->name('wizard');
 
+        // ─── Grade de anúncio em massa (Phase 82) — empresa fixada ANTES da grade ───
+        // SHEET-01: grade editável por categoria; escopo por responsavel_id dormant
+        // sob role:admin (mesmo padrão do wizard). Um lote = category_id + empresa.
+        Route::get('/massa/{company}', [MlbAnuncioController::class, 'massa'])->name('massa');
+        // SHEET-02/03: colunas base + só os obrigatórios da categoria + breadcrumb completo
+        Route::get('/massa/meta/{categoryId}/colunas', [MlbAnuncioController::class, 'colunasCategoria'])
+            ->where('categoryId', 'MLB[0-9]+')
+            ->name('massa.colunas');
+        // SHEET-01/04: lista completa do cliente p/ pré-preenchimento por linha da grade
+        Route::get('/massa/{company}/produtos', [MlbAnuncioController::class, 'produtosDoClienteMassa'])
+            ->name('massa.produtos');
+
         // DRAFT-02: cria rascunho pré-preenchido a partir de produto da planilha do cliente (Phase 76)
         // Nome resolvido: mlb.anuncios.rascunho.por-produto (consumido pelo front em 76-02)
         Route::post('/wizard/{company}/rascunho-por-produto', [MlbAnuncioController::class, 'rascunhoPorProduto'])
@@ -39,6 +51,8 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Rascunho (autosave + ciclo de vida)
         Route::post('/rascunho', [MlbAnuncioController::class, 'salvarRascunho'])->name('rascunho.store');
         Route::put('/rascunho/{rascunho}', [MlbAnuncioController::class, 'atualizarRascunho'])->name('rascunho.update');
+        // Excluir rascunho (limpa a lista de "Rascunhos recentes"); double-check de empresa no controller
+        Route::delete('/rascunho/{rascunho}', [MlbAnuncioController::class, 'excluirRascunho'])->name('rascunho.destroy');
         // WIZ-05 (Phase 77 Plan 02): upload imediato de imagem por variação → devolve picture_id
         // T-77-04: double-check de empresa no controller antes de qualquer chamada ao ML
         Route::post('/rascunho/{rascunho}/imagem', [MlbAnuncioController::class, 'uploadImagem'])->name('rascunho.imagem');

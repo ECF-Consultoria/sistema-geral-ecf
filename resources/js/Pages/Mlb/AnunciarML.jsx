@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, Calculator, Plus, Trash2, Upload, Image } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, Calculator, Plus, Trash2, Upload, Image, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
@@ -324,12 +324,45 @@ function validarVariacoesLocalmente(variacoes) {
     return erros;
 }
 
+// ─── Gera um EAN-13 válido (padrão Mercado Livre) ───
+// Prefixo 789 (Brasil) + 9 dígitos aleatórios + dígito verificador (Módulo 10).
+// Mesma lógica do gerador do time: posição 1-indexada, ímpar ×1 e par ×3; o dígito
+// é (10 − soma%10) % 10. `existentes` (Set) evita repetir GTIN dentro do mesmo anúncio.
+function gerarEan13(existentes = new Set()) {
+    const digitoVerificador = (base12) => {
+        let soma = 0;
+        for (let i = 0; i < 12; i++) {
+            const mult = ((i + 1) % 2 === 0) ? 3 : 1; // par ×3, ímpar ×1
+            soma += Number(base12[i]) * mult;
+        }
+        const resto = soma % 10;
+        return resto === 0 ? 0 : 10 - resto;
+    };
+    for (let t = 0; t < 50; t++) {
+        let base = '789';
+        for (let i = 0; i < 9; i++) base += Math.floor(Math.random() * 10);
+        const ean = base + digitoVerificador(base);
+        if (!existentes.has(ean)) return ean;
+    }
+    // Fallback improvável (50 colisões seguidas)
+    let base = '789';
+    for (let i = 0; i < 9; i++) base += Math.floor(Math.random() * 10);
+    return base + digitoVerificador(base);
+}
+
+// ─── Coleta os GTINs já usados nas variações (para não gerar repetido) ───
+const gtinsUsados = (variacoes) =>
+    new Set((variacoes ?? [])
+        .map(v => v.attributes?.find(a => a.id === 'GTIN')?.value_name)
+        .filter(Boolean));
+
 // ─── Variação vazia (estrutura inicial de uma nova variação) ───
-function novaVariacao() {
+// Já nasce com o GTIN/EAN gerado (único no anúncio), como pediu o fluxo.
+function novaVariacao(existentes = new Set()) {
     return {
         attribute_combinations: [], // [{id,name,value_id,value_name}] — atributos allow_variations
         attributes: [               // GTIN e SELLER_SKU ficam aqui (não em combinations)
-            { id: 'GTIN',       value_name: '' },
+            { id: 'GTIN',       value_name: gerarEan13(existentes) },
             { id: 'SELLER_SKU', value_name: '' },
         ],
         picture_ids:      [],   // ids retornados pelo upload
@@ -367,10 +400,14 @@ function VariacaoEditor({
 }) {
     // Estado de upload por índice de variação: { [idx]: 'enviando' | 'ok' | 'erro' }
     const [uploadStatus, setUploadStatus] = useState({});
+    // Arraste de fotos: quem está sendo arrastado e sobre qual alvo — { vIdx, fIdx }
+    const [arrastando, setArrastando] = useState(null);
+    const [alvoFoto, setAlvoFoto]     = useState(null);
 
     // ─── Adiciona uma nova variação vazia ───
     const adicionarVariacao = () => {
-        setVariacoes(vs => [...vs, novaVariacao()]);
+        // Gera o GTIN/EAN da nova variação evitando repetir os já usados no anúncio
+        setVariacoes(vs => [...vs, novaVariacao(gtinsUsados(vs))]);
     };
 
     // ─── Remove variação pelo índice ───
@@ -423,11 +460,13 @@ function VariacaoEditor({
         setVariacoes(vs => vs.map((v, i) => i !== idx ? v : { ...v, [campo]: value }));
     };
 
-    // ─── Upload de foto para uma variação (WIZ-05) ───
-    // O upload é imediato: assim que o arquivo é selecionado, envia para a rota de imagem.
-    // Se o rascunho ainda não existe, cria antes de enviar.
-    const handleUploadFoto = async (idx, arquivo) => {
-        if (!arquivo) return;
+    // ─── Upload de foto(s) para uma variação (WIZ-05) ───
+    // O upload é imediato: assim que o(s) arquivo(s) são selecionados, envia cada um
+    // para a rota de imagem. Aceita múltiplos arquivos de uma vez (envio sequencial,
+    // preservando a ordem de seleção). Se o rascunho ainda não existe, cria antes.
+    const handleUploadFotos = async (idx, arquivos) => {
+        const lista = Array.from(arquivos ?? []).filter(Boolean);
+        if (lista.length === 0) return;
 
         // Garante que o rascunho existe antes de enviar
         let idRascunho = rascunhoId;
@@ -438,28 +477,41 @@ function VariacaoEditor({
 
         setUploadStatus(s => ({ ...s, [idx]: 'enviando' }));
 
-        try {
-            const r = await window.axios.postForm(
-                route('mlb.anuncios.rascunho.imagem', { rascunho: idRascunho }),
-                { imagem: arquivo },
-            );
-            const pictureId = r.data.picture_id;
+        let enviadas = 0;
+        let ultimoErro = null;
 
-            // Grava picture_id na variação e URL de pré-visualização (local, não vai no payload)
-            const previewUrl = URL.createObjectURL(arquivo);
-            setVariacoes(vs => vs.map((v, i) => {
-                if (i !== idx) return v;
-                return {
-                    ...v,
-                    picture_ids:  [...(v.picture_ids ?? []), pictureId],
-                    picture_urls: [...(v.picture_urls ?? []), previewUrl],
-                };
-            }));
+        // Envia uma a uma para manter a ordem e acumular os picture_ids conforme retornam
+        for (const arquivo of lista) {
+            try {
+                const r = await window.axios.postForm(
+                    route('mlb.anuncios.rascunho.imagem', { rascunho: idRascunho }),
+                    { imagem: arquivo },
+                );
+                const pictureId = r.data.picture_id;
+
+                // Grava picture_id na variação e URL de pré-visualização (local, não vai no payload)
+                const previewUrl = URL.createObjectURL(arquivo);
+                setVariacoes(vs => vs.map((v, i) => {
+                    if (i !== idx) return v;
+                    return {
+                        ...v,
+                        picture_ids:  [...(v.picture_ids ?? []), pictureId],
+                        picture_urls: [...(v.picture_urls ?? []), previewUrl],
+                    };
+                }));
+                enviadas++;
+            } catch (e) {
+                // Mensagem de erro em pt-BR vinda do backend (422) ou genérica
+                ultimoErro = e.response?.data?.message ?? 'Erro ao enviar foto — tente novamente.';
+            }
+        }
+
+        if (ultimoErro) {
+            // Se algumas subiram e outras não, informa o parcial junto do erro
+            const prefixo = enviadas > 0 ? `${enviadas} enviada(s), mas ` : '';
+            setUploadStatus(s => ({ ...s, [idx]: `erro: ${prefixo}${ultimoErro}` }));
+        } else {
             setUploadStatus(s => ({ ...s, [idx]: 'ok' }));
-        } catch (e) {
-            // Mensagem de erro em pt-BR vinda do backend (422) ou genérica
-            const msg = e.response?.data?.message ?? 'Erro ao enviar foto — tente novamente.';
-            setUploadStatus(s => ({ ...s, [idx]: `erro: ${msg}` }));
         }
     };
 
@@ -472,6 +524,39 @@ function VariacaoEditor({
                 picture_ids:  (v.picture_ids ?? []).filter((_, fi) => fi !== fotoIdx),
                 picture_urls: (v.picture_urls ?? []).filter((_, fi) => fi !== fotoIdx),
             };
+        }));
+    };
+
+    // ─── Move uma foto na sequência (−1 = para trás/capa, +1 = para frente) ───
+    // A ordem das fotos aqui é EXATAMENTE a que vai para o anúncio (a 1ª é a capa).
+    // Reordena picture_ids e picture_urls juntos para manter id↔preview alinhados.
+    const moverFoto = (idx, fotoIdx, direcao) => {
+        setVariacoes(vs => vs.map((v, i) => {
+            if (i !== idx) return v;
+            const ids  = [...(v.picture_ids ?? [])];
+            const urls = [...(v.picture_urls ?? [])];
+            const destino = fotoIdx + direcao;
+            if (destino < 0 || destino >= ids.length) return v; // fora dos limites
+            [ids[fotoIdx],  ids[destino]]  = [ids[destino],  ids[fotoIdx]];
+            [urls[fotoIdx], urls[destino]] = [urls[destino], urls[fotoIdx]];
+            return { ...v, picture_ids: ids, picture_urls: urls };
+        }));
+    };
+
+    // ─── Reordena por arraste: tira a foto de 'de' e insere na posição 'para' ───
+    // Diferente do moverFoto (troca vizinhos), aqui pode mover para qualquer posição.
+    const reordenarFoto = (idx, de, para) => {
+        if (de === para) return;
+        setVariacoes(vs => vs.map((v, i) => {
+            if (i !== idx) return v;
+            const ids  = [...(v.picture_ids ?? [])];
+            const urls = [...(v.picture_urls ?? [])];
+            if (de < 0 || de >= ids.length || para < 0 || para >= ids.length) return v;
+            const [idMov]  = ids.splice(de, 1);
+            const [urlMov] = urls.splice(de, 1);
+            ids.splice(para, 0, idMov);
+            urls.splice(para, 0, urlMov);
+            return { ...v, picture_ids: ids, picture_urls: urls };
         }));
     };
 
@@ -598,13 +683,23 @@ function VariacaoEditor({
 
                         {/* ─── GTIN, SKU, preço, estoque ─── */}
                         <div className="grid gap-2 sm:grid-cols-2">
-                            <Campo label="GTIN / EAN (código de barras)" dica="Opcional, mas recomendado pelo ML">
-                                <input
-                                    className={inputCls}
-                                    value={getAttrSimples(v, 'GTIN')}
-                                    onChange={e => setAttrSimples(idx, 'GTIN', e.target.value)}
-                                    placeholder="7891234567890"
-                                />
+                            <Campo label="GTIN / EAN (código de barras)" dica="EAN-13 válido gerado automaticamente — pode editar ou gerar outro">
+                                <div className="flex gap-1.5">
+                                    <input
+                                        className={inputCls}
+                                        value={getAttrSimples(v, 'GTIN')}
+                                        onChange={e => setAttrSimples(idx, 'GTIN', e.target.value)}
+                                        placeholder="7891234567890"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setAttrSimples(idx, 'GTIN', gerarEan13(gtinsUsados(variacoes)))}
+                                        title="Gerar um EAN-13 válido novo (não repete os já usados)"
+                                        className="shrink-0 rounded-lg border border-white/10 bg-white/[0.03] px-2 text-[11px] font-medium text-white/70 transition hover:border-ecf-yellow/40 hover:text-ecf-yellow"
+                                    >
+                                        Gerar
+                                    </button>
+                                </div>
                             </Campo>
                             <Campo label="SKU do vendedor (SELLER_SKU)">
                                 <input
@@ -614,16 +709,8 @@ function VariacaoEditor({
                                     placeholder="SKU-AZUL-M"
                                 />
                             </Campo>
-                            <Campo label="Preço desta variação (R$)" dica="Deixe em branco para usar o preço do item">
-                                <input
-                                    className={inputCls}
-                                    type="number"
-                                    step="0.01"
-                                    value={v.price}
-                                    onChange={e => setCampoVariacao(idx, 'price', e.target.value)}
-                                    placeholder="0,00"
-                                />
-                            </Campo>
+                            {/* Sem preço por variação: no ML clássico todas herdam o preço do item
+                                (definido no passo "Preço e estoque"). Preços diferentes = erro 357. */}
                             <Campo label="Estoque desta variação">
                                 <input
                                     className={inputCls}
@@ -651,30 +738,102 @@ function VariacaoEditor({
                         {/* ─── Upload de foto por variação (WIZ-05) ─── */}
                         <div>
                             <span className="mb-1.5 block text-xs font-medium text-white/60">
-                                Foto desta variação
-                                <span className="ml-1 text-[10px] text-white/30">(enviada imediatamente ao ML)</span>
+                                Fotos desta variação
+                                <span className="ml-1 text-[10px] text-white/30">(pode selecionar várias; enviadas imediatamente ao ML)</span>
                             </span>
 
-                            {/* Miniaturas das fotos já enviadas */}
+                            {/* Miniaturas das fotos já enviadas — a ordem aqui é a do anúncio (1ª = capa) */}
                             {v.picture_urls?.length > 0 && (
-                                <div className="mb-2 flex flex-wrap gap-2">
-                                    {v.picture_urls.map((url, fi) => (
-                                        <div key={fi} className="relative group">
-                                            <img
-                                                src={url}
-                                                alt={`Foto ${fi + 1} — variação ${idx + 1}`}
-                                                className="h-14 w-14 rounded-lg border border-white/10 object-cover"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() => removerFoto(idx, fi)}
-                                                className="absolute -right-1.5 -top-1.5 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white"
+                                <>
+                                    {v.picture_urls.length > 1 && (
+                                        <p className="mb-1.5 text-[10px] text-white/30">
+                                            A 1ª foto é a <b className="text-ecf-yellow/70">capa</b>. Arraste para reordenar (ou use ◀ ▶) — o anúncio sai nesta mesma sequência.
+                                        </p>
+                                    )}
+                                    <div className="mb-2 flex flex-wrap gap-2">
+                                        {v.picture_urls.map((url, fi) => {
+                                            const arrastandoEsta = arrastando?.vIdx === idx && arrastando?.fIdx === fi;
+                                            const alvoDesta      = alvoFoto?.vIdx === idx && alvoFoto?.fIdx === fi && !arrastandoEsta;
+                                            return (
+                                            <div
+                                                key={fi}
+                                                draggable
+                                                onDragStart={(e) => {
+                                                    setArrastando({ vIdx: idx, fIdx: fi });
+                                                    e.dataTransfer.effectAllowed = 'move';
+                                                }}
+                                                onDragOver={(e) => {
+                                                    // Só aceita arraste dentro da MESMA variação
+                                                    if (arrastando?.vIdx !== idx) return;
+                                                    e.preventDefault();
+                                                    e.dataTransfer.dropEffect = 'move';
+                                                    if (alvoFoto?.fIdx !== fi) setAlvoFoto({ vIdx: idx, fIdx: fi });
+                                                }}
+                                                onDrop={(e) => {
+                                                    e.preventDefault();
+                                                    if (arrastando?.vIdx === idx) reordenarFoto(idx, arrastando.fIdx, fi);
+                                                    setArrastando(null);
+                                                    setAlvoFoto(null);
+                                                }}
+                                                onDragEnd={() => { setArrastando(null); setAlvoFoto(null); }}
+                                                className={cn(
+                                                    'relative group cursor-grab active:cursor-grabbing',
+                                                    arrastandoEsta && 'opacity-40',
+                                                )}
                                             >
-                                                <Trash2 size={9} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
+                                                <img
+                                                    src={url}
+                                                    draggable={false}
+                                                    alt={fi === 0 ? `Capa — variação ${idx + 1}` : `Foto ${fi + 1} — variação ${idx + 1}`}
+                                                    className={cn(
+                                                        'h-16 w-16 rounded-lg border object-cover transition',
+                                                        fi === 0 ? 'border-ecf-yellow/60' : 'border-white/10',
+                                                        alvoDesta && 'ring-2 ring-ecf-yellow ring-offset-1 ring-offset-ecf-card',
+                                                    )}
+                                                />
+                                                {/* Selo: capa ou número da sequência */}
+                                                <span className={cn(
+                                                    'absolute left-0.5 top-0.5 rounded px-1 text-[9px] font-semibold leading-tight',
+                                                    fi === 0 ? 'bg-ecf-yellow text-black' : 'bg-black/70 text-white/80',
+                                                )}>
+                                                    {fi === 0 ? 'Capa' : fi + 1}
+                                                </span>
+                                                {/* Remover */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removerFoto(idx, fi)}
+                                                    className="absolute -right-1.5 -top-1.5 hidden group-hover:flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-white"
+                                                >
+                                                    <Trash2 size={9} />
+                                                </button>
+                                                {/* Mover na sequência (aparece no hover) */}
+                                                {v.picture_urls.length > 1 && (
+                                                    <div className="absolute inset-x-0 bottom-0 hidden group-hover:flex overflow-hidden rounded-b-lg bg-black/75">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moverFoto(idx, fi, -1)}
+                                                            disabled={fi === 0}
+                                                            title="Mover para trás (mais perto da capa)"
+                                                            className="flex-1 flex items-center justify-center py-0.5 text-white/80 transition hover:text-ecf-yellow disabled:opacity-20 disabled:hover:text-white/80"
+                                                        >
+                                                            <ChevronLeft size={12} />
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => moverFoto(idx, fi, 1)}
+                                                            disabled={fi === v.picture_urls.length - 1}
+                                                            title="Mover para frente"
+                                                            className="flex-1 flex items-center justify-center py-0.5 text-white/80 transition hover:text-ecf-yellow disabled:opacity-20 disabled:hover:text-white/80"
+                                                        >
+                                                            <ChevronRight size={12} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
                             )}
 
                             {/* Input de arquivo + feedback de upload */}
@@ -691,21 +850,22 @@ function VariacaoEditor({
                                 {statusUpload === 'enviando' ? (
                                     <><Loader2 size={13} className="animate-spin" /> Enviando…</>
                                 ) : statusUpload === 'ok' ? (
-                                    <><CheckCircle2 size={13} /> Foto enviada — adicionar outra</>
+                                    <><CheckCircle2 size={13} /> Fotos enviadas — adicionar mais</>
                                 ) : statusUpload?.startsWith('erro') ? (
                                     <><AlertTriangle size={13} /> {statusUpload.replace('erro: ', '')}</>
                                 ) : (
-                                    <><Upload size={13} /> Selecionar foto</>
+                                    <><Upload size={13} /> Selecionar fotos</>
                                 )}
                                 <input
                                     type="file"
                                     accept="image/*"
+                                    multiple
                                     className="sr-only"
                                     disabled={statusUpload === 'enviando'}
                                     onChange={e => {
-                                        const arquivo = e.target.files?.[0];
-                                        if (arquivo) handleUploadFoto(idx, arquivo);
-                                        // Reseta o input para permitir re-envio do mesmo arquivo
+                                        const arquivos = e.target.files;
+                                        if (arquivos?.length) handleUploadFotos(idx, arquivos);
+                                        // Reseta o input para permitir re-envio dos mesmos arquivos
                                         e.target.value = '';
                                     }}
                                 />
@@ -752,6 +912,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
 
     // ─── Navegação do wizard (WIZ-01) ───
     const [etapa, setEtapa] = useState(0);
+
+    // Seção "Características secundárias" (atributos opcionais) recolhida por padrão —
+    // são complementares e nunca bloqueiam a publicação.
+    const [secundariasAbertas, setSecundariasAbertas] = useState(false);
 
     // Campos do anúncio
     const [titulo, setTitulo]         = useState('');
@@ -886,6 +1050,70 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         }
     };
 
+    // ─── Abre um rascunho da lista para edição no wizard ───
+    // Restaura título, categoria (+ atributos da categoria), atributos do item,
+    // preço, estoque, dimensões, descrição, tipo e variações. rascunhoId passa a
+    // ser o do rascunho aberto — os saves seguintes ATUALIZAM ele (não criam novo).
+    const abrirRascunho = async (r) => {
+        const payload = r.payload ?? {};
+        limparFormulario();
+        setRascunhoId(r.id);
+        hidratarDoRascunho(r);
+
+        // Tipo de anúncio (Clássico/Premium)
+        if (payload.listing_type_id) setTipoAnuncio(payload.listing_type_id);
+
+        // Restaura os atributos do ITEM em `valores` (exceto pacote/grade)
+        const attrs = Array.isArray(payload.attributes) ? payload.attributes : [];
+        const vals = {};
+        attrs.forEach(a => {
+            const id = String(a.id);
+            if (id.startsWith('SELLER_PACKAGE_') || id.includes('GRID')) return;
+            vals[id] = a.value_id ? { value_id: a.value_id } : { value_name: a.value_name };
+        });
+        setValores(vals);
+
+        // Restaura variações (o que dá — attribute_combinations, GTIN/SKU, estoque, fotos)
+        if (Array.isArray(payload.variations) && payload.variations.length > 0) {
+            setVariacoes(payload.variations.map(v => ({
+                attribute_combinations: v.attribute_combinations ?? [],
+                attributes:             v.attributes ?? [],
+                available_quantity:     v.available_quantity != null ? String(v.available_quantity) : '',
+                size_grid_row_id:       '',
+                picture_ids:            v.picture_ids ?? [],
+                picture_urls:           [],
+            })));
+        }
+
+        // Restaura categoria + atributos do catálogo (para render dinâmico da Ficha técnica/Variações)
+        if (r.category_id) {
+            setCategoryId(r.category_id);
+            setBusy('attrs');
+            try {
+                const resp = await window.axios.get(route('mlb.anuncios.meta.atributos', { categoryId: r.category_id }));
+                setCategoria(resp.data.categoria ?? null);
+                setAtributos(Array.isArray(resp.data.atributos) ? resp.data.atributos : []);
+                setCatalogRequired(resp.data.catalog_required === true);
+            } catch { /* segue sem atributos */ } finally { setBusy(''); }
+        }
+
+        setEtapa(0);
+        setErros(null);
+        setFlash('Rascunho aberto para edição.');
+    };
+
+    // ─── Exclui um rascunho da lista (não remove o anúncio no ML, só a cópia local) ───
+    const excluirRascunho = async (r) => {
+        if (!window.confirm(`Excluir este rascunho${r.titulo ? ` (“${r.titulo}”)` : ''}? Isso não remove o anúncio já publicado no Mercado Livre.`)) return;
+        try {
+            await window.axios.delete(route('mlb.anuncios.rascunho.destroy', { rascunho: r.id }));
+            if (rascunhoId === r.id) limparFormulario();
+            router.reload({ only: ['rascunhos'] });
+        } catch {
+            setFlash('Não foi possível excluir o rascunho.');
+        }
+    };
+
     // ─── Marca um campo como 'publicador' quando editado (DRAFT-04) ───
     // Só age se o campo já estava mapeado como 'cliente' — não polui campos livres.
     const marcarEditado = (campo) => {
@@ -1017,6 +1245,33 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     );
     // Categoria aceita variações quando existe ao menos um atributo allow_variations
     const temVariacoes = useMemo(() => atributosVar.length > 0, [atributosVar]);
+
+    // ─── Características secundárias: atributos OPCIONAIS/complementares ───
+    // Espelha a seção do próprio Mercado Livre ("Inclua mais informações sobre seu
+    // produto para complementar as características principais"). São tudo que NÃO é:
+    //   • obrigatório (já na Ficha técnica)      • de variação (allow_variations → etapa Variações)
+    //   • grade de moda (SIZE_GRID_ID/*GRID*)    • oculto/somente-leitura (não editável)
+    //   • catálogo (CATALOG_PRODUCT_ID — desligado por decisão do negócio)
+    //   • GTIN/SELLER_SKU (tratados no editor de variações, campo dedicado)
+    const opcionais = useMemo(
+        () => atributos.filter(a =>
+            !a.tags?.required
+            && !a.tags?.allow_variations
+            && !a.tags?.hidden
+            && !a.tags?.read_only
+            && a.id !== 'SIZE_GRID_ID'
+            && !String(a.id).includes('GRID')
+            && a.id !== 'CATALOG_PRODUCT_ID'
+            && a.id !== 'GTIN'
+            && a.id !== 'SELLER_SKU'
+        ),
+        [atributos],
+    );
+    // Quantos opcionais já foram preenchidos (contador no cabeçalho da seção)
+    const opcionaisPreenchidos = useMemo(
+        () => opcionais.filter(a => valores[a.id]?.value_id || valores[a.id]?.value_name).length,
+        [opcionais, valores],
+    );
 
     // ─── WIZ-03: catálogo preenchido quando CATALOG_PRODUCT_ID tiver value_id ou value_name ───
     const catalogPreenchido = useMemo(
@@ -1274,7 +1529,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                     : attrsSimples;
 
                 return {
-                    price:               v.price ? Number(v.price) : undefined,
+                    // ML clássico: variações NÃO têm preço próprio — todas herdam o preço do
+                    // item (erro 357 item.variations.price.different quando divergem). O preço
+                    // fica no nível do item (campo Preço). Por isso não enviamos price aqui.
                     available_quantity:  v.available_quantity !== '' ? Number(v.available_quantity) : 1,
                     attribute_combinations: combValidas,
                     attributes:          attrsVar,
@@ -1755,6 +2012,54 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                         {obrigatorios.length === 0 && <p className="text-sm text-white/40">Sem atributos obrigatórios nesta categoria.</p>}
                                     </div>
                                 )}
+
+                                {/* ─── Características secundárias (atributos opcionais/complementares) ───
+                                    Recolhida por padrão; NÃO bloqueia a publicação. Espelha a seção
+                                    homônima do Mercado Livre. Reusa o mesmo Campo/select/input dos obrigatórios. */}
+                                {busy !== 'attrs' && opcionais.length > 0 && (
+                                    <div className="mt-4 border-t border-white/[0.06] pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => setSecundariasAbertas(o => !o)}
+                                            className="flex w-full items-center gap-2 text-left text-sm font-medium text-white/80 transition hover:text-white"
+                                        >
+                                            {secundariasAbertas ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
+                                            <span>Características secundárias</span>
+                                            <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/50">opcional</span>
+                                            {opcionaisPreenchidos > 0 && (
+                                                <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-400">
+                                                    {opcionaisPreenchidos} preenchido{opcionaisPreenchidos > 1 ? 's' : ''}
+                                                </span>
+                                            )}
+                                            <span className="ml-auto text-[11px] text-white/30">{opcionais.length} campo{opcionais.length > 1 ? 's' : ''}</span>
+                                        </button>
+
+                                        {secundariasAbertas && (
+                                            <>
+                                                <p className="mt-2 mb-3 text-[12px] text-white/40">
+                                                    Inclua mais informações sobre seu produto para complementar as características principais.
+                                                </p>
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    {opcionais.map(a => (
+                                                        <Campo key={a.id} label={a.name}>
+                                                            {(a.value_type === 'list' || a.value_type === 'boolean') && a.values?.length ? (
+                                                                <select className={inputCls} value={valores[a.id]?.value_id ?? ''}
+                                                                    onChange={e => setValor(a.id, { value_id: e.target.value, value_name: undefined })}>
+                                                                    <option value="">Selecione…</option>
+                                                                    {a.values.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                                                                </select>
+                                                            ) : (
+                                                                <input className={inputCls} value={valores[a.id]?.value_name ?? ''}
+                                                                    placeholder={a.value_type === 'number_unit' ? `Ex.: 10 ${a.default_unit ?? ''}` : ''}
+                                                                    onChange={e => setValor(a.id, { value_name: e.target.value, value_id: undefined })} />
+                                                            )}
+                                                        </Campo>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </section>
                         )}
 
@@ -2128,10 +2433,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 <ul className="space-y-2">
                                     {rascunhos.slice(0, 8).map(r => {
                                         const selecionavel = r.status !== 'publicando' && r.status !== 'publicado';
+                                        const abrivel = r.status !== 'publicando';
                                         return (
-                                            <li key={r.id}>
+                                            <li key={r.id} className="rounded-lg border border-white/[0.06] bg-ecf-bg/40 p-2">
+                                                {/* Linha 1: checkbox + status + TÍTULO do anúncio + MLB id */}
                                                 <div className="flex items-center gap-2 text-sm">
-                                                    {/* BULK-01: checkbox apenas para rascunhos selecionáveis */}
                                                     {selecionavel
                                                         ? (
                                                             <input
@@ -2143,45 +2449,82 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                         )
                                                         : <span className="h-3.5 w-3.5 shrink-0" />
                                                     }
-                                                    <span className={cn('rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status] ?? STATUS_BADGE.rascunho)}>
+                                                    <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px]', STATUS_BADGE[r.status] ?? STATUS_BADGE.rascunho)}>
                                                         {STATUS_LABEL[r.status] ?? r.status}
                                                     </span>
-                                                    <span className="truncate text-white/60">
-                                                        {empresa?.nome ?? `Empresa ${r.company_id}`}
+                                                    {/* Título do anúncio (identifica o rascunho) */}
+                                                    <span className="min-w-0 flex-1 truncate font-medium text-white/80" title={r.titulo || ''}>
+                                                        {r.titulo?.trim() || '(sem título)'}
                                                     </span>
                                                     {r.ml_item_id && (
-                                                        <span className="ml-auto text-[10px] text-emerald-400/70">
+                                                        <a
+                                                            href={`https://produto.mercadolivre.com.br/MLB-${String(r.ml_item_id).replace(/^MLB-?/i, '')}`}
+                                                            target="_blank" rel="noreferrer"
+                                                            className="shrink-0 text-[10px] text-emerald-400/70 hover:underline"
+                                                        >
                                                             {r.ml_item_id}
-                                                        </span>
+                                                        </a>
                                                     )}
-                                                    {/* UX-03: botão "Usar como template" apenas para anúncios publicados */}
+                                                </div>
+
+                                                {/* Erro: resumo em 1 linha por padrão; expande para o erro completo + copiar */}
+                                                {r.status === 'erro' && r.erro_resumo && (
+                                                    <details className="mt-1 pl-6">
+                                                        <summary className="cursor-pointer text-[11px] text-red-400 marker:text-red-400/60">
+                                                            {r.erro_resumo}
+                                                        </summary>
+                                                        <div className="mt-1">
+                                                            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-red-500/20 bg-red-500/[0.05] p-2 text-[10px] leading-relaxed text-red-300/80">
+                                                                {r.erro_completo || r.erro_resumo}
+                                                            </pre>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const txt = r.erro_completo || r.erro_resumo || '';
+                                                                    if (navigator.clipboard?.writeText) navigator.clipboard.writeText(txt).catch(() => fallbackCopiar(txt));
+                                                                    else fallbackCopiar(txt);
+                                                                    setFlash('Erro copiado.');
+                                                                }}
+                                                                className="mt-1 flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] text-white/60 hover:text-white/90"
+                                                            >
+                                                                <Copy size={10} /> Copiar erro
+                                                            </button>
+                                                        </div>
+                                                    </details>
+                                                )}
+
+                                                {/* Linha 2: ações — Abrir / Template / Excluir */}
+                                                <div className="mt-1.5 flex items-center gap-1.5 pl-6">
+                                                    {abrivel && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => abrirRascunho(r)}
+                                                            title="Abrir este rascunho para editar"
+                                                            className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-0.5 text-[10px] font-medium text-white/70 transition hover:border-white/25 hover:text-white"
+                                                        >
+                                                            <Pencil size={10} /> Abrir
+                                                        </button>
+                                                    )}
                                                     {r.status === 'publicado' && (
                                                         <button
                                                             type="button"
                                                             onClick={() => usarComoTemplate(r)}
                                                             disabled={busy === 'template'}
                                                             title="Criar novo rascunho a partir deste anúncio publicado"
-                                                            className={cn(
-                                                                'flex shrink-0 items-center gap-1 rounded-md px-2 py-0.5 text-[10px] font-semibold transition',
-                                                                r.ml_item_id ? '' : 'ml-auto',
-                                                                'border border-ecf-yellow/30 bg-ecf-yellow/5 text-ecf-yellow/80 hover:bg-ecf-yellow/15 hover:border-ecf-yellow/50',
-                                                                'disabled:opacity-40 disabled:cursor-not-allowed',
-                                                            )}
+                                                            className="flex items-center gap-1 rounded-md border border-ecf-yellow/30 bg-ecf-yellow/5 px-2 py-0.5 text-[10px] font-medium text-ecf-yellow/80 transition hover:border-ecf-yellow/50 hover:bg-ecf-yellow/15 disabled:opacity-40"
                                                         >
-                                                            {busy === 'template'
-                                                                ? <Loader2 size={10} className="animate-spin" />
-                                                                : <Copy size={10} />
-                                                            }
-                                                            Template
+                                                            {busy === 'template' ? <Loader2 size={10} className="animate-spin" /> : <Copy size={10} />} Template
                                                         </button>
                                                     )}
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => excluirRascunho(r)}
+                                                        title="Excluir este rascunho"
+                                                        className="ml-auto flex items-center gap-1 rounded-md border border-red-500/20 bg-red-500/[0.06] px-2 py-0.5 text-[10px] font-medium text-red-400/80 transition hover:border-red-500/40 hover:bg-red-500/15"
+                                                    >
+                                                        <Trash2 size={10} /> Excluir
+                                                    </button>
                                                 </div>
-                                                {/* BULK-04: erro por produto — mensagem do validation_errors do rascunho */}
-                                                {r.status === 'erro' && r.validation_errors?.length > 0 && (
-                                                    <p className="mt-0.5 pl-5 text-[11px] text-red-400">
-                                                        {r.validation_errors[0].mensagem ?? r.validation_errors[0]}
-                                                    </p>
-                                                )}
                                             </li>
                                         );
                                     })}
