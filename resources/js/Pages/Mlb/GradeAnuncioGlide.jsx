@@ -16,16 +16,28 @@ import {
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Grade de anuncio em massa em CANVAS (glide-data-grid).
+// Grade de anuncio em massa — planilha em CANVAS (glide-data-grid).
 //
-// Troca a <table> HTML (1 <input> por celula) pelo modelo da lib: a grade
-// PERGUNTA o conteudo celula a celula via getCellContent e devolve edicoes em
-// lote via onCellsEdited. A pagina (AnunciarMassa.jsx) continua dona do estado
-// das abas, do autosave e da publicacao — aqui so se desenha e se delega.
+// COMO ESTE ARQUIVO FUNCIONA (e diferente de um componente React comum):
+//   - a grade PERGUNTA o conteudo celula a celula via `getCellContent`;
+//   - e devolve TODA escrita (digitacao, fill handle, paste) por um unico
+//     `onCellsEdited`, que delega pros callbacks da pagina;
+//   - a pagina (AnunciarMassa.jsx) segue dona do estado, do autosave e da
+//     publicacao. Aqui so se desenha e se delega.
 //
-// IMPORTANTE: canvas nao e DOM. Classes Tailwind NAO alcancam o conteudo
-// desenhado; toda cor passa pelo objeto `temaEcf` abaixo. (A toolbar acima da
-// grade e JSX normal, entao usa Tailwind como o resto da pagina.)
+// CANVAS NAO E DOM — a pegadinha central deste arquivo:
+//   - classes Tailwind NAO alcancam o conteudo desenhado. Toda cor de celula
+//     passa pelo objeto `temaEcf`, por `getRowThemeOverride` (por LINHA) ou
+//     pelo `draw()` de um custom renderer (por CELULA);
+//   - o que e DOM aqui: a toolbar acima da grade e os editores de overlay
+//     (EditorOrigem), que abrem dentro do <div id="portal"> do app.blade.php.
+//     Nesses dois, Tailwind funciona normalmente.
+//   - sem o #portal no Blade, NENHUM editor de celula abre — e falha em
+//     silencio, so logando no console.
+//
+// Capacidades de planilha: selecao multi-retangulo, fill handle nas duas
+// direcoes, copiar/colar do Excel, teclado nativo, selecao de linha/coluna e
+// dropdown fechado nos campos de valor pre-definido.
 // ═══════════════════════════════════════════════════════════════════════
 
 // ─── Tema: traduz os tokens ecf-* do tailwind.config.js para o canvas (SHEET2-08) ───

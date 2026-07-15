@@ -17,10 +17,18 @@ import {
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
-// Anunciar em massa (Variante A do sketch 001): grade editável por categoria.
-// Cada linha = 1 ml_anuncio_rascunho da empresa fixada. Colunas = base fixas
-// (azul) + ficha técnica obrigatória da categoria (violeta). Consome os 3
-// endpoints do Plan 01 (massa / massa.colunas / massa.produtos) e reusa o
+// Anunciar em massa — aba "Em massa" de /mlb/anuncios (a "Individual" é o
+// wizard, AnunciarML.jsx; o ModoAnuncioTabs alterna entre as duas).
+//
+// Esta PÁGINA é dona do estado: abas por categoria, linhas, autosave com
+// debounce por linha, puxar produtos do cliente, validar e publicar em lote.
+// Ela NÃO desenha a grade — quem desenha é GradeAnuncioGlide.jsx (canvas), que
+// recebe a aba ativa e devolve edições pelos callbacks daqui. A divisão é
+// deliberada: a grade só desenha e delega; o ciclo de vida mora aqui.
+//
+// Cada linha = 1 ml_anuncio_rascunho da empresa fixada. Colunas = campos base +
+// ficha técnica obrigatória da categoria da aba ATIVA (nunca a união das abas).
+// Consome os 3 endpoints (massa / massa.colunas / massa.produtos) e reusa o
 // shape de payload do wizard (montarPayload de AnunciarML.jsx).
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -603,8 +611,7 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                     </div>
                 )}
 
-                {/* ─── Grade da aba ativa (canvas — glide-data-grid) ─── */}
-                {/* onColar saiu: o paste passa a ser nativo da lib no Plan 03. */}
+                {/* ─── Grade da aba ativa (planilha em canvas) ─── */}
                 {aba && (
                     <GradeAnuncioGlide
                         aba={aba}
