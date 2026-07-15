@@ -4,6 +4,7 @@ import {
     normalizarPreco,
     linhaVazia,
     linhaPublicavel,
+    mesclarStatusRascunhos,
 } from '../../resources/js/Pages/Mlb/gradeMassaUtils.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -105,4 +106,107 @@ test('linhaPublicavel: linha sem categoria NÃO é publicável (category_id null
 test('linhaPublicavel: sem id ou sem título continua fora (comportamento de hoje)', () => {
     assert.equal(linhaPublicavel({ ...linhaOk(), id: null }, abaCom), false);
     assert.equal(linhaPublicavel({ ...linhaOk(), title: '' }, abaCom), false);
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// mesclarStatusRascunhos — a peça central da fase (FIX-83-2).
+// Sem ela o polling atualiza a prop e NADA muda na tela: é o bug de hoje.
+// ═══════════════════════════════════════════════════════════════════════
+
+const abasCom = (linhas) => [{ key: 'MLB1', category_id: 'MLB1', linhas }];
+
+test('merge: linha sem id fica na MESMA referência (a prop não sabe dela)', () => {
+    const l = { ...linhaVazia(), id: null, title: 'Nova' };
+    const abas = abasCom([l]);
+    const fora = mesclarStatusRascunhos(abas, []);
+    assert.strictEqual(fora, abas);        // nada mudou: mesma referência
+    assert.strictEqual(fora[0].linhas[0], l);
+});
+
+test('merge: rascunho presente traz status/erros do servidor', () => {
+    const l = { ...linhaVazia(), id: 7, publicando: true };
+    const fora = mesclarStatusRascunhos(abasCom([l]), [
+        { id: 7, status: 'erro', erro_resumo: 'Erro 400 em POST /items', erro_completo: '{"cause":[]}' },
+    ]);
+    const n = fora[0].linhas[0];
+    assert.equal(n.statusServidor, 'erro');
+    assert.equal(n.erroResumo, 'Erro 400 em POST /items');
+    assert.equal(n.erroCompleto, '{"cause":[]}');
+    assert.equal(n.publicando, false); // saiu de voo
+});
+
+test('merge: sumiu da prop ENQUANTO publicava == publicado (massa() nao devolve publicado)', () => {
+    const l = { ...linhaVazia(), id: 9, publicando: true };
+    const fora = mesclarStatusRascunhos(abasCom([l]), []);
+    const n = fora[0].linhas[0];
+    assert.equal(n.statusServidor, 'publicado');
+    assert.equal(n.publicando, false);
+    assert.equal(n.erroResumo, null);
+});
+
+test('merge: sumiu da prop SEM estar publicando fica intacta (linha recem-criada)', () => {
+    const l = { ...linhaVazia(), id: 11, publicando: false, title: 'Recem salva' };
+    const abas = abasCom([l]);
+    const fora = mesclarStatusRascunhos(abas, []);
+    assert.strictEqual(fora, abas);              // nao inferir "publicado" aqui
+    assert.strictEqual(fora[0].linhas[0], l);
+});
+
+test('merge: NAO atropela o que o usuario esta digitando (o teste que protege o publicador)', () => {
+    const l = {
+        ...linhaVazia(),
+        id: 3,
+        title: 'Digitando…',
+        price: '10,5',
+        salvo: false,
+        attrs: { BRAND: 'X' },
+        origem: { title: 'cliente' },
+        publicando: true,
+    };
+    const fora = mesclarStatusRascunhos(abasCom([l]), [
+        { id: 3, status: 'erro', erro_resumo: 'falta atributo', payload: { title: 'Título Velho' } },
+    ]);
+    const n = fora[0].linhas[0];
+    assert.equal(n.title, 'Digitando…');      // NAO virou "Título Velho"
+    assert.equal(n.price, '10,5');
+    assert.equal(n.salvo, false);
+    assert.deepEqual(n.attrs, { BRAND: 'X' });
+    assert.deepEqual(n.origem, { title: 'cliente' });
+    assert.equal(n.statusServidor, 'erro');   // so o status mudou
+});
+
+test('merge: identidade preservada — nada mudou devolve a MESMA referencia de abas', () => {
+    const l = { ...linhaVazia(), id: 5, statusServidor: 'rascunho', publicando: false };
+    const abas = abasCom([l]);
+    const fora = mesclarStatusRascunhos(abas, [{ id: 5, status: 'rascunho' }]);
+    assert.strictEqual(fora, abas); // sem isso o canvas redesenha a cada 3s e o cursor pisca
+});
+
+test('merge: so a linha que mudou e nova — as outras mantem a referencia', () => {
+    const l1 = { ...linhaVazia(), id: 1, statusServidor: 'rascunho' };
+    const l2 = { ...linhaVazia(), id: 2, publicando: true };
+    const abas = [
+        { key: 'A', category_id: 'MLB1', linhas: [l1] },
+        { key: 'B', category_id: 'MLB2', linhas: [l2] },
+    ];
+    const fora = mesclarStatusRascunhos(abas, [{ id: 1, status: 'rascunho' }, { id: 2, status: 'erro' }]);
+    assert.strictEqual(fora[0], abas[0]);          // aba 0 intacta
+    assert.strictEqual(fora[0].linhas[0], l1);
+    assert.notStrictEqual(fora[1].linhas[0], l2);  // aba 1 mudou
+    assert.equal(fora[1].linhas[0].statusServidor, 'erro');
+});
+
+test('merge: abas vazias e prop vazia/null', () => {
+    const vazio = [];
+    assert.strictEqual(mesclarStatusRascunhos(vazio, []), vazio);
+    const l = { ...linhaVazia(), id: 4, publicando: true };
+    const fora = mesclarStatusRascunhos(abasCom([l]), null); // fila drenou inteira
+    assert.equal(fora[0].linhas[0].statusServidor, 'publicado');
+});
+
+test('merge: idempotente — aplicar 2x devolve a mesma referencia na segunda', () => {
+    const l = { ...linhaVazia(), id: 8, publicando: true };
+    const um = mesclarStatusRascunhos(abasCom([l]), []);
+    const dois = mesclarStatusRascunhos(um, []);
+    assert.strictEqual(dois, um); // ja virou publicado: nao reprocessa nem reverte
 });

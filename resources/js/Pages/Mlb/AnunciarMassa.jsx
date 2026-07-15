@@ -14,6 +14,7 @@ import {
     errosLocaisLinha,
     linhaPublicavel,
     linhaVazia,
+    mesclarStatusRascunhos,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -64,6 +65,10 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
     const [publicandoLote, setPublicandoLote] = useState(false); // trava o botão após dispatch
     const [errosLote, setErrosLote] = useState(null); // erro pt-BR do backend (422/403)
     const [avisoLote, setAvisoLote] = useState(''); // feedback ("N enfileirados", "X fora do lote")
+    // Polling do resultado da publicação: deadline em ref (não re-renderiza) e o
+    // sinal de estouro, que vira aviso pt-BR na PublishBar.
+    const deadlineRef = useRef(null);
+    const [pollingEstourado, setPollingEstourado] = useState(false);
 
     // ─── Inicializa as abas agrupando os rascunhos por category_id (SHEET-01) ───
     // Rascunhos sem categoria caem numa aba temporária "Sem categoria".
@@ -101,6 +106,44 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
         setAbaAtiva(0);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // ─── Sincroniza o estado do SERVIDOR quando a prop `rascunhos` recarrega ───
+    // O efeito de init acima roda UMA vez (deps []) — de propósito: re-agrupar as abas
+    // a cada poll faria o publicador perder a aba ativa e a ordem das linhas. Mas sem
+    // ESTE segundo efeito, `router.reload({only:['rascunhos']})` atualiza a prop e a
+    // grade (que renderiza `abas`) não vê nada. Era essa a causa de "publiquei e a tela
+    // ficou em loading para sempre".
+    // O merge só toca os 4 campos de servidor — nunca o que o usuário está digitando.
+    useEffect(() => {
+        setAbas((prev) => mesclarStatusRascunhos(prev, rascunhos));
+    }, [rascunhos]);
+
+    // ─── Polling enquanto houver anúncio em publicação (FIX-83-2) ───
+    // Mesma forma que já roda em produção no wizard (AnunciarML.jsx): recarrega só a
+    // prop `rascunhos` a cada 3s e para sozinho quando ninguém mais está `publicando`.
+    // O teto existe porque o lote aceita até 50 rascunhos e o backend escalona os jobs
+    // a 3s por posição: um job morto deixaria isto girando para sempre — que é
+    // justamente o bug que esta fase conserta.
+    useEffect(() => {
+        const emVoo = (rascunhos ?? []).filter((r) => r.status === 'publicando').length;
+        if (emVoo === 0 || pollingEstourado) {
+            deadlineRef.current = null; // próximo lote recalcula
+            return;
+        }
+        if (deadlineRef.current === null) {
+            // 3s por posição de fan-out + folga; nunca mais que 10 min
+            deadlineRef.current = Date.now() + Math.min(600_000, 120_000 + 3_000 * emVoo * 2);
+        }
+        const t = setInterval(() => {
+            if (Date.now() > deadlineRef.current) {
+                clearInterval(t);
+                setPollingEstourado(true);
+                return;
+            }
+            router.reload({ only: ['rascunhos'] });
+        }, 3000);
+        return () => clearInterval(t);
+    }, [rascunhos, pollingEstourado]);
 
     // ─── Busca as colunas (obrigatórios + breadcrumb) de cada categoria uma vez ───
     useEffect(() => {
@@ -398,6 +441,9 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
         setPublicandoLote(true); // trava imediatamente (anti-duplo-clique)
         setErrosLote(null);
         setAvisoLote('');
+        // Lote novo: zera o estouro do lote anterior, senão o polling deste nem liga
+        setPollingEstourado(false);
+        deadlineRef.current = null;
         try {
             const r = await window.axios.post(
                 route('mlb.anuncios.publicar-lote', { company: empresa.id }),
@@ -418,9 +464,15 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
             // Reflete o status real (published/erro) recarregando os rascunhos
             setTimeout(() => router.reload({ only: ['rascunhos'] }), 1500);
         } catch (err) {
-            // 422 (token desconectado) ou 403 (empresa não atribuída) → mensagem pt-BR + reabilita
+            // 422 (token desconectado) ou 403 (empresa não atribuída) → mensagem pt-BR
             setErrosLote(err.response?.data?.erros ?? [{ mensagem: 'Erro ao enfileirar publicação em lote.' }]);
-            setPublicandoLote(false); // reabilita o botão em caso de erro
+        } finally {
+            // SEMPRE destrava. Antes o setPublicandoLote(false) só existia no catch:
+            // no caminho de SUCESSO o botão ficava travado para sempre, porque
+            // router.reload({only}) é recarga parcial do Inertia e preserva o estado
+            // local do React (o componente não remonta, o estado não zera).
+            // Quem mostra o andamento a partir daqui é o status por linha + o polling.
+            setPublicandoLote(false);
         }
     }, [resumoLote, empresa.id]);
 
@@ -629,7 +681,9 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                 validando={validandoLote}
                 publicando={publicandoLote}
                 erros={errosLote}
-                aviso={avisoLote}
+                aviso={pollingEstourado
+                    ? 'Ainda há anúncio(s) em publicação. O resultado pode estar incompleto — recarregue a página para ver o status atual.'
+                    : avisoLote}
                 onValidarTudo={validarTudo}
                 onPublicarLote={publicarLote}
             />
@@ -774,5 +828,14 @@ function linhaDeRascunho(r) {
     if (p.meta_campos && typeof p.meta_campos === 'object') {
         l.origem = { ...p.meta_campos };
     }
+
+    // Estado do servidor: sem isto, reabrir a página no meio de um lote mostra as
+    // linhas paradas e sem erro — e o merge não teria o `publicando` de que precisa
+    // para inferir sucesso quando o rascunho sumir da prop.
+    l.statusServidor = r.status ?? null;
+    l.erroResumo = r.erro_resumo ?? null;
+    l.erroCompleto = r.erro_completo ?? null;
+    l.publicando = r.status === 'publicando';
+
     return l;
 }

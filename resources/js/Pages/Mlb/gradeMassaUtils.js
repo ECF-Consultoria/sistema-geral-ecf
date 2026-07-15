@@ -110,6 +110,88 @@ export function normalizarPreco(texto) {
     return t.replace(/\./g, '').replace(',', '.');
 }
 
+// ═══════════════════════════════════════════════════════════════════════
+// Merge do estado do SERVIDOR (prop `rascunhos`) de volta para as linhas das abas.
+//
+// É a peça central da correção do lote: a página lê `rascunhos` uma vez só, num
+// useEffect de dependência vazia. Sem este merge, o polling recarrega a prop e a
+// grade (que renderiza `abas`) não vê absolutamente nada — que é o bug de hoje.
+//
+// DOIS FATOS NÃO ÓBVIOS:
+//
+// 1. `massa()` NÃO devolve rascunho publicado — o whereIn do controller só traz
+//    [rascunho, validado, erro, publicando]. Então "sumiu da prop ENQUANTO
+//    publicava" é a ÚNICA evidência de sucesso que chega ao frontend. Sem essa
+//    inferência, toda linha publicada com sucesso ficaria em "publicando" para
+//    sempre — recriando o mesmo bug por outro caminho.
+//    Cuidado: só inferir sucesso quando a linha ESTAVA publicando. Uma linha
+//    recém-criada que a prop ainda não conhece também "não está lá", e marcá-la
+//    como publicada apagaria o trabalho do usuário.
+//
+// 2. O merge só toca os 4 campos do servidor — NUNCA os campos de edição. A lista
+//    é literal e fechada de propósito (nada de spread de `r`): é o que impede um
+//    reload de 3s em 3s de sobrescrever o título que o publicador está digitando.
+//
+// Devolve a MESMA referência quando nada muda (em cada nível: linha, aba e array).
+// Isso não é micro-otimização: o efeito roda a cada 3s durante a publicação, e o
+// React só evita o re-render se a referência voltar igual — senão o canvas inteiro
+// redesenha e o cursor de edição pisca.
+//
+// Os status são strings literais, sincronizadas à mão com MlAnuncioRascunho::STATUS_*
+// (convenção do projeto: sem enum compartilhado entre PHP e JS).
+// ═══════════════════════════════════════════════════════════════════════
+export function mesclarStatusRascunhos(abas, rascunhos) {
+    const porId = new Map((rascunhos ?? []).map((r) => [r.id, r]));
+    let mudouAlgo = false;
+
+    const novas = (abas ?? []).map((aba) => {
+        let mudouAba = false;
+
+        const linhas = (aba.linhas ?? []).map((l) => {
+            // Linha ainda não persistida: a prop não sabe dela.
+            if (!l.id) return l;
+
+            const r = porId.get(l.id);
+            let alvo;
+
+            if (r) {
+                alvo = {
+                    statusServidor: r.status ?? null,
+                    erroResumo: r.erro_resumo ?? null,
+                    erroCompleto: r.erro_completo ?? null,
+                    publicando: r.status === 'publicando',
+                };
+            } else if (l.publicando === true) {
+                // Sumiu da prop enquanto publicava == publicou (ver fato 1 acima)
+                alvo = {
+                    statusServidor: 'publicado',
+                    erroResumo: null,
+                    erroCompleto: null,
+                    publicando: false,
+                };
+            } else {
+                // Linha recém-criada que a prop ainda não conhece — nunca inferir nada
+                return l;
+            }
+
+            const igual = l.statusServidor === alvo.statusServidor
+                && l.erroResumo === alvo.erroResumo
+                && l.erroCompleto === alvo.erroCompleto
+                && l.publicando === alvo.publicando;
+            if (igual) return l;
+
+            mudouAba = true;
+            return { ...l, ...alvo };
+        });
+
+        if (!mudouAba) return aba;
+        mudouAlgo = true;
+        return { ...aba, linhas };
+    });
+
+    return mudouAlgo ? novas : abas;
+}
+
 // Remove acentos + trim + lowercase (p/ casar "Clássico" com "classico" etc.)
 export const semAcento = (s) =>
     String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
