@@ -31,5 +31,10 @@
     </head>
     <body class="font-sans antialiased">
         @inertia
+
+        {{-- Portal do glide-data-grid: a lib procura #portal via getElementById toda vez que
+             abre um editor de celula. Sem este no, a edicao/dropdown da grade em massa nao
+             abre e falha em SILENCIO (so loga no console). Precisa ser o ultimo filho de body. --}}
+        <div id="portal"></div>
     </body>
 </html>
