@@ -210,6 +210,66 @@ class NpsTemplateController extends Controller
     }
 
     /**
+     * POST /nps/configuracao/templates/{template}/duplicar (Phase 81 Plan 01,
+     * DEC-81-1).
+     *
+     * Clona um modelo existente por completo — config + perguntas + opções +
+     * service scopes — num NOVO template (`is_default=false`). Uso principal:
+     * duplicar o "NPS | Performance ECF" e trocar o serviço coberto pra Shopee,
+     * dando ao admin controle direto sem montar tudo do zero.
+     *
+     * **Invariante crítico (Pitfall 2):** o clone NUNCA herda `is_default=true`.
+     * Duplicar o modelo principal colidiria no unique parcial `is_default`
+     * (QueryException 23000) — por isso forçamos `false` explicitamente, mesmo
+     * que o `replicate()` copie o valor do original.
+     *
+     * Toda a clonagem roda em `DB::transaction` (molde do `setPrincipal`): um
+     * erro no meio não deixa um template órfão sem perguntas. Eager-load de
+     * `questions.options` antes do loop evita N+1 (Pitfall 5).
+     */
+    public function duplicate(NpsTemplate $template)
+    {
+        // Evita N+1 na clonagem da árvore (Pitfall 5).
+        $template->load('questions.options');
+
+        $clone = DB::transaction(function () use ($template) {
+            // replicate() já ignora PK e timestamps; herda
+            // active/priority/envio_automatico_mensal/mensagem_whatsapp/descricao.
+            $clone = $template->replicate();
+
+            // INVARIANTES — nunca respeitar o valor do original nesses campos.
+            $clone->is_default = false;                       // Pitfall 2
+            $clone->nome       = $template->nome . ' (cópia)'; // nome editável depois
+            $clone->save();
+
+            // Perguntas + opções (relations já ordenadas por ordem/id).
+            foreach ($template->questions as $q) {
+                $qClone              = $q->replicate();
+                $qClone->template_id = $clone->id;
+                $qClone->save();
+
+                foreach ($q->options as $o) {
+                    $oClone              = $o->replicate();
+                    $oClone->question_id = $qClone->id;
+                    $oClone->save();
+                }
+            }
+
+            // Service scopes (pivot) — mesmos servico_id do original.
+            $clone->servicos()->sync(
+                $template->servicos()->pluck('servicos.id')->all()
+            );
+
+            return $clone;
+        });
+
+        return back()->with(
+            'success',
+            "Modelo \"{$clone->nome}\" criado a partir de \"{$template->nome}\"."
+        );
+    }
+
+    /**
      * PUT /nps/configuracao/templates/{template}/servicos — sincroniza o
      * pivot `nps_template_service_scopes` de forma ATÔMICA — Plan 70-04
      * v15.0 (REQ NPS-C-05).

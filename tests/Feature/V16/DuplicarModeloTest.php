@@ -100,15 +100,18 @@ class DuplicarModeloTest extends TestCase
     public function test_duplicate_clona_arvore_completa_com_is_default_false(): void
     {
         $this->actingAsAdmin();
+        // Baseline conta os modelos seedados por migration (NPS Padrão + Shopee).
+        $baseline = NpsTemplate::count();
+
         $original = $this->criarTemplateComArvore();
 
         $response = $this->post(route('nps.configuracao.templates.duplicate', $original->id));
         $response->assertRedirect();
 
-        // Um novo template foi criado.
-        $this->assertSame(2, NpsTemplate::count());
+        // Um novo template foi criado (baseline + original + clone).
+        $this->assertSame($baseline + 2, NpsTemplate::count());
 
-        $clone = NpsTemplate::where('id', '!=', $original->id)->firstOrFail();
+        $clone = NpsTemplate::where('nome', $original->nome . ' (cópia)')->firstOrFail();
 
         // Nome com "(cópia)" e is_default=false.
         $this->assertSame('NPS | Performance ECF (cópia)', $clone->nome);
@@ -151,17 +154,18 @@ class DuplicarModeloTest extends TestCase
     public function test_duplicate_do_principal_nao_gera_segundo_is_default(): void
     {
         $this->actingAsAdmin();
-        // Modelo principal (is_default=true).
-        $principal = $this->criarTemplateComArvore(['is_default' => true, 'nome' => 'NPS Padrão']);
+        // Usa o modelo principal seedado por migration (is_default=true) — só
+        // pode existir um (unique parcial), então não criamos outro.
+        $principal = NpsTemplate::where('is_default', true)->firstOrFail();
 
         // Não deve estourar QueryException 23000 (unique parcial).
         $this->post(route('nps.configuracao.templates.duplicate', $principal->id))
             ->assertRedirect();
 
-        // Só existe UM is_default=true (o original).
+        // Continua existindo apenas UM is_default=true (o original principal).
         $this->assertSame(1, NpsTemplate::where('is_default', true)->count());
 
-        $clone = NpsTemplate::where('id', '!=', $principal->id)->firstOrFail();
+        $clone = NpsTemplate::where('nome', $principal->nome . ' (cópia)')->firstOrFail();
         $this->assertFalse($clone->is_default);
     }
 

@@ -168,6 +168,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     Route::patch ('/nps/configuracao/templates/{template}/set-principal', [NpsTemplateController::class, 'setPrincipal'])
         ->name('nps.configuracao.templates.set-principal');
 
+    // ─── Phase 81 Plan 01 — Duplicar / Excluir modelo NPS (v16.0) ───────
+    // Duplicar: clona um modelo completo (config+perguntas+opções+scopes) num
+    // novo template is_default=false (DEC-81-1). Excluir: remove um modelo
+    // descartável com guardas (não apaga o principal nem modelos com respostas
+    // — DEC-81-2). Mesmo grupo role:admin do CRUD de templates.
+    Route::post  ('/nps/configuracao/templates/{template}/duplicar',      [NpsTemplateController::class, 'duplicate'])
+        ->name('nps.configuracao.templates.duplicate');
+    Route::delete('/nps/configuracao/templates/{template}',               [NpsTemplateController::class, 'destroy'])
+        ->name('nps.configuracao.templates.destroy');
+
     // ─── Phase 70 Plan 02 — CRUD perguntas dos templates ────────────────
     // Rotas aninhadas sob {template}. scopeBindings() faz o Laravel resolver
     // {pergunta} via NpsTemplateQuestion::where('template_id', $template->id)
