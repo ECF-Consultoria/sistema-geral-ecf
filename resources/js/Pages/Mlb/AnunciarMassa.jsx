@@ -4,6 +4,7 @@ import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { Rocket, Search, Plus, Loader2, ChevronRight, Store, Trash2, Check, AlertTriangle } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import GradeAnuncioGlide from '@/Pages/Mlb/GradeAnuncioGlide';
 // Helpers puros da grade (validação/coerção) — moram fora daqui para a grade em
 // canvas poder importá-los sem criar ciclo de import página↔grade.
 import {
@@ -205,16 +206,21 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
 
     // ─── Edita uma célula da linha (campo base OU atributo da ficha técnica) ───
     // SHEET-04: ao editar uma célula que era do cliente, a origem passa a 'publicador'.
-    const editarCelula = useCallback((uid, campo, valor, { attr = false } = {}) => {
+    const editarCelula = useCallback((uid, campo, valor, { attr = false, chaveOrigem } = {}) => {
         setAbas((prev) => prev.map((a, i) => {
             if (i !== abaAtiva) return a;
             return {
                 ...a,
                 linhas: a.linhas.map((l) => {
                     if (l.uid !== uid) return l;
-                    const origemAntiga = l.origem[campo];
+                    // A chave do mapa de origem nem sempre e o nome do campo: puxarProduto
+                    // grava origem.available_quantity / origem.description (e nao .estoque /
+                    // .descricao). Quem chama informa a chave certa via opts.chaveOrigem;
+                    // sem ela, cai no proprio campo (comportamento anterior, intacto).
+                    const kOrigem = chaveOrigem ?? campo;
+                    const origemAntiga = l.origem[kOrigem];
                     const origem = origemAntiga === 'cliente'
-                        ? { ...l.origem, [campo]: 'publicador' } // publicador reescreveu campo do cliente
+                        ? { ...l.origem, [kOrigem]: 'publicador' } // publicador reescreveu campo do cliente
                         : l.origem;
                     return attr
                         ? { ...l, attrs: { ...l.attrs, [campo]: valor }, origem, salvo: false }
@@ -722,15 +728,15 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                     </div>
                 )}
 
-                {/* ─── Grade da aba ativa ─── */}
+                {/* ─── Grade da aba ativa (canvas — glide-data-grid) ─── */}
+                {/* onColar saiu: o paste passa a ser nativo da lib no Plan 03. */}
                 {aba && (
-                    <Grade
+                    <GradeAnuncioGlide
                         aba={aba}
                         empresa={empresa}
                         onEditarCelula={editarComSalvar}
                         onAdicionarLinha={adicionarLinha}
                         onRemoverLinha={removerLinha}
-                        onColar={colarNaGrade}
                     />
                 )}
             </div>
@@ -812,343 +818,6 @@ function PublishBar({ resumo, validando, publicando, erros, aviso, onValidarTudo
     );
 }
 
-// ═══════════════════════════════════════════════════════════════════════
-// Grade editável (SHEET-02): colunas base fixas + ficha técnica da categoria.
-// HTML table própria e leve (sem lib de grid). Header sticky, coluna # sticky.
-// A grade da aba ativa mostra as colunas base + SÓ os obrigatórios da categoria
-// ativa — nunca a união de todas as categorias do lote.
-// ═══════════════════════════════════════════════════════════════════════
-function Grade({ aba, empresa, onEditarCelula, onAdicionarLinha, onRemoverLinha, onColar }) {
-    const obrig = aba.obrigatorios ?? [];
-    const nomeCat = nomeCurto(aba.caminho, aba.category_id);
-
-    // GTINs já usados na aba (não gerar repetido)
-    const gtinsUsados = useMemo(
-        () => new Set(aba.linhas.map((l) => l.gtin).filter(Boolean)),
-        [aba.linhas],
-    );
-
-    // Nº de colunas do grupo base (para o colspan do cabeçalho de grupo)
-    const COLS_BASE = 10; // Título, Tipo, Preço, Estoque, SKU, GTIN, Peso, A×L×C, Foto
-
-    return (
-        // onPaste na área da grade (SHEET-06): colar da planilha preenche as células.
-        <div className="overflow-auto rounded-xl border border-white/[0.08] bg-ecf-card" onPaste={onColar}>
-            <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
-                <thead>
-                    {/* Linha de grupos de coluna: Campos base (azul) × Ficha técnica (violeta) */}
-                    <tr>
-                        <th className="sticky left-0 z-20 bg-ecf-card-2" />
-                        <th
-                            colSpan={COLS_BASE}
-                            className="sticky top-0 z-10 border-b border-r border-white/[0.08] bg-blue-400/[0.06] px-2 py-1.5 text-center text-[10px] font-medium text-white/40"
-                        >
-                            Campos base
-                        </th>
-                        {obrig.length > 0 && (
-                            <th
-                                colSpan={obrig.length}
-                                className="sticky top-0 z-10 border-b border-r border-white/[0.08] bg-violet-400/[0.06] px-2 py-1.5 text-center text-[10px] font-medium text-white/40"
-                            >
-                                Ficha técnica · {nomeCat}
-                            </th>
-                        )}
-                        <th className="sticky right-0 top-0 z-20 border-b border-l border-white/[0.08] bg-ecf-card-2" />
-                    </tr>
-                    {/* Cabeçalhos das colunas */}
-                    <tr className="[&>th]:sticky [&>th]:top-[30px] [&>th]:z-10 [&>th]:whitespace-nowrap [&>th]:border-b [&>th]:border-r [&>th]:border-white/[0.08] [&>th]:bg-ecf-card-2 [&>th]:px-2.5 [&>th]:py-2 [&>th]:text-left [&>th]:text-[10px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide [&>th]:text-white/40">
-                        <th className="!sticky !left-0 !z-20 text-center">#</th>
-                        <Th req>Título ({aba.max_title_length})</Th>
-                        <Th>Tipo</Th>
-                        <Th req>Preço</Th>
-                        <Th req>Estoque</Th>
-                        <Th>SKU</Th>
-                        <Th>GTIN</Th>
-                        <Th>Peso g</Th>
-                        <Th>A×L×C cm</Th>
-                        <Th>Foto</Th>
-                        {obrig.map((o) => (
-                            <Th key={o.id} req>{o.name}</Th>
-                        ))}
-                        <th className="!sticky !right-0 !z-20 !border-l !text-center">Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {aba.linhas.map((l, idx) => (
-                        <LinhaGrade
-                            key={l.uid}
-                            linha={l}
-                            idx={idx}
-                            aba={aba}
-                            obrig={obrig}
-                            maxTitle={aba.max_title_length}
-                            gtinsUsados={gtinsUsados}
-                            totalCols={COLS_BASE + obrig.length + 2}
-                            onEditarCelula={onEditarCelula}
-                            onRemoverLinha={onRemoverLinha}
-                        />
-                    ))}
-                    <tr>
-                        <td className="sticky left-0 z-10 bg-ecf-card-2" />
-                        <td colSpan={COLS_BASE + obrig.length + 1} className="border-t border-white/[0.06]">
-                            <button
-                                onClick={onAdicionarLinha}
-                                className="w-full px-3 py-2.5 text-left text-sm text-white/40 hover:text-white"
-                            >
-                                + Adicionar linha <span className="ml-1 text-white/25">ou colar da planilha (Ctrl+V)</span>
-                            </button>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    );
-}
-
-// ─── Cabeçalho de coluna (marca obrigatório com asterisco vermelho) ───
-function Th({ children, req }) {
-    return (
-        <th>
-            {children}
-            {req && <span className="text-red-400"> *</span>}
-        </th>
-    );
-}
-
-// ─── Uma linha da grade (SHEET-02/05) ───
-function LinhaGrade({ linha: l, idx, aba, obrig, maxTitle, gtinsUsados, totalCols, onEditarCelula, onRemoverLinha }) {
-    const set = (campo, valor) => onEditarCelula(l.uid, campo, valor);
-    const setAttr = (id, valor) => onEditarCelula(l.uid, id, valor, { attr: true });
-
-    // SHEET-05: erro LOCAL bloqueante (síncrono) × avisos do ML (orientativo).
-    const errosLocais = errosLocaisLinha(l, aba);
-    const temErroLocal = errosLocais.length > 0;
-    const avisosMl = (l.valida && !l.valida.valido) ? (l.valida.erros ?? []) : [];
-    const validadoOk = !!(l.valida && l.valida.valido);
-
-    return (
-        <>
-        <tr className={cn(
-            '[&>td]:border-b [&>td]:border-r [&>td]:border-white/[0.06]',
-            // Realce FORTE p/ erro local (bloqueante); realce SUAVE p/ avisos do ML.
-            temErroLocal && 'shadow-[inset_3px_0_0_0_theme(colors.red.500)]',
-            !temErroLocal && avisosMl.length > 0 && 'shadow-[inset_3px_0_0_0_theme(colors.amber.400)]',
-        )}>
-            {/* # (sticky) + status da linha (salvando / validando / erro local / avisos ML / OK) */}
-            <td className="sticky left-0 z-10 bg-ecf-card-2 px-2 text-center font-mono text-[11px] text-white/30">
-                {idx + 1}
-                {l.publicando ? (
-                    <Loader2 className="mx-auto mt-0.5 h-3 w-3 animate-spin text-ecf-yellow" title="Publicando…" />
-                ) : l.salvando || l.validando ? (
-                    <Loader2 className="mx-auto mt-0.5 h-3 w-3 animate-spin text-white/30" />
-                ) : temErroLocal ? (
-                    <span className="mt-0.5 block text-red-400" title={`Faltando: ${errosLocais.join(', ')}`}>!</span>
-                ) : avisosMl.length > 0 ? (
-                    <span className="mt-0.5 block text-amber-400" title="Avisos do ML (revisar)">◐</span>
-                ) : validadoOk ? (
-                    <Check className="mx-auto mt-0.5 h-3 w-3 text-emerald-500/70" title="Válido no ML" />
-                ) : l.id ? (
-                    <Check className="mx-auto mt-0.5 h-3 w-3 text-white/40" title="Salvo" />
-                ) : null}
-            </td>
-
-            {/* Título com contador (truncado em maxTitle) */}
-            <Cell origem={l.origem['title']}>
-                <input
-                    className="w-full min-w-[220px] bg-transparent px-2.5 py-2 text-white outline-none focus:bg-ecf-yellow/[0.08]"
-                    value={l.title}
-                    maxLength={maxTitle}
-                    onChange={(e) => set('title', e.target.value.slice(0, maxTitle))}
-                    placeholder="Título do anúncio"
-                />
-                <span className="pointer-events-none absolute bottom-0.5 right-1 text-[9px] tabular-nums text-white/25">
-                    {l.title.length}/{maxTitle}
-                </span>
-            </Cell>
-
-            {/* Tipo (Clássico/Premium → gold_special/gold_pro) */}
-            <td className="px-1">
-                <div className="inline-flex gap-0.5 p-0.5">
-                    {[['gold_special', 'Clás'], ['gold_pro', 'Prem']].map(([v, lb]) => (
-                        <button
-                            key={v}
-                            onClick={() => set('tier', v)}
-                            className={cn(
-                                'rounded px-2 py-0.5 text-[11px]',
-                                l.tier === v ? 'border border-white/[0.12] bg-ecf-card-2 text-white' : 'text-white/40',
-                            )}
-                        >
-                            {lb}
-                        </button>
-                    ))}
-                </div>
-            </td>
-
-            {/* Preço */}
-            <CellInput num origem={l.origem['price']} value={l.price} onChange={(v) => set('price', v)} placeholder="—" />
-
-            {/* Estoque */}
-            <CellInput num origem={l.origem['available_quantity']} value={l.estoque} onChange={(v) => set('estoque', v)} placeholder="—" />
-
-            {/* SKU */}
-            <CellInput origem={l.origem['sku']} value={l.sku} onChange={(v) => set('sku', v)} placeholder="—" />
-
-            {/* GTIN (vazio → botão gerar EAN-13 válido) */}
-            <td className="relative">
-                <div className="flex items-center">
-                    <input
-                        className="w-full min-w-[130px] bg-transparent px-2.5 py-2 text-right font-mono text-white outline-none focus:bg-ecf-yellow/[0.08]"
-                        value={l.gtin}
-                        onChange={(e) => set('gtin', e.target.value)}
-                        placeholder="—"
-                    />
-                    {!l.gtin && (
-                        <button
-                            onClick={() => set('gtin', gerarEan13(gtinsUsados))}
-                            title="Gerar EAN-13 válido"
-                            className="shrink-0 px-1.5 text-[10px] text-ecf-yellow/70 hover:text-ecf-yellow"
-                        >
-                            gerar
-                        </button>
-                    )}
-                </div>
-            </td>
-
-            {/* Peso g */}
-            <CellInput num origem={l.origem['pesoG']} value={l.pesoG} onChange={(v) => set('pesoG', v)} placeholder="—" />
-
-            {/* A×L×C cm (3 inputs) */}
-            <td className="px-1">
-                <div className="flex items-center gap-0.5">
-                    {[['alturaCm', 'A'], ['larguraCm', 'L'], ['comprimentoCm', 'C']].map(([campo, lb]) => (
-                        <input
-                            key={campo}
-                            className="w-11 rounded bg-transparent px-1 py-2 text-right font-mono text-[12px] text-white outline-none focus:bg-ecf-yellow/[0.08]"
-                            value={l[campo]}
-                            onChange={(e) => set(campo, e.target.value)}
-                            placeholder={lb}
-                            title={{ alturaCm: 'Altura', larguraCm: 'Largura', comprimentoCm: 'Comprimento' }[campo]}
-                        />
-                    ))}
-                </div>
-            </td>
-
-            {/* Foto (placeholder — upload real fora do escopo desta grade) */}
-            <td className="px-2">
-                <div className="mx-auto grid h-8 w-8 place-items-center rounded border border-dashed border-white/[0.12] text-white/30">+</div>
-            </td>
-
-            {/* Ficha técnica dinâmica: uma coluna por atributo obrigatório da categoria */}
-            {obrig.map((o) => (
-                <td key={o.id} className="min-w-[130px]">
-                    {o.value_type === 'list' && Array.isArray(o.values) && o.values.length > 0 ? (
-                        <div className="relative">
-                            {l.origem[o.id] && <OrigemBadge origem={l.origem[o.id]} />}
-                            <select
-                                className="w-full bg-transparent px-2.5 py-2 text-white outline-none focus:bg-ecf-yellow/[0.08] [&>option]:bg-ecf-card"
-                                value={l.attrs[o.id] ?? ''}
-                                onChange={(e) => setAttr(o.id, e.target.value)}
-                            >
-                                <option value="">—</option>
-                                {o.values.map((v) => (
-                                    <option key={v.id ?? v.name} value={v.name}>{v.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    ) : (
-                        <Cell origem={l.origem[o.id]}>
-                            <input
-                                className="w-full bg-transparent px-2.5 py-2 text-white outline-none focus:bg-ecf-yellow/[0.08]"
-                                value={l.attrs[o.id] ?? ''}
-                                onChange={(e) => setAttr(o.id, e.target.value)}
-                                placeholder="—"
-                            />
-                        </Cell>
-                    )}
-                </td>
-            ))}
-
-            {/* Ações: remover linha (coluna FIXA à direita — sempre visível no scroll) */}
-            <td className="sticky right-0 z-10 bg-ecf-card-2 px-2 text-center">
-                <button
-                    onClick={() => onRemoverLinha?.(l.uid)}
-                    title="Remover linha"
-                    className="inline-flex items-center justify-center rounded-md border border-white/[0.08] bg-white/[0.03] p-1.5 text-white/50 hover:border-red-400/40 hover:bg-red-500/10 hover:text-red-400"
-                >
-                    <Trash2 className="h-4 w-4" />
-                </button>
-            </td>
-        </tr>
-
-        {/* Linha-de-erro expandida: erro LOCAL bloqueante (campo obrigatório vazio) */}
-        {temErroLocal && (
-            <tr>
-                <td className="sticky left-0 z-10 bg-ecf-card-2" />
-                <td colSpan={totalCols} className="border-b border-red-500/20 bg-red-500/[0.06] px-3 py-1.5">
-                    <span className="inline-flex items-center gap-1.5 text-[12px] text-red-300">
-                        <AlertTriangle className="h-3 w-3" />
-                        Fora do lote — preencha: <b>{errosLocais.join(', ')}</b>
-                    </span>
-                </td>
-            </tr>
-        )}
-
-        {/* Linha-de-avisos expandida: avisos do ML (orientativos, NÃO bloqueiam publicar) */}
-        {!temErroLocal && avisosMl.length > 0 && (
-            <tr>
-                <td className="sticky left-0 z-10 bg-ecf-card-2" />
-                <td colSpan={totalCols} className="border-b border-amber-400/20 bg-amber-400/[0.05] px-3 py-1.5">
-                    <span className="text-[12px] text-amber-200/90">
-                        <b>Avisos do ML (revisar — não impedem publicar):</b>{' '}
-                        {avisosMl.map((e) => e.mensagem).join(' · ')}
-                    </span>
-                </td>
-            </tr>
-        )}
-        </>
-    );
-}
-
-// ─── Célula com badge de origem no canto (violeta cliente / âmbar publicador) ───
-function Cell({ children, origem }) {
-    return (
-        <td className="relative">
-            {origem && <OrigemBadge origem={origem} />}
-            {children}
-        </td>
-    );
-}
-
-// ─── Célula-input simples (numérica ou texto) com badge de origem ───
-function CellInput({ value, onChange, placeholder, num, origem }) {
-    return (
-        <td className="relative">
-            {origem && <OrigemBadge origem={origem} />}
-            <input
-                className={cn(
-                    'w-full min-w-[90px] bg-transparent px-2.5 py-2 text-white outline-none focus:bg-ecf-yellow/[0.08]',
-                    num && 'text-right font-mono tabular-nums',
-                )}
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                placeholder={placeholder}
-            />
-        </td>
-    );
-}
-
-// ─── Bolinha de origem (SHEET-04): violeta = cliente, âmbar = publicador ───
-function OrigemBadge({ origem }) {
-    return (
-        <span
-            title={origem === 'cliente' ? 'Preenchido pelo cliente' : 'Editado pelo publicador'}
-            className={cn(
-                'pointer-events-none absolute right-1 top-1 z-10 h-1.5 w-1.5 rounded-full',
-                origem === 'cliente' ? 'bg-violet-400' : 'bg-amber-400',
-            )}
-        />
-    );
-}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Monta o payload de UMA linha no shape do ItemBuilder — espelha montarPayload()
