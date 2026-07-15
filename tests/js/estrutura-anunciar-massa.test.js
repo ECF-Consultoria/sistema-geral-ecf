@@ -108,3 +108,29 @@ test('remover categoria MOVE as linhas em vez de apagar (decisão do usuário)',
         'nada de destroy: remover categoria por engano nao pode custar o trabalho digitado');
     assert.match(fonte, /window\.confirm\(msg\)/, 'aba com linhas pede confirmacao');
 });
+
+// ─── FASE 84: histórico de undo/redo ───
+
+test('o histórico vive na página (dona do estado) e ancora no funil de edição', () => {
+    assert.match(fonte, /historicoRef/);
+    const bloco = fonte.slice(fonte.indexOf('const editarComSalvar'), fonte.indexOf('const editarComSalvar') + 400);
+    assert.match(bloco, /empilharHistorico\(\)/, 'editarComSalvar e o funil unico de toda edicao');
+});
+
+test('paste/fill/delete contam como UMA ação de undo, não N', () => {
+    assert.match(fonte, /mesmoLote/,
+        'sem agrupar, um paste de 50 celulas exigiria 50 Ctrl+Z — no Excel e 1');
+});
+
+test('undo re-dispara o autosave das linhas revertidas', () => {
+    assert.match(fonte, /reSalvarDiferencas/,
+        'sem isto a tela mostraria o valor revertido e o banco ficaria com o novo');
+});
+
+test('teto de 50 ações no histórico', () => {
+    assert.match(fonte, /undo\.length > 50/);
+});
+
+test('uma ação nova invalida o redo (como no Excel)', () => {
+    assert.match(fonte, /h\.redo = \[\]/);
+});

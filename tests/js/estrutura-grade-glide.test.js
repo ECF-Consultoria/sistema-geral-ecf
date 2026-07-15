@@ -74,6 +74,34 @@ test('as capacidades de planilha da Fase 82 continuam ligadas', () => {
     }
 });
 
-test('SHEET2-04 segue nativo: nenhum handler de teclado custom', () => {
-    assert.doesNotMatch(fonte, /onKeyDown/);
+test('SHEET2-04: a navegação segue nativa (nenhum handler no DataEditor)', () => {
+    // O gate original proibia onKeyDown em qualquer lugar do arquivo. Ele nasceu para
+    // impedir a REIMPLEMENTAÇÃO da navegação nativa (setas/Tab/Enter) — não para
+    // proibir atalhos que a lib nem trata. A Fase 84 precisa de Ctrl+Z, que a lib não
+    // intercepta (não está em ConfigurableKeybinds nem em ForcedKeybinds).
+    // Refinado: o proibido é passar onKeyDown AO DataEditor (aí sim brigaria com o
+    // teclado nativo). No wrapper DOM, é o caminho correto e não conflita.
+    assert.doesNotMatch(fonte, /<DataEditor[\s\S]*?onKeyDown=/,
+        'onKeyDown no DataEditor brigaria com a navegacao nativa da lib');
+    assert.doesNotMatch(fonte, /keybindings=/,
+        'nao sobrescrever os keybindings da lib: setas/Tab/Enter vem de graca');
+});
+
+// ─── FASE 84: undo/redo ───
+
+test('Ctrl+Z e Ctrl+Y são capturados no wrapper (a lib não trata undo)', () => {
+    assert.match(fonte, /onKeyDown=\{onKeyDownAtalhos\}/);
+    assert.match(fonte, /k === 'z' && !e\.shiftKey/);
+    assert.match(fonte, /k === 'y' \|\| \(k === 'z' && e\.shiftKey\)/, 'Ctrl+Y e Ctrl+Shift+Z refazem');
+});
+
+test('atalho não rouba o undo do browser enquanto se digita numa célula', () => {
+    assert.match(fonte, /INPUT' \|\| alvo\.tagName === 'TEXTAREA'/,
+        'no overlay editor o Ctrl+Z do browser e o que o usuario espera');
+});
+
+test('botões Desfazer/Refazer refletem se há o que desfazer', () => {
+    assert.match(fonte, /podeDesfazer/);
+    assert.match(fonte, /podeRefazer/);
+    assert.match(fonte, /Desfazer \(Ctrl\+Z\)/, 'o atalho e invisivel — o title ensina');
 });

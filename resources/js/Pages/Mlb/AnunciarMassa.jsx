@@ -361,10 +361,93 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
     }, [salvarLinha]);
 
     // Envolve editarCelula com o agendamento do autosave
+    // ═══════════════════════════════════════════════════════════════════════
+    // Histórico de undo/redo (Ctrl+Z / Ctrl+Y) — FASE 84.
+    //
+    // A lib NÃO tem undo nativo (conferido no .d.ts: não está em
+    // ConfigurableKeybinds nem em ForcedKeybinds), então Ctrl+Z nem é
+    // interceptado por ela — chega aqui pelo wrapper DOM da grade.
+    //
+    // O snapshot é BARATO porque `abas` já é imutável: todo setAbas cria objetos
+    // novos, então guardar histórico é guardar REFERÊNCIA, não clonar dados.
+    //
+    // Escopo (decisão do usuário): undo LOCAL da grade — digitação, paste, fill e
+    // delete. Não desfaz criação/remoção de linha já persistida: exigiria endpoint
+    // de restauração e reconciliar ids no banco.
+    // ═══════════════════════════════════════════════════════════════════════
+    const historicoRef = useRef({ undo: [], redo: [] });
+    const [podeDesfazer, setPodeDesfazer] = useState(false);
+    const [podeRefazer, setPodeRefazer] = useState(false);
+
+    const sincronizarBotoes = useCallback(() => {
+        const h = historicoRef.current;
+        setPodeDesfazer(h.undo.length > 0);
+        setPodeRefazer(h.redo.length > 0);
+    }, []);
+
+    // Empilha o estado ANTES da mutação. Uma ação nova invalida o redo (como no Excel).
+    //
+    // AGRUPAMENTO: um paste de 50 células chama isto 50 vezes em sequência síncrona;
+    // sem agrupar, cada Ctrl+Z desfaria UMA célula e seriam 50 undos para desfazer um
+    // paste — no Excel, um paste é UMA ação. Edições dentro da mesma janela curta
+    // (o mesmo onCellsEdited: paste, fill handle, delete em range) entram como uma
+    // ação só. Digitar célula a célula fica bem acima dessa janela, então continua
+    // sendo um undo por célula.
+    const ultimaEdicaoRef = useRef(0);
+    const empilharHistorico = useCallback(() => {
+        const agora = Date.now();
+        const mesmoLote = agora - ultimaEdicaoRef.current < 120;
+        ultimaEdicaoRef.current = agora;
+        if (mesmoLote) return; // já empilhou no início deste lote
+
+        const h = historicoRef.current;
+        h.undo.push(abasRef.current);
+        if (h.undo.length > 50) h.undo.shift(); // teto: 50 ações
+        h.redo = [];
+        sincronizarBotoes();
+    }, [sincronizarBotoes]);
+
+    // Re-agenda o autosave das linhas que o undo/redo mudou.
+    // Sem isto, a tela mostraria o valor revertido e o banco continuaria com o novo
+    // — pior que não ter undo.
+    const reSalvarDiferencas = useCallback((depois, antes) => {
+        depois.forEach((aba, i) => {
+            const abaAntes = antes[i];
+            if (!abaAntes || abaAntes === aba) return; // referência igual = nada mudou
+            aba.linhas.forEach((l) => {
+                const lAntes = abaAntes.linhas.find((x) => x.uid === l.uid);
+                if (l.id && lAntes !== l) agendarSalvar(i, l.uid);
+            });
+        });
+    }, [agendarSalvar]);
+
+    const desfazer = useCallback(() => {
+        const h = historicoRef.current;
+        const anterior = h.undo.pop();
+        if (!anterior) return;
+        const atual = abasRef.current;
+        h.redo.push(atual);
+        setAbas(anterior);
+        reSalvarDiferencas(anterior, atual);
+        sincronizarBotoes();
+    }, [reSalvarDiferencas, sincronizarBotoes]);
+
+    const refazer = useCallback(() => {
+        const h = historicoRef.current;
+        const proximo = h.redo.pop();
+        if (!proximo) return;
+        const atual = abasRef.current;
+        h.undo.push(atual);
+        setAbas(proximo);
+        reSalvarDiferencas(proximo, atual);
+        sincronizarBotoes();
+    }, [reSalvarDiferencas, sincronizarBotoes]);
+
     const editarComSalvar = useCallback((uid, campo, valor, opts) => {
+        empilharHistorico(); // snapshot ANTES da mutação
         editarCelula(uid, campo, valor, opts);
         agendarSalvar(abaAtivaRef.current, uid);
-    }, [editarCelula, agendarSalvar]);
+    }, [editarCelula, agendarSalvar, empilharHistorico]);
 
     // ─── Remove uma linha (destroy no backend se já tinha id) ───
     const removerLinha = useCallback(async (uid) => {
@@ -743,6 +826,10 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                         onEditarCelula={editarComSalvar}
                         onAdicionarLinha={adicionarLinha}
                         onRemoverLinha={removerLinha}
+                        onDesfazer={desfazer}
+                        onRefazer={refazer}
+                        podeDesfazer={podeDesfazer}
+                        podeRefazer={podeRefazer}
                     />
                 )}
 

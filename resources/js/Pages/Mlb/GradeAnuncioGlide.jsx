@@ -5,7 +5,7 @@ import { DropdownCell } from '@glideapps/glide-data-grid-cells';
 // (nao em app.jsx) pra nao pesar as outras paginas: a grade e lazy-loaded por rota.
 import '@glideapps/glide-data-grid/dist/index.css';
 import { cn } from '@/lib/utils';
-import { Barcode, Trash2 } from 'lucide-react';
+import { Barcode, Trash2, Undo2, Redo2 } from 'lucide-react';
 import {
     nomeCurto,
     parseDimensoes,
@@ -210,7 +210,10 @@ const SEM_SELECAO = {
     current: undefined,
 };
 
-export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdicionarLinha, onRemoverLinha }) {
+export default function GradeAnuncioGlide({
+    aba, empresa, onEditarCelula, onAdicionarLinha, onRemoverLinha,
+    onDesfazer, onRefazer, podeDesfazer, podeRefazer,
+}) {
     const nomeCat = nomeCurto(aba?.caminho, aba?.category_id);
 
     // Selecao CONTROLADA: a toolbar precisa saber quais linhas estao marcadas.
@@ -540,11 +543,57 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
 
     const nSel = uidsSelecionados.length;
 
+    // ─── Ctrl+Z / Ctrl+Y no wrapper (FASE 84) ───
+    // A lib NAO trata undo/redo (conferido no .d.ts: nao esta em ConfigurableKeybinds
+    // nem em ForcedKeybinds), entao o evento borbulha ate aqui e nao ha conflito com
+    // o teclado nativo da grade (setas/Tab/Enter seguem intactos — SHEET2-04).
+    // Ignora quando o foco esta num input/textarea (o overlay editor tem o proprio
+    // undo do browser, que e o que o usuario espera enquanto digita numa celula).
+    const onKeyDownAtalhos = useCallback((e) => {
+        if (!(e.ctrlKey || e.metaKey)) return;
+        const alvo = e.target;
+        const digitando = alvo && (alvo.tagName === 'INPUT' || alvo.tagName === 'TEXTAREA' || alvo.isContentEditable);
+        if (digitando) return;
+
+        const k = e.key.toLowerCase();
+        if (k === 'z' && !e.shiftKey) { e.preventDefault(); onDesfazer?.(); return; }
+        if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); onRefazer?.(); }
+    }, [onDesfazer, onRefazer]);
+
     return (
-        <div className="rounded-xl border border-white/[0.08] bg-ecf-card">
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+        <div className="rounded-xl border border-white/[0.08] bg-ecf-card" onKeyDown={onKeyDownAtalhos}>
             {/* ─── Toolbar de acoes sobre a selecao (DOM/Tailwind — fora do canvas) ─── */}
             {/* Publicar/validar NAO entram aqui: a PublishBar segue dona da publicacao. */}
             <div className="flex items-center gap-2 border-b border-white/[0.08] px-3 py-2">
+                {/* Desfazer/Refazer: o atalho e invisivel — o botao desabilitado
+                    comunica "nao ha o que desfazer". */}
+                <button
+                    type="button"
+                    onClick={onDesfazer}
+                    disabled={!podeDesfazer}
+                    title="Desfazer (Ctrl+Z)"
+                    className={cn('rounded-md border p-1 transition',
+                        podeDesfazer
+                            ? 'border-white/[0.1] bg-white/[0.03] text-white/60 hover:border-white/25 hover:text-white'
+                            : 'cursor-not-allowed border-white/[0.06] text-white/20')}
+                >
+                    <Undo2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                    type="button"
+                    onClick={onRefazer}
+                    disabled={!podeRefazer}
+                    title="Refazer (Ctrl+Y)"
+                    className={cn('rounded-md border p-1 transition',
+                        podeRefazer
+                            ? 'border-white/[0.1] bg-white/[0.03] text-white/60 hover:border-white/25 hover:text-white'
+                            : 'cursor-not-allowed border-white/[0.06] text-white/20')}
+                >
+                    <Redo2 className="h-3.5 w-3.5" />
+                </button>
+                <div className="mx-1 h-4 w-px bg-white/[0.08]" />
+
                 <span className="text-[11px] text-white/40">
                     {nSel === 0
                         ? 'Selecione linhas pelo número à esquerda'
