@@ -291,14 +291,19 @@ class NpsTemplateController extends Controller
      */
     public function destroy(NpsTemplate $template)
     {
+        // Guardas devolvem `back()->with('error')` (302 + toast do AppLayout), NÃO
+        // abort(422): o Inertia não converte abort() em flash — renderiza a página
+        // de erro crua do Symfony ("Oops! An Error Occurred / 422"). Convenção do
+        // projeto: flash.error → toast (HandleInertiaRequests :48 + AppLayout :413).
+
         // Guarda 1 — nunca apagar o principal.
         if ($template->is_default) {
-            abort(422, 'O modelo principal não pode ser excluído. Defina outro modelo como principal antes.');
+            return back()->with('error', 'O modelo principal não pode ser excluído. Defina outro modelo como principal antes.');
         }
 
         // Guarda 2 — preservar histórico E leitura do dashboard (Pitfall 1).
         if ($template->surveys()->whereHas('response')->exists()) {
-            abort(422, 'Este modelo tem respostas associadas. Desative-o (arquivar) em vez de excluir — '
+            return back()->with('error', 'Este modelo tem respostas associadas. Desative-o (arquivar) em vez de excluir — '
                 . 'assim o histórico e as métricas continuam corretos.');
         }
 

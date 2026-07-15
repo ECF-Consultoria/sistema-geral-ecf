@@ -95,21 +95,24 @@ class ExcluirModeloTest extends TestCase
     }
 
     #[Test]
-    public function test_destroy_do_modelo_principal_e_bloqueado_com_422(): void
+    public function test_destroy_do_modelo_principal_e_bloqueado_com_flash_error(): void
     {
         $this->actingAsAdmin();
         // Modelo principal seedado por migration (is_default=true).
         $principal = NpsTemplate::where('is_default', true)->firstOrFail();
 
+        // Bloqueio devolve redirect + flash.error (toast), NÃO abort(422) — o
+        // Inertia renderizaria a página de erro crua do Symfony.
         $this->delete(route('nps.configuracao.templates.destroy', $principal->id))
-            ->assertStatus(422);
+            ->assertRedirect()
+            ->assertSessionHas('error');
 
         // Continua no banco.
         $this->assertDatabaseHas('nps_templates', ['id' => $principal->id]);
     }
 
     #[Test]
-    public function test_destroy_de_modelo_com_respostas_e_bloqueado_com_422(): void
+    public function test_destroy_de_modelo_com_respostas_e_bloqueado_com_flash_error(): void
     {
         $this->actingAsAdmin();
         $template = $this->criarModeloComPergunta();
@@ -129,7 +132,8 @@ class ExcluirModeloTest extends TestCase
         ]);
 
         $this->delete(route('nps.configuracao.templates.destroy', $template->id))
-            ->assertStatus(422);
+            ->assertRedirect()
+            ->assertSessionHas('error');
 
         // Preserva o modelo (histórico/dashboard intactos).
         $this->assertDatabaseHas('nps_templates', ['id' => $template->id]);
