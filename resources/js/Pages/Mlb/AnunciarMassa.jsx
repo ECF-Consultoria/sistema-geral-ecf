@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
 import { Rocket, Search, Plus, Loader2, ChevronRight, Store, Trash2, Check, AlertTriangle } from 'lucide-react';
+import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Anunciar em massa (Variante A do sketch 001): grade editável por categoria.
@@ -632,6 +633,11 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                             </div>
                         </div>
                     </div>
+                </div>
+
+                {/* Alternância entre modo Individual e Em massa (esta grade) */}
+                <div className="mb-4">
+                    <ModoAnuncioTabs empresaId={empresa.id} modo="massa" />
                 </div>
 
                 {/* ─── Cápsulas de aba por categoria ─── */}

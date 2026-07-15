@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { router } from '@inertiajs/react';
+import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 
 // ─── Badges de status do rascunho ───
 const STATUS_BADGE = {
@@ -1802,6 +1803,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 <Check size={12} /> Salvo
                             </span>
                         )}
+                    </div>
+
+                    {/* Alternância entre modo Individual (este wizard) e Em massa */}
+                    <div className="mt-3">
+                        <ModoAnuncioTabs empresaId={empresa.id} modo="individual" />
                     </div>
                 </header>
 
