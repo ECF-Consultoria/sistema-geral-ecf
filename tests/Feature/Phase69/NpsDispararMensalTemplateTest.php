@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
@@ -48,6 +49,7 @@ use Tests\TestCase;
 class NpsDispararMensalTemplateTest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     /**
      * FKs SQLite ligadas — mesmo padrão da suite Phase68/NpsSchemaTest.
@@ -153,9 +155,11 @@ class NpsDispararMensalTemplateTest extends TestCase
         $empresa = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa);
 
-        // Sem contratos ativos + apenas seed NPS Padrão → resolver retorna padrão.
+        // Phase 79 (DEC-79-A) — disparo ESTRITO: cobrimos um serviço performance
+        // ativo no NPS Padrão (is_default) → o survey nasce com esse template_id.
         $padrao = NpsTemplate::default()->first();
         $this->assertNotNull($padrao, 'seed NPS Padrão (migration 100004) deveria existir antes do dispatch');
+        $this->contratarServicoNpsCoberto($empresa, $padrao->id);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
@@ -165,17 +169,18 @@ class NpsDispararMensalTemplateTest extends TestCase
         $this->assertEquals(
             $padrao->id,
             $survey->template_id,
-            'survey deveria ter template_id === NPS Padrão (fallback do resolver)'
+            'survey deveria ter template_id === NPS Padrão (modelo que cobre o serviço ativo)'
         );
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 2 — 2026-07-13: disparo automático usa SEMPRE o principal,
-    //          IGNORANDO scope/priority (contrato novo — antes preferia scope)
+    // Test 2 — 2026-07-14 (Phase 79 / DEC-79-A): disparo ESTRITO usa o modelo
+    //          cujos "Serviços cobertos" batem com um contrato ATIVO da empresa;
+    //          o principal (sem scope no serviço) NÃO é usado como fallback.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_comando_usa_principal_ignorando_template_scoped(): void
+    public function test_comando_usa_modelo_cujos_servicos_cobrem_contrato_ativo(): void
     {
         Mail::fake();
         Log::spy();
@@ -185,40 +190,48 @@ class NpsDispararMensalTemplateTest extends TestCase
         $empresa = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa);
 
-        // O principal continua sendo o seed NPS Padrão (is_default=true).
-        $padrao = NpsTemplate::default()->first();
-
-        // Mesmo com um template scoped de priority alta cobrindo o serviço da
-        // empresa, o disparo AUTOMÁTICO deve ignorá-lo e usar o principal.
-        $servicoA = $this->servicosCatalogo(1)->first();
-        $this->contratarServico($empresa, $servicoA);
-
-        $templateScoped = NpsTemplate::factory()->create([
-            'nome'     => 'Template Servico A (priority alta)',
-            'active'   => true,
-            'priority' => 10,
+        // Serviço fresco (criado após o seed) contratado pela empresa. Como não é
+        // coberto pelo NPS Padrão, só o modelo que o cobre explicitamente aplica.
+        $servicoNovo = Servico::create([
+            'nome'          => 'Serviço Exclusivo A ' . uniqid(),
+            'valor_padrao'  => 0,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
         ]);
-        $templateScoped->serviceScopes()->attach($servicoA->id);
+        $this->contratarServico($empresa, $servicoNovo);
+
+        // Modelo (NÃO principal) com envio automático cobrindo o serviço novo.
+        $modeloScoped = NpsTemplate::factory()->create([
+            'nome'                    => 'Modelo Servico A',
+            'active'                  => true,
+            'is_default'              => false,
+            'priority'                => 10,
+            'envio_automatico_mensal' => true,
+        ]);
+        $modeloScoped->serviceScopes()->attach($servicoNovo->id);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
+        // Estrito: apenas o modelo que cobre o serviço ativo gera survey.
         $this->assertDatabaseCount('nps_surveys', 1);
 
         $survey = NpsSurvey::first();
         $this->assertEquals(
-            $padrao->id,
+            $modeloScoped->id,
             $survey->template_id,
-            'disparo automático deve usar o principal (is_default), não o template scoped'
+            'disparo estrito deve usar o modelo cujos serviços cobertos batem com o contrato ativo'
         );
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 3 — 2026-07-13: sem modelo principal (is_default), o comando
-    //          aborta cedo sem criar nada e loga warning
+    // Test 3 — 2026-07-14 (Phase 79 / DEC-79-A): empresa elegível SEM serviço
+    //          coberto por nenhum modelo → NENHUM survey + Log::warning
+    //          ("sem modelo aplicável"), sem fallback no principal.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_comando_aborta_quando_nao_ha_modelo_principal(): void
+    public function test_comando_nao_gera_survey_para_empresa_sem_servico_coberto(): void
     {
         Mail::fake();
         Log::spy();
@@ -228,73 +241,68 @@ class NpsDispararMensalTemplateTest extends TestCase
         $empresa = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa);
 
-        // Cenário anômalo: zera TODOS os templates (inclusive o seed padrão) →
-        // não há principal (is_default) → comando aborta antes do loop.
-        NpsTemplate::query()->delete();
-        NpsTemplate::resetPrincipalCache();
-        $this->assertEquals(0, NpsTemplate::count(), 'baseline: zero templates na base');
+        // Contrato de serviço fresco NÃO coberto por nenhum modelo → sem cobertura.
+        $servicoSemCobertura = Servico::create([
+            'nome'          => 'Serviço Sem Cobertura ' . uniqid(),
+            'valor_padrao'  => 0,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
+        ]);
+        $this->contratarServico($empresa, $servicoSemCobertura);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // Nada criado nem enviado
+        // Estrito sem fallback: nada criado.
         $this->assertDatabaseCount('nps_surveys', 0);
-        Mail::assertNothingSent();
 
-        // Warning sobre ausência de principal
+        // Warning estruturado sobre ausência de modelo aplicável.
         Log::shouldHaveReceived('warning')->withArgs(function ($mensagem) {
-            return str_contains(strtolower((string) $mensagem), 'principal');
+            return str_contains(strtolower((string) $mensagem), 'sem modelo aplicável');
         });
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 4 — 2026-07-13: TODAS as empresas elegíveis recebem o principal,
-    //          independentemente do serviço contratado
+    // Test 4 — 2026-07-14 (Phase 79 / DEC-79-A): matriz estrita — empresas com
+    //          serviço performance coberto recebem o NPS Padrão; empresa sem
+    //          serviço coberto NÃO recebe survey.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_comando_aplica_principal_para_todas_as_empresas(): void
+    public function test_comando_estrito_so_gera_para_empresas_com_servico_coberto(): void
     {
         Mail::fake();
         Log::spy();
 
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        // Principal = seed NPS Padrão (preservado). Um template scoped extra
-        // existe mas NÃO deve ser usado no disparo automático.
         $padrao = NpsTemplate::default()->first();
 
-        $servicoA = $this->servicosCatalogo(1)->first();
-        $templateScoped = NpsTemplate::factory()->create([
-            'nome'     => 'Template Servico A',
-            'active'   => true,
-            'priority' => 10,
-        ]);
-        $templateScoped->serviceScopes()->attach($servicoA->id);
-
-        // Empresa 1: contrata Servico A (antes receberia o scoped).
+        // Empresa 1: contrato performance coberto pelo NPS Padrão → recebe survey.
         $empresa1 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa1);
-        $this->contratarServico($empresa1, $servicoA);
+        $this->contratarServicoNpsCoberto($empresa1, $padrao->id);
 
-        // Empresa 2: sem contrato nenhum.
+        // Empresa 2: sem contrato nenhum → estrito NÃO gera.
         $empresa2 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa2);
 
-        // Empresa 3: contrata Servico A também.
+        // Empresa 3: também coberta → recebe survey.
         $empresa3 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa3);
-        $this->contratarServico($empresa3, $servicoA);
+        $this->contratarServicoNpsCoberto($empresa3, $padrao->id);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // Todas as 3 recebem o PRINCIPAL, ignorando o scope.
-        $this->assertDatabaseCount('nps_surveys', 3);
-        foreach ([$empresa1, $empresa2, $empresa3] as $emp) {
+        // Só as empresas cobertas (1 e 3) recebem o NPS Padrão.
+        $this->assertDatabaseCount('nps_surveys', 2);
+        foreach ([$empresa1, $empresa3] as $emp) {
             $this->assertDatabaseHas('nps_surveys', [
                 'company_id'  => $emp->id,
                 'template_id' => $padrao->id,
             ]);
         }
+        $this->assertDatabaseMissing('nps_surveys', ['company_id' => $empresa2->id]);
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -311,6 +319,8 @@ class NpsDispararMensalTemplateTest extends TestCase
 
         $empresa = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa);
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        $this->contratarServicoNpsCoberto($empresa);
 
         // Run 1 → cria 1 survey com template_id do padrão
         $this->artisan('nps:disparar-mensal')->assertSuccessful();

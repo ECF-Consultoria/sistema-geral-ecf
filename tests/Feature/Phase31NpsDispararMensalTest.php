@@ -9,6 +9,7 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ use Tests\TestCase;
 class Phase31NpsDispararMensalTest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     private function criarEmpresa(array $overrides = []): Company
     {
@@ -89,6 +91,8 @@ class Phase31NpsDispararMensalTest extends TestCase
             'updated_at' => '2025-04-18 10:00:00',
         ]);
         $this->atribuirEstrategista($empresa);
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        $this->contratarServicoNpsCoberto($empresa);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
@@ -164,6 +168,8 @@ class Phase31NpsDispararMensalTest extends TestCase
             'updated_at' => '2025-04-18 10:00:00',
         ]);
         $this->atribuirEstrategista($empresa);
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        $this->contratarServicoNpsCoberto($empresa);
 
         // Run 1
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
@@ -191,6 +197,8 @@ class Phase31NpsDispararMensalTest extends TestCase
             'updated_at' => '2026-01-31 10:00:00',
         ]);
         $this->atribuirEstrategista($empresa);
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        $this->contratarServicoNpsCoberto($empresa);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
@@ -239,6 +247,8 @@ class Phase31NpsDispararMensalTest extends TestCase
         $analista     = User::factory()->create(['name' => 'Bruno']);
         $this->atribuirEstrategista($empresa, $estrategista);
         $this->atribuirAnalista($empresa, $analista);
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        $this->contratarServicoNpsCoberto($empresa);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 

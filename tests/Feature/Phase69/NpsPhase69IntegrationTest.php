@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
@@ -87,6 +88,7 @@ use Tests\TestCase;
 class NpsPhase69IntegrationTest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     /**
      * Garante FKs SQLite ativas — a constraint 23000 do dedup unique parcial
@@ -314,6 +316,10 @@ class NpsPhase69IntegrationTest extends TestCase
         $this->assertNotNull($padrao, 'seed NPS Padrão deveria existir antes do dispatch');
         $this->assertSame(3, $padrao->questions()->count(), 'seed deveria ter 3 perguntas fixas');
 
+        // Phase 79 (DEC-79-A) — disparo estrito: cobre um serviço performance no
+        // NPS Padrão para a empresa ficar elegível ao dispatch multi-modelo.
+        $this->contratarServicoNpsCoberto($empresa, $padrao->id);
+
         // ─── Ato 1 (dispatch): comando cria survey com template_id do padrão ─
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
@@ -477,9 +483,10 @@ class NpsPhase69IntegrationTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Fluxo 3 — Batch heterogêneo com scope match + fallback + órfã.
-    //           Cobre SC #4 (dispatch guard RuntimeException + Log::warning
-    //           + batch continua exit=0 com uma empresa sem template).
+    // Fluxo 3 — 2026-07-14 (Phase 79 / DEC-79-A): batch estrito heterogêneo —
+    //           empresas com serviço coberto recebem o NPS Padrão; empresa sem
+    //           serviço coberto NÃO recebe survey + Log::warning estruturado
+    //           ("sem modelo aplicável") e o batch continua exit=0.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
@@ -492,34 +499,33 @@ class NpsPhase69IntegrationTest extends TestCase
         // created_at cujo DAY() bate com 8 para o comando disparar.
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        $servicoA = $this->servicosCatalogo(1)->first();
-
-        // Template scoped no Servico A com priority alta — vencerá o padrão
-        // para empresas que contratam A. Empresas SEM esse serviço caem no
-        // is_default (seed NPS Padrão).
-        $templateScoped = NpsTemplate::factory()->create([
-            'nome'     => 'Template Servico A (scoped)',
-            'active'   => true,
-            'priority' => 10,
-        ]);
-        $templateScoped->serviceScopes()->attach($servicoA->id);
-
         $padrao = NpsTemplate::default()->first();
         $this->assertNotNull($padrao);
 
-        // ─── Cenário 3A — 2 empresas OK ────────────────────────────────────
-        // 2026-07-13 · disparo automático usa SEMPRE o principal (padrão),
-        // ignorando o template scoped mesmo quando a empresa contrata o serviço.
+        // ─── Cenário 3A — 2 empresas com serviço coberto recebem NPS Padrão ─
         $empresa1 = $this->criarEmpresaElegivelHoje();
         $this->atribuirEstrategista($empresa1);
-        $this->contratarServico($empresa1, $servicoA); // contrata A, mas recebe o principal
+        $this->contratarServicoNpsCoberto($empresa1, $padrao->id);
 
         $empresa2 = $this->criarEmpresaElegivelHoje();
-        $this->atribuirEstrategista($empresa2); // sem serviço → também o principal
+        $this->atribuirEstrategista($empresa2);
+        $this->contratarServicoNpsCoberto($empresa2, $padrao->id);
+
+        // ─── Empresa 3 — elegível mas SEM serviço coberto → pulada + warning ─
+        $servicoSemCobertura = Servico::create([
+            'nome'          => 'Serviço Órfão ' . uniqid(),
+            'valor_padrao'  => 0,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
+        ]);
+        $empresa3 = $this->criarEmpresaElegivelHoje();
+        $this->atribuirEstrategista($empresa3);
+        $this->contratarServico($empresa3, $servicoSemCobertura);
 
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
 
-        // 2 surveys criadas, AMBAS com o principal (padrão)
+        // Só as 2 empresas cobertas recebem survey (NPS Padrão); a órfã não.
         $this->assertDatabaseCount('nps_surveys', 2);
         $this->assertDatabaseHas('nps_surveys', [
             'company_id'  => $empresa1->id,
@@ -529,28 +535,11 @@ class NpsPhase69IntegrationTest extends TestCase
             'company_id'  => $empresa2->id,
             'template_id' => $padrao->id,
         ]);
-
-        // ─── Cenário 3B — sem modelo principal → comando aborta ─────────────
-        // Apagamos TODOS os templates (inclusive o seed) → não há principal
-        // (is_default). O comando aborta cedo (exit=0) sem criar nada e loga
-        // warning sobre a ausência de principal.
-        NpsTemplate::query()->delete();
-        NpsTemplate::resetPrincipalCache();
-        $this->assertSame(0, NpsTemplate::count(), 'baseline: zero templates → sem principal');
-
-        $empresa3 = $this->criarEmpresaElegivelHoje();
-        $this->atribuirEstrategista($empresa3);
-
-        $this->artisan('nps:disparar-mensal')->assertSuccessful();
-
-        // Empresa 3 NÃO recebeu survey — comando abortou
         $this->assertDatabaseMissing('nps_surveys', ['company_id' => $empresa3->id]);
-        // Total ainda 2 (as criadas no Cenário 3A)
-        $this->assertDatabaseCount('nps_surveys', 2);
 
-        // Warning sobre ausência de modelo principal
+        // Warning estruturado sobre ausência de modelo aplicável (blindagem rollout).
         Log::shouldHaveReceived('warning')->withArgs(function ($mensagem) {
-            return str_contains(strtolower((string) $mensagem), 'principal');
+            return str_contains(strtolower((string) $mensagem), 'sem modelo aplicável');
         });
     }
 

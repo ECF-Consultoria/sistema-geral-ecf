@@ -14,6 +14,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
@@ -38,6 +39,7 @@ use Tests\TestCase;
 class NpsDispararMensalDigisacTest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     protected function setUp(): void
     {
@@ -77,6 +79,10 @@ class NpsDispararMensalDigisacTest extends TestCase
             'role'        => 'estrategista',
             'assigned_at' => now(),
         ]);
+
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        // Inofensivo no T5 (ambos canais off → comando sai antes de iterar).
+        $this->contratarServicoNpsCoberto($empresa);
 
         return $empresa->fresh();
     }

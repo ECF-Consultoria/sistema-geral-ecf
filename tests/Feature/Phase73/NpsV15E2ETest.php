@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use PHPUnit\Framework\Attributes\Test;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
@@ -53,6 +54,7 @@ use Tests\TestCase;
 class NpsV15E2ETest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     /**
      * Garante FKs SQLite ativas — padrão Phase 68/69/70/71/72 (dedup unique
@@ -451,6 +453,8 @@ class NpsV15E2ETest extends TestCase
             'role'        => 'estrategista',
             'assigned_at' => now()->toDateString(),
         ]);
+        // Phase 79 (DEC-79-A) — disparo estrito exige serviço coberto por modelo.
+        $this->contratarServicoNpsCoberto($company);
 
         // 1a execução → cria survey.
         $this->artisan('nps:disparar-mensal')->assertExitCode(0);
