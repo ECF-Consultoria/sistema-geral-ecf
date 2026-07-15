@@ -33,6 +33,12 @@
 ### DEC-80-B0 — Fonte do MÊS = JOIN até `nps_surveys.completed_at` (CORREÇÃO do RESEARCH)
 - `nps_score_assignments` **não tem coluna de mês**. O mês do bônus DEVE sair de JOIN `assignments → nps_responses → nps_surveys.completed_at` (a MESMA fonte que o caminho legado usa) — nunca de `assigned_at` (um backfill futuro gravaria a data do backfill → a resposta migraria de mês e zeraria o bônus de alguém sem erro no log) nem de `survey.month_reference` (é o mês do DISPARO e é NULL no fixture Carlos de propósito).
 
+### DEC-80-B1 — Predicado do dual-path: snapshot é AUTORITATIVO por papel (CONFIRMADO pelo usuário 2026-07-14)
+- **NÃO usar o predicado literal** "se existe atribuição para (user, resposta)". Ele reabre a super-atribuição no sentido inverso: `User::companies()` não filtra por `servico_id` (User.php:206-220), então a Decoral (onde Gustavo é analista SHOPEE) está na carteira dele; o NPS Padrão (principal) da Decoral entra na query legada dele; ele não tem atribuição nessa resposta → cairia no legado e **receberia a nota de ML da Decoral** (que pertence ao analista ML). Gustavo ficaria (3.11 + ML)/2 em vez de 3.11.
+- **Predicado correto (LOCKED):** pular a resposta no ramo legado quando ela **já tem atribuição no papel correspondente à dimensão do cargo do user**. Se o snapshot da Fase 79 nomeou os responsáveis daquele papel naquela resposta, a lista é **autoritativa** — quem não está nela não recebe nada dessa resposta.
+- Propriedades: preserva 100% do histórico (resposta com zero atribuições → zero skip → legado normal); entrega **Gustavo = 3.11 exato** na Decoral; subsume o predicado literal (nenhuma resposta conta 2×).
+- **Não contradiz o Ajuste 3:** o Gustavo continua somando o NPS de ML das empresas **onde ELE é o analista ML** (lá ele TEM a atribuição). O que ele não recebe é o NPS ML da Decoral, onde é só o analista Shopee.
+
 ### DEC-80-B — Dual-path POR RESPOSTA (não quebrar o bônus histórico)
 - Respostas anteriores à Fase 79 (e o mês de transição, que é misto) NÃO têm atribuição. Regra: para cada resposta no escopo do usuário no mês — **se existe atribuição para (user, resposta)** → usar `average_score` da atribuição; **senão** → cair no cálculo legado atual (carteira `company_users` × dimensão do cargo × `NpsScoreCalculator::compute`), preservando também o fallback das colunas legacy `score_*`.
 - Isso mantém meses históricos idênticos e faz o mês de transição somar corretamente (respostas novas via atribuição + antigas via legado). NÃO usar corte por mês inteiro (perderia respostas pré-deploy do mês corrente).
