@@ -69,6 +69,16 @@ function corPorNota(nota) {
         : 'bg-rose-500/15 border-rose-500/30 text-rose-300';
 }
 
+// Phase 80 Plan 03 (DEC-80-E) — rótulo da ÁREA de cada resposta.
+// O backend manda o slug do setor (`performance` | `shopee`); o slug CRU nunca
+// pode ir pra tela — "performance" não diz nada pra quem lê e a regra do projeto
+// é evitar jargão sem explicação. Respostas do ramo legado vêm com `area: null`
+// (não têm serviço) → simplesmente sem badge.
+const ROTULO_AREA = {
+    performance: 'Mercado Livre',
+    shopee: 'Shopee',
+};
+
 const iconeMeta = { dollar: DollarSign, check: CheckCircle2, trend: TrendingUp };
 
 // ═══════════════════════════════════════════════════════════════
@@ -216,6 +226,11 @@ function NpsHeatmapWidget({ nps }) {
     const meses    = heatmap.meses ?? [];
     const empresas = heatmap.empresas ?? [];
     const media    = nps?.media ?? null;
+    // Phase 80 Plan 03 — as últimas respostas voltam a ser exibidas. O payload
+    // `nps.respostas` existia desde a Phase 73, mas ficou órfão quando o redesign
+    // de 2026-07-09 trocou a lista pelo heatmap: ninguém mais renderizava. É a
+    // lista que mostra DE ONDE a média veio (e, agora, de qual área).
+    const respostas = nps?.respostas ?? [];
     const semDados = empresas.length === 0 || empresas.every(e => Object.keys(e.notas ?? {}).length === 0);
 
     return (
@@ -317,6 +332,54 @@ function NpsHeatmapWidget({ nps }) {
                             </div>
                             <span className="font-semibold uppercase tracking-wider">Nota alta</span>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Últimas respostas — Phase 80 Plan 03 (DEC-80-E).
+                Detalha de onde a média veio: empresa, área, quando e nota. A
+                resposta de um NPS Shopee só aparece aqui para quem responde pelo
+                Shopee (o backend escopa por atribuição congelada da Fase 79). */}
+            {respostas.length > 0 && (
+                <div className="px-4 pb-4 pt-3 border-t border-white/[0.06]">
+                    <p className="text-[10px] uppercase tracking-wider text-white/40 font-semibold mb-2">
+                        Últimas respostas
+                    </p>
+                    <div className="space-y-1.5">
+                        {respostas.map((r, i) => {
+                            // ⚠ Flags computadas DENTRO do callback do .map() — nunca em
+                            // var de escopo do componente usada só aqui. O Rollup elimina
+                            // a var e gera ReferenceError SÓ no bundle de produção
+                            // (memória `feedback_rollup_map_scope_bug`).
+                            const rotuloArea = ROTULO_AREA[r.area] ?? null;
+                            const temNota    = r.nota != null;
+                            return (
+                                <div
+                                    key={i}
+                                    className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-white/[0.02] border border-white/[0.04]"
+                                >
+                                    <span className="text-white/80 text-[12px] font-medium truncate" title={r.empresa}>
+                                        {r.empresa}
+                                    </span>
+                                    {rotuloArea && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-white/[0.04] border border-white/[0.08] text-white/50 font-semibold whitespace-nowrap">
+                                            {rotuloArea}
+                                        </span>
+                                    )}
+                                    <span className="text-white/30 text-[11px] whitespace-nowrap ml-auto">
+                                        {r.quando}
+                                    </span>
+                                    <span
+                                        className={cn(
+                                            'text-[11px] px-1.5 py-0.5 rounded-md border font-bold tabular-nums whitespace-nowrap',
+                                            corPorNota(r.nota),
+                                        )}
+                                    >
+                                        {temNota ? Number(r.nota).toFixed(2) : '—'}
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
