@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
-stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
-last_updated: "2026-07-14T23:35:26.931Z"
+stopped_at: Completed 79-03 (Wave 2 Phase 79 — disparo NPS estrito por serviços cobertos)
+last_updated: "2026-07-15T00:14:01.399Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 13
   completed_phases: 10
   total_plans: 54
-  completed_plans: 56
+  completed_plans: 57
   percent: 77
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 79
-Plan: 79-02 concluído (Wave 1 — seed idempotente NPS Shopee + link performance ao NPS Padrão; habilita disparo estrito 79-03)
+Plan: 79-03 concluído (Wave 2 — disparo mensal ESTRITO por serviços cobertos; empresa ML+Shopee recebe 2 NPS; dedup por template_id; blindagem Log::warning)
 Status: Em execução (v16.0 — Responsáveis por serviço)
 Last activity: 2026-07-14
 
@@ -138,11 +138,13 @@ Last activity: 2026-07-14
 | Phase 75 P03 | ~15min | 1 task (verificação-only: Feature test cadastro Shopee sem ML) | 1 file (1 test new) |
 | Phase 75 P04 | ~15min | 3 tasks (TDD: testes RED + ShopeeEmpresasController enxuto/guard IDOR + rotas gated) | 4 files (1 controller, 1 route, 2 tests) |
 | Phase 79 P02 | ~9min | 2 tasks (TDD RED + seed idempotente NPS Shopee + link performance ao NPS Padrão) | 4 files (1 migration, 1 test new, 2 testes legados ajustados) |
+| Phase 79 P03 | ~40min | 2 tasks (TDD RED matriz + reescrita do disparo estrito; +adaptação de 5 suites de disparo legadas) | 8 files (1 command, 2 testes/trait new, 5 suites legadas) |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
 
+- 2026-07-14 — **Phase 79 Plan 03 EXECUTADO — disparo NPS ESTRITO por serviços cobertos (DEC-79-A)**. `nps:disparar-mensal` deixa de "forçar o principal (is_default) para TODAS as empresas" e passa a gerar **1 envio por modelo** com `envio_automatico_mensal=true` cujos "Serviços cobertos" (`nps_template_service_scopes`) intersectam um **contrato ATIVO** da empresa (`contratosServico()->active()`). Empresa **ML+Shopee recebe 2 NPS** (um por área); empresa **sem serviço coberto → 0 NPS + `Log::warning`** estruturado + contador `puladosSemModelo` no output (blindagem de rollout). **Bug corrigido (Pitfall 2):** dedup agora inclui `template_id` (`where company_id + month_reference + template_id`), movido pra dentro do loop de modelos — antes o guard por-empresa bloqueava o 2º modelo. Assunto do email prefixado com `$modelo->nome` (OQ-a MVP). Preservados: guards active/canal/estrategista, envio email+Digisac, clamp de dia. **Testes:** novo `tests/Feature/V16/DisparoEstritoTest.php` (5 casos: performance/shopee/ambos/nenhum/dedup) + novo trait `Tests\Concerns\ContrataServicoNpsCoberto`. **Regressão:** as 5 suites de disparo legadas (Phase 31/69 template+integração/73/Digisac) foram adaptadas ao novo contrato — as que codificavam o interino "força principal/ignora scope/aborta sem principal" (2026-07-13) foram reescritas para a matriz estrita. `--filter=Nps` = **165 verdes**. Bônus `->principal()` intocado (DEC-79-E). Falhas pré-existentes na suite completa (setores/polos do dev paralelo + fatal HTTP Sugadores) são fora de escopo — ver `deferred-items.md`. Backend-only, sem deploy. Commits: b3a6b49 (RED) + 2dd2620 (feat) + 756d943 (adaptação suites).
 - 2026-07-14 — **Phase 78: correção do usuário — /shopee/empresas EXCLUSIVO do líder do Setor Shopee; 78-03 CANCELADO**. Fluxo de trabalho real: o responsável NÃO é atribuído no Comercial (Comercial só adiciona o serviço → empresa vai pra aba Pendências); quem atribui a empresa a um analista/estrategista é o **LÍDER do setor**, na aba Pendências de /shopee/empresas. Logo a página é **acesso exclusivo do líder** (+ admin), não de todos os membros. Implementado: `User::effectivePermissions()` concede `shopee.empresas` só a quem lidera o setor slug 'shopee' (espelha `AUTO_LIDERANCA_PERFORMANCE`); migration `2026_07_14_140000_shopee_empresas_permissao_so_lider` REMOVE `shopee.empresas` do grant de MEMBROS (`setor_permissoes`) — idempotente/reversível. Testes: gate líder→200, membro→403, admin→200; `SetorShopeeSeedTest::test_permissao` ajustado (permissão não é mais de membro). 52 testes V16+Phase75 verdes. **78-03 (Comercial atribui responsável) CANCELADO.** Efeito em prod: Felipe (líder) mantém acesso; Gustavo (analista, membro não-líder) perde acesso à página. A deployar. [[project_nps_modelo_principal]] não afetado.
 - 2026-07-14 — **Phase 78 (78-01 + 78-02) EXECUTADA inline + DEPLOYADA** (v16.0). Subagentes indisponíveis (limite de sessão até ~19h BRT) → planejei e executei inline. **78-01 backend** (`ShopeeEmpresasController` + rotas): (a) selects de analista/estrategista da aba Shopee agora ESCOPADOS ao Setor Shopee (`usersPorCargoShopee` via setores slug shopee → cargos → user_setores; substitui o `usersPorCargo` global) — clarificação do usuário; (b) responsáveis exibidos + pendência `sem_responsavel` agora POR-SERVIÇO Shopee (resolve o servico_id shopee por empresa e casa em company_users — empresa ML+Shopee com analista só ML aparece pendente; corrige bug); (c) `resolver()` (atribui analista/estrategista shopee por servico_id + email_cliente) e `cancelarServico()` (desativa só o contrato setor shopee) gated `permission:shopee.empresas` + guard de escopo. Rotas `shopee.empresas.resolver` + `cancelar-servico`. **78-02 frontend** (`Shopee/Empresas.jsx`): removido "Gerar NPS"; aba Pendências ganhou botão **"Resolver"** → popup (selects Shopee escopados + email → shopee.empresas.resolver); ação **"Excluir"** (2 abas) = cancelar só o serviço Shopee. **Testes:** 6 novos V16 (ShopeeSelectsEscopadosTest + ShopeeResolverECancelarTest) + regressão Phase75ShopeeEmpresasTest atualizada p/ realidade v16 (setor pré-seeded + por-serviço) = 51 passed; `npm run build` verde. **DEPLOY em produção validado**: `route:list` no VPS mostra resolver + cancelar-servico; sem migration nova. Commits: 78-01 backend + 78-02 frontend + docs planos inline. **Pendente:** 78-03 (Comercial — responsáveis ao adicionar serviço Shopee) + checkpoint visual do popup. Próximo: 78-03 ou Phase 79 (NPS multi-modelo). Deploy note: docs local não-enviado da sessão anterior subiu junto.
 - 2026-07-14 — **DEPLOY v16.0 fases 76+77 em produção — VALIDADO**. Incidente + correção: o 1º deploy FALHOU na migration `add_servico_id_to_company_users` no MariaDB (`erro 1553: Cannot drop index company_users_..._role_unique: needed in a foreign key constraint` — o unique de 3 col cobria a FK de company_id; SQLite não pega). **Hotfix** (`7fbd8f6`): reordenar (adicionar unique de 4 col ANTES de dropar o de 3) + guardas de idempotência cross-driver (hasColumn/hasIndex/hasForeignKey) para re-executar sobre o estado parcial que o deploy falho deixou (coluna+FK já criadas). Ver memória [[project_mysql_drop_index_fk]]. Re-deploy OK. **Validação no VPS:** company_users com unique de 4 col (o de 3 sumiu) + FK servico_id→servicos; backfill **209/216 linhas** (7 sem contrato performance = NULL consolidado, correto); Setor Shopee (id=8, que o USUÁRIO já havia criado manualmente com core.empresas+core.nps) recebeu cargos analista/estrategista + shopee.empresas + wiring: **Felipe (consultor.02) membro+líder, Gustavo (suporte.11) membro** — migration idempotente encontrou o setor existente e só complementou (não removeu nada). Merge com dev paralelo (anunciar-ml Phase 82) limpo, zero overlap. Aprendizado: validar toda migration de ALTER com FK/índice/enum no VPS (testes SQLite não pegam).
