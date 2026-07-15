@@ -109,12 +109,13 @@ class NpsSnapshotService
                 continue;
             }
 
-            // question_count = nº de perguntas do template na dimensão (denominador
-            // do cálculo — NÃO count de answers). score_sum = soma dos pesos snapshot.
-            $questionCount = NpsTemplateQuestion::query()
-                ->where('template_id', $survey->template_id)
-                ->where('dimensao', $dimensao)
-                ->count();
+            // question_count = nº de perguntas COM PESO do template na dimensão
+            // (texto_livre não conta — denominador do cálculo, NÃO count de
+            // answers). Vem da MESMA fonte de verdade do calculator
+            // (`contarPerguntasComPeso`) para preservar a invariante
+            // score_sum / question_count == average_score (bugfix 2026-07-15,
+            // quick task 260715-kam — duplicar a query aqui recriaria o bug).
+            $questionCount = $this->calculator->contarPerguntasComPeso($survey->template_id, $dimensao);
 
             $scoreSum = (float) $response->answers()
                 ->where('question_dimensao_snapshot', $dimensao)

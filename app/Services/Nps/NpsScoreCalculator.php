@@ -45,6 +45,25 @@ use App\Models\NpsTemplateQuestion;
  * e uma query isolada. Segue padrao do `UnifiedMetricsService` para servicos
  * de calculo puro.
  *
+ * Bugfix 2026-07-15 (quick task 260715-kam): o divisor `N_perguntas` contava
+ * TAMBEM perguntas `NpsTemplateQuestion::TIPO_TEXTO_LIVRE` — que NUNCA tem
+ * peso (`option_peso_snapshot = NULL`, ver NpsTemplateQuestion) — fazendo
+ * cada pergunta aberta entrar como ZERO na media. Nota 5.00 ficava
+ * matematicamente inalcancavel em qualquer dimensao com 1+ pergunta aberta.
+ * Provado contra o template principal de producao (id=2): cliente que
+ * respondeu peso 5 em TODAS as perguntas com peso recebia 4.17 (empresa) /
+ * 3.89 (analista) / 3.75 (estrategista) em vez de 5.00.
+ *
+ * DISTINCAO CRITICA entre os dois bugfixes deste calculator (nao confundir):
+ *  - Pergunta `escala`/`opcoes` NAO respondida → CONTINUA no divisor, puxando
+ *    a media pra baixo (regra de 2026-07-08, PRESERVADA — ver acima).
+ *  - Pergunta `texto_livre` → NUNCA entra no divisor, respondida ou nao (fix
+ *    2026-07-15). Nao e sobre "tem answer ou nao" — e sobre o TIPO da
+ *    pergunta no template.
+ * O divisor correto e `contarPerguntasComPeso()`, unica fonte de verdade
+ * consumida por este calculator, pelo `NpsSnapshotService` e pelo comando de
+ * backfill `nps:backfill-divisor-texto-livre`.
+ *
  * @see .planning/research/v15-nps-templates-schema.md §1 (snapshot per-row)
  * @see .planning/research/v15-nps-templates-schema.md §5 (AVG uniforme escala/opcoes)
  * @see .planning/phases/69-backend-regras-de-neg-cio-c-lculo-e-dispatch/69-02-PLAN.md
@@ -74,14 +93,21 @@ class NpsScoreCalculator
         // Bugfix 2026-07-08 (feedback UX pos-deploy): a formula anterior fazia
         // AVG das answers da dimensao — o que descartava perguntas que o
         // cliente pulou. O contrato de negocio pedido pelo usuario e:
-        //   media = SUM(pesos das answers) / N_perguntas do template da dimensao
-        // Assim perguntas opcionais nao respondidas puxam a media para baixo
-        // (proporcional ao "vazio"). Exemplo: 4 perguntas dim=analista, 3
-        // respondidas com pesos 4+5+5 = 14, total 14/4 = 3.5. Se todas as 4
-        // fossem respondidas 4+5+5+3 = 17, 17/4 = 4.25.
+        //   media = SUM(pesos das answers) / N_perguntas COM PESO do template
+        // Assim perguntas de escala/opcoes nao respondidas puxam a media para
+        // baixo (proporcional ao "vazio"). Exemplo: 4 perguntas escala
+        // dim=analista, 3 respondidas com pesos 4+5+5 = 14, total 14/4 = 3.5.
+        // Se todas as 4 fossem respondidas 4+5+5+3 = 17, 17/4 = 4.25.
+        //
+        // Bugfix 2026-07-15 (quick task 260715-kam): "N_perguntas" NAO E
+        // "todas as perguntas do template na dimensao" — e "perguntas COM
+        // PESO" (escala/opcoes). Pergunta `texto_livre` NUNCA tem peso
+        // (option_peso_snapshot sempre NULL) e NUNCA pode entrar no divisor,
+        // respondida ou nao. Ver `contarPerguntasComPeso()` — fonte unica do
+        // denominador, tambem consumida pelo NpsSnapshotService e pelo backfill.
         //
         // Passo 1: busca o template do survey via snapshot (template_id da FK
-        //          viva do NpsSurvey — se o admin apagar o template, N_perguntas
+        //          viva do NpsSurvey — se o admin apagar o template, o divisor
         //          vira 0 e retornamos null pra sinalizar "sem base"). O
         //          snapshot per-row em nps_response_answers protege o SUM
         //          contra hard-delete das perguntas.
@@ -90,25 +116,51 @@ class NpsScoreCalculator
             return null;
         }
 
-        $nPerguntas = NpsTemplateQuestion::query()
-            ->where('template_id', $survey->template_id)
-            ->where('dimensao', $dimensao)
-            ->count();
+        $nPerguntas = $this->contarPerguntasComPeso($survey->template_id, $dimensao);
 
         if ($nPerguntas === 0) {
-            // Dimensao nao existe neste template — null semantico ("sem
-            // pergunta"), nao 0.0. Consumidor decide o display.
+            // Dimensao sem pergunta COM PESO neste template (inclui o caso
+            // "so tem texto_livre") — null semantico ("sem base"), nao 0.0 e
+            // nunca divisao por zero. Consumidor decide o display.
             return null;
         }
 
         // Passo 2: SUM dos pesos snapshot da dimensao (indice
         // nps_ans_response_dim_idx cobre response_id + dimensao). Answers
-        // ausentes nao entram no SUM, mas o divisor e N_perguntas do
+        // ausentes nao entram no SUM, mas o divisor e N_perguntas COM PESO do
         // template, nao COUNT(answers). Isso e o comportamento pedido.
         $soma = (float) $response->answers()
             ->where('question_dimensao_snapshot', $dimensao)
             ->sum('option_peso_snapshot');
 
         return $soma / $nPerguntas;
+    }
+
+    /**
+     * Conta as perguntas COM PESO (`escala`/`opcoes`) do template numa
+     * dimensao — o denominador correto de `compute()`. EXCLUI
+     * `NpsTemplateQuestion::TIPO_TEXTO_LIVRE` porque essa pergunta nunca
+     * grava peso (`option_peso_snapshot` sempre NULL — ver
+     * NpsTemplateQuestion) e contá-la no divisor tornava a nota maxima
+     * (5.00) matematicamente inalcancavel (bugfix 2026-07-15, quick task
+     * 260715-kam). Caso real: template principal de producao (id=2),
+     * dimensao empresa com 6 perguntas / 1 texto_livre → teto era 4.17.
+     *
+     * Fonte unica de verdade do divisor: consumida por este `compute()`,
+     * pelo `NpsSnapshotService::registrar()` (grava `question_count`) e pelo
+     * comando `nps:backfill-divisor-texto-livre` — nenhum dos 3 duplica esta
+     * query.
+     *
+     * @param  int     $templateId  FK viva de `NpsSurvey::template_id`.
+     * @param  string  $dimensao    Uma das constantes de NpsTemplateQuestion::DIMENSOES.
+     * @return int  Numero de perguntas `escala`/`opcoes` do template na dimensao.
+     */
+    public function contarPerguntasComPeso(int $templateId, string $dimensao): int
+    {
+        return NpsTemplateQuestion::query()
+            ->where('template_id', $templateId)
+            ->where('dimensao', $dimensao)
+            ->where('tipo', '!=', NpsTemplateQuestion::TIPO_TEXTO_LIVRE)
+            ->count();
     }
 }
