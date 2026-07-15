@@ -863,6 +863,33 @@ export default function NpsIndex({
     // escolher template arbitrário — segurança em profundidade no controller).
     const { data, setData, post, processing, reset, errors } = useForm({ company_id: '', template_id: '' });
 
+    // 2026-07-14 (Fase 81) · modal gerar-link agora é MODELO-FIRST (DEC-81-3):
+    // passo 1 escolhe o modelo (obrigatório); ao escolher, o passo 2 lista só
+    // as empresas ELEGÍVEIS (serviços cobertos do modelo ∩ contratos ativos),
+    // vindas do endpoint dedicado 81-02. Escopo por carteira é garantido no
+    // backend, então o front só renderiza o que o servidor retornou.
+    const [empresasElegiveis, setEmpresasElegiveis] = useState([]);
+    const [carregandoEmpresas, setCarregandoEmpresas] = useState(false);
+
+    // Ao escolher o modelo: fixa o template_id, zera a empresa (a lista muda) e
+    // busca as empresas elegíveis daquele modelo. finally garante o fim do
+    // loading mesmo em erro de rede.
+    const onSelectModelo = async (id) => {
+        setData(d => ({ ...d, template_id: id, company_id: '' }));
+        setCarregandoEmpresas(true);
+        setEmpresasElegiveis([]);
+        try {
+            const { data: res } = await window.axios.get(
+                route('nps.configuracao.templates.empresas-elegiveis', id),
+            );
+            setEmpresasElegiveis(res.empresas ?? []);
+        } catch (e) {
+            setEmpresasElegiveis([]);
+        } finally {
+            setCarregandoEmpresas(false);
+        }
+    };
+
     useEffect(() => {
         if (flash?.nps_link) {
             setGeneratedLink(flash.nps_link);
@@ -909,8 +936,15 @@ export default function NpsIndex({
     const submit = (e) => {
         e.preventDefault();
         post(route('nps.generate'), {
-            onSuccess: () => { reset(); setOpen(false); },
+            onSuccess: () => { reset(); setEmpresasElegiveis([]); setOpen(false); },
         });
+    };
+
+    // Fecha/reseta o modal gerar-link limpando também a lista de elegíveis.
+    const fecharGerarLink = () => {
+        reset();
+        setEmpresasElegiveis([]);
+        setOpen(false);
     };
 
     const copyLink = (link) => {
@@ -1102,55 +1136,80 @@ export default function NpsIndex({
 
             {/* ═══ Modais (preservados) ═══════════════════════════════════════ */}
 
-            {/* Dialog: gerar link manual */}
-            <Dialog open={open} onOpenChange={setOpen}>
+            {/* Dialog: gerar link manual — MODELO-FIRST (Fase 81 / DEC-81-3) */}
+            <Dialog open={open} onOpenChange={o => { if (!o) fecharGerarLink(); else setOpen(true); }}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
                         <DialogTitle>Gerar Link NPS</DialogTitle>
                         <DialogDescription>
-                            Selecione o cliente para gerar o link de avaliação manual.
+                            Escolha primeiro o modelo de NPS e depois a empresa
+                            elegível para gerar o link de avaliação manual.
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={submit} className="space-y-4">
+                        {/* Passo 1 · MODELO (obrigatório, sem "__auto__"). Vale
+                            para todos os usuários que geram link — o passo 2
+                            depende dele. */}
                         <div className="space-y-1.5">
-                            <label className="text-xs text-white/70 font-medium">Empresa</label>
-                            <Select value={data.company_id} onValueChange={v => setData('company_id', v)} required>
-                                <SelectTrigger><SelectValue placeholder="Selecionar empresa..." /></SelectTrigger>
+                            <label className="text-xs text-white/70 font-medium">1 · Modelo NPS</label>
+                            <Select
+                                value={data.template_id || undefined}
+                                onValueChange={onSelectModelo}
+                                required
+                            >
+                                <SelectTrigger><SelectValue placeholder="Selecionar modelo..." /></SelectTrigger>
                                 <SelectContent>
-                                    {companies.map(c => (
-                                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                                    ))}
+                                    {templates.map(t => {
+                                        // Pitfall 4 (Rollup): derivar value dentro do map.
+                                        const value = String(t.id);
+                                        return (
+                                            <SelectItem key={t.id} value={value}>{t.nome}</SelectItem>
+                                        );
+                                    })}
+                                </SelectContent>
+                            </Select>
+                            {errors.template_id && <p className="text-destructive text-xs">{errors.template_id}</p>}
+                        </div>
+
+                        {/* Passo 2 · EMPRESA (só as elegíveis do modelo). Fica
+                            desabilitado até escolher o modelo / durante a carga. */}
+                        <div className="space-y-1.5">
+                            <label className="text-xs text-white/70 font-medium">2 · Empresa</label>
+                            <Select
+                                value={data.company_id || undefined}
+                                onValueChange={v => setData('company_id', v)}
+                                disabled={!data.template_id || carregandoEmpresas}
+                                required
+                            >
+                                <SelectTrigger>
+                                    <SelectValue placeholder={
+                                        !data.template_id
+                                            ? 'Escolha um modelo primeiro'
+                                            : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
+                                    } />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {empresasElegiveis.length === 0 && !carregandoEmpresas ? (
+                                        <div className="px-2 py-1.5 text-xs text-white/50">
+                                            Nenhuma empresa elegível para este modelo
+                                        </div>
+                                    ) : (
+                                        empresasElegiveis.map(c => {
+                                            // Pitfall 4 (Rollup): derivar value dentro do map.
+                                            const value = String(c.id);
+                                            return (
+                                                <SelectItem key={c.id} value={value}>{c.name}</SelectItem>
+                                            );
+                                        })
+                                    )}
                                 </SelectContent>
                             </Select>
                             {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
                         </div>
 
-                        {/* Ajuste 2026-07-13 · escolha do modelo NPS. Só admin
-                            vê (usuário normal usa o auto-resolve por serviço da
-                            empresa). Opcional — se deixar em branco cai no
-                            NpsTemplateService::resolveForCompany. */}
-                        {isAdmin && templates.length > 1 && (
-                            <div className="space-y-1.5">
-                                <label className="text-xs text-white/70 font-medium">Modelo NPS (opcional)</label>
-                                <Select
-                                    value={data.template_id || '__auto__'}
-                                    onValueChange={v => setData('template_id', v === '__auto__' ? '' : v)}
-                                >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="__auto__">Automático (padrão da empresa)</SelectItem>
-                                        {templates.map(t => (
-                                            <SelectItem key={t.id} value={String(t.id)}>{t.nome}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                {errors.template_id && <p className="text-destructive text-xs">{errors.template_id}</p>}
-                            </div>
-                        )}
-
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                            <Button type="submit" disabled={processing || !data.company_id}>Gerar Link</Button>
+                            <Button type="button" variant="outline" onClick={fecharGerarLink}>Cancelar</Button>
+                            <Button type="submit" disabled={processing || !data.template_id || !data.company_id}>Gerar Link</Button>
                         </DialogFooter>
                     </form>
                 </DialogContent>
