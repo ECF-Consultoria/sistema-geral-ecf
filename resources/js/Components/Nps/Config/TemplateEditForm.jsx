@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { Power, PowerOff, Info, Link2, HelpCircle, Star } from 'lucide-react';
+import { Power, PowerOff, Info, Link2, HelpCircle, Star, Copy, Trash2 } from 'lucide-react';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
 import { Textarea } from '@/Components/ui/textarea';
@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 export default function TemplateEditForm({
     template,
     onSaved,
+    onDeleted,
     onOpenServicos,
     mostrarToast,
     servicosCount = 0,
@@ -52,6 +53,7 @@ export default function TemplateEditForm({
         <FormEdicao
             template={template}
             onSaved={onSaved}
+            onDeleted={onDeleted}
             onOpenServicos={onOpenServicos}
             mostrarToast={mostrarToast}
             servicosCount={servicosCount}
@@ -160,7 +162,7 @@ function FormCriacao({ onSaved }) {
 // ═══════════════════════════════════════════════════════════════════════
 // MODO EDIÇÃO — auto-save híbrido debounced + botão de serviços
 // ═══════════════════════════════════════════════════════════════════════
-function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosCount }) {
+function FormEdicao({ template, onSaved, onDeleted, onOpenServicos, mostrarToast, servicosCount }) {
     // Data inicial derivada do template — recomputada quando template muda.
     // Usamos updated_at para forçar reset quando o parent recarrega props após save.
     const initialData = useMemo(() => ({
@@ -253,6 +255,46 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
         });
     };
 
+    // 2026-07-14 (81-03) — Duplicar modelo (DEC-81-1). Clona nome + perguntas +
+    // opções + serviços cobertos num novo modelo com is_default=false (backend
+    // 81-01). Decisão revisada: após duplicar RECARREGA a lista (não abre o
+    // editor do clone). onSaved(template.id) dispara o refresh no parent.
+    const duplicar = () => {
+        router.post(route('nps.configuracao.templates.duplicate', template.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                mostrarToast && mostrarToast();
+                onSaved && onSaved(template.id);
+            },
+        });
+    };
+
+    // 2026-07-14 (81-03) — Excluir modelo (DEC-81-2). Guarda UI: o principal
+    // nunca é excluído (botão fica disabled). O backend ainda bloqueia com 422
+    // (is_default / tem respostas) — a mensagem aparece via flash global de erro
+    // (HandleInertiaRequests), sem tratamento manual aqui.
+    const excluir = () => {
+        if (template.is_default) return;
+        const nome = template.nome || `Modelo #${template.id}`;
+        if (! confirm(`Excluir o modelo "${nome}"? Esta ação não pode ser desfeita.`)) return;
+        router.delete(route('nps.configuracao.templates.destroy', template.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                mostrarToast && mostrarToast();
+                // Após excluir, o modelo atual deixa de existir — volta pra lista
+                // (onDeleted) em vez de manter a seleção num id inexistente, o que
+                // deixaria o editor num estado vazio. Fallback: onSaved.
+                if (onDeleted) onDeleted();
+                else onSaved && onSaved(template.id);
+            },
+        });
+    };
+
+    // Guard UI do Excluir — o modelo principal não pode ser excluído (mesma
+    // lógica de bloquearDesativacao). Derivado no escopo do componente é seguro
+    // aqui: não há .map() envolvido (gotcha Rollup — Pitfall 4).
+    const podeExcluir = ! template.is_default;
+
     const inputCls    = 'bg-white/[0.03] border-white/[0.08] text-white placeholder:text-white/30 focus-visible:ring-ecf-yellow/30';
     const textareaCls = cn(inputCls, 'min-h-[70px] font-sans text-[13px]');
 
@@ -320,6 +362,27 @@ function FormEdicao({ template, onSaved, onOpenServicos, mostrarToast, servicosC
                         {template.active
                             ? (<><PowerOff size={13} /> Desativar</>)
                             : (<><Power size={13} /> Ativar</>)}
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={duplicar}
+                        title="Criar uma cópia deste modelo (perguntas, opções e serviços cobertos)"
+                        className="bg-white/[0.06] text-white/85 border border-white/[0.10] hover:bg-white/[0.10] font-semibold"
+                    >
+                        <Copy size={13} />
+                        Duplicar
+                    </Button>
+                    <Button
+                        type="button"
+                        onClick={excluir}
+                        disabled={! podeExcluir}
+                        title={podeExcluir
+                            ? 'Excluir este modelo permanentemente'
+                            : 'O modelo principal não pode ser excluído. Defina outro como principal antes.'}
+                        className="bg-red-500/10 text-red-300 border border-red-500/25 hover:bg-red-500/20 font-semibold"
+                    >
+                        <Trash2 size={13} />
+                        Excluir
                     </Button>
                 </div>
             </div>

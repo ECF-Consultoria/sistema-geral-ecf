@@ -286,6 +286,11 @@ export default function Configuracao({
                                     if (savedId) setSelectedId(savedId);
                                     refresh();
                                 }}
+                                onDeleted={() => {
+                                    // Modelo excluído (81-03) — volta pra lista e recarrega.
+                                    voltarParaLista();
+                                    refresh();
+                                }}
                                 onOpenServicos={() => setServicosOpen(true)}
                                 mostrarToast={mostrarToast}
                                 servicosCount={servicosCount}
