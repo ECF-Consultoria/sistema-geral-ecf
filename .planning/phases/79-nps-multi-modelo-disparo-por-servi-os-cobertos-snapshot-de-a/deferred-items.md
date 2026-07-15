@@ -24,3 +24,20 @@ assertions de taxonomia e mockar o serviço ML nos testes de Sugadores.
 
 Verificação do 79-03 (escopo do plano): `--filter=Nps` = 165 verdes;
 `tests/Feature/V16/DisparoEstritoTest.php` = 5 verdes.
+
+## Falha pré-existente descoberta no 79-04 (NÃO causada pelo snapshot)
+
+- `PublicacaoDesempenhoRouteTest::user com mlb dashboard acessa rota e recebe 200`
+  — GET `/publicacao/desempenho` retorna 403 em vez de 200. É problema de
+  permissão/middleware do módulo de publicação (RBAC), sem qualquer relação com o
+  snapshot NPS. O 79-04 só toca `NpsController::submitResponseV15` (submit público
+  do NPS), o novo `NpsSnapshotService` e testes V16. Arquivo de teste tocado por
+  último na Phase 49-02 — anterior a este trabalho. Provável efeito do dev paralelo
+  (anunciar-ml) sobre permissões de publicação.
+
+Ação: encaminhar ao dono do módulo de publicação/desempenho para revalidar o RBAC
+da rota `/publicacao/desempenho`.
+
+Verificação do 79-04 (escopo do plano): `tests/Feature/V16` = 54 verdes;
+`--filter=Nps` = 168 verdes; `--filter=Desempenho` = 55 verdes + 1 falha
+pré-existente fora de escopo (acima).

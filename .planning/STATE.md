@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
-stopped_at: Completed 79-03 (Wave 2 Phase 79 — disparo NPS estrito por serviços cobertos)
-last_updated: "2026-07-15T00:14:01.399Z"
-last_activity: 2026-07-14
+stopped_at: Completed 79-04 (Wave 2 Phase 79 — snapshot de atribuições por serviço no submit v15)
+last_updated: "2026-07-15T00:32:00.000Z"
+last_activity: 2026-07-15
 progress:
   total_phases: 13
-  completed_phases: 10
+  completed_phases: 11
   total_plans: 54
-  completed_plans: 57
-  percent: 77
+  completed_plans: 58
+  percent: 85
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 79
-Plan: 79-03 concluído (Wave 2 — disparo mensal ESTRITO por serviços cobertos; empresa ML+Shopee recebe 2 NPS; dedup por template_id; blindagem Log::warning)
+Plan: 79-04 concluído (Wave 2 — snapshot no submit v15: scores por dimensão + covered_services + assignments por serviço; empresa só em scores; responsável faltante → Log::warning; bônus intocado DEC-79-E)
 Status: Em execução (v16.0 — Responsáveis por serviço)
-Last activity: 2026-07-14
+Last activity: 2026-07-15
 
 ## Performance Metrics
 
@@ -127,6 +127,7 @@ Last activity: 2026-07-14
 | Phase 74 P05 | 20min | 3 tasks | 4 files |
 | Phase 74 P04 | 25min | 2 tasks (Big bang + cron mensal) | 6 files (5 modified, 1 deleted) |
 | Phase 74 P06 | 45min | 3 tasks (Dashboard/Index/Show reescritos + PerformanceController::show Rule 2) | 4 files |
+| Phase 79 P04 | ~25min | 3 tasks (TDD RED + NpsSnapshotService + wiring submit) | 4 files |
 | Phase 74 P07 | 20min | 1 task (Desempenho/Configuracao.jsx) | 1 file (new) |
 | Phase 79 P01 | ~6min | 3 tasks (RED test + migration cross-driver + 3 models) | 6 files |
 | Phase 74 P08 | 25min | 3 tasks (ManualController + Show wrapper + artigos.js + DesempenhoBonificacao) | 4 files (3 modified, 1 new) |
