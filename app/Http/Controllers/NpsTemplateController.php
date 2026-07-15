@@ -270,6 +270,45 @@ class NpsTemplateController extends Controller
     }
 
     /**
+     * DELETE /nps/configuracao/templates/{template} (Phase 81 Plan 01,
+     * DEC-81-2).
+     *
+     * Exclui um modelo descartável, delegando a limpeza da config (perguntas,
+     * opções, service scopes) ao cascade das FKs. Duas guardas de negócio
+     * ANTES do delete — a FK é só rede de segurança, não a política:
+     *
+     * **Guarda 1 (is_default):** o modelo principal NUNCA pode ser excluído
+     * (espelha `update`/`toggleActive`) — sem ele, o
+     * `NpsTemplateService::resolveForCompany` e o disparo mensal ficam sem
+     * fallback. Troque o principal antes.
+     *
+     * **Guarda 2 (tem respostas — Pitfall 1):** se houver QUALQUER survey com
+     * resposta, bloqueia. Apagar zeraria `nps_surveys.template_id`
+     * (nullOnDelete) e, embora o snapshot per-row sobreviva, o
+     * `NpsScoreCalculator::compute()` retorna null quando `!template_id` — as
+     * notas daquele histórico SUMIRIAM do dashboard NPS. Caminho não-destrutivo:
+     * `toggleActive` (arquivar).
+     */
+    public function destroy(NpsTemplate $template)
+    {
+        // Guarda 1 — nunca apagar o principal.
+        if ($template->is_default) {
+            abort(422, 'O modelo principal não pode ser excluído. Defina outro modelo como principal antes.');
+        }
+
+        // Guarda 2 — preservar histórico E leitura do dashboard (Pitfall 1).
+        if ($template->surveys()->whereHas('response')->exists()) {
+            abort(422, 'Este modelo tem respostas associadas. Desative-o (arquivar) em vez de excluir — '
+                . 'assim o histórico e as métricas continuam corretos.');
+        }
+
+        $nome = $template->nome;
+        $template->delete(); // cascade: perguntas/opções/scopes; surveys pendentes → template_id NULL
+
+        return back()->with('success', "Modelo \"{$nome}\" excluído.");
+    }
+
+    /**
      * PUT /nps/configuracao/templates/{template}/servicos — sincroniza o
      * pivot `nps_template_service_scopes` de forma ATÔMICA — Plan 70-04
      * v15.0 (REQ NPS-C-05).
