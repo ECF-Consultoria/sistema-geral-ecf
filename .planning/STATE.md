@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: "Em execução (v16.0 — NPS config UX: duplicar/excluir modelo + modal gerar-link)"
-stopped_at: Completed 81-03 (Wave 2 Phase 81 — botões Duplicar/Excluir no editor de modelo NPS)
-last_updated: "2026-07-14T00:00:00.000Z"
+stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
+last_updated: "2026-07-15T01:40:54.861Z"
 last_activity: 2026-07-14
 progress:
   total_phases: 14
-  completed_phases: 11
+  completed_phases: 12
   total_plans: 58
-  completed_plans: 61
-  percent: 79
+  completed_plans: 62
+  percent: 86
 ---
 
 # Project State
@@ -611,7 +611,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-14T20:35:52.323Z
+Last session: 2026-07-15T01:40:54.361Z
 Stopped at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
