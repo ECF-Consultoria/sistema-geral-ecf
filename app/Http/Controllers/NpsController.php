@@ -709,6 +709,14 @@ class NpsController extends Controller
                     ]);
                 }
 
+                // Phase 79 v16.0 (DEC-79-D): congela o SNAPSHOT imutável — médias
+                // por dimensão + serviços cobertos + atribuições por serviço. DEVE
+                // rodar AQUI: depois do foreach das answers (senão o calculator leria
+                // zero — Pitfall 3) e DENTRO desta transação (para reverter junto se
+                // o dedup 23000 estourar no update abaixo). O service NÃO abre
+                // transação própria. Bônus/legacy intactos (DEC-79-E).
+                app(\App\Services\Nps\NpsSnapshotService::class)->registrar($response);
+
                 // Marca survey como completed — pode disparar 23000 aqui pelo
                 // partial unique index de dedup mensal (Plan 68-04).
                 $survey->update([
