@@ -275,6 +275,7 @@ class PerformanceController extends Controller
         // Eager-load mlToken pra detectar conexão OAuth ativa (badge ML).
         $companies = $user->companies()->with('mlToken')->where('active', true)->get();
         $companyIds = $companies->pluck('id');
+        $companiesById = $companies->keyBy('id');
         // Janela rolling 30d ainda usada nas queries de metrics por empresa
         // (independente do compute — a tabela do dashboard mostra "atividade
         // recente" da carteira, não a estatística mensal fechada).
@@ -289,22 +290,23 @@ class PerformanceController extends Controller
             ->get()
             ->keyBy('company_id');
 
-        // NPS score mais recente por empresa (últimos 60d completed).
-        // 2026-07-13 — só o modelo PRINCIPAL conta (->principal()) e a nota vem
-        // via NpsScoreCalculator (dual-path): o principal é v15, cujas notas
-        // ficam no snapshot, não nas colunas score_* legadas.
-        // 2026-07-13 — dimensão por CARGO canônico (não isMentor(), que erra
-        // para estrategistas sem role='mentor').
-        $npsDim = $user->dimensaoNpsDesempenho();
-        $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
-        $npsByCompany = \App\Models\NpsSurvey::with(['response.answers', 'response.survey'])
-            ->principal()
-            ->whereIn('company_id', $companyIds)
-            ->where('status', 'completed')
-            ->where('completed_at', '>=', now()->subDays(60))
-            ->get()
+        // ── NPS dos 3 widgets: UMA passagem de dados ─────────────────────────
+        // Phase 80 Plan 03 (DEC-80-E) — coluna NPS por empresa, últimas respostas
+        // e heatmap derivam todos do mesmo dual-path (atribuições da Fase 79 +
+        // legado), então contam a MESMA história. Uma única chamada com a janela
+        // mais larga (a do heatmap: 6 meses); os recortes das outras duas saem em
+        // memória. Antes eram 3 queries `->principal()` independentes — e nenhuma
+        // delas enxergava a resposta de um NPS Shopee.
+        $seisMesesAtras = now()->copy()->subMonths(5)->startOfMonth();
+        $notasNps = $this->notasNpsDoUsuarioPorResposta($user, $companyIds, $seisMesesAtras);
+
+        // Coluna NPS da tabela de empresas: nota da resposta mais recente por
+        // empresa na janela de 60d (`$notasNps` já vem ordenado por data desc,
+        // então o `first()` de cada grupo É a mais recente).
+        $npsByCompany = $notasNps
+            ->filter(fn ($l) => $l['completed_at'] >= now()->subDays(60))
             ->groupBy('company_id')
-            ->map(fn ($group) => $group->sortByDesc('completed_at')->first());
+            ->map(fn ($grupo) => $grupo->first()['nota']);
 
         // Meta por empresa (Goal ativa por empresa; se >1 pega a de faturamento)
         $goalsByCompany = \App\Models\Goal::whereIn('company_id', $companyIds)
@@ -314,7 +316,7 @@ class PerformanceController extends Controller
             ->map(fn ($group) => $group->first());
 
         // Monta lista de empresas pra tabela
-        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany, $npsDim, $npsCalculator) {
+        $empresas = $companies->map(function ($c) use ($metricsByCompany, $npsByCompany, $goalsByCompany) {
             $row = $metricsByCompany->get($c->id);
             $rev     = (float) ($row->rev ?? 0);
             $revPrev = (float) ($row->rev_prev ?? 0);
@@ -330,14 +332,9 @@ class PerformanceController extends Controller
                 $metaPct = (int) min(100, round(($rev / (float) $goal->target_value) * 100));
             }
 
-            $nps = null;
-            $survey = $npsByCompany->get($c->id);
-            if ($survey && $survey->response) {
-                $nota = $npsCalculator->compute($survey->response, $npsDim);
-                if ($nota !== null) {
-                    $nps = round((float) $nota, 2);
-                }
-            }
+            // Nota da resposta mais recente (60d) que é DA PESSOA — via atribuição
+            // do serviço pelo qual ela responde, ou legado. null = sem resposta.
+            $nps = $npsByCompany->get($c->id);
 
             // Status heurístico: baseado em crescimento + meta
             $status = 'saudavel';
@@ -375,42 +372,20 @@ class PerformanceController extends Controller
         })->values();
 
         // ── NPS widget: últimas 4 respostas completed ──
-        // 2026-07-13 — só o modelo principal (->principal()). Eager load de
-        // answers+survey pro NpsScoreCalculator não fazer N+1.
-        $recentSurveys = \App\Models\NpsSurvey::with(['response.answers', 'response.survey', 'company'])
-            ->principal()
-            ->whereIn('company_id', $companyIds)
-            ->where('status', 'completed')
-            ->orderByDesc('completed_at')
-            ->limit(4)
-            ->get();
-
-        // Phase 73 Plan 01 (SC#1) — classificacao ternaria legacy
-        // (herdada do NPS 0-10 classico) REMOVIDA. Payload segue com nota bruta
-        // 1-5; frontend (Plan 73-03) decide como colorir por threshold.
-        // Dual-path: surveys v15 (template_id != null) leem media da dimensao
-        // via NpsScoreCalculator respeitando template_snapshot; surveys legacy
-        // (Phase 31, template_id === null) caem no fallback direto na coluna
-        // nps_responses.score_* preservada pela Phase 68 (nullable). $npsField
-        // define qual dimensao ler segundo o cargo do user logado
-        // (score_estrategista para mentor, score_analista caso contrario).
-        $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
-        // 2026-07-13 — dimensão por CARGO canônico (não isMentor()).
-        $dimensao   = $user->dimensaoNpsDesempenho();
-        // Coluna legacy só como fallback defensivo — surveys principal são v15,
-        // então o branch legacy abaixo fica inativo na prática (dual-path).
-        $npsField   = $dimensao === 'estrategista' ? 'score_estrategista' : 'score_analista';
-        $npsRespostas = $recentSurveys->map(function ($s) use ($calculator, $dimensao, $npsField) {
-            $nota = ($s->template_id !== null && $s->response)
-                ? $calculator->compute($s->response, $dimensao)
-                : $s->response?->$npsField;
-            if ($nota === null) return null;
-            return [
-                'empresa' => $s->company?->name ?? '—',
-                'nota'    => round((float) $nota, 2),  // pode ser float via avg do calculator
-                'quando'  => optional($s->completed_at)->diffForHumans(),
-            ];
-        })->filter()->values();
+        // Phase 80 Plan 03 (DEC-80-E) — deriva do dual-path de apresentação, não
+        // mais de uma query `->principal()` própria: a resposta de um NPS Shopee
+        // (modelo NÃO-principal) NUNCA aparecia aqui, mesmo com o bônus já correto
+        // desde os planos 80-01/80-02. Cada item ganha `area` (o slug do setor);
+        // o front traduz para "Mercado Livre"/"Shopee".
+        $npsRespostas = $notasNps
+            ->take(4)
+            ->map(fn ($l) => [
+                'empresa' => $companiesById->get($l['company_id'])?->name ?? '—',
+                'nota'    => $l['nota'],
+                'quando'  => optional($l['completed_at'])->diffForHumans(),
+                'area'    => $l['area'],
+            ])
+            ->values();
 
         // ── NPS heatmap (empresa × mês) ─────────────────────────────────
         // Ajuste 2026-07-09: novo widget visual — linhas = empresas, colunas =
@@ -418,30 +393,18 @@ class PerformanceController extends Controller
         // proporcional à nota (baixa vermelho → alta laranja/amarelo ECF).
         //
         // Escopo: últimos 6 meses (janela suficiente pra ver tendências sem
-        // sobrecarregar o widget). Dual-path v15/legacy no cálculo da nota.
-        $seisMesesAtras = now()->copy()->subMonths(5)->startOfMonth();
-
-        $surveysHeatmap = \App\Models\NpsSurvey::with(['response.answers', 'response.survey', 'company:id,name'])
-            ->principal()
-            ->whereIn('company_id', $companyIds)
-            ->where('status', 'completed')
-            ->whereNotNull('completed_at')
-            ->where('completed_at', '>=', $seisMesesAtras)
-            ->get();
-
-        // Agrupa por (company_id, mês YYYY-MM) → média das notas.
-        $matriz = $surveysHeatmap
-            ->map(function ($s) use ($calculator, $dimensao, $npsField) {
-                $nota = ($s->template_id !== null && $s->response)
-                    ? $calculator->compute($s->response, $dimensao)
-                    : $s->response?->$npsField;
-                return [
-                    'company_id' => $s->company_id,
-                    'mes'        => $s->completed_at->format('Y-m'),
-                    'nota'       => $nota !== null ? (float) $nota : null,
-                ];
-            })
-            ->filter(fn ($r) => $r['nota'] !== null)
+        // sobrecarregar o widget) — é a janela de `$notasNps`, montada lá em cima.
+        // Phase 80 Plan 03: as notas vêm do dual-path (atribuições + legado), então
+        // um mês com resposta de NPS Shopee deixa de aparecer vazio para quem
+        // responde pelo Shopee.
+        //
+        // Agrupa por (company_id, mês YYYY-MM) → média das notas do range.
+        $matriz = $notasNps
+            ->map(fn ($l) => [
+                'company_id' => $l['company_id'],
+                'mes'        => $l['completed_at']->format('Y-m'),
+                'nota'       => $l['nota'],
+            ])
             ->groupBy(fn ($r) => $r['company_id'] . '|' . $r['mes'])
             ->map(fn ($group) => round($group->avg('nota'), 2));
 
@@ -581,6 +544,151 @@ class PerformanceController extends Controller
             'metas' => $metasWidget,
             'empresas' => $empresas,
         ]);
+    }
+
+    // ─── NPS dos widgets de carteira (Phase 80 Plan 03 · DEC-80-E) ──────────
+
+    /**
+     * Notas de NPS do user, UMA LINHA POR RESPOSTA — insumo dos 3 widgets do
+     * `dashboardCarteira` (coluna NPS por empresa, últimas respostas e heatmap).
+     *
+     * ⚠ ISTO É APRESENTAÇÃO, NÃO A RÉGUA DO BÔNUS. ⚠
+     * O número OFICIAL da pessoa é `desempenho.componentes.nps_medio`, calculado
+     * pelo `DesempenhoScoreService::computeNpsMedio` (planos 80-01/80-02) e servido
+     * no headline `nps.media`. Este helper existe SÓ para detalhar de onde aquela
+     * média veio — se os dois divergirem, **o service ganha** e a divergência é bug
+     * daqui. Não promover este método a fonte de verdade nem alimentar bônus,
+     * snapshot ou consolidação mensal com ele.
+     *
+     * Espelha o dual-path do service (união DISJUNTA por resposta):
+     *  - (A) atribuições congeladas da Fase 79 (`nps_score_assignments`) do user,
+     *        deduped 1× por (`nps_response_id`, `role`) — qualquer modelo conta;
+     *  - (B) legado: surveys `->principal()` da carteira, PULANDO as respostas que
+     *        já têm atribuição no papel correspondente à dimensão do cargo do user
+     *        (DEC-80-B1 — o snapshot é autoritativo por papel).
+     *
+     * DIFERENÇA DELIBERADA vs o service (e por que ela não vira divergência de
+     * número): aqui o ramo (A) TAMBÉM é filtrado por `$companyIds` (a carteira ativa
+     * exibida na tela), porque os 3 widgets só sabem renderizar empresas dessa lista
+     * — uma nota órfã viraria linha fantasma no heatmap. O service NÃO filtra (o
+     * congelamento manda), então uma atribuição de empresa fora da carteira ativa
+     * conta no bônus e não aparece aqui. Na prática `User::companies()` não filtra
+     * por `servico_id`, então toda empresa com atribuição do user está na carteira;
+     * o recorte só morde empresa INATIVA. É exatamente o tipo de assimetria que
+     * proíbe usar este helper como régua (T-80-11).
+     *
+     * Mês/data vem SEMPRE de `nps_surveys.completed_at` (DEC-80-B0) — nunca de
+     * `assigned_at` (data da gravação: um backfill migraria a resposta de mês).
+     *
+     * @param  \Illuminate\Support\Collection<int, int>  $companyIds  carteira ativa exibida
+     * @param  Carbon  $desde  início da janela mais larga (heatmap: 6 meses)
+     * @return \Illuminate\Support\Collection<int, array{company_id:int, completed_at:Carbon, nota:float, area:?string}>
+     */
+    private function notasNpsDoUsuarioPorResposta(User $user, \Illuminate\Support\Collection $companyIds, Carbon $desde): \Illuminate\Support\Collection
+    {
+        if ($companyIds->isEmpty()) {
+            return collect();
+        }
+
+        // ── (A) Atribuições congeladas — todas as áreas (ML + Shopee) ────────
+        // Dedup por (resposta, papel): as N linhas do mesmo par vêm do MESMO
+        // `nps_response_score` (o NpsSnapshotService itera serviços DENTRO da
+        // dimensão), logo `average_score` é idêntico e `MAX()` é determinístico.
+        // `MAX()` nas demais colunas satisfaz o ONLY_FULL_GROUP_BY do MariaDB —
+        // company_id/completed_at são constantes dentro do par (mesma resposta).
+        // `MAX(service_setor)` só desempata no caso raro de a MESMA pessoa
+        // responder por 2 serviços de setores diferentes na MESMA resposta; o
+        // rótulo fica determinístico e a nota (que é a mesma) não muda.
+        $atribuidas = \App\Models\NpsScoreAssignment::query()
+            ->join('nps_responses as r', 'r.id', '=', 'nps_score_assignments.nps_response_id')
+            ->join('nps_surveys as s', 's.id', '=', 'r.survey_id')
+            ->where('nps_score_assignments.user_id', $user->id)
+            ->whereIn('nps_score_assignments.company_id', $companyIds)
+            ->where('s.status', 'completed')
+            ->where('s.completed_at', '>=', $desde)
+            ->groupBy('nps_score_assignments.nps_response_id', 'nps_score_assignments.role')
+            // selectRaw só com nomes de coluna literais — zero interpolação de
+            // variável; todos os valores entram por bind (where/whereIn).
+            ->selectRaw(
+                'nps_score_assignments.nps_response_id as response_id,'
+                .' MAX(nps_score_assignments.company_id) as company_id,'
+                .' MAX(nps_score_assignments.service_setor) as service_setor,'
+                .' MAX(nps_score_assignments.average_score) as average_score,'
+                .' MAX(s.completed_at) as completed_at'
+            )
+            ->get();
+
+        $linhas = $atribuidas->map(fn ($row) => [
+            'company_id'   => (int) $row->company_id,
+            'completed_at' => Carbon::parse($row->completed_at),
+            'nota'         => round((float) $row->average_score, 2),
+            'area'         => (string) $row->service_setor,
+        ]);
+
+        // ── (B) Legado — só as respostas que o snapshot não cobriu ───────────
+        // ⚠ O `->principal()` PERMANECE AQUI — não "limpar". Ele É o isolamento
+        // por serviço neste ramo: sem ele, a resposta de um NPS Shopee entra no
+        // escopo legado do analista de ML da MESMA empresa (é da carteira dele, é
+        // completed, é do range), ele não tem atribuição nela, cai no fallback e
+        // recebe uma nota que não é dele. Mesma armadilha documentada em
+        // `DesempenhoScoreService::notasLegado` (DEC-80-D).
+        $dim = $user->dimensaoNpsDesempenho();
+
+        $surveysLegado = NpsSurvey::with(['response.answers', 'response.survey'])
+            ->principal()
+            ->whereIn('company_id', $companyIds)
+            ->where('status', 'completed')
+            ->whereNotNull('completed_at')
+            ->where('completed_at', '>=', $desde)
+            ->get();
+
+        // Set de skip derivado DOS SURVEYS JÁ CARREGADOS (nunca de uma 2ª query
+        // com filtro de data próprio: dois filtros divergem e a resposta escapa,
+        // sendo contada pelos DOIS ramos). Mapa dimensão → papel espelha
+        // NpsSnapshotService::DIMENSAO_ROLE.
+        $papelDaDimensao = $dim === 'estrategista' ? 'estrategista' : 'consultor';
+        $responseIds     = $surveysLegado->pluck('response.id')->filter()->values();
+
+        // ->flip() + ->has() = lookup O(1) por hash (nunca ->contains() no loop).
+        $cobertasNoPapel = $responseIds->isEmpty()
+            ? collect()
+            : \App\Models\NpsScoreAssignment::whereIn('nps_response_id', $responseIds)
+                ->where('role', $papelDaDimensao)
+                ->pluck('nps_response_id')
+                ->flip();
+
+        $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
+
+        foreach ($surveysLegado as $survey) {
+            $response = $survey->response;
+            if ($response === null || $cobertasNoPapel->has($response->id)) {
+                continue;
+            }
+
+            // v15 (canonical) → fallback nas colunas legacy `score_*` (Phase 68).
+            $nota = $calculator->compute($response, $dim);
+            if ($nota === null) {
+                $legacyField = $dim === 'estrategista' ? 'score_estrategista' : 'score_analista';
+                $legacyScore = $response->{$legacyField} ?? null;
+                if ($legacyScore !== null && $legacyScore > 0) {
+                    $nota = (float) $legacyScore;
+                }
+            }
+
+            if ($nota === null) {
+                continue;
+            }
+
+            $linhas->push([
+                'company_id'   => (int) $survey->company_id,
+                'completed_at' => $survey->completed_at,
+                // Legado não tem serviço → sem rótulo de área (o front omite o badge).
+                'nota'         => round((float) $nota, 2),
+                'area'         => null,
+            ]);
+        }
+
+        return $linhas->sortByDesc(fn ($l) => $l['completed_at'])->values();
     }
 
     private function fmtBRL(float $v): string
