@@ -139,7 +139,15 @@ class DesempenhoScoreService
         $mesCorrente = Carbon::now()->startOfMonth();
         // Bump v1→v2 em 2026-07-13: correção da dimensão do NPS por cargo
         // invalida os valores cacheados (estrategistas tinham a nota errada).
-        $cacheKey    = sprintf('desempenho.compute.v2.%d.%s', $user->id, $mes->format('Y-m'));
+        // Bump v2→v3 em 2026-07-15 (Fase 80 · DEC-80-C): `computeNpsMedio` passou
+        // a somar as atribuições congeladas (`nps_score_assignments`) da Fase 79.
+        // Os valores gravados sob a v2 têm a nota ANTIGA — calculada só pelo
+        // cruzamento read-time do modelo principal, portanto SEM a nota do NPS
+        // Shopee. Sem este bump o `/performance`, os widgets e o PortfolioController
+        // continuariam servindo o bônus errado do Redis por até 7 dias (mês fechado)
+        // mesmo com o código novo em prod. As chaves v2 viram órfãs e expiram
+        // sozinhas por TTL — não precisa (nem deve) rodar `cache:clear`.
+        $cacheKey    = sprintf('desempenho.compute.v3.%d.%s', $user->id, $mes->format('Y-m'));
 
         // Mês fechado (passado): dado estável, cache longo — invalida só quando
         // rodar o snapshot mensal ou passar do TTL.

@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
@@ -437,5 +438,53 @@ class BonusDualPathRegressaoTest extends TestCase
         // Recebe a média da atribuição, não 0.0.
         $this->assertSame(4.0, $this->invocarComputeNpsMedio($analista),
             'user sem carteira ativa mas COM atribuição no mês recebe a média da atribuição');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Test 5 — DEC-80-C: o cache foi bumpado para v3
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_cache_bumpado_para_v3(): void
+    {
+        // O bump é o que faz a correção APARECER. Sem ele o código novo sobe em
+        // prod e o Redis continua devolvendo a nota antiga (sem Shopee) por até
+        // 7 dias no mês fechado — o ranking /performance, os widgets e o
+        // PortfolioController serviriam bônus errado sem nenhum sinal de erro.
+        //
+        // User sem carteira de propósito: `compute()` corta cedo no shape
+        // sem_carteira e NÃO toca o MetricsProviderFactory — zero HTTP ao ML/Adman.
+        $analista = $this->criarUserComCargo('Analista Cache', $this->cargoAnalistaId);
+
+        $mes     = $this->mesReferencia();
+        $chaveV2 = sprintf('desempenho.compute.v2.%d.%s', $analista->id, $mes->format('Y-m'));
+        $chaveV3 = sprintf('desempenho.compute.v3.%d.%s', $analista->id, $mes->format('Y-m'));
+
+        // Lixo RECONHECÍVEL na chave antiga — representa o valor que prod tem hoje
+        // no Redis (nota calculada antes do dual-path). Se `computeCached` ainda
+        // apontasse para a v2, ele devolveria este array em vez de recalcular.
+        Cache::put($chaveV2, ['nota_final' => 99.9], 600);
+
+        /** @var DesempenhoScoreService $service */
+        $service = app(DesempenhoScoreService::class);
+        $resultado = $service->computeCached($analista, $mes);
+
+        // O valor v2 é IGNORADO: o retorno é o shape recalculado, não o lixo.
+        $this->assertNotSame(99.9, $resultado['nota_final'] ?? null,
+            'computeCached NÃO pode devolver o valor cacheado sob a chave v2');
+        $this->assertNull($resultado['nota_final'],
+            'o retorno deve ser o shape recalculado (sem carteira → nota_final null)');
+        $this->assertTrue($resultado['sem_carteira']);
+        $this->assertSame($analista->id, $resultado['user_id']);
+
+        // A v3 passou a existir — é onde o valor novo é gravado a partir de agora.
+        $this->assertTrue(Cache::has($chaveV3),
+            'computeCached deve gravar o resultado sob a chave desempenho.compute.v3');
+
+        // A v2 fica intacta e ÓRFÃ: expira sozinha por TTL. Nenhum `cache:clear`
+        // é adicionado a script algum, e o WarmDesempenhoCache (cron 8min)
+        // repopula a v3 sozinho.
+        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV2),
+            'a chave v2 não é apagada — vira órfã e expira por TTL');
     }
 }
