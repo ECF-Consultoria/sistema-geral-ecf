@@ -71,3 +71,36 @@ scaffolding de `storage/` → a renderização Inertia falha cedo e o baseline r
 falhas que o HEAD (Phase18: 14F vs 2F; 65 vs 273 assertions). Um baseline assim leva à
 conclusão falsa de que a fase "consertou" dezenas de testes. Para comparar, preferir
 **alternar a variável suspeita no ambiente real**.
+
+---
+
+## Descobertas do Plan 80-03
+
+### 6. `PortfolioController` — série histórica de NPS ainda no `->principal()` (FOLLOW-UP RECOMENDADO)
+
+O `<output>` do 80-03 pede o veredito explícito: **sim, deve virar follow-up — mas NÃO nesta
+fase** (está fora do escopo declarado do 80-CONTEXT, que nomeia só os 3 widgets do
+`dashboardCarteira`).
+
+- **Onde:** `app/Http/Controllers/PortfolioController.php:1374` — mesmo padrão que o 80-03
+  acabou de aposentar: `->principal()` + dimensão derivada do cargo (`$npsDim`).
+- **Sintoma esperado:** a série histórica de NPS da carteira (`avg`/`count`/`ultima_nota` por
+  mês) **não enxerga resposta de NPS Shopee** — exatamente o sintoma que o usuário reportou
+  no widget, sobrevivendo em outra tela. O `dashboardCarteira` e o `PortfolioController`
+  passam a contar histórias DIFERENTES sobre o mesmo NPS.
+- **Agravante encontrado nesta leitura (não estava mapeado no CONTEXT nem no RESEARCH):**
+  o agrupamento por mês usa
+  `groupBy(fn ($s) => $s->month_reference?->format('Y-m') ?? $s->completed_at?->format('Y-m'))`
+  — ou seja, **`month_reference` tem precedência sobre `completed_at`**. Isso conflita
+  frontalmente com o **DEC-80-B0** (mês SEMPRE de `nps_surveys.completed_at`; `month_reference`
+  é o mês do DISPARO e é NULL de propósito no fixture Carlos). Uma resposta disparada em um mês
+  e respondida no seguinte é contabilizada no mês do disparo aqui e no mês da resposta no
+  `dashboardCarteira`. **Corrigir os dois no mesmo follow-up** — mexer só no `->principal()`
+  deixaria a divergência de mês de pé.
+- **Por que NÃO auto-corrigir agora (SCOPE BOUNDARY):** não é bug causado pelo 80-03 (é
+  pré-existente e intocado — `git diff --stat 694096f..HEAD` = 3 arquivos, nenhum deles o
+  `PortfolioController`), e a mudança do mês-fonte altera número exibido de carteira. Merece
+  plano + teste próprios, não um fix de carona.
+- **Cache:** o `PortfolioController` **já está coberto pelo bump v3** do 80-02 (consome
+  `computeCached` em `:1251`/`:1277`) — o follow-up não precisa de novo bump, só do alinhamento
+  da query.
