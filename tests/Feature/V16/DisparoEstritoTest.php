@@ -125,6 +125,35 @@ class DisparoEstritoTest extends TestCase
         return (int) NpsTemplate::where('nome', 'NPS Shopee')->value('id');
     }
 
+    /**
+     * Resolve o serviço performance ATIVO já semeado (ou cria se ausente).
+     * O seed 79-02 linka TODOS os serviços performance ao NPS Padrão.
+     */
+    private function servicoPerformanceId(): int
+    {
+        $id = DB::table('servicos')
+            ->where('setor', Servico::SETOR_PERFORMANCE)
+            ->where('ativo', true)
+            ->value('id');
+
+        return $id !== null ? (int) $id : $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+    }
+
+    /**
+     * Resolve o serviço shopee ATIVO já semeado (Phase 75) — ou cria se ausente.
+     * IMPORTANTE: o seed 79-02 linka o NPS Shopee a UM serviço shopee (value('id')),
+     * então precisamos contratar exatamente esse (não um duplicado).
+     */
+    private function servicoShopeeId(): int
+    {
+        $id = DB::table('servicos')
+            ->where('setor', Servico::SETOR_SHOPEE)
+            ->where('ativo', true)
+            ->value('id');
+
+        return $id !== null ? (int) $id : $this->criarServico(Servico::SETOR_SHOPEE, true);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // (a) empresa só performance → 1 survey NPS Padrão, 0 do Shopee
     // ═══════════════════════════════════════════════════════════════════
@@ -134,8 +163,8 @@ class DisparoEstritoTest extends TestCase
         Mail::fake();
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        $servicoPerf   = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
-        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        $servicoPerf = $this->servicoPerformanceId();
+        $this->servicoShopeeId();
         $this->linkarScopes();
 
         $empresa = $this->criarEmpresaElegivelHoje();
@@ -163,8 +192,8 @@ class DisparoEstritoTest extends TestCase
         Mail::fake();
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        $this->criarServico(Servico::SETOR_PERFORMANCE, true);
-        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        $this->servicoPerformanceId();
+        $servicoShopee = $this->servicoShopeeId();
         $this->linkarScopes();
 
         $empresa = $this->criarEmpresaElegivelHoje();
@@ -187,8 +216,8 @@ class DisparoEstritoTest extends TestCase
         Mail::fake();
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        $servicoPerf   = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
-        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        $servicoPerf   = $this->servicoPerformanceId();
+        $servicoShopee = $this->servicoShopeeId();
         $this->linkarScopes();
 
         $empresa = $this->criarEmpresaElegivelHoje();
@@ -249,8 +278,8 @@ class DisparoEstritoTest extends TestCase
         Mail::fake();
         Carbon::setTestNow(Carbon::create(2026, 7, 8, 9, 0, 0, 'America/Sao_Paulo'));
 
-        $servicoPerf   = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
-        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE, true);
+        $servicoPerf   = $this->servicoPerformanceId();
+        $servicoShopee = $this->servicoShopeeId();
         $this->linkarScopes();
 
         $empresa = $this->criarEmpresaElegivelHoje();

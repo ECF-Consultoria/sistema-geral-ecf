@@ -96,11 +96,12 @@ class NpsDispararMensal extends Command
         $elegiveisHoje = 0;
         $puladosSemEstrategista = 0;
         $puladosIdempotencia = 0;
-        // Phase 69 Plan 05 (REQ NPS-B-04) — contador de empresas puladas por
-        // ausência de template aplicável (nenhum scope + seed padrão faltando).
-        // Situação anômala em prod, mas o comando NÃO crasha o batch por causa
-        // de uma empresa isolada — apenas pula + loga warning.
-        $puladosSemTemplate = 0;
+        // Phase 79 Plan 03 (DEC-79-A) — contador das empresas ELEGÍVEIS que, no
+        // modo ESTRITO, não têm NENHUM modelo aplicável (nenhum serviço ATIVO
+        // coberto por um scope de modelo com envio automático). Blindagem de
+        // rollout: expõe no output + Log::warning quem ficaria sem NPS antes do
+        // comportamento mudar (RESEARCH Pitfall 1).
+        $puladosSemModelo = 0;
 
         // v15.5 — Flags de canal (opt-in explícito por Configuracao).
         // Email default '1' (comportamento atual). Digisac default '0' (opt-in).
@@ -130,18 +131,12 @@ class NpsDispararMensal extends Command
             return self::SUCCESS;
         }
 
-        // 2026-07-13 — o disparo AUTOMÁTICO usa SEMPRE o modelo principal
-        // (is_default=true) para todas as empresas, ignorando a resolução por
-        // serviço (que agora vale só para geração manual esporádica). Sem
-        // principal marcado (estado anômalo) não há o que enviar — aborta cedo.
-        $principal = \App\Models\NpsTemplate::where('is_default', true)->first();
-        if (! $principal) {
-            $this->warn('Nenhum modelo NPS principal (is_default=true) encontrado. Nada a disparar.');
-            Log::warning('[NPS Mensal] abortado: nenhum template principal (is_default) marcado.');
-            return self::SUCCESS;
-        }
-        $this->info("Modelo principal: #{$principal->id} ({$principal->nome})");
-
+        // Phase 79 Plan 03 (DEC-79-A) — DISPARO ESTRITO por serviços cobertos.
+        // Substitui o comportamento "força o principal (is_default) para TODAS as
+        // empresas" (2026-07-13): agora resolvemos, DENTRO do loop, a coleção de
+        // modelos aplicáveis a cada empresa (1 envio por modelo com
+        // `envio_automatico_mensal=true` cujos serviços cobertos intersectam um
+        // contrato ATIVO da empresa). Empresa sem cobertura → NENHUM NPS + warning.
         $query = Company::where('active', true);
         if ($canalEmailAtivo && ! $canalDigisacAtivo) {
             $query->whereNotNull('email_cliente')->where('email_cliente', '!=', '');
@@ -164,10 +159,10 @@ class NpsDispararMensal extends Command
         // Itera em chunks para evitar carregar todas as empresas na memória de uma vez
         $query->chunkById(50, function ($empresas) use (
                 $hoje, $mesAtual, $dryRun, $textos, $mesReferencia,
-                $canalEmailAtivo, $canalDigisacAtivo, $principal,
+                $canalEmailAtivo, $canalDigisacAtivo,
                 &$enviados, &$criados, &$elegiveisHoje,
                 &$puladosSemEstrategista, &$puladosIdempotencia,
-                &$puladosSemTemplate,
+                &$puladosSemModelo,
                 &$digisacEnviados, &$digisacFalhas, &$digisacSkipped
             ) {
                 foreach ($empresas as $empresa) {
@@ -183,16 +178,6 @@ class NpsDispararMensal extends Command
 
                         $elegiveisHoje++;
 
-                        // D-12 Phase 31 — Idempotência: já existe survey deste mês pra esta empresa?
-                        $jaExiste = NpsSurvey::where('company_id', $empresa->id)
-                            ->whereDate('month_reference', $mesAtual)
-                            ->exists();
-
-                        if ($jaExiste) {
-                            $puladosIdempotencia++;
-                            continue;
-                        }
-
                         // D-07 Phase 31 — Estrategista é obrigatório. Loga warning e pula em vez de
                         // tentar enviar email genérico.
                         $estrategista = $empresa->estrategista()->first();
@@ -205,139 +190,180 @@ class NpsDispararMensal extends Command
                         // D-07 Phase 31 — Analista é opcional (mentoria pura). Pode ser null.
                         $analista = $empresa->consultor()->first();
 
-                        // 2026-07-13 — disparo automático usa SEMPRE o modelo
-                        // principal (resolvido uma vez antes do loop). Não há
-                        // mais resolução por serviço aqui: os demais modelos são
-                        // só para geração manual esporádica.
-                        $template = $principal;
+                        // ─── Phase 79 Plan 03 (DEC-79-A) — modelos aplicáveis ────────────
+                        // Serviços ATIVOS contratados pela empresa e, a partir deles, TODOS os
+                        // modelos com envio automático cujos "Serviços cobertos" (pivot
+                        // nps_template_service_scopes) intersectam esses serviços. Ex.: empresa
+                        // com contrato de Performance → NPS Padrão; com Shopee → NPS Shopee;
+                        // com ambos → os dois modelos (2 surveys).
+                        $servicoIds = $empresa->contratosServico()->active()->pluck('servico_id');
 
-                        if ($dryRun) {
-                            $canais = [];
-                            if ($canalEmailAtivo && ! empty($empresa->email_cliente)) {
-                                $canais[] = "email={$empresa->email_cliente}";
-                            }
-                            if ($canalDigisacAtivo) {
-                                $canais[] = ! empty($empresa->digisac_group_contact_id)
-                                    ? "digisac={$empresa->digisac_group_contact_id}"
-                                    : 'digisac=SKIP_sem_grupo';
-                            }
-                            $canaisStr = $canais ? implode(', ', $canais) : 'nenhum';
-                            $this->line("[DRY] empresa #{$empresa->id} ({$empresa->name}) dispararia canais [{$canaisStr}] usando template #{$template->id} ({$template->nome})");
+                        $modelosAplicaveis = \App\Models\NpsTemplate::query()
+                            ->where('active', true)
+                            ->where('envio_automatico_mensal', true)
+                            ->whereHas('serviceScopes', fn ($q) => $q->whereIn('nps_template_service_scopes.servico_id', $servicoIds))
+                            ->get();
+
+                        // DEC-79-A é ESTRITO: sem serviço coberto por nenhum modelo → NENHUM NPS
+                        // (sem fallback is_default). Loga a empresa que ficaria sem NPS (blindagem
+                        // de rollout — RESEARCH Pitfall 1) e segue para a próxima.
+                        if ($modelosAplicaveis->isEmpty()) {
+                            Log::warning("[NPS Mensal] empresa {$empresa->id} ({$empresa->name}) sem modelo aplicável — NENHUM NPS gerado (serviços ativos sem cobertura).");
+                            $puladosSemModelo++;
                             continue;
                         }
 
-                        // D-12 Phase 31 + Phase 69 NPS-B-04 — Cria survey já com
-                        // `template_id` populado. Necessário para o dedup unique
-                        // parcial do Plan 68-04 e para o snapshot per-row (nps_response_answers)
-                        // amarrar cada answer ao template correto no submit.
-                        $survey = NpsSurvey::create([
-                            'token'           => Str::uuid()->toString(),
-                            'company_id'      => $empresa->id,
-                            'generated_by'    => null,
-                            'expires_at'      => $hoje->copy()->addDays(30),
-                            'status'          => 'pending',
-                            'month_reference' => $mesAtual,
-                            'auto_generated'  => true,
-                            'template_id'     => $template->id,
-                        ]);
-                        $criados++;
+                        // 1 envio por modelo aplicável — o loop antes era "só o principal".
+                        foreach ($modelosAplicaveis as $modelo) {
+                            // D-12 Phase 31 + Pitfall 2 (Phase 79) — DEDUP por (company, mês,
+                            // template). Incluir `template_id` é o que permite N modelos por
+                            // empresa/mês: o guard antigo (só company+mês) bloquearia o 2º modelo.
+                            $jaExiste = NpsSurvey::where('company_id', $empresa->id)
+                                ->whereDate('month_reference', $mesAtual)
+                                ->where('template_id', $modelo->id)
+                                ->exists();
 
-                        // Phase 32 D-03 — monta vars com placeholders. `bloco_analista` é um trecho
-                        // gerado dinamicamente: " e o analista é **Nome**" quando há analista, ou
-                        // string vazia em mentoria pura. É renderizado SOZINHO como texto puro pra
-                        // depois entrar no email_corpo já com nl2br aplicado no renderHtml.
-                        $blocoAnalista = $analista
-                            ? ' e o analista é **' . $analista->name . '**'
-                            : '';
-
-                        $vars = [
-                            'nome_estrategista' => $estrategista->name,
-                            'nome_analista'     => $analista?->name ?? '',
-                            'nome_empresa'      => $empresa->name,
-                            'mes_referencia'    => $mesReferencia,
-                            'bloco_analista'    => $blocoAnalista,
-                        ];
-
-                        // Renderiza cada texto editável da config:
-                        //  - texto-puro (sem escape): assunto e CTA (vão para subject e <a>texto</a>)
-                        //  - HTML-safe (e()+nl2br): saudação, corpo, assinatura (vão em {!! !!})
-                        $assuntoRender    = NpsTextRenderer::render($textos['email_assunto'],     $vars);
-                        $saudacaoRender   = NpsTextRenderer::renderHtml($textos['email_saudacao'], $vars);
-                        $corpoRender      = NpsTextRenderer::renderHtml($textos['email_corpo'],    $vars);
-                        $ctaRender        = NpsTextRenderer::render($textos['email_cta'],          $vars);
-                        $assinaturaRender = NpsTextRenderer::renderHtml($textos['email_assinatura'], $vars);
-
-                        $linkPesquisa = route('nps.respond', $survey->token);
-
-                        $mailVars = [
-                            'assuntoRender'    => $assuntoRender,
-                            'saudacaoRender'   => $saudacaoRender,
-                            'corpoRender'      => $corpoRender,
-                            'ctaRender'        => $ctaRender,
-                            'assinaturaRender' => $assinaturaRender,
-                            'linkPesquisa'     => $linkPesquisa,
-                            'mesReferencia'    => $mesReferencia,
-                        ];
-
-                        // v15.5 — Envio email fica dentro de guard de canal + presença de email_cliente.
-                        // Empresa elegível só por WhatsApp (email_cliente vazio) NÃO tem email disparado.
-                        if ($canalEmailAtivo && ! empty($empresa->email_cliente)) {
-                            // Phase 32 D-04 — envia + grava log (sucesso ou falha) no mesmo bloco
-                            // pra garantir que o NpsEmailEnvio existe mesmo quando o Mailable lança.
-                            try {
-                                Mail::to($empresa->email_cliente)->send(new NpsMonthlyMail($mailVars));
-
-                                NpsEmailEnvio::create([
-                                    'survey_id'    => $survey->id,
-                                    'company_id'   => $empresa->id,
-                                    'destinatario' => $empresa->email_cliente,
-                                    'assunto'      => $assuntoRender,
-                                    'status'       => 'enviado',
-                                    'erro_msg'     => null,
-                                ]);
-                                $enviados++;
-
-                                Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) email={$empresa->email_cliente} survey_id={$survey->id}");
-                            } catch (\Throwable $mailErr) {
-                                // Grava log de falha — substring(65000) cobre TEXT MySQL sem cortar UTF-8.
-                                NpsEmailEnvio::create([
-                                    'survey_id'    => $survey->id,
-                                    'company_id'   => $empresa->id,
-                                    'destinatario' => $empresa->email_cliente,
-                                    'assunto'      => $assuntoRender,
-                                    'status'       => 'falha',
-                                    'erro_msg'     => substr($mailErr->getMessage(), 0, 65000),
-                                ]);
-                                Log::error("[NPS Mensal] falha no envio empresa {$empresa->id} survey_id={$survey->id}: " . $mailErr->getMessage());
+                            if ($jaExiste) {
+                                $puladosIdempotencia++;
+                                continue;
                             }
-                        }
 
-                        // v15.5 — Envio WhatsApp via Digisac, ISOLADO do email.
-                        // Falhas aqui NÃO afetam o log de email nem o próximo passo do batch.
-                        // O dispatcher decide internamente skip (sem grupo) vs falha (API erro).
-                        if ($canalDigisacAtivo) {
-                            $varsDigisac = [
-                                'nome_empresa'      => $empresa->name,
+                            if ($dryRun) {
+                                $canais = [];
+                                if ($canalEmailAtivo && ! empty($empresa->email_cliente)) {
+                                    $canais[] = "email={$empresa->email_cliente}";
+                                }
+                                if ($canalDigisacAtivo) {
+                                    $canais[] = ! empty($empresa->digisac_group_contact_id)
+                                        ? "digisac={$empresa->digisac_group_contact_id}"
+                                        : 'digisac=SKIP_sem_grupo';
+                                }
+                                $canaisStr = $canais ? implode(', ', $canais) : 'nenhum';
+                                $this->line("[DRY] empresa #{$empresa->id} ({$empresa->name}) dispararia canais [{$canaisStr}] usando modelo #{$modelo->id} ({$modelo->nome})");
+                                continue;
+                            }
+
+                            // D-12 Phase 31 + Phase 69 NPS-B-04 — Cria survey já com
+                            // `template_id` populado. Necessário para o dedup unique
+                            // parcial do Plan 68-04 e para o snapshot per-row (nps_response_answers)
+                            // amarrar cada answer ao modelo correto no submit.
+                            $survey = NpsSurvey::create([
+                                'token'           => Str::uuid()->toString(),
+                                'company_id'      => $empresa->id,
+                                'generated_by'    => null,
+                                'expires_at'      => $hoje->copy()->addDays(30),
+                                'status'          => 'pending',
+                                'month_reference' => $mesAtual,
+                                'auto_generated'  => true,
+                                'template_id'     => $modelo->id,
+                            ]);
+                            $criados++;
+
+                            // Phase 32 D-03 — monta vars com placeholders. `bloco_analista` é um trecho
+                            // gerado dinamicamente: " e o analista é **Nome**" quando há analista, ou
+                            // string vazia em mentoria pura. É renderizado SOZINHO como texto puro pra
+                            // depois entrar no email_corpo já com nl2br aplicado no renderHtml.
+                            $blocoAnalista = $analista
+                                ? ' e o analista é **' . $analista->name . '**'
+                                : '';
+
+                            $vars = [
                                 'nome_estrategista' => $estrategista->name,
                                 'nome_analista'     => $analista?->name ?? '',
+                                'nome_empresa'      => $empresa->name,
                                 'mes_referencia'    => $mesReferencia,
-                                'link_nps'          => $linkPesquisa,
+                                'bloco_analista'    => $blocoAnalista,
                             ];
-                            try {
-                                $envio = $this->digisacDispatch->send($survey, $empresa, $template, $varsDigisac);
-                                match ($envio->status) {
-                                    'enviado' => $digisacEnviados++,
-                                    'falha'   => $digisacFalhas++,
-                                    'skipped' => $digisacSkipped++,
-                                    default   => null,
-                                };
-                            } catch (\Throwable $digisacErr) {
-                                // Defesa em profundidade: o dispatcher já persiste falha; se estourou
-                                // ainda assim, loga sem quebrar o batch.
-                                $digisacFalhas++;
-                                Log::error("[NPS Mensal] excecao nao tratada no digisac empresa {$empresa->id}: " . $digisacErr->getMessage());
+
+                            // Renderiza cada texto editável da config:
+                            //  - texto-puro (sem escape): assunto e CTA (vão para subject e <a>texto</a>)
+                            //  - HTML-safe (e()+nl2br): saudação, corpo, assinatura (vão em {!! !!})
+                            //
+                            // Phase 79 Plan 03 (Open Question a) — MVP multi-modelo: prefixa o assunto
+                            // com o NOME DO MODELO ($modelo->nome) para o cliente distinguir a área
+                            // (ex.: "NPS Padrão — ..." vs "NPS Shopee — ..."). Sem criar campo novo
+                            // de assunto por-template; os textos globais de Configuracao::nps_textos
+                            // seguem valendo para o restante do email.
+                            $assuntoBase      = NpsTextRenderer::render($textos['email_assunto'],     $vars);
+                            $assuntoRender    = $modelo->nome . ' — ' . $assuntoBase;
+                            $saudacaoRender   = NpsTextRenderer::renderHtml($textos['email_saudacao'], $vars);
+                            $corpoRender      = NpsTextRenderer::renderHtml($textos['email_corpo'],    $vars);
+                            $ctaRender        = NpsTextRenderer::render($textos['email_cta'],          $vars);
+                            $assinaturaRender = NpsTextRenderer::renderHtml($textos['email_assinatura'], $vars);
+
+                            $linkPesquisa = route('nps.respond', $survey->token);
+
+                            $mailVars = [
+                                'assuntoRender'    => $assuntoRender,
+                                'saudacaoRender'   => $saudacaoRender,
+                                'corpoRender'      => $corpoRender,
+                                'ctaRender'        => $ctaRender,
+                                'assinaturaRender' => $assinaturaRender,
+                                'linkPesquisa'     => $linkPesquisa,
+                                'mesReferencia'    => $mesReferencia,
+                            ];
+
+                            // v15.5 — Envio email fica dentro de guard de canal + presença de email_cliente.
+                            // Empresa elegível só por WhatsApp (email_cliente vazio) NÃO tem email disparado.
+                            if ($canalEmailAtivo && ! empty($empresa->email_cliente)) {
+                                // Phase 32 D-04 — envia + grava log (sucesso ou falha) no mesmo bloco
+                                // pra garantir que o NpsEmailEnvio existe mesmo quando o Mailable lança.
+                                try {
+                                    Mail::to($empresa->email_cliente)->send(new NpsMonthlyMail($mailVars));
+
+                                    NpsEmailEnvio::create([
+                                        'survey_id'    => $survey->id,
+                                        'company_id'   => $empresa->id,
+                                        'destinatario' => $empresa->email_cliente,
+                                        'assunto'      => $assuntoRender,
+                                        'status'       => 'enviado',
+                                        'erro_msg'     => null,
+                                    ]);
+                                    $enviados++;
+
+                                    Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) modelo={$modelo->nome} email={$empresa->email_cliente} survey_id={$survey->id}");
+                                } catch (\Throwable $mailErr) {
+                                    // Grava log de falha — substring(65000) cobre TEXT MySQL sem cortar UTF-8.
+                                    NpsEmailEnvio::create([
+                                        'survey_id'    => $survey->id,
+                                        'company_id'   => $empresa->id,
+                                        'destinatario' => $empresa->email_cliente,
+                                        'assunto'      => $assuntoRender,
+                                        'status'       => 'falha',
+                                        'erro_msg'     => substr($mailErr->getMessage(), 0, 65000),
+                                    ]);
+                                    Log::error("[NPS Mensal] falha no envio empresa {$empresa->id} survey_id={$survey->id}: " . $mailErr->getMessage());
+                                }
                             }
-                        }
+
+                            // v15.5 — Envio WhatsApp via Digisac, ISOLADO do email.
+                            // Falhas aqui NÃO afetam o log de email nem o próximo passo do batch.
+                            // O dispatcher decide internamente skip (sem grupo) vs falha (API erro).
+                            if ($canalDigisacAtivo) {
+                                $varsDigisac = [
+                                    'nome_empresa'      => $empresa->name,
+                                    'nome_estrategista' => $estrategista->name,
+                                    'nome_analista'     => $analista?->name ?? '',
+                                    'mes_referencia'    => $mesReferencia,
+                                    'link_nps'          => $linkPesquisa,
+                                ];
+                                try {
+                                    // Phase 79 — passa o MODELO da vez (não mais o principal único).
+                                    $envio = $this->digisacDispatch->send($survey, $empresa, $modelo, $varsDigisac);
+                                    match ($envio->status) {
+                                        'enviado' => $digisacEnviados++,
+                                        'falha'   => $digisacFalhas++,
+                                        'skipped' => $digisacSkipped++,
+                                        default   => null,
+                                    };
+                                } catch (\Throwable $digisacErr) {
+                                    // Defesa em profundidade: o dispatcher já persiste falha; se estourou
+                                    // ainda assim, loga sem quebrar o batch.
+                                    $digisacFalhas++;
+                                    Log::error("[NPS Mensal] excecao nao tratada no digisac empresa {$empresa->id}: " . $digisacErr->getMessage());
+                                }
+                            }
+                        } // fim foreach modelo aplicável
 
                     } catch (\Throwable $e) {
                         Log::error("[NPS Mensal] falha empresa {$empresa->id}: " . $e->getMessage());
@@ -355,14 +381,16 @@ class NpsDispararMensal extends Command
         if ($puladosSemEstrategista > 0) {
             $this->line("  ↳ {$puladosSemEstrategista} pulada(s) por nao ter estrategista atribuido.");
         }
-        if ($puladosSemTemplate > 0) {
-            $this->line("  ↳ {$puladosSemTemplate} pulada(s) por nao ter template NPS aplicavel.");
+        // Phase 79 Plan 03 (DEC-79-A) — blindagem de rollout: empresas elegíveis que
+        // ficaram SEM NPS por não ter serviço ativo coberto por nenhum modelo.
+        if ($puladosSemModelo > 0) {
+            $this->line("  ↳ {$puladosSemModelo} pulada(s) por nao ter modelo NPS aplicavel (serviços ativos sem cobertura).");
         }
         if ($canalDigisacAtivo) {
             $this->line("  ↳ Digisac: {$digisacEnviados} enviadas, {$digisacFalhas} falha(s), {$digisacSkipped} sem grupo mapeado.");
         }
 
-        Log::info("[NPS Mensal] Concluído: {$criados} surveys, {$enviados} emails, {$elegiveisHoje} elegíveis, {$puladosIdempotencia} idempotentes, {$puladosSemEstrategista} sem estrategista, {$puladosSemTemplate} sem template, digisac[enviados={$digisacEnviados} falhas={$digisacFalhas} skipped={$digisacSkipped}]");
+        Log::info("[NPS Mensal] Concluído: {$criados} surveys, {$enviados} emails, {$elegiveisHoje} elegíveis, {$puladosIdempotencia} idempotentes, {$puladosSemEstrategista} sem estrategista, {$puladosSemModelo} sem modelo aplicavel, digisac[enviados={$digisacEnviados} falhas={$digisacFalhas} skipped={$digisacSkipped}]");
 
         return self::SUCCESS;
     }
