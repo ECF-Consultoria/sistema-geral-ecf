@@ -72,3 +72,39 @@ test('o useEffect de inicialização continua com deps vazias', () => {
     assert.match(fonte, /setAbaAtiva\(0\);[\s\S]{0,80}\},\s*\[\]\)/,
         're-agrupar as abas a cada poll faria o publicador perder a aba ativa e a ordem das linhas');
 });
+
+// ─── FIX-83-3 / FIX-83-4: painel de erros e avisos (fora do canvas) ───
+
+test('existe painel de detalhes do lote montado abaixo da grade', () => {
+    assert.match(fonte, /function PainelDetalhesLote/);
+    assert.match(fonte, /<PainelDetalhesLote abas=\{abas\}/,
+        'o painel le TODAS as abas: o erro pode estar numa aba que o publicador nao esta olhando');
+});
+
+test('FIX-83-3: erro completo da API é expansível e copiável', () => {
+    assert.match(fonte, /<details/, 'precedente do wizard (9e5a640): <details>/<summary>');
+    assert.match(fonte, /erroCompleto/);
+    assert.match(fonte, /copiarTexto/);
+});
+
+test('FIX-83-4: avisos do ML aparecem por linha, com número e aba', () => {
+    assert.match(fonte, /Linha \{a\.numero\}/);
+    assert.match(fonte, /não impedem publicar/i,
+        'aviso do /items/validate e orientativo — a tela precisa dizer isso');
+});
+
+test('contadores novos na PublishBar', () => {
+    for (const c of ['publicados', 'comErroPublicacao', 'semCategoria']) {
+        assert.match(fonte, new RegExp('\\b' + c + '\\b'), `contador ${c} ausente`);
+    }
+});
+
+// ─── FIX-83-6b: remover categoria ───
+
+test('remover categoria MOVE as linhas em vez de apagar (decisão do usuário)', () => {
+    assert.match(fonte, /const removerCategoria/);
+    assert.doesNotMatch(fonte.slice(fonte.indexOf('const removerCategoria'), fonte.indexOf('const preverCategoria')),
+        /rascunho\.destroy|axios\.delete/,
+        'nada de destroy: remover categoria por engano nao pode custar o trabalho digitado');
+    assert.match(fonte, /window\.confirm\(msg\)/, 'aba com linhas pede confirmacao');
+});

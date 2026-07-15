@@ -2,7 +2,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
-import { Rocket, Search, Plus, Loader2, Check, AlertTriangle } from 'lucide-react';
+import { Rocket, Search, Plus, Loader2, Check, AlertTriangle, Copy, Trash2 } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 import GradeAnuncioGlide from '@/Pages/Mlb/GradeAnuncioGlide';
 // Helpers puros da grade (validação/coerção) — moram fora daqui para a grade em
@@ -170,6 +170,58 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
     }, [abas.length]);
 
     const aba = abas[abaAtiva] ?? null;
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Remover a categoria ativa (FIX-83-6b).
+    //
+    // As linhas NÃO são apagadas: migram para a aba "Sem categoria" (decisão do
+    // usuário — remover categoria por engano não pode custar o trabalho digitado).
+    // Nenhum destroy no backend; os rascunhos continuam lá, só perdem a aba.
+    //
+    // Aba vazia some direto, sem perguntar (não há o que preservar).
+    //
+    // As linhas migradas param de contar como publicáveis (linhaPublicavel exige
+    // aba.category_id) — sem isso, publicar mandaria category_id: null e o ML
+    // devolveria 400 uma vez por linha. O chip "N sem categoria" na PublishBar
+    // mostra que elas estão esperando classificação.
+    // ═══════════════════════════════════════════════════════════════════════
+    const removerCategoria = useCallback(() => {
+        const idx = abaAtivaRef.current;
+        const alvo = abasRef.current[idx];
+        if (!alvo?.category_id) return;
+
+        const n = alvo.linhas?.length ?? 0;
+        if (n > 0) {
+            const msg = n === 1
+                ? 'Remover esta categoria? A linha vai para “Sem categoria” (nada é apagado).'
+                : `Remover esta categoria? As ${n} linhas vão para “Sem categoria” (nada é apagado).`;
+            if (!window.confirm(msg)) return;
+        }
+
+        setAbas((prev) => {
+            const remover = prev[idx];
+            if (!remover) return prev;
+            const restantes = prev.filter((_, i) => i !== idx);
+            if (n === 0) {
+                setAbaAtiva(0);
+                return restantes.length ? restantes : prev;
+            }
+            // Migra as linhas para a aba "Sem categoria" (cria se não existir)
+            const orfas = remover.linhas.map((l) => ({ ...l, salvo: false }));
+            const iSem = restantes.findIndex((a) => a.key === SEM_CATEGORIA);
+            if (iSem >= 0) {
+                const novas = restantes.map((a, i) => i !== iSem ? a : { ...a, linhas: [...a.linhas, ...orfas] });
+                setAbaAtiva(iSem);
+                return novas;
+            }
+            const novas = [...restantes, {
+                key: SEM_CATEGORIA, category_id: null, caminho: [], obrigatorios: [],
+                max_title_length: 60, catalog_required: false, carregando: false, linhas: orfas,
+            }];
+            setAbaAtiva(novas.length - 1);
+            return novas;
+        });
+    }, []);
 
     // ─── "+ Nova categoria" — preditor de categoria (SHEET-03) ───
     const preverCategoria = async () => {
@@ -407,6 +459,10 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
     // ═══════════════════════════════════════════════════════════════════════
     const resumoLote = useMemo(() => {
         let total = 0, publicaveis = 0, comErroLocal = 0, comAvisosMl = 0;
+        // Estado do servidor: o que já foi publicado, o que falhou de verdade no ML,
+        // e o que não pode publicar por não ter categoria (payload iria com
+        // category_id: null = 400 garantido).
+        let publicados = 0, comErroPublicacao = 0, semCategoria = 0;
         const idsPublicaveis = [];
         abas.forEach((a) => {
             a.linhas.forEach((l) => {
@@ -414,6 +470,9 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                 const vazia = !String(l.title ?? '').trim() && !l.price && Object.keys(l.attrs ?? {}).length === 0;
                 if (vazia) return;
                 total++;
+                if (l.statusServidor === 'publicado') publicados++;
+                if (l.statusServidor === 'erro') comErroPublicacao++;
+                if (!a.category_id) semCategoria++;
                 // SHEET-07: publicável = tem id (salvo) E sem erro local bloqueante.
                 // NÃO exige status 'validado' do ML (espelha publicar() no backend).
                 if (errosLocaisLinha(l, a).length > 0) {
@@ -426,7 +485,8 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                 if (l.valida && !l.valida.valido && (l.valida.erros?.length ?? 0) > 0) comAvisosMl++;
             });
         });
-        return { total, publicaveis, comErroLocal, comAvisosMl, idsPublicaveis };
+        return { total, publicaveis, comErroLocal, comAvisosMl, idsPublicaveis,
+                 publicados, comErroPublicacao, semCategoria };
     }, [abas]);
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -545,6 +605,18 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                     >
                         <Plus className="h-3.5 w-3.5" /> Nova categoria
                     </button>
+
+                    {/* Remover a categoria ativa — as linhas NÃO são apagadas, migram
+                        para "Sem categoria" (decisão do usuário: reversível por design). */}
+                    {aba?.category_id && (
+                        <button
+                            onClick={removerCategoria}
+                            title="Remove a aba — as linhas vão para “Sem categoria”, nada é apagado"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/[0.12] px-3 py-2 text-sm text-white/40 hover:border-red-500/40 hover:text-red-300"
+                        >
+                            <Trash2 className="h-3.5 w-3.5" /> Remover categoria
+                        </button>
+                    )}
                 </div>
 
                 {/* Busca de nova categoria (mlb.anuncios.meta.prever) */}
@@ -673,6 +745,9 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                         onRemoverLinha={removerLinha}
                     />
                 )}
+
+                {/* Detalhes do lote: erros reais e avisos do ML (fora do canvas) */}
+                <PainelDetalhesLote abas={abas} />
             </div>
 
             {/* ═══ Barra fixa inferior: resumo do lote + ações (SHEET-05/07) ═══ */}
@@ -691,6 +766,137 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
     );
 }
 
+// ─── Copia texto pro clipboard (com fallback pra contexto sem navigator.clipboard) ───
+function copiarTexto(txt) {
+    if (!txt) return;
+    navigator.clipboard?.writeText(txt).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = txt;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch { /* sem clipboard: falha em silêncio */ }
+        document.body.removeChild(ta);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Painel de detalhes do lote — FORA do canvas (aqui Tailwind funciona).
+//
+// Existe porque canvas não hospeda tooltip nem <details>: a grade mostra o
+// glifo (✕ / ◐) e o motivo legível vem aqui embaixo. Percorre TODAS as abas,
+// não só a ativa — o lote é o conjunto, e o erro pode estar numa aba que o
+// publicador não está olhando.
+//
+// Erros REAIS de publicação (o ML recusou) trazem a resposta crua da API num
+// <details> expansível + botão de copiar. Avisos do /items/validate são
+// orientativos e NÃO impedem publicar — por isso ficam numa seção separada.
+// ═══════════════════════════════════════════════════════════════════════
+function PainelDetalhesLote({ abas }) {
+    const erros = useMemo(() => {
+        const out = [];
+        abas.forEach((a) => {
+            a.linhas.forEach((l, i) => {
+                if (l.statusServidor !== 'erro') return;
+                out.push({
+                    uid: l.uid,
+                    numero: i + 1, // o mesmo número que o rowMarkers mostra na grade
+                    aba: nomeCurto(a.caminho, a.category_id),
+                    titulo: l.title || '(sem título)',
+                    erroResumo: l.erroResumo,
+                    erroCompleto: l.erroCompleto,
+                });
+            });
+        });
+        return out;
+    }, [abas]);
+
+    const avisos = useMemo(() => {
+        const out = [];
+        abas.forEach((a) => {
+            a.linhas.forEach((l, i) => {
+                const lista = (l.valida && !l.valida.valido) ? (l.valida.erros ?? []) : [];
+                if (lista.length === 0) return;
+                out.push({
+                    uid: l.uid,
+                    numero: i + 1,
+                    aba: nomeCurto(a.caminho, a.category_id),
+                    titulo: l.title || '(sem título)',
+                    itens: lista,
+                });
+            });
+        });
+        return out;
+    }, [abas]);
+
+    if (erros.length === 0 && avisos.length === 0) return null;
+
+    return (
+        <div className="mb-24 mt-4 space-y-3">
+            {/* ─── Falhas REAIS de publicação ─── */}
+            {erros.length > 0 && (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/[0.04] p-3">
+                    <div className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-red-300">
+                        <AlertTriangle className="h-4 w-4" />
+                        {erros.length} linha(s) falharam ao publicar no Mercado Livre
+                    </div>
+                    <div className="space-y-1.5">
+                        {erros.map((e) => (
+                            <details key={e.uid} className="group rounded-lg border border-white/[0.06] bg-ecf-bg/40">
+                                <summary className="cursor-pointer list-none px-3 py-1.5 text-[12px] text-red-300/90 hover:text-red-200">
+                                    <span className="text-white/40">Linha {e.numero} · {e.aba} ·</span>{' '}
+                                    <span className="text-white/70">{e.titulo.slice(0, 40)}{e.titulo.length > 40 ? '…' : ''}</span>
+                                    {e.erroResumo && <> — {e.erroResumo}</>}
+                                    <span className="ml-1 text-white/25 group-open:hidden">▸ ver detalhes</span>
+                                </summary>
+                                <div className="border-t border-white/[0.06] px-3 py-2">
+                                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded border border-red-500/20 bg-red-500/[0.05] p-2 text-[11px] leading-relaxed text-red-200/80">
+{e.erroCompleto || e.erroResumo || '(sem detalhes da API)'}
+                                    </pre>
+                                    <button
+                                        type="button"
+                                        onClick={() => copiarTexto(e.erroCompleto || e.erroResumo)}
+                                        className="mt-1.5 inline-flex items-center gap-1 rounded-md border border-white/[0.1] bg-white/[0.03] px-2 py-1 text-[11px] text-white/60 hover:border-white/25 hover:text-white"
+                                    >
+                                        <Copy className="h-3 w-3" /> Copiar erro
+                                    </button>
+                                </div>
+                            </details>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* ─── Avisos do /items/validate (orientativos: NÃO impedem publicar) ─── */}
+            {avisos.length > 0 && (
+                <div className="rounded-xl border border-amber-400/25 bg-amber-400/[0.03] p-3">
+                    <div className="mb-2 text-[13px] font-medium text-amber-300/90">
+                        ◐ {avisos.length} linha(s) com avisos do Mercado Livre
+                        <span className="ml-1 font-normal text-white/35">— revisar, mas não impedem publicar</span>
+                    </div>
+                    <div className="space-y-1">
+                        {avisos.map((a) => (
+                            <div key={a.uid} className="rounded-lg border border-white/[0.06] bg-ecf-bg/40 px-3 py-1.5">
+                                <div className="text-[12px]">
+                                    <span className="text-white/40">Linha {a.numero} · {a.aba} ·</span>{' '}
+                                    <span className="text-white/70">{a.titulo.slice(0, 40)}{a.titulo.length > 40 ? '…' : ''}</span>
+                                </div>
+                                <ul className="mt-0.5 space-y-0.5">
+                                    {a.itens.map((it, k) => (
+                                        <li key={k} className="text-[11px] text-amber-200/70">
+                                            • {it.mensagem ?? String(it)}
+                                            {it.campo && <span className="text-white/30"> ({it.campo})</span>}
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Barra fixa inferior (sketch .publish-bar): resumo agregado do lote + ações.
 // SHEET-05: distingue "N publicáveis" (sem erro local) de "N com erro local"
@@ -698,7 +904,8 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
 // SHEET-07: botão primário publica todas as publicáveis; trava após o dispatch.
 // ═══════════════════════════════════════════════════════════════════════
 function PublishBar({ resumo, validando, publicando, erros, aviso, onValidarTudo, onPublicarLote }) {
-    const { total, publicaveis, comErroLocal, comAvisosMl } = resumo;
+    const { total, publicaveis, comErroLocal, comAvisosMl,
+            publicados, comErroPublicacao, semCategoria } = resumo;
     const nadaAPublicar = publicaveis === 0;
 
     return (
@@ -719,8 +926,25 @@ function PublishBar({ resumo, validando, publicando, erros, aviso, onValidarTudo
                         </span>
                     )}
                     {comAvisosMl > 0 && (
-                        <span className="inline-flex items-center gap-1 text-amber-300/80" title="Avisos do Mercado Livre — revisar, mas NÃO impedem publicar">
+                        <span className="inline-flex items-center gap-1 text-amber-300/80" title="Avisos do Mercado Livre — revisar, mas NÃO impedem publicar. Veja a lista abaixo da grade.">
                             ◐ <b className="tabular-nums">{comAvisosMl}</b> com avisos do ML
+                        </span>
+                    )}
+                    {/* Estado do servidor (chega pelo polling após publicar) */}
+                    {publicados > 0 && (
+                        <span className="text-emerald-300/80" title="Publicados no Mercado Livre nesta sessão">
+                            ✓ <b className="tabular-nums">{publicados}</b> publicado(s)
+                        </span>
+                    )}
+                    {comErroPublicacao > 0 && (
+                        <span className="inline-flex items-center gap-1 text-red-300" title="Falha REAL na publicação (o Mercado Livre recusou) — diferente de erro local. Veja o motivo abaixo da grade.">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            <b className="tabular-nums">{comErroPublicacao}</b> com erro na publicação
+                        </span>
+                    )}
+                    {semCategoria > 0 && (
+                        <span className="text-white/40" title="Defina a categoria da aba para poder publicar">
+                            <b className="tabular-nums">{semCategoria}</b> sem categoria
                         </span>
                     )}
                     {/* Feedback / erros pt-BR do backend */}
