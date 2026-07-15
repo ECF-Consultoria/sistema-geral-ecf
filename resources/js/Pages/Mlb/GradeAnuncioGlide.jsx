@@ -12,6 +12,7 @@ import {
     casarValueList,
     normalizarTipoAnuncio,
     gerarEan13,
+    errosLocaisLinha,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -50,9 +51,102 @@ const temaEcf = {
     editorFontSize: '13px',
 };
 
-// ─── Renderers extras: so o DropdownCell (allCells arrastaria renderers que nao usamos) ───
-// NAO existe hook useExtraCells neste pacote — o pacote exporta DropdownCell direto.
-const RENDERERS = [DropdownCell];
+// ═══════════════════════════════════════════════════════════════════════
+// Custom cell da BOLINHA DE ORIGEM (SHEET-04).
+//
+// Por que custom renderer e nao getRowThemeOverride: aquele recebe `row` e nao
+// `col` — pinta a linha inteira, e origem e POR CELULA. Nao ha outro caminho.
+// A bolinha e so decoracao: provideEditor cai no editor de texto padrao, entao
+// a celula continua editavel como qualquer outra.
+// ═══════════════════════════════════════════════════════════════════════
+const CORES_ORIGEM = {
+    cliente: '#a78bfa',    // violet-400 — mesmo hex do OrigemBadge antigo
+    publicador: '#fbbf24', // amber-400  — idem
+};
+
+// ─── Editor do overlay das celulas de origem (DOM — aqui Tailwind FUNCIONA) ───
+// Renderizado dentro do <div id="portal"> do Plan 01. Quando a celula declara
+// `max` (coluna Titulo), mostra o contador N/max e limita o texto — as MESMAS
+// duas barreiras do input de hoje (maxLength + slice), preservadas.
+function EditorOrigem({ value, onChange }) {
+    const d = value.data;
+    const max = d.max ?? null;
+    const texto = String(d.texto ?? '');
+    const setTexto = (t) => onChange({
+        ...value,
+        data: { ...d, texto: max ? t.slice(0, max) : t },
+    });
+    return (
+        <div className="flex w-full items-center gap-2 bg-ecf-card px-2 py-1">
+            <input
+                autoFocus
+                value={texto}
+                maxLength={max ?? undefined}
+                onChange={(e) => setTexto(e.target.value)}
+                className={cn(
+                    'w-full bg-transparent text-[13px] text-white placeholder-white/25 focus:outline-none',
+                    d.alinharDireita && 'text-right font-mono tabular-nums',
+                )}
+            />
+            {max && (
+                <span className="shrink-0 text-[9px] tabular-nums text-white/25">
+                    {texto.length}/{max}
+                </span>
+            )}
+        </div>
+    );
+}
+
+const origemCellRenderer = {
+    kind: GridCellKind.Custom,
+    isMatch: (c) => c.data?.kind === 'origem-cell',
+    draw: (args, cell) => {
+        const { ctx, rect, theme } = args;
+        const { texto, origem, alinharDireita } = cell.data;
+        const pad = theme.cellHorizontalPadding ?? 8;
+
+        // (a) o texto, como uma celula de texto normal faria
+        ctx.save();
+        ctx.fillStyle = theme.textDark;
+        ctx.font = theme.baseFontStyle + ' ' + theme.fontFamily;
+        ctx.textBaseline = 'middle';
+        const y = rect.y + rect.height / 2;
+        if (alinharDireita) {
+            ctx.textAlign = 'right';
+            ctx.fillText(String(texto ?? ''), rect.x + rect.width - pad, y);
+        } else {
+            ctx.textAlign = 'left';
+            ctx.fillText(String(texto ?? ''), rect.x + pad, y);
+        }
+
+        // (b) a bolinha no canto superior direito, quando o campo tem origem
+        const cor = CORES_ORIGEM[origem];
+        if (cor) {
+            ctx.beginPath();
+            ctx.arc(rect.x + rect.width - 6, rect.y + 6, 3, 0, Math.PI * 2);
+            ctx.fillStyle = cor;
+            ctx.fill();
+        }
+        ctx.restore();
+        return true;
+    },
+    // A bolinha e decoracao: a celula continua editavel. O editor abre no portal.
+    provideEditor: () => ({
+        editor: EditorOrigem,
+        disablePadding: true,
+    }),
+    onPaste: (v, d) => ({ ...d, texto: v }), // valor colado entra no texto da celula
+};
+
+// ─── Colunas que carregam marca de origem (cliente × publicador) ───
+const COLS_COM_ORIGEM = new Set([
+    'title', 'sku', 'price', 'estoque', 'pesoG', 'alturaCm', 'larguraCm', 'comprimentoCm',
+]);
+
+// ─── Renderers extras: DropdownCell + o de origem ───
+// NAO existe hook useExtraCells neste pacote — o pacote exporta DropdownCell
+// direto. Array constante de modulo: nao recriar a cada render.
+const RENDERERS = [DropdownCell, origemCellRenderer];
 
 // ─── Colunas base, na ordem visual de hoje ───
 // Esta ordem tambem e a ordem de mapeamento do paste — nao reordenar sem
@@ -106,6 +200,9 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
     // ─── Colunas = 10 base + SO os obrigatorios da categoria ATIVA (SHEET-02) ───
     // Nunca a uniao das categorias de todas as abas.
     const colunas = useMemo(() => {
+        // Coluna de status: reproduz o conteudo da antiga coluna "#" sticky MENOS o
+        // numero (o numero agora vem do rowMarkers="clickable-number" do Plan 04).
+        const status = { id: 'st', title: '', width: 44, group: 'Campos base', _st: true };
         const base = COLS_BASE.map((c) => ({
             id: c.id,
             title: c.id === 'title' ? `Título (${aba?.max_title_length ?? 60}) *` : `${c.title}${c.req ? ' *' : ''}`,
@@ -120,7 +217,7 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
             group: `Ficha técnica · ${nomeCat}`,
             _attr: o, // getCellContent usa _attr.value_type / _attr.values
         }));
-        return [...base, ...dinamicas];
+        return [status, ...base, ...dinamicas];
     }, [aba?.obrigatorios, aba?.max_title_length, nomeCat]);
 
     // GTINs ja usados na aba (nao gerar repetido) — mesma regra da grade antiga
@@ -139,6 +236,29 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
         // Fora do range (a lib pode perguntar por celulas que ainda nao existem)
         if (!coluna || !linha) {
             return { kind: GridCellKind.Loading, allowOverlay: false };
+        }
+
+        // ─── Coluna de status: mesma cascata de precedencia do <td> "#" de hoje ───
+        // Canvas nao anima: os spinners Loader2 viram glifos estaticos.
+        if (coluna._st) {
+            const errosLocais = errosLocaisLinha(linha, aba);
+            const avisosMl = (linha.valida && !linha.valida.valido) ? (linha.valida.erros ?? []) : [];
+            let glifo = '';
+            let cor = temaEcf.textLight;
+            if (linha.publicando)                { glifo = '↑'; cor = '#ffe600'; }        // publicando
+            else if (linha.salvando || linha.validando) { glifo = '⋯'; cor = 'rgba(255,255,255,0.4)'; }
+            else if (errosLocais.length > 0)     { glifo = '!'; cor = '#ef4444'; }        // erro local (bloqueante)
+            else if (avisosMl.length > 0)        { glifo = '◐'; cor = '#fbbf24'; }        // aviso do ML (orientativo)
+            else if (linha.valida?.valido)       { glifo = '✓'; cor = '#34d399'; }        // valido no ML
+            else if (linha.id)                   { glifo = '✓'; cor = 'rgba(255,255,255,0.35)'; } // salvo
+            return {
+                kind: GridCellKind.Text,
+                allowOverlay: false,
+                data: glifo,
+                displayData: glifo,
+                contentAlign: 'center',
+                themeOverride: { textDark: cor },
+            };
         }
 
         const ehAttr = !!coluna._attr;
@@ -175,6 +295,26 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
             };
         }
 
+        // SHEET-04 — colunas que carregam marca de origem: custom cell que desenha
+        // o texto + a bolinha (violeta = veio do cliente, ambar = publicador mexeu).
+        // A origem sai de origem[chaveOrigem(campo)] — por isso Estoque le
+        // available_quantity, e nao 'estoque'.
+        if (COLS_COM_ORIGEM.has(coluna.id)) {
+            return {
+                kind: GridCellKind.Custom,
+                allowOverlay: true,
+                copyData: valor, // sem isto o Ctrl+C nestas colunas sai vazio
+                data: {
+                    kind: 'origem-cell',
+                    texto: valor,
+                    origem: linha.origem?.[chaveOrigem(coluna.id)],
+                    alinharDireita: !!coluna._num,
+                    // So o Titulo tem limite: o editor mostra N/max e corta o excesso.
+                    max: coluna.id === 'title' ? (aba.max_title_length ?? 60) : null,
+                },
+            };
+        }
+
         // Demais: texto editavel. Valores ficam STRING (como linhaVazia ja cria) —
         // montarPayloadLinha e quem faz Number(l.price) na saida. Usar
         // GridCellKind.Number aqui mudaria o payload = regressao (SHEET2-07).
@@ -186,7 +326,24 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
             displayData: valor,
             contentAlign: coluna._num ? 'right' : undefined,
         };
-    }, [colunas, aba.linhas]);
+    }, [colunas, aba.linhas, aba]);
+
+    // ─── Realce da LINHA: erro local (vermelho) tem precedencia sobre aviso do ML (ambar) ───
+    // Mesma precedencia do LinhaGrade de hoje: uma linha com os dois problemas
+    // aparece vermelha, nao ambar. Reusa errosLocaisLinha — a MESMA funcao que a
+    // PublishBar consome via resumoLote; duas implementacoes divergiriam e o
+    // usuario veria "3 publicaveis" com 4 linhas verdes.
+    const getRowThemeOverride = useCallback((row) => {
+        const l = aba.linhas[row];
+        if (!l) return undefined;
+        if (errosLocaisLinha(l, aba).length > 0) {
+            return { bgCell: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.35)' }; // red-500
+        }
+        if (l.valida && !l.valida.valido && (l.valida.erros?.length ?? 0) > 0) {
+            return { bgCell: 'rgba(251,191,36,0.05)', borderColor: 'rgba(251,191,36,0.3)' }; // amber-400
+        }
+        return undefined;
+    }, [aba]);
 
     // ─── Coercao do valor COLADO, celula a celula, ANTES de virar edicao (SHEET2-03) ───
     // Porta o `aplicarCelula` que vivia dentro do colarNaGrade, reusando as
@@ -208,6 +365,13 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
             // (o backend aceita value_name livre).
             const casado = casarValueList(texto, permitidos.map((n) => ({ name: n })));
             return { ...celula, copyData: casado, data: { ...celula.data, value: casado } };
+        }
+
+        // Celulas com marca de origem (a maior parte da grade): o valor colado vai
+        // pro texto, respeitando o limite do Titulo.
+        if (celula.kind === GridCellKind.Custom && celula.data?.kind === 'origem-cell') {
+            const max = celula.data.max;
+            return { ...celula, copyData: texto, data: { ...celula.data, texto: max ? texto.slice(0, max) : texto } };
         }
 
         // Demais: texto trimado. A coluna Altura com "10x20x30" passa cru — quem
@@ -255,7 +419,10 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
                 }
             }
 
-            const valor = String(cel?.data ?? '');
+            // Celula com marca de origem: o texto editado vem em data.texto
+            const valor = (cel?.kind === GridCellKind.Custom && cel.data?.kind === 'origem-cell')
+                ? String(cel.data.texto ?? '')
+                : String(cel?.data ?? '');
 
             // Atributo da ficha tecnica (texto livre)
             if (coluna._attr) {
@@ -367,6 +534,8 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
                 getCellContent={getCellContent}
                 onCellsEdited={onCellsEdited}
                 customRenderers={RENDERERS}
+                // Realce da linha: erro local (vermelho) > aviso do ML (ambar)
+                getRowThemeOverride={getRowThemeOverride}
                 // SHEET2-03 — copiar/colar: getCellsForSelection habilita o Ctrl+C
                 // (copy e desabilitado por padrao na lib); onPaste intercepta o
                 // Ctrl+V e faz o split de TSV/CSV do Excel/Sheets.
@@ -389,8 +558,9 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
                 // SHEET2-04 — Tab/Enter/setas sao NATIVOS. Nenhum onKeyDown custom:
                 // seria reimplementar o que a lib ja da e brigaria com o nativo.
                 //
-                // Titulo sempre visivel no scroll horizontal (equivale ao sticky left-0).
-                freezeColumns={1}
+                // Status + Titulo sempre visiveis no scroll horizontal (equivale as
+                // colunas sticky left-0 da tabela antiga).
+                freezeColumns={2}
                 // "+ Adicionar linha" nativo — traducao direta da ultima <tr> da tabela antiga
                 onRowAppended={onAdicionarLinha}
                 trailingRowOptions={{
