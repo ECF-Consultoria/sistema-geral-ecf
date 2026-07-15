@@ -6,6 +6,7 @@ use App\Models\AdmanMetric;
 use App\Models\BonusFaixa;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
+use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
 use App\Models\User;
 use App\Services\Metrics\MetricsProviderFactory;
@@ -264,21 +265,154 @@ class DesempenhoScoreService
     }
 
     /**
-     * NPS médio do user no mês na dimensão apropriada.
+     * NPS médio do user no mês — UNIÃO DISJUNTA de dois caminhos POR RESPOSTA
+     * (Phase 80 v16.0 · DEC-80-A / DEC-80-B0 / DEC-80-B1 / DEC-80-B / DEC-80-D).
      *
-     * Regras (DESEMP-03):
-     *  - Dimensão: `estrategista` se `$user->isMentor()`, senão `analista`
-     *    (mesmo mapeamento do v1 + dual-path Phase 72/73).
-     *  - Iterar surveys `completed` do mês cujas empresas estejam na carteira.
-     *  - Para cada resposta: tentar `NpsScoreCalculator::compute` (v15 path).
-     *    Se retornar null, fallback DIRETO para `score_estrategista` ou
-     *    `score_analista` legacy (Phase 72/73 dual-path).
-     *  - Média aritmética das notas coletadas.
-     *  - Sem respostas → retorna `0.0` (PENALIZA por decisão da diretoria).
+     * ┌─ (A) ATRIBUIÇÕES (Fase 79) ── `nps_score_assignments`, a lista congelada
+     * │      de quem era responsável por qual serviço no dia da resposta. Soma
+     * │      TODAS as áreas da pessoa (performance/ML **e** shopee) — Ajuste 3 do
+     * │      usuário (DEC-80-A). Deduped 1× por (resposta, papel).
+     * └─ (B) LEGADO ── o cruzamento read-time histórico (carteira × dimensão do
+     *        cargo × modelo principal), preservado INTACTO para as respostas que
+     *        o snapshot da Fase 79 não cobriu.
+     *
+     * As duas metades são DISJUNTAS: nenhuma resposta contribui pelos dois ramos.
+     * A média é `$notas->avg()` — uma resposta contada 2× infla o bônus em
+     * silêncio (sem exception, sem log). Ver `notasLegado()` para o predicado.
+     *
+     * ⚠ O ramo legado é FALLBACK PERMANENTE, **não** ponte temporária: empresas
+     * sem contrato performance ativo ficaram com `company_users.servico_id = NULL`
+     * no backfill (a migration nunca inventa serviço) → `consultorDoServico()`
+     * volta vazio → `[NPS Snapshot] responsável faltante` → a resposta NUNCA gera
+     * atribuição e SEMPRE cai aqui. Não remover nem afrouxar sem antes reconciliar
+     * essas pendências no dado.
+     *
+     * Regras preservadas (DESEMP-03): média aritmética das notas coletadas; sem
+     * respostas → `0.0` (PENALIZA por decisão da diretoria — nunca `null`).
+     *
+     * Assinatura `(User, Carbon): float` é contrato de fato — testes a invocam
+     * por reflection com `assertSame`, que recusa `int`.
      *
      * @return float sempre >= 0.0
      */
     private function computeNpsMedio(User $user, Carbon $mes): float
+    {
+        $inicio = $mes->copy()->startOfMonth();
+        $fim    = $mes->copy()->endOfMonth();
+
+        $notas = collect();
+
+        // ── (A) Atribuições congeladas da Fase 79 — todas as áreas ───────────
+        $notas = $notas->merge(
+            $this->notasPorAtribuicao($user, $inicio, $fim)->pluck('average_score')
+        );
+
+        // ── (B) Caminho legado — só as respostas que o snapshot não cobriu ───
+        $notas = $notas->merge($this->notasLegado($user, $inicio, $fim));
+
+        if ($notas->isEmpty()) {
+            // DESEMP-03 · Sem respostas no mês FORÇA nps = 0 (penaliza) por
+            // decisão da diretoria. Não retornar null aqui.
+            return 0.0;
+        }
+
+        return round($notas->avg(), 2);
+    }
+
+    /**
+     * (A) Notas ATRIBUÍDAS ao user no mês — 1× por (`nps_response_id`, `role`).
+     *
+     * O mês vem de `nps_surveys.completed_at` via JOIN — a MESMA coluna que o
+     * ramo legado usa (DEC-80-B0). `nps_score_assignments` **não tem coluna de
+     * mês**, e as duas alternativas óbvias são armadilhas:
+     *  - `assigned_at` é a data da GRAVAÇÃO. Hoje equivale ao `completed_at`
+     *    (mesma transação do submit), mas qualquer backfill futuro gravaria a
+     *    data do backfill → a resposta de junho migraria para o mês do backfill,
+     *    sumindo do bônus de junho e zerando o mês de um analista real — sem
+     *    nenhum erro no log.
+     *  - `month_reference` é o mês do DISPARO, não o da resposta (um NPS de junho
+     *    respondido em julho tem os dois divergentes), e é NULL em muitas linhas
+     *    — inclusive no fixture Carlos, de propósito.
+     * Fonte única ⇒ os dois ramos concordam por construção sobre o mês da resposta.
+     *
+     * Dedup (DEC-80-A): a mesma pessoa responsável por 2 serviços cobertos da
+     * MESMA resposta não pode pesar 2× na média. As N linhas de um mesmo par
+     * (resposta, papel) vêm do MESMO `nps_response_score` — o `NpsSnapshotService`
+     * itera serviços DENTRO da dimensão — logo têm `average_score` idêntico:
+     * `MAX()` é determinístico e satisfaz o `ONLY_FULL_GROUP_BY` do MariaDB.
+     *
+     * NÃO filtrar por `service_setor` (zeraria o Ajuste 3 — o ML da pessoa sumiria
+     * da média dela) nem pela carteira viva `company_users` (desfaria o
+     * congelamento da Fase 79: trocar o responsável hoje reescreveria o bônus de
+     * ontem). O índice `nps_score_assign_user_role_idx (user_id, role)` cobre o WHERE.
+     *
+     * @return Collection<int, object{response_id:int, role:string, average_score:float}>
+     */
+    private function notasPorAtribuicao(User $user, Carbon $inicio, Carbon $fim): Collection
+    {
+        return NpsScoreAssignment::query()
+            ->join('nps_responses as r', 'r.id', '=', 'nps_score_assignments.nps_response_id')
+            ->join('nps_surveys as s', 's.id', '=', 'r.survey_id')
+            ->where('nps_score_assignments.user_id', $user->id)
+            ->where('s.status', 'completed')
+            ->whereBetween('s.completed_at', [$inicio, $fim])
+            ->groupBy('nps_score_assignments.nps_response_id', 'nps_score_assignments.role')
+            // selectRaw só com nomes de coluna literais — zero interpolação de
+            // variável; todos os valores entram por bind (where/whereBetween).
+            ->selectRaw(
+                'nps_score_assignments.nps_response_id as response_id,'
+                .' nps_score_assignments.role as role,'
+                .' MAX(nps_score_assignments.average_score) as average_score'
+            )
+            ->get()
+            ->map(fn ($row) => (object) [
+                'response_id'   => (int) $row->response_id,
+                'role'          => (string) $row->role,
+                'average_score' => (float) $row->average_score,
+            ]);
+    }
+
+    /**
+     * (B) Notas do caminho LEGADO — cruzamento read-time histórico, preservado.
+     *
+     * Cópia fiel do `computeNpsMedio` pré-Fase 80 (dimensão por cargo, carteira
+     * ativa, `->principal()`, `NpsScoreCalculator::compute` e o fallback das
+     * colunas legacy `score_*`), com uma única adição: o skip que garante a
+     * disjunção da união.
+     *
+     * ⚠⚠ O `->principal()` PERMANECE AQUI — NÃO "limpar" este scope. ⚠⚠
+     * O DEC-80-D ("aposentar 'só o principal conta'") vale APENAS para o ramo das
+     * atribuições, que já é model-agnostic por construção. Aqui o `->principal()`
+     * É o isolamento: sem ele, a resposta de um NPS Shopee entra no escopo legado
+     * do analista de ML da MESMA empresa (é da carteira dele, é `completed`, é do
+     * mês), ele não tem atribuição nessa resposta, cai no fallback e **recebe uma
+     * nota de um trabalho que não é dele**. Isso é exatamente a super-atribuição
+     * que o congelamento da Fase 79 existe para impedir. Coberto pelo teste
+     * `BonusAtribuicoesNpsTest::test_analista_shopee_nao_recebe_nota_ml_da_mesma_empresa`.
+     *
+     * PREDICADO DO SKIP (DEC-80-B1 — refinamento do DEC-80-B, confirmado pelo
+     * usuário em 2026-07-14): pular a resposta quando ela já tem atribuição **no
+     * papel correspondente à dimensão do cargo deste user** — independentemente de
+     * quem foi o atribuído. Racional: se o snapshot da Fase 79 nomeou os
+     * responsáveis daquele papel naquela resposta, a lista dele é COMPLETA e
+     * AUTORITATIVA — quem não está nela não é responsável e não recebe nada dessa
+     * resposta.
+     *
+     * Por que NÃO o predicado literal "(este user, esta resposta)": `User::companies()`
+     * não filtra por `servico_id`, então a empresa onde a pessoa é analista APENAS
+     * de Shopee está na carteira dela; o NPS Padrão (principal) dessa empresa entra
+     * na query legada dela; ela não tem atribuição nessa resposta → cairia no legado
+     * e receberia a nota de ML da empresa. Seria a super-atribuição no sentido
+     * inverso. O predicado por papel subsume o literal (se o user tem atribuição na
+     * resposta, existe atribuição naquele papel → skip) e preserva 100% do histórico
+     * (resposta com zero atribuições → zero skip → legado normal).
+     *
+     * O guard de carteira vazia vive AQUI (e não em `computeNpsMedio`): um user com
+     * atribuições e carteira vazia deve receber a média das atribuições, não 0.0.
+     *
+     * @return Collection<int, float>
+     */
+    private function notasLegado(User $user, Carbon $inicio, Carbon $fim): Collection
     {
         // 2026-07-13 — dimensão POR CARGO (estrategista/analista), fonte
         // canônica user_setores→cargos. Antes usava isMentor() (role do
@@ -291,22 +425,34 @@ class DesempenhoScoreService
             ->pluck('companies.id');
 
         if ($companyIds->isEmpty()) {
-            return 0.0;
+            return collect();
         }
 
-        // 2026-07-13 — só o modelo PRINCIPAL conta nas métricas de desempenho.
+        // 2026-07-13 — só o modelo PRINCIPAL conta neste ramo (ver docblock:
+        // é o isolamento por serviço, não uma regra de conveniência).
         // scopePrincipal filtra template_id = principal (força vazio se nenhum
-        // principal estiver marcado). Respostas de modelos esporádicos e
-        // legados ficam de fora do cálculo do score/bônus.
+        // principal estiver marcado).
         $surveys = NpsSurvey::with('response')
             ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')
-            ->whereBetween('completed_at', [
-                $mes->copy()->startOfMonth(),
-                $mes->copy()->endOfMonth(),
-            ])
+            ->whereBetween('completed_at', [$inicio, $fim])
             ->get();
+
+        // Set de skip da união disjunta — derivado DOS SURVEYS JÁ CARREGADOS
+        // (nunca de uma 2ª query com filtro de mês próprio: dois filtros
+        // divergem e a resposta escapa, sendo contada pelos dois ramos).
+        // Mapa dimensão → papel: espelha NpsSnapshotService::DIMENSAO_ROLE.
+        $papelDaDimensao = $dim === 'estrategista' ? 'estrategista' : 'consultor';
+        $responseIds     = $surveys->pluck('response.id')->filter()->values();
+
+        // ->flip() + ->has() = lookup O(1) por hash (nunca ->contains() no loop).
+        $cobertasNoPapel = $responseIds->isEmpty()
+            ? collect()
+            : NpsScoreAssignment::whereIn('nps_response_id', $responseIds)
+                ->where('role', $papelDaDimensao)
+                ->pluck('nps_response_id')
+                ->flip();
 
         $notas = collect();
 
@@ -314,6 +460,11 @@ class DesempenhoScoreService
             /** @var NpsResponse|null $response */
             $response = $survey->response;
             if ($response === null) {
+                continue;
+            }
+
+            // ÚNICA adição ao ramo legado — garante a disjunção da união.
+            if ($cobertasNoPapel->has($response->id)) {
                 continue;
             }
 
@@ -338,13 +489,7 @@ class DesempenhoScoreService
             }
         }
 
-        if ($notas->isEmpty()) {
-            // DESEMP-03 · Sem respostas no mês FORÇA nps = 0 (penaliza) por
-            // decisão da diretoria. Não retornar null aqui.
-            return 0.0;
-        }
-
-        return round($notas->avg(), 2);
+        return $notas;
     }
 
     /**
