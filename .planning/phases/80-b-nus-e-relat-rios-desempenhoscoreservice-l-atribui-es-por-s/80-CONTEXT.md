@@ -30,6 +30,9 @@
 - A `role` da atribuição (`consultor`=Analista / `estrategista`) já encoda a dimensão — não depender mais do cargo do user para escolher a dimensão.
 - **Dedup:** contar 1× por (`nps_response_id`, `role`) por pessoa. Se a mesma pessoa for responsável por 2 serviços cobertos da MESMA resposta, não inflar (o spec exige "1× por papel"; recortes por setor podem usar `service_setor`).
 
+### DEC-80-B0 — Fonte do MÊS = JOIN até `nps_surveys.completed_at` (CORREÇÃO do RESEARCH)
+- `nps_score_assignments` **não tem coluna de mês**. O mês do bônus DEVE sair de JOIN `assignments → nps_responses → nps_surveys.completed_at` (a MESMA fonte que o caminho legado usa) — nunca de `assigned_at` (um backfill futuro gravaria a data do backfill → a resposta migraria de mês e zeraria o bônus de alguém sem erro no log) nem de `survey.month_reference` (é o mês do DISPARO e é NULL no fixture Carlos de propósito).
+
 ### DEC-80-B — Dual-path POR RESPOSTA (não quebrar o bônus histórico)
 - Respostas anteriores à Fase 79 (e o mês de transição, que é misto) NÃO têm atribuição. Regra: para cada resposta no escopo do usuário no mês — **se existe atribuição para (user, resposta)** → usar `average_score` da atribuição; **senão** → cair no cálculo legado atual (carteira `company_users` × dimensão do cargo × `NpsScoreCalculator::compute`), preservando também o fallback das colunas legacy `score_*`.
 - Isso mantém meses históricos idênticos e faz o mês de transição somar corretamente (respostas novas via atribuição + antigas via legado). NÃO usar corte por mês inteiro (perderia respostas pré-deploy do mês corrente).
@@ -38,11 +41,16 @@
 ### DEC-80-C — Bump de cache
 - `computeCached` usa a chave `desempenho.compute.v2.{user}.{mês}` — bumpar para **v3** (senão bônus servido do cache antigo). Precedente: bump v1→v2 em 2026-07-13 por correção de dimensão do NPS.
 
-### DEC-80-D — Aposentar "só o principal conta"
-- Remover a dependência do escopo `->principal()` no caminho do bônus (respostas de qualquer modelo com atribuição contam). A memória `project_nps_modelo_principal` fica **superada** nesse ponto — atualizar ao fim da fase. O `is_default` segue sendo o fallback de resolução de template (Fase 79) — não confundir os dois papéis.
+### DEC-80-D — "Só o principal conta" aposentado APENAS no caminho das atribuições (CORRIGIDO pelo RESEARCH)
+- **O `->principal()` PERMANECE no ramo LEGADO.** Só o ramo das ATRIBUIÇÕES ignora o modelo (qualquer modelo com atribuição conta).
+- **Por quê (armadilha crítica):** se removermos o `->principal()` do legado, a resposta do NPS Shopee da Decoral entra no escopo legado do **analista de ML da mesma empresa** — ele não tem atribuição nessa resposta, cai no fallback e **recebe a nota do Shopee**. Isso é exatamente a super-atribuição que o congelamento da Fase 79 existe para impedir. Uma leitura literal de "aposentar o principal" QUEBRA o isolamento por serviço.
+- A memória `project_nps_modelo_principal` fica superada só nesse recorte (bônus via atribuições) — atualizar ao fim da fase com a nuance. O `is_default` segue sendo o fallback de resolução de template (Fase 79) — não confundir os papéis.
 
-### DEC-80-E — Recortes/relatórios
-- Habilitar recorte por `service_setor` (ML vs Shopee) e por `role` nas leituras que fizerem sentido (widget/ranking/telas de desempenho), sem inflar a média da pessoa (dedup do DEC-80-A).
+### DEC-80-E — Leitores/widgets: EM ESCOPO, mas em PLANO SEPARADO (RESEARCH OQ2)
+- O usuário reportou que a nota do NPS Shopee (Decoral) não aparece **nem no ranking `/performance` nem no widget de NPS analista/estrategista** → os DOIS estão em escopo.
+- **Ranking + headline `nps.media` se consertam sozinhos** com a mudança do service (consomem `computeCached`/`computeNpsMedio`) → ficam no plano do service.
+- **Widgets que usam `->principal()` diretamente** (coluna NPS por empresa, últimas respostas, heatmap no `PerformanceController::dashboardCarteira` :298-446) precisam de trabalho explícito + `npm run build` → **plano SEPARADO**, para a cirurgia do bônus (plano do service) ficar isolada e de baixo risco.
+- Recorte por `service_setor`/`role` onde fizer sentido, sem inflar a média da pessoa (dedup DEC-80-A).
 - Preservar `desempenho_score_snapshots` já consolidados (histórico de bônus fechado) — NÃO reescrever o passado.
 
 ### Claude's Discretion
@@ -54,7 +62,9 @@
 <constraints>
 ## Constraints
 - **ÁREA CRÍTICA — a régua de bônus.** Qualquer erro altera bonificação de pessoas reais. Exigir: teste de regressão que prove que meses SEM atribuição mantêm a nota idêntica à atual; e teste que prove o mês misto somando os dois caminhos.
-- **Fixture âncora Carlos** (Phase 74 / DESEMP-01): existe teste que trava `nota_final=3.35` + `faixa_bonus=sem_bonus`. Se quebrar, o cálculo divergiu da decisão da diretoria — investigar, não "consertar o teste".
+- **Fixture âncora Carlos** (Phase 74 / DESEMP-01) — valor CORRIGIDO pelo RESEARCH: o teste real é `test_fixture_carlos_retorna_nota_4_08_basico` em `tests/Feature/Phase74/DesempenhoScoreServiceTest.php:388` → trava **`nota_final=4.08` + `faixa_bonus=basico`** (o 3.35/sem_bonus do brief foi SUPERADO em 2026-07-09 pelas réguas 1-5). Se quebrar, o cálculo divergiu da decisão da diretoria — investigar, NÃO "consertar o teste". **Bônus:** o fixture cria surveys via factory sem passar pelo `NpsSnapshotService` → zero atribuições → ele JÁ É a prova de regressão do caminho legado.
+- **Dual-path é FALLBACK PERMANENTE, não só ponte histórica** (RESEARCH): empresas sem contrato performance ativo ficaram com `company_users.servico_id=NULL` no backfill → não geram atribuição → sempre caem no legado. Não tratar o ramo legado como código temporário.
+- **Blast radius do cache (v3):** além de `PerformanceController`, o **`PortfolioController` também consome `computeCached`** (:1251, :1277) — RESEARCH; conferir todos os consumidores ao bumpar.
 - Testes em `tests/Feature/V16/`.
 - Cross-driver; cache bump obrigatório; `npm run build` se tocar frontend.
 - Dev em paralelo (anunciar-ml) — reconciliar antes de deploy. pt-BR.
