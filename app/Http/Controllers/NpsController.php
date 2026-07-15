@@ -379,14 +379,59 @@ class NpsController extends Controller
         // template_id populado — sem este bind, a dedup unique parcial
         // (Plan 68-04) e o snapshot per-row (Phase 68) ficam degradados.
         //
-        // Ajuste 2026-07-13: se o admin escolheu um template específico no
-        // dialog "Gerar link", usa esse — só admin pode override; usuários
-        // normais continuam com o auto-resolve por empresa.
+        // Quick task 260715-ndo (Bug A, ativo em produção): o modal
+        // "Gerar link" (Fase 81) é modelo-first e já oferece o seletor para
+        // QUALQUER usuário autorizado (não só admin) — o gate isAdmin() que
+        // existia aqui era mentiroso: a UI dizia "escolha o modelo" e o
+        // servidor, para não-admin, IGNORAVA silenciosamente a escolha e
+        // caía no auto-resolve por priority. Resultado medido em produção:
+        // 15 links do modelo errado gerados por não-admin (2 já respondidos,
+        // notas atribuídas ao responsável do setor errado).
+        //
+        // Decisão de produto: empresa com múltiplos serviços (ex.: ML +
+        // Shopee) deve poder gerar um NPS por serviço, cada um endereçado ao
+        // responsável do seu setor — espelhando o disparo mensal multi-modelo
+        // (nps:disparar-mensal). Por isso o override agora vale para
+        // qualquer usuário que já passou pela autorização de empresa acima
+        // (linhas anteriores, inalteradas) — só falta validar que o modelo
+        // pedido REALMENTE se aplica a esta empresa (defesa em profundidade:
+        // o modal já filtra por `empresasElegiveis`, mas se um dia divergir,
+        // sem esta validação o servidor geraria um NPS Shopee para empresa
+        // sem Shopee e a nota viraria órfã — NpsSnapshotService só loga
+        // "responsável faltante" e segue).
         $company = Company::findOrFail($data['company_id']);
-        if ($user->isAdmin() && !empty($data['template_id'])) {
-            $template = \App\Models\NpsTemplate::where('active', true)
-                ->findOrFail($data['template_id']);
+
+        if (!empty($data['template_id'])) {
+            // Busca sem filtrar por `active` na query — precisamos distinguir
+            // "não existe" (já coberto por exists:nps_templates,id do
+            // validate acima) de "existe mas está inativo", para devolver a
+            // mensagem certa em cada caso.
+            $template = \App\Models\NpsTemplate::findOrFail($data['template_id']);
+
+            if (!$template->active) {
+                return back()->with('error', 'Este modelo de NPS está desativado e não pode gerar novos links.');
+            }
+
+            // Espelha os 2 ramos de `NpsTemplateController::empresasElegiveis`
+            // (NÃO 3 — não existe rejeição por `active` da empresa aqui):
+            //   (a) modelo COM serviços cobertos → exige contrato ATIVO da
+            //       empresa em pelo menos um deles;
+            //   (b) modelo SEM serviços cobertos (pivot vazio, ex.: NPS
+            //       Padrão) → aceito para qualquer empresa (fallback).
+            $servicoIds = $template->servicos()->pluck('servicos.id');
+            if ($servicoIds->isNotEmpty()) {
+                $temContratoAtivo = $company->contratosServico()
+                    ->active()
+                    ->whereIn('servico_id', $servicoIds)
+                    ->exists();
+
+                if (!$temContratoAtivo) {
+                    return back()->with('error', 'Este modelo de NPS não se aplica a esta empresa — ele cobre serviços que a empresa não tem contratados no momento.');
+                }
+            }
         } else {
+            // Sem template_id (ex.: consumidor antigo/API) → auto-resolve
+            // por empresa, comportamento original preservado.
             $template = $templateService->resolveForCompany($company);
         }
 
