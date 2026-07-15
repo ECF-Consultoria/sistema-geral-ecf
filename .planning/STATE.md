@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: Em execução (v16.0 — Responsáveis por serviço)
-stopped_at: Completed 79-04 (Wave 2 Phase 79 — snapshot de atribuições por serviço no submit v15)
-last_updated: "2026-07-15T00:32:00.000Z"
+stopped_at: Completed 81-01 (Wave 1 Phase 81 — backend duplicate()/destroy() de modelo NPS)
+last_updated: "2026-07-15T01:19:00.000Z"
 last_activity: 2026-07-15
 progress:
-  total_phases: 13
+  total_phases: 14
   completed_phases: 11
-  total_plans: 54
-  completed_plans: 58
-  percent: 85
+  total_plans: 58
+  completed_plans: 59
+  percent: 79
 ---
 
 # Project State
@@ -25,9 +25,9 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 79
-Plan: 79-04 concluído (Wave 2 — snapshot no submit v15: scores por dimensão + covered_services + assignments por serviço; empresa só em scores; responsável faltante → Log::warning; bônus intocado DEC-79-E)
-Status: Em execução (v16.0 — Responsáveis por serviço)
+Phase: 81
+Plan: 81-01 concluído (Wave 1 — backend duplicar/excluir modelo NPS: NpsTemplateController@duplicate clona árvore completa com is_default=false; @destroy com guardas is_default + histórico; rotas role:admin; DuplicarModeloTest + ExcluirModeloTest verdes)
+Status: Em execução (v16.0 — NPS config UX: duplicar/excluir modelo + modal gerar-link)
 Last activity: 2026-07-15
 
 ## Performance Metrics
@@ -127,6 +127,7 @@ Last activity: 2026-07-15
 | Phase 74 P05 | 20min | 3 tasks | 4 files |
 | Phase 74 P04 | 25min | 2 tasks (Big bang + cron mensal) | 6 files (5 modified, 1 deleted) |
 | Phase 74 P06 | 45min | 3 tasks (Dashboard/Index/Show reescritos + PerformanceController::show Rule 2) | 4 files |
+| Phase 81 P01 | 9min | 2 tasks (TDD RED+GREEN) | 4 files |
 | Phase 79 P04 | ~25min | 3 tasks (TDD RED + NpsSnapshotService + wiring submit) | 4 files |
 | Phase 74 P07 | 20min | 1 task (Desempenho/Configuracao.jsx) | 1 file (new) |
 | Phase 79 P01 | ~6min | 3 tasks (RED test + migration cross-driver + 3 models) | 6 files |

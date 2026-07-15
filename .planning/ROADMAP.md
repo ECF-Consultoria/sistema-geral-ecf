@@ -339,7 +339,7 @@ Plans:
 **Plans:** 4 plans
 
 Plans:
-- [ ] 81-01-PLAN.md — Backend: duplicate() + destroy() com guardas + rotas + testes (DEC-81-1, DEC-81-2)
+- [x] 81-01-PLAN.md — Backend: duplicate() + destroy() com guardas + rotas + testes (DEC-81-1, DEC-81-2)
 - [ ] 81-02-PLAN.md — Backend: endpoint empresas-elegiveis (scope∩contrato, fallback, carteira) + teste (DEC-81-3)
 - [ ] 81-03-PLAN.md — Frontend: botões Duplicar/Excluir no editor da config (DEC-81-1, DEC-81-2)
 - [ ] 81-04-PLAN.md — Frontend: modal gerar-link modelo-first + filtro reativo + build/regressão + checkpoint visual (DEC-81-3)
