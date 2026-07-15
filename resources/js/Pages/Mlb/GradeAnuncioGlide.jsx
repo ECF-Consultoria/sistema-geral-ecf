@@ -13,6 +13,7 @@ import {
     normalizarTipoAnuncio,
     gerarEan13,
     errosLocaisLinha,
+    normalizarPreco,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -148,6 +149,12 @@ const origemCellRenderer = {
         disablePadding: true,
     }),
     onPaste: (v, d) => ({ ...d, texto: v }), // valor colado entra no texto da celula
+    // Tecla Delete nas 8 colunas de COLS_COM_ORIGEM. Sem isto elas nao respondem ao
+    // Delete: custom cell nao herda o onDelete nativo da lib. So o `texto` e apagado —
+    // origem/alinharDireita/max nao sao conteudo digitado.
+    // Nao escreve no estado: a lib monta o editList e chama o onCellsEdited desta grade,
+    // que ja delega pra pagina (e o autosave dispara sozinho).
+    onDelete: (cell) => ({ ...cell, copyData: '', data: { ...cell.data, texto: '' } }),
 };
 
 // ─── Colunas que carregam marca de origem (cliente × publicador) ───
@@ -257,7 +264,14 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
             const avisosMl = (linha.valida && !linha.valida.valido) ? (linha.valida.erros ?? []) : [];
             let glifo = '';
             let cor = temaEcf.textLight;
-            if (linha.publicando)                { glifo = '↑'; cor = '#ffe600'; }        // publicando
+            // Estados TERMINAIS primeiro: sao a verdade final sobre a linha. Um erro
+            // local detectado depois nao desfaz uma publicacao que ja aconteceu.
+            // '✕' (falha real do POST /items) e '!' (erro local, nem tentou ainda) sao
+            // coisas diferentes e nao dividem simbolo. O motivo de cada '✕' aparece no
+            // painel abaixo da grade — canvas nao hospeda tooltip.
+            if (linha.statusServidor === 'publicado') { glifo = '✓'; cor = '#22c55e'; } // green-500
+            else if (linha.statusServidor === 'erro') { glifo = '✕'; cor = '#ef4444'; }
+            else if (linha.publicando)           { glifo = '↑'; cor = '#ffe600'; }        // publicando
             else if (linha.salvando || linha.validando) { glifo = '⋯'; cor = 'rgba(255,255,255,0.4)'; }
             else if (errosLocais.length > 0)     { glifo = '!'; cor = '#ef4444'; }        // erro local (bloqueante)
             else if (avisosMl.length > 0)        { glifo = '◐'; cor = '#fbbf24'; }        // aviso do ML (orientativo)
@@ -348,6 +362,14 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
     const getRowThemeOverride = useCallback((row) => {
         const l = aba.linhas[row];
         if (!l) return undefined;
+        // Terminais primeiro (mesma razao da cascata de glifos)
+        if (l.statusServidor === 'publicado') {
+            return { bgCell: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.35)' }; // green-500
+        }
+        if (l.statusServidor === 'erro') {
+            // Mais forte que o vermelho de erro local logo abaixo: falhou de verdade no ML
+            return { bgCell: 'rgba(239,68,68,0.10)', borderColor: 'rgba(239,68,68,0.5)' };
+        }
         if (errosLocaisLinha(l, aba).length > 0) {
             return { bgCell: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.35)' }; // red-500
         }
@@ -418,7 +440,16 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
             if (cel?.kind === GridCellKind.Custom && cel.data?.kind === 'dropdown-cell') {
                 const escolhido = String(cel.data.value ?? '');
                 if (coluna.id === 'tier') {
-                    // Traduz o rotulo de volta pro codigo do ML reusando a funcao pura
+                    // Delete no Tipo volta ao padrao (Classico) — mesmo default de
+                    // linhaVazia() e o mesmo fallback de montarPayloadLinha. Sem este
+                    // ramo, normalizarTipoAnuncio('') devolve null, o if abaixo engole a
+                    // edicao e o Delete nesta coluna nao faz nada.
+                    if (escolhido.trim() === '') {
+                        onEditarCelula(linha.uid, 'tier', 'gold_special', { chaveOrigem: chaveOrigem('tier') });
+                        continue;
+                    }
+                    // Traduz o rotulo de volta pro codigo do ML reusando a funcao pura.
+                    // Texto NAO reconhecido continua sendo ignorado (tolerancia de hoje).
                     const cod = normalizarTipoAnuncio(escolhido);
                     if (cod) onEditarCelula(linha.uid, 'tier', cod, { chaveOrigem: chaveOrigem('tier') });
                     continue;
@@ -456,7 +487,17 @@ export default function GradeAnuncioGlide({ aba, empresa, onEditarCelula, onAdic
                 // Nao parseou: grava o texto cru (mesmo fallback tolerante de hoje)
             }
 
-            onEditarCelula(linha.uid, coluna.id, valor, { chaveOrigem: chaveOrigem(coluna.id) });
+            // FIX-83-5: preco aceita "129,99" (padrao BR) alem de "129.99".
+            // A coercao acontece AQUI, no ponto unico de escrita, e nao no
+            // montarPayloadLinha: o autosave chama aquele a cada 600ms de digitacao —
+            // com price='129,99', Number() vira NaN, JSON.stringify(NaN) vira null, e o
+            // banco receberia price: null antes de o publicador tentar publicar. Pior:
+            // errosLocaisLinha faz Number(price) > 0, entao a linha ficaria vermelha com
+            // "falta preco" e o campo visivelmente preenchido na tela.
+            // Só chega aqui: os ramos de atributo (id 'attr:XXX') e de alturaCm saem antes.
+            const valorNormalizado = coluna.id === 'price' ? normalizarPreco(valor) : valor;
+
+            onEditarCelula(linha.uid, coluna.id, valorNormalizado, { chaveOrigem: chaveOrigem(coluna.id) });
         }
         return true;
     }, [colunas, aba.linhas, onEditarCelula, onAdicionarLinha]);
