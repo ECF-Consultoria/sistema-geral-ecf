@@ -103,12 +103,18 @@ class NpsController extends Controller
         // gravam apenas em `nps_response_answers` (snapshot per-row); as
         // colunas legadas `score_*` de `nps_responses` ficam null. Sem carregar
         // answers, os cards mostram 0 e a lista mostra só o nome do respondente.
+        // Quick task 260715-pu0 — eager load das atribuições congeladas
+        // (Fase 79, `nps_score_assignments`) + o `user` de cada uma, para o
+        // modal de detalhe mostrar QUEM recebeu a nota. 2 queries a mais no
+        // total da página (assignments por whereIn dos response_ids + users
+        // por whereIn dos user_ids), não N+1 — a lista é paginada em 20.
         $baseQuery = NpsSurvey::with([
                 'company',
                 'generatedBy',
                 'response.respostasCustomizadas',
                 'response.answers',
                 'response.survey.template',
+                'response.scoreAssignments.user',
             ])
             ->where(function ($q) use ($mesInicio, $mesFim) {
                 $q->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
@@ -190,6 +196,48 @@ class NpsController extends Controller
             return $legacy->concat($v15)->values();
         };
 
+        // Quick task 260715-pu0 — nomes dos responsáveis (analista/estrategista)
+        // que receberam a nota individual daquela resposta, direto de
+        // `nps_score_assignments` (Fase 79, congelado no momento da resposta).
+        //
+        // PROIBIDO ler `$company->consultor`/`$company->estrategista`/
+        // `consultorDoServico()`/`estrategistaDoServico()` aqui: essas relações
+        // do pivot VIVO estão quebradas desde a Fase 76 (empresa pode ter 2
+        // linhas do mesmo `role` com `servico_id` diferentes, e um `->first()`
+        // pega a mais antiga — bug real em prod na tela /companies). A
+        // atribuição congelada já resolveu isso por serviço no momento do
+        // submit; aqui é leitura pura, sem fallback.
+        //
+        // Sem atribuição (survey legado, pré-Fase 79) → listas vazias, nunca
+        // null — a UI não precisa de guard de tipo.
+        $mapaDimensaoRole = [
+            'consultor'    => 'analista',
+            'estrategista' => 'estrategista',
+        ];
+        $responsaveisDe = function ($response) use ($mapaDimensaoRole) {
+            $resultado = ['analista' => [], 'estrategista' => []];
+            if (! $response) {
+                return $resultado;
+            }
+
+            $vistos = ['analista' => [], 'estrategista' => []];
+            foreach ($response->scoreAssignments as $a) {
+                $chave = $mapaDimensaoRole[$a->role] ?? null;
+                if ($chave === null || ! $a->user) {
+                    continue; // role fora do mapa, ou usuário deletado
+                }
+                // Dedup por user_id — um template que cobre 2 serviços com o
+                // mesmo responsável não deve repetir o nome na tela.
+                if (in_array($a->user_id, $vistos[$chave], true)) {
+                    continue;
+                }
+                $vistos[$chave][] = $a->user_id;
+                $resultado[$chave][] = $a->user->name;
+            }
+
+            return $resultado;
+        };
+
         $surveys = $baseQuery->paginate(20)->withQueryString()->through(fn($s) => [
             'id'                 => $s->id,
             'token'              => $s->token,
@@ -204,6 +252,8 @@ class NpsController extends Controller
             'score_estrategista' => $notaDe($s->response, 'estrategista'),
             'score_analista'     => $notaDe($s->response, 'analista'),
             'score_empresa'      => $notaDe($s->response, 'empresa'),
+            // Quick task 260715-pu0 — nomes de quem recebeu a nota (Fase 79).
+            'responsaveis'       => $responsaveisDe($s->response),
             'respondent'         => $s->response?->respondent_name,
             'comment'            => $s->response?->comment,
             'link'               => route('nps.respond', $s->token),
