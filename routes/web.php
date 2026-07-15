@@ -102,6 +102,17 @@ Route::post('/nps/generate', [NpsController::class, 'generate'])
     ->middleware(['auth', 'verified'])
     ->name('nps.generate');
 
+// ─── Phase 81 Plan 02 — Empresas elegíveis por modelo (DEC-81-3) ─────────────
+// Endpoint JSON que alimenta o modal "Gerar link" modelo-first (Plan 81-04):
+// dado um modelo, retorna as empresas elegíveis (serviços cobertos ∩ contratos
+// ativos; modelo sem scopes → todas as ativas). Fica no grupo ['auth','verified']
+// — NÃO role:admin — porque o gerar-link é usado por consultor/não-admin, que só
+// enxerga a própria carteira (escopo dentro do controller). Espelha nps.generate
+// e DEVE ficar antes da rota pública /nps/{token} para não colidir.
+Route::get('/nps/configuracao/templates/{template}/empresas-elegiveis', [NpsTemplateController::class, 'empresasElegiveis'])
+    ->middleware(['auth', 'verified'])
+    ->name('nps.configuracao.templates.empresas-elegiveis');
+
 // ─── Customização NPS (Phase 32 Plan 02) ────────────────────────────────────
 // Páginas admin-only (role:admin) para editar os 11 textos do fluxo NPS +
 // endpoint de preview server-rendered do email (D-05). DEVEM ficar ANTES da

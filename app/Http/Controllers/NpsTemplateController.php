@@ -430,6 +430,58 @@ class NpsTemplateController extends Controller
     }
 
     /**
+     * GET /nps/configuracao/templates/{template}/empresas-elegiveis
+     * (Phase 81 Plan 02, DEC-81-3).
+     *
+     * Endpoint JSON que alimenta o modal "Gerar link" modelo-first (Plan 81-04):
+     * dado um modelo, devolve as empresas ELEGÍVEIS para gerar link. É a
+     * INVERSÃO da lógica "serviços cobertos ∩ contratos ativos" do
+     * `NpsTemplateService::resolveForCompany` — aqui partimos do template e
+     * buscamos as empresas, não o contrário.
+     *
+     * Regra (fiel ao research §4, mas por-empresa em vez de por-template):
+     *   - Modelo COM serviços cobertos {S}: só empresas `active=true` que tenham
+     *     contrato ATIVO (`ativo=true`) de algum serviço em {S}, ordenadas por name.
+     *   - Modelo SEM serviços cobertos (pivot vazio): fallback → TODAS as empresas
+     *     `active=true` (cobre o is_default / "NPS Padrão", que vale pra todo mundo).
+     *
+     * **Segurança (T-81-05):** usuário NÃO-admin só enxerga a própria carteira
+     * (`whereIn('id', companies do user)`) — não vaza empresas de fora. Por isso
+     * a rota fica no grupo `['auth','verified']` (espelha `nps.generate`), NÃO
+     * `role:admin`: o gerar-link é usado por consultor/não-admin, e o escopo de
+     * carteira acontece aqui dentro.
+     *
+     * Response é JSON (não Inertia) — chamado via fetch/axios pelo modal React
+     * quando o admin/consultor escolhe o modelo no passo 1.
+     */
+    public function empresasElegiveis(Request $request, NpsTemplate $template)
+    {
+        // IDs dos serviços cobertos pelo modelo (pivot nps_template_service_scopes).
+        $servicoIds = $template->servicos()->pluck('servicos.id');
+
+        // Base: empresas ativas, ordenadas por nome pra listagem previsível.
+        $query = Company::query()
+            ->where('active', true)
+            ->orderBy('name');
+
+        // Modelo COM scopes → filtra por contrato ativo de serviço coberto.
+        // Modelo SEM scopes → NÃO aplica filtro (fallback: todas as ativas).
+        if ($servicoIds->isNotEmpty()) {
+            $query->whereHas('contratosServico', fn ($q) => $q->active()->whereIn('servico_id', $servicoIds));
+        }
+
+        // Escopo de carteira para não-admin (T-81-05) — admin vê todas.
+        if (! $request->user()->isAdmin()) {
+            $query->whereIn('id', $request->user()->companies()->pluck('companies.id'));
+        }
+
+        return response()->json([
+            'template_id' => $template->id,
+            'empresas'    => $query->get(['id', 'name']),
+        ]);
+    }
+
+    /**
      * POST /nps/configuracao/templates/preview — recebe payload
      * NÃO-PERSISTIDO (draft state completo do form) e devolve estrutura
      * normalizada pronta pra renderizar o preview live — Plan 70-04 v15.0
