@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
 status: "Em execução (v16.0 — NPS config UX: duplicar/excluir modelo + modal gerar-link)"
-stopped_at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
-last_updated: "2026-07-15T01:40:54.861Z"
-last_activity: 2026-07-14
+stopped_at: Completed 80-01 (Wave 1 Phase 80 — dual-path do bônus lendo nps_score_assignments)
+last_updated: "2026-07-15T12:41:31.385Z"
+last_activity: 2026-07-15
 progress:
   total_phases: 14
   completed_phases: 12
-  total_plans: 58
-  completed_plans: 62
+  total_plans: 61
+  completed_plans: 63
   percent: 86
 ---
 
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 81
-Plan: 81-03 concluído (Wave 2 — UX config NPS: botões Duplicar/Excluir no editor de modelo (TemplateEditForm); Duplicar recarrega a lista; Excluir com confirmação + guard is_default; onDeleted volta pra lista; build verde)
-Status: Em execução (v16.0 — NPS config UX: duplicar/excluir modelo + modal gerar-link)
-Last activity: 2026-07-14
+Phase: 80
+Plan: 80-01 concluído (Wave 1 — FASE CRÍTICA/bônus: `computeNpsMedio` virou união DISJUNTA por resposta entre as atribuições congeladas da Fase 79 (`nps_score_assignments`, todas as áreas ML+Shopee, deduped 1× por (resposta, papel)) e o cálculo legado intacto. Predicado do skip = DEC-80-B1 (snapshot autoritativo por PAPEL). `->principal()` PRESERVADO no ramo legado. Âncora Carlos 4.08/basico verde; regressão idêntica ao baseline. Próximo: 80-02 (bump de cache v2→v3 — BLOQUEANTE antes do deploy) + widgets)
+Status: Em execução (v16.0 — Fase 80: bônus/relatórios lendo atribuições por serviço)
+Last activity: 2026-07-15
 
 ## Performance Metrics
 
@@ -142,10 +142,13 @@ Last activity: 2026-07-14
 | Phase 75 P04 | ~15min | 3 tasks (TDD: testes RED + ShopeeEmpresasController enxuto/guard IDOR + rotas gated) | 4 files (1 controller, 1 route, 2 tests) |
 | Phase 79 P02 | ~9min | 2 tasks (TDD RED + seed idempotente NPS Shopee + link performance ao NPS Padrão) | 4 files (1 migration, 1 test new, 2 testes legados ajustados) |
 | Phase 79 P03 | ~40min | 2 tasks (TDD RED matriz + reescrita do disparo estrito; +adaptação de 5 suites de disparo legadas) | 8 files (1 command, 2 testes/trait new, 5 suites legadas) |
+| Phase 80 P01 | 38min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- 2026-07-15 — **Phase 80 Plan 01 EXECUTADO — o BÔNUS passa a ler as atribuições congeladas da Fase 79 (FASE CRÍTICA)**. `DesempenhoScoreService::computeNpsMedio` virou **união DISJUNTA por resposta** de 2 ramos + 2 helpers privados: **(A) `notasPorAtribuicao()`** — `nps_score_assignments` do user no mês somando **TODAS as áreas (ML + Shopee — Ajuste 3/DEC-80-A)**, deduped 1× por (`nps_response_id`, `role`) via `groupBy`+`MAX()`; **o mês sai de JOIN até `nps_surveys.completed_at`** (DEC-80-B0 — nunca `assigned_at`, que num backfill futuro migraria a resposta de mês e zeraria o bônus de alguém sem erro no log; nunca `month_reference`, que é do disparo e é NULL no fixture Carlos). **(B) `notasLegado()`** — cópia fiel do cruzamento read-time histórico, com **`->principal()` PRESERVADO** (DEC-80-D vale **só** para o ramo das atribuições: sem o scope, o NPS Shopee vaza pro analista de ML da mesma empresa via fallback = a super-atribuição que a Fase 79 existe para impedir) + guard de carteira vazia movido pra cá. **Predicado do skip = DEC-80-B1** (confirmado pelo usuário): pular a resposta que já tem atribuição **NO PAPEL** da dimensão do cargo do user — o snapshot é **autoritativo por papel**; o predicado literal "(user, resposta)" reabriria a super-atribuição no sentido inverso (`User::companies()` não filtra por `servico_id`) e daria Gustavo=(3.11+ML)/2 em vez de **3.11 exato**. **RED reproduziu o bug real em prod**: analista Shopee recebia **5.0** (a nota de ML) onde devia receber 2.0. **Testes:** `tests/Feature/V16/BonusAtribuicoesNpsTest.php` 4/4 (Ajuste 3, Shopee acende, dedup, isolamento nos 2 sentidos), atribuições geradas pelo **fluxo real** (`POST /nps/{token}` → `NpsSnapshotService`), zero inserção manual. **Desvio (Rule 2):** o teste de dedup do plano era **matematicamente vacuoso** (média de `[3.0, 3.0]` = 3.0 = média de `[3.0]` → passaria com E sem dedup) → adicionada 2ª resposta (5.0): deduped=**4.0** vs inflado=3.67. **Regressão:** âncora **Carlos 4.08/basico VERDE**; `--filter=Desempenho` idêntico ao baseline (1 falha pré-existente e não-relacionada: `PublicacaoDesempenhoRouteTest`, ver `deferred-items.md`); Performance 37/37; Nps 172/172; `AtribuicaoPorServico` 8/8 (escrita da Fase 79 intocada). Backend-only, sem `npm run build`, **sem deploy**. Commits: 30f7b92 (RED) + 3de84e1 (GREEN). **⚠ BLOQUEANTE antes do deploy: DEC-80-C (bump de cache `desempenho.compute.v2`→`v3`) é do plano 80-02** — sem ele prod serve a nota antiga (sem Shopee) do Redis por até 7 dias. Próximo: 80-02 (bump + widgets) / 80-03 (leitores de apresentação).
 
 - 2026-07-14 — **DEPLOY do pacote NPS (Fases 79 + 81) em produção — VALIDADO**. Incidente+fix: 1º deploy falhou na migration `create_nps_snapshot_tables` no MariaDB (`erro 1830: Column servico_id cannot be NOT NULL: needed in FK ... SET NULL` — `nullOnDelete` exige coluna nullable; SQLite não pega; ver [[project_mysql_nullondelete_nullable]]). Hotfix (5c4238e): `->nullable()` em `servico_id` de `nps_response_covered_services`+`nps_score_assignments`. Estado parcial (2 tabelas criadas sem FK) → droppadas manualmente no VPS (vazias) + re-deploy OK. **Validação no VPS:** 3 tabelas de snapshot criadas; **NPS Shopee (id=3) = clone fiel do modelo principal id=2 'NPS | Performance ECF Consultoria & Assessoria'** (23 perguntas, 90 opções — não genérico!), cobre serviço shopee; principal cobre setores performance+outros (6 scopes). **Rollout do disparo estrito: 126 empresas ativas c/ contrato → 122 recebem NPS, apenas 4 sem serviço coberto** (ficam sem NPS no modo estrito — publicação/polos; usuário pode adicionar cobertura via duplicar/editar da Fase 81 se quiser). Dry-run do disparo: 0 elegíveis hoje (dia 14, sem aniversários). Merge com dev paralelo: sem divergência. **Fases 76-79+81 TODAS deployadas.** Falta: Fase 80 (bônus — inclui Ajuste 3 Gustavo) + checkpoints visuais (Resolver popup 78, config duplicar/excluir + modal 81).
 
@@ -615,8 +618,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-15T01:40:54.361Z
-Stopped at: Completed 74-09 e 74-10 (Wave 5 Phase 74 — testes bloqueantes + regressão zero)
+Last session: 2026-07-15T12:41:20.968Z
+Stopped at: Completed 80-01 (Wave 1 Phase 80 — dual-path do bônus lendo nps_score_assignments)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
