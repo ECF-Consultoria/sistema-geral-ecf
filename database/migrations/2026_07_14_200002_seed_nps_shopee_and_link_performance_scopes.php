@@ -9,8 +9,9 @@ use Illuminate\Support\Facades\Log;
  * link dos serviços de setor performance ao "NPS Padrão" (DEC-79-A).
  *
  * Requisitos atendidos:
- *  - DEC-79-B — modelo "NPS Shopee" versionado, espelhando o "NPS Padrão"
- *    (3 perguntas escala + 5 opções peso 1..5) com scope no serviço shopee.
+ *  - DEC-79-B — modelo "NPS Shopee" versionado, CLONE do modelo principal
+ *    (is_default = 'NPS | Performance ECF...') com scope no serviço shopee.
+ *    Copia as perguntas/opções da fonte (não hardcoded) — ajuste do usuário.
  *  - DEC-79-A — o "NPS Padrão" (is_default=true) passa a cobrir TODOS os
  *    serviços ativos setor=performance via nps_template_service_scopes.
  *
@@ -51,6 +52,12 @@ return new class extends Migration
             //   por DEC-79-E). priority=10 (>0, DEC-79-B) para preceder o
             //   fallback se necessário. envio_automatico_mensal=true.
             // ────────────────────────────────────────────────────────────────
+            // FONTE do clone = o modelo PRINCIPAL (is_default). Em produção é o
+            // 'NPS | Performance ECF Consultoria & Assessoria'. O NPS Shopee é uma
+            // CÓPIA FIEL dele (mesmas perguntas/opções), diferindo só no serviço
+            // coberto (Shopee) e nos responsáveis (setor Shopee). Ajuste do usuário.
+            $fonteId = DB::table('nps_templates')->where('is_default', true)->value('id');
+
             $shopeeRow = DB::table('nps_templates')
                 ->where('nome', 'NPS Shopee')
                 ->first();
@@ -60,7 +67,7 @@ return new class extends Migration
             } else {
                 $shopeeId = DB::table('nps_templates')->insertGetId([
                     'nome'                    => 'NPS Shopee',
-                    'descricao'               => 'Modelo NPS para o serviço Shopee (Gestão de ADS Shopee). Espelha o NPS Padrão: 3 perguntas escala (estrategista, analista, empresa).',
+                    'descricao'               => 'Cópia do modelo principal (Performance) com serviço coberto = Gestão de ADS Shopee. As respostas vão para os profissionais do setor Shopee.',
                     'active'                  => true,
                     'is_default'              => false,
                     'priority'                => 10,
@@ -71,76 +78,51 @@ return new class extends Migration
             }
 
             // ────────────────────────────────────────────────────────────────
-            // Passo B — 3 perguntas fixas (idempotente por (template_id, dimensao)),
-            //   com os MESMOS textos/tipo/obrigatoriedade/ordem do molde 100004.
-            //   Placeholders {nome_estrategista}/{nome_analista} resolvidos em
-            //   runtime pelo NpsTextRenderer — NÃO hardcodar nomes.
-            //   Para cada, loop for i=1..5 semeando as opções (escala).
+            // Passo B — CLONA as perguntas/opções da FONTE (is_default) para o
+            //   NPS Shopee. Idempotente: só clona se o NPS Shopee ainda não tem
+            //   perguntas. Assim o NPS Shopee reflete EXATAMENTE o modelo real de
+            //   Performance configurado (não perguntas genéricas hardcoded).
             // ────────────────────────────────────────────────────────────────
-            $perguntas = [
-                [
-                    'dimensao'    => 'estrategista',
-                    'texto'       => 'O atendimento do {nome_estrategista}',
-                    'obrigatoria' => true,
-                    'ordem'       => 1,
-                ],
-                [
-                    // Renderização condicional em runtime (via company.analista_id).
-                    // obrigatoria=false: quando renderizada é opcional; quando não
-                    // renderizada não bloqueia o submit.
-                    'dimensao'    => 'analista',
-                    'texto'       => 'O atendimento do {nome_analista}',
-                    'obrigatoria' => false,
-                    'ordem'       => 2,
-                ],
-                [
-                    'dimensao'    => 'empresa',
-                    'texto'       => 'A ECF está atendendo suas expectativas?',
-                    'obrigatoria' => true,
-                    'ordem'       => 3,
-                ],
-            ];
+            $jaTemPerguntas = DB::table('nps_template_questions')
+                ->where('template_id', $shopeeId)
+                ->exists();
 
-            foreach ($perguntas as $spec) {
-                $existente = DB::table('nps_template_questions')
-                    ->where('template_id', $shopeeId)
-                    ->where('dimensao', $spec['dimensao'])
-                    ->first();
+            if (! $jaTemPerguntas && $fonteId && $fonteId !== $shopeeId) {
+                $perguntasFonte = DB::table('nps_template_questions')
+                    ->where('template_id', $fonteId)
+                    ->orderBy('ordem')
+                    ->get();
 
-                if ($existente) {
-                    $questionId = $existente->id;
-                } else {
-                    $questionId = DB::table('nps_template_questions')->insertGetId([
+                foreach ($perguntasFonte as $q) {
+                    $novaQuestionId = DB::table('nps_template_questions')->insertGetId([
                         'template_id' => $shopeeId,
-                        'texto'       => $spec['texto'],
-                        'tipo'        => 'escala',
-                        'dimensao'    => $spec['dimensao'],
-                        'obrigatoria' => $spec['obrigatoria'],
-                        'ordem'       => $spec['ordem'],
+                        'texto'       => $q->texto,
+                        'tipo'        => $q->tipo,
+                        'dimensao'    => $q->dimensao,
+                        'obrigatoria' => $q->obrigatoria,
+                        'ordem'       => $q->ordem,
                         'created_at'  => now(),
                         'updated_at'  => now(),
                     ]);
-                }
 
-                // 5 opções (escala 1..5) — idempotente por (question_id, peso).
-                // Coluna FK correta: `question_id` (NÃO template_question_id).
-                for ($i = 1; $i <= 5; $i++) {
-                    $optExiste = DB::table('nps_template_options')
-                        ->where('question_id', $questionId)
-                        ->where('peso', $i)
-                        ->exists();
+                    $opcoesFonte = DB::table('nps_template_options')
+                        ->where('question_id', $q->id)
+                        ->orderBy('ordem')
+                        ->get();
 
-                    if (! $optExiste) {
+                    foreach ($opcoesFonte as $o) {
                         DB::table('nps_template_options')->insert([
-                            'question_id' => $questionId,
-                            'label'       => (string) $i,
-                            'peso'        => $i,
-                            'ordem'       => $i,
+                            'question_id' => $novaQuestionId,
+                            'label'       => $o->label,
+                            'peso'        => $o->peso,
+                            'ordem'       => $o->ordem,
                             'created_at'  => now(),
                             'updated_at'  => now(),
                         ]);
                     }
                 }
+            } elseif (! $fonteId) {
+                Log::warning('[Phase 79 Seed] Modelo principal (is_default) ausente — NPS Shopee criado SEM perguntas; configurar/duplicar na UI de configuração.');
             }
 
             // ────────────────────────────────────────────────────────────────
