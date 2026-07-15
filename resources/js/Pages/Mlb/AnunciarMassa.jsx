@@ -2,22 +2,17 @@ import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { router } from '@inertiajs/react';
 import { cn } from '@/lib/utils';
-import { Rocket, Search, Plus, Loader2, ChevronRight, Store, Trash2, Check, AlertTriangle } from 'lucide-react';
+import { Rocket, Search, Plus, Loader2, Check, AlertTriangle } from 'lucide-react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
 import GradeAnuncioGlide from '@/Pages/Mlb/GradeAnuncioGlide';
 // Helpers puros da grade (validação/coerção) — moram fora daqui para a grade em
 // canvas poder importá-los sem criar ciclo de import página↔grade.
+// As funções de coerção do paste (semAcento/normalizarTipoAnuncio/parseDimensoes/
+// casarValueList) e o gerarEan13 agora são consumidos pela grade, não por aqui.
 import {
-    gerarEan13,
     nomeCurto,
-    ATTR_MARCA,
-    ATTR_MODELO,
     errosLocaisLinha,
     linhaPublicavel,
-    semAcento,
-    normalizarTipoAnuncio,
-    parseDimensoes,
-    casarValueList,
     linhaVazia,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
@@ -40,38 +35,6 @@ const iniciais = (nome) =>
 
 // ─── Aba temporária "Sem categoria" (rascunhos ainda sem category_id) ───
 const SEM_CATEGORIA = '__sem_categoria__';
-
-// ═══════════════════════════════════════════════════════════════════════
-// SHEET-06 — COLAR DO EXCEL (Ctrl+V).
-// A ordem das colunas VISÍVEIS da aba ativa define o mapeamento do paste:
-// base fixas primeiro (na mesma ordem da grade), depois os obrigatórios.
-// Cada coluna declara `tipo` p/ a normalização (dim3 = AxLxC único, tipoAnuncio,
-// attrList = value_type=list, texto/numero = crus). GTIN/SKU/Peso/Descrição também
-// entram como colunas coláveis (facilita colar planilhas completas).
-// ═══════════════════════════════════════════════════════════════════════
-function colunasColaveis(aba) {
-    const cols = [
-        { key: 'title', tipo: 'texto', campo: 'title' },
-        { key: 'tier', tipo: 'tipoAnuncio', campo: 'tier' },
-        { key: 'price', tipo: 'numero', campo: 'price' },
-        { key: 'estoque', tipo: 'numero', campo: 'estoque' },
-        { key: 'sku', tipo: 'texto', campo: 'sku' },
-        { key: 'gtin', tipo: 'texto', campo: 'gtin' },
-        { key: 'pesoG', tipo: 'numero', campo: 'pesoG' },
-        // A×L×C: 1 coluna única "AxLxC" (parse pelo separador) — distribui em 3 campos
-        { key: 'dimensoes', tipo: 'dim3' },
-    ];
-    // Ficha técnica obrigatória: uma coluna por atributo (list → casa value)
-    (aba?.obrigatorios ?? []).forEach((o) => {
-        cols.push({
-            key: `attr:${o.id}`,
-            tipo: o.value_type === 'list' && Array.isArray(o.values) && o.values.length ? 'attrList' : 'attrTexto',
-            attrId: o.id,
-            values: o.values ?? [],
-        });
-    });
-    return cols;
-}
 
 export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos = [] }) {
     // Cada aba: { key, category_id, caminho:[], obrigatorios:[], max_title_length, catalog_required, linhas:[], carregando }
@@ -345,87 +308,6 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
         setAbas((prev) => prev.map((x, i) => i !== abaIdx ? x : { ...x, linhas: [...x.linhas, l] }));
         // Salva a linha recém-criada
         setTimeout(() => agendarSalvar(abaIdx, l.uid), 50);
-    }, [agendarSalvar]);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // SHEET-06: colar do Excel (Ctrl+V) na aba ativa. Divide por linha (\n) e por
-    // tab (\t), mapeia cada coluna colada para a coluna VISÍVEL correspondente e
-    // NORMALIZA por tipo (dim AxLxC, Tipo→listing_type, list→value). Linhas a mais
-    // criam novas linhas; colunas a mais são ignoradas com aviso. Autosalva o afetado.
-    // ═══════════════════════════════════════════════════════════════════════
-    const [avisoColagem, setAvisoColagem] = useState('');
-    const colarNaGrade = useCallback((e) => {
-        const abaIdx = abaAtivaRef.current;
-        const a = abasRef.current[abaIdx];
-        if (!a) return;
-
-        const texto = e.clipboardData?.getData('text') ?? '';
-        // Só intercepta se parece um bloco de planilha (tem tab ou múltiplas linhas)
-        if (!texto || (!texto.includes('\t') && !texto.includes('\n'))) return;
-        e.preventDefault();
-
-        const linhasTxt = texto.replace(/\r/g, '').split('\n').filter((ln, i, arr) => !(i === arr.length - 1 && ln === ''));
-        const cols = colunasColaveis(a);
-        const avisos = new Set();
-
-        // Aplica os valores de uma célula colada à linha-alvo (mutação em objeto novo)
-        const aplicarCelula = (linhaObj, colDef, valorBruto) => {
-            const valor = String(valorBruto ?? '').trim();
-            switch (colDef.tipo) {
-                case 'dim3': {
-                    const dim = parseDimensoes(valor);
-                    if (dim) Object.assign(linhaObj, dim);
-                    else if (valor) avisos.add(`Dimensão "${valor}" ignorada (use AxLxC, ex.: 10x20x30).`);
-                    break;
-                }
-                case 'tipoAnuncio': {
-                    const tier = normalizarTipoAnuncio(valor);
-                    if (tier) linhaObj.tier = tier;
-                    else if (valor) avisos.add(`Tipo "${valor}" não reconhecido (use Clássico ou Premium).`);
-                    break;
-                }
-                case 'attrList': {
-                    linhaObj.attrs = { ...linhaObj.attrs, [colDef.attrId]: casarValueList(valor, colDef.values) };
-                    break;
-                }
-                case 'attrTexto': {
-                    linhaObj.attrs = { ...linhaObj.attrs, [colDef.attrId]: valor };
-                    break;
-                }
-                default: // texto / numero → valor cru trimado
-                    linhaObj[colDef.campo] = valor;
-            }
-            // Editar via paste = origem 'publicador' no campo (SHEET-04)
-            const chaveOrigem = colDef.campo ?? (colDef.attrId ? colDef.attrId : null);
-            if (chaveOrigem) linhaObj.origem = { ...linhaObj.origem, [chaveOrigem]: 'publicador' };
-        };
-
-        setAbas((prev) => prev.map((ab, i) => {
-            if (i !== abaIdx) return ab;
-            const linhas = [...ab.linhas];
-            const uidsAfetados = [];
-
-            linhasTxt.forEach((linhaTxt, rIdx) => {
-                const celulas = linhaTxt.split('\t');
-                if (celulas.length > cols.length) {
-                    avisos.add(`${celulas.length - cols.length} coluna(s) a mais ignorada(s).`);
-                }
-                // Linha a mais → cria nova linha (novo rascunho via autosave)
-                if (rIdx >= linhas.length) linhas.push(linhaVazia());
-                const alvo = { ...linhas[rIdx] };
-                celulas.slice(0, cols.length).forEach((cel, cIdx) => aplicarCelula(alvo, cols[cIdx], cel));
-                alvo.salvo = false;
-                linhas[rIdx] = alvo;
-                uidsAfetados.push(alvo.uid);
-            });
-
-            // Autosalva as linhas afetadas
-            uidsAfetados.forEach((uid) => setTimeout(() => agendarSalvar(abaIdx, uid), 50));
-            return { ...ab, linhas };
-        }));
-
-        setAvisoColagem(avisos.size ? [...avisos].join(' ') : `Colado: ${linhasTxt.length} linha(s).`);
-        setTimeout(() => setAvisoColagem(''), 6000);
     }, [agendarSalvar]);
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -718,13 +600,6 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                                 ))}
                             </div>
                         )}
-                    </div>
-                )}
-
-                {/* Aviso de colagem (SHEET-06) */}
-                {avisoColagem && (
-                    <div className="mb-2 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-[12px] text-white/60">
-                        {avisoColagem}
                     </div>
                 )}
 
