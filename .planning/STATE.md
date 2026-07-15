@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v15.0
 milestone_name: NPS Templates
-status: "Em execução (v16.0 — NPS config UX: duplicar/excluir modelo + modal gerar-link)"
-stopped_at: Completed 80-01 (Wave 1 Phase 80 — dual-path do bônus lendo nps_score_assignments)
-last_updated: "2026-07-15T12:41:31.385Z"
+status: "Em execução (v16.0 — Fase 80: bônus/relatórios lendo atribuições por serviço)"
+stopped_at: Completed 80-02 (Wave 2 Phase 80 — regressão do dual-path + cache v3; bloqueio de deploy do pacote 80 REMOVIDO)
+last_updated: "2026-07-15T15:40:00.000Z"
 last_activity: 2026-07-15
 progress:
   total_phases: 14
   completed_phases: 12
   total_plans: 61
-  completed_plans: 63
-  percent: 86
+  completed_plans: 65
+  percent: 87
 ---
 
 # Project State
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 80
-Plan: 80-01 concluído (Wave 1 — FASE CRÍTICA/bônus: `computeNpsMedio` virou união DISJUNTA por resposta entre as atribuições congeladas da Fase 79 (`nps_score_assignments`, todas as áreas ML+Shopee, deduped 1× por (resposta, papel)) e o cálculo legado intacto. Predicado do skip = DEC-80-B1 (snapshot autoritativo por PAPEL). `->principal()` PRESERVADO no ramo legado. Âncora Carlos 4.08/basico verde; regressão idêntica ao baseline. Próximo: 80-02 (bump de cache v2→v3 — BLOQUEANTE antes do deploy) + widgets)
+Plan: 80-02 concluído (Wave 2 — FASE CRÍTICA/bônus: **o bloqueio de deploy do pacote 80 foi removido**. Chave de cache bumpada v2→v3 (`DesempenhoScoreService:150`) — só a versão da string; TTL adaptativo e `Cache::remember` intactos. Sem o bump, prod serviria a nota antiga (sem Shopee) do Redis por até 7 dias no mês fechado. Varredura conferiu os 8 consumidores de `computeCached` (Performance :108/:114/:272/:907, Dashboard :797, **Portfolio :1251/:1277**, WarmDesempenhoCache :71) — nenhum monta a chave por fora; `Snapshot`/`Consolidar` seguem em `compute()` direto (DEC-80-E, nada de reescrever mês fechado). Regressão PROVADA por medição: `BonusDualPathRegressaoTest` 5/5 (mês sem atribuição = nota legada 3.0; mês misto = 3.5 com cada resposta 1×; 0.0 preservado; guard de carteira), ambos os testes-chave mutation-verified. Âncora Carlos 4.08/`basico` VERDE sem edição do arquivo; Phase74 32/32; V16 72/72; Performance 37/37; Nps 174/174. Falhas de outros módulos medidas como IDÊNTICAS com a chave em v2 e v3 (variável única, mesmo ambiente) → pré-existentes. Próximo: 80-03 (widgets/leitores que usam `->principal()` direto — `dashboardCarteira` :298-446, exige `npm run build`))
 Status: Em execução (v16.0 — Fase 80: bônus/relatórios lendo atribuições por serviço)
 Last activity: 2026-07-15
 
@@ -143,10 +143,13 @@ Last activity: 2026-07-15
 | Phase 79 P02 | ~9min | 2 tasks (TDD RED + seed idempotente NPS Shopee + link performance ao NPS Padrão) | 4 files (1 migration, 1 test new, 2 testes legados ajustados) |
 | Phase 79 P03 | ~40min | 2 tasks (TDD RED matriz + reescrita do disparo estrito; +adaptação de 5 suites de disparo legadas) | 8 files (1 command, 2 testes/trait new, 5 suites legadas) |
 | Phase 80 P01 | 38min | 2 tasks | 2 files |
+| Phase 80 P02 | ~55min | 3 tasks (regressão dual-path + bump de cache v3 + regressão ampla) | 2 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- 2026-07-15 — **Phase 80 Plan 02 EXECUTADO — regressão do dual-path PROVADA + cache v3: o BLOQUEIO DE DEPLOY do pacote 80 foi REMOVIDO**. **(1) Bump DEC-80-C:** `desempenho.compute.v2`→**`v3`** em `DesempenhoScoreService:150` — cirurgia mínima (só a versão da string; TTL adaptativo 7d/10min e `Cache::remember` intactos; comentário do bump v1→v2 preservado). Sem ele, o código do 80-01 sobe e o Redis serve a **nota antiga (sem Shopee)** por até 7 dias no mês fechado. **Varredura completa:** a ÚNICA linha que monta a chave é a do service — os 8 consumidores passam todos por `computeCached` (Performance :108/:114/:272/:907, Dashboard :797, **Portfolio :1251/:1277** — o que o CONTEXT não listava, RESEARCH C2 —, WarmDesempenhoCache :71, que repopula a v3 sozinho no cron de 8min). `SnapshotDesempenhoScores` :89 e `ConsolidarMesDesempenho` :97 seguem em `compute()` direto e **não foram alterados** (DEC-80-E: `consolidar-mes --mes` passado NUNCA executado — reescreveria bônus já pago). **Nenhum `cache:clear`** adicionado: chaves v2 viram órfãs e expiram por TTL. **(2) Regressão (DEC-80-B):** `tests/Feature/V16/BonusDualPathRegressaoTest.php` 5/5 — mês SEM atribuição = nota legada **3.0** idêntica (com `assertSame(0, NpsScoreAssignment::count())` para garantir que é mesmo o legado sendo medido); **mês MISTO = 3.5** (resposta antiga por factory + nova por submit real, ambas sob o modelo **PRINCIPAL** de propósito — é o que faz a nova entrar na query do legado e torna a duplicação detectável); `assertSame(0.0)` estrito preservado; guard de carteira (empresa inativa → carteira vazia + atribuição intacta). **(3) Rigor extra — verificação por MUTAÇÃO** (não pedida pelo plano): um teste de regressão que só passa não prova nada. Desligado o skip de disjunção → mês misto cai para **3.0** (`(2+2+5)/3`, a aritmética exata prevista); revertida a chave para v2 → o teste do cache falha com `99.9 is not identical to 99.9`. Ambos os testes-chave **discriminam de fato**. **(4) Diagnóstico — o gate "suite completa verde" é IMPOSSÍVEL nesta máquina, por causa PRÉ-EXISTENTE:** `Fatal: Maximum execution time of 300 seconds`. O `php.ini` do CLI tem `max_execution_time=0`; o limite é **re-armado em runtime** por `set_time_limit(300)` nos comandos de Grants (`SyncGrantsFromSftp:22`, `SyncGrantsFromEcfDrive:23`, `GrantController:287/327`) → o processo inteiro do phpunit passa a ter 300s de orçamento, e como **no Windows o `usleep` conta wall-clock** (no Linux não), a suite morre no backoff dos testes de Sugadores — que **passam isolados** (Backoff 13/13, Ads 4/4). Reproduzido em worktree no commit `b90bf1f`, **antes do 80-02**. Coberta em chunks (Unit + 54 dirs de Feature + 37 arquivos soltos). **(5) Desvio metodológico (Rule 3):** o baseline por **worktree é ENGANOSO** — sem `public/build/manifest.json` e sem scaffolding de `storage/`, reportou **MAIS** falhas que o HEAD (Phase18: 14F vs 2F; 65 vs 273 assertions) e teria me feito concluir que a fase "consertou" 40 testes. Trocado por **isolamento de variável no ambiente real** (alternar só a linha da chave v3→v2→v3): resultado **IDÊNTICO em todos os chunks**, assertion count incluso → as falhas de Phase18/38/38Publicador/42/75/77/Polos são **pré-existentes e comprovadamente não-minhas**. Argumento estrutural independente: `CACHE_STORE=array` deixa o cache vazio em todo teste, o único arquivo do repo que hardcoda `desempenho.compute` é o teste novo, e nenhum chunk que falha referencia `computeCached`/`DesempenhoScore`. **Regressão:** âncora **Carlos 4.08/`basico` VERDE sem edição do arquivo**; Phase74 32/32; V16 72/72; Performance 37/37; Nps 174/174 (os +2 vs 172 são meus `test_nps_medio_*`, casados por nome de método); `git diff --stat` = **2 arquivos** (1 linha de código de produção + teste novo), zero testes fora de V16 tocados. **Aviso operacional para o deploy:** o `delta_vs_ontem` do ranking vai registrar um **DEGRAU** no dia do deploy — é a correção (a nota Shopee entrando), **não bug**; avisar o time. Backend-only, sem `npm run build`, **sem deploy**. Commits: f96218d (test) + 4ba28b9 (fix). Próximo: **80-03** (widgets/leitores que usam `->principal()` direto — `dashboardCarteira` :298-446 — exige `npm run build`).
 
 - 2026-07-15 — **Phase 80 Plan 01 EXECUTADO — o BÔNUS passa a ler as atribuições congeladas da Fase 79 (FASE CRÍTICA)**. `DesempenhoScoreService::computeNpsMedio` virou **união DISJUNTA por resposta** de 2 ramos + 2 helpers privados: **(A) `notasPorAtribuicao()`** — `nps_score_assignments` do user no mês somando **TODAS as áreas (ML + Shopee — Ajuste 3/DEC-80-A)**, deduped 1× por (`nps_response_id`, `role`) via `groupBy`+`MAX()`; **o mês sai de JOIN até `nps_surveys.completed_at`** (DEC-80-B0 — nunca `assigned_at`, que num backfill futuro migraria a resposta de mês e zeraria o bônus de alguém sem erro no log; nunca `month_reference`, que é do disparo e é NULL no fixture Carlos). **(B) `notasLegado()`** — cópia fiel do cruzamento read-time histórico, com **`->principal()` PRESERVADO** (DEC-80-D vale **só** para o ramo das atribuições: sem o scope, o NPS Shopee vaza pro analista de ML da mesma empresa via fallback = a super-atribuição que a Fase 79 existe para impedir) + guard de carteira vazia movido pra cá. **Predicado do skip = DEC-80-B1** (confirmado pelo usuário): pular a resposta que já tem atribuição **NO PAPEL** da dimensão do cargo do user — o snapshot é **autoritativo por papel**; o predicado literal "(user, resposta)" reabriria a super-atribuição no sentido inverso (`User::companies()` não filtra por `servico_id`) e daria Gustavo=(3.11+ML)/2 em vez de **3.11 exato**. **RED reproduziu o bug real em prod**: analista Shopee recebia **5.0** (a nota de ML) onde devia receber 2.0. **Testes:** `tests/Feature/V16/BonusAtribuicoesNpsTest.php` 4/4 (Ajuste 3, Shopee acende, dedup, isolamento nos 2 sentidos), atribuições geradas pelo **fluxo real** (`POST /nps/{token}` → `NpsSnapshotService`), zero inserção manual. **Desvio (Rule 2):** o teste de dedup do plano era **matematicamente vacuoso** (média de `[3.0, 3.0]` = 3.0 = média de `[3.0]` → passaria com E sem dedup) → adicionada 2ª resposta (5.0): deduped=**4.0** vs inflado=3.67. **Regressão:** âncora **Carlos 4.08/basico VERDE**; `--filter=Desempenho` idêntico ao baseline (1 falha pré-existente e não-relacionada: `PublicacaoDesempenhoRouteTest`, ver `deferred-items.md`); Performance 37/37; Nps 172/172; `AtribuicaoPorServico` 8/8 (escrita da Fase 79 intocada). Backend-only, sem `npm run build`, **sem deploy**. Commits: 30f7b92 (RED) + 3de84e1 (GREEN). **⚠ BLOQUEANTE antes do deploy: DEC-80-C (bump de cache `desempenho.compute.v2`→`v3`) é do plano 80-02** — sem ele prod serve a nota antiga (sem Shopee) do Redis por até 7 dias. Próximo: 80-02 (bump + widgets) / 80-03 (leitores de apresentação).
 
@@ -618,8 +621,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-15T12:41:20.968Z
-Stopped at: Completed 80-01 (Wave 1 Phase 80 — dual-path do bônus lendo nps_score_assignments)
+Last session: 2026-07-15T15:40:00.000Z
+Stopped at: Completed 80-02 (Wave 2 Phase 80 — regressão do dual-path provada + cache v3; bloqueio de deploy do pacote 80 REMOVIDO)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
