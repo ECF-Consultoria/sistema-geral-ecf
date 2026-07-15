@@ -428,7 +428,9 @@ tratar como habilitado com controles mínimos.
 | A3 | `active` do original é herdado no clone (clone nasce ativo se o original for ativo) | Pattern 1 | Se o esperado for clone sempre ativo, ajustar; baixo impacto. |
 | A4 | Botões Duplicar/Excluir vão no `TemplateEditForm` (tela de edição), não no card | Structure | Pura escolha de UX; discretion do CONTEXT. |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Resoluções travadas nos plans (2026-07-14): OQ1 → modelo sem service_scopes retorna TODAS as empresas (fallback) no endpoint 81-02; note que após a Fase 79 o is_default (NPS Padrão) JÁ tem scopes de performance, então filtra empresas ML. OQ2 → pós-duplicar recarrega a lista (não abre editor), no 81-03. **Além disso** (BLOCKER do plan-checker, fora das OQ originais): o endpoint empresas-elegiveis vai no grupo `['auth','verified']` (não role:admin), pois o gerar-link é usado por não-admin — corrigido no 81-02/81-04. **Nota W4:** o `destroy()` bloqueia só surveys COM resposta; um modelo com link gerado mas ainda não respondido é excluível (survey.template_id vira NULL por nullOnDelete) — impacto baixo (admin dificilmente exclui modelo do qual já gerou link), aceito.
 
 1. **Modelo principal (`is_default`) no modal gerar-link.** O `is_default` normalmente não tem service
    scopes (é fallback). Com filtro estrito, sua lista de empresas elegíveis vem vazia.
