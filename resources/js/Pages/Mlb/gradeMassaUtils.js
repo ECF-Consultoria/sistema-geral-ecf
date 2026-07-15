@@ -64,8 +64,51 @@ export function errosLocaisLinha(l, aba) {
     return faltando;
 }
 
-// Linha é publicável quando: já foi salva (tem id) E não tem erro local bloqueante.
-export const linhaPublicavel = (l, aba) => !!l.id && errosLocaisLinha(l, aba).length === 0;
+// ═══════════════════════════════════════════════════════════════════════
+// Linha é publicável quando TUDO isto vale:
+//   - já foi salva (tem id);
+//   - a aba tem categoria — `montarPayloadLinha` manda `category_id: aba.category_id`,
+//     e POST /items sem categoria é 400 garantido no ML. Isso é pré-existente e
+//     discreto (a aba "Sem categoria" só recebia rascunho antigo), mas "Remover
+//     categoria" passa a jogar linhas boas lá em lote: sem esta guarda, remover uma
+//     categoria com 20 linhas faria a PublishBar oferecer "Publicar 20" = 20 erros 400;
+//   - não tem erro local bloqueante;
+//   - não está em voo (`publicando`) — não redisparar job já enfileirado;
+//   - não foi publicada — já foi, sai da contagem.
+// Linha com ERRO continua publicável de propósito: corrigir o campo e republicar é
+// o caminho de recuperação, e bloquear isso deixaria o publicador sem saída.
+//
+// A categoria entra AQUI e não em `errosLocaisLinha` de propósito: linha sem categoria
+// não é linha errada (pode estar só esperando classificação), e `errosLocaisLinha` é
+// compartilhada com o realce da grade — mexer nela pintaria essas linhas de vermelho.
+// ═══════════════════════════════════════════════════════════════════════
+export const linhaPublicavel = (l, aba) =>
+    !!l.id
+    && !!aba?.category_id
+    && !l.publicando
+    && l.statusServidor !== 'publicado'
+    && errosLocaisLinha(l, aba).length === 0;
+
+// ═══════════════════════════════════════════════════════════════════════
+// Preço no padrão BR: aceita "129,99" e "129.99" (FIX-83-5).
+//
+// A coerção mora AQUI (chamada pelo onCellsEdited, o ponto único de escrita) e
+// NÃO em `montarPayloadLinha`, por dois motivos:
+//   1. o autosave chama `montarPayloadLinha` a cada 600ms — corrigir só na saída
+//      faria o banco persistir `price: null` (Number('129,99') = NaN) em silêncio,
+//      muito antes de qualquer tentativa de publicar;
+//   2. `errosLocaisLinha` faz `Number(l.price) > 0` — uma vírgula no estado marcaria
+//      a linha como "falta preço" com o campo visivelmente preenchido na tela.
+//
+// Regra: sem vírgula, devolve como está (não inventar parsing — "1234.56" é decimal).
+// Com vírgula, o ponto é separador de milhar do padrão BR: "1.234,56" → "1234.56".
+// ═══════════════════════════════════════════════════════════════════════
+export function normalizarPreco(texto) {
+    const t = String(texto ?? '').trim();
+    if (!t) return '';
+    if (!t.includes(',')) return t;
+    return t.replace(/\./g, '').replace(',', '.');
+}
 
 // Remove acentos + trim + lowercase (p/ casar "Clássico" com "classico" etc.)
 export const semAcento = (s) =>
@@ -122,5 +165,12 @@ export function linhaVazia() {
         origem: {},          // { [campo]: 'cliente' | 'publicador' }
         salvando: false,
         salvo: false,
+        // ─── Estado vindo do SERVIDOR (preenchido pelo merge do polling) ───
+        // Existem sempre (e não ad-hoc) porque o merge compara valor com valor:
+        // com `undefined` no meio, "não mudou" e "não sei" viram a mesma coisa.
+        publicando: false,   // job em voo na fila
+        statusServidor: null, // 'rascunho' | 'validado' | 'publicando' | 'publicado' | 'erro'
+        erroResumo: null,    // mensagem curta pt-BR do backend
+        erroCompleto: null,  // resposta crua da API do ML (para o "ver detalhes")
     };
 }
