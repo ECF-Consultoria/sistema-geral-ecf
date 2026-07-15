@@ -183,12 +183,24 @@ function RespostaExtraValor({ tipo, valor, peso }) {
         </p>
     );
 }
-function NotaCard({ label, valor }) {
+// Quick task 260715-pu0 — prop `pessoas` opcional: mostra o NOME de quem
+// recebeu aquela nota, lendo a atribuição congelada (Fase 79). `undefined`
+// = dimensão sem pessoa (card Empresa, não renderiza nada); array vazio =
+// resposta legada sem atribuição registrada (mostra "—", nunca o pivot
+// vivo); 1+ nomes = join(', ') porque um template pode cobrir 2 serviços
+// com responsáveis diferentes.
+function NotaCard({ label, valor, pessoas }) {
+    const temPessoas = pessoas !== undefined;
+    const nomes = temPessoas ? (pessoas.length > 0 ? pessoas.join(', ') : '—') : null;
+
     if (valor === null || valor === undefined) {
         return (
             <div className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-3 text-center">
                 <p className="text-[10px] text-white/40 uppercase tracking-wide">{label}</p>
                 <p className="text-2xl font-bold text-white/30 mt-1">—</p>
+                {temPessoas && (
+                    <p className="text-[11px] text-white/50 truncate mt-0.5" title={nomes}>{nomes}</p>
+                )}
             </div>
         );
     }
@@ -199,6 +211,9 @@ function NotaCard({ label, valor }) {
             <p className="text-2xl font-bold mt-1 leading-none" style={{ color: scoreColor(n) }}>
                 {formatNota(valor)}<span className="text-sm text-white/40">/5</span>
             </p>
+            {temPessoas && (
+                <p className="text-[11px] text-white/50 truncate mt-1" title={nomes}>{nomes}</p>
+            )}
         </div>
     );
 }
@@ -1258,8 +1273,8 @@ export default function NpsIndex({
                             <div>
                                 <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Notas por dimensão</h3>
                                 <div className="grid grid-cols-3 gap-3">
-                                    <NotaCard label="Estrategista" valor={modalSurvey.score_estrategista} />
-                                    <NotaCard label="Analista"     valor={modalSurvey.score_analista} />
+                                    <NotaCard label="Estrategista" valor={modalSurvey.score_estrategista} pessoas={modalSurvey.responsaveis?.estrategista ?? []} />
+                                    <NotaCard label="Analista"     valor={modalSurvey.score_analista}     pessoas={modalSurvey.responsaveis?.analista ?? []} />
                                     <NotaCard label="Empresa"      valor={modalSurvey.score_empresa} />
                                 </div>
                             </div>
