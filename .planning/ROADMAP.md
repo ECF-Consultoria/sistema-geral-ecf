@@ -331,6 +331,16 @@ Plans:
 Plans:
 - [ ] TBD (run /gsd-plan-phase 80 to break down)
 
+### Phase 81: NPS config UX — duplicar/excluir modelo + modal gerar-link multi-step (modelo→empresas por serviço coberto) (v16.0)
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 80
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 81 to break down)
+
 ---
 *Roadmap criado: 2026-07-07 — Milestone v15.0 (NPS Templates) — 6 phases (68-73) cobrindo 29 REQs; granularity=standard*
 *Roadmap atualizado: 2026-07-09 — Phase 74 (Módulo Desempenho v2) adicionada como tail da milestone, cobrindo 14 REQs DESEMP em 10 plans / 5 waves*
