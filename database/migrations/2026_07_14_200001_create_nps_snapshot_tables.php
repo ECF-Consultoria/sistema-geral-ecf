@@ -108,7 +108,10 @@ return new class extends Migration
 
                 // FK viva pro catálogo — nullOnDelete preserva o snapshot (service_setor)
                 // mesmo se o serviço for removido do catálogo depois.
+                // nullable() OBRIGATÓRIO: o MySQL exige coluna NULLABLE quando a FK é
+                // ON DELETE SET NULL (erro 1830) — o SQLite dos testes não pega.
                 $table->foreignId('servico_id')
+                    ->nullable()
                     ->constrained('servicos')
                     ->nullOnDelete();
 
@@ -159,7 +162,9 @@ return new class extends Migration
                     ->cascadeOnDelete();
 
                 // FK viva pro catálogo — nullOnDelete preserva o snapshot.
+                // nullable() OBRIGATÓRIO (MySQL erro 1830 com ON DELETE SET NULL).
                 $table->foreignId('servico_id')
+                    ->nullable()
                     ->constrained('servicos')
                     ->nullOnDelete();
 
