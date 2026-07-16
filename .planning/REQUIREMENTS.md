@@ -26,7 +26,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 - [x] **CART-05**: Profissional responsável por ML E Shopee da mesma empresa NÃO duplica faturamento no filtro "Todos" (métrica ML contada uma vez)
 - [ ] **CART-06**: A carteira consolidada (`renderCarteirasConsolidadas`, visão admin) mostra cards por profissional com contagem correta, separando empresas únicas de vínculos de serviço, sem puxar faturamento ML pra quem só cuida em Shopee
 - [ ] **CART-07**: A UI de carteira tem filtro de contexto (Todos / Performance-ML / Shopee), badges de serviço por linha e contadores (empresas únicas vs. vínculos de serviço)
-- [ ] **CART-08**: A tela `/companies` (painel Performance) exibe o responsável do SERVIÇO DE PERFORMANCE na coluna Analista/Estrategista — nunca o responsável Shopee; a pendência "sem responsável" acusa falta do responsável de performance especificamente
+- [x] **CART-08**: A tela `/companies` (painel Performance) exibe o responsável do SERVIÇO DE PERFORMANCE na coluna Analista/Estrategista — nunca o responsável Shopee; a pendência "sem responsável" acusa falta do responsável de performance especificamente
 
 ### DESEMP — Desempenho único com elegibilidade (Fases 91, 92)
 
@@ -71,7 +71,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | CART-03 | Fase 89 | Complete |
 | CART-04 | Fase 89 | Complete |
 | CART-05 | Fase 89 | Complete |
-| CART-08 | Fase 89 | Pending |
+| CART-08 | Fase 89 | Complete |
 | CART-06 | Fase 90 | Pending |
 | CART-07 | Fase 90 | Pending |
 | DESEMP-01 | Fase 91 | Pending |
