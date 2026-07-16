@@ -1,7 +1,7 @@
 ---
 phase: 95
 slug: nps-anti-burlamento-ui-de-confian-a-admin-only
-status: draft
+status: approved
 nyquist_compliant: true
 wave_0_complete: false
 created: 2026-07-16
@@ -65,4 +65,4 @@ created: 2026-07-16
 - [x] Feedback latency < 120s
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending (atualizar após plan-check)
+**Approval:** approved 2026-07-16 (plan-checker: VERIFICATION PASSED, 0 blockers)

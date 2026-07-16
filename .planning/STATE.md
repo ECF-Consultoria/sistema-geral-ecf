@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
-status: verifying
+status: executing
 stopped_at: Completed 94-03-PLAN.md (Phase 94 completa - pronta para verify-work)
-last_updated: "2026-07-16T20:38:20.533Z"
-last_activity: 2026-07-16
+last_updated: "2026-07-16T21:19:09.653Z"
+last_activity: 2026-07-16 -- Phase 95 planning complete
 progress:
   total_phases: 9
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 7
-  percent: 33
+  completed_phases: 4
+  total_plans: 11
+  completed_plans: 8
+  percent: 44
 ---
 
 # Project State
@@ -29,8 +29,8 @@ Phase: 94 (NPS Anti-Burlamento — auditoria técnica + serviço de suspeita (ba
 Plan: 3 of 3
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
-Status: Phase complete — ready for verification
-Last activity: 2026-07-16
+Status: Ready to execute
+Last activity: 2026-07-16 -- Phase 95 planning complete
 
 ## Performance Metrics
 
