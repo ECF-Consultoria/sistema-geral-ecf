@@ -155,6 +155,52 @@ class HistoricoAnunciosTest extends TestCase
         $this->assertSame('Meia Hoje', $grupos[0]['itens'][0]['titulo']);
     }
 
+    /** @test */
+    public function anunciar_semelhante_em_massa_clona_o_lote_inteiro_como_rascunho(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $a = $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia P', now(), 'MLB108791');
+        $b = $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia M', now(), 'MLB108791');
+
+        $this->actingAs($admin)
+            ->postJson("/mlb/anuncios/empresa/{$company->id}/duplicar-lote", [
+                'rascunho_ids' => [$a->id, $b->id],
+            ])
+            ->assertOk()
+            ->assertJson(['ok' => true, 'criados' => 2]);
+
+        // 2 clones novos: status rascunho, ml_item_id zerado, mesma categoria e título copiado
+        $clones = MlAnuncioRascunho::where('company_id', $company->id)
+            ->where('status', MlAnuncioRascunho::STATUS_RASCUNHO)
+            ->get();
+
+        $this->assertCount(2, $clones, 'o lote inteiro tem que virar 2 rascunhos novos');
+        $this->assertTrue($clones->every(fn ($r) => $r->ml_item_id === null), 'clone nao pode carregar ml_item_id');
+        $this->assertTrue($clones->every(fn ($r) => $r->category_id === 'MLB108791'), 'clone mantem a categoria do lote');
+        $this->assertEqualsCanonicalizing(['Meia P', 'Meia M'], $clones->pluck('payload.title')->all());
+    }
+
+    /** @test */
+    public function anunciar_semelhante_em_massa_nao_clona_anuncio_de_outra_empresa(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+        [$outra] = $this->criarFixture();
+
+        $meu    = $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meu', now(), 'MLB108791');
+        $alheio = $this->criarAnuncio($outra, MlAnuncioRascunho::STATUS_PUBLICADO, 'Alheio', now(), 'MLB108791');
+
+        // pede um id da OUTRA empresa junto → 403, nada é clonado
+        $this->actingAs($admin)
+            ->postJson("/mlb/anuncios/empresa/{$company->id}/duplicar-lote", [
+                'rascunho_ids' => [$meu->id, $alheio->id],
+            ])
+            ->assertForbidden();
+
+        $this->assertSame(0, MlAnuncioRascunho::where('status', MlAnuncioRascunho::STATUS_RASCUNHO)->count(),
+            'nenhum clone pode ser criado quando um id e de outra empresa');
+    }
+
     // ─── helpers ───
 
     /** Achata os títulos de todos os grupos, preservando a ordem (grupo → item). */

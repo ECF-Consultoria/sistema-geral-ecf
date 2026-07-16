@@ -596,6 +596,55 @@ class MlbAnuncioController extends Controller
     }
 
     /**
+     * "Anunciar semelhante em massa" — clona um LOTE inteiro do histórico como
+     * templates novos (extensão do "Anunciar semelhante" individual, Phase 86).
+     *
+     * Recebe os ids dos anúncios do lote e cria um rascunho-template de cada um
+     * (criarTemplateInterno: título/tier/payload intactos, ml_item_ids zerados,
+     * status rascunho). Devolve os ids criados; o front navega para a grade
+     * (massa) — como os clones nascem STATUS_RASCUNHO com o mesmo category_id, a
+     * grade os monta automaticamente na aba da categoria, já pré-preenchidos.
+     *
+     * Escopo espelha o publicarLote (BULK-01/T-80-02/T-80-03): double-check de
+     * empresa + teto de 50 por chamada. Só clona rascunhos da própria empresa.
+     */
+    public function duplicarLoteComoTemplate(Request $request, Company $company): JsonResponse
+    {
+        $dados = $request->validate([
+            'rascunho_ids'   => ['required', 'array', 'min:1', 'max:50'],
+            'rascunho_ids.*' => ['integer', 'exists:ml_anuncio_rascunhos,id'],
+        ]);
+
+        // SEL-04: double-check de empresa (mesmo do publicarLote/BULK-01)
+        $mlbEmpresa = MlbEmpresa::where('company_id', $company->id)->first();
+        abort_unless(
+            $request->user()->isAdmin() || $mlbEmpresa?->responsavel_id === $request->user()->id,
+            403,
+            'Empresa não atribuída a este publicador.'
+        );
+
+        // T-80-02: TODOS os ids devem ser da empresa informada — nunca clonar de outra
+        $rascunhos = MlAnuncioRascunho::whereIn('id', $dados['rascunho_ids'])
+            ->where('company_id', $company->id)
+            ->get();
+
+        if ($rascunhos->count() !== count($dados['rascunho_ids'])) {
+            return response()->json([
+                'ok'    => false,
+                'erros' => [['mensagem' => 'Um ou mais anúncios não pertencem à empresa informada.']],
+            ], 403);
+        }
+
+        $novos = $rascunhos->map(fn ($r) => $this->criarTemplateInterno($r, $request->user())->id)->values();
+
+        return response()->json([
+            'ok'           => true,
+            'criados'      => $novos->count(),
+            'rascunho_ids' => $novos,
+        ]);
+    }
+
+    /**
      * Publica o rascunho como Clássico E Premium em sequência (DUP-02).
      *
      * Fluxo:

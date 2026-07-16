@@ -103,49 +103,73 @@ function GradeCards({ itens, clonando, onSemelhante }) {
 }
 
 // ─── Cabeçalho colapsável de um lote (categoria + dia) ───
-function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante }) {
+// Nota: o cabeçalho NÃO é um único <button> (havia ação dentro de ação — botão
+// aninhado é HTML inválido). É um contêiner com dois interativos lado a lado: o
+// toggle (expandir) e a ação "Anunciar semelhante em massa".
+function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante, clonandoLote, onSemelhanteLote }) {
     const capa = grupo.itens.find((i) => i.foto)?.foto ?? null;
+    const esteClonando = clonandoLote === grupo.chave;
 
     return (
         <div className="overflow-hidden rounded-2xl border border-white/[0.08] bg-ecf-card/40">
-            <button
-                type="button"
-                onClick={onToggle}
-                aria-expanded={aberto}
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-white/[0.03]"
-            >
-                <ChevronRight className={cn('h-4 w-4 shrink-0 text-white/40 transition-transform', aberto && 'rotate-90')} />
+            <div className="flex items-center gap-2 px-3 py-2.5">
+                <button
+                    type="button"
+                    onClick={onToggle}
+                    aria-expanded={aberto}
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left transition hover:bg-white/[0.03]"
+                >
+                    <ChevronRight className={cn('h-4 w-4 shrink-0 text-white/40 transition-transform', aberto && 'rotate-90')} />
 
-                {/* Mini-capa do lote com selo de contagem */}
-                <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-ecf-bg">
-                    {capa ? (
-                        <img src={capa} alt="" className="h-full w-full object-contain" loading="lazy" />
-                    ) : (
-                        <span className="flex h-full w-full items-center justify-center">
-                            <Layers className="h-4 w-4 text-white/20" />
+                    {/* Mini-capa do lote com selo de contagem */}
+                    <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border border-white/[0.08] bg-ecf-bg">
+                        {capa ? (
+                            <img src={capa} alt="" className="h-full w-full object-contain" loading="lazy" />
+                        ) : (
+                            <span className="flex h-full w-full items-center justify-center">
+                                <Layers className="h-4 w-4 text-white/20" />
+                            </span>
+                        )}
+                        <span className="absolute -bottom-1 -right-1 rounded-md bg-ecf-yellow px-1 text-[9px] font-bold leading-4 text-black">
+                            {grupo.total}
                         </span>
-                    )}
-                    <span className="absolute -bottom-1 -right-1 rounded-md bg-ecf-yellow px-1 text-[9px] font-bold leading-4 text-black">
-                        {grupo.total}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                            <Layers className="h-3.5 w-3.5 shrink-0 text-ecf-yellow/70" />
+                            <span className="truncate text-[13px] font-medium text-white" title={grupo.categoria ?? grupo.category_id}>
+                                {grupo.categoria || grupo.category_id || 'Sem categoria'}
+                            </span>
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-white/40">
+                            {grupo.total} anúncios · publicados em {dataPublicacao(grupo.data ?? grupo.published_at)}
+                        </div>
+                    </div>
+
+                    <span className="hidden shrink-0 rounded-md border border-white/[0.08] px-2 py-0.5 text-[10px] text-white/40 sm:inline">
+                        {aberto ? 'recolher' : 'ver lote'}
                     </span>
-                </div>
+                </button>
 
-                <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                        <Layers className="h-3.5 w-3.5 shrink-0 text-ecf-yellow/70" />
-                        <span className="truncate text-[13px] font-medium text-white" title={grupo.categoria ?? grupo.category_id}>
-                            {grupo.categoria || grupo.category_id || 'Sem categoria'}
-                        </span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-white/40">
-                        {grupo.total} anúncios · publicados em {dataPublicacao(grupo.data ?? grupo.published_at)}
-                    </div>
-                </div>
-
-                <span className="shrink-0 rounded-md border border-white/[0.08] px-2 py-0.5 text-[10px] text-white/40">
-                    {aberto ? 'recolher' : 'ver lote'}
-                </span>
-            </button>
+                {/* Ação do lote: clona o lote inteiro e abre a grade pré-preenchida */}
+                <button
+                    type="button"
+                    onClick={() => onSemelhanteLote(grupo)}
+                    disabled={esteClonando}
+                    title="Clona o lote inteiro e abre a grade em massa já preenchida"
+                    className={cn(
+                        'inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] transition',
+                        esteClonando
+                            ? 'cursor-wait border-white/[0.06] text-white/30'
+                            : 'border-ecf-yellow/30 bg-ecf-yellow/[0.06] text-ecf-yellow hover:bg-ecf-yellow/[0.12]',
+                    )}
+                >
+                    {esteClonando
+                        ? <><Loader2 className="h-3 w-3 animate-spin" /> Duplicando…</>
+                        : <><CopyPlus className="h-3 w-3" /> <span className="hidden sm:inline">Anunciar semelhante em massa</span><span className="sm:hidden">Semelhante em massa</span></>}
+                </button>
+            </div>
 
             {aberto && (
                 <div className="border-t border-white/[0.06] p-3">
@@ -158,8 +182,9 @@ function BlocoLote({ grupo, aberto, onToggle, clonando, onSemelhante }) {
 
 export default function AnunciosHistorico({ empresa = {}, grupos = {}, resumo = {}, filtros = {} }) {
     const [busca, setBusca] = useState(filtros.busca ?? '');
-    const [clonando, setClonando] = useState(null); // id do anúncio sendo clonado
-    const [abertos, setAbertos] = useState({});     // chave do lote -> expandido?
+    const [clonando, setClonando] = useState(null);         // id do anúncio sendo clonado (individual)
+    const [clonandoLote, setClonandoLote] = useState(null); // chave do lote sendo clonado (em massa)
+    const [abertos, setAbertos] = useState({});             // chave do lote -> expandido?
 
     const listaGrupos = grupos.data ?? [];
     const totalAnuncios = resumo.total_anuncios ?? 0;
@@ -192,6 +217,24 @@ export default function AnunciosHistorico({ empresa = {}, grupos = {}, resumo = 
         } catch {
             setClonando(null);
             window.alert('Não foi possível duplicar este anúncio. Tente novamente.');
+        }
+    }
+
+    // ─── "Anunciar semelhante em massa" ───
+    // Clona o lote inteiro (todos os itens do grupo) como rascunhos-template e abre
+    // a GRADE (massa). Como os clones nascem status=rascunho com o mesmo category_id,
+    // a grade já os monta pré-preenchidos na aba da categoria — mesmo fluxo do "em massa".
+    async function anunciarSemelhanteLote(grupo) {
+        setClonandoLote(grupo.chave);
+        try {
+            await window.axios.post(
+                route('mlb.anuncios.empresa.duplicar-lote', { company: empresa.id }),
+                { rascunho_ids: grupo.itens.map((i) => i.id) },
+            );
+            router.get(route('mlb.anuncios.massa', { company: empresa.id }));
+        } catch {
+            setClonandoLote(null);
+            window.alert('Não foi possível duplicar este lote. Tente novamente.');
         }
     }
 
@@ -266,6 +309,8 @@ export default function AnunciosHistorico({ empresa = {}, grupos = {}, resumo = 
                                     onToggle={() => toggle(g.chave)}
                                     clonando={clonando}
                                     onSemelhante={anunciarSemelhante}
+                                    clonandoLote={clonandoLote}
+                                    onSemelhanteLote={anunciarSemelhanteLote}
                                 />
                             ) : (
                                 // Avulso (grupo de 1): card solto, sem cabeçalho de lote.

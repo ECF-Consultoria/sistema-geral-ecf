@@ -78,6 +78,11 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         // Mantém título/tier intactos, zera os três ml_item_ids → novo rascunho do zero
         Route::post('/rascunho/{rascunho}/duplicar-template', [MlbAnuncioController::class, 'duplicarComoTemplate'])
             ->name('rascunho.duplicar-template');
+        // "Anunciar semelhante em massa" (ext. Phase 86): clona TODO um lote do histórico
+        // como templates novos e devolve os ids; o front abre a grade (massa), onde os
+        // clones (status rascunho, mesmo category_id) já aparecem pré-preenchidos por aba.
+        Route::post('/empresa/{company}/duplicar-lote', [MlbAnuncioController::class, 'duplicarLoteComoTemplate'])
+            ->name('empresa.duplicar-lote');
         // DUP-02 / DUP-04 (Phase 79 Plan 01): publica par Clássico+Premium em 1 chamada HTTP
         // Falha de um tier não aborta o outro — resposta traz resultado independente por tier
         Route::post('/rascunho/{rascunho}/publicar-duplo', [MlbAnuncioController::class, 'publicarDuplo'])
