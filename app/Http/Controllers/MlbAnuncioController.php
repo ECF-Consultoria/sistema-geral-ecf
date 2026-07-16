@@ -823,13 +823,36 @@ class MlbAnuncioController extends Controller
         // Título máximo aceito pela categoria (fallback 60, igual à coluna base do sketch)
         $maxTitulo = (int) (data_get($categoria, 'settings.max_title_length') ?: 60);
 
-        // Filtro de obrigatórios idêntico ao wizard — só o essencial da categoria ativa
+        // ═══════════════════════════════════════════════════════════════════
+        // Obrigatórios que viram COLUNA na grade em massa.
+        //
+        // ATENÇÃO — este filtro DIVERGE do wizard DE PROPÓSITO. Não "corrija"
+        // para igualar: os contextos são diferentes e igualar reabre um erro de
+        // produção real.
+        //
+        // O wizard (AnunciarML.jsx) monta 1 anúncio com N variações, e lá os
+        // atributos `allow_variations` (COLOR, SIZE…) são preenchidos DENTRO de
+        // cada variação — por isso ele os tira da ficha técnica.
+        //
+        // A grade em massa é 1 linha = 1 anúncio SIMPLES, sem variação. Se
+        // filtrarmos `allow_variations` aqui, um atributo que é `required: true`
+        // some da planilha e o publicador não tem onde preenchê-lo — e o ML
+        // recusa a publicação:
+        //   "The attributes [COLOR, SIZE] are required for category MLB108791"
+        //   (erro 400 real, publicação em massa, 2026-07-15)
+        // O próprio erro aponta a saída: o atributo pode ir na lista `attributes`
+        // do item OU nas variações. Sem variação, vai na lista — logo, precisa
+        // de coluna.
+        //
+        // GRID continua fora: SIZE_GRID_ID (`value_type: grid_id`) não é um valor
+        // que se digita numa célula — é a referência a uma tabela de medidas que o
+        // wizard resolve com uma UI própria (rota rascunho.grades).
+        // ═══════════════════════════════════════════════════════════════════
         $obrigatorios = collect($atributos)
             ->filter(function ($a) {
                 $id = (string) data_get($a, 'id', '');
 
                 return data_get($a, 'tags.required') === true
-                    && data_get($a, 'tags.allow_variations') !== true
                     && $id !== 'SIZE_GRID_ID'
                     && ! str_contains($id, 'GRID');
             })

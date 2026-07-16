@@ -5,6 +5,9 @@ import {
     linhaVazia,
     linhaPublicavel,
     mesclarStatusRascunhos,
+    errosLocaisLinha,
+    fotosDaLinha,
+    CAMPOS_FOTO,
 } from '../../resources/js/Pages/Mlb/gradeMassaUtils.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -82,6 +85,48 @@ test('linhaVazia: mantém TODOS os defaults de hoje (zero regressão)', () => {
 const abaCom = { category_id: 'MLB1234', obrigatorios: [] };
 const abaSem = { category_id: null, obrigatorios: [] };
 const linhaOk = () => ({ ...linhaVazia(), id: 10, title: 'Camisa P', price: '49.90', estoque: '3' });
+
+// ─── COL-85-1 / COL-85-3: foto e atributos obrigatórios (o erro 400 real) ───
+
+test('errosLocaisLinha: Premium SEM foto é barrado antes de gastar a chamada', () => {
+    // "Item pictures are mandatory for listing type gold_pro" — erro real de prod
+    const l = { ...linhaOk(), tier: 'gold_pro' };
+    assert.ok(errosLocaisLinha(l, abaCom).includes('foto'));
+});
+
+test('errosLocaisLinha: Premium COM foto passa', () => {
+    const l = { ...linhaOk(), tier: 'gold_pro', imagemUrl: 'https://x.com/a.jpg' };
+    assert.deepEqual(errosLocaisLinha(l, abaCom), []);
+});
+
+test('errosLocaisLinha: Clássico sem foto continua passando (o ML só exige no Premium)', () => {
+    const l = { ...linhaOk(), tier: 'gold_special' };
+    assert.deepEqual(errosLocaisLinha(l, abaCom), []);
+});
+
+test('errosLocaisLinha: TODO atributo obrigatório da categoria é cobrado, não só marca/modelo', () => {
+    // Era daqui que vinha "The attributes [COLOR, SIZE] are required for MLB108791"
+    const aba = { category_id: 'MLB108791', obrigatorios: [
+        { id: 'COLOR', name: 'Cor' }, { id: 'SIZE', name: 'Tamanho' },
+    ] };
+    const faltando = errosLocaisLinha(linhaOk(), aba);
+    assert.ok(faltando.includes('cor'), 'COLOR obrigatorio nao cobrado');
+    assert.ok(faltando.includes('tamanho'), 'SIZE obrigatorio nao cobrado');
+
+    const preenchida = { ...linhaOk(), attrs: { COLOR: 'Azul', SIZE: 'M' } };
+    assert.deepEqual(errosLocaisLinha(preenchida, aba), []);
+});
+
+test('fotosDaLinha: só as preenchidas, na ordem (a 1ª é a capa)', () => {
+    const l = { ...linhaVazia(), imagemUrl: 'https://x/1.jpg', imagemUrl3: 'https://x/3.jpg' };
+    assert.deepEqual(fotosDaLinha(l), ['https://x/1.jpg', 'https://x/3.jpg']);
+    assert.deepEqual(fotosDaLinha(linhaVazia()), []);
+});
+
+test('linhaVazia: tem os 6 campos de foto', () => {
+    const l = linhaVazia();
+    CAMPOS_FOTO.forEach((c) => assert.equal(l[c], '', `campo ${c} ausente`));
+});
 
 test('linhaPublicavel: linha salva e sem erro é publicável (comportamento de hoje)', () => {
     assert.equal(linhaPublicavel(linhaOk(), abaCom), true);

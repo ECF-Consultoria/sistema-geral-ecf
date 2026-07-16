@@ -43,12 +43,40 @@ export const nomeCurto = (caminho, categoryId) => {
 export const ATTR_MARCA = 'BRAND';
 export const ATTR_MODELO = 'MODEL';
 
+// ─── Campos de foto por URL (COL-85-1) ───
+// O ML aceita foto por URL (`pictures: [{ source }]`) — é assim que o wizard já
+// publica hoje. Campos PLANOS (não array) de propósito: `editarCelula` escreve
+// `{ ...l, [campo]: valor }`, e um array exigiria um terceiro modo de escrita —
+// com ele, paste, fill handle, Delete e o undo/redo teriam que aprender o caso.
+// Planos = tudo isso funciona sem nenhum ramo novo.
+// 1 principal + 5 adicionais: o ML aceita 10, mas a grade é canvas visível o tempo
+// todo e 10 colunas de foto passariam a largura dos 10 campos base. Aumentar =
+// acrescentar ids aqui (as colunas e o payload derivam desta lista).
+export const CAMPOS_FOTO = ['imagemUrl', 'imagemUrl2', 'imagemUrl3', 'imagemUrl4', 'imagemUrl5', 'imagemUrl6'];
+
+// Tipo de anúncio Premium — exige foto (regra do ML, não nossa)
+export const TIER_PREMIUM = 'gold_pro';
+
+// URLs de foto preenchidas da linha, na ordem das colunas (a 1ª é a capa)
+export const fotosDaLinha = (l) =>
+    CAMPOS_FOTO.map((c) => String(l?.[c] ?? '').trim()).filter(Boolean);
+
 // ═══════════════════════════════════════════════════════════════════════
-// SHEET-05: erro LOCAL bloqueante de uma linha (derivado no front, síncrono).
+// SHEET-05 / COL-85-3: erro LOCAL bloqueante de uma linha (síncrono, no front).
 // É a ÚNICA barreira dura da grade — avisos do /items/validate NÃO entram aqui.
-// Retorna a lista de campos obrigatórios faltando (vazia = linha publicável).
-// Marca/Modelo só são exigidos quando a categoria da aba os traz como obrigatórios
-// (algumas categorias não pedem MODEL); título/preço/estoque valem sempre.
+// Retorna a lista de campos faltando (vazia = linha publicável).
+//
+// FONTE ÚNICA: o realce vermelho da grade (getRowThemeOverride), o contador da
+// PublishBar (resumoLote) e o `linhaPublicavel` leem TODOS esta função. Uma
+// segunda régua faria a grade mostrar "3 publicáveis" com 4 linhas verdes.
+//
+// A régua espelha o que o ML exige de fato, para o publicador saber ANTES de
+// gastar a chamada (o objetivo do COL-85-3):
+//   - título/preço/estoque: sempre;
+//   - TODOS os atributos obrigatórios da categoria (não só marca/modelo) — era
+//     daqui que vinha o 400 "The attributes [COLOR, SIZE] are required";
+//   - foto quando o tipo é Premium: "Item pictures are mandatory for listing
+//     type gold_pro" — sem isso, todo Premium do lote falha 100% das vezes.
 // ═══════════════════════════════════════════════════════════════════════
 export function errosLocaisLinha(l, aba) {
     const faltando = [];
@@ -56,10 +84,17 @@ export function errosLocaisLinha(l, aba) {
     if (!(Number(l.price) > 0)) faltando.push('preço');
     if (!(Number(l.estoque) > 0)) faltando.push('estoque');
 
-    // Marca/Modelo: só cobra se a categoria ativa os declara obrigatórios
-    const obrigIds = new Set((aba?.obrigatorios ?? []).map((o) => String(o.id)));
-    if (obrigIds.has(ATTR_MARCA) && !String(l.attrs?.[ATTR_MARCA] ?? '').trim()) faltando.push('marca');
-    if (obrigIds.has(ATTR_MODELO) && !String(l.attrs?.[ATTR_MODELO] ?? '').trim()) faltando.push('modelo');
+    // Premium sem foto é recusado pelo ML — barra antes de gastar a chamada
+    if (l.tier === TIER_PREMIUM && fotosDaLinha(l).length === 0) faltando.push('foto');
+
+    // TODOS os obrigatórios da categoria ativa. Antes só marca/modelo eram
+    // cobrados (hardcoded) e o resto passava direto para o 400 do ML.
+    (aba?.obrigatorios ?? []).forEach((o) => {
+        const id = String(o.id);
+        if (!String(l.attrs?.[id] ?? '').trim()) {
+            faltando.push(String(o.name ?? id).toLowerCase());
+        }
+    });
 
     return faltando;
 }
@@ -243,6 +278,14 @@ export function linhaVazia() {
         larguraCm: '',
         comprimentoCm: '',
         descricao: '',
+        // Fotos por URL (COL-85-1) — campos planos; a 1ª preenchida vira a capa.
+        // Sem elas o payload ia com pictures: [] e todo Premium era recusado.
+        imagemUrl: '',
+        imagemUrl2: '',
+        imagemUrl3: '',
+        imagemUrl4: '',
+        imagemUrl5: '',
+        imagemUrl6: '',
         attrs: {},           // { [attrId]: value } — ficha técnica da categoria
         origem: {},          // { [campo]: 'cliente' | 'publicador' }
         salvando: false,

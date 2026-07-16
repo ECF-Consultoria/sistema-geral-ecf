@@ -185,6 +185,13 @@ const COLS_BASE = [
     { id: 'alturaCm',      title: 'Altura cm',    width: 90,  num: true },
     { id: 'larguraCm',     title: 'Largura cm',   width: 90,  num: true },
     { id: 'comprimentoCm', title: 'Comprim. cm',  width: 100, num: true },
+    // Fotos por URL (COL-85-1) — a 1ª preenchida vira a capa. Obrigatória p/ Premium.
+    { id: 'imagemUrl',     title: 'Foto (URL)',   width: 200, grupo: 'Fotos' },
+    { id: 'imagemUrl2',    title: 'Foto 2',       width: 150, grupo: 'Fotos' },
+    { id: 'imagemUrl3',    title: 'Foto 3',       width: 150, grupo: 'Fotos' },
+    { id: 'imagemUrl4',    title: 'Foto 4',       width: 150, grupo: 'Fotos' },
+    { id: 'imagemUrl5',    title: 'Foto 5',       width: 150, grupo: 'Fotos' },
+    { id: 'imagemUrl6',    title: 'Foto 6',       width: 150, grupo: 'Fotos' },
 ];
 
 // ─── Tipo de anuncio: rotulo legivel <-> codigo do ML ───
@@ -229,7 +236,9 @@ export default function GradeAnuncioGlide({
             id: c.id,
             title: c.id === 'title' ? `Título (${aba?.max_title_length ?? 60}) *` : `${c.title}${c.req ? ' *' : ''}`,
             width: c.width,
-            group: 'Campos base',
+            // Fotos ganham grupo próprio no cabeçalho (o agrupamento por cor e o
+            // collapse chegam na Phase 86)
+            group: c.grupo ?? 'Campos base',
             _num: !!c.num,
         }));
         const dinamicas = (aba?.obrigatorios ?? []).map((o) => ({

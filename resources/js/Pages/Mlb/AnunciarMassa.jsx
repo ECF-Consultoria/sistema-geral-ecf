@@ -15,6 +15,8 @@ import {
     linhaPublicavel,
     linhaVazia,
     mesclarStatusRascunhos,
+    CAMPOS_FOTO,
+    fotosDaLinha,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1098,7 +1100,12 @@ function montarPayloadLinha(l, aba) {
         condition: 'new',
         listing_type_id: l.tier || 'gold_special',
         attributes,
-        pictures: [],
+        // Fotos por URL (COL-85-1). Era `pictures: []` HARDCODED: a grade publicava
+        // todo anúncio sem foto nenhuma, e o ML recusa Premium sem foto
+        // ("Item pictures are mandatory for listing type gold_pro") — todo Premium
+        // do lote falhava 100% das vezes. Mesmo shape que o wizard já usa e que o
+        // ItemBuilder já aceita: [{ source: url }].
+        pictures: fotosDaLinha(l).map((source) => ({ source })),
         sale_terms: [],
         shipping: { mode: 'me2', local_pick_up: false, free_shipping: false },
         description: l.descricao ?? '',
@@ -1119,6 +1126,15 @@ function linhaDeRascunho(r) {
     l.estoque = p.available_quantity != null ? String(p.available_quantity) : '';
     l.descricao = p.description ?? '';
     l.salvo = true;
+
+    // Round-trip das fotos: sem ler `pictures` de volta, reabrir a página perde as
+    // URLs e a linha volta a publicar sem foto EM SILÊNCIO (e o autosave seguinte
+    // grava o payload sem elas). Aceita { source } e string crua.
+    const pics = Array.isArray(p.pictures) ? p.pictures : [];
+    CAMPOS_FOTO.forEach((campo, i) => {
+        const pic = pics[i];
+        l[campo] = (typeof pic === 'string' ? pic : pic?.source) ?? '';
+    });
 
     const attrs = Array.isArray(p.attributes) ? p.attributes : [];
     attrs.forEach((a) => {

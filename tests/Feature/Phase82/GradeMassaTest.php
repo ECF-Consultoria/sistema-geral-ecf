@@ -246,7 +246,20 @@ class GradeMassaTest extends TestCase
     /** @test */
     public function colunas_devolve_apenas_os_obrigatorios_reais_da_categoria(): void
     {
-        // SHEET-02: só os obrigatórios da categoria ativa — sem allow_variations e sem *GRID*
+        // SHEET-02 + COL-85-2: TODOS os obrigatórios da categoria ativa viram coluna
+        // (inclusive os allow_variations), menos os *GRID*.
+        //
+        // MUDANÇA DELIBERADA (2026-07-15): este teste exigia `assertNotContains('COLOR')`,
+        // codificando a suposição de que atributo allow_variations nunca entra na grade
+        // (espelhando o wizard, onde ele é preenchido dentro de cada variação).
+        // O Mercado Livre refutou essa suposição numa publicação em massa real:
+        //   400 item.attributes.missing_required — "The attributes [COLOR, SIZE] are
+        //   required for category MLB108791 and channel marketplace"
+        // A grade é 1 linha = 1 anúncio SIMPLES (sem variação), então esses atributos
+        // precisam de coluna e vão na lista `attributes` do item — que é a saída que o
+        // próprio erro aponta ("present in the attributes list OR in variation's
+        // attribute_combination"). Sem coluna, o publicador não tem onde preenchê-los
+        // e o lote inteiro é recusado.
         $this->fakeMetaDaCategoria();
         [, , $admin] = $this->criarFixture();
 
@@ -258,9 +271,9 @@ class GradeMassaTest extends TestCase
 
         // BRAND (obrigatório simples) presente
         $this->assertContains('BRAND', $ids, 'BRAND deve estar nos obrigatorios');
-        // COLOR (allow_variations) EXCLUÍDO — vai em Variações, não na grade
-        $this->assertNotContains('COLOR', $ids, 'COLOR (allow_variations) não deve entrar');
-        // SIZE_GRID_ID EXCLUÍDO — grade de moda não vira coluna
+        // COLOR (obrigatório + allow_variations) AGORA ENTRA — sem ele o ML recusa (400)
+        $this->assertContains('COLOR', $ids, 'COLOR e obrigatorio na categoria: precisa de coluna');
+        // SIZE_GRID_ID EXCLUÍDO — grade de moda não é valor que se digita numa célula
         $this->assertNotContains('SIZE_GRID_ID', $ids, 'SIZE_GRID_ID não deve entrar');
         // GTIN (opcional) não é obrigatório
         $this->assertNotContains('GTIN', $ids, 'GTIN (opcional) não deve entrar nos obrigatorios');
