@@ -387,4 +387,28 @@ class CarteirasConsolidadasContextoTest extends TestCase
         $this->assertSame(1, $props['resumo']['vinculos_sem_fonte_financeira']);
         $this->assertSame('todos', $props['contexto']);
     }
+
+    /**
+     * Test 11 — Plan 90-02: payload da consolidada NAO emite mais o alias
+     * legado `companies_count` (removido no mesmo commit que troca o .jsx).
+     * RED antes da remocao do alias em `renderCarteirasConsolidadas()`,
+     * GREEN depois.
+     */
+    public function test_payload_consolidada_nao_emite_companies_count(): void
+    {
+        $admin   = $this->criarAdmin();
+        $cenario = $this->criarCenarioMlComResponsaveis();
+        $this->vincularCargo($cenario['analista'], 'analista');
+        $this->seedAdmanMetric($cenario['company']->id, 1000.0);
+
+        $response = $this->actingAs($admin)->get(route('portfolio.own'));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $card = $this->localizarCard($props['user_portfolios'], $cenario['analista']->id);
+        $this->assertNotNull($card);
+
+        $this->assertArrayNotHasKey('companies_count', $card, 'Alias legado deve ter sido removido do payload.');
+        $this->assertArrayHasKey('empresas_unicas', $card);
+    }
 }
