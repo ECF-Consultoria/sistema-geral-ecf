@@ -8,6 +8,7 @@ use App\Models\GoalResult;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\PortfolioGoal;
+use App\Models\Servico;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
@@ -60,6 +61,26 @@ class PortfolioController extends Controller
             'so-ml'    => 'ml',
             'so-adman' => 'adman',
             default    => 'none',
+        };
+    }
+
+    /**
+     * Fase 90 (CART-07) — parse do filtro de contexto `?contexto=` com
+     * whitelist explicita (ASVS V5). Nomeado `contexto` (nao `setor`) de
+     * proposito: `renderCarteirasConsolidadas()` ja usa `$setoresFiltro` pra
+     * outro conceito (setor ORGANIZACIONAL do profissional, via user_setores)
+     * — nao confundir com o setor do SERVICO/vinculo filtrado aqui (90-RESEARCH.md
+     * "Duas nocoes de 'setor'"). Valor fora da whitelist cai em 'todos', nunca
+     * repassado cru ao CarteiraContextService.
+     *
+     * @return array{param: string, setor: ?string}
+     */
+    private function contextoFiltro(Request $request): array
+    {
+        return match ($request->query('contexto')) {
+            'performance' => ['param' => 'performance', 'setor' => Servico::SETOR_PERFORMANCE],
+            'shopee'      => ['param' => 'shopee', 'setor' => Servico::SETOR_SHOPEE],
+            default       => ['param' => 'todos', 'setor' => null],
         };
     }
 
@@ -154,12 +175,17 @@ class PortfolioController extends Controller
         $dateFromPrev = $inicioAnter->toDateString();
         $dateToPrev   = $fimAnter->toDateString();
 
+        // Fase 90 (CART-07) — filtro `?contexto=` (todos/performance/shopee),
+        // vale pras DUAS telas de carteira (SC3). Default 'todos' preserva
+        // 100% do comportamento da Fase 89 (regressao zero).
+        $contextoFiltro = $this->contextoFiltro($request);
+
         // Fase 89 (CART-01/02/03/04/05) — origem por VÍNCULO via
         // CarteiraContextService, não mais `$user->companies()` (consolidado,
         // sem distinguir setor de serviço). `forUser()` é a ÚNICA porta pra
         // resolver vínculos — nunca reimplementar o join direto em
         // `company_users.servico_id` aqui (perde o ramo legado CTX-05).
-        $vinculos   = $this->carteiraContext->forUser($user, ['active' => true]);
+        $vinculos   = $this->carteiraContext->forUser($user, ['active' => true, 'setor' => $contextoFiltro['setor']]);
         $porEmpresa = $vinculos->groupBy('company_id');
 
         // O service não expõe cust_id/mlToken (granularidade de vínculo, não
@@ -494,6 +520,11 @@ class PortfolioController extends Controller
             ];
         }
 
+        // Fase 90 (CART-07) — contadores de vinculos (empresas_unicas ja
+        // coberto por total_empresas acima) via CarteiraContextService,
+        // reaproveitando $vinculos ja resolvido (nao reinventar contagem).
+        $contadoresResumo = $this->carteiraContext->contadores($vinculos);
+
         return Inertia::render('Portfolio/AdminCarteira', [
             'profissional' => [
                 'id'          => $user->id,
@@ -510,7 +541,10 @@ class PortfolioController extends Controller
                 'variacao_margem_pct'   => $variacaoMargemPct,
                 'total_ad_spend'        => round($totalAdSpend, 2),
                 'tacos_medio'           => $tacosMedio,
+                'vinculos_servico'              => $contadoresResumo['vinculos_servico'],
+                'vinculos_sem_fonte_financeira'  => $contadoresResumo['vinculos_sem_fonte_financeira'],
             ],
+            'contexto' => $contextoFiltro['param'],
             'empresas' => $empresas,
             'periodo' => [
                 'em_curso'         => $ehMesEmCurso,
@@ -612,15 +646,100 @@ class PortfolioController extends Controller
         $dateFrom = $since->toDateString();
         $dateTo   = now()->toDateString();
 
-        $portfolios = $todos->map(function ($item) use ($dateFrom, $dateTo) {
+        // Fase 90 (CART-06/07) — filtro `?contexto=` (todos/performance/shopee).
+        // NAO confundir com $setoresFiltro acima (organizacional, ja existente).
+        $contextoFiltro = $this->contextoFiltro($request);
+
+        // Acumula, POR REFERENCIA, os vinculos de TODOS os cards efetivamente
+        // exibidos — usado so no final pra montar `totais` (uniao de
+        // company_id, nunca soma de empresas_unicas entre cards, que infla a
+        // contagem quando uma empresa e compartilhada por 2 profissionais).
+        $vinculosExibidosTotal = collect();
+
+        $portfolios = $todos->map(function ($item) use ($dateFrom, $dateTo, $contextoFiltro, &$vinculosExibidosTotal) {
             $u    = $item['user'];
             $tipo = $item['tipo'];
+            $role = $tipo === 'estrategista' ? 'estrategista' : 'consultor';
 
-            $companies = ($tipo === 'estrategista')
-                ? $u->estrategistaCompanies()->where('active', true)->get(['companies.id', 'companies.adman_account_id', 'companies.ml_store_id'])
-                : $u->consultorCompanies()->where('active', true)->get(['companies.id', 'companies.adman_account_id', 'companies.ml_store_id']);
+            // Fase 90 (CART-06) — mesma receita da Fase 89
+            // (renderCarteiraProfissional): origem por VINCULO via
+            // CarteiraContextService, nunca mais estrategistaCompanies()/
+            // consultorCompanies() (consolidado por empresa, sem distinguir
+            // setor de servico — causa raiz do card Shopee-only herdando
+            // faturamento ML gerido por outro profissional).
+            $vinculos = $this->carteiraContext->forUser($u, [
+                'role'   => $role,
+                'active' => true,
+                'setor'  => $contextoFiltro['setor'],
+            ]);
 
-            if ($companies->isEmpty()) return null;
+            // Card 100% fora do contexto (ou profissional sem NENHUM vinculo)
+            // desaparece — decisao travada no plano (nao zera, some).
+            if ($vinculos->isEmpty()) {
+                return null;
+            }
+
+            $vinculosExibidosTotal = $vinculosExibidosTotal->concat($vinculos);
+
+            // Contadores prontos (Fase 88) — nao reinventar dedup aqui.
+            $contadores = $this->carteiraContext->contadores($vinculos);
+
+            // Dedup financeiro (mesma receita CART-04/05 da Fase 89):
+            // AdmanMetric e por-EMPRESA, nunca por-vinculo — ->unique() evita
+            // consultar 2x uma empresa onde o profissional tem 2 vinculos
+            // elegiveis (ex.: Performance via slot legado + servico_id
+            // preenchido, hipotetico, ou Gestao+Mentoria).
+            $companyIdsElegiveis = $vinculos
+                ->where('financial_metrics_eligible', true)
+                ->pluck('company_id')
+                ->unique()
+                ->values();
+
+            // source_counts (Phase 61, flag unified_metrics_enabled) —
+            // corrigido JUNTO, na MESMA fonte ($companyIdsElegiveis), pra nao
+            // voltar a contar empresa Shopee-only como fonte financeira do
+            // profissional (bug espelhado do bloco principal).
+            $sourceCounts = null;
+            if ($this->unifiedMetricsEnabled()) {
+                $sourceCounts = ['adman' => 0, 'ml' => 0, 'unified' => 0, 'none' => 0];
+                if ($companyIdsElegiveis->isNotEmpty()) {
+                    $companiesFonte = Company::whereIn('id', $companyIdsElegiveis)->with('mlToken')->get();
+                    foreach ($companiesFonte as $c) {
+                        $sourceCounts[$this->factoryToSource($c)]++;
+                    }
+                }
+            }
+
+            // Profissional so-Shopee (ou filtro Shopee ativo): card existe,
+            // contadores presentes, mas financeiro e 0/null — nunca herda
+            // faturamento/margem de ML de empresa gerida por outro profissional.
+            if ($companyIdsElegiveis->isEmpty()) {
+                $card = [
+                    'id'              => $u->id,
+                    'name'            => $u->name,
+                    'tipo'            => $tipo,
+                    'role'            => $u->role,
+                    // Alias TEMPORARIO consumido por Carteiras.jsx:82 — o Plan
+                    // 90-02 troca o .jsx e remove esta chave no mesmo commit.
+                    'companies_count' => $contadores['empresas_unicas'],
+                    'avg_tacos'       => null,
+                    'total_revenue'   => 0.0,
+                    'avg_margin'      => null,
+                    'total_ad_spend'  => 0.0,
+                    ...$contadores,
+                ];
+                if ($sourceCounts !== null) {
+                    $card['source_counts'] = $sourceCounts;
+                }
+
+                return $card;
+            }
+
+            // O service nao expoe cust_id/adman_account_id/ml_store_id
+            // (granularidade de vinculo, nao de empresa) — carregamos os
+            // models separadamente, so pras empresas elegiveis.
+            $companies = Company::whereIn('id', $companyIdsElegiveis)
+                ->get(['id', 'adman_account_id', 'ml_store_id']);
 
             $companyIds = $companies->pluck('id');
             $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
@@ -688,48 +807,42 @@ class PortfolioController extends Controller
                 ? round(array_sum($tacosPorEmpresa) / count($tacosPorEmpresa), 2)
                 : null;
 
-            return [
+            $card = [
                 'id'              => $u->id,
                 'name'            => $u->name,
                 'tipo'            => $tipo,
                 'role'            => $u->role,
-                'companies_count' => $companyIds->count(),
+                // Alias TEMPORARIO consumido por Carteiras.jsx:82 — o Plan
+                // 90-02 troca o .jsx e remove esta chave no mesmo commit.
+                'companies_count' => $contadores['empresas_unicas'],
                 'avg_tacos'       => $tacosCarteira,
                 'total_revenue'   => round($totalRevenue, 2),
                 'avg_margin'      => $avgMargin !== null ? round((float) $avgMargin, 2) : null,
                 'total_ad_spend'  => round($totalAdSpend, 2),
+                ...$contadores,
             ];
+            if ($sourceCounts !== null) {
+                $card['source_counts'] = $sourceCounts;
+            }
+
+            return $card;
         })->filter()->sortBy('name')->values();
 
-        // Phase 61 Plan 61-01 — enriquecimento condicional com `source_counts`
-        // por profissional. Quando flag ON, agrega `{adman, ml, unified, none}`
-        // varrendo a carteira de cada user via `factoryToSource(Company)`
-        // (ADR DATA-04). Recomputa a lista de empresas por user — o closure
-        // de $portfolios já retornou payload sem acesso à coleção original.
-        if ($this->unifiedMetricsEnabled()) {
-            $portfolios = $portfolios->map(function ($row) use ($todos) {
-                $item = $todos->first(fn ($t) => $t['user']->id === $row['id']);
-                if (! $item) {
-                    return $row;
-                }
-                $u    = $item['user'];
-                $tipo = $item['tipo'];
-                $companies = ($tipo === 'estrategista')
-                    ? $u->estrategistaCompanies()->where('active', true)->with('mlToken')->get()
-                    : $u->consultorCompanies()->where('active', true)->with('mlToken')->get();
-
-                $sourceCounts = ['adman' => 0, 'ml' => 0, 'unified' => 0, 'none' => 0];
-                foreach ($companies as $c) {
-                    $sourceCounts[$this->factoryToSource($c)]++;
-                }
-
-                return array_merge($row, ['source_counts' => $sourceCounts]);
-            });
-        }
+        // Totais agregados do topo (CART-07/SC4) — UNIAO de company_id de
+        // TODOS os vinculos exibidos (nunca soma de empresas_unicas entre
+        // cards, que infla a contagem quando 2 profissionais compartilham a
+        // mesma empresa). vinculos_servico e aditivamente correto (cada
+        // vinculo pertence a exatamente 1 profissional).
+        $totais = [
+            'empresas_unicas'  => $vinculosExibidosTotal->pluck('company_id')->unique()->count(),
+            'vinculos_servico' => $vinculosExibidosTotal->count(),
+        ];
 
         return Inertia::render('Portfolio/Carteiras', [
             'user_portfolios' => $portfolios,
             'period'          => $period,
+            'contexto'        => $contextoFiltro['param'],
+            'totais'          => $totais,
         ]);
     }
 
