@@ -307,7 +307,7 @@ Nenhuma empresa com nome contendo "Teste"/"Demo" foi encontrada nos arquivos lid
 
 **Se esta tabela estivesse vazia**: não estaria — 3 pontos precisam de confirmação/checkpoint antes ou durante o plan-check.
 
-## Open Questions
+## Open Questions (RESOLVED — decisões travadas nos plans 90-01/90-02)
 
 1. **Quando o filtro `?contexto=shopee` está ativo e um profissional não tem NENHUM vínculo Shopee, o card dele desaparece da grid ou aparece zerado ("0 vínculos")?**
    - O que sabemos: `CarteiraContextService::forUser()` com `filters['setor']='shopee'` devolve Collection vazia para esse profissional.
