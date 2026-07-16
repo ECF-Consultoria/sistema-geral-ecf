@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Phase94;
 
+use App\Mail\NpsMonthlyMail;
 use App\Models\Company;
+use App\Models\Configuracao;
+use App\Models\NpsDigisacEnvio;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
@@ -11,22 +14,30 @@ use App\Models\NpsTemplateOption;
 use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\Digisac\DigisacClient;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
- * Phase 94 Plan 02 — trilha `nps_survey_events` (AB-94-3).
+ * Phase 94 — trilha `nps_survey_events` (AB-94-3).
  *
- * Task 1: eventos 'opened'/'expired' emitidos pelo GET /nps/{token}.
- * Task 2 (estendido depois): eventos 'submitted' + dedup 23000.
- * Task 3 (estendido depois): evento 'generated' no link manual.
+ * Plano 94-02: eventos 'opened'/'expired'/'submitted' (NpsController) +
+ * 'generated' no link manual.
+ * Plano 94-03 (este): eventos do disparo mensal automático — 'generated'
+ * (por survey criada), 'sent_email' (só sucesso do Mail::send) e
+ * 'sent_digisac' (só envio confirmado) — e a linha do tempo E2E completa
+ * (Success Criteria 4 da fase).
  */
 class NpsSurveyEventsTest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     protected function tearDown(): void
     {
@@ -52,6 +63,53 @@ class NpsSurveyEventsTest extends TestCase
             'expires_at'   => now()->addDays(7),
             'status'       => 'pending',
         ], $overrides));
+    }
+
+    /**
+     * Empresa elegível ao disparo mensal ESTRITO (DEC-79-A): aniversário no
+     * dia de "hoje" (Carbon::setTestNow deve estar fixado ANTES da chamada) e
+     * estrategista atribuído. `$templateIds`:
+     *  - `null` (default): NÃO contrata nenhum serviço/scope — o teste monta
+     *    a cobertura manualmente (ex.: cenário de 2 modelos com serviços
+     *    isolados).
+     *  - `[]`: usa o comportamento padrão do trait (serviço performance
+     *    reaproveitado, coberto pelo "NPS Padrão" real).
+     *  - `[id1, id2, ...]`: contrata/cobre um serviço por template informado.
+     * Mesmo padrão de `NpsDispararMensalDigisacTest::criarEmpresaComEstrategista`.
+     */
+    private function criarEmpresaElegivelDisparoMensal(?array $templateIds = [], array $overrides = []): Company
+    {
+        $agora = Carbon::now('America/Sao_Paulo');
+
+        $empresa = $this->criarEmpresa(array_merge([
+            'email_cliente' => 'cliente@' . uniqid() . '.com',
+        ], $overrides));
+
+        $empresa->timestamps = false;
+        $empresa->forceFill([
+            'created_at' => $agora->copy()->subYear()->setTime(10, 0, 0),
+            'updated_at' => $agora->copy()->subYear()->setTime(10, 0, 0),
+        ])->save();
+        $empresa->timestamps = true;
+        $empresa->refresh();
+
+        $estrategista = User::factory()->create();
+        $empresa->users()->attach($estrategista->id, [
+            'role'        => 'estrategista',
+            'assigned_at' => now(),
+        ]);
+
+        if ($templateIds === null) {
+            // Nenhuma cobertura automática — teste monta manualmente.
+        } elseif (empty($templateIds)) {
+            $this->contratarServicoNpsCoberto($empresa);
+        } else {
+            foreach ($templateIds as $templateId) {
+                $this->contratarServicoNpsCoberto($empresa, $templateId);
+            }
+        }
+
+        return $empresa->fresh();
     }
 
     /**
@@ -316,5 +374,229 @@ class NpsSurveyEventsTest extends TestCase
 
         $this->assertSame(0, NpsSurvey::where('company_id', $empresa->id)->count());
         $this->assertSame($totalEventosAntes, NpsSurveyEvent::count());
+    }
+
+    // ═══ Plano 94-03 — eventos do disparo mensal automático (AB-94-3) ═══
+
+    /**
+     * Empresa elegível com 1 modelo aplicável e canal email ativo: 1 evento
+     * 'generated' (metadata.origem=disparo_mensal, user_id/ip null) + 1
+     * evento 'sent_email' com o survey_id correto.
+     */
+    public function test_disparo_mensal_emite_generated_e_sent_email_para_empresa_elegivel(): void
+    {
+        Mail::fake();
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $empresa = $this->criarEmpresaElegivelDisparoMensal();
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+
+        $survey = NpsSurvey::where('company_id', $empresa->id)->firstOrFail();
+
+        $eventoGenerated = NpsSurveyEvent::where('survey_id', $survey->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_GENERATED)
+            ->first();
+        $this->assertNotNull($eventoGenerated);
+        $this->assertSame('disparo_mensal', $eventoGenerated->metadata['origem']);
+        $this->assertNull($eventoGenerated->user_id);
+        $this->assertNull($eventoGenerated->ip_address);
+
+        $eventoEmail = NpsSurveyEvent::where('survey_id', $survey->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_SENT_EMAIL)
+            ->first();
+        $this->assertNotNull($eventoEmail);
+        $this->assertSame($survey->id, $eventoEmail->survey_id);
+    }
+
+    /**
+     * Empresa com 2 modelos aplicáveis (2 serviços cobertos DISTINTOS, cada
+     * um coberto por 1 modelo próprio — servicos NOVOS, não o reaproveitado
+     * pelo trait ContrataServicoNpsCoberto, para não colidir com o scope do
+     * "NPS Padrão" real semeado por migration): 2 surveys criadas → 2
+     * eventos 'generated', um por survey.
+     */
+    public function test_empresa_com_2_modelos_aplicaveis_emite_2_eventos_generated(): void
+    {
+        Mail::fake();
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $templateA = NpsTemplate::factory()->create([
+            'active'                  => true,
+            'envio_automatico_mensal' => true,
+        ]);
+        $templateB = NpsTemplate::factory()->create([
+            'active'                  => true,
+            'envio_automatico_mensal' => true,
+        ]);
+
+        $empresa = $this->criarEmpresaElegivelDisparoMensal(null); // sem contrato/scope ainda
+
+        // Dois serviços NOVOS (setor performance), 1 modelo cobrindo cada —
+        // isolados do servico reaproveitado pelo trait (já scoped ao NPS
+        // Padrão real via migration de seed retroativo).
+        foreach ([$templateA, $templateB] as $template) {
+            $servicoId = DB::table('servicos')->insertGetId([
+                'nome'          => 'Servico Isolado ' . uniqid(),
+                'valor_padrao'  => 0,
+                'tipo_cobranca' => Servico::TIPO_MENSAL,
+                'ativo'         => true,
+                'setor'         => Servico::SETOR_PERFORMANCE,
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+
+            DB::table('contratos_servico')->insert([
+                'company_id'       => $empresa->id,
+                'servico_id'       => $servicoId,
+                'valor_contratado' => 0,
+                'data_contratacao' => now()->toDateString(),
+                'ativo'            => true,
+                'created_at'       => now(),
+                'updated_at'       => now(),
+            ]);
+
+            DB::table('nps_template_service_scopes')->updateOrInsert(
+                ['template_id' => $template->id, 'servico_id' => $servicoId],
+                ['created_at' => now(), 'updated_at' => now()]
+            );
+        }
+
+        // Desativa o "NPS Padrão" real semeado por migration — sem contrato
+        // novo nele, ele não entraria mesmo, mas garante isolamento total.
+        NpsTemplate::where('is_default', true)->update(['envio_automatico_mensal' => false]);
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+
+        $this->assertDatabaseCount('nps_surveys', 2);
+
+        $totalGenerated = NpsSurveyEvent::where('event_type', NpsSurveyEvent::TYPE_GENERATED)->count();
+        $this->assertSame(2, $totalGenerated);
+
+        foreach (NpsSurvey::where('company_id', $empresa->id)->get() as $survey) {
+            $this->assertSame(
+                1,
+                NpsSurveyEvent::where('survey_id', $survey->id)
+                    ->where('event_type', NpsSurveyEvent::TYPE_GENERATED)
+                    ->count()
+            );
+        }
+    }
+
+    /**
+     * Mail::fake com falha forçada (Mailable lançando): NpsEmailEnvio
+     * status=falha registrado (comportamento pré-existente) e ZERO evento
+     * 'sent_email'.
+     */
+    public function test_falha_no_envio_de_email_nao_emite_evento_sent_email(): void
+    {
+        Mail::fake();
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('SMTP indisponível'));
+
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $this->criarEmpresaElegivelDisparoMensal();
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+
+        $this->assertDatabaseCount('nps_email_envios', 1);
+        $this->assertSame('falha', \App\Models\NpsEmailEnvio::first()->status);
+        $this->assertSame(0, NpsSurveyEvent::where('event_type', NpsSurveyEvent::TYPE_SENT_EMAIL)->count());
+    }
+
+    /**
+     * Canal Digisac com envio confirmado (status 'enviado'): 1 evento
+     * 'sent_digisac' com metadata contendo nps_digisac_envio_id.
+     */
+    public function test_digisac_enviado_emite_evento_sent_digisac_com_envio_id_na_metadata(): void
+    {
+        Mail::fake();
+        Configuracao::set('nps_envio_digisac_ativo', '1');
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $empresa = $this->criarEmpresaElegivelDisparoMensal(overrides: [
+            'digisac_group_contact_id'     => 'contact-abc-123',
+            'digisac_group_mapping_status' => 'mapped',
+        ]);
+
+        $this->mock(DigisacClient::class, function ($mock) {
+            $mock->shouldReceive('sendMessage')
+                ->once()
+                ->andReturn([
+                    'provider_message_id' => 'msg-999',
+                    'raw'                 => ['id' => 'msg-999', 'ok' => true],
+                ]);
+        });
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+
+        $survey = NpsSurvey::where('company_id', $empresa->id)->firstOrFail();
+        $envioDigisac = NpsDigisacEnvio::where('survey_id', $survey->id)->firstOrFail();
+        $this->assertSame(NpsDigisacEnvio::STATUS_ENVIADO, $envioDigisac->status);
+
+        $eventoDigisac = NpsSurveyEvent::where('survey_id', $survey->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_SENT_DIGISAC)
+            ->first();
+        $this->assertNotNull($eventoDigisac);
+        $this->assertSame($envioDigisac->id, $eventoDigisac->metadata['nps_digisac_envio_id']);
+    }
+
+    /**
+     * Envio Digisac 'skipped' (empresa sem grupo mapeado): ZERO evento
+     * 'sent_digisac'.
+     */
+    public function test_digisac_skipped_nao_emite_evento_sent_digisac(): void
+    {
+        Mail::fake();
+        Configuracao::set('nps_envio_digisac_ativo', '1');
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $this->mock(DigisacClient::class, function ($mock) {
+            $mock->shouldNotReceive('sendMessage');
+        });
+
+        $this->criarEmpresaElegivelDisparoMensal(); // sem digisac_group_contact_id
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+
+        $this->assertDatabaseCount('nps_digisac_envios', 1);
+        $this->assertSame(NpsDigisacEnvio::STATUS_SKIPPED, NpsDigisacEnvio::first()->status);
+        $this->assertSame(0, NpsSurveyEvent::where('event_type', NpsSurveyEvent::TYPE_SENT_DIGISAC)->count());
+    }
+
+    /**
+     * Comando com --dry-run: ZERO eventos de qualquer tipo (o dry-run faz
+     * `continue` ANTES do NpsSurvey::create, logo antes de qualquer emissor).
+     */
+    public function test_dry_run_nao_emite_nenhum_evento(): void
+    {
+        Mail::fake();
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $this->criarEmpresaElegivelDisparoMensal();
+
+        $this->artisan('nps:disparar-mensal', ['--dry-run' => true])->assertSuccessful();
+
+        $this->assertDatabaseCount('nps_surveys', 0);
+        $this->assertSame(0, NpsSurveyEvent::count());
+    }
+
+    /**
+     * Idempotência: 2ª rodada no mesmo mês pula as empresas (comportamento
+     * pré-existente) e não cria eventos duplicados na 2ª rodada.
+     */
+    public function test_idempotencia_disparo_mensal_nao_duplica_eventos_na_segunda_rodada(): void
+    {
+        Mail::fake();
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $this->criarEmpresaElegivelDisparoMensal();
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+        $totalEventosAposPrimeiraRodada = NpsSurveyEvent::count();
+        $this->assertGreaterThan(0, $totalEventosAposPrimeiraRodada);
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+        $this->assertSame($totalEventosAposPrimeiraRodada, NpsSurveyEvent::count());
     }
 }
