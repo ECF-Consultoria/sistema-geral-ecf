@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
-status: "Roadmap criado — proximo: Fase 88 (Camada de contexto, CarteiraContextService)"
-stopped_at: "Roadmap v17.0 (Fases 88-93) criado e escrito; v16.0 completa no codigo (Fases 76-81), aguardando deploy do pacote NPS 79+81 (ja validado) e checkpoints visuais pendentes (78/81/80-03)"
-last_updated: "2026-07-16T00:00:00.000Z"
-last_activity: 2026-07-16
+status: Roadmap v17.0 criado (Fases 88-93) — aguardando planejamento da Fase 88
+stopped_at: Completed 80-02 (Wave 2 Phase 80 — regressão do dual-path provada + cache v3; bloqueio de deploy do pacote 80 REMOVIDO)
+last_updated: "2026-07-16T16:34:25.452Z"
+last_activity: "2026-07-16 - Roadmap da milestone v17.0 (Carteira e Desempenho multi-servico) criado: 6 fases (88-93) cobrindo as 22 REQs do REQUIREMENTS.md (CTX/CART/DESEMP/MENU), anexadas ao ROADMAP.md; traceability do REQUIREMENTS.md preenchida (22/22); STATE.md apontando para a Fase 88."
 progress:
-  total_phases: 20
-  completed_phases: 13
-  total_plans: 61
-  completed_plans: 66
-  percent: 65
+  total_phases: 6
+  completed_phases: 1
+  total_plans: 1
+  completed_plans: 1
+  percent: 17
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 88
-Plan: Nenhum ainda — Fase 88 acabou de ser roteirizada (ROADMAP v17.0 criado 2026-07-16, fases 88-93 anexadas ao ROADMAP.md preservando 60-87 intactas). Proximo passo: `/gsd-plan-phase 88` para quebrar o `CarteiraContextService` em plans executaveis.
+Plan: 88-01 EXECUTADO (unico plan da fase) — `CarteiraContextService` criado e testado, CTX-01..05 fechados. Fase 88 COMPLETA. Proximo passo: `/gsd-plan-phase 89` (Carteira individual — primeiro consumidor real do service).
 
-Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
-Status: Roadmap v17.0 criado (Fases 88-93) — aguardando planejamento da Fase 88
-Last activity: 2026-07-16 - Roadmap da milestone v17.0 (Carteira e Desempenho multi-servico) criado: 6 fases (88-93) cobrindo as 22 REQs do REQUIREMENTS.md (CTX/CART/DESEMP/MENU), anexadas ao ROADMAP.md; traceability do REQUIREMENTS.md preenchida (22/22); STATE.md apontando para a Fase 88.
+Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
+Status: Fase 88 (Camada de contexto) completa — `App\Services\Portfolio\CarteiraContextService` pronto, nenhum consumidor reapontado ainda (por desenho, fronteira inviolavel da fase)
+Last activity: 2026-07-16 - Fase 88 Plan 01 executado: `CarteiraContextService::forUser()`+`contadores()` criado via TDD (RED/GREEN por task), 12 testes Feature verdes cobrindo os 4 cenarios canonicos + CTX-01..05 (legado servico_id null, Mentoria sem hardcode, empresa inativa, filtros). Regressao ampla verde (V16 117/117, Nps 207/207, Desempenho 55/56 com a falha pre-existente conhecida `PublicacaoDesempenhoRouteTest`). Zero consumidor tocado (`grep CarteiraContextService app/Http app/Console resources/js` = 0 resultados; `User.php` sem diff). Ver `.planning/phases/88-.../88-01-SUMMARY.md`.
 
 ## Performance Metrics
 
@@ -147,10 +147,13 @@ Last activity: 2026-07-16 - Roadmap da milestone v17.0 (Carteira e Desempenho mu
 | Phase 80 P01 | 38min | 2 tasks | 2 files |
 | Phase 80 P02 | ~55min | 3 tasks (regressão dual-path + bump de cache v3 + regressão ampla) | 2 files |
 | Phase 80 P03 | 25min | 3 tasks | 3 files |
+| Phase 88 P01 | 25min | 3 tasks (TDD RED+GREEN) tasks | 2 files files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- 2026-07-16 — **Fase 88 EXECUTADA (1/1) — `CarteiraContextService` criado, MILESTONE v17.0 tem fundacao pronta.** Novo `App\Services\Portfolio\CarteiraContextService::forUser($user, $filters)` + `contadores()` — fonte unica de vinculos carteira x servico POR VINCULO (nao por empresa consolidada), resolvendo `setor`/`role`/elegibilidade financeira sem tocar em `User::companies()` nem em nenhum consumidor existente (fronteira inviolavel confirmada: `git diff` da fase toca so 2 arquivos novos). **Design:** 2 fontes normalizadas no mesmo shape — `servico_id` PREENCHIDO (prioridade) + `servico_id NULL` resolvido como Performance legado via `whereExists` em `contratos_servico` ativo (nunca promove a Shopee automaticamente, CTX-05); elegibilidade financeira via `match` em `servicos.setor` (cobre Gestao E Mentoria sem hardcode de id, CTX-03); `contadores()` computa `empresas_unicas` vs `vinculos_servico` sem colapsar (CTX-04, nunca usa `distinct()` como `User::companies()`). **Decisoes travadas:** sem cache (queries locais triviais, 268 linhas de pivot em prod); nao chama `MetricsProviderFactory` (vocabularios distintos — factory decide provider tecnico ML/Adman, este service decide setor->fonte constante); CTX-05 e DEFESA contra escrita futura sem `servico_id`, nao migracao (medido em prod: 0 linhas reais nos ramos legados hoje); setores `polos`/`publicacao`/`outros` sem fonte financeira ate segunda ordem; `User::companies()` preservado como legado. **TDD por task:** Task 1 RED (5 testes canonicos, `BindingResolutionException`) -> GREEN (service completo, ja implementando CTX-05/03 no mesmo commit por desenho holistico) -> Task 2 adicionou 7 testes de borda que passaram GREEN imediato (nao e fail-fast trap: a funcionalidade ja existia desde a Task 1, so faltava teste dedicado) -> Task 3 gate de regressao. **Regressao:** V16 117/117, Nps 207/207, Desempenho 55/56 (1 falha pre-existente conhecida `PublicacaoDesempenhoRouteTest` 403≠200, documentada, nao-relacionada). Ajuste de execucao (Rule 3): docblock mencionava `MetricsProviderFactory` por nome 3x, quebrando o grep de verificacao do plano (`grep MetricsProviderFactory app/Services/Portfolio/` esperava 0) — reescrito sem repetir o nome da classe, mesma explicacao preservada. **Requisitos fechados:** CTX-01..05 (5/22 REQs da v17.0). **Proximo:** `/gsd-plan-phase 89` (Carteira individual — primeiro consumidor real do service, refatora `renderCarteiraProfissional`).
 
 - 2026-07-16 — **Milestone v17.0 (Carteira e Desempenho multi-servico) roteirizada — ROADMAP criado, 6 fases anexadas (88-93)**. Fonte: plano canonico do usuario (`plano-carteira-desempenho-multi-servico.md`) + `.planning/REQUIREMENTS.md` (22 REQs: CTX-01..05, CART-01..08, DESEMP-01..08, MENU-01). Numeracao continua a partir de 88 (as fases 82-87 sao de outro dev, modulo MLB/Anuncios, intocadas). Estrutura: **88** Camada de contexto (`CarteiraContextService` — fundacao, vinculos user x company x servico x setor x role, elegibilidade financeira); **89** Carteira individual (`renderCarteiraProfissional` por contexto + absorve o bug de exibicao de `/companies`); **90** Carteiras consolidadas (`renderCarteirasConsolidadas`, visao admin); **91** Desempenho unico com elegibilidade (`DesempenhoScoreService::computeUniverso` por vinculos, status official/partial/blocked); **92** UI de Desempenho (ranking + metadados); **93** Menu (grupo transversal "Gestao ECF"). Dependencias: 88 e fundacao de tudo; 89->90; 91 depende de 88; 92 depende de 91; 93 independente. Decisoes travadas: score UNICO por profissional (nunca separado por marketplace); financeiro so de vinculo `financial_metrics_eligible=true`; profissional so-Shopee -> nota `blocked` (nao `partial`) ate a diretoria decidir; `User::companies()` preservado como legado; reusa fundacao v16.0 (`company_users.servico_id`, `servicos.setor`, `nps_score_assignments`). Cobertura: 22/22 REQs mapeadas, zero orfaos. Arquivos escritos: ROADMAP.md (anexado, 60-87 preservadas), REQUIREMENTS.md (traceability preenchida), STATE.md (Current Position -> Fase 88). Proximo: `/gsd-plan-phase 88`.
 
@@ -636,7 +639,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-15T16:26:47.414Z
+Last session: 2026-07-16T16:30:06.303Z
 Stopped at: Completed 80-02 (Wave 2 Phase 80 — regressão do dual-path provada + cache v3; bloqueio de deploy do pacote 80 REMOVIDO)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).

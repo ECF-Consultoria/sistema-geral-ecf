@@ -11,11 +11,11 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### CTX — Camada de contexto de carteira (Fase 88)
 
-- [ ] **CTX-01**: `CarteiraContextService::forUser($user, $filters)` retorna os vínculos de serviço ativos do profissional, cada um com `company_id`, `company_name`, `servico_id`, `servico_nome`, `setor`, `role`, `role_label`
-- [ ] **CTX-02**: Cada vínculo marca `has_financial_source` / `financial_source` / `financial_metrics_eligible` — `true`/`adman` para setor `performance`, `false`/`null` para `shopee` (até existir fonte Shopee)
-- [ ] **CTX-03**: O serviço resolve elegibilidade financeira por `servicos.setor`, cobrindo TODOS os serviços de performance (Gestão id 6 E Mentoria id 7), sem hardcode de `servico_id`
-- [ ] **CTX-04**: O serviço deduplica corretamente — distingue "empresas únicas" de "vínculos de serviço"; a mesma empresa com dois vínculos do mesmo profissional não é contada duas vezes como empresa
-- [ ] **CTX-05**: Compatibilidade legado — `servico_id` preenchido tem prioridade; `servico_id null` com contrato performance ativo é tratado como Performance legado; `servico_id null` com contrato Shopee NÃO assume responsável Shopee automaticamente
+- [x] **CTX-01**: `CarteiraContextService::forUser($user, $filters)` retorna os vínculos de serviço ativos do profissional, cada um com `company_id`, `company_name`, `servico_id`, `servico_nome`, `setor`, `role`, `role_label`
+- [x] **CTX-02**: Cada vínculo marca `has_financial_source` / `financial_source` / `financial_metrics_eligible` — `true`/`adman` para setor `performance`, `false`/`null` para `shopee` (até existir fonte Shopee)
+- [x] **CTX-03**: O serviço resolve elegibilidade financeira por `servicos.setor`, cobrindo TODOS os serviços de performance (Gestão id 6 E Mentoria id 7), sem hardcode de `servico_id`
+- [x] **CTX-04**: O serviço deduplica corretamente — distingue "empresas únicas" de "vínculos de serviço"; a mesma empresa com dois vínculos do mesmo profissional não é contada duas vezes como empresa
+- [x] **CTX-05**: Compatibilidade legado — `servico_id` preenchido tem prioridade; `servico_id null` com contrato performance ativo é tratado como Performance legado; `servico_id null` com contrato Shopee NÃO assume responsável Shopee automaticamente
 
 ### CART — Carteira individual e consolidada (Fases 89, 90)
 
@@ -61,11 +61,11 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| CTX-01 | Fase 88 | Pending |
-| CTX-02 | Fase 88 | Pending |
-| CTX-03 | Fase 88 | Pending |
-| CTX-04 | Fase 88 | Pending |
-| CTX-05 | Fase 88 | Pending |
+| CTX-01 | Fase 88 | Complete |
+| CTX-02 | Fase 88 | Complete |
+| CTX-03 | Fase 88 | Complete |
+| CTX-04 | Fase 88 | Complete |
+| CTX-05 | Fase 88 | Complete |
 | CART-01 | Fase 89 | Pending |
 | CART-02 | Fase 89 | Pending |
 | CART-03 | Fase 89 | Pending |
