@@ -613,7 +613,7 @@ Plans:
 **Goal:** A carteira individual usa o `CarteiraContextService` em vez de `$user->companies()`; Shopee aparece com "sem fonte financeira"; a tela `/companies` deixa de misturar responsável ML com responsável Shopee.
 **Requirements**: CART-01, CART-02, CART-03, CART-04, CART-05, CART-08
 **Depends on:** Phase 88
-**Plans:** TBD (rodar `/gsd-plan-phase 89`)
+**Plans:** 2 plans
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -625,7 +625,8 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 89 to break down)
+- [ ] 89-01-PLAN.md — renderCarteiraProfissional consome CarteiraContextService: dedup financeiro por elegibilidade + ad_spend/tacos + badges de vínculo na AdminCarteira (CART-01..05)
+- [ ] 89-02-PLAN.md — CART-08: relações analistaPerformance/estrategistaPerformance no Company, reapontamento de /companies (index/show) + pendência OR + checkpoint visual da fase
 
 ### Phase 90: Carteiras consolidadas — renderCarteirasConsolidadas (v17.0)
 
