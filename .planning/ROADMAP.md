@@ -654,7 +654,7 @@ Plans:
 **Goal:** `DesempenhoScoreService::computeUniverso` deriva o universo dos vínculos de serviço ativos do profissional (não de `company_id` consolidado); financeiro só entra por vínculo elegível; a nota expõe status `official`/`partial`/`blocked`, sem nunca criar score separado por marketplace.
 **Requirements**: DESEMP-01, DESEMP-02, DESEMP-03, DESEMP-04, DESEMP-05, DESEMP-06, DESEMP-07
 **Depends on:** Phase 88 (usa o mesmo universo de vínculos do `CarteiraContextService`)
-**Plans:** TBD (rodar `/gsd-plan-phase 91`)
+**Plans:** 2 plans
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -668,7 +668,8 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 91 to break down)
+- [ ] 91-01-PLAN.md — TDD: computeUniverso via CarteiraContextService + score_status (official/partial/blocked) + metadados + bump cache v4 (DESEMP-01/03/04/05/06/07)
+- [ ] 91-02-PLAN.md — Gate DESEMP-02 (ausência de score separado) + auditoria de consumidores + declarações de escopo + roteiro tinker pós-deploy
 
 ### Phase 92: UI de Desempenho — ranking + metadados (v17.0)
 
