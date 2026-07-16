@@ -96,8 +96,13 @@ class CompanyController extends Controller
         // Aplicado como query base — tanto lista quanto contadores (`pendCounts`)
         // refletem o mesmo conjunto.
         $companies = Company::with([
-                'consultor',
-                'estrategista',
+                // Fase 89 Plan 02 (CART-08): reapontado para as relações
+                // filtradas por setor performance — a coluna Analista/
+                // Estrategista nunca deve mostrar o responsável Shopee.
+                // As chaves do payload continuam 'consultor'/'estrategista'
+                // (só a FONTE muda) — Companies/Index.jsx não muda.
+                'analistaPerformance',
+                'estrategistaPerformance',
                 // Contratos ATIVOS com servico embedado — alimenta a coluna "Serviço"
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
                 'mlToken',
@@ -155,8 +160,8 @@ class CompanyController extends Controller
                 'adman_account_id' => $c->cust_id,
                 'adman_store_id'   => $c->adman_store_id,
                 'ml_store_id'      => $c->ml_store_id,
-                'consultor'        => $c->consultor->first()?->only(['id', 'name']),
-                'estrategista'     => $c->estrategista->first()?->only(['id', 'name']),
+                'consultor'        => $c->analistaPerformance->first()?->only(['id', 'name']),
+                'estrategista'     => $c->estrategistaPerformance->first()?->only(['id', 'name']),
                 // Contratos ativos: payload mínimo para a coluna Serviço (badges + tooltip)
                 'contratos_servico' => $c->contratosServico->map(fn($ct) => [
                     'id'               => $ct->id,
@@ -187,7 +192,13 @@ class CompanyController extends Controller
                 // recém-cadastrada que ainda não foi triada pelo admin. Removida via
                 // botão "Marcar como visto" (POST /companies/{company}/marcar-visto).
                 'pendencias'       => array_values(array_filter([
-                    ($c->consultor->isEmpty() && $c->estrategista->isEmpty()) ? 'sem_responsavel' : null,
+                    // Fase 89 (CART-08) — AND→OR sobre as relações de
+                    // Performance; a lista de pendências CRESCE (~7 empresas
+                    // reais sem analista passam a aparecer) — comportamento
+                    // desejado: essas empresas acumularam invisíveis
+                    // justamente pelo AND antigo, que só acusava quando os
+                    // DOIS papéis estavam vazios.
+                    ($c->analistaPerformance->isEmpty() || $c->estrategistaPerformance->isEmpty()) ? 'sem_responsavel' : null,
                     (! $c->adman_account_id && ! $c->ml_store_id)             ? 'sem_cust_id' : null,
                     (! $c->email_colaborador)                                 ? 'sem_email_colaborador' : null,
                     ($c->grants_ativos_count < 1)                            ? 'sem_grant_ativo' : null,
@@ -276,7 +287,9 @@ class CompanyController extends Controller
         abort_unless($user && $this->userCanViewCompany($user, $company), 403);
 
         $company->load([
-            'consultor', 'estrategista',
+            // Fase 89 Plan 02 (CART-08): mesma troca de fonte do index() —
+            // chaves 'consultor'/'estrategista' preservadas, Companies/Show.jsx não muda.
+            'analistaPerformance', 'estrategistaPerformance',
             // Phase 62 Plan 62-05 (META-01): eager load pega os 12 results
             // MAIS RECENTES (desc + limit) — o mapper depois reordena ASC
             // para alimentar o chart do <GoalProgressPanel /> temporalmente.
@@ -450,8 +463,8 @@ class CompanyController extends Controller
                 'margin_pct_30d'   => $margin30d,
                 'liquid_margin_30d'=> $liquidMargin30d,
                 'ad_investment_30d'=> $adInvestment30d,
-                'consultor'        => $company->consultor->map->only(['id', 'name'])->values(),
-                'estrategista'     => $company->estrategista->map->only(['id', 'name'])->values(),
+                'consultor'        => $company->analistaPerformance->map->only(['id', 'name'])->values(),
+                'estrategista'     => $company->estrategistaPerformance->map->only(['id', 'name'])->values(),
                 // Phase 62 Plan 62-05 (META-01): shape enriquecido — inclui
                 // value_type/period_type + results[] (ate 12 periodos, ASC pra
                 // chart). Alimenta <GoalProgressPanel /> na Section "Metas Ativas".
