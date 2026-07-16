@@ -719,9 +719,6 @@ class PortfolioController extends Controller
                     'name'            => $u->name,
                     'tipo'            => $tipo,
                     'role'            => $u->role,
-                    // Alias TEMPORARIO consumido por Carteiras.jsx:82 — o Plan
-                    // 90-02 troca o .jsx e remove esta chave no mesmo commit.
-                    'companies_count' => $contadores['empresas_unicas'],
                     'avg_tacos'       => null,
                     'total_revenue'   => 0.0,
                     'avg_margin'      => null,
@@ -812,9 +809,6 @@ class PortfolioController extends Controller
                 'name'            => $u->name,
                 'tipo'            => $tipo,
                 'role'            => $u->role,
-                // Alias TEMPORARIO consumido por Carteiras.jsx:82 — o Plan
-                // 90-02 troca o .jsx e remove esta chave no mesmo commit.
-                'companies_count' => $contadores['empresas_unicas'],
                 'avg_tacos'       => $tacosCarteira,
                 'total_revenue'   => round($totalRevenue, 2),
                 'avg_margin'      => $avgMargin !== null ? round((float) $avgMargin, 2) : null,

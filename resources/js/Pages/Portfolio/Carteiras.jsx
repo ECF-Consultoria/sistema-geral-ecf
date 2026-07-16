@@ -15,6 +15,15 @@ const PERIOD_OPTIONS = [
     { value: '180', label: 'Últimos 6 meses' },
 ];
 
+// Fase 90 (CART-07) — rótulos pt-BR nunca slug cru (regra sistêmica do
+// projeto). Mesma constante conceitual do AdminCarteira.jsx (SETOR_LABELS),
+// duplicada aqui de propósito — sem módulo compartilhado pra só 2 usos.
+const CONTEXTO_OPTIONS = [
+    { value: 'todos', label: 'Todos' },
+    { value: 'performance', label: 'Mercado Livre' },
+    { value: 'shopee', label: 'Shopee' },
+];
+
 // Visão consolidada de carteiras — renderizada na aba Carteira quando o user
 // logado é admin (bifurcação em PortfolioController::own). Cards de TODOS
 // analistas e estrategistas + métricas agregadas (TACOS, faturamento,
@@ -22,9 +31,18 @@ const PERIOD_OPTIONS = [
 export default function PortfolioCarteiras({
     user_portfolios = [],
     period = '30',
+    contexto = 'todos',
+    totais = null,
 }) {
     const applyPeriod = (value) => {
-        router.get(route('portfolio.own'), { period: value }, {
+        router.get(route('portfolio.own'), { period: value, contexto }, {
+            preserveState: true,
+            preserveScroll: true,
+        });
+    };
+
+    const applyContexto = (value) => {
+        router.get(route('portfolio.own'), { period, contexto: value }, {
             preserveState: true,
             preserveScroll: true,
         });
@@ -44,25 +62,57 @@ export default function PortfolioCarteiras({
                         </div>
                     </div>
 
-                    <select
-                        value={period}
-                        onChange={e => applyPeriod(e.target.value)}
-                        className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 focus:border-ecf-yellow/40 transition-all cursor-pointer"
-                    >
-                        {PERIOD_OPTIONS.map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                        <select
+                            value={contexto}
+                            onChange={e => applyContexto(e.target.value)}
+                            title="Filtrar por contexto de serviço"
+                            className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 focus:border-ecf-yellow/40 transition-all cursor-pointer"
+                        >
+                            {CONTEXTO_OPTIONS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </select>
+                        <select
+                            value={period}
+                            onChange={e => applyPeriod(e.target.value)}
+                            className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 focus:border-ecf-yellow/40 transition-all cursor-pointer"
+                        >
+                            {PERIOD_OPTIONS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
+
+                {/* Banner agregado do topo (CART-07/SC4) — soma vem PRONTA do
+                    backend (uniao de company_id, nunca soma ingenua entre cards).
+                    Renderizacao defensiva: so aparece quando o backend manda `totais`. */}
+                {totais && (
+                    <div className="card-ecf rounded-xl px-4 py-2.5 text-white/50 text-xs">
+                        <span className="text-white font-semibold">{totais.empresas_unicas}</span> empresa{totais.empresas_unicas !== 1 ? 's' : ''} única{totais.empresas_unicas !== 1 ? 's' : ''}
+                        {' · '}
+                        <span className="text-white font-semibold">{totais.vinculos_servico}</span> vínculo{totais.vinculos_servico !== 1 ? 's' : ''} de serviço
+                    </div>
+                )}
 
                 {/* Empty state defensivo — improvável em prod com analistas cadastrados */}
                 {user_portfolios.length === 0 ? (
                     <div className="card-ecf rounded-2xl p-10 flex flex-col items-center justify-center text-center">
                         <Briefcase size={28} className="text-white/20 mb-3" />
-                        <p className="text-white/60 text-sm font-semibold">Nenhum profissional com carteira.</p>
-                        <p className="text-white/30 text-xs mt-1">
-                            Configure analistas/estrategistas no setor Performance para visualizar.
-                        </p>
+                        {contexto !== 'todos' ? (
+                            <>
+                                <p className="text-white/60 text-sm font-semibold">Nenhum profissional com vínculos neste contexto.</p>
+                                <p className="text-white/30 text-xs mt-1">Troque o filtro para Todos.</p>
+                            </>
+                        ) : (
+                            <>
+                                <p className="text-white/60 text-sm font-semibold">Nenhum profissional com carteira.</p>
+                                <p className="text-white/30 text-xs mt-1">
+                                    Configure analistas/estrategistas no setor Performance para visualizar.
+                                </p>
+                            </>
+                        )}
                     </div>
                 ) : (
                     <div className="card-ecf rounded-2xl overflow-hidden">
@@ -79,8 +129,16 @@ export default function PortfolioCarteiras({
                                         <div className="min-w-0">
                                             <p className="text-white font-semibold text-[13px] truncate">{u.name}</p>
                                             <p className="text-white/30 text-[11px] mt-0.5">
-                                                {tipoLabel[u.tipo] ?? u.tipo} · {u.companies_count} empresa{u.companies_count !== 1 ? 's' : ''}
+                                                {tipoLabel[u.tipo] ?? u.tipo} · {u.empresas_unicas} empresa{u.empresas_unicas !== 1 ? 's' : ''} · {u.vinculos_servico} vínculo{u.vinculos_servico !== 1 ? 's' : ''}
                                             </p>
+                                            {/* Chip âmbar (CART-07/SC4) — mesmas classes do chip da tabela
+                                                individual (AdminCarteira.jsx). Flag computada aqui dentro do
+                                                .map() (pitfall Rollup — memória feedback_rollup_map_scope_bug). */}
+                                            {u.vinculos_sem_fonte_financeira > 0 && (
+                                                <span className="inline-flex items-center mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-500/10 text-amber-300/80 border-amber-500/20">
+                                                    {u.vinculos_sem_fonte_financeira} vínculo{u.vinculos_sem_fonte_financeira !== 1 ? 's' : ''} sem fonte financeira
+                                                </span>
+                                            )}
                                             {/* Mini-legenda de fontes (Phase 61) — só renderiza quando o backend
                                                 enviou source_counts (flag ON). Ordem canônica: ML → Agregado → Adman →
                                                 Sem integração. Cada variante só aparece se count > 0. */}
