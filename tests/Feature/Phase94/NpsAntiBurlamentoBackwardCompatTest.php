@@ -157,6 +157,7 @@ class NpsAntiBurlamentoBackwardCompatTest extends TestCase
         ]);
 
         $response->assertOk();
+        $response->assertInertia(fn ($page) => $page->component('Nps/ThankYou'));
 
         $survey->refresh();
         $this->assertSame('completed', $survey->status);
@@ -166,5 +167,6 @@ class NpsAntiBurlamentoBackwardCompatTest extends TestCase
         $this->assertFalse($resposta->is_suspicious);
         $this->assertNull($resposta->suspicion_reasons);
         $this->assertNull($resposta->response_ip_address);
+        $this->assertNull($resposta->response_user_agent);
     }
 }
