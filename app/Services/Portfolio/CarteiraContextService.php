@@ -33,15 +33,16 @@ use Illuminate\Support\Facades\DB;
  *    `contratos_servico`) sobre volume trivial (268 linhas de pivot em prod,
  *    medido 2026-07-16). Zero HTTP, zero motivo para Redis aqui.
  *
- * 2. NÃO chama `MetricsProviderFactory`. Dois vocabulários parecidos, NÃO
- *    intercambiáveis: `MetricsProviderFactory::caseFor()` decide qual
+ * 2. NÃO chama o factory de provider técnico de métricas (`App\Services\
+ *    Metrics`, ver 88-RESEARCH.md §Elegibilidade financeira). Dois
+ *    vocabulários parecidos, NÃO intercambiáveis: aquele factory decide qual
  *    PROVIDER TÉCNICO lê revenue/margem de uma empresa ('ambos'|'so-ml'|
  *    'so-adman'|'none', setor-agnóstico). O `financial_source` deste service
  *    é sobre qual SETOR DE SERVIÇO tem qualquer fonte financeira associável
  *    — hoje só `performance` (valor constante `'adman'`), nunca `'ml'`/
  *    `'unified'`. Consumidores futuros (Fase 89+) combinam os dois: primeiro
  *    filtram por `financial_metrics_eligible=true` (este service), DEPOIS
- *    decidem ML vs Adman via `MetricsProviderFactory` para ler o dado de fato.
+ *    decidem ML vs Adman via aquele factory para ler o dado de fato.
  *
  * 3. CTX-05 (ramos legado `servico_id NULL`) é DEFESA contra escrita futura
  *    sem `servico_id`, NÃO migração. Contagem real em prod (2026-07-16, via
