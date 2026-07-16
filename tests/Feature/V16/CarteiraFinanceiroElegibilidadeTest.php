@@ -157,6 +157,12 @@ class CarteiraFinanceiroElegibilidadeTest extends TestCase
     /**
      * CART-03 — empresas mistas na mesma carteira: empresa A elegivel
      * (performance) + empresa B so-shopee. B nao pode contaminar o total.
+     *
+     * Tambem cobre o warning 3 do plan-checker (assert dedicado de
+     * `resumo.empresas_sem_margem`): A e ELEGIVEL com contribution_margin
+     * null (problema de sync de verdade — CONTA), B e Shopee-only com margem
+     * null POR DESIGN (sem fonte financeira — NAO conta). Sem o gate por
+     * elegibilidade no controller, o contador seria 2 e este teste falha.
      */
     public function test_empresas_mistas_carteira_so_soma_elegiveis(): void
     {
@@ -164,12 +170,15 @@ class CarteiraFinanceiroElegibilidadeTest extends TestCase
 
         $analista = User::factory()->create();
 
+        // Empresa A — elegivel (performance), com AdmanMetric mas SEM
+        // contribution_margin (margem null = falha real de sync/reporte).
         $companyA    = Company::factory()->create(['adman_account_id' => 'ACC-A-' . uniqid()]);
         $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
         $this->criarContrato($companyA->id, $servicoPerf, true);
         $this->inserirPivot($companyA->id, $analista->id, 'consultor', $servicoPerf);
         $this->seedAdmanMetric($companyA->id, 1000.0, 100.0);
 
+        // Empresa B — vinculo SO shopee (margem null por design, sem fonte).
         $companyB = Company::factory()->create(['adman_account_id' => 'ACC-B-' . uniqid()]);
         $this->inserirLinhaShopee($companyB->id, $analista->id, 'consultor');
         $this->seedAdmanMetric($companyB->id, 500.0, 50.0);
@@ -181,5 +190,10 @@ class CarteiraFinanceiroElegibilidadeTest extends TestCase
         $this->assertCount(2, $props['empresas'], 'As 2 empresas devem aparecer na listagem (visibilidade nao e gated).');
         $this->assertSame(1000.0, $props['resumo']['total_faturamento'], 'Empresa B (so-shopee) nao pode contaminar o total.');
         $this->assertSame(100.0, $props['resumo']['total_ad_spend'], 'Empresa B (so-shopee) nao pode contaminar o total de ad_spend.');
+
+        // Warning 3 do plan-checker — empresas_sem_margem conta SO elegiveis:
+        // A (elegivel, margem null = sync) CONTA; B (Shopee-only, margem null
+        // por design) NAO conta. Implementacao sem o filtro devolveria 2.
+        $this->assertSame(1, $props['resumo']['empresas_sem_margem'], 'So a empresa ELEGIVEL com margem null conta; Shopee-only (sem fonte por design) nao entra no contador.');
     }
 }
