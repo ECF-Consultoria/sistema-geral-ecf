@@ -10,6 +10,7 @@ use App\Models\NpsRespostaCustomizada;
 use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
+use App\Models\NpsSurveyEvent;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
@@ -516,7 +517,7 @@ class NpsController extends Controller
      * removidas — Plan 31-03 reescreve Respond.jsx para consumir as
      * chaves novas.
      */
-    public function respond(string $token)
+    public function respond(Request $request, string $token)
     {
         // Phase 71 Plan 01 — eager-load `template.questions.options` na MESMA
         // query do survey para o form dinâmico v15.0 (REQ NPS-D-01). Relations
@@ -532,12 +533,46 @@ class NpsController extends Controller
             ->where('token', $token)
             ->firstOrFail();
 
+        // Phase 94 AB-94-1 — rastro de abertura (roda em TODO GET, mesmo
+        // completed/expired: reaberturas de link vencido/já respondido são
+        // sinal técnico relevante para a Fase 95). first_opened_at NUNCA é
+        // sobrescrito (decisão travada do CONTEXT) — sempre `??` contra o
+        // valor já persistido.
+        $survey->update([
+            'first_opened_at' => $survey->first_opened_at ?? now(),
+            'last_opened_at'  => now(),
+            'open_count'      => $survey->open_count + 1,
+            'open_ip_address' => $request->ip(),
+            'open_user_agent' => $request->userAgent(),
+        ]);
+
+        NpsSurveyEvent::create([
+            'survey_id'  => $survey->id,
+            'event_type' => NpsSurveyEvent::TYPE_OPENED,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'user_id'    => auth()->id(), // nullable — sessão interna coexistente (Regra 4 / Fase 95)
+            'metadata'   => ['first_open' => $survey->open_count === 1],
+        ]);
+
         if ($survey->status === 'completed') {
             return Inertia::render('Nps/AlreadyCompleted');
         }
 
         if ($survey->isExpired()) {
             $survey->update(['status' => 'expired']);
+
+            // Phase 94 AB-94-3 — único lugar do codebase que transiciona o
+            // status para 'expired' (expiração é lazy, não há job agendado).
+            NpsSurveyEvent::create([
+                'survey_id'  => $survey->id,
+                'event_type' => NpsSurveyEvent::TYPE_EXPIRED,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'user_id'    => auth()->id(),
+                'metadata'   => null,
+            ]);
+
             return Inertia::render('Nps/Expired');
         }
 
