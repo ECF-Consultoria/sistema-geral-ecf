@@ -167,6 +167,53 @@ const COLS_COM_ORIGEM = new Set([
 // direto. Array constante de modulo: nao recriar a cada render.
 const RENDERERS = [DropdownCell, origemCellRenderer];
 
+// ═══════════════════════════════════════════════════════════════════════
+// GRUPOS DE COLUNA: cor + collapse (padrão Amazon/Excel).
+//
+// A referência do usuário é a aba "Modelo" de um template Amazon (477 colunas,
+// 10 grupos por cor). O PADRÃO foi copiado — cor por grupo, obrigatórios na
+// frente —, os TONS não: os da Amazon são para planilha branca (pêssego, verde
+// limão) e ficariam ilegíveis no dark theme. Aqui cada grupo é um tom bem
+// dessaturado sobre o `ecf-card`, só o suficiente para separar as faixas sem
+// competir com o conteúdo nem com o amarelo da seleção.
+//
+// `colapsavel: false` nos grupos que são o mínimo para trabalhar (não faz
+// sentido esconder Título/Preço). "Características secundárias" nasce recolhido:
+// é o grupo que mais infla (dezenas de atributos opcionais por categoria).
+// ═══════════════════════════════════════════════════════════════════════
+const G_BASICO   = 'Dados básicos';
+const G_PRECO    = 'Preço e estoque';
+const G_IDENT    = 'Identificação';
+const G_DIMENSAO = 'Dimensões';
+const G_FOTOS    = 'Fotos';
+const G_SECUND   = 'Características secundárias';
+
+const GRUPOS = {
+    [G_BASICO]:   { cor: 'rgba(96,165,250,0.05)',  colapsavel: false }, // blue-400
+    [G_PRECO]:    { cor: 'rgba(52,211,153,0.05)',  colapsavel: false }, // emerald-400
+    [G_IDENT]:    { cor: 'rgba(167,139,250,0.05)', colapsavel: true },  // violet-400
+    [G_DIMENSAO]: { cor: 'rgba(56,189,248,0.05)',  colapsavel: true },  // sky-400
+    [G_FOTOS]:    { cor: 'rgba(251,191,36,0.05)',  colapsavel: true },  // amber-400 (= "imagens" da Amazon)
+    [G_SECUND]:   { cor: 'rgba(148,163,184,0.05)', colapsavel: true },  // slate-400
+};
+
+// Ficha técnica leva o nome da categoria no título, então casa por prefixo
+const PREFIXO_FICHA = 'Ficha técnica';
+const COR_FICHA = 'rgba(244,114,182,0.05)'; // pink-400
+
+// Grupos que começam recolhidos
+const RECOLHIDOS_INICIAIS = [G_SECUND];
+
+// A cor entra como themeOverride da coluna (a lib aceita por coluna — nativo)
+const temaDoGrupo = (grupo) => {
+    if (grupo?.startsWith(PREFIXO_FICHA)) return { bgCell: COR_FICHA };
+    const g = GRUPOS[grupo];
+    return g ? { bgCell: g.cor } : undefined;
+};
+
+const grupoColapsavel = (grupo) =>
+    grupo?.startsWith(PREFIXO_FICHA) ? true : (GRUPOS[grupo]?.colapsavel ?? false);
+
 // ─── Colunas base, na ordem visual de hoje ───
 // Esta ordem tambem e a ordem de mapeamento do paste — nao reordenar sem
 // conferir. Mudancas deliberadas vs. a tabela antiga:
@@ -175,23 +222,23 @@ const RENDERERS = [DropdownCell, origemCellRenderer];
 //   (b) "Foto" saiu — era placeholder decorativo ("+" que nao fazia nada; o
 //       payload sempre mandou pictures: []). Nao e capacidade perdida.
 const COLS_BASE = [
-    { id: 'title',         title: 'Título',       width: 240, req: true },
-    { id: 'tier',          title: 'Tipo',         width: 110 },
-    { id: 'price',         title: 'Preço',        width: 100, req: true, num: true },
-    { id: 'estoque',       title: 'Estoque',      width: 90,  req: true, num: true },
-    { id: 'sku',           title: 'SKU',          width: 120 },
-    { id: 'gtin',          title: 'GTIN',         width: 140, num: true },
-    { id: 'pesoG',         title: 'Peso g',       width: 90,  num: true },
-    { id: 'alturaCm',      title: 'Altura cm',    width: 90,  num: true },
-    { id: 'larguraCm',     title: 'Largura cm',   width: 90,  num: true },
-    { id: 'comprimentoCm', title: 'Comprim. cm',  width: 100, num: true },
+    { id: 'title',         title: 'Título',       width: 240, req: true, grupo: G_BASICO },
+    { id: 'tier',          title: 'Tipo',         width: 110,            grupo: G_BASICO },
+    { id: 'price',         title: 'Preço',        width: 100, req: true, num: true, grupo: G_PRECO },
+    { id: 'estoque',       title: 'Estoque',      width: 90,  req: true, num: true, grupo: G_PRECO },
+    { id: 'sku',           title: 'SKU',          width: 120,            grupo: G_IDENT },
+    { id: 'gtin',          title: 'GTIN',         width: 140, num: true, grupo: G_IDENT },
+    { id: 'pesoG',         title: 'Peso g',       width: 90,  num: true, grupo: G_DIMENSAO },
+    { id: 'alturaCm',      title: 'Altura cm',    width: 90,  num: true, grupo: G_DIMENSAO },
+    { id: 'larguraCm',     title: 'Largura cm',   width: 90,  num: true, grupo: G_DIMENSAO },
+    { id: 'comprimentoCm', title: 'Comprim. cm',  width: 100, num: true, grupo: G_DIMENSAO },
     // Fotos por URL (COL-85-1) — a 1ª preenchida vira a capa. Obrigatória p/ Premium.
-    { id: 'imagemUrl',     title: 'Foto (URL)',   width: 200, grupo: 'Fotos' },
-    { id: 'imagemUrl2',    title: 'Foto 2',       width: 150, grupo: 'Fotos' },
-    { id: 'imagemUrl3',    title: 'Foto 3',       width: 150, grupo: 'Fotos' },
-    { id: 'imagemUrl4',    title: 'Foto 4',       width: 150, grupo: 'Fotos' },
-    { id: 'imagemUrl5',    title: 'Foto 5',       width: 150, grupo: 'Fotos' },
-    { id: 'imagemUrl6',    title: 'Foto 6',       width: 150, grupo: 'Fotos' },
+    { id: 'imagemUrl',     title: 'Foto (URL)',   width: 200, grupo: G_FOTOS },
+    { id: 'imagemUrl2',    title: 'Foto 2',       width: 150, grupo: G_FOTOS },
+    { id: 'imagemUrl3',    title: 'Foto 3',       width: 150, grupo: G_FOTOS },
+    { id: 'imagemUrl4',    title: 'Foto 4',       width: 150, grupo: G_FOTOS },
+    { id: 'imagemUrl5',    title: 'Foto 5',       width: 150, grupo: G_FOTOS },
+    { id: 'imagemUrl6',    title: 'Foto 6',       width: 150, grupo: G_FOTOS },
 ];
 
 // ─── Tipo de anuncio: rotulo legivel <-> codigo do ML ───
@@ -226,19 +273,28 @@ export default function GradeAnuncioGlide({
     // Selecao CONTROLADA: a toolbar precisa saber quais linhas estao marcadas.
     const [selecao, setSelecao] = useState(SEM_SELECAO);
 
+    // Grupos de coluna recolhidos (VIS-87-2). "Características secundárias" nasce
+    // recolhido: e o grupo que mais infla (dezenas de opcionais por categoria).
+    const [recolhidos, setRecolhidos] = useState(RECOLHIDOS_INICIAIS);
+
+    const alternarGrupo = useCallback((grupo) => {
+        if (!grupoColapsavel(grupo)) return; // Dados básicos/Preço não recolhem
+        setRecolhidos((prev) => prev.includes(grupo)
+            ? prev.filter((g) => g !== grupo)
+            : [...prev, grupo]);
+    }, []);
+
     // ─── Colunas = 10 base + SO os obrigatorios da categoria ATIVA (SHEET-02) ───
     // Nunca a uniao das categorias de todas as abas.
     const colunas = useMemo(() => {
         // Coluna de status: reproduz o conteudo da antiga coluna "#" sticky MENOS o
         // numero (o numero agora vem do rowMarkers="clickable-number" do Plan 04).
-        const status = { id: 'st', title: '', width: 44, group: 'Campos base', _st: true };
+        const status = { id: 'st', title: '', width: 44, group: G_BASICO, _st: true };
         const base = COLS_BASE.map((c) => ({
             id: c.id,
             title: c.id === 'title' ? `Título (${aba?.max_title_length ?? 60}) *` : `${c.title}${c.req ? ' *' : ''}`,
             width: c.width,
-            // Fotos ganham grupo próprio no cabeçalho (o agrupamento por cor e o
-            // collapse chegam na Phase 86)
-            group: c.grupo ?? 'Campos base',
+            group: c.grupo ?? G_BASICO,
             _num: !!c.num,
         }));
         // Ficha técnica: os obrigatorios da categoria ATIVA (marcados com *)
@@ -258,11 +314,36 @@ export default function GradeAnuncioGlide({
             id: `attr:${o.id}`,
             title: o.name,
             width: 150,
-            group: 'Características secundárias',
+            group: G_SECUND,
             _attr: o,
         }));
-        return [status, ...base, ...dinamicas, ...secundarias];
-    }, [aba?.obrigatorios, aba?.opcionais, aba?.max_title_length, nomeCat]);
+
+        const todas = [status, ...base, ...dinamicas, ...secundarias];
+
+        return todas
+            // Grupo recolhido some da tela — o DADO continua na linha e no payload
+            // (montarPayloadLinha lê o estado, não as colunas visíveis).
+            .filter((c) => !recolhidos.includes(c.group))
+            // Cor por grupo: nativo da lib (GridColumn.themeOverride)
+            .map((c) => {
+                const t = temaDoGrupo(c.group);
+                return t ? { ...c, themeOverride: t } : c;
+            });
+    }, [aba?.obrigatorios, aba?.opcionais, aba?.max_title_length, nomeCat, recolhidos]);
+
+    // ─── Grupos recolhidos: o que existe mas está escondido ───
+    // Só o cabeçalho do grupo some junto com as colunas; para reabrir, os chips
+    // abaixo da toolbar (o cabeçalho recolhido não fica clicável no canvas).
+    const gruposRecolhiveis = useMemo(() => {
+        const vistos = [];
+        [...COLS_BASE.map((c) => c.grupo ?? G_BASICO),
+         `${PREFIXO_FICHA} · ${nomeCat}`,
+         G_SECUND,
+        ].forEach((g) => {
+            if (g && grupoColapsavel(g) && !vistos.includes(g)) vistos.push(g);
+        });
+        return vistos;
+    }, [nomeCat]);
 
     // GTINs ja usados na aba (nao gerar repetido) — mesma regra da grade antiga
     const gtinsUsados = useMemo(
@@ -651,6 +732,35 @@ export default function GradeAnuncioGlide({
                 </div>
             </div>
 
+            {/* ─── Grupos de coluna: mostrar/esconder (VIS-87-2) ─── */}
+            {/* Clicar no cabecalho do grupo no canvas recolhe; aqui se reabre (e se ve
+                de relance o que esta escondido). A cor do chip e a do grupo na grade. */}
+            {gruposRecolhiveis.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5 border-b border-white/[0.08] px-3 py-1.5">
+                    <span className="text-[10px] uppercase tracking-wide text-white/25">Grupos</span>
+                    {gruposRecolhiveis.map((g) => {
+                        const oculto = recolhidos.includes(g);
+                        return (
+                            <button
+                                key={g}
+                                type="button"
+                                onClick={() => alternarGrupo(g)}
+                                title={oculto ? `Mostrar ${g}` : `Esconder ${g} (os dados não são apagados)`}
+                                className={cn(
+                                    'inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] transition',
+                                    oculto
+                                        ? 'border-white/[0.08] text-white/30 hover:border-white/20 hover:text-white/60'
+                                        : 'border-white/[0.12] bg-white/[0.04] text-white/70 hover:border-white/25',
+                                )}
+                            >
+                                <span className="font-mono text-[10px]">{oculto ? '+' : '−'}</span>
+                                {g.startsWith(PREFIXO_FICHA) ? PREFIXO_FICHA : g}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             <DataEditor
                 theme={temaEcf}
                 columns={colunas}
@@ -660,6 +770,10 @@ export default function GradeAnuncioGlide({
                 customRenderers={RENDERERS}
                 // Realce da linha: erro local (vermelho) > aviso do ML (ambar)
                 getRowThemeOverride={getRowThemeOverride}
+                // VIS-87-2: clique no cabecalho do grupo recolhe (o "- Dimensoes" do Excel).
+                // Reabrir e pelos chips acima da grade: recolhido, o cabecalho some junto
+                // com as colunas e nao ha onde clicar no canvas.
+                onGroupHeaderClicked={(col) => alternarGrupo(colunas[col]?.group)}
                 // SHEET2-03 — copiar/colar: getCellsForSelection habilita o Ctrl+C
                 // (copy e desabilitado por padrao na lib); onPaste intercepta o
                 // Ctrl+V e faz o split de TSV/CSV do Excel/Sheets.

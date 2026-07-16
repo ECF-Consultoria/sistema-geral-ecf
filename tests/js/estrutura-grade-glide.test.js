@@ -105,3 +105,32 @@ test('botões Desfazer/Refazer refletem se há o que desfazer', () => {
     assert.match(fonte, /podeRefazer/);
     assert.match(fonte, /Desfazer \(Ctrl\+Z\)/, 'o atalho e invisivel — o title ensina');
 });
+
+// ─── FASE 87: cores por grupo + collapse ───
+
+test('VIS-87-1: cor por grupo via themeOverride (nativo da lib)', () => {
+    assert.match(fonte, /temaDoGrupo/);
+    assert.match(fonte, /themeOverride: t/, 'a cor entra como themeOverride da coluna');
+    assert.match(fonte, /const GRUPOS = \{/);
+});
+
+test('VIS-87-2: clique no cabeçalho do grupo recolhe', () => {
+    assert.match(fonte, /onGroupHeaderClicked=/);
+    assert.match(fonte, /alternarGrupo/);
+});
+
+test('Características secundárias nasce recolhido (é o grupo que mais infla)', () => {
+    assert.match(fonte, /RECOLHIDOS_INICIAIS = \[G_SECUND\]/);
+});
+
+test('Dados básicos e Preço NÃO recolhem (são o mínimo para trabalhar)', () => {
+    assert.match(fonte, /\[G_BASICO\]:\s*\{[^}]*colapsavel: false/);
+    assert.match(fonte, /\[G_PRECO\]:\s*\{[^}]*colapsavel: false/);
+});
+
+test('VIS-87-3: recolher esconde a coluna, não apaga o dado', () => {
+    // O filtro é só de exibição; montarPayloadLinha lê o estado da linha, não as colunas
+    assert.match(fonte, /filter\(\(c\) => !recolhidos\.includes\(c\.group\)\)/);
+    assert.doesNotMatch(fonte, /delete l\[|linha\[c\.id\] = ''/,
+        'recolher grupo nao pode mexer no dado da linha');
+});
