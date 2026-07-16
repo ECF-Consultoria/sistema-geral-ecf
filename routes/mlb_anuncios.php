@@ -43,6 +43,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
         Route::get('/massa/{company}/produtos', [MlbAnuncioController::class, 'produtosDoClienteMassa'])
             ->name('massa.produtos');
 
+        // ─── Histórico dos publicados (Phase 86) — 3ª aba, base do "Anunciar semelhante" ───
+        // HIST-86-3: massa()/index() filtram whereIn([rascunho, validado, erro, publicando]);
+        // 'publicado' fica de fora e o anúncio some da tela ao dar certo. Esta consulta o traz
+        // de volta. Mesmo gate das outras (role:admin no grupo).
+        Route::get('/historico/{company}', [MlbAnuncioController::class, 'historico'])->name('historico');
+
         // DRAFT-02: cria rascunho pré-preenchido a partir de produto da planilha do cliente (Phase 76)
         // Nome resolvido: mlb.anuncios.rascunho.por-produto (consumido pelo front em 76-02)
         Route::post('/wizard/{company}/rascunho-por-produto', [MlbAnuncioController::class, 'rascunhoPorProduto'])

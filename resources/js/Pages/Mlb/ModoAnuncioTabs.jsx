@@ -1,5 +1,5 @@
 import { router } from '@inertiajs/react';
-import { FileText, Grid3x3 } from 'lucide-react';
+import { FileText, Grid3x3, History } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -13,8 +13,10 @@ import { cn } from '@/lib/utils';
 
 // ─── Itens do segmented control: modo → rota + ícone ───
 const MODOS = [
-    { chave: 'individual', label: 'Individual', rota: 'mlb.anuncios.wizard', Icone: FileText },
-    { chave: 'massa',      label: 'Em massa',    rota: 'mlb.anuncios.massa',  Icone: Grid3x3 },
+    { chave: 'individual', label: 'Individual', rota: 'mlb.anuncios.wizard',    Icone: FileText },
+    { chave: 'massa',      label: 'Em massa',    rota: 'mlb.anuncios.massa',     Icone: Grid3x3 },
+    // Acervo dos publicados — base do "Anunciar semelhante" (Phase 86)
+    { chave: 'historico',  label: 'Histórico',   rota: 'mlb.anuncios.historico', Icone: History },
 ];
 
 export default function ModoAnuncioTabs({ empresaId, modo }) {

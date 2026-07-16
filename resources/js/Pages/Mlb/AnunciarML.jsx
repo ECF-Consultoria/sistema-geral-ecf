@@ -908,7 +908,7 @@ function VariacaoEditor({
  * WIZ-08: preview lateral em tempo real (título/preço/imagem/empresa/breadcrumb).
  * PRICE-01/02/03: SimuladorPreco embutido na etapa de preço.
  */
-export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [] }) {
+export default function AnunciarML({ empresa = null, rascunhos = [], produtos = [], abrirRascunhoId = null }) {
     const [rascunhoId, setRascunhoId] = useState(null);
 
     // ─── Navegação do wizard (WIZ-01) ───
@@ -1102,6 +1102,20 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         setErros(null);
         setFlash('Rascunho aberto para edição.');
     };
+
+    // ─── HIST-86-2: abre sozinho o rascunho vindo do "Anunciar semelhante" ───
+    // O histórico clona o anúncio (duplicar-template) e manda ?rascunho=N. Sem o
+    // parâmetro, `abrirRascunhoId` é null e o efeito sai na primeira linha.
+    // Fica DEPOIS de `abrirRascunho` de propósito: `const` não sofre hoisting, e
+    // referenciá-la antes daria TDZ — o mesmo erro que já deixou este wizard com
+    // tela preta uma vez (commit 83d4a70).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        if (!abrirRascunhoId) return;
+        const alvo = (rascunhos ?? []).find((r) => r.id === abrirRascunhoId);
+        if (alvo) abrirRascunho(alvo);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [abrirRascunhoId]);
 
     // ─── Exclui um rascunho da lista (não remove o anúncio no ML, só a cópia local) ───
     const excluirRascunho = async (r) => {

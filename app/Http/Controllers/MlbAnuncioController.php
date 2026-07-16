@@ -112,6 +112,9 @@ class MlbAnuncioController extends Controller
                 ]),
             // DRAFT-01: produtos do cliente lidos de mlb_implementacoes.dados (se houver vínculo)
             'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
+            // HIST-86-2: quando o "Anunciar semelhante" do histórico manda ?rascunho=N,
+            // o wizard já abre com o clone carregado. Sem o parâmetro vem null e nada muda.
+            'abrirRascunhoId' => $request->query('rascunho') ? (int) $request->query('rascunho') : null,
         ]);
     }
 
@@ -178,6 +181,66 @@ class MlbAnuncioController extends Controller
                 ]),
             // SHEET-04: produtos do cliente lidos de mlb_implementacoes.dados (se houver vínculo)
             'produtos'  => $this->montarProdutosDoCliente($mlbEmpresa?->implementacao?->dados),
+        ]);
+    }
+
+    /**
+     * HIST-86-1/HIST-86-3 — Histórico: os anúncios já PUBLICADOS da empresa.
+     *
+     * Por que precisa de consulta própria: `massa()` e `index()` filtram
+     * `whereIn([rascunho, validado, erro, publicando])` — 'publicado' fica de fora
+     * de propósito (a grade edita o que ainda não foi), então o anúncio some da
+     * tela justamente quando dá certo. Esta é a consulta que o traz de volta, e é
+     * a base do "Anunciar semelhante".
+     *
+     * Retorna item enxuto (sem `payload`): a listagem só precisa mostrar; quem
+     * clona é o `duplicarComoTemplate`, que lê o payload direto do banco.
+     */
+    public function historico(Request $request, Company $company)
+    {
+        // Só empresas com conta ML conectada (mesma trava do wizard e da grade)
+        $company->loadMissing('mlToken');
+        abort_unless($company->mlToken !== null, 404, 'Empresa sem conta ML conectada.');
+        // (escopo por publicador deferido — gate role:admin garante que é admin)
+
+        $busca = trim((string) $request->query('busca', ''));
+
+        $anuncios = MlAnuncioRascunho::where('company_id', $company->id)
+            ->where('status', MlAnuncioRascunho::STATUS_PUBLICADO)
+            ->when($busca !== '', function ($q) use ($busca) {
+                // O grupo é OBRIGATÓRIO: um orWhere solto sobe ao topo do WHERE e
+                // anula o escopo por company_id/status — vazaria anúncio de outra
+                // empresa na busca.
+                $q->where(function ($s) use ($busca) {
+                    $s->where('payload->title', 'like', "%{$busca}%")
+                      ->orWhere('sku_origem', 'like', "%{$busca}%");
+                });
+            })
+            ->orderByDesc('published_at')
+            ->orderByDesc('id')
+            ->paginate(24)
+            ->withQueryString() // preserva ?busca= ao paginar
+            // through() mapeia preservando o envelope do paginator (map() devolveria
+            // Collection e quebraria os links de paginação)
+            ->through(fn ($r) => [
+                'id'           => $r->id,
+                'titulo'       => (string) data_get($r->payload, 'title', ''),
+                'preco'        => data_get($r->payload, 'price'),
+                'foto'         => data_get($r->payload, 'pictures.0.source'),
+                'sku_origem'   => $r->sku_origem,
+                'listing_tier' => $r->listing_tier,
+                'category_id'  => $r->category_id,
+                'published_at' => $r->published_at,
+                'ml_item_id'   => $r->ml_item_id,
+            ]);
+
+        return Inertia::render('Mlb/AnunciosHistorico', [
+            'empresa'  => [
+                'id'   => $company->id,
+                'nome' => $company->name,
+            ],
+            'anuncios' => $anuncios,
+            'filtros'  => ['busca' => $busca],
         ]);
     }
 
