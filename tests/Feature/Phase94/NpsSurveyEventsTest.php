@@ -599,4 +599,102 @@ class NpsSurveyEventsTest extends TestCase
         $this->artisan('nps:disparar-mensal')->assertSuccessful();
         $this->assertSame($totalEventosAposPrimeiraRodada, NpsSurveyEvent::count());
     }
+
+    // ═══ Task 2 — linha do tempo completa E2E (Success Criteria 4 da fase) ═══
+
+    /**
+     * Fluxo E2E AUTOMÁTICO: nps:disparar-mensal (email) → GET no link →
+     * POST v15 completo. Timeline exata: generated → sent_email → opened →
+     * submitted.
+     */
+    public function test_timeline_e2e_fluxo_automatico_generated_sent_email_opened_submitted(): void
+    {
+        Mail::fake();
+        Carbon::setTestNow(Carbon::create(2026, 7, 16, 9, 0, 0, 'America/Sao_Paulo'));
+
+        $empresa = $this->criarEmpresaElegivelDisparoMensal();
+
+        $this->artisan('nps:disparar-mensal')->assertSuccessful();
+
+        $survey = NpsSurvey::where('company_id', $empresa->id)->firstOrFail();
+
+        // Cliente abre o link (evento 'opened').
+        $this->get("/nps/{$survey->token}")->assertOk();
+
+        // Cliente responde (evento 'submitted') — monta answers para todas as
+        // perguntas do template resolvido (seed "NPS Padrão": estrategista +
+        // analista + empresa, escala 1..5).
+        $answers = [];
+        foreach (NpsTemplateQuestion::where('template_id', $survey->template_id)->get() as $pergunta) {
+            $opcao = NpsTemplateOption::where('question_id', $pergunta->id)->where('peso', 4)->firstOrFail();
+            $answers[(string) $pergunta->id] = $opcao->id;
+        }
+
+        $this->post("/nps/{$survey->token}", ['answers' => $answers])->assertOk();
+
+        $survey->refresh();
+        $this->assertSame('completed', $survey->status);
+
+        $sequenciaEventos = $survey->events()->orderBy('id')->pluck('event_type')->all();
+
+        $this->assertSame(
+            [
+                NpsSurveyEvent::TYPE_GENERATED,
+                NpsSurveyEvent::TYPE_SENT_EMAIL,
+                NpsSurveyEvent::TYPE_OPENED,
+                NpsSurveyEvent::TYPE_SUBMITTED,
+            ],
+            $sequenciaEventos
+        );
+    }
+
+    /**
+     * Fluxo E2E MANUAL: generate() via HTTP admin → GET → GET de novo → POST.
+     * Timeline: generated → opened → opened → submitted, com o 'generated'
+     * carregando user_id do admin e metadata.origem='manual'.
+     */
+    public function test_timeline_e2e_fluxo_manual_generated_opened_opened_submitted(): void
+    {
+        $admin   = User::factory()->create(['role' => 'admin']);
+        $empresa = $this->criarEmpresa();
+
+        $this->actingAs($admin)
+            ->post('/nps/generate', ['company_id' => $empresa->id])
+            ->assertStatus(302);
+
+        $survey = NpsSurvey::where('company_id', $empresa->id)->firstOrFail();
+
+        // Primeira abertura.
+        $this->get("/nps/{$survey->token}")->assertOk();
+        // Segunda abertura (mesmo link, re-aberto).
+        $this->get("/nps/{$survey->token}")->assertOk();
+
+        // Responde — monta answers para todas as perguntas do template resolvido.
+        $answers = [];
+        foreach (NpsTemplateQuestion::where('template_id', $survey->template_id)->get() as $pergunta) {
+            $opcao = NpsTemplateOption::where('question_id', $pergunta->id)->where('peso', 4)->firstOrFail();
+            $answers[(string) $pergunta->id] = $opcao->id;
+        }
+
+        $this->post("/nps/{$survey->token}", ['answers' => $answers])->assertOk();
+
+        $survey->refresh();
+        $this->assertSame('completed', $survey->status);
+
+        $eventos = $survey->events()->orderBy('id')->get();
+
+        $this->assertSame(
+            [
+                NpsSurveyEvent::TYPE_GENERATED,
+                NpsSurveyEvent::TYPE_OPENED,
+                NpsSurveyEvent::TYPE_OPENED,
+                NpsSurveyEvent::TYPE_SUBMITTED,
+            ],
+            $eventos->pluck('event_type')->all()
+        );
+
+        $eventoGerado = $eventos->firstWhere('event_type', NpsSurveyEvent::TYPE_GENERATED);
+        $this->assertSame($admin->id, $eventoGerado->user_id);
+        $this->assertSame('manual', $eventoGerado->metadata['origem']);
+    }
 }
