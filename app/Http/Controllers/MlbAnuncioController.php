@@ -848,19 +848,56 @@ class MlbAnuncioController extends Controller
         // que se digita numa célula — é a referência a uma tabela de medidas que o
         // wizard resolve com uma UI própria (rota rascunho.grades).
         // ═══════════════════════════════════════════════════════════════════
+        $ehGrid = fn (string $id) => $id === 'SIZE_GRID_ID' || str_contains($id, 'GRID');
+
         $obrigatorios = collect($atributos)
-            ->filter(function ($a) {
+            ->filter(function ($a) use ($ehGrid) {
                 $id = (string) data_get($a, 'id', '');
 
                 return data_get($a, 'tags.required') === true
-                    && $id !== 'SIZE_GRID_ID'
-                    && ! str_contains($id, 'GRID');
+                    && ! $ehGrid($id);
             })
             ->map(fn ($a) => [
                 'id'         => data_get($a, 'id'),
                 'name'       => data_get($a, 'name'),
                 'value_type' => data_get($a, 'value_type'),
                 // values só faz sentido para listas (a grade monta o <select> a partir daqui)
+                'values'     => data_get($a, 'value_type') === 'list'
+                    ? array_values((array) data_get($a, 'values', []))
+                    : [],
+            ])
+            ->values()
+            ->all();
+
+        // ═══════════════════════════════════════════════════════════════════
+        // Características secundárias: os atributos OPCIONAIS da categoria.
+        //
+        // O ML pede esses campos no anúncio dele e eles pesam na qualidade/busca —
+        // não são enfeite. O wizard já os oferece (seção "Características
+        // secundárias"); a grade em massa não os recebia, então quem publica em
+        // lote não tinha como preenchê-los. Paridade: o que existe no individual
+        // tem que existir no em massa.
+        //
+        // Filtro espelha o do wizard (AnunciarML.jsx:1258): fora os obrigatórios
+        // (que já vão em `obrigatorios`), os de variação, os ocultos/read-only, as
+        // grades de moda, e os que têm campo próprio na grade (GTIN/SKU) ou UI
+        // dedicada (CATALOG_PRODUCT_ID).
+        // ═══════════════════════════════════════════════════════════════════
+        $opcionais = collect($atributos)
+            ->filter(function ($a) use ($ehGrid) {
+                $id = (string) data_get($a, 'id', '');
+
+                return data_get($a, 'tags.required') !== true
+                    && data_get($a, 'tags.allow_variations') !== true
+                    && data_get($a, 'tags.hidden') !== true
+                    && data_get($a, 'tags.read_only') !== true
+                    && ! $ehGrid($id)
+                    && ! in_array($id, ['CATALOG_PRODUCT_ID', 'GTIN', 'SELLER_SKU'], true);
+            })
+            ->map(fn ($a) => [
+                'id'         => data_get($a, 'id'),
+                'name'       => data_get($a, 'name'),
+                'value_type' => data_get($a, 'value_type'),
                 'values'     => data_get($a, 'value_type') === 'list'
                     ? array_values((array) data_get($a, 'values', []))
                     : [],
@@ -877,7 +914,8 @@ class MlbAnuncioController extends Controller
         return response()->json([
             'caminho'          => $caminho,          // array de strings (breadcrumb) — SHEET-03
             'max_title_length' => $maxTitulo,        // int
-            'obrigatorios'     => $obrigatorios,     // só os obrigatórios da categoria — SHEET-02
+            'obrigatorios'     => $obrigatorios,     // obrigatórios da categoria (ficha técnica)
+            'opcionais'        => $opcionais,        // características secundárias (paridade com o wizard)
             'catalog_required' => $catalogRequired,  // bool
         ]);
     }

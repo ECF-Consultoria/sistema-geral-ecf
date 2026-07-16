@@ -241,6 +241,7 @@ export default function GradeAnuncioGlide({
             group: c.grupo ?? 'Campos base',
             _num: !!c.num,
         }));
+        // Ficha técnica: os obrigatorios da categoria ATIVA (marcados com *)
         const dinamicas = (aba?.obrigatorios ?? []).map((o) => ({
             id: `attr:${o.id}`,
             title: `${o.name} *`,
@@ -248,8 +249,20 @@ export default function GradeAnuncioGlide({
             group: `Ficha técnica · ${nomeCat}`,
             _attr: o, // getCellContent usa _attr.value_type / _attr.values
         }));
-        return [status, ...base, ...dinamicas];
-    }, [aba?.obrigatorios, aba?.max_title_length, nomeCat]);
+        // Caracteristicas secundarias: os OPCIONAIS da categoria. Nao bloqueiam a
+        // publicacao, mas o ML pede e elas pesam na qualidade/busca do anuncio —
+        // paridade com a secao "Caracteristicas secundarias" do wizard.
+        // Grupo proprio pra nao se confundirem com os obrigatorios (o collapse por
+        // grupo vem na fase de agrupamento visual).
+        const secundarias = (aba?.opcionais ?? []).map((o) => ({
+            id: `attr:${o.id}`,
+            title: o.name,
+            width: 150,
+            group: 'Características secundárias',
+            _attr: o,
+        }));
+        return [status, ...base, ...dinamicas, ...secundarias];
+    }, [aba?.obrigatorios, aba?.opcionais, aba?.max_title_length, nomeCat]);
 
     // GTINs ja usados na aba (nao gerar repetido) — mesma regra da grade antiga
     const gtinsUsados = useMemo(

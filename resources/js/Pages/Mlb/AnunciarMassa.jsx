@@ -159,6 +159,9 @@ export default function AnunciarMassa({ empresa = {}, rascunhos = [], produtos =
                         ...a,
                         caminho: d.caminho ?? [],
                         obrigatorios: d.obrigatorios ?? [],
+                        // Características secundárias (atributos opcionais da categoria):
+                        // o ML pede no anúncio dele e elas pesam na qualidade/busca.
+                        opcionais: d.opcionais ?? [],
                         max_title_length: d.max_title_length ?? 60,
                         catalog_required: !!d.catalog_required,
                         carregando: false,

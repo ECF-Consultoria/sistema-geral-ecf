@@ -205,13 +205,28 @@ class GradeMassaTest extends TestCase
                     'value_type' => 'string',
                     'tags'       => ['required' => true],
                 ],
-                // Obrigatório mas allow_variations → DEVE ser EXCLUÍDO (vai em Variações)
+                // Obrigatório + allow_variations → ENTRA (grade = anúncio simples; o ML
+                // exige na lista `attributes` — erro 400 real de 2026-07-15)
                 [
                     'id'         => 'COLOR',
                     'name'       => 'Cor',
                     'value_type' => 'list',
                     'tags'       => ['required' => true, 'allow_variations' => true],
                     'values'     => [['id' => '1', 'name' => 'Preto']],
+                ],
+                // Opcional puro → característica secundária (o ML pede e pesa na busca)
+                [
+                    'id'         => 'MATERIAL',
+                    'name'       => 'Material',
+                    'value_type' => 'string',
+                    'tags'       => [],
+                ],
+                // Opcional mas OCULTO → não vira coluna (espelha o filtro do wizard)
+                [
+                    'id'         => 'ATTR_OCULTO',
+                    'name'       => 'Oculto',
+                    'value_type' => 'string',
+                    'tags'       => ['hidden' => true],
                 ],
                 // Grade de moda (SIZE_GRID_ID) obrigatória → DEVE ser EXCLUÍDA
                 [
@@ -277,6 +292,33 @@ class GradeMassaTest extends TestCase
         $this->assertNotContains('SIZE_GRID_ID', $ids, 'SIZE_GRID_ID não deve entrar');
         // GTIN (opcional) não é obrigatório
         $this->assertNotContains('GTIN', $ids, 'GTIN (opcional) não deve entrar nos obrigatorios');
+    }
+
+    /** @test */
+    public function colunas_devolve_as_caracteristicas_secundarias_da_categoria(): void
+    {
+        // Paridade com o wizard: o ML pede as características secundárias (atributos
+        // opcionais) no anúncio dele e elas pesam na qualidade/busca. A grade em massa
+        // não as recebia — quem publica em lote não tinha como preenchê-las.
+        // Filtro espelha AnunciarML.jsx:1258 (fora: required, variação, oculto,
+        // read-only, GRID, e os que têm campo próprio: GTIN/SKU/CATALOG_PRODUCT_ID).
+        $this->fakeMetaDaCategoria();
+        [, , $admin] = $this->criarFixture();
+
+        $response = $this->actingAs($admin)
+            ->getJson('/mlb/anuncios/massa/meta/MLB123456/colunas')
+            ->assertOk();
+
+        $opcionais = collect($response->json('opcionais'))->pluck('id')->all();
+
+        $this->assertContains('MATERIAL', $opcionais, 'atributo opcional deve virar caracteristica secundaria');
+        // Não se repetem nos obrigatórios (senão a grade teria coluna duplicada)
+        $this->assertNotContains('BRAND', $opcionais, 'obrigatorio nao pode aparecer tambem como secundario');
+        $this->assertNotContains('COLOR', $opcionais, 'obrigatorio nao pode aparecer tambem como secundario');
+        // Oculto/GRID/GTIN ficam fora (GTIN tem coluna própria na grade)
+        $this->assertNotContains('ATTR_OCULTO', $opcionais, 'atributo hidden nao vira coluna');
+        $this->assertNotContains('SIZE_GRID_ID', $opcionais, 'grade de moda nao vira coluna');
+        $this->assertNotContains('GTIN', $opcionais, 'GTIN ja tem coluna base propria');
     }
 
     /** @test */
