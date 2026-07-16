@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\NpsEmailEnvio;
 use App\Models\NpsSurvey;
+use App\Models\NpsSurveyEvent;
 use App\Services\Digisac\NpsDigisacDispatchService;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
@@ -259,6 +260,19 @@ class NpsDispararMensal extends Command
                             ]);
                             $criados++;
 
+                            // Phase 94 AB-94-3 — evento 'generated' por survey criada (1 por
+                            // empresa × modelo aplicável). Contexto de console: sem request,
+                            // ip/user_agent/user_id ficam null. metadata.origem discrimina
+                            // contra o 'manual' do NpsController::generate() (Plano 94-02).
+                            NpsSurveyEvent::create([
+                                'survey_id'  => $survey->id,
+                                'event_type' => NpsSurveyEvent::TYPE_GENERATED,
+                                'ip_address' => null,
+                                'user_agent' => null,
+                                'user_id'    => null,
+                                'metadata'   => ['origem' => 'disparo_mensal'],
+                            ]);
+
                             // Phase 32 D-03 — monta vars com placeholders. `bloco_analista` é um trecho
                             // gerado dinamicamente: " e o analista é **Nome**" quando há analista, ou
                             // string vazia em mentoria pura. É renderizado SOZINHO como texto puro pra
@@ -321,6 +335,18 @@ class NpsDispararMensal extends Command
                                     ]);
                                     $enviados++;
 
+                                    // Phase 94 AB-94-3 — evento 'sent_email' SOMENTE no branch de
+                                    // sucesso do Mail::send (o branch catch abaixo grava
+                                    // NpsEmailEnvio status=falha separadamente, sem evento).
+                                    NpsSurveyEvent::create([
+                                        'survey_id'  => $survey->id,
+                                        'event_type' => NpsSurveyEvent::TYPE_SENT_EMAIL,
+                                        'ip_address' => null,
+                                        'user_agent' => null,
+                                        'user_id'    => null,
+                                        'metadata'   => ['destinatario' => $empresa->email_cliente],
+                                    ]);
+
                                     Log::info("[NPS Mensal] enviado para empresa {$empresa->id} ({$empresa->name}) modelo={$modelo->nome} email={$empresa->email_cliente} survey_id={$survey->id}");
                                 } catch (\Throwable $mailErr) {
                                     // Grava log de falha — substring(65000) cobre TEXT MySQL sem cortar UTF-8.
@@ -356,6 +382,20 @@ class NpsDispararMensal extends Command
                                         'skipped' => $digisacSkipped++,
                                         default   => null,
                                     };
+
+                                    // Phase 94 AB-94-3 — evento 'sent_digisac' SOMENTE quando o
+                                    // envio confirma status 'enviado' (não em falha/skipped — não
+                                    // há event_type para isso no enum travado pelo CONTEXT).
+                                    if ($envio->status === 'enviado') {
+                                        NpsSurveyEvent::create([
+                                            'survey_id'  => $survey->id,
+                                            'event_type' => NpsSurveyEvent::TYPE_SENT_DIGISAC,
+                                            'ip_address' => null,
+                                            'user_agent' => null,
+                                            'user_id'    => null,
+                                            'metadata'   => ['nps_digisac_envio_id' => $envio->id],
+                                        ]);
+                                    }
                                 } catch (\Throwable $digisacErr) {
                                     // Defesa em profundidade: o dispatcher já persiste falha; se estourou
                                     // ainda assim, loga sem quebrar o batch.
