@@ -715,8 +715,16 @@ Plans:
 **Plans:** 3 plans
 
 Plans:
+**Wave 1**
+
 - [ ] 94-01-PLAN.md — Fundação: schema de rastro + nps_survey_events + config .env + NpsSuspicionService (4 regras)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 94-02-PLAN.md — NpsController: rastro de abertura/resposta + veredito de suspeita + eventos opened/expired/submitted/generated-manual
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 94-03-PLAN.md — NpsDispararMensal: eventos generated/sent_email/sent_digisac + linha do tempo E2E + gate de regressão
 
 **Requisitos:**

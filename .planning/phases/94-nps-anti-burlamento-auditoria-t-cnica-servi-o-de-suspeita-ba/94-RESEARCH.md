@@ -607,7 +607,9 @@ Não aplicável — não há "abordagem antiga vs. nova" nesta fase; é uma feat
 
 **Nenhum destes itens bloqueia o planejamento** — todos têm uma recomendação clara acima. A2, A3, A4, A5 podem ser confirmados/ajustados durante o `/gsd:plan-phase` sem nova rodada de pesquisa. A1 precisa de verificação manual no VPS (não é código, é infraestrutura) — recomenda-se incluir uma tarefa `checkpoint:human-verify` no plano para confirmar a topologia de rede antes do primeiro deploy desta fase.
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Resolução (plan-phase 2026-07-16): **Q1** → verificação manual pós-deploy incluída no plano 94-03 (checkpoint de topologia do proxy); a codificação da Regra 1 segue com `$request->ip()`. **Q2** → decisão: NÃO criar 7º event_type; tentativa rejeitada por expiração no POST fica fora do escopo (os 6 tipos do CONTEXT são travados); refinamento possível na Fase 95/96 se o usuário quiser.
 
 1. **Topologia de rede do VPS — há proxy reverso na frente do PHP-FPM?**
    - What we know: `bootstrap/app.php` não configura `trustProxies`; CLAUDE.md descreve "Web server: Apache/Nginx com `www-data` ownership" (ambíguo — não deixa claro se é Apache direto na 443 ou Nginx→Apache).

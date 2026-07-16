@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
-status: Fase 89 código completo (2/2 plans) — CART-01..05 (89-01) + CART-08 (89-02) fechados no código. Falta só a aprovação do checkpoint visual humano.
+status: executing
 stopped_at: Completed 89-01-PLAN.md
-last_updated: "2026-07-16T18:29:36.538Z"
-last_activity: "2026-07-16 - Fase 89 Plan 02 executado (CART-08): duas relações novas no `Company` model (`analistaPerformance()`/`estrategistaPerformance()`) filtram `company_users` por `servicos.setor='performance'` (subquery, cobre Gestão E Mentoria sem hardcode de id) + ramo legado `servico_id NULL` com contrato performance ativo (nunca promove a Shopee automaticamente). `CompanyController::index()`/`show()` reapontados (`with`/`load` + `->first()`/`->map()`) preservando as chaves `consultor`/`estrategista` do payload — `Companies/Index.jsx`/`Show.jsx` intocados. Pendência `sem_responsavel` migrada de AND para OR — lista de pendências CRESCE (~7 empresas reais), comportamento confirmado pelo usuário no prompt de execução. Relações antigas e os 9 call-sites consolidados permanecem byte-idênticos (gate de fronteira + `LeitoresConsolidadoRegressaoTest` 4/4). TDD: fail-fast trap detectado e corrigido no próprio ciclo RED (teste anti-`->first()`-ingênuo passava por coincidência com a ordem de inserção original — corrigido inserindo a linha Shopee ANTES da Performance). Regressão: CART-08 9/9, V16 135/135, Nps 207/207, Desempenho 55/56 (falha pré-existente não-relacionada). `--filter=Companies` teve 5 falhas pré-existentes e não-relacionadas (documentadas em `deferred-items.md`, não corrigidas). Ver `.planning/phases/89-.../89-02-SUMMARY.md`."
+last_updated: "2026-07-16T19:04:17.242Z"
+last_activity: 2026-07-16 -- Phase 94 planning complete
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 3
+  total_plans: 6
   completed_plans: 3
   percent: 22
 ---
@@ -29,8 +29,8 @@ Phase: 89
 Plan: 89-02 EXECUTADO (2/2 plans da fase) — CART-08 fechado: `Company::analistaPerformance()/estrategistaPerformance()` + `CompanyController::index()/show()` reapontados + pendência `sem_responsavel` AND→OR. Falta o checkpoint visual humano (Task 3 do 89-02, roteiro em `89-02-PLAN.md`) para a fase 89 ser considerada 100% concluída. Próximo passo: apresentar o checkpoint ao usuário, ou `/gsd-plan-phase 90` (Carteiras consolidadas) se o checkpoint for adiado.
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
-Status: Fase 89 código completo (2/2 plans) — CART-01..05 (89-01) + CART-08 (89-02) fechados no código. Falta só a aprovação do checkpoint visual humano.
-Last activity: 2026-07-16 - Fase 89 Plan 02 executado (CART-08): duas relações novas no `Company` model (`analistaPerformance()`/`estrategistaPerformance()`) filtram `company_users` por `servicos.setor='performance'` (subquery, cobre Gestão E Mentoria sem hardcode de id) + ramo legado `servico_id NULL` com contrato performance ativo (nunca promove a Shopee automaticamente). `CompanyController::index()`/`show()` reapontados (`with`/`load` + `->first()`/`->map()`) preservando as chaves `consultor`/`estrategista` do payload — `Companies/Index.jsx`/`Show.jsx` intocados. Pendência `sem_responsavel` migrada de AND para OR — lista de pendências CRESCE (~7 empresas reais), comportamento confirmado pelo usuário no prompt de execução. Relações antigas e os 9 call-sites consolidados permanecem byte-idênticos (gate de fronteira + `LeitoresConsolidadoRegressaoTest` 4/4). TDD: fail-fast trap detectado e corrigido no próprio ciclo RED (teste anti-`->first()`-ingênuo passava por coincidência com a ordem de inserção original — corrigido inserindo a linha Shopee ANTES da Performance). Regressão: CART-08 9/9, V16 135/135, Nps 207/207, Desempenho 55/56 (falha pré-existente não-relacionada). `--filter=Companies` teve 5 falhas pré-existentes e não-relacionadas (documentadas em `deferred-items.md`, não corrigidas). Ver `.planning/phases/89-.../89-02-SUMMARY.md`. | Em paralelo (outro dev): quick 260716-jps — dimensão "Ambos" nas perguntas NPS (peso conta pra Analista E Estrategista), DEPLOYADO (3e5bbd99); tocou NpsScoreCalculator/NpsSnapshotService preservando o fix do divisor (auditado no rebase).
+Status: Ready to execute
+Last activity: 2026-07-16 -- Phase 94 planning complete
 
 ## Performance Metrics
 
