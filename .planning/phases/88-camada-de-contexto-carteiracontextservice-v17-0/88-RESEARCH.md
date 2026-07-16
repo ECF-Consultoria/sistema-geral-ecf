@@ -296,3 +296,18 @@ MySQL/MariaDB local (XAMPP) está indisponível nesta sessão de pesquisa — `m
 
 **Research date:** 2026-07-16
 **Valid until:** 30 dias (schema estável; nenhuma dependência externa versionada)
+
+## Adendo pós-research — contagem REAL em produção (2026-07-16, via VPS)
+
+A única área MEDIUM do research (volume real de `servico_id NULL`) foi resolvida com medição direta em prod:
+
+| Métrica | Valor |
+|---|---|
+| Linhas totais em `company_users` | 268 |
+| `servico_id` preenchido | 261 (211 performance + 50 shopee) |
+| `servico_id NULL` | **7** |
+| NULLs de empresa COM contrato performance ativo (ramo "Performance legado") | **0** |
+| NULLs de empresa só-Shopee (ramo "não assumir") | **0** |
+| NULLs de empresa sem contrato perf/shopee ativo | 7 |
+
+**Implicação para o plano:** os dois ramos de compatibilidade legado do plano canônico (CTX-05) NÃO têm dado vivo hoje — o backfill da Fase 76 cobriu tudo. Implementá-los é defesa contra dado futuro/regressão, não migração. Os 7 NULLs remanescentes são de empresas sem contrato ativo, que nem entram em carteira ativa. O plano deve: (a) implementar CTX-05 como especificado (a regra protege contra escrita futura sem servico_id), (b) cobrir por teste, (c) NÃO criar comando de backfill — não há o que corrigir.
