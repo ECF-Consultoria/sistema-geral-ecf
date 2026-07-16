@@ -109,14 +109,22 @@ class NpsController extends Controller
         // modal de detalhe mostrar QUEM recebeu a nota. 2 queries a mais no
         // total da página (assignments por whereIn dos response_ids + users
         // por whereIn dos user_ids), não N+1 — a lista é paginada em 20.
-        $baseQuery = NpsSurvey::with([
-                'company',
-                'generatedBy',
-                'response.respostasCustomizadas',
-                'response.answers',
-                'response.survey.template',
-                'response.scoreAssignments.user',
-            ])
+        // Fase 95 (AB-95-1/AB-95-2) — eager-load da trilha de eventos (Fase 94)
+        // SOMENTE para admin: não-admin nunca paga essa query extra, já que
+        // 'events' só é usado para montar `auditoria`, que é admin-only.
+        $eagerLoads = [
+            'company',
+            'generatedBy',
+            'response.respostasCustomizadas',
+            'response.answers',
+            'response.survey.template',
+            'response.scoreAssignments.user',
+        ];
+        if ($user->isAdmin()) {
+            $eagerLoads[] = 'events';
+        }
+
+        $baseQuery = NpsSurvey::with($eagerLoads)
             ->where(function ($q) use ($mesInicio, $mesFim) {
                 $q->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
                   ->orWhere(function ($qq) use ($mesInicio, $mesFim) {
@@ -239,29 +247,42 @@ class NpsController extends Controller
             return $resultado;
         };
 
-        $surveys = $baseQuery->paginate(20)->withQueryString()->through(fn($s) => [
-            'id'                 => $s->id,
-            'token'              => $s->token,
-            'company_name'       => $s->company->name,
-            'company_id'         => $s->company_id,
-            'status'             => $s->status,
-            'auto_generated'     => (bool) $s->auto_generated,
-            'generated_by'       => $s->generatedBy?->name,
-            'created_at'         => $s->created_at->format('d/m/Y H:i'),
-            'expires_at'         => $s->expires_at?->format('d/m/Y'),
-            'completed_at'       => $s->completed_at?->format('d/m/Y H:i'),
-            'score_estrategista' => $notaDe($s->response, 'estrategista'),
-            'score_analista'     => $notaDe($s->response, 'analista'),
-            'score_empresa'      => $notaDe($s->response, 'empresa'),
-            // Quick task 260715-pu0 — nomes de quem recebeu a nota (Fase 79).
-            'responsaveis'       => $responsaveisDe($s->response),
-            'respondent'         => $s->response?->respondent_name,
-            'comment'            => $s->response?->comment,
-            'link'               => route('nps.respond', $s->token),
+        $surveys = $baseQuery->paginate(20)->withQueryString()->through(function ($s) use ($user, $notaDe, $extrasDe, $responsaveisDe) {
+            $item = [
+                'id'                 => $s->id,
+                'token'              => $s->token,
+                'company_name'       => $s->company->name,
+                'company_id'         => $s->company_id,
+                'status'             => $s->status,
+                'auto_generated'     => (bool) $s->auto_generated,
+                'generated_by'       => $s->generatedBy?->name,
+                'created_at'         => $s->created_at->format('d/m/Y H:i'),
+                'expires_at'         => $s->expires_at?->format('d/m/Y'),
+                'completed_at'       => $s->completed_at?->format('d/m/Y H:i'),
+                'score_estrategista' => $notaDe($s->response, 'estrategista'),
+                'score_analista'     => $notaDe($s->response, 'analista'),
+                'score_empresa'      => $notaDe($s->response, 'empresa'),
+                // Quick task 260715-pu0 — nomes de quem recebeu a nota (Fase 79).
+                'responsaveis'       => $responsaveisDe($s->response),
+                'respondent'         => $s->response?->respondent_name,
+                'comment'            => $s->response?->comment,
+                'link'               => route('nps.respond', $s->token),
 
-            // Phase 33 Plan 33-04 + Bugfix 2026-07-08 — dual-path para o modal.
-            'respostas_customizadas' => $extrasDe($s->response)->all(),
-        ]);
+                // Phase 33 Plan 33-04 + Bugfix 2026-07-08 — dual-path para o modal.
+                'respostas_customizadas' => $extrasDe($s->response)->all(),
+            ];
+
+            // Fase 95 (AB-95-1/AB-95-2/AB-95-4) — `confianca` e `auditoria` só
+            // existem no array para admin. Para os demais roles as chaves
+            // simplesmente NÃO SÃO CRIADAS aqui (nunca null, nunca filtradas
+            // depois) — a blindagem nasce no servidor, nunca na renderização.
+            if ($user->isAdmin()) {
+                $item['confianca'] = $this->confiancaDe($s->response);
+                $item['auditoria'] = $this->auditoriaDe($s);
+            }
+
+            return $item;
+        });
 
         // ─── 3 cards de média (somente respostas do mês filtrado) ────────────
         // Bugfix 2026-07-08 — dual-path: como AVG(score_*) do SQL ignora
@@ -370,7 +391,7 @@ class NpsController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome']);
 
-        return Inertia::render('Nps/Index', [
+        $props = [
             'surveys'                => $surveys,
             'companies'              => $companies,
             'estrategistas'          => $estrategistas,
@@ -390,7 +411,99 @@ class NpsController extends Controller
                 'template_todos'  => $templateTodos,
             ],
             'principal_template_id' => \App\Models\NpsTemplate::principalId(),
-        ]);
+        ];
+
+        // Fase 95 (AB-95-4) — `pode_ver_confianca` só existe no payload para
+        // admin. Não-admin não recebe nem SINAL de que a camada de confiança
+        // existe — a chave simplesmente não é criada (nunca `false`).
+        if ($user->isAdmin()) {
+            $props['pode_ver_confianca'] = true;
+        }
+
+        return Inertia::render('Nps/Index', $props);
+    }
+
+    /**
+     * Fase 95 (AB-95-1) — mapeia o veredito já persistido pela Fase 94 para
+     * o tri-estado exigido pelo CONTEXT. Leitura pura: NUNCA recalcula
+     * suspeita (isso é responsabilidade exclusiva de NpsSuspicionService).
+     *
+     * Resposta limpa persiste `suspicion_reasons=null` (capturarRastroEAvalia
+     * rSuspeita, linha 749+) — cai automaticamente em 'confiavel', o mesmo
+     * comportamento correto para respostas legadas (pré-Fase 94).
+     *
+     * PROIBIDO usar `is_suspicious` para decidir a cor: é só
+     * `severity !== 'nenhuma'`, perderia o estado intermediário 'atencao'.
+     *
+     * @return array{status: string, motivos: array<int, string>}|null
+     */
+    private function confiancaDe(?NpsResponse $response): ?array
+    {
+        if (!$response) {
+            return null; // survey ainda pendente — sem resposta, sem veredito
+        }
+
+        $severity = $response->suspicion_reasons['severity'] ?? 'nenhuma';
+        $status = match ($severity) {
+            'alta'  => 'suspeita',
+            'media' => 'atencao',
+            default => 'confiavel',
+        };
+
+        return [
+            'status'  => $status,
+            'motivos' => $response->suspicion_reasons['reasons'] ?? [],
+        ];
+    }
+
+    /**
+     * Fase 95 (AB-95-2) — seção "Auditoria" do detalhe, admin-only. Todos os
+     * campos já existem em nps_surveys/nps_responses/nps_survey_events (Fase
+     * 94) — leitura pura, nada é recalculado (ex.: `tempo_ate_resposta` NUNCA
+     * recalcula via diffInSeconds — pitfall Carbon 3 documentado no SUMMARY
+     * 94-02, reusa `response_duration_seconds` já gravado).
+     *
+     * `canal` deriva de `$s->events` (eager-loaded só para admin, ver
+     * `$eagerLoads` acima) — evita 2 queries extras contra
+     * nps_email_envios/nps_digisac_envios.
+     *
+     * @return array{
+     *   gerado_em: string, gerado_por: ?string,
+     *   aberto_primeira: ?string, aberto_ultima: ?string, aberto_contagem: int,
+     *   respondido_em: ?string, tempo_ate_resposta: ?int,
+     *   ip_abertura: ?string, ip_resposta: ?string, user_agent: ?string,
+     *   canal: string, motivos: array<int, string>
+     * }
+     */
+    private function auditoriaDe(NpsSurvey $s): array
+    {
+        $eventos      = $s->events;
+        $temEmail     = $eventos->contains('event_type', NpsSurveyEvent::TYPE_SENT_EMAIL);
+        $temDigisac   = $eventos->contains('event_type', NpsSurveyEvent::TYPE_SENT_DIGISAC);
+        $origemGerado = $eventos->firstWhere('event_type', NpsSurveyEvent::TYPE_GENERATED)?->metadata['origem'] ?? null;
+
+        $canal = match (true) {
+            $temEmail && $temDigisac    => 'Email + Digisac',
+            $temEmail                   => 'Email',
+            $temDigisac                 => 'Digisac',
+            $origemGerado === 'manual'  => 'Manual (link gerado por admin)',
+            default                     => 'Não confirmado',
+        };
+
+        return [
+            'gerado_em'          => $s->created_at->format('d/m/Y H:i'),
+            'gerado_por'         => $s->generatedBy?->name, // null = disparo mensal automático
+            'aberto_primeira'    => $s->first_opened_at?->format('d/m/Y H:i'),
+            'aberto_ultima'      => $s->last_opened_at?->format('d/m/Y H:i'),
+            'aberto_contagem'    => $s->open_count,
+            'respondido_em'      => $s->completed_at?->format('d/m/Y H:i'),
+            'tempo_ate_resposta' => $s->response?->response_duration_seconds,
+            'ip_abertura'        => $s->open_ip_address,
+            'ip_resposta'        => $s->response?->response_ip_address,
+            'user_agent'         => $s->response?->response_user_agent ?? $s->open_user_agent,
+            'canal'              => $canal,
+            'motivos'            => $s->response?->suspicion_reasons['reasons'] ?? [],
+        ];
     }
 
     /**
