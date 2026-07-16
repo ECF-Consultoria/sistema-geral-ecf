@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
 status: executing
-stopped_at: Completed 89-01-PLAN.md
-last_updated: "2026-07-16T19:04:17.242Z"
-last_activity: 2026-07-16 -- Phase 94 planning complete
+stopped_at: Completed 94-01-PLAN.md
+last_updated: "2026-07-16T19:29:46.557Z"
+last_activity: 2026-07-16
 progress:
   total_phases: 9
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 3
+  total_plans: 8
+  completed_plans: 4
   percent: 22
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Milestone v17.0 (Carteira e Desempenho multi-servico) — Roadmap criado, planejamento da Fase 88 pendente
+**Current focus:** Phase 94 — NPS Anti-Burlamento — auditoria técnica + serviço de suspeita (backend)
 
 ## Current Position
 
-Phase: 89
-Plan: 89-02 EXECUTADO (2/2 plans da fase) — CART-08 fechado: `Company::analistaPerformance()/estrategistaPerformance()` + `CompanyController::index()/show()` reapontados + pendência `sem_responsavel` AND→OR. Falta o checkpoint visual humano (Task 3 do 89-02, roteiro em `89-02-PLAN.md`) para a fase 89 ser considerada 100% concluída. Próximo passo: apresentar o checkpoint ao usuário, ou `/gsd-plan-phase 90` (Carteiras consolidadas) se o checkpoint for adiado.
+Phase: 94 (NPS Anti-Burlamento — auditoria técnica + serviço de suspeita (backend)) — EXECUTING
+Plan: 2 of 3
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
 Status: Ready to execute
-Last activity: 2026-07-16 -- Phase 94 planning complete
+Last activity: 2026-07-16
 
 ## Performance Metrics
 
@@ -150,6 +150,7 @@ Last activity: 2026-07-16 -- Phase 94 planning complete
 | Phase 88 P01 | 25min | 3 tasks (TDD RED+GREEN) tasks | 2 files files |
 | Phase 89 P01 | 35min | 3 tasks | 4 files |
 | Phase 89 P02 | ~40min | 2 tasks | 5 files |
+| Phase 94 P01 | 9min | 3 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -648,8 +649,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-16T17:54:31.598Z
-Stopped at: Completed 89-01-PLAN.md
+Last session: 2026-07-16T19:29:46.530Z
+Stopped at: Completed 94-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
