@@ -129,8 +129,13 @@ class NpsScoreCalculator
         // nps_ans_response_dim_idx cobre response_id + dimensao). Answers
         // ausentes nao entram no SUM, mas o divisor e N_perguntas COM PESO do
         // template, nao COUNT(answers). Isso e o comportamento pedido.
+        //
+        // Quick task 260716-jps: `whereIn(dimensoesFonte)` no lugar do `=`
+        // cru — a nota de estrategista/analista tambem soma as perguntas da
+        // dimensao `ambos` (peso conta pros dois). Para empresa/geral,
+        // dimensoesFonte devolve so a propria dimensao (comportamento antigo).
         $soma = (float) $response->answers()
-            ->where('question_dimensao_snapshot', $dimensao)
+            ->whereIn('question_dimensao_snapshot', NpsTemplateQuestion::dimensoesFonte($dimensao))
             ->sum('option_peso_snapshot');
 
         return $soma / $nPerguntas;
@@ -157,9 +162,14 @@ class NpsScoreCalculator
      */
     public function contarPerguntasComPeso(int $templateId, string $dimensao): int
     {
+        // Quick task 260716-jps: divisor tambem conta as perguntas `ambos`
+        // quando a dimensao pedida e estrategista/analista (mesma fonte da SUM
+        // em compute() — preserva a invariante score_sum/question_count ==
+        // average_score). `dimensoesFonte` devolve so a propria dimensao para
+        // empresa/geral.
         return NpsTemplateQuestion::query()
             ->where('template_id', $templateId)
-            ->where('dimensao', $dimensao)
+            ->whereIn('dimensao', NpsTemplateQuestion::dimensoesFonte($dimensao))
             ->where('tipo', '!=', NpsTemplateQuestion::TIPO_TEXTO_LIVRE)
             ->count();
     }

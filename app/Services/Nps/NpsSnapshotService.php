@@ -117,8 +117,14 @@ class NpsSnapshotService
             // quick task 260715-kam — duplicar a query aqui recriaria o bug).
             $questionCount = $this->calculator->contarPerguntasComPeso($survey->template_id, $dimensao);
 
+            // Quick task 260716-jps: `whereIn(dimensoesFonte)` — para estrategista
+            // e analista o score_sum congelado tambem soma as perguntas `ambos`,
+            // batendo com o average_score do calculator (mesma fonte). A dimensao
+            // `ambos` NUNCA vira linha propria: self::DIMENSOES continua sendo
+            // estrategista/analista/empresa, entao "ambos" so ALIMENTA as duas
+            // notas de pessoa, nunca a da empresa.
             $scoreSum = (float) $response->answers()
-                ->where('question_dimensao_snapshot', $dimensao)
+                ->whereIn('question_dimensao_snapshot', NpsTemplateQuestion::dimensoesFonte($dimensao))
                 ->sum('option_peso_snapshot');
 
             $scoresPorDimensao[$dimensao] = NpsResponseScore::create([

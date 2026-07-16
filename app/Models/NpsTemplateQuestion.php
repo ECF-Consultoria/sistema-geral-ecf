@@ -77,6 +77,13 @@ class NpsTemplateQuestion extends Model
     public const DIMENSAO_ANALISTA     = 'analista';
     public const DIMENSAO_EMPRESA      = 'empresa';
     public const DIMENSAO_GERAL        = 'geral';
+    // Quick task 260716-jps: dimensão "compartilhada". A pergunta salva UMA
+    // única dimensão (`ambos`), mas o peso da resposta conta para as DUAS notas
+    // de pessoa — Analista E Estrategista. NÃO é uma dimensão de score própria
+    // (nunca gera linha em nps_response_scores nem role em assignments): é uma
+    // dimensão-FONTE que `dimensoesFonte()` injeta nas notas de estrategista e
+    // analista. Ver NpsScoreCalculator + NpsSnapshotService.
+    public const DIMENSAO_AMBOS = 'ambos';
 
     /**
      * Lista canônica das dimensões — usada pelo `Rule::in()` do controller,
@@ -85,6 +92,7 @@ class NpsTemplateQuestion extends Model
     public const DIMENSOES = [
         self::DIMENSAO_ESTRATEGISTA,
         self::DIMENSAO_ANALISTA,
+        self::DIMENSAO_AMBOS,
         self::DIMENSAO_EMPRESA,
         self::DIMENSAO_GERAL,
     ];
@@ -98,9 +106,35 @@ class NpsTemplateQuestion extends Model
         return [
             self::DIMENSAO_ESTRATEGISTA => 'Estrategista',
             self::DIMENSAO_ANALISTA     => 'Analista',
+            self::DIMENSAO_AMBOS        => 'Ambos (Analista e Estrategista)',
             self::DIMENSAO_EMPRESA      => 'Empresa',
             self::DIMENSAO_GERAL        => 'Geral',
         ];
+    }
+
+    /**
+     * Dimensões-FONTE que alimentam a nota de uma dimensão de SCORE (quick task
+     * 260716-jps). A nota do Estrategista soma perguntas `estrategista` + `ambos`;
+     * a do Analista soma `analista` + `ambos`. Qualquer outra dimensão de score
+     * (empresa/geral) só considera ela mesma — "ambos" é exclusivo das duas
+     * pessoas, então NUNCA entra em `empresa` (meritocracia da empresa intacta).
+     *
+     * Fonte ÚNICA da regra "ambos conta pros dois": consumida por
+     * `NpsScoreCalculator::compute()`/`contarPerguntasComPeso()` (numerador +
+     * divisor) e por `NpsSnapshotService::registrar()` (score_sum congelado).
+     * Trocar o filtro cru `= $dimensao` por `whereIn(dimensoesFonte($dimensao))`
+     * é o que faz o peso "ambos" pesar nas duas notas sem duplicar a resposta.
+     *
+     * @param  string  $scoreDimensao  Dimensão de score (estrategista/analista/empresa/...).
+     * @return array<int, string>  Dimensões de pergunta que compõem essa nota.
+     */
+    public static function dimensoesFonte(string $scoreDimensao): array
+    {
+        return match ($scoreDimensao) {
+            self::DIMENSAO_ESTRATEGISTA => [self::DIMENSAO_ESTRATEGISTA, self::DIMENSAO_AMBOS],
+            self::DIMENSAO_ANALISTA     => [self::DIMENSAO_ANALISTA, self::DIMENSAO_AMBOS],
+            default                     => [$scoreDimensao],
+        };
     }
 
     /**

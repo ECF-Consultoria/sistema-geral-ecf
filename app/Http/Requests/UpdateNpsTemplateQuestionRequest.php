@@ -66,7 +66,7 @@ class UpdateNpsTemplateQuestionRequest extends FormRequest
             'texto.min'         => 'O texto precisa ter pelo menos 3 caracteres.',
             'texto.max'         => 'O texto pode ter no máximo 500 caracteres.',
             'dimensao.required' => 'A dimensão da pergunta é obrigatória.',
-            'dimensao.in'       => 'Dimensão inválida — escolha entre estrategista, analista, empresa ou geral.',
+            'dimensao.in'       => 'Dimensão inválida — escolha entre estrategista, analista, ambos, empresa ou geral.',
         ];
     }
 }

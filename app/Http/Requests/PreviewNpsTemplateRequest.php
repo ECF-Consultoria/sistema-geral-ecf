@@ -103,7 +103,7 @@ class PreviewNpsTemplateRequest extends FormRequest
             'perguntas.*.tipo.required'       => 'O tipo da pergunta é obrigatório.',
             'perguntas.*.tipo.in'             => 'Tipo inválido — escolha entre escala ou opcoes.',
             'perguntas.*.dimensao.required'   => 'A dimensão da pergunta é obrigatória.',
-            'perguntas.*.dimensao.in'         => 'Dimensão inválida — escolha entre estrategista, analista, empresa ou geral.',
+            'perguntas.*.dimensao.in'         => 'Dimensão inválida — escolha entre estrategista, analista, ambos, empresa ou geral.',
             'perguntas.*.options.*.label.required' => 'O rótulo da opção é obrigatório.',
             'perguntas.*.options.*.peso.required'  => 'O peso da opção é obrigatório.',
             'perguntas.*.options.*.peso.integer'   => 'O peso da opção deve ser um número inteiro.',

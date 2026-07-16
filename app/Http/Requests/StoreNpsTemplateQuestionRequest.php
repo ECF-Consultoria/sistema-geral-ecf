@@ -66,7 +66,7 @@ class StoreNpsTemplateQuestionRequest extends FormRequest
             'tipo.required'     => 'O tipo da pergunta é obrigatório.',
             'tipo.in'           => 'Tipo inválido — escolha entre escala, opcoes ou texto_livre.',
             'dimensao.required' => 'A dimensão da pergunta é obrigatória.',
-            'dimensao.in'       => 'Dimensão inválida — escolha entre estrategista, analista, empresa ou geral.',
+            'dimensao.in'       => 'Dimensão inválida — escolha entre estrategista, analista, ambos, empresa ou geral.',
         ];
     }
 }
