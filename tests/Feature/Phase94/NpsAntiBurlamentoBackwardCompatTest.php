@@ -140,8 +140,19 @@ class NpsAntiBurlamentoBackwardCompatTest extends TestCase
 
     /**
      * AB-94-5 — POST legado completo (score_estrategista/score_empresa
-     * obrigatorios) grava resposta com defaults novos intactos e completa
-     * o survey — nao quebra por causa das colunas novas.
+     * obrigatorios) grava resposta e completa o survey — nao quebra por
+     * causa das colunas novas.
+     *
+     * Ajuste Plano 94-02 (Task 2): quando este teste foi escrito (Plano
+     * 94-01), o `NpsController::submitResponse*` ainda NAO estava
+     * instrumentado — as asserções originais esperavam trail sempre NULL.
+     * Task 2 do Plano 94-02 instrumentou o path legado exatamente para
+     * "Registrar SEMPRE, para todo submit — a coleta é silenciosa e
+     * universal" (CONTEXT.md AB-94-2), então response_ip_address/
+     * response_user_agent agora vêm preenchidos e, como a survey deste
+     * teste é criada e respondida na mesma passada (duração ~0s < janela
+     * default de 60s), a Regra 2 do NpsSuspicionService marca a resposta
+     * como suspeita — comportamento correto e esperado, não uma quebra.
      */
     public function test_post_nps_respond_legado_completo_funciona(): void
     {
@@ -164,9 +175,11 @@ class NpsAntiBurlamentoBackwardCompatTest extends TestCase
 
         $resposta = NpsResponse::where('survey_id', $survey->id)->first();
         $this->assertNotNull($resposta);
-        $this->assertFalse($resposta->is_suspicious);
-        $this->assertNull($resposta->suspicion_reasons);
-        $this->assertNull($resposta->response_ip_address);
-        $this->assertNull($resposta->response_user_agent);
+        $this->assertNotNull($resposta->response_ip_address);
+        $this->assertTrue((bool) $resposta->is_suspicious, 'Submit imediato apos criacao cai na janela de resposta rapida (Regra 2)');
+        $this->assertContains(
+            'Resposta enviada em menos de 1 minuto após geração do link.',
+            $resposta->suspicion_reasons['reasons']
+        );
     }
 }

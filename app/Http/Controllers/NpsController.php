@@ -719,6 +719,67 @@ class NpsController extends Controller
     }
 
     /**
+     * Phase 94 AB-94-2 + AB-94-4 — captura o rastro técnico da resposta
+     * (IP/user-agent/duração) e avalia suspeita via NpsSuspicionService.
+     *
+     * Chamado por submitResponseV15() E submitResponseLegacy() — NÃO
+     * duplicar esta lógica nos dois métodos (Pitfall real de produção já
+     * aconteceu por divergência entre paths — comentário na linha 437).
+     *
+     * @return array{
+     *   response_ip_address: ?string,
+     *   response_user_agent: ?string,
+     *   response_duration_seconds: int,
+     *   is_suspicious: bool,
+     *   suspicion_reasons: ?array
+     * }
+     */
+    private function capturarRastroEAvaliarSuspeita(Request $request, NpsSurvey $survey): array
+    {
+        // Carbon 3 (Laravel 12): o cálculo de diferença de tempo abaixo é
+        // SIGNED. A ordem "criado->para(agora)" garante valor positivo
+        // (passado → agora). NÃO inverter a chamada (agora->para(criado))
+        // retornaria negativo. "generated_at" = created_at do survey (CONTEXT).
+        $duracao = (int) $survey->created_at->diffInSeconds(now());
+
+        $veredito = app(\App\Services\Nps\NpsSuspicionService::class)->evaluate(
+            ip: $request->ip(),
+            durationSeconds: $duracao,
+            isAuthenticatedSession: auth()->check(),
+        );
+
+        return [
+            'response_ip_address'       => $request->ip(),
+            'response_user_agent'       => $request->userAgent(),
+            'response_duration_seconds' => $duracao,
+            'is_suspicious'             => $veredito['is_suspicious'],
+            // Shape objeto travado (CONTEXT/RESEARCH): pronto para a Fase 95
+            // consumir reasons + severity sem precisar de migration nova.
+            'suspicion_reasons'         => $veredito['is_suspicious']
+                ? ['reasons' => $veredito['reasons'], 'severity' => $veredito['severity']]
+                : null,
+        ];
+    }
+
+    /**
+     * Phase 94 AB-94-3 — emite o evento 'submitted' na trilha de auditoria.
+     * Chamado DENTRO da mesma DB::transaction() do submit (v15 e legado),
+     * logo antes do update de status='completed' — se o guard 23000
+     * estourar, o evento reverte junto (mesmo motivo do NpsSnapshotService).
+     */
+    private function registrarEventoSubmitted(Request $request, NpsSurvey $survey, NpsResponse $response): void
+    {
+        NpsSurveyEvent::create([
+            'survey_id'  => $survey->id,
+            'event_type' => NpsSurveyEvent::TYPE_SUBMITTED,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'user_id'    => auth()->id(),
+            'metadata'   => ['response_id' => $response->id],
+        ]);
+    }
+
+    /**
      * Fluxo v15.0 (Phase 69 Plan 03) — validacao dinamica derivada do template
      * snapshot associado ao survey + gravacao 1 NpsResponseAnswer por pergunta
      * respondida com snapshot congelado + guard QueryException 23000.
@@ -780,9 +841,11 @@ class NpsController extends Controller
         // que pode disparar QueryException 23000 se o dedup unique parcial
         // (Plan 68-04) detectar duplicata (company_id, month_reference, template_id).
         try {
-            DB::transaction(function () use ($survey, $validated, $questionsById, $optionsByQuestion) {
+            DB::transaction(function () use ($request, $survey, $validated, $questionsById, $optionsByQuestion) {
                 // NpsResponse SEM score_* legados — fonte de verdade v15.0 e
                 // nps_response_answers. Colunas legacy nullable desde Phase 68 Plan 01.
+                // Phase 94 AB-94-2/AB-94-4: spread do rastro + veredito de suspeita
+                // via helper compartilhado (mesma linha do create — sem UPDATE extra).
                 $response = NpsResponse::create([
                     'survey_id'          => $survey->id,
                     'respondent_name'    => $validated['respondent_name'] ?? null,
@@ -790,6 +853,7 @@ class NpsController extends Controller
                     'score_analista'     => null,
                     'score_empresa'      => null,
                     'comment'            => $validated['comment'] ?? null,
+                    ...$this->capturarRastroEAvaliarSuspeita($request, $survey),
                 ]);
 
                 // 1 NpsResponseAnswer por pergunta respondida — snapshot congelado.
@@ -846,6 +910,10 @@ class NpsController extends Controller
                 // o dedup 23000 estourar no update abaixo). O service NÃO abre
                 // transação própria. Bônus/legacy intactos (DEC-79-E).
                 app(\App\Services\Nps\NpsSnapshotService::class)->registrar($response);
+
+                // Phase 94 AB-94-3 — evento 'submitted' DENTRO da transação:
+                // se o guard 23000 abaixo estourar, reverte junto (Pitfall 3).
+                $this->registrarEventoSubmitted($request, $survey, $response);
 
                 // Marca survey como completed — pode disparar 23000 aqui pelo
                 // partial unique index de dedup mensal (Plan 68-04).
@@ -924,7 +992,9 @@ class NpsController extends Controller
 
         // Atomicidade: NpsResponse + N respostas customizadas dentro da mesma
         // transacao. Se qualquer insert falhar, a survey nao e marcada completa.
-        DB::transaction(function () use ($survey, $validated, $perguntas) {
+        DB::transaction(function () use ($request, $survey, $validated, $perguntas) {
+            // Phase 94 AB-94-2/AB-94-4 — MESMO helper compartilhado do path v15
+            // (Pitfall 2 do RESEARCH: nunca duplicar a lógica entre os 2 paths).
             $response = NpsResponse::create([
                 'survey_id'          => $survey->id,
                 'respondent_name'    => $validated['respondent_name'] ?? null,
@@ -932,6 +1002,7 @@ class NpsController extends Controller
                 'score_analista'     => $validated['score_analista'] ?? null,
                 'score_empresa'      => $validated['score_empresa'],
                 'comment'            => $validated['comment'] ?? null,
+                ...$this->capturarRastroEAvaliarSuspeita($request, $survey),
             ]);
 
             // Persiste 1 NpsRespostaCustomizada por pergunta respondida, com
@@ -957,6 +1028,11 @@ class NpsController extends Controller
                     'valor'                   => (string) $valor,
                 ]);
             }
+
+            // Phase 94 AB-94-3 — evento 'submitted' dentro da mesma transação
+            // (o legado não tem guard 23000, mas mantém o mesmo posicionamento
+            // por consistência com o path v15).
+            $this->registrarEventoSubmitted($request, $survey, $response);
 
             $survey->update(['status' => 'completed', 'completed_at' => now()]);
         });
