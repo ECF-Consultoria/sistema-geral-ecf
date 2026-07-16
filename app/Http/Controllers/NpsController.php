@@ -501,6 +501,18 @@ class NpsController extends Controller
             // mensais automatizadas carregam o mês de referência semântico.
         ]);
 
+        // Phase 94 AB-94-3 — trilha de auditoria: link manual gerado.
+        // metadata.origem='manual' é o discriminador contra 'disparo_mensal'
+        // (plano 94-03) — manter os dois literais exatos.
+        NpsSurveyEvent::create([
+            'survey_id'  => $survey->id,
+            'event_type' => NpsSurveyEvent::TYPE_GENERATED,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'user_id'    => $user->id,
+            'metadata'   => ['origem' => 'manual'],
+        ]);
+
         return back()->with([
             'success'  => 'Link NPS gerado com sucesso.',
             'nps_link' => route('nps.respond', $survey->token),
