@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
-status: Roadmap v17.0 criado (Fases 88-93) — aguardando planejamento da Fase 88
-stopped_at: Completed 80-02 (Wave 2 Phase 80 — regressão do dual-path provada + cache v3; bloqueio de deploy do pacote 80 REMOVIDO)
-last_updated: "2026-07-16T16:34:25.452Z"
-last_activity: "2026-07-16 - Roadmap da milestone v17.0 (Carteira e Desempenho multi-servico) criado: 6 fases (88-93) cobrindo as 22 REQs do REQUIREMENTS.md (CTX/CART/DESEMP/MENU), anexadas ao ROADMAP.md; traceability do REQUIREMENTS.md preenchida (22/22); STATE.md apontando para a Fase 88."
+status: Fase 89 Plan 01 completa — `renderCarteiraProfissional` consome CarteiraContextService, CART-01..05 fechados. Falta 89-02 (CART-08).
+stopped_at: Completed 89-01-PLAN.md
+last_updated: "2026-07-16T17:54:31.614Z"
+last_activity: "2026-07-16 - Fase 89 Plan 01 executado: renderCarteiraProfissional trocou \$user->companies() por CarteiraContextService::forUser(); dedup financeiro por company_id unico elegivel (CART-04/05); ad_spend/tacos adicionados (CART-03); payload empresas[].servicos + badges na UI (CART-01/02). Regressao verde: V16 126/126, Nps 207/207, Desempenho 55/56 (falha pre-existente nao-relacionada), RenderPortfolioTest 7/7. Ver .planning/phases/89-.../89-01-SUMMARY.md."
 progress:
   total_phases: 6
   completed_phases: 1
-  total_plans: 1
-  completed_plans: 1
+  total_plans: 3
+  completed_plans: 2
   percent: 17
 ---
 
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 88
-Plan: 88-01 EXECUTADO (unico plan da fase) — `CarteiraContextService` criado e testado, CTX-01..05 fechados. Fase 88 COMPLETA. Proximo passo: `/gsd-plan-phase 89` (Carteira individual — primeiro consumidor real do service).
+Phase: 89
+Plan: 89-01 EXECUTADO (1/2 plans da fase) — `renderCarteiraProfissional` consome `CarteiraContextService`, CART-01..05 fechados. Falta 89-02 (CART-08 — `/companies` responsável de Performance, reapontamento `Company::consultor/estrategista`). Proximo passo: `/gsd-plan-phase 89` (retomar) ou `/gsd-execute-phase 89` pra 89-02.
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
-Status: Fase 88 (Camada de contexto) completa — `App\Services\Portfolio\CarteiraContextService` pronto, nenhum consumidor reapontado ainda (por desenho, fronteira inviolavel da fase)
-Last activity: 2026-07-16 - Quick task 260716-jps: dimensão "Ambos" nas perguntas do modelo NPS — peso conta para Analista E Estrategista (helper `dimensoesFonte()` injeta 'ambos' nas notas das duas pessoas; empresa/geral intactas). Código commitado (4e4a34ad) + build verde; DEPLOYADO 260716 (3e5bbd99). | Antes: Fase 88 Plan 01 executado: `CarteiraContextService::forUser()`+`contadores()` criado via TDD (RED/GREEN por task), 12 testes Feature verdes cobrindo os 4 cenarios canonicos + CTX-01..05 (legado servico_id null, Mentoria sem hardcode, empresa inativa, filtros). Regressao ampla verde (V16 117/117, Nps 207/207, Desempenho 55/56 com a falha pre-existente conhecida `PublicacaoDesempenhoRouteTest`). Zero consumidor tocado. Ver `.planning/phases/88-.../88-01-SUMMARY.md`.
+Status: Fase 89 Plan 01 completo — carteira individual (`renderCarteiraProfissional`) corrige o bug de responsável Shopee herdando financeiro ML (Felipe: 29 empresas, gerenciava 4). Plan 89-02 (CART-08) ainda pendente.
+Last activity: 2026-07-16 - Fase 89 Plan 01 executado: `renderCarteiraProfissional` (PortfolioController) trocou `$user->companies()` por `CarteiraContextService::forUser()`; dedup financeiro via `->unique()` em `company_id` elegível (nunca por vínculo — AdmanMetric é por-EMPRESA); `ad_spend`/`tacos` adicionados ao payload (campos novos, já filtrados); payload `empresas[].servicos` expõe vínculos por serviço; `AdminCarteira.jsx` ganhou badges por vínculo + estado "sem fonte financeira". TDD por task (RED com 8/9 falhas legítimas, CART-05 já passava por coincidência do código antigo — vira guarda de regressão). Correção do plan-checker aplicada: `empresas_sem_margem` conta só empresas elegíveis. Regressão: V16 126/126, Nps 207/207, Desempenho 55/56 (falha pré-existente `PublicacaoDesempenhoRouteTest`, não relacionada), RenderPortfolioTest 7/7 (prova `renderPortfolio()` intocado), `npm run build` exit 0. Known gaps documentados no SUMMARY: `renderPortfolio()` (auto-visualização) fica com bug antigo; filtro Todos/Performance/Shopee + contadores de topo ficam pra Fase 90 (CART-07). Ver `.planning/phases/89-.../89-01-SUMMARY.md`. | Em paralelo (outro dev): quick 260716-jps — dimensão "Ambos" nas perguntas NPS (peso conta pra Analista E Estrategista via `dimensoesFonte()`), DEPLOYADO (3e5bbd99); tocou NpsScoreCalculator/NpsSnapshotService — interação com o fix do divisor auditada no rebase.
 
 ## Performance Metrics
 
@@ -148,10 +148,13 @@ Last activity: 2026-07-16 - Quick task 260716-jps: dimensão "Ambos" nas pergunt
 | Phase 80 P02 | ~55min | 3 tasks (regressão dual-path + bump de cache v3 + regressão ampla) | 2 files |
 | Phase 80 P03 | 25min | 3 tasks | 3 files |
 | Phase 88 P01 | 25min | 3 tasks (TDD RED+GREEN) tasks | 2 files files |
+| Phase 89 P01 | 35min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- 2026-07-16 — **Fase 89 Plan 01 EXECUTADO — `renderCarteiraProfissional` (carteira individual) para de misturar financeiro ML com vínculo Shopee.** Primeiro consumidor real de `CarteiraContextService` (Fase 88): `PortfolioController::renderCarteiraProfissional` trocou `$user->companies()` por `forUser($user, ['active'=>true])`, agrupado por `company_id` (CART-01). **Algoritmo de dedup (CART-04/05):** `$companyIdsElegiveis = $vinculos->where('financial_metrics_eligible', true)->pluck('company_id')->unique()` — TODAS as queries `AdmanMetric` (SUM revenue/margem/ad_spend, dias-com-margem, cache Adman gross/account) passam a rodar só sobre essa lista; a unidade de consulta é `company_id` ÚNICO, nunca vínculo — evita tanto o vazamento (Shopee-only não recebe financeiro ML de empresa que não gerencia) quanto a duplicação (ML+Shopee da mesma empresa conta 1x). **CART-03 (achado do research):** `ad_spend`/`tacos` NÃO existiam nesta função — adicionados usando o mesmo padrão de `renderCarteirasConsolidadas()` no mesmo arquivo (cache `investment`/`tacos` com fallback SUM DB / `ads/rev*100`), já nascendo filtrados pela mesma lista elegível. **CART-02:** payload `empresas[].servicos` expõe 1 entrada por vínculo (setor/role/role_label/`financial_metrics_eligible`); empresa não-elegível retorna financeiro inteiro `null` sem poluir `motivo_sem_margem` (que é reservado a problema de sync, não a ausência de fonte financeira). **Correção do plan-checker (warning 3) aplicada:** `empresas_sem_margem` agora conta só empresas ELEGÍVEIS com margem null — sem o gate, Shopee-only inflaria o banner rosa "sem dados de margem" mesmo sendo comportamento por desenho. **UI (`AdminCarteira.jsx`):** badges por vínculo (`SETOR_LABELS` pt-BR: "Mercado Livre"/"Shopee", nunca slug cru) sob o nome da empresa; `temFonteFinanceira` computada DENTRO do `.map()` (pitfall Rollup conhecido — variável de escopo do componente usada dentro de `.map()` some do bundle); células Faturamento/Margem/Var. mostram "—" com tooltip quando não há fonte financeira elegível. Filtro completo Todos/Performance/Shopee + contadores de topo ficam pra Fase 90 (CART-07, `UI hint: yes` no ROADMAP) — payload já nasce pronto. **TDD por task:** Task 1 RED (9 testes, 8 falharam pelo motivo certo; o teste CART-05 passou por coincidência — `$user->companies()` já colapsava por empresa no código antigo — não é fail-fast trap, vira guarda de regressão pro novo dedup) → Task 2 GREEN (controller) → Task 3 GREEN (UI + `npm run build`). **Known gaps documentados no SUMMARY:** `renderPortfolio()` (rota de auto-visualização `/admin/users/{próprio_id}/portfolio`) fica com o bug antigo — fora do escopo de qualquer REQ desta fase (Pitfall 2/6 do 89-RESEARCH.md), candidato a follow-up. **Regressão:** V16 126/126 (117 baseline + 9 novos), Nps 207/207, Desempenho 55/56 (1 falha pré-existente `PublicacaoDesempenhoRouteTest` 403≠200, não-relacionada), RenderPortfolioTest 7/7 (prova `renderPortfolio()` intocado), `npm run build` exit 0. `git diff --name-only`: `PortfolioController.php` + `AdminCarteira.jsx` + 2 testes novos — nenhum dos arquivos-fronteira (`User.php`, `DesempenhoScoreService`, `CompanyController`, `Company.php`, `Companies/*.jsx`) tocado. **Requisitos fechados:** CART-01..05 (10/22 REQs da v17.0, somando com CTX-01..05 da Fase 88). **Próximo:** 89-02 (CART-08 — `/companies` responsável de Performance).
 
 - 2026-07-16 — **Fase 88 EXECUTADA (1/1) — `CarteiraContextService` criado, MILESTONE v17.0 tem fundacao pronta.** Novo `App\Services\Portfolio\CarteiraContextService::forUser($user, $filters)` + `contadores()` — fonte unica de vinculos carteira x servico POR VINCULO (nao por empresa consolidada), resolvendo `setor`/`role`/elegibilidade financeira sem tocar em `User::companies()` nem em nenhum consumidor existente (fronteira inviolavel confirmada: `git diff` da fase toca so 2 arquivos novos). **Design:** 2 fontes normalizadas no mesmo shape — `servico_id` PREENCHIDO (prioridade) + `servico_id NULL` resolvido como Performance legado via `whereExists` em `contratos_servico` ativo (nunca promove a Shopee automaticamente, CTX-05); elegibilidade financeira via `match` em `servicos.setor` (cobre Gestao E Mentoria sem hardcode de id, CTX-03); `contadores()` computa `empresas_unicas` vs `vinculos_servico` sem colapsar (CTX-04, nunca usa `distinct()` como `User::companies()`). **Decisoes travadas:** sem cache (queries locais triviais, 268 linhas de pivot em prod); nao chama `MetricsProviderFactory` (vocabularios distintos — factory decide provider tecnico ML/Adman, este service decide setor->fonte constante); CTX-05 e DEFESA contra escrita futura sem `servico_id`, nao migracao (medido em prod: 0 linhas reais nos ramos legados hoje); setores `polos`/`publicacao`/`outros` sem fonte financeira ate segunda ordem; `User::companies()` preservado como legado. **TDD por task:** Task 1 RED (5 testes canonicos, `BindingResolutionException`) -> GREEN (service completo, ja implementando CTX-05/03 no mesmo commit por desenho holistico) -> Task 2 adicionou 7 testes de borda que passaram GREEN imediato (nao e fail-fast trap: a funcionalidade ja existia desde a Task 1, so faltava teste dedicado) -> Task 3 gate de regressao. **Regressao:** V16 117/117, Nps 207/207, Desempenho 55/56 (1 falha pre-existente conhecida `PublicacaoDesempenhoRouteTest` 403≠200, documentada, nao-relacionada). Ajuste de execucao (Rule 3): docblock mencionava `MetricsProviderFactory` por nome 3x, quebrando o grep de verificacao do plano (`grep MetricsProviderFactory app/Services/Portfolio/` esperava 0) — reescrito sem repetir o nome da classe, mesma explicacao preservada. **Requisitos fechados:** CTX-01..05 (5/22 REQs da v17.0). **Proximo:** `/gsd-plan-phase 89` (Carteira individual — primeiro consumidor real do service, refatora `renderCarteiraProfissional`).
 
@@ -640,8 +643,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-16T16:30:06.303Z
-Stopped at: Completed 80-02 (Wave 2 Phase 80 — regressão do dual-path provada + cache v3; bloqueio de deploy do pacote 80 REMOVIDO)
+Last session: 2026-07-16T17:54:31.598Z
+Stopped at: Completed 89-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
