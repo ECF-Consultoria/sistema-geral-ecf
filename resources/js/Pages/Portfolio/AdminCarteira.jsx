@@ -43,9 +43,8 @@ import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/
  *     dia_atual, dias_no_mes, mes_label, range_atual, range_anterior
  *   }
  *
- * Nota: ad_spend/tacos e o filtro completo Todos/Performance/Shopee (com
- * contadores de topo) ainda não são desenhados na tabela nesta fase — payload
- * já nasce pronto, UI completa é Fase 90 (CART-07).
+ * Nota: ad_spend/tacos ainda não são desenhados na tabela — payload já traz
+ * esses campos, mas a coluna fica para uma fase futura.
  */
 
 // Fase 89 (CART-02) — rótulo pt-BR nunca slug cru. Fallback pra setores
@@ -54,6 +53,15 @@ const SETOR_LABELS = {
     performance: 'Mercado Livre',
     shopee: 'Shopee',
 };
+
+// Fase 90 (CART-07) — mesma constante conceitual de Carteiras.jsx
+// (CONTEXTO_OPTIONS), duplicada aqui de propósito — sem módulo compartilhado
+// pra só 2 usos. Rótulos sem jargão, nunca slug cru (decisão travada).
+const CONTEXTO_OPTIONS = [
+    { value: 'todos', label: 'Todos' },
+    { value: 'performance', label: 'Mercado Livre' },
+    { value: 'shopee', label: 'Shopee' },
+];
 
 // ─── KPI compacto ─────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white' }) {
@@ -90,7 +98,7 @@ function VariacaoChip({ pct, size = 'sm' }) {
     );
 }
 
-export default function AdminCarteira({ profissional, resumo, empresas = [], periodo }) {
+export default function AdminCarteira({ profissional, resumo, empresas = [], periodo, contexto = 'todos' }) {
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('faturamento');
     const [sortDir, setSortDir] = useState('desc');
@@ -148,44 +156,77 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                 <h1 className="text-white text-xl font-display font-extrabold leading-none mt-1">
                                     {profissional?.name}
                                 </h1>
-                                <div className="text-white/50 text-xs mt-1">
-                                    {profissional?.cargo_label} · {resumo?.total_empresas ?? 0} empresa{resumo?.total_empresas === 1 ? '' : 's'} em carteira
+                                <div className="text-white/50 text-xs mt-1 flex items-center gap-2 flex-wrap">
+                                    <span>
+                                        {profissional?.cargo_label} · {resumo?.total_empresas ?? 0} empresa{resumo?.total_empresas === 1 ? '' : 's'} única{resumo?.total_empresas === 1 ? '' : 's'} · {resumo?.vinculos_servico ?? 0} vínculo{(resumo?.vinculos_servico ?? 0) === 1 ? '' : 's'} de serviço
+                                    </span>
+                                    {/* Chip âmbar (CART-07/SC4) — mesmo tom do chip da tabela abaixo.
+                                        Renderização defensiva: props podem faltar em cache de página antiga. */}
+                                    {(resumo?.vinculos_sem_fonte_financeira ?? 0) > 0 && (
+                                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border bg-amber-500/10 text-amber-300/80 border-amber-500/20">
+                                            {resumo.vinculos_sem_fonte_financeira} sem fonte financeira
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    {/* Ajuste 2026-07-09 · filtro de mês (audita bônus consolidados) */}
-                    {Array.isArray(periodo?.meses_disponiveis) && periodo.meses_disponiveis.length > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Fase 90 (CART-07) · filtro de contexto (Todos/Mercado Livre/Shopee),
+                            preserva o ?mes= ativo ao trocar (decisão travada). */}
                         <div className="flex items-center gap-2">
-                            <span className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">Mês</span>
+                            <span className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">Contexto</span>
                             <select
-                                value={periodo?.mes_selecionado ?? ''}
+                                value={contexto}
                                 onChange={(e) => {
                                     const target = e.target.value;
                                     const currentPath = window.location.pathname;
-                                    router.visit(currentPath + '?mes=' + target, { preserveScroll: false });
+                                    const mes = periodo?.mes_selecionado ?? '';
+                                    router.visit(currentPath + '?contexto=' + target + '&mes=' + mes, { preserveScroll: false });
                                 }}
-                                title="Selecionar mês da carteira"
-                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
+                                title="Filtrar por contexto de serviço"
+                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
                             >
-                                {periodo.meses_disponiveis.map((m) => (
-                                    <option key={m.value} value={m.value}>
-                                        {m.label}{m.em_curso ? ' (em curso)' : ''}
-                                    </option>
+                                {CONTEXTO_OPTIONS.map((o) => (
+                                    <option key={o.value} value={o.value}>{o.label}</option>
                                 ))}
                             </select>
-                            {periodo?.em_curso ? (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 tracking-wider">
-                                    Em curso
-                                </span>
-                            ) : (
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 tracking-wider">
-                                    Fechado
-                                </span>
-                            )}
                         </div>
-                    )}
+
+                        {/* Ajuste 2026-07-09 · filtro de mês (audita bônus consolidados).
+                            Fase 90 — passa a preservar ?contexto= ativo ao trocar de mês. */}
+                        {Array.isArray(periodo?.meses_disponiveis) && periodo.meses_disponiveis.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">Mês</span>
+                                <select
+                                    value={periodo?.mes_selecionado ?? ''}
+                                    onChange={(e) => {
+                                        const target = e.target.value;
+                                        const currentPath = window.location.pathname;
+                                        router.visit(currentPath + '?mes=' + target + '&contexto=' + contexto, { preserveScroll: false });
+                                    }}
+                                    title="Selecionar mês da carteira"
+                                    className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
+                                >
+                                    {periodo.meses_disponiveis.map((m) => (
+                                        <option key={m.value} value={m.value}>
+                                            {m.label}{m.em_curso ? ' (em curso)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {periodo?.em_curso ? (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 tracking-wider">
+                                        Em curso
+                                    </span>
+                                ) : (
+                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 tracking-wider">
+                                        Fechado
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </header>
 
                 {/* ─── Banner de contexto do período — muda conforme mês em curso vs fechado ─── */}
