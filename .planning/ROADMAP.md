@@ -595,7 +595,7 @@ Plans:
 **Goal:** Existe uma fonte única e confiável de vínculos de carteira por serviço (`CarteiraContextService`) que resolve setor, papel e elegibilidade financeira sem depender de `company_id` consolidado — fundação para toda a milestone v17.0.
 **Requirements**: CTX-01, CTX-02, CTX-03, CTX-04, CTX-05
 **Depends on:** Nada (fundação da milestone v17.0)
-**Plans:** TBD (rodar `/gsd-plan-phase 88`)
+**Plans:** 1 plan em 1 wave
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -606,7 +606,7 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 88 to break down)
+- [ ] 88-01-PLAN.md — CarteiraContextService (forUser + contadores) + suite Feature V16 cobrindo CTX-01..05 (4 cenários canônicos, ramos legado CTX-05, Mentoria sem hardcode, filtros)
 
 ### Phase 89: Carteira individual — renderCarteiraProfissional por contexto (v17.0)
 
