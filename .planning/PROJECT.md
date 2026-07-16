@@ -15,23 +15,27 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v15.0 NPS Templates
+## Current Milestone: v17.0 Carteira e Desempenho multi-serviço
 
-**Goal:** Reescrever o módulo NPS baseado em **modelos configuráveis de formulário** — templates por tipo de serviço, perguntas customizáveis com opções e pesos ajustáveis, cálculo por dimensão (estrategista/analista/empresa/geral), bloqueio de duplicata mensal, dashboards de pendência e UX limpa do formulário público. **Zero uso de Promotor/Neutro/Detrator** — escala 1-5.
+**Goal:** Corrigir a arquitetura de Carteira e Desempenho para suportar empresas com Performance/Mercado Livre e Shopee ao mesmo tempo — sem duplicar empresa e sem misturar métricas financeiras de ML em carteiras/vínculos Shopee. **Empresa compartilhada ≠ métrica compartilhada.** O score de desempenho permanece **único por profissional**; a separação existe no universo da carteira, nas fontes de dados e na elegibilidade das métricas, nunca na nota final.
 
-**Target features (6 blocos):**
-- **A. Schema + modelos + seed "NPS Padrão" retroativo:** 5 tabelas novas (`nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes`, `nps_response_answers`) + alter `nps_surveys/responses`; seed retro-associa 100% dos surveys legados ao template padrão
-- **B. Backend regras de negócio:** `NpsTemplateService` (resolve template por company+serviço), `NpsScoreCalculator` (média por dimensão), dedup mensal via unique index parcial, dispatch usando template correto
-- **C. UI Configuração:** CRUD de templates + perguntas + opções, drag/drop pra reordenar, ajuste de pesos inline, preview live
-- **D. Formulário público:** dinâmico por template, UX limpa (opções cinza / ativo amarelo), mobile-friendly, marcador de obrigatoriedade
-- **E. Dashboards + pendências:** destaque na carteira quando empresa não respondeu no mês, "dia de cobrança" configurável, base pra notificação interna
-- **F. Limpeza legado + testes:** remove `>=9 Promotor/>=7 Neutro/else Detrator` (`PerformanceController.php:301`), remove refs `score_overall/consultant/mentor` (`CompanyController.php:482-487`), suite E2E completa
+**Target features (6 fases, 88-93):**
+- **F88. Camada de contexto:** novo `CarteiraContextService` — retorna vínculos de serviço do profissional (user×company×servico×setor×role), resolve fonte financeira e elegibilidade (`financial_metrics_eligible`), deduplica empresa única vs. vínculos de serviço
+- **F89. Carteira individual:** `renderCarteiraProfissional` por contexto de serviço; Shopee aparece com "sem fonte financeira"; soma financeiro só de vínculos elegíveis; absorve o bug de exibição de `/companies` (responsável certo por serviço)
+- **F90. Carteiras consolidadas:** `renderCarteirasConsolidadas` sem puxar faturamento ML pra quem só cuida da empresa em Shopee; separa empresas únicas de vínculos de serviço; sem dupla contagem
+- **F91. Desempenho único com elegibilidade:** `DesempenhoScoreService::computeUniverso` por vínculos; financeiro (var. faturamento/margem) só de vínculo elegível; NPS já vem de `nps_score_assignments`; status da nota `official`/`partial`/`blocked`
+- **F92. UI de Desempenho:** ranking único + metadados (empresas únicas, vínculos, vínculos sem fonte, status parcial); filtros de auditoria por setor sem criar segundo score
+- **F93. Menu:** grupo transversal "Gestão ECF" (Carteira/Desempenho/Metas) fora do grupo Mercado Livre
 
 **Key context:**
-- Escopo pré-negociado em 2026-07-07 (spec de ~200 linhas do usuário + mapeamento completo do NPS atual)
-- Escala 1-5 SEMPRE — nunca 0-10 clássico NPS
-- Seed "NPS Padrão" cobrindo 100% do legado (zero survey órfã)
-- Deploy gate ativo — outro dev em paralelo
+- Plano canônico do usuário: `plano-carteira-desempenho-multi-servico.md` (raiz do projeto) — fonte de verdade do escopo e critérios de aceite
+- Bug medido em prod: `User::companies()` não distingue serviço → Felipe avaliado sobre 29 empresas gerenciando 4; Matheus sobre 15 gerenciando 0 (carteira de performance inteiramente emprestada do ML)
+- **Score ÚNICO** por profissional — proibido criar score separado ML/Shopee/Geral
+- Financeiro conta só vínculo com fonte (`financial_metrics_eligible=true`); Shopee sem fonte até ter API própria
+- **Profissional só-Shopee → nota `blocked`** até a diretoria aprovar régua de bônus sem financeiro (decisão 2026-07-16)
+- `User::companies()` PRESERVADO como legado/fallback; `CarteiraContextService` é a fonte oficial multi-serviço
+- Reutiliza fundação da v16.0: `company_users.servico_id`, `servicos.setor`, `nps_score_assignments`
+- Deploy gate ativo — outro dev em paralelo (fases 82-87, módulo MLB/Anúncios)
 - pt-BR em tudo
 
 ## Paused: v14.0 Confiabilidade + Polish *(paused 2026-07-07)*

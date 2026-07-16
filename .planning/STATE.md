@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v15.0
-milestone_name: NPS Templates
-status: "Em execução (v16.0 — Fase 80: bônus/relatórios lendo atribuições por serviço)"
-stopped_at: Completed 80-03 (Wave 3 Phase 80 — widgets do NPS lendo as atribuições + rótulo de área; código e bundle prontos, AGUARDANDO o checkpoint visual da Tarefa 3)
-last_updated: "2026-07-15T17:10:00.000Z"
-last_activity: 2026-07-15
+milestone: v17.0
+milestone_name: Carteira e Desempenho multi-servico
+status: "Roadmap criado — proximo: Fase 88 (Camada de contexto, CarteiraContextService)"
+stopped_at: "Roadmap v17.0 (Fases 88-93) criado e escrito; v16.0 completa no codigo (Fases 76-81), aguardando deploy do pacote NPS 79+81 (ja validado) e checkpoints visuais pendentes (78/81/80-03)"
+last_updated: "2026-07-16T00:00:00.000Z"
+last_activity: 2026-07-16
 progress:
-  total_phases: 14
+  total_phases: 20
   completed_phases: 13
   total_plans: 61
   completed_plans: 66
-  percent: 93
+  percent: 65
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Milestone complete
+**Current focus:** Milestone v17.0 (Carteira e Desempenho multi-servico) — Roadmap criado, planejamento da Fase 88 pendente
 
 ## Current Position
 
-Phase: 80
-Plan: 80-03 concluído — código e bundle prontos, **aguardando o checkpoint visual (Tarefa 3)** (Wave 3 — os 3 leitores de apresentação do `dashboardCarteira` deixaram de filtrar por `->principal()` e passaram a derivar do MESMO dual-path do bônus, via helper novo `PerformanceController::notasNpsDoUsuarioPorResposta` (atribuições da Fase 79 + legado; dedup 1× por (resposta, papel); skip por papel DEC-80-B1; mês por `nps_surveys.completed_at` DEC-80-B0). **A resposta do NPS Shopee finalmente APARECE** para quem responde pelo Shopee — coluna NPS por empresa, últimas respostas e heatmap contam a mesma história a partir de UMA passagem de dados (antes eram 3 queries independentes, nenhuma enxergando modelo não-principal). Rótulo de área em linguagem clara ("Mercado Livre"/"Shopee"; slug cru nunca vai pra tela). **Descoberta (Rule 2):** a lista de últimas respostas estava ÓRFÃ desde o redesign de 2026-07-09 — o payload existia desde a Phase 73 mas ninguém renderizava; sem re-renderizar, o sintoma reportado pelo usuário continuaria de pé com todos os testes verdes. `DesempenhoScoreService` **intocado** (`git diff` vazio) — a régua do bônus dos planos 01/02 preservada; `nps.media` segue vindo do service (fonte oficial). `WidgetNpsAtribuicoesTest` 2/2 (Shopee visível + isolamento inverso do analista de ML); Performance 37/37; `npm run build` verde com o map-scope conferido no minificado. **Follow-up registrado:** `PortfolioController:1374` tem o mesmo `->principal()` + agravante do `month_reference ?? completed_at` (conflita com DEC-80-B0) — fora do escopo desta fase. Próximo: checkpoint visual e, aprovado, fechar a Fase 80.)
+Phase: 88
+Plan: Nenhum ainda — Fase 88 acabou de ser roteirizada (ROADMAP v17.0 criado 2026-07-16, fases 88-93 anexadas ao ROADMAP.md preservando 60-87 intactas). Proximo passo: `/gsd-plan-phase 88` para quebrar o `CarteiraContextService` em plans executaveis.
 
-Plan anterior: 80-02 concluído (Wave 2 — FASE CRÍTICA/bônus: **o bloqueio de deploy do pacote 80 foi removido**. Chave de cache bumpada v2→v3 (`DesempenhoScoreService:150`) — só a versão da string; TTL adaptativo e `Cache::remember` intactos. Sem o bump, prod serviria a nota antiga (sem Shopee) do Redis por até 7 dias no mês fechado. Varredura conferiu os 8 consumidores de `computeCached` (Performance :108/:114/:272/:907, Dashboard :797, **Portfolio :1251/:1277**, WarmDesempenhoCache :71) — nenhum monta a chave por fora; `Snapshot`/`Consolidar` seguem em `compute()` direto (DEC-80-E, nada de reescrever mês fechado). Regressão PROVADA por medição: `BonusDualPathRegressaoTest` 5/5 (mês sem atribuição = nota legada 3.0; mês misto = 3.5 com cada resposta 1×; 0.0 preservado; guard de carteira), ambos os testes-chave mutation-verified. Âncora Carlos 4.08/`basico` VERDE sem edição do arquivo; Phase74 32/32; V16 72/72; Performance 37/37; Nps 174/174. Falhas de outros módulos medidas como IDÊNTICAS com a chave em v2 e v3 (variável única, mesmo ambiente) → pré-existentes. Próximo: 80-03 (widgets/leitores que usam `->principal()` direto — `dashboardCarteira` :298-446, exige `npm run build`))
-Status: Em execução (v16.0 — Fase 80: bônus/relatórios lendo atribuições por serviço)
-Last activity: 2026-07-15 - Quick task 260715-pu0: nomes do analista/estrategista no detalhe da resposta NPS (fonte = `nps_score_assignments` congelada, NAO o pivot quebrado). Codigo pronto e testado; checkpoint visual pendente de validacao em prod. | Antes: 260715-ndo (gerar-link honra o modelo escolhido por nao-admin) — mitigacao priority 10->0, os 13 surveys pendentes e a remigracao dos surveys 102/106 JA APLICADOS em prod e verificados. | Em paralelo (outro dev): quick task 260715-jgi — abas Individual/Em massa na tela de Anunciar (`/mlb/anuncios`) + Fase 82 (planilha Excel-like da grade em massa).
+Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
+Status: Roadmap v17.0 criado (Fases 88-93) — aguardando planejamento da Fase 88
+Last activity: 2026-07-16 - Roadmap da milestone v17.0 (Carteira e Desempenho multi-servico) criado: 6 fases (88-93) cobrindo as 22 REQs do REQUIREMENTS.md (CTX/CART/DESEMP/MENU), anexadas ao ROADMAP.md; traceability do REQUIREMENTS.md preenchida (22/22); STATE.md apontando para a Fase 88.
 
 ## Performance Metrics
 
@@ -151,6 +151,8 @@ Last activity: 2026-07-15 - Quick task 260715-pu0: nomes do analista/estrategist
 ## Accumulated Context
 
 ### Roadmap Evolution
+
+- 2026-07-16 — **Milestone v17.0 (Carteira e Desempenho multi-servico) roteirizada — ROADMAP criado, 6 fases anexadas (88-93)**. Fonte: plano canonico do usuario (`plano-carteira-desempenho-multi-servico.md`) + `.planning/REQUIREMENTS.md` (22 REQs: CTX-01..05, CART-01..08, DESEMP-01..08, MENU-01). Numeracao continua a partir de 88 (as fases 82-87 sao de outro dev, modulo MLB/Anuncios, intocadas). Estrutura: **88** Camada de contexto (`CarteiraContextService` — fundacao, vinculos user x company x servico x setor x role, elegibilidade financeira); **89** Carteira individual (`renderCarteiraProfissional` por contexto + absorve o bug de exibicao de `/companies`); **90** Carteiras consolidadas (`renderCarteirasConsolidadas`, visao admin); **91** Desempenho unico com elegibilidade (`DesempenhoScoreService::computeUniverso` por vinculos, status official/partial/blocked); **92** UI de Desempenho (ranking + metadados); **93** Menu (grupo transversal "Gestao ECF"). Dependencias: 88 e fundacao de tudo; 89->90; 91 depende de 88; 92 depende de 91; 93 independente. Decisoes travadas: score UNICO por profissional (nunca separado por marketplace); financeiro so de vinculo `financial_metrics_eligible=true`; profissional so-Shopee -> nota `blocked` (nao `partial`) ate a diretoria decidir; `User::companies()` preservado como legado; reusa fundacao v16.0 (`company_users.servico_id`, `servicos.setor`, `nps_score_assignments`). Cobertura: 22/22 REQs mapeadas, zero orfaos. Arquivos escritos: ROADMAP.md (anexado, 60-87 preservadas), REQUIREMENTS.md (traceability preenchida), STATE.md (Current Position -> Fase 88). Proximo: `/gsd-plan-phase 88`.
 
 - 2026-07-15 — **Phase 82 adicionada: Planilha Excel-like na grade de anúncio em massa (glide-data-grid)** — módulo MLB/Anúncios. A aba "Em massa" de `/mlb/anuncios` vira uma planilha de verdade (range, fill handle bidirecional, copiar/colar do Excel, teclado, seleção de linha/coluna, dropdown de valores válidos), preservando as validações atuais. **Lib decidida pelo usuário: glide-data-grid** (MIT, canvas, React 18); react-data-grid descartada (v7 beta exige React 19, v6 exige React 16, sem range selection), AG Grid e Handsontable descartadas (pagas para estas features). **Marco de processo:** é a **primeira fase real do módulo de anúncios no ROADMAP** — o módulo vinha sendo desenvolvido direto no main com numeração "Phase 75-82" existindo só em comentários de código/commits, colidindo com as fases NPS deste roadmap (a "Phase 79" daqui é NPS; a "Phase 79" de `routes/mlb_anuncios.php` é duplicar-tier). Daqui pra frente a numeração do módulo é a do ROADMAP.
 

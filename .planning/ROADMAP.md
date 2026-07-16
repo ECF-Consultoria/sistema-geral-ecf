@@ -590,6 +590,158 @@ Plans:
 
 - [ ] TBD (run /gsd-plan-phase 87 to break down)
 
+### Phase 88: Camada de contexto — CarteiraContextService (v17.0)
+
+**Goal:** Existe uma fonte única e confiável de vínculos de carteira por serviço (`CarteiraContextService`) que resolve setor, papel e elegibilidade financeira sem depender de `company_id` consolidado — fundação para toda a milestone v17.0.
+**Requirements**: CTX-01, CTX-02, CTX-03, CTX-04, CTX-05
+**Depends on:** Nada (fundação da milestone v17.0)
+**Plans:** TBD (rodar `/gsd-plan-phase 88`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. `CarteiraContextService::forUser($user, $filters)` retorna vínculos de serviço ativos com `company_id`, `company_name`, `servico_id`, `servico_nome`, `setor`, `role`, `role_label`, testado nos 4 cenários do plano canônico: só Performance, só Shopee, Performance+Shopee na mesma empresa, mesmo profissional nos dois serviços da mesma empresa
+2. Cada vínculo expõe `has_financial_source`/`financial_source`/`financial_metrics_eligible` corretos — `true`/`'adman'` para setor `performance` (cobrindo Gestão id 6 E Mentoria id 7, resolvido via `servicos.setor` sem hardcode de `servico_id`), `false`/`null` para `shopee`
+3. A mesma empresa com dois vínculos do mesmo profissional (ex.: ML + Shopee) é contada como 1 empresa única e 2 vínculos de serviço no retorno do service — não duplica empresa
+4. Compatibilidade legado respeitada: `servico_id` preenchido tem prioridade; `servico_id null` com contrato Performance ativo resolve como Performance legado; `servico_id null` com contrato Shopee ativo NÃO atribui responsável Shopee automaticamente
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 88 to break down)
+
+### Phase 89: Carteira individual — renderCarteiraProfissional por contexto (v17.0)
+
+**Goal:** A carteira individual usa o `CarteiraContextService` em vez de `$user->companies()`; Shopee aparece com "sem fonte financeira"; a tela `/companies` deixa de misturar responsável ML com responsável Shopee.
+**Requirements**: CART-01, CART-02, CART-03, CART-04, CART-05, CART-08
+**Depends on:** Phase 88
+**Plans:** TBD (rodar `/gsd-plan-phase 89`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. Empresa com Performance + Shopee aparece UMA única vez como empresa na carteira individual, exibindo os dois vínculos de serviço separadamente
+2. Vínculo Shopee aparece na carteira com estado explícito "sem fonte financeira" — sem faturamento/margem de ML
+3. Soma financeira (`SUM(revenue)`, `SUM(contribution_margin)`, `ad_spend`, `tacos`) considera apenas vínculos `financial_metrics_eligible = true` — validado por teste dedicado do analista Shopee de empresa que também tem ML
+4. Profissional responsável por ML e Shopee da mesma empresa não duplica faturamento no filtro "Todos" — a métrica ML conta uma única vez
+5. A tela `/companies` (painel Performance) exibe o responsável do SERVIÇO DE PERFORMANCE na coluna Analista/Estrategista — nunca o responsável Shopee; a pendência "sem responsável" acusa falta do responsável de performance especificamente
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 89 to break down)
+
+### Phase 90: Carteiras consolidadas — renderCarteirasConsolidadas (v17.0)
+
+**Goal:** A visão admin de carteiras consolidadas mostra cards por profissional com contagem correta, sem puxar faturamento ML para quem só cuida da empresa em Shopee, com filtro de contexto e contadores de auditoria.
+**Requirements**: CART-06, CART-07
+**Depends on:** Phase 89 (individual antes de consolidada)
+**Plans:** TBD (rodar `/gsd-plan-phase 90`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. Cards por profissional na carteira consolidada mostram contagem correta, separando empresas únicas de vínculos de serviço
+2. Profissional responsável apenas por Shopee de uma empresa que também tem ML NÃO aparece com faturamento/margem ML puxado dessa empresa
+3. A UI de carteira (individual e consolidada) tem filtro de contexto funcional (Todos / Performance-ML / Shopee)
+4. Badges de serviço aparecem por linha e contadores (empresas únicas vs. vínculos de serviço) ficam visíveis no topo da tela
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 90 to break down)
+
+**UI hint**: yes
+
+### Phase 91: Desempenho único com elegibilidade — DesempenhoScoreService (v17.0)
+
+**Goal:** `DesempenhoScoreService::computeUniverso` deriva o universo dos vínculos de serviço ativos do profissional (não de `company_id` consolidado); financeiro só entra por vínculo elegível; a nota expõe status `official`/`partial`/`blocked`, sem nunca criar score separado por marketplace.
+**Requirements**: DESEMP-01, DESEMP-02, DESEMP-03, DESEMP-04, DESEMP-05, DESEMP-06, DESEMP-07
+**Depends on:** Phase 88 (usa o mesmo universo de vínculos do `CarteiraContextService`)
+**Plans:** TBD (rodar `/gsd-plan-phase 91`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. `computeUniverso` deriva o universo de vínculos de serviço ativos do profissional, retornando empresas únicas e empresas elegíveis para financeiro — não usa mais `$user->companies()`
+2. O score permanece ÚNICO por profissional — não existe implementação de "Score ML" / "Score Shopee" / "Score Geral" separados em nenhum ponto do código
+3. `computeNpsMedio` continua lendo `nps_score_assignments` — NPS Shopee E NPS Performance entram no mesmo NPS médio do profissional (teste de regressão da v16.0 preservado)
+4. `computeVarFaturamento` e `computeVarMargem` usam apenas vínculos com `financial_metrics_eligible = true` — profissional só-Shopee não recebe variação financeira baseada em ML (teste dedicado)
+5. O retorno do service expõe os metadados `empresas_unicas`, `vinculos_servico`, `vinculos_financeiros`, `vinculos_sem_fonte_financeira`, `score_status`, `componentes_disponiveis`
+6. A nota expõe status `official`/`partial`/`blocked`; profissional apenas-Shopee sem fonte financeira recebe `blocked` (decisão do usuário 2026-07-16, até a diretoria aprovar régua de bônus sem financeiro)
+7. A regra `sem_carteira` remove do ranking apenas o profissional SEM nenhum vínculo ativo — quem tem vínculo Shopee (ainda que sem financeiro) permanece no ranking
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 91 to break down)
+
+### Phase 92: UI de Desempenho — ranking + metadados (v17.0)
+
+**Goal:** A UI de Desempenho mantém o ranking único e exibe os metadados por profissional (empresas únicas, vínculos de serviço, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial.
+**Requirements**: DESEMP-08
+**Depends on:** Phase 91
+**Plans:** TBD (rodar `/gsd-plan-phase 92`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. A UI de Desempenho mantém ranking único — não bifurca em telas/rankings separados por marketplace
+2. Cada linha do ranking exibe os metadados por profissional: empresas únicas, vínculos de serviço, vínculos sem fonte financeira, status da nota (oficial/parcial/bloqueada)
+3. Filtro de auditoria por setor de atuação (Todos/Performance/Shopee) muda apenas a visualização — não recalcula nem persiste um segundo score oficial
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 92 to break down)
+
+**UI hint**: yes
+
+### Phase 93: Menu — grupo transversal "Gestão ECF" (v17.0)
+
+**Goal:** Carteira e Desempenho (e Metas, quando fizer sentido) saem do grupo "Mercado Livre" para um grupo transversal "Gestão ECF"; o grupo Mercado Livre mantém apenas telas realmente ML.
+**Requirements**: MENU-01
+**Depends on:** Nada (independente — pode ir por último)
+**Plans:** TBD (rodar `/gsd-plan-phase 93`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. O menu lateral (`AppLayout.jsx`) mostra um grupo "Gestão ECF" contendo Carteiras, Desempenho e Metas
+2. O grupo "Mercado Livre" mantém apenas telas realmente ML (Dashboard, Empresas, Sugadores, PPA, Grants) — Carteira/Desempenho não aparecem mais lá
+3. O grupo "Shopee" permanece com suas telas (Empresas, Dashboard) sem alteração de comportamento — só a reorganização de Carteira/Desempenho muda
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 93 to break down)
+
+**UI hint**: yes
+
+## Dependências — Milestone v17.0 (Fases 88-93)
+
+- **88** é fundação — todas as demais fases da milestone dependem do `CarteiraContextService`
+- **89 → 90** — carteira individual antes da consolidada (a consolidada reusa os componentes da individual)
+- **91** depende de **88** — usa o mesmo universo de vínculos do `CarteiraContextService`
+- **92** depende de **91** — UI de Desempenho consome os metadados calculados pelo service
+- **93** é independente — pode ser executada a qualquer momento, inclusive por último
+
+## Coverage Map — Milestone v17.0
+
+| Categoria | REQ | Fase |
+|-----------|-----|------|
+| CTX (Contexto) | CTX-01 | Fase 88 |
+| CTX | CTX-02 | Fase 88 |
+| CTX | CTX-03 | Fase 88 |
+| CTX | CTX-04 | Fase 88 |
+| CTX | CTX-05 | Fase 88 |
+| CART (Carteira) | CART-01 | Fase 89 |
+| CART | CART-02 | Fase 89 |
+| CART | CART-03 | Fase 89 |
+| CART | CART-04 | Fase 89 |
+| CART | CART-05 | Fase 89 |
+| CART | CART-08 | Fase 89 |
+| CART | CART-06 | Fase 90 |
+| CART | CART-07 | Fase 90 |
+| DESEMP (Desempenho) | DESEMP-01 | Fase 91 |
+| DESEMP | DESEMP-02 | Fase 91 |
+| DESEMP | DESEMP-03 | Fase 91 |
+| DESEMP | DESEMP-04 | Fase 91 |
+| DESEMP | DESEMP-05 | Fase 91 |
+| DESEMP | DESEMP-06 | Fase 91 |
+| DESEMP | DESEMP-07 | Fase 91 |
+| DESEMP | DESEMP-08 | Fase 92 |
+| MENU (Menu) | MENU-01 | Fase 93 |
+
+**Cobertura:** 22/22 REQs v17.0 mapeadas ✓ — zero órfãos, zero duplicatas.
 ---
 *Roadmap criado: 2026-07-07 — Milestone v15.0 (NPS Templates) — 6 phases (68-73) cobrindo 29 REQs; granularity=standard*
 *Roadmap atualizado: 2026-07-09 — Phase 74 (Módulo Desempenho v2) adicionada como tail da milestone, cobrindo 14 REQs DESEMP em 10 plans / 5 waves*
@@ -597,3 +749,4 @@ Plans:
 *Roadmap atualizado: 2026-07-15 — Phase 85 planejada: 5 plans / 3 waves cobrindo COL-85-1..4. O risco crítico previsto (regredir o wizard) NÃO existe: `colunasCategoria` e `atributos()` já são métodos separados, com 1 consumidor cada — sem parametrização. Foto = 0 mudança de backend (`ItemBuilderBase` já repassa `pictures`); a fase toca 1 arquivo PHP e 3 JS; nenhum pacote novo*
 *Roadmap atualizado: 2026-07-15 — Phase 83 planejada: 5 plans / 4 waves cobrindo FIX-83-1..6. FIX-83-1 e FIX-83-2 são o MESMO bug (falta o merge prop→estado), tratados como um bloco; wave 2 é paralela (`AnunciarMassa.jsx` × `GradeAnuncioGlide.jsx`); 100% frontend — nenhuma rota, migration ou pacote novo*
 *Roadmap atualizado: 2026-07-15 — Phase 86 planejada: 4 plans / 3 waves cobrindo HIST-86-1..3. HIST-86-2 e a clonagem NÃO são reimplementados: `duplicarComoTemplate`/`criarTemplateInterno` (Phase 81, 6 testes) já clonam o payload inteiro e zeram os `ml_item_id` — a fase liga o botão neles e o front redireciona (a rota devolve JSON e mantém o consumidor vivo em `AnunciarML.jsx:1355`). `Mlb/Historico.jsx` já é de outro módulo → página nova = `AnunciosHistorico.jsx`. Busca por título atravessa JSON (`payload->title`): verificada de fato em MariaDB (prod) e SQLite (phpunit) no planejamento. Nenhum pacote novo*
+*Roadmap atualizado: 2026-07-16 — Milestone v17.0 (Carteira e Desempenho multi-servico) anexada: 6 fases (88-93) cobrindo as 22 REQs (CTX/CART/DESEMP/MENU) do REQUIREMENTS.md, estrutura vinda do plano canonico do usuario (plano-carteira-desempenho-multi-servico.md). Fundacao em 88 (CarteiraContextService); 89->90 (individual antes de consolidada); 91 depende de 88, 92 depende de 91; 93 independente. Fases 60-87 preservadas intactas.*

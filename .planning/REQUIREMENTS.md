@@ -1,140 +1,85 @@
-# Requirements: ECF Admin — Milestone v15.0
+# Requirements: ECF Admin — Milestone v17.0
 
-**Defined:** 2026-07-07
-**Milestone:** v15.0 — NPS Templates
-**Core Value:** Transformar o NPS de "3 perguntas fixas + extras globais" em "modelos configuráveis de formulário", com pesos por opção, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre.
+**Defined:** 2026-07-16
+**Milestone:** v17.0 — Carteira e Desempenho multi-serviço
+**Core Value:** Corrigir a dupla contagem de faturamento e a atribuição cruzada quando uma empresa tem responsáveis diferentes por setor (Performance/ML e Shopee). Empresa compartilhada ≠ métrica compartilhada. Score único por profissional; a separação existe na carteira, nas fontes de dados e na elegibilidade das métricas — nunca na nota final.
+**Plano canônico:** `plano-carteira-desempenho-multi-servico.md` (raiz do projeto).
 
-## v15.0 Requirements
+## v17.0 Requirements
 
-Requirements do milestone atual. Cada um mapeia para exatamente uma phase no ROADMAP.md.
+Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
-### NPS-A — Schema, modelos e migração de dados existentes
+### CTX — Camada de contexto de carteira (Fase 88)
 
-- [x] **NPS-A-01**: Sistema tem tabelas `nps_templates`, `nps_template_questions`, `nps_template_options`, `nps_template_service_scopes` e `nps_response_answers` criadas com constraints e índices apropriados
-- [x] **NPS-A-02**: Modelos Eloquent + relationships definidos (`NpsTemplate hasMany Questions`, `Question hasMany Options`, `Template belongsToMany Servico` via pivot, `NpsResponse hasMany Answers`)
-- [x] **NPS-A-03**: Migração de dados legados cria template seed "NPS Padrão" e retro-associa 100% dos `nps_surveys` existentes; nenhuma survey fica órfã sem `template_id`
-- [x] **NPS-A-04**: `nps_response_answers` armazena snapshot completo (question_texto, option_label, peso) por resposta — mudanças futuras no template não alteram histórico
+- [ ] **CTX-01**: `CarteiraContextService::forUser($user, $filters)` retorna os vínculos de serviço ativos do profissional, cada um com `company_id`, `company_name`, `servico_id`, `servico_nome`, `setor`, `role`, `role_label`
+- [ ] **CTX-02**: Cada vínculo marca `has_financial_source` / `financial_source` / `financial_metrics_eligible` — `true`/`adman` para setor `performance`, `false`/`null` para `shopee` (até existir fonte Shopee)
+- [ ] **CTX-03**: O serviço resolve elegibilidade financeira por `servicos.setor`, cobrindo TODOS os serviços de performance (Gestão id 6 E Mentoria id 7), sem hardcode de `servico_id`
+- [ ] **CTX-04**: O serviço deduplica corretamente — distingue "empresas únicas" de "vínculos de serviço"; a mesma empresa com dois vínculos do mesmo profissional não é contada duas vezes como empresa
+- [ ] **CTX-05**: Compatibilidade legado — `servico_id` preenchido tem prioridade; `servico_id null` com contrato performance ativo é tratado como Performance legado; `servico_id null` com contrato Shopee NÃO assume responsável Shopee automaticamente
 
-### NPS-B — Backend: regras de negócio, cálculo e dispatch
+### CART — Carteira individual e consolidada (Fases 89, 90)
 
-- [ ] **NPS-B-01**: `NpsTemplateService` resolve o template correto para uma empresa dado seus serviços ativos (via `nps_template_service_scopes`); retorna o template default se nenhum específico aplicar
-- [ ] **NPS-B-02**: `NpsScoreCalculator` computa nota por dimensão (`estrategista`, `analista`, `empresa`, `geral`) como média dos pesos das opções escolhidas nas perguntas daquela dimensão; retorna `null` para dimensão sem perguntas correspondentes
-- [x] **NPS-B-03**: Sistema bloqueia gerar/responder NPS duplicado para mesma `(company_id, month_reference, template_id)` — via unique index parcial + guard no controller. Link redundante mostra tela "Já respondida no mês"
-- [x] **NPS-B-04**: Comando `nps:disparar-mensal` usa `NpsTemplateService` pra resolver template correto por empresa; empresas sem template aplicável são puladas com log
-- [x] **NPS-B-05**: Validação server-side do formulário público é dinâmica — deriva regras (obrigatoriedade, tipo, range de pesos) do template snapshot associado à survey, não de defaults hardcoded
+- [ ] **CART-01**: A carteira individual (`renderCarteiraProfissional`) usa `CarteiraContextService`; empresa com Performance + Shopee aparece UMA vez como empresa, podendo exibir dois vínculos de serviço
+- [ ] **CART-02**: Vínculo Shopee aparece na carteira com estado explícito "sem fonte financeira", sem faturamento/margem de ML
+- [ ] **CART-03**: Soma financeira (`SUM(revenue)`, `SUM(contribution_margin)`, `ad_spend`, `tacos`) considera apenas vínculos com `financial_metrics_eligible = true`
+- [ ] **CART-04**: Profissional responsável APENAS por Shopee de uma empresa que também tem ML NÃO recebe faturamento/margem de ML como se fosse dele
+- [ ] **CART-05**: Profissional responsável por ML E Shopee da mesma empresa NÃO duplica faturamento no filtro "Todos" (métrica ML contada uma vez)
+- [ ] **CART-06**: A carteira consolidada (`renderCarteirasConsolidadas`, visão admin) mostra cards por profissional com contagem correta, separando empresas únicas de vínculos de serviço, sem puxar faturamento ML pra quem só cuida em Shopee
+- [ ] **CART-07**: A UI de carteira tem filtro de contexto (Todos / Performance-ML / Shopee), badges de serviço por linha e contadores (empresas únicas vs. vínculos de serviço)
+- [ ] **CART-08**: A tela `/companies` (painel Performance) exibe o responsável do SERVIÇO DE PERFORMANCE na coluna Analista/Estrategista — nunca o responsável Shopee; a pendência "sem responsável" acusa falta do responsável de performance especificamente
 
-### NPS-C — UI de configuração (admin)
+### DESEMP — Desempenho único com elegibilidade (Fases 91, 92)
 
-- [ ] **NPS-C-01**: Admin pode criar, editar e desativar templates de NPS via `/nps/configuracao` (novo layout multi-template)
-- [ ] **NPS-C-02**: Admin pode adicionar, editar, reordenar e excluir perguntas dentro de um template (`escala`, `opcoes` como tipos suportados)
-- [ ] **NPS-C-03**: Admin pode configurar opções de resposta de cada pergunta com label visível ao cliente + peso interno (1-5+) + ordem; reordenação drag-and-drop ou arrows
-- [ ] **NPS-C-04**: Admin pode marcar dimensão de cada pergunta (`estrategista`, `analista`, `empresa`, `geral`) e obrigatoriedade
-- [ ] **NPS-C-05**: Admin pode associar templates a tipos de serviço via pivot `nps_template_service_scopes` — decide qual template cada tipo de empresa recebe
-- [ ] **NPS-C-06**: Admin vê preview live do formulário público renderizado a partir do template em edição, sem persistir mudanças
+- [ ] **DESEMP-01**: `DesempenhoScoreService::computeUniverso` deriva o universo dos vínculos de serviço ativos do profissional (não de `company_id` consolidado), retornando empresas únicas e empresas elegíveis para financeiro
+- [ ] **DESEMP-02**: O score permanece ÚNICO por profissional — nenhum score separado por marketplace (sem "Score ML" / "Score Shopee" / "Score Geral")
+- [ ] **DESEMP-03**: `computeNpsMedio` continua lendo `nps_score_assignments` — NPS Shopee E NPS Performance entram no mesmo NPS médio do profissional (comportamento da v16.0 preservado)
+- [ ] **DESEMP-04**: `computeVarFaturamento` e `computeVarMargem` usam apenas vínculos com `financial_metrics_eligible = true`; profissional só-Shopee não recebe variação financeira baseada em ML
+- [ ] **DESEMP-05**: O service retorna metadados: `empresas_unicas`, `vinculos_servico`, `vinculos_financeiros`, `vinculos_sem_fonte_financeira`, `score_status`, `componentes_disponiveis`
+- [ ] **DESEMP-06**: A nota expõe status `official` / `partial` / `blocked`; profissional apenas-Shopee sem fonte financeira recebe `blocked` (decisão do usuário 2026-07-16, até a diretoria aprovar régua de bônus sem financeiro)
+- [ ] **DESEMP-07**: A regra `sem_carteira` remove do ranking apenas o profissional SEM nenhum vínculo ativo — quem tem vínculo Shopee (ainda que sem financeiro) permanece no ranking
+- [ ] **DESEMP-08**: A UI de Desempenho mantém ranking único e exibe os metadados por profissional (empresas únicas, vínculos, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial
 
-### NPS-D — Formulário público (cliente respondendo)
+### MENU — Reorganização de navegação (Fase 93)
 
-- [ ] **NPS-D-01**: Formulário público `/nps/{token}` renderiza dinamicamente a partir do template snapshot associado à survey — sem hardcode de 3 perguntas fixas
-- [ ] **NPS-D-02**: Perguntas com opções renderizam como radio group com estilo cinza no estado padrão + amarelo no estado ativo (opção selecionada); mobile-friendly
-- [ ] **NPS-D-03**: Perguntas obrigatórias são visualmente marcadas; submit desabilita até que todas obrigatórias estejam preenchidas (validação client-side + confirmação server-side)
-- [ ] **NPS-D-04**: Formulário preserva telas `ThankYou`, `AlreadyCompleted` e `Expired` — comportamento inalterado
-- [ ] **NPS-D-05**: Formulário público não usa jargão técnico (`unified`, `dimensao`, `snapshot`) — labels apresentadas ao cliente em pt-BR simples
+- [ ] **MENU-01**: Carteira e Desempenho (e Metas, se fizer sentido) saem do grupo "Mercado Livre" para um grupo transversal "Gestão ECF"; o grupo Mercado Livre mantém apenas telas realmente ML
 
-### NPS-E — Dashboards e pendências de resposta
+## Critérios de aceite globais (do plano canônico)
 
-- [x] **NPS-E-01**: Sistema tem configuração global "dia de cobrança mensal" (int 1-31) que dispara marcação de pendência a partir daquele dia do mês
-- [x] **NPS-E-02**: Listagem de empresas em carteira (`Portfolio/Show.jsx` e `Companies/Index.jsx`) mostra badge/indicador visual quando empresa está em pendência de NPS do mês corrente
-- [x] **NPS-E-03**: Dashboard do analista/estrategista mostra contagem/lista de empresas pendentes de NPS no mês corrente na sua carteira
-- [x] **NPS-E-04**: Sistema tem `NpsPendingService` que retorna a lista de empresas pendentes por carteira; base preparada para futura integração com sistema de notificações (não obrigatório integrar nesta phase, mas contrato definido)
-- [x] **NPS-E-05**: Dashboards existentes (`Dashboard/Admin.jsx`, `Performance/Dashboard.jsx`, `Companies/Show.jsx`) leem nota via `NpsScoreCalculator` e exibem médias por dimensão respeitando `template_snapshot`
+- Nenhuma empresa é duplicada em nenhuma tela
+- Nenhuma atribuição Shopee altera responsável Performance, e vice-versa
+- `company_users.servico_id` é respeitado em todos os fluxos novos; `servico_id null` segue como legado
+- `User::companies()` NÃO é removido — permanece como fallback legado documentado
 
-### NPS-F — Limpeza de legado + testes E2E
+## Out of Scope (v17.0)
 
-- [ ] **NPS-F-01**: Zero cálculo `>=9 Promotor / >=7 Neutro / else Detrator` restante no código (grep confirma remoção em `PerformanceController.php`, `Performance/Dashboard.jsx`, qualquer outro loco)
-- [ ] **NPS-F-02**: Referências legadas a `score_overall`, `score_consultant`, `score_mentor` removidas de `Companies/Show.jsx` (fechamento do Plan 31-05 nunca finalizado)
-- [ ] **NPS-F-03**: `CalculateGoalResults` (`app/Jobs/CalculateGoalResults.php:155`) implementa cálculo real para `metric='nps'` usando `NpsScoreCalculator` — não cai mais no branch `null`
-- [ ] **NPS-F-04**: Suite de tests E2E cobre: criação de template, perguntas com pesos, resposta pública, cálculo por dimensão, bloqueio de duplicata, dispatch idempotente, empresa pendente aparece corretamente, template sem analista funciona sem quebrar
-
-## Future Requirements
-
-<!-- Reconhecidos mas fora do escopo desta milestone. -->
-
-### NPS avançado
-
-- **NPS-FUTURE-01**: UI para ajustar janelas de expiração (7d manual / 30d auto) via config sem deploy
-- **NPS-FUTURE-02**: UI para ajustar horário do disparo mensal (hoje 9h America/Sao_Paulo) via config sem deploy
-- **NPS-FUTURE-03**: Integração real com sistema de notificações (in-app + email interno) quando pendência é detectada — hoje NPS-E-04 só prepara o contrato
-- **NPS-FUTURE-04**: Suporte a mais tipos de pergunta no template (`sim_nao`, `texto`, `multipla` — hoje só `escala` e `opcoes`)
-- **NPS-FUTURE-05**: A/B testing de templates (mesma empresa/serviço recebe templates diferentes por período pra medir engajamento)
-
-### Herança pausada (v14.0)
-
-- Todas as REQs de v14.0 que ainda não foram entregues ficam preservadas em `.planning/milestones/v14.0-REQUIREMENTS-wip.md`:
-  - **META-02, META-03, META-05** (Phase 63 planejada)
-  - **PERF-01, PERF-02, PERF-03** (Phase 64/65 sem plans)
-  - **UX-01, UX-02, UX-03** (Phase 66 sem plans)
-  - **SUGA-01, SUGA-02, SUGA-03, SUGA-04** (Phase 67 sem plans)
-
-## Out of Scope
-
-| Feature | Motivo |
-|---------|--------|
-| NPS clássico 0-10 | Decisão explícita do usuário — escala 1-5 é a definitiva. Zero uso de Promotor/Neutro/Detrator |
-| Retentar/rerender survey já respondida (idempotência) | Depois de responder, survey vira read-only. Editar histórico compromete audit trail |
-| Migração automática das perguntas customizadas globais existentes em templates separados | Serão migradas como "perguntas extras" dentro do template "NPS Padrão" seed; separação manual fica pra Future se demandado |
-| Sistema de notificação interna (in-app + email) integrado nesta phase | NPS-E-04 prepara contrato `NpsPendingService`; integração real fica pra NPS-FUTURE-03 |
-| Modelo de perguntas com tipo `texto`/`sim_nao`/`multipla` no template | Hoje `NpsPerguntaCustomizada` suporta esses tipos mas na v15.0 template usa só `escala` e `opcoes` — extensão fica pra NPS-FUTURE-04 |
-| Deploy automatizado da milestone | Deploy gate ativo — [[feedback_perguntar_antes_deploy_v9]] |
+- **Fonte financeira de Shopee** — não há API/importação Shopee ainda; vínculos Shopee ficam `financial_metrics_eligible=false`. Quando existir, entra sem mudar a arquitetura.
+- **Régua de bônus para Shopee sem financeiro** — decisão de diretoria; até lá, nota `blocked`. Esta milestone entrega o MECANISMO dos três status, não a política.
+- **Nova tabela `company_services`** — o plano decide explicitamente reusar `contratos_servico` + `company_users.servico_id`; não criar tabela nova agora.
+- **Score separado por marketplace** — proibido por design.
 
 ## Traceability
 
-<!-- Preenchido pelo gsd-roadmapper em 2026-07-07 após ROADMAP.md v15.0. -->
-
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| NPS-A-01 | Phase 68 | Complete |
-| NPS-A-02 | Phase 68 | Complete |
-| NPS-A-03 | Phase 68 | Complete |
-| NPS-A-04 | Phase 68 | Complete |
-| NPS-B-01 | Phase 69 | Pending |
-| NPS-B-02 | Phase 69 | Pending |
-| NPS-B-03 | Phase 69 | Complete |
-| NPS-B-04 | Phase 69 | Done (2026-07-08 — Plan 69-05) |
-| NPS-B-05 | Phase 69 | Complete |
-| NPS-C-01 | Phase 70 | Pending |
-| NPS-C-02 | Phase 70 | Pending |
-| NPS-C-03 | Phase 70 | Pending |
-| NPS-C-04 | Phase 70 | Pending |
-| NPS-C-05 | Phase 70 | Pending |
-| NPS-C-06 | Phase 70 | Pending |
-| NPS-D-01 | Phase 71 | Pending |
-| NPS-D-02 | Phase 71 | Pending |
-| NPS-D-03 | Phase 71 | Pending |
-| NPS-D-04 | Phase 71 | Pending |
-| NPS-D-05 | Phase 71 | Pending |
-| NPS-E-01 | Phase 72 | Complete |
-| NPS-E-02 | Phase 72 | Complete |
-| NPS-E-03 | Phase 72 | Complete |
-| NPS-E-04 | Phase 72 | Complete |
-| NPS-E-05 | Phase 72 | Complete |
-| NPS-F-01 | Phase 73 | Pending |
-| NPS-F-02 | Phase 73 | Pending |
-| NPS-F-03 | Phase 73 | Pending |
-| NPS-F-04 | Phase 73 | Pending |
-
-**Coverage:**
-- v15.0 requirements: 29 total
-- Mapped to phases: 29 ✓
-- Unmapped: 0
-
-**Distribuição por phase:**
-- Phase 68 (NPS-A — Schema): 4 REQs
-- Phase 69 (NPS-B — Backend): 5 REQs
-- Phase 70 (NPS-C — UI Config): 6 REQs
-- Phase 71 (NPS-D — Form público): 5 REQs
-- Phase 72 (NPS-E — Dashboards): 5 REQs
-- Phase 73 (NPS-F — Limpeza + testes): 4 REQs
-
----
-*Requirements defined: 2026-07-07*
-*Last updated: 2026-07-07 — traceability preenchida pelo gsd-roadmapper (29/29 REQs mapeadas para Phase 68-73)*
+| REQ-ID | Phase | Status |
+|--------|-------|--------|
+| CTX-01 | Fase 88 | Pending |
+| CTX-02 | Fase 88 | Pending |
+| CTX-03 | Fase 88 | Pending |
+| CTX-04 | Fase 88 | Pending |
+| CTX-05 | Fase 88 | Pending |
+| CART-01 | Fase 89 | Pending |
+| CART-02 | Fase 89 | Pending |
+| CART-03 | Fase 89 | Pending |
+| CART-04 | Fase 89 | Pending |
+| CART-05 | Fase 89 | Pending |
+| CART-08 | Fase 89 | Pending |
+| CART-06 | Fase 90 | Pending |
+| CART-07 | Fase 90 | Pending |
+| DESEMP-01 | Fase 91 | Pending |
+| DESEMP-02 | Fase 91 | Pending |
+| DESEMP-03 | Fase 91 | Pending |
+| DESEMP-04 | Fase 91 | Pending |
+| DESEMP-05 | Fase 91 | Pending |
+| DESEMP-06 | Fase 91 | Pending |
+| DESEMP-07 | Fase 91 | Pending |
+| DESEMP-08 | Fase 92 | Pending |
+| MENU-01 | Fase 93 | Pending |
