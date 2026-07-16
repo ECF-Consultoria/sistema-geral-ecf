@@ -9,6 +9,7 @@ use App\Models\NpsSurveyEvent;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateOption;
 use App\Models\NpsTemplateQuestion;
+use App\Models\Servico;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -256,5 +257,64 @@ class NpsSurveyEventsTest extends TestCase
             1,
             NpsSurveyEvent::where('event_type', NpsSurveyEvent::TYPE_SUBMITTED)->count()
         );
+    }
+
+    /**
+     * POST /nps/generate (admin autenticado) emite evento 'generated' com
+     * survey_id do survey novo, user_id do admin, ip do request e
+     * metadata.origem='manual'.
+     */
+    public function test_generate_manual_emite_evento_generated_com_metadata_origem_manual(): void
+    {
+        $admin   = User::factory()->create(['role' => 'admin']);
+        $empresa = $this->criarEmpresa();
+
+        $this->actingAs($admin)
+            ->withServerVariables(['REMOTE_ADDR' => '198.51.100.20'])
+            ->post('/nps/generate', ['company_id' => $empresa->id])
+            ->assertStatus(302);
+
+        $survey = NpsSurvey::where('company_id', $empresa->id)->firstOrFail();
+
+        $evento = NpsSurveyEvent::where('survey_id', $survey->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_GENERATED)
+            ->first();
+
+        $this->assertNotNull($evento);
+        $this->assertSame($admin->id, $evento->user_id);
+        $this->assertSame('198.51.100.20', $evento->ip_address);
+        $this->assertSame('manual', $evento->metadata['origem']);
+    }
+
+    /**
+     * Geração que falha ANTES do NpsSurvey::create (empresa sem contrato
+     * ativo no serviço coberto pelo modelo) NÃO emite evento 'generated'.
+     */
+    public function test_generate_que_falha_antes_do_create_nao_emite_evento(): void
+    {
+        $admin    = User::factory()->create(['role' => 'admin']);
+        $empresa  = $this->criarEmpresa();
+        $servico  = Servico::create([
+            'nome'          => 'Servico Sem Contrato ' . uniqid(),
+            'valor_padrao'  => 1000,
+            'tipo_cobranca' => Servico::TIPO_MENSAL,
+            'ativo'         => true,
+            'setor'         => Servico::SETOR_PERFORMANCE,
+        ]);
+        $template = NpsTemplate::factory()->create(['active' => true]);
+        $template->servicos()->attach($servico->id);
+
+        $totalEventosAntes = NpsSurveyEvent::count();
+
+        $this->actingAs($admin)
+            ->post('/nps/generate', [
+                'company_id'  => $empresa->id,
+                'template_id' => $template->id,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, NpsSurvey::where('company_id', $empresa->id)->count());
+        $this->assertSame($totalEventosAntes, NpsSurveyEvent::count());
     }
 }
