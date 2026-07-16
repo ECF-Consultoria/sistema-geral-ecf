@@ -24,20 +24,36 @@ import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/
  *      - Faturamento no período
  *      - % variação de margem individual vs mesmo intervalo mês anterior
  *
- * Contrato de props (do PortfolioController::renderAdminCarteira):
+ * Contrato de props (do PortfolioController::renderCarteiraProfissional):
  *   profissional: { id, name, cargo_label }
  *   resumo: {
- *     total_empresas, empresas_ml_oauth, total_faturamento,
- *     total_margem_atual, total_margem_anterior, variacao_margem_pct
+ *     total_empresas, empresas_ml_oauth, empresas_sem_margem, total_faturamento,
+ *     total_margem_atual, total_margem_anterior, variacao_margem_pct,
+ *     total_ad_spend, tacos_medio
  *   }
  *   empresas: [{
  *     id, name, faturamento, margem_contribuicao, margem_contribuicao_anterior,
- *     margem_variacao_pct, has_ml_oauth
+ *     margem_variacao_pct, ad_spend, tacos, has_ml_oauth,
+ *     // Fase 89 (CART-01/02) — 1 entrada por vínculo de serviço da empresa.
+ *     // Empresa com Performance+Shopee do mesmo profissional aparece 1x
+ *     // aqui, com os 2 vínculos separados neste array.
+ *     servicos: [{ servico_id, servico_nome, setor, role, role_label, financial_metrics_eligible }]
  *   }]
  *   periodo: {
  *     dia_atual, dias_no_mes, mes_label, range_atual, range_anterior
  *   }
+ *
+ * Nota: ad_spend/tacos e o filtro completo Todos/Performance/Shopee (com
+ * contadores de topo) ainda não são desenhados na tabela nesta fase — payload
+ * já nasce pronto, UI completa é Fase 90 (CART-07).
  */
+
+// Fase 89 (CART-02) — rótulo pt-BR nunca slug cru. Fallback pra setores
+// futuros que ainda não tenham label consagrado nesta tela.
+const SETOR_LABELS = {
+    performance: 'Mercado Livre',
+    shopee: 'Shopee',
+};
 
 // ─── KPI compacto ─────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white' }) {
@@ -347,10 +363,17 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                         </tr>
                                     )}
 
-                                    {empresasView.map(c => (
+                                    {empresasView.map(c => {
+                                        // Fase 89 (CART-01/02) — flag computada DENTRO do callback do map
+                                        // (pitfall conhecido: variável de escopo do componente usada dentro
+                                        // de .map() some do bundle Rollup — memória feedback_rollup_map_scope_bug).
+                                        const servicosLinha = c.servicos ?? [];
+                                        const temFonteFinanceira = servicosLinha.some(s => s.financial_metrics_eligible);
+
+                                        return (
                                         <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
                                             <td className="px-3 py-3">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <Link
                                                         href={route('companies.show', c.id)}
                                                         className="text-white/90 hover:text-ecf-yellow font-medium"
@@ -368,12 +391,47 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                                         />
                                                     )}
                                                 </div>
+                                                {/* Fase 89 (CART-01/02) — 1 badge por vínculo de serviço. Empresa
+                                                    com Performance+Shopee do mesmo profissional aparece 1x acima,
+                                                    com os 2 vínculos separados aqui. */}
+                                                {servicosLinha.length > 0 && (
+                                                    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+                                                        {servicosLinha.map((s, idx) => (
+                                                            <span
+                                                                key={`${c.id}-servico-${s.servico_id ?? 'legado'}-${idx}`}
+                                                                className={cn(
+                                                                    'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border',
+                                                                    s.financial_metrics_eligible
+                                                                        ? 'bg-ecf-yellow/10 text-ecf-yellow border-ecf-yellow/25'
+                                                                        : 'bg-amber-500/10 text-amber-300/80 border-amber-500/20',
+                                                                )}
+                                                            >
+                                                                {SETOR_LABELS[s.setor] ?? s.servico_nome ?? 'Outro serviço'} · {s.role_label}
+                                                                {!s.financial_metrics_eligible && ' — sem fonte financeira'}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </td>
                                             <td className="px-3 py-3 text-right text-white/90 tabular-nums">
-                                                {c.faturamento !== null ? formatCurrencyCompact(c.faturamento) : '—'}
+                                                {!temFonteFinanceira ? (
+                                                    <span
+                                                        title="Sem fonte financeira conectada — vínculo Shopee ainda não tem faturamento no painel"
+                                                        className="text-white/40 cursor-help"
+                                                    >
+                                                        —
+                                                    </span>
+                                                ) : c.faturamento !== null ? formatCurrencyCompact(c.faturamento) : '—'}
                                             </td>
                                             <td className="px-3 py-3 text-right text-white/70 tabular-nums">
-                                                {c.margem_contribuicao !== null && c.margem_contribuicao !== undefined
+                                                {!temFonteFinanceira ? (
+                                                    <span
+                                                        title="Sem fonte financeira conectada — vínculo Shopee ainda não tem faturamento no painel"
+                                                        className="text-white/40 cursor-help"
+                                                    >
+                                                        —
+                                                    </span>
+                                                ) : c.margem_contribuicao !== null && c.margem_contribuicao !== undefined
                                                     ? formatCurrencyCompact(c.margem_contribuicao)
                                                     : (
                                                         <span
@@ -385,10 +443,20 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                                     )}
                                             </td>
                                             <td className="px-3 py-3 text-right">
-                                                <VariacaoChip pct={c.margem_variacao_pct} />
+                                                {!temFonteFinanceira ? (
+                                                    <span
+                                                        title="Sem fonte financeira conectada — vínculo Shopee ainda não tem faturamento no painel"
+                                                        className="text-white/40 cursor-help"
+                                                    >
+                                                        —
+                                                    </span>
+                                                ) : (
+                                                    <VariacaoChip pct={c.margem_variacao_pct} />
+                                                )}
                                             </td>
                                         </tr>
-                                    ))}
+                                        );
+                                    })}
                                 </tbody>
                             </table>
                         </div>
