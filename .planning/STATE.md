@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
-status: executing
-stopped_at: Completed 94-02-PLAN.md
-last_updated: "2026-07-16T20:21:54.012Z"
+status: verifying
+stopped_at: Completed 94-03-PLAN.md (Phase 94 completa - pronta para verify-work)
+last_updated: "2026-07-16T20:38:20.533Z"
 last_activity: 2026-07-16
 progress:
   total_phases: 9
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 8
-  completed_plans: 6
-  percent: 22
+  completed_plans: 7
+  percent: 33
 ---
 
 # Project State
@@ -29,7 +29,7 @@ Phase: 94 (NPS Anti-Burlamento — auditoria técnica + serviço de suspeita (ba
 Plan: 3 of 3
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-07-16
 
 ## Performance Metrics
@@ -153,6 +153,7 @@ Last activity: 2026-07-16
 | Phase 94 P01 | 9min | 3 tasks | 12 files |
 | Phase 94 P02 | 35min | 3 tasks | 5 files |
 | Phase 90 P01 | 35min | 2 tasks | 2 files |
+| Phase 94 P03 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -575,6 +576,7 @@ None.
 ### Blockers/Concerns
 
 - **Rate limit 429 da Adman**: problema crônico, não relacionado à Phase 15. Endpoint `/sugadores/{id}/mlbs` retorna 502 quando MCP da Adman bate 429. Logs mostram 429 sequencial em vários `SyncAdmanCompanyJob` em produção. Mensagem formal enviada ao grupo da Adman em 2026-05-27 pedindo aumento de limite.
+- Fase 94: verificacao manual pos-deploy pendente — confirmar topologia de proxy do VPS (open_ip_address = IP publico real do cliente, nao 127.0.0.1/proxy). Se nao bater, configurar trustProxies em bootstrap/app.php antes de confiar na Regra 1 do NpsSuspicionService (Fases 95/96).
 
 ### Quick Tasks Completed
 
@@ -653,8 +655,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-16T20:21:38.888Z
-Stopped at: Completed 94-02-PLAN.md
+Last session: 2026-07-16T20:38:05.462Z
+Stopped at: Completed 94-03-PLAN.md (Phase 94 completa - pronta para verify-work)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
