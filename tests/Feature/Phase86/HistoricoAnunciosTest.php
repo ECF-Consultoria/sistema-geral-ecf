@@ -123,23 +123,65 @@ class HistoricoAnunciosTest extends TestCase
 
     // ─── helpers ───
 
+    /** @test */
+    public function anuncios_da_mesma_categoria_e_dia_colapsam_num_unico_lote(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        // 3 meias publicadas em massa (mesma categoria, mesmo dia) → 1 lote de total=3
+        $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia P', now(), 'MLB108791');
+        $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia M', now(), 'MLB108791');
+        $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia G', now(), 'MLB108791');
+
+        $grupos = $this->gruposDoHistorico($admin, $company);
+
+        $this->assertCount(1, $grupos, 'as 3 meias do mesmo lote têm que virar 1 grupo');
+        $this->assertSame(3, $grupos[0]['total']);
+        $this->assertCount(3, $grupos[0]['itens']);
+    }
+
+    /** @test */
+    public function mesma_categoria_em_dias_diferentes_sao_lotes_separados(): void
+    {
+        [$company, , $admin] = $this->criarFixture();
+
+        $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia Ontem', now()->subDay(), 'MLB108791');
+        $this->criarAnuncio($company, MlAnuncioRascunho::STATUS_PUBLICADO, 'Meia Hoje',  now(),           'MLB108791');
+
+        $grupos = $this->gruposDoHistorico($admin, $company);
+
+        $this->assertCount(2, $grupos, 'mesma categoria em dias diferentes = 2 lotes');
+        // mais recente primeiro (published_at desc)
+        $this->assertSame('Meia Hoje', $grupos[0]['itens'][0]['titulo']);
+    }
+
+    // ─── helpers ───
+
+    /** Achata os títulos de todos os grupos, preservando a ordem (grupo → item). */
     private function titulosDoHistorico(User $admin, Company $company, array $query = []): array
+    {
+        return collect($this->gruposDoHistorico($admin, $company, $query))
+            ->flatMap(fn ($g) => collect($g['itens'])->pluck('titulo'))
+            ->all();
+    }
+
+    /** Grupos crus (lotes) do histórico. */
+    private function gruposDoHistorico(User $admin, Company $company, array $query = []): array
     {
         $url = "/mlb/anuncios/historico/{$company->id}";
         if ($query) $url .= '?' . http_build_query($query);
 
         $response = $this->actingAs($admin)->get($url)->assertOk();
 
-        return collect($response->viewData('page')['props']['anuncios']['data'])
-            ->pluck('titulo')->all();
+        return $response->viewData('page')['props']['grupos']['data'];
     }
 
-    private function criarAnuncio(Company $company, string $status, string $titulo, $publishedAt = null): MlAnuncioRascunho
+    private function criarAnuncio(Company $company, string $status, string $titulo, $publishedAt = null, string $categoryId = 'MLB123456'): MlAnuncioRascunho
     {
         return MlAnuncioRascunho::create([
             'company_id'   => $company->id,
             'user_id'      => User::factory()->create()->id,
-            'category_id'  => 'MLB123456',
+            'category_id'  => $categoryId,
             'listing_tier' => 'gold_special',
             'status'       => $status,
             'published_at' => $status === MlAnuncioRascunho::STATUS_PUBLICADO ? ($publishedAt ?? now()) : null,

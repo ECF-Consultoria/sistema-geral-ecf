@@ -16,6 +16,7 @@ use App\Services\Mlb\Publicacao\MlPublicacaoService;
 use App\Services\MercadoLivreService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -205,7 +206,11 @@ class MlbAnuncioController extends Controller
 
         $busca = trim((string) $request->query('busca', ''));
 
-        $anuncios = MlAnuncioRascunho::where('company_id', $company->id)
+        // Todos os publicados da empresa. O agrupamento por lote precisa do conjunto
+        // inteiro: a publicação em massa cria N rascunhos SOLTOS (sem coluna de lote no
+        // banco — ver publicarLote), então o lote é reconstruído aqui pelos dados que
+        // sobraram (category_id + dia de published_at).
+        $publicados = MlAnuncioRascunho::where('company_id', $company->id)
             ->where('status', MlAnuncioRascunho::STATUS_PUBLICADO)
             ->when($busca !== '', function ($q) use ($busca) {
                 // O grupo é OBRIGATÓRIO: um orWhere solto sobe ao topo do WHERE e
@@ -218,28 +223,65 @@ class MlbAnuncioController extends Controller
             })
             ->orderByDesc('published_at')
             ->orderByDesc('id')
-            ->paginate(24)
-            ->withQueryString() // preserva ?busca= ao paginar
-            // through() mapeia preservando o envelope do paginator (map() devolveria
-            // Collection e quebraria os links de paginação)
-            ->through(fn ($r) => [
-                'id'           => $r->id,
-                'titulo'       => (string) data_get($r->payload, 'title', ''),
-                'preco'        => data_get($r->payload, 'price'),
-                'foto'         => data_get($r->payload, 'pictures.0.source'),
-                'sku_origem'   => $r->sku_origem,
-                'listing_tier' => $r->listing_tier,
-                'category_id'  => $r->category_id,
-                'published_at' => $r->published_at,
-                'ml_item_id'   => $r->ml_item_id,
-            ]);
+            ->get();
+
+        // ─── Agrupa por LOTE = categoria + dia de publicação ───
+        // O módulo já define lote como empresa + categoria (massa()/grade: 1 aba = 1
+        // category_id, comentário em massa()). O dia separa corridas de massa distintas
+        // da mesma categoria. groupBy preserva a ordem (published_at desc) → o lote mais
+        // recente vem primeiro. Anúncio avulso vira um grupo de total=1 (a tela o renderiza
+        // como card solto; só total>1 colapsa num cabeçalho de lote).
+        $chaveLote = fn ($r) => ($r->category_id ?? 'sem-cat')
+            . '|' . (optional($r->published_at)->toDateString() ?? 'sem-data');
+
+        $grupos = $publicados
+            ->groupBy($chaveLote)
+            ->map(function ($itens) use ($chaveLote) {
+                $primeiro = $itens->first();
+
+                return [
+                    'chave'        => $chaveLote($primeiro),
+                    'category_id'  => $primeiro->category_id,
+                    'categoria'    => $this->nomeCategoria($primeiro->category_id),
+                    'data'         => optional($primeiro->published_at)->toDateString(),
+                    'published_at' => optional($primeiro->published_at)->toIso8601String(),
+                    'total'        => $itens->count(),
+                    'itens'        => $itens->map(fn ($r) => [
+                        'id'           => $r->id,
+                        'titulo'       => (string) data_get($r->payload, 'title', ''),
+                        'preco'        => data_get($r->payload, 'price'),
+                        'foto'         => data_get($r->payload, 'pictures.0.source'),
+                        'sku_origem'   => $r->sku_origem,
+                        'listing_tier' => $r->listing_tier,
+                        'category_id'  => $r->category_id,
+                        'published_at' => $r->published_at,
+                        'ml_item_id'   => $r->ml_item_id,
+                    ])->values(),
+                ];
+            })
+            ->values();
+
+        // Paginação por GRUPO (mantém a UI de paginação existente do módulo).
+        $porPagina    = 12;
+        $pagina       = max(1, (int) $request->query('page', 1));
+        $gruposPagina = new LengthAwarePaginator(
+            $grupos->forPage($pagina, $porPagina)->values(),
+            $grupos->count(),
+            $porPagina,
+            $pagina,
+            ['path' => $request->url(), 'query' => collect($request->query())->except('page')->all()],
+        );
 
         return Inertia::render('Mlb/AnunciosHistorico', [
             'empresa'  => [
                 'id'   => $company->id,
                 'nome' => $company->name,
             ],
-            'anuncios' => $anuncios,
+            'grupos'   => $gruposPagina,
+            'resumo'   => [
+                'total_anuncios' => $publicados->count(),
+                'total_lotes'    => $grupos->count(),
+            ],
             'filtros'  => ['busca' => $busca],
         ]);
     }
@@ -1493,6 +1535,31 @@ class MlbAnuncioController extends Controller
      * Resume os erros de publicação de um rascunho em uma única linha legível
      * (o painel "Rascunhos recentes" não mostra mais o JSON cru do ML).
      */
+    /**
+     * Nome curto (folha do breadcrumb) de uma categoria ML, para o cabeçalho do lote
+     * no histórico — "Meias" em vez do MLBxxxx cru. Reusa o cache do
+     * MlCatalogoMetaService (ml_meta_categoria_{id}); a categoria de um lote já publicado
+     * costuma estar quente do uso na grade. Best-effort: degrada para o próprio código
+     * se a meta não resolver (rede/token), nunca derruba o render do histórico.
+     */
+    private function nomeCategoria(?string $categoryId): ?string
+    {
+        if (! $categoryId) {
+            return null;
+        }
+
+        try {
+            $cat  = $this->meta->categoria($categoryId);
+            $path = array_column((array) data_get($cat, 'path_from_root', []), 'name');
+
+            return ! empty($path)
+                ? (string) end($path)
+                : ((string) data_get($cat, 'name', '') ?: $categoryId);
+        } catch (\Throwable $e) {
+            return $categoryId;
+        }
+    }
+
     private function resumoErro(?array $errors): ?string
     {
         if (empty($errors)) {
