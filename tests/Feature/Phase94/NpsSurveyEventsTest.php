@@ -3,12 +3,17 @@
 namespace Tests\Feature\Phase94;
 
 use App\Models\Company;
+use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
+use App\Models\NpsTemplate;
+use App\Models\NpsTemplateOption;
+use App\Models\NpsTemplateQuestion;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
@@ -139,6 +144,117 @@ class NpsSurveyEventsTest extends TestCase
         $this->assertSame(
             1,
             NpsSurveyEvent::where('survey_id', $survey->id)->where('event_type', NpsSurveyEvent::TYPE_EXPIRED)->count()
+        );
+    }
+
+    /**
+     * POST bem-sucedido nos DOIS paths (v15 e legado) emite evento
+     * 'submitted' com metadata.response_id — prova do helper compartilhado.
+     */
+    public function test_submit_bem_sucedido_emite_evento_submitted_nos_dois_paths(): void
+    {
+        // ─── Path legado ─────────────────────────────────────────────────
+        $empresaLegado = $this->criarEmpresa();
+        $surveyLegado  = $this->criarSurveyPendente($empresaLegado);
+
+        $this->post("/nps/{$surveyLegado->token}", [
+            'score_estrategista' => 5,
+            'score_empresa'      => 5,
+        ])->assertOk();
+
+        $respostaLegado = NpsResponse::where('survey_id', $surveyLegado->id)->firstOrFail();
+        $eventoLegado   = NpsSurveyEvent::where('survey_id', $surveyLegado->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_SUBMITTED)
+            ->first();
+
+        $this->assertNotNull($eventoLegado);
+        $this->assertSame($respostaLegado->id, $eventoLegado->metadata['response_id']);
+
+        // ─── Path v15 ────────────────────────────────────────────────────
+        $empresaV15 = $this->criarEmpresa();
+        $template   = NpsTemplate::factory()->create(['active' => true]);
+        $pergunta   = NpsTemplateQuestion::factory()->create([
+            'template_id' => $template->id,
+            'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+        ]);
+        $opcao = NpsTemplateOption::factory()->create([
+            'question_id' => $pergunta->id,
+            'label'       => '4',
+            'peso'        => 4,
+        ]);
+        $surveyV15 = $this->criarSurveyPendente($empresaV15, [
+            'template_id' => $template->id,
+            'expires_at'  => now()->addDays(30),
+        ]);
+
+        $this->post("/nps/{$surveyV15->token}", [
+            'answers' => [(string) $pergunta->id => $opcao->id],
+        ])->assertOk();
+
+        $respostaV15 = NpsResponse::where('survey_id', $surveyV15->id)->firstOrFail();
+        $eventoV15   = NpsSurveyEvent::where('survey_id', $surveyV15->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_SUBMITTED)
+            ->first();
+
+        $this->assertNotNull($eventoV15);
+        $this->assertSame($respostaV15->id, $eventoV15->metadata['response_id']);
+    }
+
+    /**
+     * Dedup 23000 (2a completação da mesma company/month_reference/template):
+     * a transação inteira reverte — nenhuma NpsResponse órfã e NENHUM evento
+     * 'submitted' extra fica gravado para a tentativa que falhou.
+     */
+    public function test_dedup_23000_reverte_transacao_sem_evento_submitted_orfao(): void
+    {
+        $empresa  = $this->criarEmpresa();
+        $template = NpsTemplate::factory()->create(['active' => true]);
+        $pergunta = NpsTemplateQuestion::factory()->create([
+            'template_id' => $template->id,
+            'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+        ]);
+        $opcao = NpsTemplateOption::factory()->create([
+            'question_id' => $pergunta->id,
+            'label'       => '4',
+            'peso'        => 4,
+        ]);
+
+        $mesReferencia = now()->startOfMonth()->toDateString();
+
+        // 1a survey — completada com sucesso.
+        $survey1 = $this->criarSurveyPendente($empresa, [
+            'template_id'     => $template->id,
+            'month_reference' => $mesReferencia,
+            'expires_at'      => now()->addDays(30),
+        ]);
+
+        $this->post("/nps/{$survey1->token}", [
+            'answers' => [(string) $pergunta->id => $opcao->id],
+        ])->assertOk();
+
+        $totalSubmittedAntes = NpsSurveyEvent::where('event_type', NpsSurveyEvent::TYPE_SUBMITTED)->count();
+        $this->assertSame(1, $totalSubmittedAntes);
+
+        // 2a survey — MESMA (company, month_reference, template) ainda pending.
+        $survey2 = $this->criarSurveyPendente($empresa, [
+            'template_id'     => $template->id,
+            'month_reference' => $mesReferencia,
+            'expires_at'      => now()->addDays(30),
+        ]);
+
+        $this->post("/nps/{$survey2->token}", [
+            'answers' => [(string) $pergunta->id => $opcao->id],
+        ])
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Nps/AlreadyCompleted'));
+
+        // Transação reverteu — nenhuma NpsResponse órfã para a 2a survey.
+        $this->assertSame(0, NpsResponse::where('survey_id', $survey2->id)->count());
+
+        // Nenhum evento 'submitted' extra — total continua 1 (só o da 1a survey).
+        $this->assertSame(
+            1,
+            NpsSurveyEvent::where('event_type', NpsSurveyEvent::TYPE_SUBMITTED)->count()
         );
     }
 }
