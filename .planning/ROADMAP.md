@@ -633,7 +633,7 @@ Plans:
 **Goal:** A visão admin de carteiras consolidadas mostra cards por profissional com contagem correta, sem puxar faturamento ML para quem só cuida da empresa em Shopee, com filtro de contexto e contadores de auditoria.
 **Requirements**: CART-06, CART-07
 **Depends on:** Phase 89 (individual antes de consolidada)
-**Plans:** 2 plans em 2 waves — 90-01 (Wave 1: backend TDD — consolidada via CarteiraContextService + filtro ?contexto=) → 90-02 (Wave 2: UI das 2 telas + contadores + checkpoint visual)
+**Plans:** 1/2 plans executed
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -644,7 +644,7 @@ Plans:
 
 Plans:
 
-- [ ] 90-01-PLAN.md — Backend TDD: renderCarteirasConsolidadas via CarteiraContextService (dedup + contadores + source_counts) + filtro ?contexto= nas 2 funções + totais por união (CART-06, CART-07)
+- [x] 90-01-PLAN.md — Backend TDD: renderCarteirasConsolidadas via CarteiraContextService (dedup + contadores + source_counts) + filtro ?contexto= nas 2 funções + totais por união (CART-06, CART-07)
 - [ ] 90-02-PLAN.md — Frontend: select de contexto + contadores em Carteiras.jsx e AdminCarteira.jsx + remoção do alias companies_count + npm run build + checkpoint visual (CART-07)
 
 **UI hint**: yes

@@ -24,7 +24,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 - [x] **CART-03**: Soma financeira (`SUM(revenue)`, `SUM(contribution_margin)`, `ad_spend`, `tacos`) considera apenas vínculos com `financial_metrics_eligible = true`
 - [x] **CART-04**: Profissional responsável APENAS por Shopee de uma empresa que também tem ML NÃO recebe faturamento/margem de ML como se fosse dele
 - [x] **CART-05**: Profissional responsável por ML E Shopee da mesma empresa NÃO duplica faturamento no filtro "Todos" (métrica ML contada uma vez)
-- [ ] **CART-06**: A carteira consolidada (`renderCarteirasConsolidadas`, visão admin) mostra cards por profissional com contagem correta, separando empresas únicas de vínculos de serviço, sem puxar faturamento ML pra quem só cuida em Shopee
+- [x] **CART-06**: A carteira consolidada (`renderCarteirasConsolidadas`, visão admin) mostra cards por profissional com contagem correta, separando empresas únicas de vínculos de serviço, sem puxar faturamento ML pra quem só cuida em Shopee
 - [ ] **CART-07**: A UI de carteira tem filtro de contexto (Todos / Performance-ML / Shopee), badges de serviço por linha e contadores (empresas únicas vs. vínculos de serviço)
 - [x] **CART-08**: A tela `/companies` (painel Performance) exibe o responsável do SERVIÇO DE PERFORMANCE na coluna Analista/Estrategista — nunca o responsável Shopee; a pendência "sem responsável" acusa falta do responsável de performance especificamente
 
@@ -72,7 +72,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | CART-04 | Fase 89 | Complete |
 | CART-05 | Fase 89 | Complete |
 | CART-08 | Fase 89 | Complete |
-| CART-06 | Fase 90 | Pending |
+| CART-06 | Fase 90 | Complete |
 | CART-07 | Fase 90 | Pending |
 | DESEMP-01 | Fase 91 | Pending |
 | DESEMP-02 | Fase 91 | Pending |
