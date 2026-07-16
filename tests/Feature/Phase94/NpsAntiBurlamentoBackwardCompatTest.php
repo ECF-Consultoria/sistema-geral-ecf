@@ -96,6 +96,9 @@ class NpsAntiBurlamentoBackwardCompatTest extends TestCase
     {
         $empresa = $this->criarEmpresa();
         $survey  = $this->criarSurveyPendente($empresa);
+        // refresh() para ler os defaults aplicados pelo BANCO (open_count=0),
+        // não os atributos locais do insert (que não incluem a coluna).
+        $survey->refresh();
 
         $this->assertNull($survey->first_opened_at);
         $this->assertNull($survey->last_opened_at);
@@ -111,6 +114,7 @@ class NpsAntiBurlamentoBackwardCompatTest extends TestCase
             'score_empresa'      => 5,
             'comment'            => null,
         ]);
+        $resposta->refresh();
 
         $this->assertNull($resposta->response_ip_address);
         $this->assertNull($resposta->response_user_agent);

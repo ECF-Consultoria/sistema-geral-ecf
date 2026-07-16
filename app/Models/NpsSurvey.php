@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -33,6 +34,8 @@ class NpsSurvey extends Model
         // Phase 68 v15.0 — template NPS aplicado a este survey (nullable; NULL para
         // rows legadas Phase 31-33 anteriores ao seed retro do Plan 68-03)
         'template_id',
+        // Phase 94 AB-94-1 — rastro de abertura
+        'first_opened_at', 'last_opened_at', 'open_count', 'open_ip_address', 'open_user_agent',
     ];
 
     protected $casts = [
@@ -41,11 +44,24 @@ class NpsSurvey extends Model
         // Phase 31 D-12 — month_reference é date (YYYY-MM-01), auto_generated é bool
         'month_reference' => 'date',
         'auto_generated'  => 'boolean',
+        // Phase 94 AB-94-1 — rastro de abertura
+        'first_opened_at' => 'datetime',
+        'last_opened_at'  => 'datetime',
+        'open_count'      => 'integer',
     ];
 
     public function company() { return $this->belongsTo(Company::class); }
     public function generatedBy() { return $this->belongsTo(User::class, 'generated_by'); }
     public function response() { return $this->hasOne(NpsResponse::class, 'survey_id'); }
+
+    /**
+     * Trilha de eventos técnicos (Phase 94 AB-94-3) — auditoria append-only
+     * do ciclo de vida do survey (geração/abertura/submit/expiração/envio).
+     */
+    public function events(): HasMany
+    {
+        return $this->hasMany(NpsSurveyEvent::class, 'survey_id');
+    }
 
     /**
      * Template NPS aplicado (Phase 68 v15.0). Nullable — surveys criados

@@ -33,12 +33,22 @@ class NpsResponse extends Model
         'score_analista',
         'score_empresa',
         'comment',
+        // Phase 94 AB-94-2/AB-94-4 — rastro de resposta + veredito de suspeita
+        'response_ip_address',
+        'response_user_agent',
+        'response_duration_seconds',
+        'is_suspicious',
+        'suspicion_reasons',
     ];
 
     protected $casts = [
-        'score_estrategista' => 'integer',
-        'score_analista'     => 'integer',
-        'score_empresa'      => 'integer',
+        'score_estrategista'        => 'integer',
+        'score_analista'            => 'integer',
+        'score_empresa'             => 'integer',
+        // Phase 94 AB-94-2/AB-94-4
+        'response_duration_seconds' => 'integer',
+        'is_suspicious'             => 'boolean',
+        'suspicion_reasons'         => 'array',
     ];
 
     public function survey()
