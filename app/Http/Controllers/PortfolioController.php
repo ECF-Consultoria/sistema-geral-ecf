@@ -14,6 +14,7 @@ use App\Services\AdmanService;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsPendingService;
+use App\Services\Portfolio\CarteiraContextService;
 use App\Models\Company;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class PortfolioController extends Controller
         private AdmanService $adman,
         private DesempenhoScoreService $scoreService,
         private MetricsProviderFactory $metricsFactory,
+        private CarteiraContextService $carteiraContext,
     ) {}
 
     /**
@@ -152,13 +154,31 @@ class PortfolioController extends Controller
         $dateFromPrev = $inicioAnter->toDateString();
         $dateToPrev   = $fimAnter->toDateString();
 
-        // Empresas da carteira ativas + eager-load mlToken pra badge OAuth.
-        $rawCompanies = $user->companies()
+        // Fase 89 (CART-01/02/03/04/05) — origem por VÍNCULO via
+        // CarteiraContextService, não mais `$user->companies()` (consolidado,
+        // sem distinguir setor de serviço). `forUser()` é a ÚNICA porta pra
+        // resolver vínculos — nunca reimplementar o join direto em
+        // `company_users.servico_id` aqui (perde o ramo legado CTX-05).
+        $vinculos   = $this->carteiraContext->forUser($user, ['active' => true]);
+        $porEmpresa = $vinculos->groupBy('company_id');
+
+        // O service não expõe cust_id/mlToken (granularidade de vínculo, não
+        // de empresa) — carregamos os models pra exibição separadamente.
+        $rawCompanies = Company::whereIn('id', $porEmpresa->keys())
             ->with('mlToken')
-            ->where('active', true)
             ->orderBy('name')
             ->get();
-        $companyIds = $rawCompanies->pluck('id');
+
+        // Dedup financeiro (CART-04/05): a lista de company_id consultada em
+        // AdmanMetric contém SÓ empresas com AO MENOS UM vínculo elegível do
+        // profissional, e ->unique() garante que uma empresa com 2 vínculos
+        // elegíveis do MESMO profissional entra 1x — AdmanMetric é por-EMPRESA,
+        // nunca por-vínculo (ver 89-RESEARCH.md §Algoritmo de dedup financeiro).
+        $companyIdsElegiveis = $vinculos
+            ->where('financial_metrics_eligible', true)
+            ->pluck('company_id')
+            ->unique()
+            ->values();
 
         // Metrics agregados por empresa nas duas janelas (Adman é canônico
         // pra margem — ML não expõe custo unitário).
@@ -169,13 +189,17 @@ class PortfolioController extends Controller
         // O cast para float trata ambos como 0.0 — indistinguível na UI.
         // Fix: contar quantas linhas TÊM contribution_margin não-null via
         // `margem_dias` — se 0, tratamos como "sem dados" (null na UI, "—").
-        $atualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+        //
+        // CART-03 — SUM(ad_spend) adicionado à janela ATUAL (campo novo nesta
+        // fase; a janela anterior não precisa de ad_spend, só serve pra
+        // variação de margem/revenue).
+        $atualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
             ->whereBetween('reference_date', [$dateFrom, $dateTo])
-            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
+            ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias, SUM(ad_spend) as ads')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
-        $anteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+        $anteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
             ->whereBetween('reference_date', [$dateFromPrev, $dateToPrev])
             ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
             ->groupBy('company_id')
@@ -214,15 +238,15 @@ class PortfolioController extends Controller
         $diasComMargemAtualPorEmpresa    = collect();
         $diasComMargemAnteriorPorEmpresa = collect();
 
-        if (! $companyIds->isEmpty()) {
-            $diasComMargemAtualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+        if (! $companyIdsElegiveis->isEmpty()) {
+            $diasComMargemAtualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
                 ->whereBetween('reference_date', [$dateFrom, $dateTo])
                 ->whereNotNull('contribution_margin')
                 ->get(['company_id', 'reference_date'])
                 ->groupBy('company_id')
                 ->map($extrairDiasDoMes);
 
-            $diasComMargemAnteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
+            $diasComMargemAnteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
                 ->whereBetween('reference_date', [$dateFromPrev, $dateToPrev])
                 ->whereNotNull('contribution_margin')
                 ->get(['company_id', 'reference_date'])
@@ -230,16 +254,55 @@ class PortfolioController extends Controller
                 ->map($extrairDiasDoMes);
         }
 
-        // Cache Adman gross (fonte preferencial de revenue no mês atual —
-        // mais completa que SUM DB local; hotfix 2026-06-19).
-        $custIds = $rawCompanies->map(fn ($c) => $c->cust_id)
+        // Cache Adman gross + account metrics (fonte preferencial de revenue/
+        // ad_spend/tacos no mês atual — mais completa que SUM DB local;
+        // hotfix 2026-06-19). CART-03 — restrito a $custIdsElegiveis (só
+        // empresas com vínculo financeiro elegível), mesmo padrão de
+        // renderCarteirasConsolidadas() no mesmo arquivo.
+        $custIdsElegiveis = $rawCompanies
+            ->filter(fn ($c) => $companyIdsElegiveis->contains($c->id))
+            ->map(fn ($c) => $c->cust_id)
             ->filter()
             ->unique()
             ->values()
             ->all();
-        $grossAtual = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+        $grossAtual   = $this->adman->getCachedGrossBillingsMany($custIdsElegiveis, $dateFrom, $dateTo);
+        $accountAtual = $this->adman->getCachedAccountMetricsMany($custIdsElegiveis, $dateFrom, $dateTo);
 
-        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $diasComMargemAtualPorEmpresa, $diasComMargemAnteriorPorEmpresa, $inicioMes, $inicioAnter) {
+        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $diasComMargemAtualPorEmpresa, $diasComMargemAnteriorPorEmpresa, $inicioMes, $inicioAnter, $companyIdsElegiveis, $porEmpresa) {
+            $ehElegivel = $companyIdsElegiveis->contains($c->id);
+
+            // Vínculos desta empresa — shape público CART-01/02: 1 entrada
+            // por vínculo de serviço (ex.: Performance + Shopee separados).
+            $servicos = $porEmpresa->get($c->id, collect())->map(fn ($v) => [
+                'servico_id'                  => $v['servico_id'],
+                'servico_nome'                => $v['servico_nome'],
+                'setor'                       => $v['setor'],
+                'role'                        => $v['role'],
+                'role_label'                  => $v['role_label'],
+                'financial_metrics_eligible'  => $v['financial_metrics_eligible'],
+            ])->values();
+
+            // CART-04 — empresa SEM vínculo elegível (ex.: profissional só
+            // responde por Shopee nessa empresa): financeiro inteiro null.
+            // NÃO é problema de qualidade de sync — a UI deriva "sem fonte
+            // financeira" dos vínculos, não polui o banner de motivo_sem_margem.
+            if (! $ehElegivel) {
+                return [
+                    'id'                           => $c->id,
+                    'name'                         => $c->name,
+                    'faturamento'                  => null,
+                    'margem_contribuicao'          => null,
+                    'margem_contribuicao_anterior' => null,
+                    'margem_variacao_pct'          => null,
+                    'motivo_sem_margem'            => null,
+                    'ad_spend'                     => null,
+                    'tacos'                        => null,
+                    'has_ml_oauth'                 => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+                    'servicos'                     => $servicos,
+                ];
+            }
+
             $custId       = $c->cust_id;
             $rowAtual     = $atualPorEmpresa->get($c->id);
             $rowAnterior  = $anteriorPorEmpresa->get($c->id);
@@ -338,6 +401,25 @@ class PortfolioController extends Controller
                 }
             }
 
+            // CART-03 — ad_spend/tacos, campos NOVOS nesta função (não
+            // existiam antes da Fase 89). Mesmo padrão de
+            // renderCarteirasConsolidadas():552-571 no mesmo arquivo: cache
+            // Adman (investment/tacos) com fallback SUM DB / cálculo local.
+            $adSpend = null;
+            if ($custId && isset($accountAtual[$custId]['value']['investment'])) {
+                $adSpend = (float) $accountAtual[$custId]['value']['investment'];
+            }
+            if ($adSpend === null) {
+                $adSpend = $rowAtual ? (float) $rowAtual->ads : null;
+            }
+
+            $tacos = null;
+            if ($custId && isset($accountAtual[$custId]['value']['tacos'])) {
+                $tacos = (float) $accountAtual[$custId]['value']['tacos'];
+            } elseif ($revenue !== null && $revenue > 0 && $adSpend !== null) {
+                $tacos = round(($adSpend / $revenue) * 100, 2);
+            }
+
             return [
                 'id'                          => $c->id,
                 'name'                        => $c->name,
@@ -346,7 +428,10 @@ class PortfolioController extends Controller
                 'margem_contribuicao_anterior'=> $margemAnterior !== null ? round($margemAnterior, 2) : null,
                 'margem_variacao_pct'         => $margemVarPct,
                 'motivo_sem_margem'           => $motivoSemMargem,
+                'ad_spend'                    => $adSpend !== null ? round($adSpend, 2) : null,
+                'tacos'                       => $tacos,
                 'has_ml_oauth'                => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+                'servicos'                    => $servicos,
             ];
         })->values();
 
@@ -372,7 +457,23 @@ class PortfolioController extends Controller
             : null;
 
         // Contadores pra UI expor transparência sobre qualidade dos dados.
-        $empresasSemMargem = (int) $empresas->whereNull('margem_contribuicao')->count();
+        // Fase 89 (correção do plan-checker) — conta SÓ empresas ELEGÍVEIS
+        // com margem null. Empresa Shopee-only tem margem null POR DESENHO
+        // (sem fonte financeira) — não é problema de sync, não deve inflar
+        // esse contador (que alimenta o banner rosa "sem dados de margem").
+        $empresasSemMargem = (int) $empresas
+            ->filter(fn ($e) => $companyIdsElegiveis->contains($e['id']))
+            ->whereNull('margem_contribuicao')
+            ->count();
+
+        // CART-03 — total_ad_spend (soma dos ad_spend não-null) e tacos_medio
+        // (média SIMPLES dos tacos por empresa não-null — mesmo racional do
+        // hotfix 2026-06-23 de alinhar com o Dashboard/renderCarteirasConsolidadas).
+        $totalAdSpend = (float) $empresas->sum(fn ($e) => $e['ad_spend'] ?? 0);
+        $tacosPorEmpresa = $empresas->pluck('tacos')->filter(fn ($v) => $v !== null);
+        $tacosMedio = $tacosPorEmpresa->isNotEmpty()
+            ? round((float) $tacosPorEmpresa->avg(), 2)
+            : null;
 
         // Cargo pt-BR pra header (mesmo padrão do resto do módulo).
         $cargoSlug = DB::table('user_setores as us')
@@ -407,6 +508,8 @@ class PortfolioController extends Controller
                 'total_margem_atual'    => round($totalMargemAtual, 2),
                 'total_margem_anterior' => round($totalMargemAnterior, 2),
                 'variacao_margem_pct'   => $variacaoMargemPct,
+                'total_ad_spend'        => round($totalAdSpend, 2),
+                'tacos_medio'           => $tacosMedio,
             ],
             'empresas' => $empresas,
             'periodo' => [
