@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -206,6 +207,72 @@ class Company extends Model
         return $this->belongsToMany(User::class, 'company_users')
             ->wherePivot('role', 'estrategista')
             ->wherePivot('servico_id', $servicoId);
+    }
+
+    /**
+     * Analista de PERFORMANCE da empresa — nunca retorna o responsável
+     * Shopee. Espelha, em granularidade de EMPRESA, as duas fontes que
+     * `CarteiraContextService::forUser()` já resolve por usuário (Fase 88,
+     * CTX-05): (1) `company_users.servico_id` apontando para um serviço de
+     * `servicos.setor='performance'` — cobre Gestão E Mentoria, sem hardcode
+     * de id (CTX-03); (2) `servico_id` NULL (ramo legado), só resolvido se a
+     * empresa tiver contrato performance ATIVO — nunca promove o slot
+     * consolidado a Shopee automaticamente.
+     *
+     * Consumidor exclusivo desta fase (89-02, CART-08): `CompanyController::
+     * index()`/`show()`. Os leitores consolidados (`consultor()`/
+     * `estrategista()`) continuam servindo os 9 call-sites de bônus/
+     * notificação/NPS — não substituídos aqui.
+     *
+     * `->distinct('users.id')` preservado pelo mesmo motivo de `consultor()`
+     * acima: garante `COUNT(DISTINCT users.id)`, não `COUNT(*)`.
+     */
+    public function analistaPerformance()
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', 'consultor')
+            ->where(function ($q) {
+                $q->whereIn('company_users.servico_id', function ($sub) {
+                    $sub->select('id')->from('servicos')->where('setor', Servico::SETOR_PERFORMANCE);
+                })->orWhere(function ($q2) {
+                    $q2->whereNull('company_users.servico_id')
+                       ->whereExists(function ($sub2) {
+                           $sub2->select(DB::raw(1))
+                                ->from('contratos_servico as ct')
+                                ->join('servicos as s2', 's2.id', '=', 'ct.servico_id')
+                                ->whereColumn('ct.company_id', 'company_users.company_id')
+                                ->where('ct.ativo', true)
+                                ->where('s2.setor', Servico::SETOR_PERFORMANCE);
+                       });
+                });
+            })
+            ->distinct('users.id');
+    }
+
+    /**
+     * Estrategista de PERFORMANCE da empresa — idêntico a
+     * `analistaPerformance()`, filtrando pelo papel 'estrategista'.
+     */
+    public function estrategistaPerformance()
+    {
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', 'estrategista')
+            ->where(function ($q) {
+                $q->whereIn('company_users.servico_id', function ($sub) {
+                    $sub->select('id')->from('servicos')->where('setor', Servico::SETOR_PERFORMANCE);
+                })->orWhere(function ($q2) {
+                    $q2->whereNull('company_users.servico_id')
+                       ->whereExists(function ($sub2) {
+                           $sub2->select(DB::raw(1))
+                                ->from('contratos_servico as ct')
+                                ->join('servicos as s2', 's2.id', '=', 'ct.servico_id')
+                                ->whereColumn('ct.company_id', 'company_users.company_id')
+                                ->where('ct.ativo', true)
+                                ->where('s2.setor', Servico::SETOR_PERFORMANCE);
+                       });
+                });
+            })
+            ->distinct('users.id');
     }
 
     public function meetings()
