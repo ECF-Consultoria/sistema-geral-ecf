@@ -170,4 +170,200 @@ class NpsInvalidacaoRespostaTest extends TestCase
         $this->assertTrue($validas->contains($respostaLimpa->id));
         $this->assertFalse($validas->contains($respostaInvalidada->id));
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Task 2 — invalidarResposta()/revalidarResposta() admin-only +
+    // cache-busting + activitylog + filtro em index()
+    // ═══════════════════════════════════════════════════════════════════
+
+    /** Lê a última entrada de activity_log da resposta (subject = NpsResponse). */
+    private function ultimaActivity(NpsResponse $response): ?Activity
+    {
+        return Activity::where('subject_type', NpsResponse::class)
+            ->where('subject_id', $response->id)
+            ->latest('id')
+            ->first();
+    }
+
+    /** GET /nps?template_id=__todos__ (evita o filtro default=principal do index()). */
+    private function propsDoIndex(User $user): array
+    {
+        $props = null;
+
+        $this->actingAs($user)
+            ->get('/nps?template_id=__todos__')
+            ->assertOk()
+            ->assertInertia(function (\Inertia\Testing\AssertableInertia $page) use (&$props) {
+                $page->component('Nps/Index');
+                $props = $page->toArray()['props'];
+            });
+
+        $this->assertIsArray($props, 'O payload Inertia deveria trazer props.');
+
+        return $props;
+    }
+
+    #[Test]
+    public function test_admin_invalida_grava_flag_e_activity_log_com_motivo(): void
+    {
+        $admin   = $this->admin();
+        $company = Company::factory()->create(['active' => true]);
+        $survey  = $this->criarSurveyCompleto($company);
+        $response = $this->criarResponse($survey);
+
+        $this->actingAs($admin)
+            ->patch(route('nps.responses.invalidar', $survey), ['motivo' => 'Resposta veio da rede interna'])
+            ->assertRedirect();
+
+        $response->refresh();
+        $this->assertNotNull($response->invalidated_at);
+        $this->assertSame($admin->id, $response->invalidated_by);
+
+        $activity = $this->ultimaActivity($response);
+        $this->assertNotNull($activity, 'Deveria existir 1 entrada em activity_log para a invalidação.');
+        $this->assertSame('Resposta NPS invalidada', $activity->description);
+        $this->assertSame($admin->id, $activity->causer_id);
+        $this->assertSame('Resposta veio da rede interna', $activity->properties['motivo'] ?? null);
+    }
+
+    #[Test]
+    public function test_invalidar_resposta_de_mes_fechado_com_atribuicao_busta_o_cache_do_bonus(): void
+    {
+        $admin   = $this->admin();
+        $pessoa  = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $company = Company::factory()->create(['active' => true]);
+        $survey  = $this->criarSurveyCompleto($company, ['completed_at' => Carbon::parse('2026-06-15 10:00:00')]);
+        $response = $this->criarResponse($survey);
+        $this->criarSnapshot($response, $company, $pessoa);
+
+        $cacheKey = sprintf('desempenho.compute.v4.%d.%s', $pessoa->id, '2026-06');
+        Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
+        $this->assertTrue(Cache::has($cacheKey), 'pré-condição: cache do bônus precisa existir antes da invalidação.');
+
+        $this->actingAs($admin)
+            ->patch(route('nps.responses.invalidar', $survey), [])
+            ->assertRedirect();
+
+        $this->assertFalse(Cache::has($cacheKey), 'Cache::forget deveria ter sido chamado para o user_id da atribuição.');
+    }
+
+    #[Test]
+    public function test_invalidar_resposta_legada_sem_atribuicao_nao_quebra_e_nao_precisa_de_cache_forget(): void
+    {
+        // Pitfall 5 do RESEARCH: resposta legada (sem NpsScoreAssignment) não
+        // tem cache de bônus a bustar — isso é CORRETO, não um bug. Só
+        // provamos que a ação continua funcionando (200/redirect) sem erro.
+        $admin   = $this->admin();
+        $company = Company::factory()->create(['active' => true]);
+        $survey  = $this->criarSurveyCompleto($company);
+        $response = $this->criarResponse($survey);
+
+        $this->actingAs($admin)
+            ->patch(route('nps.responses.invalidar', $survey), [])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $response->refresh();
+        $this->assertNotNull($response->invalidated_at);
+    }
+
+    #[Test]
+    public function test_status_do_survey_permanece_completed_apos_invalidar(): void
+    {
+        $admin   = $this->admin();
+        $company = Company::factory()->create(['active' => true]);
+        $survey  = $this->criarSurveyCompleto($company);
+        $this->criarResponse($survey);
+
+        $this->actingAs($admin)
+            ->patch(route('nps.responses.invalidar', $survey), [])
+            ->assertRedirect();
+
+        $survey->refresh();
+        $this->assertSame('completed', $survey->status);
+        $this->assertNotNull($survey->completed_at);
+    }
+
+    #[Test]
+    public function test_cards_e_serie_nao_contam_invalidada_mas_listagem_paginada_preserva(): void
+    {
+        $admin   = $this->admin();
+        $company = Company::factory()->create(['active' => true]);
+
+        $surveyValido = $this->criarSurveyCompleto($company);
+        $this->criarResponse($surveyValido, [
+            'score_estrategista' => 5, 'score_analista' => 5, 'score_empresa' => 5,
+        ]);
+
+        $surveyInvalidado = $this->criarSurveyCompleto($company);
+        $respostaInvalidada = $this->criarResponse($surveyInvalidado, [
+            'score_estrategista' => 1, 'score_analista' => 1, 'score_empresa' => 1,
+        ]);
+        $respostaInvalidada->update(['invalidated_at' => now(), 'invalidated_by' => $admin->id]);
+
+        $props = $this->propsDoIndex($admin);
+
+        // Cards: só a resposta válida (nota 5) entra na média do mês corrente.
+        // Se a invalidada ainda contasse, a média cairia para 3.
+        $this->assertSame(5.0, $props['cards']['estrategista']['media']);
+        $this->assertSame(1, $props['cards']['estrategista']['total']);
+
+        // Série 12m: o mês corrente (último item) também não pode contar a
+        // invalidada — mesmo raciocínio dos cards.
+        $serieMesCorrente = collect($props['serie_12m'])->last();
+        $this->assertSame(5.0, $serieMesCorrente['estrategista']);
+
+        // Listagem paginada preserva as DUAS — admin precisa gerir/revalidar.
+        $tokens = collect($props['surveys']['data'])->pluck('token');
+        $this->assertTrue($tokens->contains($surveyValido->token));
+        $this->assertTrue($tokens->contains($surveyInvalidado->token));
+    }
+
+    #[Test]
+    public function test_admin_revalida_restaura_flag_activity_e_cache_forget(): void
+    {
+        $admin   = $this->admin();
+        $pessoa  = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $company = Company::factory()->create(['active' => true]);
+        $survey  = $this->criarSurveyCompleto($company, ['completed_at' => Carbon::parse('2026-06-15 10:00:00')]);
+        $response = $this->criarResponse($survey, [
+            'invalidated_at' => now(),
+            'invalidated_by' => $admin->id,
+        ]);
+        $this->criarSnapshot($response, $company, $pessoa);
+
+        $cacheKey = sprintf('desempenho.compute.v4.%d.%s', $pessoa->id, '2026-06');
+        Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
+
+        $this->actingAs($admin)
+            ->patch(route('nps.responses.revalidar', $survey), [])
+            ->assertRedirect();
+
+        $response->refresh();
+        $this->assertNull($response->invalidated_at);
+        $this->assertNull($response->invalidated_by);
+        $this->assertFalse(Cache::has($cacheKey));
+
+        $activity = $this->ultimaActivity($response);
+        $this->assertNotNull($activity);
+        $this->assertSame('Resposta NPS revalidada', $activity->description);
+        $this->assertSame($admin->id, $activity->causer_id);
+    }
+
+    #[Test]
+    public function test_nao_admin_recebe_403_ao_invalidar_ou_revalidar(): void
+    {
+        $naoAdmin = $this->naoAdmin();
+        $company  = Company::factory()->create(['active' => true]);
+        $survey   = $this->criarSurveyCompleto($company);
+        $this->criarResponse($survey);
+
+        $this->actingAs($naoAdmin)
+            ->patch(route('nps.responses.invalidar', $survey), [])
+            ->assertForbidden();
+
+        $this->actingAs($naoAdmin)
+            ->patch(route('nps.responses.revalidar', $survey), [])
+            ->assertForbidden();
+    }
 }
