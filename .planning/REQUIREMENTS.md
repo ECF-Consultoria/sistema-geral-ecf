@@ -37,7 +37,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 - [x] **DESEMP-05**: O service retorna metadados: `empresas_unicas`, `vinculos_servico`, `vinculos_financeiros`, `vinculos_sem_fonte_financeira`, `score_status`, `componentes_disponiveis`
 - [x] **DESEMP-06**: A nota expõe status `official` / `partial` / `blocked`; profissional apenas-Shopee sem fonte financeira recebe `blocked` (decisão do usuário 2026-07-16, até a diretoria aprovar régua de bônus sem financeiro)
 - [x] **DESEMP-07**: A regra `sem_carteira` remove do ranking apenas o profissional SEM nenhum vínculo ativo — quem tem vínculo Shopee (ainda que sem financeiro) permanece no ranking
-- [ ] **DESEMP-08**: A UI de Desempenho mantém ranking único e exibe os metadados por profissional (empresas únicas, vínculos, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial
+- [x] **DESEMP-08**: A UI de Desempenho mantém ranking único e exibe os metadados por profissional (empresas únicas, vínculos, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial
 
 ### MENU — Reorganização de navegação (Fase 93)
 
@@ -81,5 +81,5 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | DESEMP-05 | Fase 91 | Complete |
 | DESEMP-06 | Fase 91 | Complete |
 | DESEMP-07 | Fase 91 | Complete |
-| DESEMP-08 | Fase 92 | Pending |
+| DESEMP-08 | Fase 92 | Complete |
 | MENU-01 | Fase 93 | Pending |
