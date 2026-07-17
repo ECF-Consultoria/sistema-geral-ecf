@@ -41,11 +41,14 @@ Fases 94 (backend de rastro + `NpsSuspicionService` + `nps_survey_events`) e 95 
 - Mecanismo de invalidação: decidir no planejamento — flag `invalidated_at`/`invalidated_by` em `nps_responses` + filtro em TODAS as agregações, OU soft-exclusão dos snapshots. Preferir a abordagem que garanta que NENHUMA query de bônus/dashboard conte a resposta invalidada (o risco é esquecer um call-site)
 - Idealmente reversível (revalidar) — decidir no planejamento
 
-### Claude's Discretion
-- 7º event_type `blocked` vs metadata em evento existente
-- Estrutura de persistência dos IPs pela UI
-- Flag de invalidação vs remoção de snapshot — priorizar consistência total das agregações
-- Se a invalidação recalcula/remove os snapshots do `NpsSnapshotService` na hora ou apenas marca e filtra na leitura
+### Decisões travadas pós-research (2026-07-17)
+- **7º event_type `blocked`** — criar (não há evento existente compatível); migration enum+SQLite com o padrão já comprovado no módulo
+- **IPs pela UI** — reusar `App\Models\Configuracao` (key/valor JSON, mesmo padrão de `nps_dia_cobranca`/`nps_textos`); precedência = **união (∪)** de `.env` + UI (defesa em profundidade, não precedência)
+- **Invalidação** — flag `invalidated_at`/`invalidated_by` em `nps_responses` + scope `scopeValida()` aplicado nos **8 call-sites** mapeados (NÃO remover snapshots do `NpsSnapshotService` — preserva reversibilidade/revalidar)
+- **Cache do bônus** — `DesempenhoScoreService::computeCached()` cacheia mês fechado por 7 dias → invalidação DEVE chamar `Cache::forget()` por `user_id` afetado (achado crítico do research)
+- **Trilha** — `activity()->causedBy()->log()` explícito só no evento de invalidação (não `LogsActivity` trait, para não poluir com resposta legítima)
+- **Motivo textual livre na invalidação** — incluir (além dos motivos automáticos da Fase 95); admin justifica a invalidação
+- **`NpsSurvey.status`** — NÃO reverter para `pending` na invalidação (evita ambiguidade no `hasOne`)
 </decisions>
 
 <canonical_refs>
