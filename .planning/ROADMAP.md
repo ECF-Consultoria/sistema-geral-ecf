@@ -782,7 +782,12 @@ Plans:
 **Goal:** A camada passa de observar para agir: usuário interno logado é bloqueado de responder, IPs internos são configuráveis pela UI e admin pode invalidar resposta suspeita com efeito nas agregações.
 **Requirements**: AB-96-1, AB-96-2, AB-96-3
 **Depends on:** Phase 95
-**Plans:** TBD (rodar `/gsd-plan-phase 96`)
+**Plans:** 5 plans
+- [ ] 96-01-PLAN.md — AB-96-1: bloqueio de submit em sessão interna (7º event_type `blocked` + página amigável)
+- [ ] 96-02-PLAN.md — AB-96-2: IPs/CIDRs internos configuráveis pela UI (Configuracao ∪ .env)
+- [ ] 96-03-PLAN.md — AB-96-3: fundação da invalidação (flag + scopeValida + ação admin + cache-busting + UI)
+- [ ] 96-04-PLAN.md — AB-96-3: aplicar scopeValida nos 8 call-sites de agregação (bônus/dashboards/metas)
+- [ ] 96-05-PLAN.md — Gate final: regressão Nps+V16+Desempenho + build + checkpoint visual
 
 **Requisitos:**
 
