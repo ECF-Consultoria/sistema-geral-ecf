@@ -2,6 +2,7 @@
 
 namespace App\Services\Nps;
 
+use App\Models\Configuracao;
 use Symfony\Component\HttpFoundation\IpUtils;
 
 /**
@@ -14,7 +15,10 @@ use Symfony\Component\HttpFoundation\IpUtils;
  * Bloqueio de sessão interna é Fase 96 (fora de escopo aqui).
  *
  * Regras:
- *  1. IP interno ECF (config `nps.anti_burlamento.internal_ips`/`internal_cidrs`)
+ *  1. IP interno ECF — UNIÃO de config `nps.anti_burlamento.internal_ips`/
+ *     `internal_cidrs` (.env, Fase 94) COM `Configuracao::get('nps_internal_ips'/
+ *     'nps_internal_cidrs')` (UI, Fase 96 AB-96-2). O .env nunca é substituído,
+ *     só somado — editar pela UI não exige deploy.
  *  2. Resposta rápida (duração <= `fast_response_window_seconds`)
  *  3. Combinação 1+2 → severidade 'alta' e motivo extra
  *  4. Sessão autenticada (usuário interno logado) no momento da resposta
@@ -61,6 +65,10 @@ class NpsSuspicionService
         $ranges = array_merge(
             config('nps.anti_burlamento.internal_ips', []),
             config('nps.anti_burlamento.internal_cidrs', []),
+            // AB-96-2 — soma (∪) os IPs/CIDRs cadastrados pela UI (tela NPS >
+            // Configuração). .env continua valendo — nunca substituído.
+            json_decode(Configuracao::get('nps_internal_ips', '[]'), true) ?: [],
+            json_decode(Configuracao::get('nps_internal_cidrs', '[]'), true) ?: [],
         );
 
         if (empty($ranges)) {

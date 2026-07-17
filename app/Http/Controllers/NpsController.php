@@ -1328,6 +1328,52 @@ class NpsController extends Controller
     }
 
     /**
+     * PATCH /nps/configuracao/ips-internos — persiste a lista de IPs/CIDRs
+     * internos da ECF configurável pela UI (Phase 96 Plan 02, AB-96-2).
+     *
+     * O `.env` (ECF_INTERNAL_IPS/ECF_INTERNAL_CIDRS, lido em config/nps.php)
+     * continua valendo como fallback — a lista efetiva usada por
+     * `NpsSuspicionService::isInternalIp()` é a UNIÃO (.env ∪ UI), nunca
+     * substituição. Persistido em Configuracao (mesmo padrão key/valor de
+     * nps_dia_cobranca/nps_textos) como JSON array de strings.
+     *
+     * abort_unless é defesa em profundidade — a rota já vive no grupo
+     * `role:admin` (routes/web.php), mas o guard explícito documenta a
+     * intenção e protege contra reordenação futura do middleware.
+     *
+     * Consumido pelo widget IpsInternosWidget em Nps/Configuracao.jsx
+     * (Phase 96 Plan 02 Task 2).
+     */
+    public function atualizarIpsInternos(Request $request)
+    {
+        abort_unless((bool) $request->user()?->isAdmin(), 403);
+
+        $validated = $request->validate([
+            'ips'     => 'nullable|array',
+            'ips.*'   => ['string', function (string $attribute, mixed $value, \Closure $fail) {
+                if (filter_var($value, FILTER_VALIDATE_IP) === false) {
+                    $fail('Informe um IP válido (ex.: 203.0.113.5).');
+                }
+            }],
+            'cidrs'   => 'nullable|array',
+            'cidrs.*' => ['string', 'regex:/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/'],
+        ], [
+            'cidrs.*.regex' => 'Informe um CIDR válido (ex.: 10.0.0.0/8).',
+        ]);
+
+        Configuracao::set(
+            'nps_internal_ips',
+            json_encode(array_values($validated['ips'] ?? []), JSON_UNESCAPED_UNICODE)
+        );
+        Configuracao::set(
+            'nps_internal_cidrs',
+            json_encode(array_values($validated['cidrs'] ?? []), JSON_UNESCAPED_UNICODE)
+        );
+
+        return back()->with('success', 'IPs internos atualizados.');
+    }
+
+    /**
      * POST /nps/configuracao/preview — renderiza o template Blade do email
      * com os textos NÃO PERSISTIDOS vindos do form (permite preview sem salvar).
      *

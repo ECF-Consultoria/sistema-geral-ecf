@@ -276,6 +276,15 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         [NpsController::class, 'atualizarDiaCobranca'])
         ->name('nps.configuracao.dia-cobranca.update');
 
+    // ─── Phase 96 Plan 02 — IPs/CIDRs internos configuráveis pela UI (AB-96-2) ──
+    // PATCH admin-only para persistir Configuracao::nps_internal_ips/
+    // nps_internal_cidrs. `.env` (ECF_INTERNAL_IPS/ECF_INTERNAL_CIDRS) segue
+    // valendo como fallback — NpsSuspicionService::isInternalIp() lê a UNIÃO
+    // (.env ∪ UI). Consumido pelo widget IpsInternosWidget em Nps/Configuracao.jsx.
+    Route::patch('/nps/configuracao/ips-internos',
+        [NpsController::class, 'atualizarIpsInternos'])
+        ->name('nps.configuracao.ips-internos.update');
+
     // ─── v15.5 — Envio automático NPS (email + WhatsApp/Digisac) ────────
     // Página dedicada admin-only para gerenciar canais, mapeamento Digisac
     // e auditoria unificada. Deve ficar ANTES de /nps/{token}.
