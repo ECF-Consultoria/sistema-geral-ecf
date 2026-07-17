@@ -52,6 +52,33 @@ const FAIXA_BADGE_CLS = {
     maximo:        'bg-ecf-yellow/15 text-ecf-yellow border-ecf-yellow/40',
 };
 
+// ─── Status de elegibilidade da nota (Fase 92 · DESEMP-08) ────────────────
+// Labels TRAVADOS pelo usuário — nunca renderizar o slug cru (blocked/partial/
+// official). 'official' não ganha badge (nota já é a oficial, sem ressalva).
+const SCORE_STATUS_LABEL = {
+    blocked: 'Aguarda régua Shopee',
+    partial: 'Parcial',
+    official: 'Oficial',
+};
+const SCORE_STATUS_BADGE_CLS = {
+    blocked: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    partial: 'bg-amber-500/10 text-amber-200/70 border-amber-500/20',
+};
+const SCORE_STATUS_TOOLTIP = {
+    blocked: 'Carteira ainda sem vínculo com fonte financeira — nota não é oficial (aguarda régua de bônus da Shopee).',
+    partial: 'Nota parcial — parte dos componentes do cálculo ainda não está disponível para esta carteira.',
+};
+
+// Fase 90 (CART-07) — rótulos pt-BR nunca slug cru (regra sistêmica do
+// projeto). Mesma lista de opções usada em Portfolio/Carteiras.jsx, aqui o
+// filtro é view-only client-side (Fase 92 · SC3): nunca recalcula a nota,
+// só decide quais linhas do ranking aparecem.
+const CONTEXTO_OPTIONS = [
+    { value: 'todos', label: 'Todos' },
+    { value: 'performance', label: 'Mercado Livre' },
+    { value: 'shopee', label: 'Shopee' },
+];
+
 function MedalBadge({ idx }) {
     if (idx === 0) return <span className="text-ecf-yellow font-display font-extrabold text-xl">🥇</span>;
     if (idx === 1) return <span className="text-white/60 font-display font-extrabold text-xl">🥈</span>;
@@ -125,6 +152,9 @@ export default function PerformanceIndex({
     mes_selecionado = null,      // 'YYYY-MM' — mês atualmente exibido
     mes_em_curso = true,          // true se mes_selecionado é o mês corrente
     meses_disponiveis = [],       // [{ value: 'YYYY-MM', label: 'julho/2026', em_curso: bool }]
+    // Fase 92 (SC3) — filtro de auditoria por contexto. O backend (Plan 92-01)
+    // só valida a whitelist e ecoa esta prop; a filtragem visual é client-side.
+    contexto: contextoInicial = 'todos',
 }) {
     const isPolos = setor === 'polos';
 
@@ -154,7 +184,7 @@ export default function PerformanceIndex({
     }, [userSelecionado]);
 
     // ── DESEMP-10 · separação sem_carteira / rankable ────────────────────
-    const rankingFiltrado = useMemo(
+    const rankingElegivel = useMemo(
         () => ranking.filter(r => !r.sem_carteira),
         [ranking],
     );
@@ -163,7 +193,23 @@ export default function PerformanceIndex({
         [ranking],
     );
 
-    const allRankingIds = rankingFiltrado.map((r) => r.id);
+    // Fase 92 (SC3) — select de contexto (Todos/Mercado Livre/Shopee), view-only.
+    // Filtra só quais linhas aparecem, usando os metadados já presentes no
+    // payload (vinculos_sem_fonte_financeira) — NUNCA recalcula nota_final.
+    const [contexto, setContexto] = useState(contextoInicial ?? 'todos');
+    const rankingFiltrado = useMemo(() => {
+        if (contexto === 'shopee') {
+            return rankingElegivel.filter(r => (r.vinculos_sem_fonte_financeira ?? 0) > 0);
+        }
+        if (contexto === 'performance') {
+            return rankingElegivel.filter(r => (r.vinculos_sem_fonte_financeira ?? 0) === 0);
+        }
+        return rankingElegivel;
+    }, [rankingElegivel, contexto]);
+
+    // O drawer de evolução compara sempre contra o grupo elegível inteiro —
+    // o filtro de contexto é só de visualização da tabela, não muda a mediana.
+    const allRankingIds = rankingElegivel.map((r) => r.id);
 
     // Como calculamos? — collapsible
     const [howOpen, setHowOpen] = useState(false);
@@ -222,6 +268,18 @@ export default function PerformanceIndex({
                                 ))}
                             </select>
                         )}
+                        {/* Fase 92 (SC3) — filtro de auditoria por contexto, view-only:
+                            muda só quais linhas aparecem, nunca recalcula nota. */}
+                        <select
+                            value={contexto}
+                            onChange={(e) => setContexto(e.target.value)}
+                            title="Filtrar visualização por contexto de serviço (não recalcula a nota)"
+                            className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 focus:border-ecf-yellow/40 transition-all cursor-pointer"
+                        >
+                            {CONTEXTO_OPTIONS.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </select>
                         {/* Botão admin-only: acesso à configuração das faixas de bônus. */}
                         {isAdmin && (
                             <Link
@@ -411,15 +469,28 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 <p className="text-white/40 text-[11px]">{u.cargo_label ?? '—'}</p>
                             </div>
 
-                            {/* Nota final + conta que gerou (ex: "(3+5+4)/3") */}
+                            {/* Nota final + conta que gerou (ex: "(3+5+4)/3") ou badge de
+                                status (Fase 92) quando a nota não é 100% oficial. */}
                             <div className="text-right">
                                 <span className="text-white font-display font-extrabold text-[16px] tabular-nums">{nota}</span>
-                                <span
-                                    className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
-                                    title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
-                                >
-                                    {formatContaNota(u.pontos_componentes)}
-                                </span>
+                                {u.score_status && u.score_status !== 'official' ? (
+                                    <span
+                                        className={cn(
+                                            'block mt-0.5 text-right text-[8.5px] leading-tight font-semibold px-1.5 py-0.5 rounded-md border',
+                                            SCORE_STATUS_BADGE_CLS[u.score_status] ?? SCORE_STATUS_BADGE_CLS.partial,
+                                        )}
+                                        title={SCORE_STATUS_TOOLTIP[u.score_status] ?? ''}
+                                    >
+                                        {SCORE_STATUS_LABEL[u.score_status] ?? u.score_status}
+                                    </span>
+                                ) : (
+                                    <span
+                                        className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
+                                        title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                                    >
+                                        {formatContaNota(u.pontos_componentes)}
+                                    </span>
+                                )}
                             </div>
 
                             {/* Faixa + promovida */}
@@ -467,8 +538,12 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 <PctToneCell value={u.componentes?.var_margem_pct} />
                             </div>
 
-                            {/* Empresas */}
-                            <div className="text-right text-white/70 tabular-nums text-[12px]">
+                            {/* Empresas — tooltip com os metadados de elegibilidade (Fase 92 · SC2):
+                                empresas únicas, vínculos de serviço, vínculos sem fonte financeira. */}
+                            <div
+                                className="text-right text-white/70 tabular-nums text-[12px]"
+                                title={`Empresas únicas na carteira: ${u.empresas_unicas ?? 0} · Vínculos de serviço: ${u.vinculos_servico ?? 0} · Vínculos sem fonte financeira: ${u.vinculos_sem_fonte_financeira ?? 0}`}
+                            >
                                 {u.empresas_com_baseline ?? 0}/{u.empresas_carteira ?? 0}
                             </div>
 
