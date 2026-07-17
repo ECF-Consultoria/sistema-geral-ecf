@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { DataEditor, GridCellKind, CompactSelection } from '@glideapps/glide-data-grid';
 import { DropdownCell } from '@glideapps/glide-data-grid-cells';
 // CSS obrigatorio da lib — sem ele o canvas renderiza quebrado. Fica SO aqui
 // (nao em app.jsx) pra nao pesar as outras paginas: a grade e lazy-loaded por rota.
 import '@glideapps/glide-data-grid/dist/index.css';
 import { cn } from '@/lib/utils';
-import { Barcode, Trash2, Undo2, Redo2 } from 'lucide-react';
+import { Barcode, Trash2, Undo2, Redo2, ImagePlus, Loader2 } from 'lucide-react';
 import {
     nomeCurto,
     parseDimensoes,
@@ -14,6 +14,7 @@ import {
     gerarEan13,
     errosLocaisLinha,
     normalizarPreco,
+    CAMPOS_FOTO,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -272,6 +273,14 @@ export default function GradeAnuncioGlide({
 
     // Selecao CONTROLADA: a toolbar precisa saber quais linhas estao marcadas.
     const [selecao, setSelecao] = useState(SEM_SELECAO);
+
+    // ─── Upload de fotos do PC (COL-fotos-PC) ───
+    // Botao na toolbar (habilitado com 1 linha marcada) abre o seletor de arquivos.
+    // fileInputRef dispara o dialog; alvoUploadRef guarda o uid da linha entre o
+    // clique e o onChange do input. uploadFotos = texto de progresso (null = ocioso).
+    const fileInputRef = useRef(null);
+    const alvoUploadRef = useRef(null);
+    const [uploadFotos, setUploadFotos] = useState(null);
 
     // Grupos de coluna recolhidos (VIS-87-2). "Características secundárias" nasce
     // recolhido: e o grupo que mais infla (dezenas de opcionais por categoria).
@@ -646,6 +655,80 @@ export default function GradeAnuncioGlide({
 
     const nSel = uidsSelecionados.length;
 
+    // ─── Abrir o seletor de arquivos para a linha marcada ───
+    // So faz sentido com 1 linha (foto e por produto). Exige rascunho ja salvo:
+    // a rota de upload e por rascunho, entao a linha precisa ter id (edite qualquer
+    // campo para o autosave criar o rascunho antes de enviar fotos).
+    const abrirSeletorFotos = useCallback(() => {
+        if (nSel !== 1 || uploadFotos) return;
+        const uid = uidsSelecionados[0];
+        const l = aba.linhas.find((x) => x.uid === uid);
+        if (!l) return;
+        if (!l.id) {
+            window.alert('Salve a linha antes de enviar fotos: edite qualquer campo (ex.: Título) para o rascunho ser criado.');
+            return;
+        }
+        const vazios = CAMPOS_FOTO.filter((c) => !String(l[c] ?? '').trim());
+        if (vazios.length === 0) {
+            window.alert('As colunas de Foto desta linha já estão preenchidas (máx. 6). Apague uma URL para abrir espaço.');
+            return;
+        }
+        alvoUploadRef.current = uid;
+        fileInputRef.current?.click();
+    }, [nSel, uploadFotos, uidsSelecionados, aba.linhas]);
+
+    // ─── Enviar os arquivos selecionados → preencher as colunas de Foto vazias ───
+    // Envio sequencial (preserva a ordem de selecao); cada URL retornada vai para a
+    // proxima coluna vazia. A 1a coluna preenchida e a capa do anuncio. Os campos
+    // vazios sao calculados UMA vez aqui: onEditarCelula atualiza o estado da pagina
+    // de forma assincrona, entao `l` nao muda dentro do laco.
+    const enviarFotosSelecionadas = useCallback(async (fileList) => {
+        const arquivos = Array.from(fileList ?? []).filter(Boolean);
+        // Zera o input para que reselecionar o mesmo arquivo dispare o onChange de novo
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (arquivos.length === 0) return;
+
+        const uid = alvoUploadRef.current;
+        const l = aba.linhas.find((x) => x.uid === uid);
+        if (!l || !l.id) return;
+
+        const vazios = CAMPOS_FOTO.filter((c) => !String(l[c] ?? '').trim());
+        const aEnviar = arquivos.slice(0, vazios.length);
+        const excedente = arquivos.length - aEnviar.length;
+
+        let enviadas = 0;
+        let erro = null;
+        setUploadFotos(`Enviando 0/${aEnviar.length}…`);
+
+        for (const arquivo of aEnviar) {
+            try {
+                const r = await window.axios.postForm(
+                    route('mlb.anuncios.rascunho.imagem', { rascunho: l.id }),
+                    { imagem: arquivo },
+                );
+                const url = r.data?.url;
+                if (!url) { erro = 'O Mercado Livre não retornou a URL da imagem.'; continue; }
+                // Escreve na proxima coluna vazia (mesmo caminho da digitacao/paste)
+                onEditarCelula(uid, vazios[enviadas], url, { chaveOrigem: chaveOrigem(vazios[enviadas]) });
+                enviadas++;
+                setUploadFotos(`Enviando ${enviadas}/${aEnviar.length}…`);
+            } catch (e) {
+                erro = e.response?.data?.erros?.[0]?.mensagem
+                    ?? e.response?.data?.message
+                    ?? 'Erro ao enviar foto — tente novamente.';
+            }
+        }
+
+        setUploadFotos(null);
+        alvoUploadRef.current = null;
+
+        if (erro) {
+            window.alert(enviadas > 0 ? `${enviadas} foto(s) enviada(s), mas: ${erro}` : erro);
+        } else if (excedente > 0) {
+            window.alert(`${enviadas} foto(s) enviada(s). ${excedente} não coube(ram): a grade em massa aceita no máximo 6 fotos por linha.`);
+        }
+    }, [aba.linhas, onEditarCelula]);
+
     // ─── Ctrl+Z / Ctrl+Y no wrapper (FASE 84) ───
     // A lib NAO trata undo/redo (conferido no .d.ts: nao esta em ConfigurableKeybinds
     // nem em ForcedKeybinds), entao o evento borbulha ate aqui e nao ha conflito com
@@ -702,7 +785,38 @@ export default function GradeAnuncioGlide({
                         ? 'Selecione linhas pelo número à esquerda'
                         : `${nSel} linha${nSel !== 1 ? 's' : ''} selecionada${nSel !== 1 ? 's' : ''}`}
                 </span>
+                {/* Input escondido: o upload de fotos do PC dispara por ele (canvas
+                    nao aceita <input file> dentro da celula, entao o botao da toolbar
+                    aciona o dialog e escreve as URLs nas colunas de Foto vazias). */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => enviarFotosSelecionadas(e.target.files)}
+                />
                 <div className="ml-auto flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={abrirSeletorFotos}
+                        disabled={nSel !== 1 || !!uploadFotos}
+                        title={nSel !== 1
+                            ? 'Selecione 1 linha para enviar fotos do computador'
+                            : 'Enviar fotos do computador para esta linha (preenchem as colunas de Foto vazias; a 1ª é a capa)'}
+                        className={cn(
+                            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition',
+                            nSel !== 1 || uploadFotos
+                                ? 'cursor-not-allowed border-white/[0.06] text-white/20'
+                                : 'border-white/[0.1] bg-white/[0.03] text-white/60 hover:border-white/25 hover:text-white',
+                        )}
+                    >
+                        {uploadFotos ? (
+                            <><Loader2 className="h-3 w-3 animate-spin" /> {uploadFotos}</>
+                        ) : (
+                            <><ImagePlus className="h-3 w-3" /> Enviar fotos (PC)</>
+                        )}
+                    </button>
                     <button
                         type="button"
                         onClick={gerarEansEmLote}
