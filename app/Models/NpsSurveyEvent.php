@@ -26,6 +26,7 @@ class NpsSurveyEvent extends Model
     public const TYPE_EXPIRED      = 'expired';
     public const TYPE_SENT_EMAIL   = 'sent_email';
     public const TYPE_SENT_DIGISAC = 'sent_digisac';
+    public const TYPE_BLOCKED      = 'blocked';
 
     public const TYPES = [
         self::TYPE_GENERATED,
@@ -34,6 +35,7 @@ class NpsSurveyEvent extends Model
         self::TYPE_EXPIRED,
         self::TYPE_SENT_EMAIL,
         self::TYPE_SENT_DIGISAC,
+        self::TYPE_BLOCKED, // Fase 96 AB-96-1 — submit bloqueado (sessão interna)
     ];
 
     protected $fillable = [
