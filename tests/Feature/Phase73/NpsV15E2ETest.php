@@ -257,6 +257,11 @@ class NpsV15E2ETest extends TestCase
             ->where('template_id', $templateE2E->id)
             ->firstOrFail();
 
+        // Encerra a sessão do admin ANTES do "cliente" abrir/responder — Fase
+        // 96 AB-96-1 bloqueia submit em sessão autenticada de usuário interno;
+        // o cliente real do link é sempre anônimo/externo.
+        $this->post(route('logout'))->assertRedirect();
+
         // ─── FLUXO 5: cliente GET → assertInertia Nps/Respond has('template') ─
         $this->get(route('nps.respond', $survey->token))
             ->assertOk()

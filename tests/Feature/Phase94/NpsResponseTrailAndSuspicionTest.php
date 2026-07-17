@@ -237,10 +237,13 @@ class NpsResponseTrailAndSuspicionTest extends TestCase
 
     /**
      * Cenário 6 — sessão autenticada (usuário interno coexistente na aba
-     * pública): motivo da Regra 4, resposta ACEITA normalmente (marca, não
-     * bloqueia — bloqueio é Fase 96).
+     * pública): Regra 4 endurecida pela Fase 96 (AB-96-1) — o submit é
+     * BLOQUEADO ANTES de qualquer NpsResponse::create(), não mais aceito com
+     * a resposta apenas marcada como suspeita (comportamento pré-96 da Fase
+     * 94, superado por este teste — ver tests/Feature/Phase96/
+     * NpsBloqueioSessaoInternaTest.php para a cobertura completa do bloqueio).
      */
-    public function test_sessao_autenticada_marca_suspeita_mas_aceita_normalmente(): void
+    public function test_sessao_autenticada_e_bloqueada_pelo_endurecimento_da_fase_96(): void
     {
         config(['nps.anti_burlamento.internal_ips' => []]);
         config(['nps.anti_burlamento.internal_cidrs' => []]);
@@ -258,16 +261,10 @@ class NpsResponseTrailAndSuspicionTest extends TestCase
             ])
             ->assertOk();
 
-        $resposta = NpsResponse::where('survey_id', $survey->id)->firstOrFail();
-
-        $this->assertTrue((bool) $resposta->is_suspicious);
-        $this->assertContains(
-            'Resposta realizada em sessão autenticada de usuário interno.',
-            $resposta->suspicion_reasons['reasons']
-        );
+        $this->assertSame(0, NpsResponse::where('survey_id', $survey->id)->count());
 
         $survey->refresh();
-        $this->assertSame('completed', $survey->status, 'Marca suspeita mas NAO bloqueia (Fase 96 fara o bloqueio)');
+        $this->assertSame('pending', $survey->status, 'Bloqueio nao transiciona o status do survey (Fase 96 AB-96-1)');
     }
 
     /**

@@ -664,6 +664,11 @@ class NpsSurveyEventsTest extends TestCase
 
         $survey = NpsSurvey::where('company_id', $empresa->id)->firstOrFail();
 
+        // Encerra a sessão do admin ANTES do "cliente" abrir/responder — Fase
+        // 96 AB-96-1 bloqueia submit em sessão autenticada de usuário interno;
+        // o cliente real do link gerado manualmente é sempre externo.
+        $this->post(route('logout'))->assertRedirect();
+
         // Primeira abertura.
         $this->get("/nps/{$survey->token}")->assertOk();
         // Segunda abertura (mesmo link, re-aberto).

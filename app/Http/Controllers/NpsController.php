@@ -870,6 +870,25 @@ class NpsController extends Controller
             return response()->json(['error' => 'Pesquisa expirada.'], 422);
         }
 
+        // Phase 96 AB-96-1 — endurecimento da Regra 4 da Fase 94 (que hoje só
+        // MARCA como suspeita): submit (POST) em sessão autenticada de
+        // usuário interno é BLOQUEADO ANTES de qualquer NpsResponse::create()
+        // nos dois paths abaixo. A ABERTURA (GET em respond()) permanece
+        // inalterada — só o SUBMIT é afetado. Evento 'blocked' audita
+        // quem tentou, mas a mensagem ao usuário não revela o gatilho.
+        if (auth()->check()) {
+            NpsSurveyEvent::create([
+                'survey_id'  => $survey->id,
+                'event_type' => NpsSurveyEvent::TYPE_BLOCKED,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'user_id'    => auth()->id(),
+                'metadata'   => null,
+            ]);
+
+            return Inertia::render('Nps/Blocked');
+        }
+
         // Discriminador Phase 69 Plan 03: template_id populado -> fluxo v15.0
         // com validacao dinamica + snapshot per-row. NULL -> legacy Phase 31/33.
         if ($survey->template_id !== null) {
