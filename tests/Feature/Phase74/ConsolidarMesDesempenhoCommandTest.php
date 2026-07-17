@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
 use App\Models\NpsSurvey;
+use App\Models\Servico;
 use App\Models\User;
 use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
@@ -43,6 +44,19 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
     private int $setorId;
     private int $cargoAnalistaId;
     private int $cargoEstrategistaId;
+
+    /**
+     * Serviço de setor performance do fixture — forward-compat Fase 91
+     * (D-91-*), mesmo padrão aplicado em `Phase74/DesempenhoScoreServiceTest.
+     * php::criarEmpresaNaCarteira()`. Deviation Rule 1 (91-01-PLAN.md não
+     * declarava este arquivo, mas o regressão obrigatório "Phase74 completo"
+     * exige que ele continue verde): sem `contratos_servico` ativo, o
+     * `CarteiraContextService::forUser()` (fonte nova de `computeUniverso`)
+     * não resolve o vínculo `servico_id=NULL` como elegível — os users desta
+     * suite cairiam em `sem_carteira=true` e o comando pularia a gravação do
+     * snapshot para todos eles.
+     */
+    private ?int $servicoPerfId = null;
 
     protected function setUp(): void
     {
@@ -117,14 +131,46 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
         return $user;
     }
 
+    /** Ver docblock da property `$servicoPerfId`. */
+    private function servicoPerformanceId(): int
+    {
+        if ($this->servicoPerfId === null) {
+            $this->servicoPerfId = (int) DB::table('servicos')->insertGetId([
+                'nome'          => 'Serviço Performance (fixture Phase74 Consolidar)',
+                'valor_padrao'  => 0,
+                'tipo_cobranca' => Servico::TIPO_MENSAL,
+                'ativo'         => true,
+                'setor'         => Servico::SETOR_PERFORMANCE,
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+        }
+
+        return $this->servicoPerfId;
+    }
+
     private function criarEmpresaNaCarteira(User $user, string $pivotCreatedAt = '-3 months'): Company
     {
         $company = Company::factory()->create();
         $ts = Carbon::parse($pivotCreatedAt)->toDateTimeString();
+
+        $servicoPerfId = $this->servicoPerformanceId();
+
+        DB::table('contratos_servico')->insert([
+            'company_id'       => $company->id,
+            'servico_id'       => $servicoPerfId,
+            'valor_contratado' => 0,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+
         DB::table('company_users')->insert([
             'company_id'  => $company->id,
             'user_id'     => $user->id,
             'role'        => 'consultor',
+            'servico_id'  => $servicoPerfId,
             'assigned_at' => $ts,
             'created_at'  => $ts,
             'updated_at'  => $ts,
