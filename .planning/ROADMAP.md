@@ -676,7 +676,7 @@ Plans:
 **Goal:** A UI de Desempenho mantém o ranking único e exibe os metadados por profissional (empresas únicas, vínculos de serviço, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial.
 **Requirements**: DESEMP-08
 **Depends on:** Phase 91
-**Plans:** TBD (rodar `/gsd-plan-phase 92`)
+**Plans:** 2 plans em 2 waves
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -686,7 +686,8 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 92 to break down)
+- [ ] 92-01-PLAN.md — Backend: passthrough dos 6 metadados no ranking + filtro ?contexto= view-only + correção do comparacaoContextual (blocked fora dos pares + tamanho_amostra + self-view)
+- [ ] 92-02-PLAN.md — Frontend: badge de status (Aguarda régua Shopee/Parcial/Oficial) + metadados por linha + select de contexto + self-view do blocked em Portfolio/Show.jsx + npm run build + checkpoint visual
 
 **UI hint**: yes
 
