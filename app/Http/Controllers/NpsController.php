@@ -280,13 +280,54 @@ class NpsController extends Controller
             return $resultado;
         };
 
-        $surveys = $baseQuery->paginate(20)->withQueryString()->through(function ($s) use ($user, $notaDe, $extrasDe, $responsaveisDe) {
+        // ─── Contadores agregados (Bugfix 2026-07-16) ────────────────────────
+        // Antes o front recalculava as contagens client-side sobre surveys.data
+        // (só os 20 da página), então os chips Todos/Respondidos/Pendentes/
+        // Expirados — e o "resp · pend" dos StatCards — mudavam a cada página.
+        // Agora contamos sobre o CONJUNTO FILTRADO INTEIRO (mesmos filtros de
+        // mês/empresa/estrategista/analista/modelo já aplicados a $baseQuery)
+        // via COUNT no banco. A paginação de 20 na tabela é preservada.
+        //
+        // "Expirado" é status EFETIVO de apresentação: survey `pending` com
+        // `expires_at` vencido (a coluna `status` só grava pending|completed).
+        // Não altera cálculo de nota, escopo por carteira nem fluxo de resposta.
+        // Clona $baseQuery ANTES do paginate (que aplica limit/offset ao builder).
+        $contagem     = fn() => (clone $baseQuery)->reorder();
+        $totalGeral   = $contagem()->count();
+        $respondidos  = $contagem()->where('status', 'completed')->count();
+        $expirados    = $contagem()->where('status', 'pending')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', now())
+            ->count();
+        $contadores = [
+            'todos'       => $totalGeral,
+            'respondidos' => $respondidos,
+            'expirados'   => $expirados,
+            'pendentes'   => max(0, $totalGeral - $respondidos - $expirados),
+        ];
+
+        // Status efetivo por linha — coerente com os contadores acima (mesma
+        // regra de "expirado"). Apresentação pura; a coluna `status` do banco
+        // permanece intacta.
+        $statusEfetivo = function ($s) {
+            if ($s->status === 'completed') {
+                return 'completed';
+            }
+            if ($s->expires_at && $s->expires_at->isPast()) {
+                return 'expired';
+            }
+            return 'pending';
+        };
+
+        // Merge 2026-07-17 — mantém a closure da Fase 95 (payload admin
+        // confianca/auditoria) e injeta o $statusEfetivo do bugfix de contagens.
+        $surveys = $baseQuery->paginate(20)->withQueryString()->through(function ($s) use ($user, $notaDe, $extrasDe, $responsaveisDe, $statusEfetivo) {
             $item = [
                 'id'                 => $s->id,
                 'token'              => $s->token,
                 'company_name'       => $s->company->name,
                 'company_id'         => $s->company_id,
-                'status'             => $s->status,
+                'status'             => $statusEfetivo($s),
                 'auto_generated'     => (bool) $s->auto_generated,
                 'generated_by'       => $s->generatedBy?->name,
                 'created_at'         => $s->created_at->format('d/m/Y H:i'),
@@ -432,6 +473,7 @@ class NpsController extends Controller
             'templates'              => $templates,
             'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,
             'cards'          => $cards,
+            'contadores'     => $contadores,
             'serie_12m'      => $serieMeses,
             'mes_filtro'     => $mesFiltro,
             'filtros'        => [
