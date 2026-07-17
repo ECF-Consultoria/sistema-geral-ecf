@@ -8,7 +8,7 @@ import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Target, AlertTriangle,
     Trophy, Briefcase, Building2, ShoppingCart, Award, Users, Minus,
-    Coins, Percent,
+    Coins, Percent, Clock,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
@@ -1141,9 +1141,33 @@ export default function PortfolioShow({
                             </CardContent>
                         </Card>
 
+                        {/* Fase 92 (DESEMP-08) — self-view do profissional blocked: em vez
+                            da comparação de pares (que ficaria distorcida ou vazia), explica
+                            por que a nota ainda não é oficial. O backend (92-01) já força
+                            comparacao_contextual=null nesse caso — não mostra 0.0 fantasma. */}
+                        {performance_profissional?.score_status === 'blocked' && (
+                            <Card className="bg-amber-500/[0.06] border-amber-500/20">
+                                <CardContent className="p-4">
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                                            <Clock size={16} className="text-amber-300" />
+                                        </div>
+                                        <div>
+                                            <p className="text-amber-200 text-sm font-semibold">
+                                                Sua nota ainda não é oficial
+                                            </p>
+                                            <p className="text-amber-100/70 text-xs mt-1 leading-relaxed">
+                                                Carteira sem fonte financeira ainda — aguarda a régua de bônus da Shopee.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        )}
+
                         {/* Comparação contextual com pares (quick 260623 — justo,
                             baseado em crescimento/execução/meta, NÃO em faturamento bruto). */}
-                        {comparacao_contextual && performance_profissional && (
+                        {comparacao_contextual && performance_profissional && performance_profissional?.score_status !== 'blocked' && (
                             <Card className="bg-ecf-card/60 border-white/[0.06]">
                                 <CardContent className="p-4">
                                     <div className="flex items-center justify-between mb-3">

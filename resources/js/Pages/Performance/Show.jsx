@@ -59,6 +59,25 @@ function corFaixa(slug) {
     return FAIXA_COR[slug] ?? FAIXA_COR.sem_bonus;
 }
 
+// ─── Status de elegibilidade da nota (Fase 92 · DESEMP-08) ────────────────
+// Mesmos labels TRAVADOS de Performance/Index.jsx — nunca renderizar o slug
+// cru. 'official' não ganha badge (nota já é a oficial, sem ressalva).
+const SCORE_STATUS_LABEL = {
+    blocked: 'Aguarda régua Shopee',
+    partial: 'Parcial',
+    official: 'Oficial',
+};
+const SCORE_STATUS_BADGE_CLS = {
+    blocked: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    partial: 'bg-amber-500/10 text-amber-200/70 border-amber-500/20',
+};
+// Explicação pt-BR, sem jargão técnico, complementando o "Sem dados
+// suficientes..." já existente quando a nota não é oficial.
+const SCORE_STATUS_EXPLICACAO = {
+    blocked: 'Carteira sem vínculo com fonte financeira ainda — aguardando a régua de bônus da diretoria para a Shopee.',
+    partial: 'Parte dos componentes do cálculo ainda não está disponível para esta carteira — a nota pode mudar quando os dados chegarem.',
+};
+
 function mesExtenso(iso) {
     if (!iso) return '—';
     try {
@@ -133,6 +152,13 @@ function FaixaBonusCard({ resultado, user }) {
     const cor = corFaixa(slug);
     // Ajuste 2026-07-13 · conta que gerou a nota (mesmo padrão do ranking).
     const contaNota = formatContaNota(resultado?.pontos_componentes, nota);
+    // Fase 92 (DESEMP-08) · status de elegibilidade + os 4 metadados que o
+    // justificam — já vêm prontos em `resultado` (passthrough do backend 92-01).
+    const scoreStatus = resultado?.score_status;
+    const temMetadados = resultado?.empresas_unicas != null
+        || resultado?.vinculos_servico != null
+        || resultado?.vinculos_financeiros != null
+        || resultado?.vinculos_sem_fonte_financeira != null;
 
     return (
         <div className={cn(
@@ -177,6 +203,18 @@ function FaixaBonusCard({ resultado, user }) {
                             {nota != null ? Number(nota).toFixed(2) : '—'}
                         </span>
                         <span className="text-white/40 text-sm">/ 5,00</span>
+                        {/* Fase 92 (DESEMP-08) · badge de status da nota. 'official' não
+                            ganha badge (nota já é a oficial, sem ressalva). */}
+                        {scoreStatus && scoreStatus !== 'official' && (
+                            <span
+                                className={cn(
+                                    'inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                                    SCORE_STATUS_BADGE_CLS[scoreStatus] ?? SCORE_STATUS_BADGE_CLS.partial,
+                                )}
+                            >
+                                {SCORE_STATUS_LABEL[scoreStatus] ?? scoreStatus}
+                            </span>
+                        )}
                     </div>
                     {/* Ajuste 2026-07-13 · conta que gerou a nota. Mesma
                         semântica do "( x+y+z )/n" mostrado abaixo do nome no
@@ -195,7 +233,35 @@ function FaixaBonusCard({ resultado, user }) {
             {nota == null && (
                 <p className="relative mt-4 text-white/60 text-sm">
                     Sem dados suficientes para classificação no mês selecionado.
+                    {scoreStatus && SCORE_STATUS_EXPLICACAO[scoreStatus] && (
+                        <> {SCORE_STATUS_EXPLICACAO[scoreStatus]}</>
+                    )}
                 </p>
+            )}
+
+            {/* Fase 92 (SC2) · metadados de elegibilidade — bloco discreto,
+                pt-BR sem jargão técnico. */}
+            {temMetadados && (
+                <div className="relative mt-4 pt-4 border-t border-white/[0.06] grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Empresas únicas</p>
+                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.empresas_unicas ?? 0}</p>
+                    </div>
+                    <div>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Vínculos de serviço</p>
+                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.vinculos_servico ?? 0}</p>
+                    </div>
+                    <div>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider">Vínculos c/ fonte financeira</p>
+                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.vinculos_financeiros ?? 0}</p>
+                    </div>
+                    <div>
+                        <p className="text-white/30 text-[10px] uppercase tracking-wider" title="Vínculos ainda sem uma fonte de dados financeiros associada (ex.: aguardando régua de bônus da Shopee)">
+                            Vínculos sem fonte financeira
+                        </p>
+                        <p className="text-white/80 text-sm font-semibold tabular-nums mt-0.5">{resultado?.vinculos_sem_fonte_financeira ?? 0}</p>
+                    </div>
+                </div>
             )}
 
             {/* Ajuste 2026-07-13 · link pra carteira do profissional. Coloca a
