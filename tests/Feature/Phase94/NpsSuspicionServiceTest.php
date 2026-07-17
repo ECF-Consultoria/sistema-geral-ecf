@@ -2,16 +2,24 @@
 
 namespace Tests\Feature\Phase94;
 
+use App\Models\Configuracao;
 use App\Services\Nps\NpsSuspicionService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
  * Phase 94 Plan 01 (AB-94-4) — Cobertura das 4 regras de suspeita do
  * `NpsSuspicionService`. Config fixada por teste via `config([...])` para
  * isolar cada cenário (IPs/CIDRs internos, janela de resposta rápida).
+ *
+ * Phase 96 Plan 02 (AB-96-2) — adicionado cenário de IP cadastrado SÓ pela
+ * UI (Configuracao, ausente do .env/config) provando a leitura em UNIÃO
+ * (.env ∪ UI) dentro de `isInternalIp()`.
  */
 class NpsSuspicionServiceTest extends TestCase
 {
+    use RefreshDatabase;
+
     private function service(): NpsSuspicionService
     {
         return app(NpsSuspicionService::class);
@@ -176,5 +184,31 @@ class NpsSuspicionServiceTest extends TestCase
             'Resposta enviada em menos de 1 minuto após geração do link.',
             $veredito2['reasons']
         );
+    }
+
+    /**
+     * Phase 96 (AB-96-2) — Regra 1 dispara para um IP cadastrado SÓ pela UI
+     * (Configuracao), com o .env/config vazio. Prova a UNIÃO (.env ∪ UI)
+     * dentro de `isInternalIp()` — o .env continua valendo como fallback,
+     * mas a lista efetiva soma as duas fontes.
+     */
+    public function test_regra_1_ip_cadastrado_so_pela_ui_via_configuracao(): void
+    {
+        config(['nps.anti_burlamento.internal_ips' => []]);
+        config(['nps.anti_burlamento.internal_cidrs' => []]);
+        config(['nps.anti_burlamento.fast_response_window_seconds' => 60]);
+
+        Configuracao::set('nps_internal_ips', json_encode(['203.0.113.99']));
+        Configuracao::set('nps_internal_cidrs', json_encode(['192.168.0.0/16']));
+
+        // IP exato cadastrado só na UI.
+        $veredito = $this->service()->evaluate('203.0.113.99', 3600, false);
+        $this->assertTrue($veredito['is_suspicious']);
+        $this->assertContains('Resposta enviada a partir da rede interna da ECF.', $veredito['reasons']);
+
+        // CIDR cadastrado só na UI.
+        $veredito2 = $this->service()->evaluate('192.168.1.50', 3600, false);
+        $this->assertTrue($veredito2['is_suspicious']);
+        $this->assertContains('Resposta enviada a partir da rede interna da ECF.', $veredito2['reasons']);
     }
 }
