@@ -321,7 +321,11 @@ class NpsController extends Controller
 
         // Merge 2026-07-17 — mantém a closure da Fase 95 (payload admin
         // confianca/auditoria) e injeta o $statusEfetivo do bugfix de contagens.
-        $surveys = $baseQuery->paginate(20)->withQueryString()->through(function ($s) use ($user, $notaDe, $extrasDe, $responsaveisDe, $statusEfetivo) {
+        // 2026-07-17 · sem paginação: traz TODAS as pesquisas do mês filtrado
+        // numa página só (a listagem rola internamente no card, no front). O
+        // filtro de mês (default = mês corrente) mantém o volume limitado;
+        // $totalGeral já é o COUNT do conjunto filtrado calculado acima.
+        $surveys = $baseQuery->paginate(max(20, $totalGeral))->withQueryString()->through(function ($s) use ($user, $notaDe, $extrasDe, $responsaveisDe, $statusEfetivo) {
             $item = [
                 'id'                 => $s->id,
                 'token'              => $s->token,

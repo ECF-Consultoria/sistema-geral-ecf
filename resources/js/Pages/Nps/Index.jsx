@@ -723,16 +723,19 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                 </div>
             )}
 
-            {/* Área rolável (header + linhas) — evita esmagar colunas em telas
-                estreitas; header e linhas compartilham a mesma minWidth p/ ficarem
-                alinhados durante o scroll. */}
-            <div style={{ overflowX: 'auto' }}>
-            {/* Header da grid */}
+            {/* Área rolável (header + linhas) — rola na horizontal em telas
+                estreitas E na vertical: todas as pesquisas do mês numa página só,
+                a lista desce DENTRO do card (maxHeight) sem crescer a página.
+                Header e linhas compartilham a mesma minWidth p/ ficarem alinhados. */}
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '60vh' }}>
+            {/* Header da grid — sticky no topo da área rolável; fundo sólido p/ as
+                linhas não aparecerem atrás dele ao descer. */}
             <div style={{
                 display: 'grid', gridTemplateColumns: gridCols, gap: 12,
                 minWidth: gridMinWidth,
-                padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)',
-                background: 'rgba(255,255,255,0.015)',
+                padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                background: '#101218',
+                position: 'sticky', top: 0, zIndex: 2,
                 alignItems: 'center',
             }}>
                 {isAdmin && (
@@ -921,34 +924,18 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
             })}
             </div>
 
-            {/* Rodapé + paginação (server-side) */}
+            {/* Rodapé — total do conjunto (sem paginação: a lista inteira rola
+                dentro do card). Com filtro de status ativo, mostra "X de Y". */}
             <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '13px 18px', color: 'rgba(255,255,255,0.4)', fontSize: 12,
+                borderTop: '1px solid rgba(255,255,255,0.05)',
             }}>
-                <span>Mostrando {filtrados.length} de {surveys.total ?? filtrados.length}</span>
-                {surveys.last_page > 1 && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                        {Array.from({ length: Math.min(surveys.last_page, 6) }).map((_, i) => {
-                            const page = i + 1;
-                            const active = page === surveys.current_page;
-                            return (
-                                <span key={page} style={{
-                                    width: 28, height: 28, borderRadius: 8,
-                                    background: active ? hexAlpha(ACCENT, 0.14) : 'rgba(255,255,255,0.03)',
-                                    border: '1px solid ' + (active ? hexAlpha(ACCENT, 0.45) : 'rgba(255,255,255,0.08)'),
-                                    color: active ? ACCENT : 'rgba(255,255,255,0.6)',
-                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                    fontWeight: active ? 700 : 500, fontSize: 12.5,
-                                    cursor: active ? 'default' : 'pointer',
-                                }}
-                                onClick={() => !active && router.get(route('nps.index'), { page }, { preserveState: true, preserveScroll: true })}>
-                                    {page}
-                                </span>
-                            );
-                        })}
-                    </div>
-                )}
+                <span>
+                    {filtrados.length === (surveys.total ?? filtrados.length)
+                        ? `${filtrados.length} pesquisa${filtrados.length === 1 ? '' : 's'}`
+                        : `Mostrando ${filtrados.length} de ${surveys.total ?? filtrados.length}`}
+                </span>
             </div>
         </div>
     );
