@@ -1597,7 +1597,9 @@ class PortfolioController extends Controller
         // 'analista', recebendo a nota errada.
         $npsDim = $user->dimensaoNpsDesempenho();
         $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
-        $npsHistory = NpsSurvey::with(['response.answers', 'response.survey'])
+        // Phase 96 Plan 04 (AB-96-3 · call-site #8) — resposta invalidada pelo
+        // admin some do histórico NPS mensal do profissional.
+        $npsHistory = NpsSurvey::with(['response' => fn ($q) => $q->valida()->with(['answers', 'survey'])])
             ->principal()
             ->whereIn('company_id', $companyIdsAll)
             ->where('status', 'completed')

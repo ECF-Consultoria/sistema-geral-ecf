@@ -537,7 +537,9 @@ class DashboardController extends Controller
         $tacosChart   = $tacosChart->values();
 
         // 2026-07-13 — só o modelo PRINCIPAL alimenta os widgets da home.
-        $npsResponses = NpsSurvey::with('response')
+        // Phase 96 Plan 04 (AB-96-3 · call-site #5) — resposta invalidada
+        // pelo admin some dos widgets NPS do dashboard.
+        $npsResponses = NpsSurvey::with(['response' => fn ($q) => $q->valida()])
             ->principal()
             ->whereIn('company_id', $companies->pluck('id'))
             ->where('status', 'completed')
@@ -935,7 +937,9 @@ class DashboardController extends Controller
                 $companyIds = $u->companies()->pluck('companies.id');
             }
 
-            $surveys = NpsSurvey::with('response')
+            // Phase 96 Plan 04 (AB-96-3 · call-site #7) — resposta invalidada
+            // pelo admin some do ranking "Desempenho da equipe".
+            $surveys = NpsSurvey::with(['response' => fn ($q) => $q->valida()])
                 ->whereIn('company_id', $companyIds)
                 ->where('status', 'completed')
                 ->where('completed_at', '>=', $since)
@@ -1055,7 +1059,9 @@ class DashboardController extends Controller
         }
 
         // 2026-07-13 — só o modelo PRINCIPAL alimenta os widgets do dashboard.
-        $npsResponses = NpsSurvey::with('response')
+        // Phase 96 Plan 04 (AB-96-3 · call-site #6) — resposta invalidada
+        // pelo admin some dos widgets NPS do dashboard do usuário.
+        $npsResponses = NpsSurvey::with(['response' => fn ($q) => $q->valida()])
             ->principal()
             ->whereIn('company_id', $companies->pluck('id'))
             ->where('status', 'completed')

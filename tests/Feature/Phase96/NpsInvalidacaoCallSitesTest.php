@@ -485,7 +485,10 @@ class NpsInvalidacaoCallSitesTest extends TestCase
             });
 
         // Se a invalidada ainda contasse: (5.0 + 1.0) / 2 = 3.0. Só a válida: 5.0.
-        $this->assertSame(5.0, $props['stats']['avg_nps'],
+        // assertEquals (não assertSame): props passou por toResponse()->getData(true),
+        // que faz json_decode — 5.0 vira inteiro 5 sem JSON_PRESERVE_ZERO_FRACTION
+        // (mesmo padrão de NpsInvalidacaoRespostaTest::test_cards_e_serie...).
+        $this->assertEquals(5.0, $props['stats']['avg_nps'],
             'call-site #5: adminDashboard() deve excluir a resposta invalidada de stats.avg_nps');
     }
 
@@ -512,7 +515,8 @@ class NpsInvalidacaoCallSitesTest extends TestCase
 
         $props = $this->invocarUserDashboard($analista, now()->subDays(30));
 
-        $this->assertSame(5.0, $props['stats']['avg_nps'],
+        // assertEquals (não assertSame) — mesmo motivo do call-site #5 (json_decode).
+        $this->assertEquals(5.0, $props['stats']['avg_nps'],
             'call-site #6: userDashboard() deve excluir a resposta invalidada de stats.avg_nps');
     }
 
@@ -573,7 +577,8 @@ class NpsInvalidacaoCallSitesTest extends TestCase
         $this->assertNotNull($mesAtual, 'o mês corrente precisa aparecer no histórico NPS');
         $this->assertSame(1, $mesAtual['count'],
             'call-site #8: histórico NPS mensal deve contar só a resposta válida');
-        $this->assertSame(4.0, $mesAtual['avg']);
+        // assertEquals (não assertSame) — mesmo motivo do call-site #5 (json_decode).
+        $this->assertEquals(4.0, $mesAtual['avg']);
     }
 
     // ═══════════════════════════════════════════════════════════════════

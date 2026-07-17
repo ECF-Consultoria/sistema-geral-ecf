@@ -215,6 +215,9 @@ class CalculateGoalResults implements ShouldQueue
                   ->whereYear('completed_at', $year)
                   ->whereMonth('completed_at', $month);
             })
+            // Phase 96 Plan 04 (AB-96-3 · call-site #9) — resposta invalidada
+            // pelo admin some do cálculo da meta NPS mensal.
+            ->whereNull('invalidated_at')
             ->with('survey')
             ->get();
 
