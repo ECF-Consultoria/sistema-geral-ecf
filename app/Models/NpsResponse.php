@@ -39,6 +39,9 @@ class NpsResponse extends Model
         'response_duration_seconds',
         'is_suspicious',
         'suspicion_reasons',
+        // Phase 96 AB-96-3 — invalidação manual (admin), reversível
+        'invalidated_at',
+        'invalidated_by',
     ];
 
     protected $casts = [
@@ -49,6 +52,8 @@ class NpsResponse extends Model
         'response_duration_seconds' => 'integer',
         'is_suspicious'             => 'boolean',
         'suspicion_reasons'         => 'array',
+        // Phase 96 AB-96-3
+        'invalidated_at'            => 'datetime',
     ];
 
     public function survey()
@@ -101,5 +106,17 @@ class NpsResponse extends Model
     public function scoreAssignments(): HasMany
     {
         return $this->hasMany(NpsScoreAssignment::class, 'nps_response_id');
+    }
+
+    /**
+     * Phase 96 Plan 03 (AB-96-3) — scope reutilizável por TODOS os call-sites
+     * de agregação (dashboards/bônus/metas). Uma resposta invalidada pelo
+     * admin some das agregações sem que NADA seja apagado (reversível via
+     * `invalidated_at = null`). Ver 96-RESEARCH Padrão 3 para o mapa
+     * exaustivo de call-sites que devem aplicar este scope.
+     */
+    public function scopeValida($query)
+    {
+        return $query->whereNull('invalidated_at');
     }
 }
