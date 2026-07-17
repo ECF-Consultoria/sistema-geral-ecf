@@ -488,6 +488,9 @@ class DesempenhoScoreService
             ->where('nps_score_assignments.user_id', $user->id)
             ->where('s.status', 'completed')
             ->whereBetween('s.completed_at', [$inicio, $fim])
+            // Phase 96 Plan 04 (AB-96-3 · call-site #1) — resposta invalidada
+            // pelo admin some do bônus. Ver NpsResponse::scopeValida().
+            ->whereNull('r.invalidated_at')
             ->groupBy('nps_score_assignments.nps_response_id', 'nps_score_assignments.role')
             // selectRaw só com nomes de coluna literais — zero interpolação de
             // variável; todos os valores entram por bind (where/whereBetween).
@@ -564,7 +567,10 @@ class DesempenhoScoreService
         // é o isolamento por serviço, não uma regra de conveniência).
         // scopePrincipal filtra template_id = principal (força vazio se nenhum
         // principal estiver marcado).
-        $surveys = NpsSurvey::with('response')
+        // Phase 96 Plan 04 (AB-96-3 · call-site #2) — eager-load só carrega a
+        // response quando ela NÃO está invalidada; o foreach abaixo já faz
+        // `if ($response === null) continue;`, então passa a pular sozinho.
+        $surveys = NpsSurvey::with(['response' => fn ($q) => $q->valida()])
             ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')

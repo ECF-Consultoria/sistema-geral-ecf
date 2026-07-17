@@ -648,6 +648,9 @@ class PerformanceController extends Controller
             ->whereIn('nps_score_assignments.company_id', $companyIds)
             ->where('s.status', 'completed')
             ->where('s.completed_at', '>=', $desde)
+            // Phase 96 Plan 04 (AB-96-3 · call-site #3) — resposta invalidada
+            // pelo admin some dos widgets de carteira. Ver NpsResponse::scopeValida().
+            ->whereNull('r.invalidated_at')
             ->groupBy('nps_score_assignments.nps_response_id', 'nps_score_assignments.role')
             // selectRaw só com nomes de coluna literais — zero interpolação de
             // variável; todos os valores entram por bind (where/whereIn).
@@ -676,7 +679,10 @@ class PerformanceController extends Controller
         // `DesempenhoScoreService::notasLegado` (DEC-80-D).
         $dim = $user->dimensaoNpsDesempenho();
 
-        $surveysLegado = NpsSurvey::with(['response.answers', 'response.survey'])
+        // Phase 96 Plan 04 (AB-96-3 · call-site #4) — eager-load só carrega a
+        // response quando ela NÃO está invalidada (foreach abaixo já pula
+        // response null).
+        $surveysLegado = NpsSurvey::with(['response' => fn ($q) => $q->valida()->with(['answers', 'survey'])])
             ->principal()
             ->whereIn('company_id', $companyIds)
             ->where('status', 'completed')

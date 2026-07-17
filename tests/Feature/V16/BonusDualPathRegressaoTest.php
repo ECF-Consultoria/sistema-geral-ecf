@@ -441,6 +441,72 @@ class BonusDualPathRegressaoTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
+    // Test 6 — Fase 96 Plan 04 (AB-96-3): resposta invalidada não conta em
+    // NENHUM dos dois ramos (atribuições nem legado) — regressão do bônus.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_resposta_invalidada_nao_conta_em_nenhum_dos_dois_ramos(): void
+    {
+        // Prova que a invalidação (AB-96-3) não regrediu o cálculo do bônus
+        // para respostas VÁLIDAS: um analista com 1 resposta válida em cada
+        // ramo (atribuições + legado) e 1 resposta invalidada em cada ramo
+        // deve receber a média SÓ das válidas — exatamente como se as
+        // invalidadas nunca tivessem existido.
+        $analista = $this->criarUserComCargo('Analista Invalidacao Dual', $this->cargoAnalistaId);
+
+        // ── Ramo (A) atribuições: 1 válida (peso 4) + 1 invalidada (peso 2) ──
+        $empresaNova = Company::factory()->create();
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresaNova->id, $servicoPerf, true);
+        $this->inserirPivot($empresaNova->id, $analista->id, 'consultor', $servicoPerf);
+
+        $tplPrincipal = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [$servicoPerf],
+            principal: true,
+        );
+
+        $respostaAtribuidaValida = $this->responder($empresaNova, $tplPrincipal, 4);
+        $respostaAtribuidaInvalida = $this->responder($empresaNova, $tplPrincipal, 2);
+        $respostaAtribuidaInvalida->update([
+            'invalidated_at' => now(),
+            'invalidated_by' => User::factory()->create(['role' => 'admin'])->id,
+        ]);
+
+        // ── Ramo (B) legado: 1 válida (peso 5) + 1 invalidada (peso 1) ──
+        $empresaAntiga = Company::factory()->create();
+        $this->inserirPivot($empresaAntiga->id, $analista->id, 'consultor', null);
+
+        $respostaLegadaValida = $this->criarRespostaLegado($empresaAntiga, $tplPrincipal, 5,
+            $this->mesReferencia()->copy()->setDay(5)->setTime(9, 0));
+        $respostaLegadaInvalida = $this->criarRespostaLegado($empresaAntiga, $tplPrincipal, 1,
+            $this->mesReferencia()->copy()->setDay(20)->setTime(9, 0));
+        $respostaLegadaInvalida->update([
+            'invalidated_at' => now(),
+            'invalidated_by' => User::factory()->create(['role' => 'admin'])->id,
+        ]);
+
+        // ── Pré-condições ────────────────────────────────────────────────
+        $this->assertSame(1,
+            NpsScoreAssignment::where('nps_response_id', $respostaAtribuidaValida->id)->count(),
+            'a resposta atribuída válida precisa ter gerado exatamente 1 atribuição');
+        $this->assertSame(1,
+            NpsScoreAssignment::where('nps_response_id', $respostaAtribuidaInvalida->id)->count(),
+            'a resposta atribuída invalidada TAMBÉM gerou atribuição — o filtro precisa excluí-la na leitura, não na gravação');
+        $this->assertSame(0,
+            NpsScoreAssignment::where('nps_response_id', $respostaLegadaValida->id)
+                ->orWhere('nps_response_id', $respostaLegadaInvalida->id)
+                ->count(),
+            'as respostas legadas não têm atribuição — é o ramo legado que está sendo medido');
+
+        // Se qualquer invalidada ainda contasse: (4+2+5+1)/4 = 3.0.
+        // Só as válidas: (4.0 + 5.0) / 2 = 4.5.
+        $this->assertSame(4.5, $this->invocarComputeNpsMedio($analista),
+            'resposta invalidada não pode contar em NENHUM dos dois ramos — só as válidas entram na média do bônus');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
     // Test 5 — Fase 91 (DESEMP-01): o cache foi bumpado para v4
     // ═══════════════════════════════════════════════════════════════════
 
