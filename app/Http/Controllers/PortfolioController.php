@@ -1489,10 +1489,27 @@ class PortfolioController extends Controller
                 if (($resultadoPar['sem_carteira'] ?? false) === true) {
                     continue;
                 }
+                // Fase 92 — pendência da Fase 91 (Distorção A/B): blocked não
+                // tem nota calculável (nota_final=null por definição, D-91-01),
+                // não pode entrar na amostra de pares. Sem este guard, o
+                // `?? 0.0` da linha abaixo transformaria um blocked real em
+                // nota 0.0 na comparação, e tamanho_amostra contaria alguém
+                // que a mediana já exclui.
+                if (($resultadoPar['score_status'] ?? null) === 'blocked') {
+                    continue;
+                }
                 $scoresPares->put($par->id, $resultadoPar);
             }
 
-            if ($scoresPares->count() >= 2) {
+            // Fase 92 — self-view do próprio profissional blocked: com o
+            // guard acima ele nunca entra em $scoresPares, então NÃO monta
+            // comparação nenhuma para si mesmo (evita $minhaNota virar 0.0
+            // fantasma via fallback $performanceProfissional). O front usa
+            // `performance_profissional.score_status` (já passado à view)
+            // para exibir "sua nota ainda não é oficial".
+            if (($performanceProfissional['score_status'] ?? null) === 'blocked') {
+                $comparacaoContextual = null;
+            } elseif ($scoresPares->count() >= 2) {
                 $meuResultado = $scoresPares->get($user->id) ?? $performanceProfissional;
                 $minhaNota    = (float) ($meuResultado['nota_final'] ?? 0.0);
 
