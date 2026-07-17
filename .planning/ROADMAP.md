@@ -750,12 +750,12 @@ Plans:
 **Goal:** Admin enxerga a camada de confiança (badge na listagem, filtros, seção de auditoria técnica no detalhe); qualquer outro papel não recebe nem sinal de que ela existe — inclusive no payload.
 **Requirements**: AB-95-1, AB-95-2, AB-95-3, AB-95-4
 **Depends on:** Phase 94
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 95-01-PLAN.md — Backend: payload admin-only `confianca`/`auditoria` + filtro server-side com blindagem (AB-95-1..4)
+- [x] 95-01-PLAN.md — Backend: payload admin-only `confianca`/`auditoria` + filtro server-side com blindagem (AB-95-1..4)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
