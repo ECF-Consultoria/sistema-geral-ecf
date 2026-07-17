@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { router, useForm } from '@inertiajs/react';
-import { ExternalLink, CalendarClock, ArrowLeft } from 'lucide-react';
+import { ExternalLink, CalendarClock, ArrowLeft, ShieldCheck, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/Components/ui/button';
 
@@ -46,6 +46,8 @@ import ToastSalvo           from '@/Components/Nps/Config/ToastSalvo';
  *   - dimensoes_labels:     { estrategista: 'Estrategista', ... }
  *   - servicos_disponiveis: Array<{id, nome, setor}>
  *   - dia_cobranca:         int
+ *   - ips_internos:         Array<string> (Phase 96 Plan 02 — IPs exatos cadastrados pela UI)
+ *   - cidrs_internos:       Array<string> (Phase 96 Plan 02 — redes CIDR cadastradas pela UI)
  */
 function DiaCobrancaWidget({ diaAtual }) {
     // useForm cuida do estado, erros de validação e flag `processing` do botão.
@@ -105,12 +107,190 @@ function DiaCobrancaWidget({ diaAtual }) {
     );
 }
 
+/**
+ * Widget "IPs internos da ECF" — Phase 96 Plan 02 (AB-96-2), molde do
+ * `DiaCobrancaWidget` acima. Lista editável de chips (IPs exatos + redes
+ * CIDR) com adicionar/remover, salvando via PATCH admin-only. O `.env`
+ * do servidor continua valendo como fallback — esta lista é SOMADA a ele
+ * (união), nunca substitui.
+ */
+function IpsInternosWidget({ ipsIniciais, cidrsIniciais }) {
+    const { data, setData, patch, processing, errors, recentlySuccessful } = useForm({
+        ips: ipsIniciais ?? [],
+        cidrs: cidrsIniciais ?? [],
+    });
+
+    const [novoIp, setNovoIp] = useState('');
+    const [novoCidr, setNovoCidr] = useState('');
+
+    const adicionarIp = () => {
+        const valor = novoIp.trim();
+        if (!valor) return;
+        setData('ips', [...data.ips, valor]);
+        setNovoIp('');
+    };
+
+    const removerIp = (index) => setData('ips', data.ips.filter((_, i) => i !== index));
+
+    const adicionarCidr = () => {
+        const valor = novoCidr.trim();
+        if (!valor) return;
+        setData('cidrs', [...data.cidrs, valor]);
+        setNovoCidr('');
+    };
+
+    const removerCidr = (index) => setData('cidrs', data.cidrs.filter((_, i) => i !== index));
+
+    const submit = (e) => {
+        e.preventDefault();
+        patch(route('nps.configuracao.ips-internos.update'), {
+            preserveScroll: true,
+        });
+    };
+
+    return (
+        <div className="bg-ecf-card border border-white/[0.08] rounded-2xl p-4 space-y-4">
+            <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-lg bg-ecf-yellow/10 border border-ecf-yellow/20 flex items-center justify-center shrink-0">
+                    <ShieldCheck size={16} className="text-ecf-yellow" />
+                </div>
+                <div>
+                    <div className="text-white text-sm font-medium">IPs internos da ECF</div>
+                    <div className="text-white/50 text-xs mt-0.5">
+                        Respostas enviadas destes endereços são marcadas como suspeitas (rede interna).
+                        A configuração do servidor continua valendo — esta lista é somada a ela.
+                    </div>
+                </div>
+            </div>
+
+            <form onSubmit={submit} className="space-y-4">
+                {/* IPs exatos */}
+                <div>
+                    <label className="text-white/70 text-xs font-medium block mb-1.5">IPs exatos</label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {data.ips.map((ip, index) => {
+                            // Flag calculada DENTRO do callback do map — evita
+                            // ReferenceError no bundle Rollup (pitfall conhecido).
+                            const temErro = !!errors[`ips.${index}`];
+                            return (
+                                <span
+                                    key={`${ip}-${index}`}
+                                    className={cn(
+                                        'inline-flex items-center gap-1.5 bg-white/[0.03] border rounded-lg px-2.5 py-1 text-xs text-white/80',
+                                        temErro ? 'border-red-500/60' : 'border-white/[0.08]',
+                                    )}
+                                >
+                                    {ip}
+                                    <button
+                                        type="button"
+                                        onClick={() => removerIp(index)}
+                                        className="text-white/40 hover:text-red-400"
+                                        aria-label={`Remover IP ${ip}`}
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                </span>
+                            );
+                        })}
+                        {data.ips.length === 0 && (
+                            <span className="text-white/30 text-xs italic">Nenhum IP cadastrado pela UI.</span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={novoIp}
+                            onChange={(e) => setNovoIp(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarIp(); } }}
+                            placeholder="Ex.: 203.0.113.5"
+                            className="flex-1 bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-ecf-yellow/30"
+                            aria-label="Novo IP interno"
+                        />
+                        <Button
+                            type="button"
+                            onClick={adicionarIp}
+                            className="bg-white/[0.06] hover:bg-white/[0.1] text-white text-xs px-3 py-1.5 h-auto"
+                        >
+                            <Plus size={12} className="mr-1" /> Adicionar
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Redes CIDR */}
+                <div>
+                    <label className="text-white/70 text-xs font-medium block mb-1.5">Redes (CIDR)</label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                        {data.cidrs.map((cidr, index) => {
+                            const temErro = !!errors[`cidrs.${index}`];
+                            return (
+                                <span
+                                    key={`${cidr}-${index}`}
+                                    className={cn(
+                                        'inline-flex items-center gap-1.5 bg-white/[0.03] border rounded-lg px-2.5 py-1 text-xs text-white/80',
+                                        temErro ? 'border-red-500/60' : 'border-white/[0.08]',
+                                    )}
+                                >
+                                    {cidr}
+                                    <button
+                                        type="button"
+                                        onClick={() => removerCidr(index)}
+                                        className="text-white/40 hover:text-red-400"
+                                        aria-label={`Remover rede ${cidr}`}
+                                    >
+                                        <X size={12} />
+                                    </button>
+                                </span>
+                            );
+                        })}
+                        {data.cidrs.length === 0 && (
+                            <span className="text-white/30 text-xs italic">Nenhuma rede cadastrada pela UI.</span>
+                        )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            value={novoCidr}
+                            onChange={(e) => setNovoCidr(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionarCidr(); } }}
+                            placeholder="Ex.: 10.0.0.0/8"
+                            className="flex-1 bg-white/[0.03] border border-white/[0.08] rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:ring-2 focus:ring-ecf-yellow/30"
+                            aria-label="Nova rede CIDR interna"
+                        />
+                        <Button
+                            type="button"
+                            onClick={adicionarCidr}
+                            className="bg-white/[0.06] hover:bg-white/[0.1] text-white text-xs px-3 py-1.5 h-auto"
+                        >
+                            <Plus size={12} className="mr-1" /> Adicionar
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <Button
+                        type="submit"
+                        disabled={processing}
+                        className="bg-ecf-yellow text-[#050507] hover:bg-ecf-yellow/90 text-sm px-4"
+                    >
+                        {processing ? 'Salvando…' : 'Salvar lista'}
+                    </Button>
+                    {recentlySuccessful && (
+                        <span className="text-emerald-400 text-xs">Salvo.</span>
+                    )}
+                </div>
+            </form>
+        </div>
+    );
+}
+
 export default function Configuracao({
     templates,
     tipos_pergunta,
     dimensoes_labels,
     servicos_disponiveis,
     dia_cobranca,
+    ips_internos,
+    cidrs_internos,
 }) {
     // ─── Estado principal ────────────────────────────────────────────────
     // Refactor 2026-07-08: modo 'list' é o default (nenhum template selecionado).
@@ -265,8 +445,13 @@ export default function Configuracao({
                     </header>
                 )}
 
-                {/* Widget de config global "Dia de cobrança" — só na tela lista */}
-                {mode === 'list' && <DiaCobrancaWidget diaAtual={dia_cobranca} />}
+                {/* Widgets de config global — só na tela lista */}
+                {mode === 'list' && (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                        <DiaCobrancaWidget diaAtual={dia_cobranca} />
+                        <IpsInternosWidget ipsIniciais={ips_internos} cidrsIniciais={cidrs_internos} />
+                    </div>
+                )}
 
                 {/* Conteúdo — muda conforme o modo */}
                 {mode === 'list' ? (

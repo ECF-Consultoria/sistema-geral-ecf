@@ -88,6 +88,11 @@ class NpsTemplateController extends Controller
             // Cast + fallback 25 espelha a leitura do NpsPendingService::diaCobranca()
             // — se o valor no banco estiver corrompido/ausente, a UI mostra 25.
             'dia_cobranca'         => (int) Configuracao::get('nps_dia_cobranca', 25),
+            // Phase 96 Plan 02 (AB-96-2) — widget "IPs internos" (IpsInternosWidget).
+            // json_decode com fallback [] espelha a leitura defensiva que
+            // NpsSuspicionService::isInternalIp() já faz na Fase 96.
+            'ips_internos'         => json_decode(Configuracao::get('nps_internal_ips', '[]'), true) ?: [],
+            'cidrs_internos'       => json_decode(Configuracao::get('nps_internal_cidrs', '[]'), true) ?: [],
         ]);
     }
 
