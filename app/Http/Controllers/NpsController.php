@@ -50,6 +50,15 @@ class NpsController extends Controller
         $mesInicio = \Carbon\Carbon::parse($mesFiltro . '-01')->startOfMonth();
         $mesFim    = $mesInicio->copy()->endOfMonth();
 
+        // ─── Fase 95 (AB-95-3) — filtro tri-estado ?confianca= ──────────────
+        // Mesmo molde do $mesFiltro acima: whitelist estrita + fallback
+        // silencioso. Valor inválido (ou qualquer coisa fora da whitelist)
+        // cai em 'todos' sem erro — nunca 422/403, que denunciaria a feature
+        // para quem não pode usá-la (Pitfall 4 do RESEARCH).
+        $confiancaValidos = ['todos', 'confiavel', 'atencao', 'suspeita'];
+        $confiancaParam   = $request->input('confianca', 'todos');
+        $confiancaFiltro  = in_array($confiancaParam, $confiancaValidos, true) ? $confiancaParam : 'todos';
+
         // ─── Quick task 260612-flt — filtros adicionais ─────────────────────
         // Empresa: filtra por company_id direto. Estrategista/Analista: filtra
         // por surveys cuja empresa tem o user atribuído no pivot company_users
@@ -141,6 +150,30 @@ class NpsController extends Controller
 
         // Quick task 260612-flt — filtros empresa/estrategista/analista.
         $aplicarFiltrosSurveys($baseQuery);
+
+        // Fase 95 (AB-95-3) — filtro de confiança, aplicado DEPOIS do escopo
+        // de carteira e dos filtros acima (defesa em profundidade: soma-se ao
+        // escopo, nunca o substitui). Só existe para admin — para os demais
+        // roles o parâmetro é simplesmente ignorado, mesmo que venha na URL
+        // (o filtro não pode ser "descoberto" por tentativa/erro).
+        //
+        // 'confiavel' usa whereNull porque resposta limpa persiste
+        // suspicion_reasons=NULL (não existe severity='nenhuma' gravado no
+        // banco — fato confirmado em capturarRastroEAvaliarSuspeita). Usa o
+        // operador JSON nativo do Eloquent (coluna->chave), que o Laravel
+        // traduz por driver (MySQL/MariaDB e SQLite dos testes) — PROIBIDO
+        // usar JSON_EXTRACT cru via query raw aqui.
+        if ($user->isAdmin() && $confiancaFiltro !== 'todos') {
+            $baseQuery->whereHas('response', function ($q) use ($confiancaFiltro) {
+                if ($confiancaFiltro === 'confiavel') {
+                    $q->whereNull('suspicion_reasons');
+                } elseif ($confiancaFiltro === 'atencao') {
+                    $q->where('suspicion_reasons->severity', 'media');
+                } elseif ($confiancaFiltro === 'suspeita') {
+                    $q->where('suspicion_reasons->severity', 'alta');
+                }
+            });
+        }
 
         // Bugfix 2026-07-08 — helper de leitura dual-path com arredondamento.
         // Para surveys v15 (survey.template_id != null): usa NpsScoreCalculator
@@ -417,7 +450,10 @@ class NpsController extends Controller
         // admin. Não-admin não recebe nem SINAL de que a camada de confiança
         // existe — a chave simplesmente não é criada (nunca `false`).
         if ($user->isAdmin()) {
-            $props['pode_ver_confianca'] = true;
+            $props['pode_ver_confianca']       = true;
+            // Fase 95 (AB-95-3) — reflete o filtro aplicado; ausente para
+            // não-admin (nem a CHAVE existe dentro de `filtros`).
+            $props['filtros']['confianca'] = $confiancaFiltro;
         }
 
         return Inertia::render('Nps/Index', $props);
