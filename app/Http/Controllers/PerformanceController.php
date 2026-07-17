@@ -9,6 +9,7 @@ use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\Publicacao;
+use App\Models\Servico;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use App\Services\PlanoMetasPublicacaoService;
@@ -30,6 +31,14 @@ class PerformanceController extends Controller
         $setor = 'consultoria';
 
         $period = $request->get('period', '30');
+
+        // Fase 92 (DESEMP-08 SC3) — filtro de auditoria ?contexto=, VIEW-ONLY.
+        // Whitelist explícita (mesmo padrão de PortfolioController::contextoFiltro,
+        // Fase 90). NUNCA repassar o valor cru: nem pra query, nem pro
+        // computeCached()/compute() (DESEMP-02 proíbe um segundo score por setor).
+        // O `param` resolvido só é ecoado como prop pra filtragem client-side
+        // (Plan 92-02) sobre os metadados já presentes no payload.
+        $contextoFiltro = $this->contextoFiltro($request);
 
         // Filtro opcional por cargo (analista/estrategista); null = Geral (todos)
         $cargo = $request->get('cargo');
@@ -137,6 +146,16 @@ class PerformanceController extends Controller
                 ],
                 'pontos_componentes'    => $resultado['pontos_componentes'] ?? null,
                 'mes_referencia'        => $resultado['mes_referencia'] ?? $mesReferencia->toDateString(),
+                // ── Fase 92 (DESEMP-08) — passthrough dos 6 metadados de elegibilidade
+                // já calculados pelo DesempenhoScoreService (Fase 91). NÃO recomputa —
+                // lê direto de $resultado (compute cacheado ou breakdown_json do snapshot
+                // mensal, que também já contém estas chaves).
+                'empresas_unicas'               => (int) ($resultado['empresas_unicas'] ?? 0),
+                'vinculos_servico'               => (int) ($resultado['vinculos_servico'] ?? 0),
+                'vinculos_financeiros'           => (int) ($resultado['vinculos_financeiros'] ?? 0),
+                'vinculos_sem_fonte_financeira'  => (int) ($resultado['vinculos_sem_fonte_financeira'] ?? 0),
+                'score_status'                   => (string) ($resultado['score_status'] ?? 'blocked'),
+                'componentes_disponiveis'        => $resultado['componentes_disponiveis'] ?? null,
             ];
         });
 
@@ -236,7 +255,30 @@ class PerformanceController extends Controller
             'mes_selecionado'    => $mesReferencia->format('Y-m'),
             'mes_em_curso'       => $ehMesEmCurso,
             'meses_disponiveis'  => $mesesDisponiveis,
+            // Fase 92 (DESEMP-08 SC3) — filtro de auditoria view-only; front
+            // decide o que destacar/filtrar usando os metadados já presentes
+            // em cada linha do `ranking` (sem novo round-trip ao backend).
+            'contexto'           => $contextoFiltro['param'],
         ]);
+    }
+
+    /**
+     * Fase 92 (DESEMP-08 SC3) — resolve `?contexto=` via whitelist explícita.
+     * Espelha `PortfolioController::contextoFiltro()` (Fase 90). Valores
+     * aceitos: 'todos' (default/inválido) | 'performance' | 'shopee'.
+     *
+     * IMPORTANTE: o retorno é usado SÓ como prop de exibição — `setor` nunca
+     * é passado para `DesempenhoScoreService::computeCached()`/`compute()`
+     * nem para nenhuma query do ranking (proibido criar um segundo score por
+     * setor — DESEMP-02).
+     */
+    private function contextoFiltro(Request $request): array
+    {
+        return match ($request->query('contexto')) {
+            'performance' => ['param' => 'performance', 'setor' => Servico::SETOR_PERFORMANCE],
+            'shopee'      => ['param' => 'shopee',      'setor' => Servico::SETOR_SHOPEE],
+            default       => ['param' => 'todos',       'setor' => null],
+        };
     }
 
     /**
