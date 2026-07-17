@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
 status: executing
-stopped_at: Completed 95-01-PLAN.md (payload confianca/auditoria admin-only + filtro server-side)
-last_updated: "2026-07-17T15:51:25.605Z"
-last_activity: 2026-07-17 -- Phase 96 planning complete
+stopped_at: Completed 96-01-PLAN.md
+last_updated: "2026-07-17T16:28:13.428Z"
+last_activity: 2026-07-17
 progress:
   total_phases: 9
   completed_phases: 7
   total_plans: 19
-  completed_plans: 14
-  percent: 74
+  completed_plans: 15
+  percent: 78
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 95 — NPS Anti-Burlamento — UI de confiança admin-only
+**Current focus:** Phase 96 — NPS Anti-Burlamento — endurecimento e gestão
 
 ## Current Position
 
-Phase: 95 (NPS Anti-Burlamento — UI de confiança admin-only) — EXECUTING
-Plan: 2 of 2
+Phase: 96 (NPS Anti-Burlamento — endurecimento e gestão) — EXECUTING
+Plan: 2 of 5
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
 Status: Ready to execute
-Last activity: 2026-07-17 -- Phase 96 planning complete
+Last activity: 2026-07-17
 
 ## Performance Metrics
 
@@ -155,6 +155,7 @@ Last activity: 2026-07-17 -- Phase 96 planning complete
 | Phase 90 P01 | 35min | 2 tasks | 2 files |
 | Phase 94 P03 | 20min | 2 tasks | 2 files |
 | Phase 95 P01 | ~50min | 2 tasks | 3 files |
+| Phase 96 P01 | 55min | 2 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -656,8 +657,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-17T02:21:01.466Z
-Stopped at: Completed 95-01-PLAN.md (payload confianca/auditoria admin-only + filtro server-side)
+Last session: 2026-07-17T16:28:13.261Z
+Stopped at: Completed 96-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
