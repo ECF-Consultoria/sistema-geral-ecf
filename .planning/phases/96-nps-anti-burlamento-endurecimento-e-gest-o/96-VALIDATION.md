@@ -71,4 +71,4 @@ created: 2026-07-17
 - [x] Regressão do bônus (V16/Desempenho) no gate final
 - [x] `nyquist_compliant: true` set in frontmatter
 
-**Approval:** pending (atualizar após plan-check)
+**Approval:** approved 2026-07-17 (plan-checker: PASSED após 1 revisão — call-site 10 fechado)

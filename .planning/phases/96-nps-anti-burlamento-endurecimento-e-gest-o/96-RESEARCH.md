@@ -56,7 +56,7 @@ Fase 96 é 100% trabalho interno ao codebase Laravel/Inertia já existente — *
 
 2. **AB-96-2 (IPs pela UI):** o projeto já tem o padrão exato de "config chave/valor persistida + fallback + widget PATCH" rodando em produção: `Configuracao::get/set('nps_dia_cobranca', ...)`, servido por `NpsTemplateController::index()` e consumido pelo `DiaCobrancaWidget` em `Nps/Configuracao.jsx`. A pesquisa recomenda replicar esse MESMO padrão para 2 novas chaves (`nps_internal_ips`/`nps_internal_cidrs`, JSON array de strings) e estender `NpsSuspicionService::isInternalIp()` (método privado, sem tocar na assinatura pública `evaluate()`) para ler a UNIÃO (`.env` ∪ UI).
 
-3. **AB-96-3 (invalidação) — a parte crítica:** o codebase tem um **dual-path documentado e testado** que consome `nps_score_assignments`/`nps_response_scores`/o `response()` de `NpsSurvey` em **8 call-sites distintos**, espalhados por 5 arquivos (`DesempenhoScoreService`, `PerformanceController`, `DashboardController`, `PortfolioController`, `CalculateGoalResults`). Todos eles, sem exceção, chegam a uma `NpsResponse` — seja via JOIN direto em `nps_score_assignments.nps_response_id`, seja via eager-load `NpsSurvey::with('response')`. Isso significa que uma flag `invalidated_at`/`invalidated_by` em `nps_responses`, combinada com uma constraint aplicada em cada um desses 8 pontos, fecha 100% da superfície — **sem precisar tocar em `NpsSnapshotService`, sem apagar nenhuma linha de `nps_response_scores`/`nps_score_assignments`, e mantendo reversibilidade trivial** (a "revalidação" é só `invalidated_at = null`). A pesquisa também descobriu um 9º ponto não óbvio e de alto risco: `DesempenhoScoreService::computeCached()` cacheia o bônus de um MÊS FECHADO por até **7 dias** — sem um `Cache::forget()` explícito no momento da invalidação, o admin veria o número errado por até uma semana mesmo com a query corrigida.
+3. **AB-96-3 (invalidação) — a parte crítica:** o codebase tem um **dual-path documentado e testado** que consome `nps_score_assignments`/`nps_response_scores`/o `response()` de `NpsSurvey` em **10 call-sites distintos**, espalhados por 6 arquivos (`DesempenhoScoreService`, `PerformanceController`, `DashboardController`, `PortfolioController`, `CalculateGoalResults`, `CompanyController` — este último adicionado na revisão pós plan-check). Todos eles, sem exceção, chegam a uma `NpsResponse` — seja via JOIN direto em `nps_score_assignments.nps_response_id`, seja via eager-load `NpsSurvey::with('response')`. Isso significa que uma flag `invalidated_at`/`invalidated_by` em `nps_responses`, combinada com uma constraint aplicada em cada um desses 8 pontos, fecha 100% da superfície — **sem precisar tocar em `NpsSnapshotService`, sem apagar nenhuma linha de `nps_response_scores`/`nps_score_assignments`, e mantendo reversibilidade trivial** (a "revalidação" é só `invalidated_at = null`). A pesquisa também descobriu um 9º ponto não óbvio e de alto risco: `DesempenhoScoreService::computeCached()` cacheia o bônus de um MÊS FECHADO por até **7 dias** — sem um `Cache::forget()` explícito no momento da invalidação, o admin veria o número errado por até uma semana mesmo com a query corrigida.
 
 **Primary recommendation:** implementar as 3 frentes como extensões cirúrgicas do código já lido (nenhum novo pacote), com o mecanismo de invalidação centrado em UMA flag em `nps_responses` + um scope Eloquent reutilizável (`scopeValida()`), aplicado explicitamente nos 8 call-sites mapeados abaixo + `Cache::forget()` das chaves de bônus afetadas.
 
@@ -173,7 +173,7 @@ NpsController::invalidarResposta()
   ⋯ toda leitura subsequente precisa filtrar ⋯
 
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ 8 CALL-SITES QUE PRECISAM DO FILTRO (nenhum pode ser esquecido)          │
+│ 10 CALL-SITES QUE PRECISAM DO FILTRO (nenhum pode ser esquecido)         │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ 1. DesempenhoScoreService::notasPorAtribuicao()  (JOIN nps_responses)   │
 │ 2. DesempenhoScoreService::notasLegado()          (eager-load response) │
@@ -181,18 +181,21 @@ NpsController::invalidarResposta()
 │ 4. PerformanceController::notasNpsDoUsuarioPorResposta() ramo (B) legado│
 │ 5. DashboardController — home() (linha ~540, eager-load ->principal()) │
 │ 6. DashboardController — userDashboard() (linha ~1058, idem)           │
-│ 7. DashboardController — buildRanking()/npsHistory (linha ~1583, idem) │
+│ 7. DashboardController — buildRanking()/$surveys (linha ~938, método ~927, idem) │
 │ 8. PortfolioController — "Histórico NPS mensal" (linha ~1600, idem —   │
 │    NÃO usa NpsScoreAssignment, é single-path ->principal() + calculator│
 │    direto sobre $s->response; CONFIRMADO como implementação PRÓPRIA,   │
 │    não compartilhada com PerformanceController)                        │
 │ 9. CalculateGoalResults::computeNps()             (metas NPS mensais)  │
+│10. CompanyController::show() (linha ~303 eager-load npsSurveys →       │
+│    avgNps/lista em Companies/Show.jsx) — visível a QUALQUER usuário    │
+│    com acesso à empresa, não só admin; fix backend-only (->valida())   │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ + NpsController::index() cards/série 12m (NpsResponse::query() solto)  │
 │   — a LISTAGEM PAGINADA em si NÃO filtra (admin precisa ver p/ gerir)  │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
-*(nota: a numeração no texto corrido usa "8 call-sites" agrupando #5/#6/#7 como "3 pontos dentro do mesmo arquivo `DashboardController`" — a lista acima é a contagem granular por método/linha, útil como checklist de execução)*
+*(nota: contagem granular por método/linha, útil como checklist de execução — o call-site #10 foi adicionado na revisão pós plan-check)*
 
 ### Padrão 1 — Bloqueio no ponto de entrada do submit, sem tocar nos 2 paths
 
@@ -337,9 +340,10 @@ public function scopeValida($query)
 | 4 | `app/Http/Controllers/PerformanceController.php` | `notasNpsDoUsuarioPorResposta()` ramo (B) (linha ~637) | `NpsSurvey::with(['response.answers', 'response.survey'])->principal()...` → `->with(['response' => fn ($q) => $q->valida()->with(['answers', 'survey'])])` |
 | 5 | `app/Http/Controllers/DashboardController.php` | `home()` — widgets NPS (linha ~540) | `NpsSurvey::with('response')->principal()...` → `with(['response' => fn ($q) => $q->valida()])` |
 | 6 | `app/Http/Controllers/DashboardController.php` | `userDashboard()` — widgets NPS (linha ~1058) | mesmo padrão do #5 |
-| 7 | `app/Http/Controllers/DashboardController.php` | `buildRanking()` — `$npsHistory` (linha ~1583) + `avgNotaDimensao()` (helper compartilhado, linha ~1139) | mesmo padrão do #5 — `avgNotaDimensao()` já faz `->filter(fn($n) => $n !== null)`, então filtrar o eager-load de `response` basta, nenhuma mudança no helper em si |
+| 7 | `app/Http/Controllers/DashboardController.php` | `buildRanking()` — `$surveys` (query ~938, método a partir da ~927) + `avgNotaDimensao()` (helper compartilhado, linha ~1139) | mesmo padrão do #5 — `avgNotaDimensao()` já faz `->filter(fn($n) => $n !== null)`, então filtrar o eager-load de `response` basta, nenhuma mudança no helper em si |
 | 8 | `app/Http/Controllers/PortfolioController.php` | "Histórico NPS mensal do profissional" (linha ~1600) | `NpsSurvey::with(['response.answers', 'response.survey'])->principal()...` → mesmo padrão do #4. **Confirmado nesta pesquisa: esta é uma implementação PRÓPRIA e SIMPLES (single-path, sem `NpsScoreAssignment`), não a mesma função `notasNpsDoUsuarioPorResposta` do `PerformanceController`** — os dois arquivos precisam de fixes SEPARADOS |
 | 9 | `app/Jobs/CalculateGoalResults.php` | `computeNps()` (linha ~210) | `NpsResponse::query()->whereHas('survey', ...)` → adicionar `->whereNull('invalidated_at')` direto na query de `NpsResponse` (não precisa de scope aqui, é query direta) |
+| 10 | `app/Http/Controllers/CompanyController.php` | `show()` — eager-load `npsSurveys` (linha ~303) + builder do payload `nps_surveys` (linhas ~508-532) | trocar o nested `->with(['response.answers', 'template'])` por `->with(['response' => fn ($q) => $q->valida()->with('answers'), 'template'])` — a resposta invalidada vira `null` no payload `nps_surveys`, saindo do `avgNps` (`resources/js/Pages/Companies/Show.jsx` ~396-399) e da lista "NPS Respondidos" (~995-1014). **Visível a QUALQUER usuário com acesso à empresa (não só admin).** Fix 100% backend — o JSX já filtra por `s.response` no `completedNps`, NÃO tocar no Show.jsx |
 
 **+ 1 call-site de agregação FORA da tabela acima (cards/série do próprio `/nps`):**
 `NpsController::index()`, variável `$responsesMes` e o loop `$serieMeses` (linhas ~340 e ~370) — `NpsResponse::query()->with(['survey', 'answers'])->whereHas('survey', $responsesFilter)->get()` → adicionar `->whereNull('invalidated_at')`. **A listagem paginada (`$surveys = $baseQuery->paginate(...)`) NÃO deve filtrar** — o admin precisa continuar vendo a resposta invalidada na lista/modal para poder revalidá-la.
