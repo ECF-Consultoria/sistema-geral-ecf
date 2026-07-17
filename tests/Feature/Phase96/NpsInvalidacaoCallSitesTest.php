@@ -606,4 +606,52 @@ class NpsInvalidacaoCallSitesTest extends TestCase
         $this->assertSame(5.0, $media,
             'call-site #9: CalculateGoalResults::computeNps() deve excluir a resposta invalidada da meta NPS');
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Call-site #10 — CompanyController::show() → payload nps_surveys
+    // (VISÍVEL A QUALQUER USUÁRIO com acesso à empresa, não só admin)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_callsite_10_company_show_nps_surveys_exclui_resposta_invalidada(): void
+    {
+        // Usuário NÃO-admin com acesso à empresa via pivot — prova que o fix
+        // vale também para quem não é admin (a tela é visível à carteira).
+        $user    = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $empresa = Company::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $user->id, 'consultor', null);
+
+        // Não precisa ser o modelo principal — CompanyController::show() carrega
+        // TODOS os npsSurveys completed da empresa, sem ->principal().
+        $tpl = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_EMPRESA],
+            [],
+            principal: false,
+        );
+
+        $respostaValida     = $this->responder($empresa, $tpl, 4);
+        $respostaInvalidada = $this->responder($empresa, $tpl, 1);
+        $this->invalidar($respostaInvalidada);
+
+        $props = null;
+        $this->actingAs($user)
+            ->get("/companies/{$empresa->id}")
+            ->assertOk()
+            ->assertInertia(function (\Inertia\Testing\AssertableInertia $page) use (&$props) {
+                $page->component('Companies/Show');
+                $props = $page->toArray()['props'];
+            });
+
+        $surveys = collect($props['company']['nps_surveys']);
+
+        $itemValido = $surveys->firstWhere('id', $respostaValida->survey_id);
+        $itemInvalido = $surveys->firstWhere('id', $respostaInvalidada->survey_id);
+
+        $this->assertNotNull($itemValido, 'o survey da resposta válida precisa aparecer em nps_surveys');
+        $this->assertNotNull($itemValido['response'], 'a resposta válida deve continuar populando o payload (não regride)');
+
+        $this->assertNotNull($itemInvalido, 'o SURVEY da resposta invalidada continua listado (só a response some)');
+        $this->assertNull($itemInvalido['response'],
+            'call-site #10: response deve ser null para resposta invalidada — some do avgNps e da lista "NPS Respondidos" em Companies/Show.jsx');
+    }
 }
