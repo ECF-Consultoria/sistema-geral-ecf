@@ -8,7 +8,7 @@ import {
     Plus, Copy, CheckCircle,
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
-    Calendar, Star, Trash2,
+    Calendar, Star, Trash2, ShieldCheck,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -446,6 +446,28 @@ function ChartCard({ serie, cards, lines, setLines }) {
 const STATUS_LABEL = { pending: 'Pendente', completed: 'Respondido', expired: 'Expirado' };
 const STATUS_COLOR = { pending: '#ff8a3c', completed: '#19e06a', expired: '#f4436b' };
 
+// ═══ Fase 95 (AB-95-1) — badge tri-estado de confiança, admin-only ═══════
+// Rótulos pt-BR simples exigidos pelo CONTEXT — nunca "flag"/"fraud score".
+const CONFIANCA_LABELS = { confiavel: 'Confiável', atencao: 'Atenção', suspeita: 'Suspeita' };
+const CONFIANCA_BADGE = {
+    confiavel: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+    atencao:   'bg-amber-500/15 text-amber-300 border-amber-500/30',
+    suspeita:  'bg-rose-500/15 text-rose-300 border-rose-500/30',
+};
+// Guard é a EXISTÊNCIA da prop `confianca` (não-admin nunca recebe a chave
+// no payload — Fase 95-01), nunca `isAdmin &&` sobre dado já entregue.
+function ConfiancaBadge({ confianca }) {
+    if (!confianca) return null;
+    return (
+        <span
+            className={cn('inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border', CONFIANCA_BADGE[confianca.status])}
+            title={confianca.motivos?.join(' ') || undefined}
+        >
+            {CONFIANCA_LABELS[confianca.status]}
+        </span>
+    );
+}
+
 function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, isAdmin }) {
     // Contagens client-side sobre a página atual.
     const contagens = useMemo(() => {
@@ -729,6 +751,14 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
                                 {STATUS_LABEL[s.status]}
                             </span>
+                            {/* Fase 95 (AB-95-1) · s.confianca só existe no
+                                payload pra admin (Fase 95-01) — a ausência
+                                da chave já é o guard (nunca `isAdmin &&`). */}
+                            {s.confianca && (
+                                <div style={{ marginTop: 4 }}>
+                                    <ConfiancaBadge confianca={s.confianca} />
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
@@ -851,6 +881,7 @@ export default function NpsIndex({
     analistas = [],
     templates = [],
     pode_filtrar_por_pessoa = false,
+    pode_ver_confianca = false, // Fase 95 (AB-95-3) · ausente (não `false`) pra não-admin
     cards = {},
     serie_12m = [],
     mes_filtro = '',
@@ -935,6 +966,10 @@ export default function NpsIndex({
             estrategista_id: filtros.estrategista_id || undefined,
             analista_id: filtros.analista_id || undefined,
             template_id: templateSelectValue,
+            // Fase 95 (AB-95-3) · persiste o filtro de confiança entre trocas
+            // de outros filtros (mês/empresa/modelo); delete-falsy abaixo
+            // limpa sozinho quando volta pra 'todos'.
+            confianca: filtros.confianca && filtros.confianca !== 'todos' ? filtros.confianca : undefined,
             ...overrides,
         };
         Object.keys(payload).forEach(k => { if (!payload[k]) delete payload[k]; });
@@ -947,6 +982,8 @@ export default function NpsIndex({
     const handleAnalistaChange = (v) => aplicarFiltros({ analista_id: v === '__all__' ? undefined : v });
     // v é '__todos__' ou o id do modelo — ambos truthy, enviados literalmente.
     const handleTemplateChange = (v) => aplicarFiltros({ template_id: v });
+    // Fase 95 (AB-95-3) · 'todos' vira undefined pra não poluir a URL.
+    const handleConfiancaChange = (v) => aplicarFiltros({ confianca: v === 'todos' ? undefined : v });
 
     const submit = (e) => {
         e.preventDefault();
@@ -1035,6 +1072,25 @@ export default function NpsIndex({
                                                 {t.nome}{Number(t.id) === Number(principal_template_id) ? ' (principal)' : ''}
                                             </SelectItem>
                                         )),
+                                    ]}
+                                />
+                            )}
+                            {/* Fase 95 (AB-95-3) · filtro de confiança, só
+                                aparece quando o backend confirma que o
+                                usuário é admin (chave ausente pra todos os
+                                outros papéis — Fase 95-01). */}
+                            {pode_ver_confianca && (
+                                <GlassSelect
+                                    icon={ShieldCheck}
+                                    value={filtros.confianca || 'todos'}
+                                    onValueChange={handleConfiancaChange}
+                                    placeholder="Confiança"
+                                    width={170}
+                                    options={[
+                                        <SelectItem key="todos" value="todos">Todos</SelectItem>,
+                                        <SelectItem key="confiavel" value="confiavel">Confiáveis</SelectItem>,
+                                        <SelectItem key="atencao" value="atencao">Com alerta</SelectItem>,
+                                        <SelectItem key="suspeita" value="suspeita">Suspeitos</SelectItem>,
                                     ]}
                                 />
                             )}
