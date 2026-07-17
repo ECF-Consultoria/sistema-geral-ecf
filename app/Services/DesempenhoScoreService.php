@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AdmanMetric;
 use App\Models\BonusFaixa;
+use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
 use App\Models\NpsScoreAssignment;
@@ -11,6 +12,7 @@ use App\Models\NpsSurvey;
 use App\Models\User;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Nps\NpsScoreCalculator;
+use App\Services\Portfolio\CarteiraContextService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Collection;
@@ -45,6 +47,18 @@ use Illuminate\Support\Facades\Cache;
  *  - DESEMP-10 · Sem carteira → shape com flag `sem_carteira=true` + motivo pt-BR
  *  - DESEMP-11 · Fonte de dados: ML OAuth first (MetricsProviderFactory) + Adman fallback
  *
+ * Fase 91 (v17.0 · DESEMP-01/04/05/06/07) — `computeUniverso` passou a derivar
+ * o universo de empresas dos VÍNCULOS DE SERVIÇO ativos do profissional
+ * (`CarteiraContextService::forUser()`), não mais de `$user->companies()`
+ * (carteira consolidada por `company_id`). Corrige o bug medido em prod onde
+ * um responsável só-Shopee "herdava" faturamento/margem ML de empresas que
+ * não gerencia. Os componentes financeiros (`computeVarFaturamento`/
+ * `computeVarMargem`) passam a receber só as empresas com pelo menos 1
+ * vínculo `financial_metrics_eligible=true`. O shape de `compute()` ganha
+ * `score_status` (`official`/`partial`/`blocked`) + 6 metadados de
+ * auditoria. `computeNpsMedio` permanece INTOCADO — NPS soma todas as áreas
+ * (performance E Shopee), independente de elegibilidade financeira.
+ *
  * Consumidores previstos (não acopla, apenas rastreabilidade):
  *  - Plan 74-04 · comando `desempenho:consolidar-mes` (cron mensal dia 1)
  *  - Plan 74-04 · comando `desempenho:snapshot-scores` (cron diário 13:30, reescrito)
@@ -78,6 +92,7 @@ class DesempenhoScoreService
     public function __construct(
         private MetricsProviderFactory $metricsFactory,
         private NpsScoreCalculator $npsCalculator,
+        private CarteiraContextService $carteiraContext,
     ) {
     }
 
@@ -93,7 +108,7 @@ class DesempenhoScoreService
      *   'mes_referencia'        => string,  // YYYY-MM-01
      *   'sem_carteira'          => bool,
      *   'motivo'                => ?string, // "Sem carteira em julho/2026" quando sem_carteira
-     *   'empresas_carteira'     => int,
+     *   'empresas_carteira'     => int,     // compat: recebe o valor de empresas_unicas (Fase 91)
      *   'empresas_com_baseline' => int,     // usadas em var_faturamento
      *   'componentes' => [
      *     'nps_medio'           => ?float,  // 0.0 quando user não recebeu notas no mês
@@ -102,17 +117,34 @@ class DesempenhoScoreService
      *     'absenteismo_pct'     => null,    // sempre null nesta phase (DESEMP-06)
      *   ],
      *   'nota_final'            => ?float,  // 2 decimais; null se todos componentes null
+     *                                       // OU quando score_status='blocked' (D-91-01)
      *   'faixa_bonus'           => ?string, // slug de BonusFaixa
      *   'faixa_promovida'       => bool,    // true se DESEMP-08 alterou a faixa
+     *   // ── Metadados de elegibilidade (Fase 91 · DESEMP-05) ─────────────────
+     *   'empresas_unicas'               => int,    // de CarteiraContextService::contadores()
+     *   'vinculos_servico'              => int,
+     *   'vinculos_financeiros'          => int,
+     *   'vinculos_sem_fonte_financeira' => int,
+     *   'score_status'                  => string, // 'official'|'partial'|'blocked'
+     *   'componentes_disponiveis' => [
+     *     'nps_medio'           => bool, // sempre true (DESEMP-03 força 0.0)
+     *     'var_faturamento_pct' => bool, // true se != null
+     *     'var_margem_pct'      => bool, // true se != null
+     *   ],
      * ]
      * ```
      *
      * Fluxo:
-     *  1. `computeUniverso` — se `sem_carteira=true`, retorna shape com nulls.
-     *  2. Calcula 4 componentes (NPS/faturamento/margem/absenteísmo).
+     *  1. `computeUniverso` — deriva o universo dos vínculos de serviço
+     *     (`CarteiraContextService::forUser`); se `sem_carteira=true`, retorna
+     *     shape com nulls (DESEMP-07: só quando ZERO vínculos ativos).
+     *  2. Calcula 4 componentes (NPS/faturamento/margem/absenteísmo) — os
+     *     financeiros usam só as empresas `financial_metrics_eligible=true`.
      *  3. `computeNotaFinal` — média direta em escalas naturais.
-     *  4. `classificarFaixa` + `promoverPor2MesesConsecutivos` — DESEMP-08.
-     *  5. Monta shape final.
+     *  4. `computeScoreStatus` — classifica `official`/`partial`/`blocked`
+     *     (D-91-02); `blocked` força `nota_final=null` (D-91-01).
+     *  5. `classificarFaixa` + `promoverPor2MesesConsecutivos` — DESEMP-08.
+     *  6. Monta shape final com os metadados de auditoria.
      */
     /**
      * Versão cacheada de `compute()` — mesma resposta, envolvida em cache
@@ -147,7 +179,16 @@ class DesempenhoScoreService
         // continuariam servindo o bônus errado do Redis por até 7 dias (mês fechado)
         // mesmo com o código novo em prod. As chaves v2 viram órfãs e expiram
         // sozinhas por TTL — não precisa (nem deve) rodar `cache:clear`.
-        $cacheKey    = sprintf('desempenho.compute.v3.%d.%s', $user->id, $mes->format('Y-m'));
+        // Bump v3→v4 em 2026-07-16 (Fase 91 · DESEMP-01): `computeUniverso` passou
+        // a derivar o universo dos vínculos de serviço (`CarteiraContextService`)
+        // em vez da carteira consolidada por `company_id` — os valores gravados
+        // sob a v3 têm a nota da carteira consolidada (responsável Shopee
+        // "herdando" faturamento/margem de empresas ML que não gerencia). Sem
+        // este bump o Redis continuaria servindo o bônus errado por até 7 dias
+        // (mês fechado) mesmo com o código novo em prod. As chaves v3 viram
+        // órfãs e expiram sozinhas por TTL — não precisa (nem deve) rodar
+        // `cache:clear`.
+        $cacheKey    = sprintf('desempenho.compute.v4.%d.%s', $user->id, $mes->format('Y-m'));
 
         // Mês fechado (passado): dado estável, cache longo — invalida só quando
         // rodar o snapshot mensal ou passar do TTL.
@@ -176,9 +217,14 @@ class DesempenhoScoreService
         }
 
         /** @var EloquentCollection<int, \App\Models\Company> $companies */
-        $companies = $universo['companies'];
+        $companies = $universo['companies_elegiveis'];
+        $contadores = $universo['contadores'];
 
         // ── 4 componentes independentes ──────────────────────────────────────
+        // Faturamento/margem usam SÓ as empresas elegíveis financeiramente
+        // (`financial_metrics_eligible=true` — DESEMP-04). NPS continua
+        // somando todas as áreas do profissional, sem filtro de elegibilidade
+        // financeira (DESEMP-03/D-91-02 — computeNpsMedio INTOCADO).
         $nps        = $this->computeNpsMedio($user, $mes);
         $varFatData = $this->computeVarFaturamento($user, $mes, $companies);
         $varMargem  = $this->computeVarMargem($user, $mes, $companies);
@@ -189,6 +235,18 @@ class DesempenhoScoreService
 
         // ── Nota final (média direta, sem absenteísmo) ───────────────────────
         $nota = $this->computeNotaFinal($nps, $varFat, $varMargem);
+
+        // ── Status de elegibilidade (Fase 91 · DESEMP-06/D-91-02) ────────────
+        $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $varMargem);
+
+        // D-91-01: blocked (zero vínculos financeiros elegíveis — ex.:
+        // só-Shopee) força nota_final=null/faixa_bonus=null. Decisão do
+        // usuário 2026-07-16 — sem nota oficial até a diretoria aprovar régua
+        // de bônus para carteira sem financeiro. Com nota null, a ordenação
+        // existente (`sortByDesc(nota ?? -1)`) já manda pro fim do ranking.
+        if ($scoreStatus === 'blocked') {
+            $nota = null;
+        }
 
         // ── Classificação + promoção DESEMP-08 ───────────────────────────────
         $faixaInicial   = $nota !== null ? $this->classificarFaixa($nota) : null;
@@ -214,7 +272,10 @@ class DesempenhoScoreService
             'mes_referencia'        => $mes->toDateString(),
             'sem_carteira'          => false,
             'motivo'                => null,
-            'empresas_carteira'     => $companies->count(),
+            // Compat DESEMP-05: empresas_carteira passa a receber o valor de
+            // empresas_unicas (Fase 91) — mesmo valor prático pra profissional
+            // só-performance; consumidores existentes (Fase 92) não recomputam.
+            'empresas_carteira'     => $contadores['empresas_unicas'],
             'empresas_com_baseline' => $empresasBaseline,
             'componentes' => [
                 'nps_medio'           => $nps,
@@ -243,6 +304,17 @@ class DesempenhoScoreService
                 'dias_decorridos' => $diasDecorridos,
                 'dias_no_mes'     => $diasNoMes,
             ],
+            // ── Metadados de elegibilidade (Fase 91 · DESEMP-05) ──────────────
+            'empresas_unicas'               => $contadores['empresas_unicas'],
+            'vinculos_servico'              => $contadores['vinculos_servico'],
+            'vinculos_financeiros'          => $contadores['vinculos_financeiros'],
+            'vinculos_sem_fonte_financeira' => $contadores['vinculos_sem_fonte_financeira'],
+            'score_status'                  => $scoreStatus,
+            'componentes_disponiveis' => [
+                'nps_medio'           => true, // DESEMP-03 força 0.0 — nunca indisponível.
+                'var_faturamento_pct' => $varFat !== null,
+                'var_margem_pct'      => $varMargem !== null,
+            ],
         ];
     }
 
@@ -251,25 +323,77 @@ class DesempenhoScoreService
     /**
      * Verifica se o user tem carteira ativa no mês. Retorna:
      *  - `['sem_carteira' => true, 'motivo' => '...']` quando vazia
-     *  - `['sem_carteira' => false, 'companies' => Collection]` caso contrário
+     *  - `['sem_carteira' => false, 'contadores' => array, 'companies_elegiveis' => EloquentCollection]`
+     *    caso contrário
+     *
+     * Fase 91 (DESEMP-01/04/07): o universo deriva dos VÍNCULOS DE SERVIÇO
+     * ativos do profissional via `CarteiraContextService::forUser()`, não
+     * mais de `$user->companies()` (carteira consolidada por `company_id`).
+     * `sem_carteira=true` só dispara com ZERO vínculos de QUALQUER setor —
+     * um profissional só-Shopee TEM vínculo (Shopee), então permanece com
+     * `sem_carteira=false` mesmo sem nenhum vínculo elegível financeiramente
+     * (esse caso vira `score_status='blocked'` em `compute()`, não `sem_carteira`).
+     *
+     * `companies_elegiveis` é a `EloquentCollection<Company>` deduplicada por
+     * `company_id` (Pitfall 4 do 91-RESEARCH.md — evita somar a MESMA empresa
+     * 2× no SUM financeiro caso ela tenha 2 vínculos elegíveis) contendo só as
+     * empresas com pelo menos 1 vínculo `financial_metrics_eligible=true` —
+     * é o que alimenta `computeVarFaturamento`/`computeVarMargem` (assinaturas
+     * INTOCADAS, só o conjunto de entrada muda).
      *
      * DESEMP-10: "Sem carteira em julho/2026" (motivo pt-BR).
      */
     private function computeUniverso(User $user, Carbon $mes): array
     {
-        $companies = $user->companies()->where('active', true)->get();
+        $vinculos = $this->carteiraContext->forUser($user, ['active' => true]);
 
-        if ($companies->isEmpty()) {
+        if ($vinculos->isEmpty()) {
             return [
                 'sem_carteira' => true,
                 'motivo'       => "Sem carteira em {$this->mesExtenso($mes)}",
             ];
         }
 
+        $contadores = $this->carteiraContext->contadores($vinculos);
+
+        $companyIdsElegiveis = $vinculos
+            ->where('financial_metrics_eligible', true)
+            ->pluck('company_id')
+            ->unique();
+
+        $companiesElegiveis = Company::whereIn('id', $companyIdsElegiveis)->get();
+
         return [
-            'sem_carteira' => false,
-            'companies'    => $companies,
+            'sem_carteira'        => false,
+            'contadores'          => $contadores,
+            'companies_elegiveis' => $companiesElegiveis,
         ];
+    }
+
+    /**
+     * Classifica o `score_status` do profissional no mês (Fase 91 · DESEMP-06,
+     * semântica D-91-02 — resolvida pelo orquestrador a partir das decisões
+     * do usuário, ver `91-CONTEXT.md`):
+     *
+     *  - `blocked`  — ZERO vínculos financeiros elegíveis (ex.: só-Shopee).
+     *  - `partial`  — tem vínculo financeiro elegível, mas algum componente
+     *    financeiro está indisponível no período (sem baseline no mês).
+     *  - `official` — todos os componentes disponíveis. Profissional MISTO
+     *    (Performance+Shopee) é OFFICIAL — o financeiro vem só do subconjunto
+     *    elegível dele; isto CORRIGE a proposta original do 91-RESEARCH.md,
+     *    que sugeria `partial` para misto.
+     */
+    private function computeScoreStatus(array $contadores, ?float $varFat, ?float $varMargem): string
+    {
+        if ($contadores['vinculos_financeiros'] === 0) {
+            return 'blocked';
+        }
+
+        if ($varFat === null || $varMargem === null) {
+            return 'partial';
+        }
+
+        return 'official';
     }
 
     /**
@@ -1024,7 +1148,8 @@ class DesempenhoScoreService
     }
 
     /**
-     * Shape padronizado quando o user NÃO tem carteira no mês (DESEMP-10).
+     * Shape padronizado quando o user NÃO tem carteira no mês (DESEMP-10) —
+     * ZERO vínculos de qualquer setor (Fase 91 · DESEMP-07).
      */
     private function shapeSemCarteira(User $user, Carbon $mes, string $motivo): array
     {
@@ -1050,6 +1175,19 @@ class DesempenhoScoreService
             'nota_final'      => null,
             'faixa_bonus'     => null,
             'faixa_promovida' => false,
+            // ── Metadados de elegibilidade (Fase 91 · DESEMP-05) — zerados ────
+            'empresas_unicas'               => 0,
+            'vinculos_servico'              => 0,
+            'vinculos_financeiros'          => 0,
+            'vinculos_sem_fonte_financeira' => 0,
+            // Coerente com a fórmula de computeScoreStatus: zero vínculos
+            // financeiros → blocked.
+            'score_status'                  => 'blocked',
+            'componentes_disponiveis' => [
+                'nps_medio'           => false,
+                'var_faturamento_pct' => false,
+                'var_margem_pct'      => false,
+            ],
         ];
     }
 }
