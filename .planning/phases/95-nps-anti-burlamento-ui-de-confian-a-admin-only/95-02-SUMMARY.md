@@ -45,7 +45,7 @@ completed: 2026-07-17
 
 **`Nps/Index.jsx` estendido com badge tri-estado na listagem, filtro de confiança server-side na barra de filtros e seção "Auditoria" completa no modal "Ver respostas" — consumo puro do payload admin-only entregue pelo plano 95-01, sem nenhuma decisão de segurança no front.**
 
-**Status do plano:** Tasks 1-2 concluídas e commitadas. Task 3 (checkpoint visual) aguardando verificação humana — ver seção "Next Phase Readiness".
+**Status do plano:** 3/3 concluídas. Tasks 1-2 commitadas; Task 3 (checkpoint visual) **APROVADA pelo usuário em 2026-07-17**, após deploy em produção (https://admin.ecfconsultoria.com.br).
 
 ## Performance
 
