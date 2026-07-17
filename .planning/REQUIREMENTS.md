@@ -30,13 +30,13 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### DESEMP — Desempenho único com elegibilidade (Fases 91, 92)
 
-- [ ] **DESEMP-01**: `DesempenhoScoreService::computeUniverso` deriva o universo dos vínculos de serviço ativos do profissional (não de `company_id` consolidado), retornando empresas únicas e empresas elegíveis para financeiro
-- [ ] **DESEMP-02**: O score permanece ÚNICO por profissional — nenhum score separado por marketplace (sem "Score ML" / "Score Shopee" / "Score Geral")
-- [ ] **DESEMP-03**: `computeNpsMedio` continua lendo `nps_score_assignments` — NPS Shopee E NPS Performance entram no mesmo NPS médio do profissional (comportamento da v16.0 preservado)
-- [ ] **DESEMP-04**: `computeVarFaturamento` e `computeVarMargem` usam apenas vínculos com `financial_metrics_eligible = true`; profissional só-Shopee não recebe variação financeira baseada em ML
-- [ ] **DESEMP-05**: O service retorna metadados: `empresas_unicas`, `vinculos_servico`, `vinculos_financeiros`, `vinculos_sem_fonte_financeira`, `score_status`, `componentes_disponiveis`
-- [ ] **DESEMP-06**: A nota expõe status `official` / `partial` / `blocked`; profissional apenas-Shopee sem fonte financeira recebe `blocked` (decisão do usuário 2026-07-16, até a diretoria aprovar régua de bônus sem financeiro)
-- [ ] **DESEMP-07**: A regra `sem_carteira` remove do ranking apenas o profissional SEM nenhum vínculo ativo — quem tem vínculo Shopee (ainda que sem financeiro) permanece no ranking
+- [x] **DESEMP-01**: `DesempenhoScoreService::computeUniverso` deriva o universo dos vínculos de serviço ativos do profissional (não de `company_id` consolidado), retornando empresas únicas e empresas elegíveis para financeiro
+- [x] **DESEMP-02**: O score permanece ÚNICO por profissional — nenhum score separado por marketplace (sem "Score ML" / "Score Shopee" / "Score Geral")
+- [x] **DESEMP-03**: `computeNpsMedio` continua lendo `nps_score_assignments` — NPS Shopee E NPS Performance entram no mesmo NPS médio do profissional (comportamento da v16.0 preservado)
+- [x] **DESEMP-04**: `computeVarFaturamento` e `computeVarMargem` usam apenas vínculos com `financial_metrics_eligible = true`; profissional só-Shopee não recebe variação financeira baseada em ML
+- [x] **DESEMP-05**: O service retorna metadados: `empresas_unicas`, `vinculos_servico`, `vinculos_financeiros`, `vinculos_sem_fonte_financeira`, `score_status`, `componentes_disponiveis`
+- [x] **DESEMP-06**: A nota expõe status `official` / `partial` / `blocked`; profissional apenas-Shopee sem fonte financeira recebe `blocked` (decisão do usuário 2026-07-16, até a diretoria aprovar régua de bônus sem financeiro)
+- [x] **DESEMP-07**: A regra `sem_carteira` remove do ranking apenas o profissional SEM nenhum vínculo ativo — quem tem vínculo Shopee (ainda que sem financeiro) permanece no ranking
 - [ ] **DESEMP-08**: A UI de Desempenho mantém ranking único e exibe os metadados por profissional (empresas únicas, vínculos, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial
 
 ### MENU — Reorganização de navegação (Fase 93)
@@ -74,12 +74,12 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | CART-08 | Fase 89 | Complete |
 | CART-06 | Fase 90 | Complete |
 | CART-07 | Fase 90 | Complete |
-| DESEMP-01 | Fase 91 | Pending |
-| DESEMP-02 | Fase 91 | Pending |
-| DESEMP-03 | Fase 91 | Pending |
-| DESEMP-04 | Fase 91 | Pending |
-| DESEMP-05 | Fase 91 | Pending |
-| DESEMP-06 | Fase 91 | Pending |
-| DESEMP-07 | Fase 91 | Pending |
+| DESEMP-01 | Fase 91 | Complete |
+| DESEMP-02 | Fase 91 | Complete |
+| DESEMP-03 | Fase 91 | Complete |
+| DESEMP-04 | Fase 91 | Complete |
+| DESEMP-05 | Fase 91 | Complete |
+| DESEMP-06 | Fase 91 | Complete |
+| DESEMP-07 | Fase 91 | Complete |
 | DESEMP-08 | Fase 92 | Pending |
 | MENU-01 | Fase 93 | Pending |
