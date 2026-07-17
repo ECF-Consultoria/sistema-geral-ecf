@@ -92,6 +92,18 @@ function sparkData(serie, key, months = 6) {
     return serie.slice(-months).map((s, i) => ({ i, v: Number(s?.[key] ?? 0) }));
 }
 
+// Fase 95 (AB-95-2) · formata segundos brutos de `tempo_ate_resposta` em
+// texto legível pt-BR pra seção Auditoria — nunca exibe segundos crus.
+function fmtDuracao(segundos) {
+    if (segundos === null || segundos === undefined) return '—';
+    const s = Number(segundos);
+    if (Number.isNaN(s)) return '—';
+    if (s < 60) return `${Math.round(s)}s`;
+    const min = Math.floor(s / 60);
+    const rest = Math.round(s % 60);
+    return `${min}min ${rest}s`;
+}
+
 // Dias entre hoje e uma data "dd/mm/yyyy" (formato do backend). Retorna número
 // (positivo = falta, negativo = passou).
 function daysUntil(dateStr) {
@@ -214,6 +226,17 @@ function NotaCard({ label, valor, pessoas }) {
             {temPessoas && (
                 <p className="text-[11px] text-white/50 truncate mt-1" title={nomes}>{nomes}</p>
             )}
+        </div>
+    );
+}
+
+// Fase 95 (AB-95-2) · par rótulo/valor da seção Auditoria — rótulos pt-BR
+// claros, `title` só quando fornecido explicitamente (ex.: navegador truncado).
+function AuditoriaField({ label, valor, title }) {
+    return (
+        <div className="min-w-0">
+            <p className="text-[10px] text-white/40 uppercase tracking-wide">{label}</p>
+            <p className="text-xs text-white/80 truncate" title={title}>{valor}</p>
         </div>
     );
 }
@@ -1315,8 +1338,11 @@ export default function NpsIndex({
             <Dialog open={!!modalSurvey} onOpenChange={(o) => !o && setModalSurvey(null)}>
                 <DialogContent className="max-w-2xl bg-ecf-card border border-white/[0.08] max-h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
                     <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.06] shrink-0">
-                        <DialogTitle className="text-white">
+                        <DialogTitle className="text-white flex items-center gap-2">
                             {modalSurvey?.company_name ?? '—'} — Resposta NPS
+                            {/* Fase 95 (AB-95-1/95-2) · guard por existência da
+                                chave (não-admin nunca recebe `confianca`). */}
+                            <ConfiancaBadge confianca={modalSurvey?.confianca} />
                         </DialogTitle>
                         <p className="text-xs text-white/50">
                             {modalSurvey?.respondent || 'Respondente não informado'}
@@ -1357,6 +1383,56 @@ export default function NpsIndex({
                                                 <RespostaExtraValor tipo={r.tipo} valor={r.valor} peso={r.peso} />
                                             </div>
                                         ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Fase 95 (AB-95-2) · seção Auditoria, admin-only
+                                — renderizada só quando `auditoria` existe no
+                                payload (não-admin nunca recebe a chave). */}
+                            {modalSurvey.auditoria && (
+                                <div>
+                                    <h3 className="text-xs text-white/60 uppercase tracking-wide mb-2">Auditoria</h3>
+                                    <div className={cn('rounded-xl border border-white/[0.08] bg-white/[0.03] p-3')}>
+                                        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+                                            <AuditoriaField label="Gerado em" valor={modalSurvey.auditoria.gerado_em ?? '—'} />
+                                            <AuditoriaField label="Gerado por" valor={modalSurvey.auditoria.gerado_por ?? 'Disparo mensal automático'} />
+                                            <AuditoriaField
+                                                label="Aberto em"
+                                                valor={
+                                                    modalSurvey.auditoria.aberto_primeira
+                                                        ? `${modalSurvey.auditoria.aberto_primeira}${modalSurvey.auditoria.aberto_contagem > 1 ? ` · última ${modalSurvey.auditoria.aberto_ultima} · ${modalSurvey.auditoria.aberto_contagem} aberturas` : ''}`
+                                                        : '—'
+                                                }
+                                            />
+                                            <AuditoriaField label="Respondido em" valor={modalSurvey.auditoria.respondido_em ?? '—'} />
+                                            <AuditoriaField label="Tempo até resposta" valor={fmtDuracao(modalSurvey.auditoria.tempo_ate_resposta)} />
+                                            <AuditoriaField label="IP da abertura" valor={modalSurvey.auditoria.ip_abertura ?? '—'} />
+                                            <AuditoriaField label="IP da resposta" valor={modalSurvey.auditoria.ip_resposta ?? '—'} />
+                                            <AuditoriaField
+                                                label="Navegador"
+                                                valor={modalSurvey.auditoria.user_agent ?? '—'}
+                                                title={modalSurvey.auditoria.user_agent || undefined}
+                                            />
+                                            <AuditoriaField label="Canal de envio" valor={modalSurvey.auditoria.canal ?? '—'} />
+                                        </div>
+
+                                        {modalSurvey.auditoria.motivos?.length > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-white/[0.06]">
+                                                <p className="text-[10px] text-white/40 uppercase tracking-wide mb-1.5">Motivos de suspeita</p>
+                                                <ul className="space-y-1">
+                                                    {modalSurvey.auditoria.motivos.map((motivo, idx) => {
+                                                        // Pitfall 4 (Rollup): cor derivada DENTRO do
+                                                        // callback do map — nunca herdada de variável
+                                                        // do corpo do componente (memória do projeto).
+                                                        const cor = modalSurvey.confianca?.status === 'suspeita' ? 'text-rose-300' : 'text-amber-300';
+                                                        return (
+                                                            <li key={idx} className={cn('text-xs', cor)}>• {motivo}</li>
+                                                        );
+                                                    })}
+                                                </ul>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
