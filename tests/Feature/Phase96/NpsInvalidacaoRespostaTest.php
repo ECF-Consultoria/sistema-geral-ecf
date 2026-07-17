@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Spatie\Activitylog\Models\Activity;
+use Tests\Feature\V16\CriaCenarioResponsaveis;
 use Tests\TestCase;
 
 /**
@@ -31,6 +32,7 @@ use Tests\TestCase;
 class NpsInvalidacaoRespostaTest extends TestCase
 {
     use RefreshDatabase;
+    use CriaCenarioResponsaveis;
 
     protected function setUp(): void
     {
@@ -368,5 +370,36 @@ class NpsInvalidacaoRespostaTest extends TestCase
         $this->actingAs($naoAdmin)
             ->patch(route('nps.responses.revalidar', $survey), [])
             ->assertForbidden();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Task 3 — `invalidada` no payload da listagem (admin-only), consumido
+    // pelo botão Invalidar/Revalidar do modal em Nps/Index.jsx
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_item_da_listagem_traz_invalidada_admin_only_e_reflete_o_estado(): void
+    {
+        $admin   = $this->admin();
+        $company = Company::factory()->create(['active' => true]);
+        $survey  = $this->criarSurveyCompleto($company);
+        $response = $this->criarResponse($survey);
+
+        $item = collect($this->propsDoIndex($admin)['surveys']['data'])->firstWhere('token', $survey->token);
+        $this->assertArrayHasKey('invalidada', $item);
+        $this->assertFalse($item['invalidada']);
+
+        $response->update(['invalidated_at' => now(), 'invalidated_by' => $admin->id]);
+
+        $item = collect($this->propsDoIndex($admin)['surveys']['data'])->firstWhere('token', $survey->token);
+        $this->assertTrue($item['invalidada']);
+
+        // Blindagem: não-admin nunca recebe a chave (mesmo padrão de
+        // confianca/auditoria — a chave simplesmente não é criada).
+        $naoAdmin = $this->naoAdmin();
+        $this->inserirPivot($company->id, $naoAdmin->id, 'consultor', null);
+        $itemNaoAdmin = collect($this->propsDoIndex($naoAdmin)['surveys']['data'])->firstWhere('token', $survey->token);
+        $this->assertNotNull($itemNaoAdmin, 'O survey deveria aparecer na carteira do não-admin.');
+        $this->assertArrayNotHasKey('invalidada', $itemNaoAdmin);
     }
 }

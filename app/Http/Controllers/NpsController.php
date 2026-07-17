@@ -312,6 +312,11 @@ class NpsController extends Controller
             if ($user->isAdmin()) {
                 $item['confianca'] = $this->confiancaDe($s->response);
                 $item['auditoria'] = $this->auditoriaDe($s);
+                // Phase 96 Plan 03 (AB-96-3) — estado da flag de invalidação,
+                // admin-only (mesma blindagem de confianca/auditoria acima).
+                // A UI usa para alternar o botão Invalidar/Revalidar e mostrar
+                // a tag "Invalidada" no modal de detalhe.
+                $item['invalidada'] = (bool) $s->response?->invalidated_at;
             }
 
             return $item;

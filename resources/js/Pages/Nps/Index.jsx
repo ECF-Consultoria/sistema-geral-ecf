@@ -782,6 +782,20 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                                     <ConfiancaBadge confianca={s.confianca} />
                                 </div>
                             )}
+                            {/* Fase 96 (AB-96-3) · s.invalidada só existe no
+                                payload pra admin — mesma blindagem acima. */}
+                            {s.invalidada && (
+                                <div style={{ marginTop: 4 }}>
+                                    <span style={{
+                                        display: 'inline-flex', alignItems: 'center',
+                                        padding: '1px 8px', borderRadius: 999,
+                                        background: 'rgba(148,163,184,0.15)', color: 'rgba(203,213,225,0.9)',
+                                        fontSize: 10, fontWeight: 700, border: '1px solid rgba(148,163,184,0.3)',
+                                    }}>
+                                        Invalidada
+                                    </span>
+                                </div>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6 }}>
@@ -920,6 +934,16 @@ export default function NpsIndex({
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
     const [modalSurvey, setModalSurvey] = useState(null);
+    // Fase 96 (AB-96-3) — form de motivo da invalidação, aberto sob demanda
+    // dentro do modal de detalhe. Reseta sempre que um survey diferente é
+    // aberto (abrirModalSurvey abaixo).
+    const [invalidarAberto, setInvalidarAberto] = useState(false);
+    const [motivoInvalidar, setMotivoInvalidar] = useState('');
+    const abrirModalSurvey = (s) => {
+        setInvalidarAberto(false);
+        setMotivoInvalidar('');
+        setModalSurvey(s);
+    };
 
     // ─── Client-side state ───────────────────────────────────────────────
     const [activeStatus, setActiveStatus] = useState('todos');
@@ -1219,7 +1243,7 @@ export default function NpsIndex({
                             setActiveStatus={setActiveStatus}
                             sort={sort}
                             setSort={setSort}
-                            onOpenSurvey={setModalSurvey}
+                            onOpenSurvey={abrirModalSurvey}
                             onCopyLink={copyLink}
                             isAdmin={isAdmin}
                         />
@@ -1335,7 +1359,7 @@ export default function NpsIndex({
             </Dialog>
 
             {/* Dialog: ver respostas (preservado do fix 2026-07-08) */}
-            <Dialog open={!!modalSurvey} onOpenChange={(o) => !o && setModalSurvey(null)}>
+            <Dialog open={!!modalSurvey} onOpenChange={(o) => !o && abrirModalSurvey(null)}>
                 <DialogContent className="max-w-2xl bg-ecf-card border border-white/[0.08] max-h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
                     <DialogHeader className="px-6 pt-6 pb-4 border-b border-white/[0.06] shrink-0">
                         <DialogTitle className="text-white flex items-center gap-2">
@@ -1343,6 +1367,13 @@ export default function NpsIndex({
                             {/* Fase 95 (AB-95-1/95-2) · guard por existência da
                                 chave (não-admin nunca recebe `confianca`). */}
                             <ConfiancaBadge confianca={modalSurvey?.confianca} />
+                            {/* Fase 96 (AB-96-3) · modalSurvey.invalidada só
+                                existe pra admin — mesma blindagem acima. */}
+                            {modalSurvey?.invalidada && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border border-slate-500/40 bg-slate-500/10 text-slate-300">
+                                    Invalidada
+                                </span>
+                            )}
                         </DialogTitle>
                         <p className="text-xs text-white/50">
                             {modalSurvey?.respondent || 'Respondente não informado'}
@@ -1436,28 +1467,108 @@ export default function NpsIndex({
                                     </div>
                                 </div>
                             )}
+
+                            {/* Fase 96 (AB-96-3) · form de motivo, aberto ao
+                                clicar em "Invalidar resposta" no rodapé.
+                                modalSurvey.auditoria existe = admin (mesmo
+                                guard usado em toda a seção acima). */}
+                            {modalSurvey.auditoria && invalidarAberto && (
+                                <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 space-y-2">
+                                    <label className="text-xs text-amber-200/80 block">
+                                        Motivo da invalidação (opcional)
+                                    </label>
+                                    <textarea
+                                        value={motivoInvalidar}
+                                        onChange={(e) => setMotivoInvalidar(e.target.value)}
+                                        rows={2}
+                                        maxLength={500}
+                                        placeholder="Ex.: resposta enviada da rede interna da ECF"
+                                        className="w-full rounded-md bg-black/20 border border-white/[0.08] px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-amber-500/50"
+                                    />
+                                </div>
+                            )}
                         </div>
                     )}
 
                     <DialogFooter className="gap-2 sm:gap-0 sm:justify-between px-6 py-4 border-t border-white/[0.06] shrink-0">
-                        {isAdmin && modalSurvey && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (!confirm(`Excluir a resposta de "${modalSurvey.company_name}"? A pesquisa voltará para pendente e poderá ser respondida novamente.`)) return;
-                                    router.delete(route('nps.responses.destroy', modalSurvey.id), {
-                                        preserveScroll: true,
-                                        onSuccess: () => setModalSurvey(null),
-                                    });
-                                }}
-                                className="px-4 py-2 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-sm font-medium"
-                            >
-                                Excluir resposta
-                            </button>
-                        )}
+                        <div className="flex items-center gap-2">
+                            {isAdmin && modalSurvey && !invalidarAberto && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!confirm(`Excluir a resposta de "${modalSurvey.company_name}"? A pesquisa voltará para pendente e poderá ser respondida novamente.`)) return;
+                                        router.delete(route('nps.responses.destroy', modalSurvey.id), {
+                                            preserveScroll: true,
+                                            onSuccess: () => abrirModalSurvey(null),
+                                        });
+                                    }}
+                                    className="px-4 py-2 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-sm font-medium"
+                                >
+                                    Excluir resposta
+                                </button>
+                            )}
+
+                            {/* Fase 96 (AB-96-3) · botão alterna Invalidar/
+                                Revalidar conforme modalSurvey.invalidada.
+                                modalSurvey.auditoria = guard admin-only
+                                (mesmo padrão de confianca/auditoria acima —
+                                não-admin nunca recebe a chave). */}
+                            {isAdmin && modalSurvey?.auditoria && !modalSurvey.invalidada && !invalidarAberto && (
+                                <button
+                                    type="button"
+                                    onClick={() => setInvalidarAberto(true)}
+                                    className="px-4 py-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-sm font-medium"
+                                >
+                                    Invalidar resposta
+                                </button>
+                            )}
+
+                            {isAdmin && modalSurvey?.auditoria && modalSurvey.invalidada && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!confirm('Revalidar esta resposta? Ela volta a contar nos dashboards e no bônus.')) return;
+                                        router.patch(route('nps.responses.revalidar', modalSurvey.id), {}, {
+                                            preserveScroll: true,
+                                            onSuccess: () => abrirModalSurvey(null),
+                                        });
+                                    }}
+                                    className="px-4 py-2 rounded-md bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 text-sm font-medium"
+                                >
+                                    Revalidar resposta
+                                </button>
+                            )}
+
+                            {isAdmin && invalidarAberto && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            router.patch(route('nps.responses.invalidar', modalSurvey.id), { motivo: motivoInvalidar || null }, {
+                                                preserveScroll: true,
+                                                onSuccess: () => abrirModalSurvey(null),
+                                            });
+                                        }}
+                                        className="px-4 py-2 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-sm font-medium"
+                                    >
+                                        Confirmar invalidação
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setInvalidarAberto(false);
+                                            setMotivoInvalidar('');
+                                        }}
+                                        className="px-4 py-2 rounded-md bg-white/[0.08] hover:bg-white/[0.12] text-white text-sm"
+                                    >
+                                        Cancelar
+                                    </button>
+                                </>
+                            )}
+                        </div>
                         <button
                             type="button"
-                            onClick={() => setModalSurvey(null)}
+                            onClick={() => abrirModalSurvey(null)}
                             className="px-4 py-2 rounded-md bg-white/[0.08] hover:bg-white/[0.12] text-white text-sm"
                         >
                             Fechar
