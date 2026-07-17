@@ -300,7 +300,12 @@ class CompanyController extends Controller
             // Phase 72 Plan 02 — SC#5: eager-load response.answers alem de
             // response, pra NpsScoreCalculator::compute() nao gerar N+1 quando
             // recalcula medias por dimensao (surveys v15 com template_id).
-            'npsSurveys' => fn($q) => $q->where('status', 'completed')->with(['response.answers', 'template'])->orderBy('completed_at', 'desc')->limit(10),
+            // Phase 96 Plan 04 (AB-96-3 · call-site #10) — resposta invalidada
+            // pelo admin vira null aqui (o builder do payload abaixo já trata
+            // response null), some do avgNps e da lista "NPS Respondidos" em
+            // Companies/Show.jsx. Tela visível a QUALQUER usuário com acesso à
+            // empresa, não só admin.
+            'npsSurveys' => fn($q) => $q->where('status', 'completed')->with(['response' => fn ($rq) => $rq->valida()->with('answers'), 'template'])->orderBy('completed_at', 'desc')->limit(10),
             'admanMetrics' => fn($q) => $q->orderBy('reference_date', 'desc')->limit(90),
             // Contratos (ativos + inativos) com servico embedado — UI filtra na renderização
             'contratosServico' => fn($q) => $q->orderBy('ativo', 'desc')->orderBy('data_contratacao', 'desc')->with('servico'),
