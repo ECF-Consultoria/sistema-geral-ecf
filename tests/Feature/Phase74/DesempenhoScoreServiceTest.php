@@ -12,6 +12,7 @@ use App\Models\NpsSurvey;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateOption;
 use App\Models\NpsTemplateQuestion;
+use App\Models\Servico;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricsProviderFactory;
@@ -66,6 +67,16 @@ class DesempenhoScoreServiceTest extends TestCase
     private int $setorId;
     private int $cargoAnalistaId;
     private int $cargoEstrategistaId;
+
+    /**
+     * Serviço de setor performance criado sob demanda (lazy, 1× por teste) —
+     * forward-compat Fase 91 (D-91-*): `CarteiraContextService::forUser()`
+     * só resolve `company_users.servico_id` como elegível financeiramente
+     * quando existe `contratos_servico` ativo do setor performance (ou
+     * `servico_id` preenchido) apontando pra ele. Sem isso, o fixture inteiro
+     * cairia em `sem_carteira=true` sob a régua nova (91-RESEARCH.md Pitfall 1).
+     */
+    private ?int $servicoPerfId = null;
 
     protected function setUp(): void
     {
@@ -170,9 +181,38 @@ class DesempenhoScoreServiceTest extends TestCase
     }
 
     /**
+     * Serviço de setor performance do fixture — criado 1× por teste (lazy).
+     * Forward-compat Fase 91: ver docblock da property `$servicoPerfId`.
+     */
+    private function servicoPerformanceId(): int
+    {
+        if ($this->servicoPerfId === null) {
+            $this->servicoPerfId = (int) DB::table('servicos')->insertGetId([
+                'nome'          => 'Serviço Performance (fixture Phase74)',
+                'valor_padrao'  => 0,
+                'tipo_cobranca' => Servico::TIPO_MENSAL,
+                'ativo'         => true,
+                'setor'         => Servico::SETOR_PERFORMANCE,
+                'created_at'    => now(),
+                'updated_at'    => now(),
+            ]);
+        }
+
+        return $this->servicoPerfId;
+    }
+
+    /**
      * Cria uma Company e attach ao user via pivot `company_users` com
      * `created_at` controlado — parâmetro chave para exercitar o filtro
      * "empresa nova" do DESEMP-04.
+     *
+     * Forward-compat Fase 91 (D-91-*): além da pivot, cria `contratos_servico`
+     * ativo do setor performance para a empresa E preenche `company_users.
+     * servico_id` com esse serviço — sem isso, `CarteiraContextService::
+     * forUser()` (fonte nova de `computeUniverso`) não resolveria o vínculo
+     * como elegível financeiramente e a suite inteira cairia em
+     * `sem_carteira=true` (91-RESEARCH.md Pitfall 1). Os valores esperados
+     * dos 12 testes NÃO mudam — só a fonte de dado por trás do universo.
      */
     private function criarEmpresaNaCarteira(User $user, string $pivotCreatedAt = '-3 months', string $role = 'consultor'): Company
     {
@@ -189,10 +229,23 @@ class DesempenhoScoreServiceTest extends TestCase
         $company->forceFill(['created_at' => $ts, 'updated_at' => $ts])->save();
         $company->timestamps = true;
 
+        $servicoPerfId = $this->servicoPerformanceId();
+
+        DB::table('contratos_servico')->insert([
+            'company_id'       => $company->id,
+            'servico_id'       => $servicoPerfId,
+            'valor_contratado' => 0,
+            'data_contratacao' => now()->toDateString(),
+            'ativo'            => true,
+            'created_at'       => now(),
+            'updated_at'       => now(),
+        ]);
+
         DB::table('company_users')->insert([
             'company_id'  => $company->id,
             'user_id'     => $user->id,
             'role'        => $role,
+            'servico_id'  => $servicoPerfId,
             'assigned_at' => $ts,
             'created_at'  => $ts,
             'updated_at'  => $ts,
