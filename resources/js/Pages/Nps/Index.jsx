@@ -8,11 +8,12 @@ import {
     Plus, Copy, CheckCircle,
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
+    ArrowUpRight, ArrowDownRight, Clock, User,
     Calendar, Star, Trash2, ShieldCheck,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
-    Tooltip, CartesianGrid, AreaChart, Area,
+    Tooltip, CartesianGrid, AreaChart, Area, ReferenceArea, ReferenceLine,
 } from 'recharts';
 import { cn } from '@/lib/utils';
 
@@ -43,13 +44,25 @@ import { cn } from '@/lib/utils';
    ═══════════════════════════════════════════════════════════════════════ */
 
 // ═══ Design tokens ═══════════════════════════════════════════════════════
-const GRAD_ECF = 'linear-gradient(120deg,#1e5ef3,#e84393 42%,#f97316 72%,#facc15)';
+// 2026-07-16 · aposentado o gradiente arco-íris GRAD_ECF (azul→rosa→laranja→
+// amarelo). O design system usa acento ÚNICO da marca (ecf-yellow) para ação
+// primária e um destaque sóbrio por-status nos filtros — nada de arco-íris.
+const ACCENT = '#ffe600';             // ecf-yellow — ação primária / marca
 const COL_ESTRATEGISTA = '#facc15';   // amarelo (marca)
 const COL_ESTRATEGISTA_LINE = '#ffb020';
 const COL_ANALISTA     = '#19e06a';
 const COL_EMPRESA      = '#60a5fa';
 const COL_ATENCAO      = '#ff9a5a';
-const COL_LARANJA_GLOW = '#f97316';
+
+// rgba a partir de hex (#rgb/#rrggbb) + alpha — para tints sóbrios de estado.
+function hexAlpha(hex, a) {
+    if (typeof hex !== 'string') return `rgba(255,255,255,${a})`;
+    let h = hex.replace('#', '');
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const n = parseInt(h, 16);
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return `rgba(${r},${g},${b},${a})`;
+}
 
 // Faixas semânticas (escala 1..5).
 function scoreColor(n) {
@@ -76,13 +89,14 @@ function formatNota(v) {
     return n.toFixed(2);
 }
 
-// Delta entre penúltimo e último mês (>0 sobe / <0 desce). Retorna null se
-// menos de 2 pontos válidos.
+// Delta entre penúltimo e último mês (>0 sobe / <0 desce). Retorna null quando
+// QUALQUER um dos dois meses não tem dado (média 0/NaN) — sem isso o delta virava
+// "nota − 0" e mostrava o valor cheio (ex.: ↑4.96) como se fosse variação real.
 function computeDelta(serie, key) {
     if (!Array.isArray(serie) || serie.length < 2) return null;
     const last = Number(serie[serie.length - 1]?.[key]);
     const prev = Number(serie[serie.length - 2]?.[key]);
-    if (Number.isNaN(last) || Number.isNaN(prev)) return null;
+    if (!(last > 0) || !(prev > 0)) return null;
     return last - prev;
 }
 
@@ -241,22 +255,25 @@ function AuditoriaField({ label, valor, title }) {
     );
 }
 
-// ═══ Sparkline mini (AreaChart Recharts, 100×36 sem eixos) ═══════════════
-function Sparkline({ data, color, gradientId }) {
-    if (!data || data.length === 0) return <div style={{ width: 100, height: 36 }} />;
+// ═══ Sparkline — área de tendência (largura total, sem eixos) ════════════
+// Herói do card: mostra o movimento real dos últimos meses. Domain [0,5] p/
+// que meses zerados apareçam no piso (tendência "vinda de baixo").
+function Sparkline({ data, color, gradientId, height = 46 }) {
+    if (!data || data.length === 0) return <div style={{ width: '100%', height }} />;
     return (
-        <div style={{ width: 100, height: 36 }}>
+        <div style={{ width: '100%', height }}>
             <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                <AreaChart data={data} margin={{ top: 4, right: 3, bottom: 0, left: 0 }}>
                     <defs>
                         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%"   stopColor={color} stopOpacity={0.45} />
+                            <stop offset="0%"   stopColor={color} stopOpacity={0.38} />
                             <stop offset="100%" stopColor={color} stopOpacity={0}    />
                         </linearGradient>
                     </defs>
-                    <YAxis hide domain={[1, 5]} />
-                    <Area type="monotone" dataKey="v" stroke={color} strokeWidth={1.8}
-                          fill={`url(#${gradientId})`} isAnimationActive={false} />
+                    <YAxis hide domain={[0, 5]} />
+                    <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2}
+                          fill={`url(#${gradientId})`} isAnimationActive={false}
+                          dot={false} activeDot={false} />
                 </AreaChart>
             </ResponsiveContainer>
         </div>
@@ -278,16 +295,21 @@ const glassPillStyle = (active) => ({
 });
 
 function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, options, width }) {
+    // 2026-07-16 · trava a largura (max-width) e trunca o valor selecionado com
+    // ellipsis — nomes de modelo longos ("NPS | Performance ECF Consultoria &
+    // Assessoria (principal)") não estouram mais o layout. min-w-0 permite o
+    // flex-item encolher abaixo do conteúdo; overflow:hidden clipa; a seta e o
+    // ícone não encolhem (shrink-0).
     return (
-        <div style={{ ...glassPillStyle(!!active), padding: 0, paddingLeft: Icon ? 10 : 0, width }}>
+        <div style={{ ...glassPillStyle(!!active), padding: 0, paddingLeft: Icon ? 10 : 0, width, maxWidth: '100%', overflow: 'hidden' }}>
             <Select value={value} onValueChange={onValueChange}>
                 <SelectTrigger
-                    className="border-0 bg-transparent hover:bg-transparent focus:ring-0 focus-visible:ring-0 shadow-none h-full px-3 gap-2 [&>svg]:hidden"
+                    className="border-0 bg-transparent hover:bg-transparent focus:ring-0 focus-visible:ring-0 shadow-none h-full w-full min-w-0 px-3 gap-2 [&>svg]:hidden"
                     style={{ fontSize: 13, color: active ? '#eef' : 'rgba(255,255,255,0.6)', fontWeight: active ? 600 : 500 }}
                 >
-                    {Icon && <Icon size={15} style={{ color: 'rgba(255,255,255,0.5)' }} />}
-                    <SelectValue placeholder={placeholder} />
-                    <ChevronDown size={13} style={{ color: 'rgba(255,255,255,0.4)', marginLeft: 4 }} />
+                    {Icon && <Icon size={15} style={{ color: 'rgba(255,255,255,0.5)', flexShrink: 0 }} />}
+                    <SelectValue className="min-w-0 flex-1 truncate text-left" placeholder={placeholder} />
+                    <ChevronDown size={13} style={{ color: 'rgba(255,255,255,0.4)', marginLeft: 4, flexShrink: 0 }} />
                 </SelectTrigger>
                 <SelectContent>
                     {options}
@@ -297,68 +319,124 @@ function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, op
     );
 }
 
-// ═══ StatCard — card de média glass ══════════════════════════════════════
-function StatCard({ dim, kicker, icon: Icon, color, colorLine, valor, total, pendentes, delta, sparkline, sparkId }) {
+// ═══ StatCard — card de média (layout aprovado 2026-07-16 v4) ════════════
+// Ícone + label + "NPS MÉDIO"; pill de delta (↗/↘ +0.00) com "vs. mês anterior";
+// nota grande branca /5; barra de progresso colorida pela dimensão (0..5, SEM
+// meta); rodapé "X respondidas · Y pendentes" com ícones. Sem ranking.
+function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta }) {
     const val = formatNota(valor);
+    const temNota = total > 0 && valor != null && Number(valor) > 0;
+    const pct = temNota ? Math.max(3, Math.min(100, (Number(valor) / 5) * 100)) : 0;
+    const semBase = delta == null;   // sem mês anterior com dado → estado neutro "—"
+    const subiu = delta > 0, desceu = delta < 0;
+    const deltaColor = subiu ? '#19e06a' : desceu ? '#ff8a3c' : 'rgba(255,255,255,0.45)';
+    const deltaSinal = delta > 0 ? '+' : '';   // negativo já vem com '-'
+
     return (
         <div style={{
-            padding: 19, borderRadius: 20,
-            background: 'rgba(255,255,255,0.035)',
-            backdropFilter: 'blur(22px)', WebkitBackdropFilter: 'blur(22px)',
-            border: '1px solid rgba(255,255,255,0.09)',
-            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 50px -34px rgba(0,0,0,0.9)',
+            padding: 18, borderRadius: 14,
+            background: '#101216',
+            border: '1px solid rgba(255,255,255,0.07)',
+            boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
             position: 'relative', overflow: 'hidden',
         }}>
-            <div style={{
-                position: 'absolute', top: -30, right: -20, width: 130, height: 130,
-                borderRadius: '50%', background: color, filter: 'blur(70px)',
-                opacity: dim === 'estrategista' ? 0.14 : dim === 'analista' ? 0.12 : 0.16,
-                pointerEvents: 'none',
-            }} />
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
-                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em' }}>
-                    {kicker}
-                </span>
-                <span style={{
-                    width: 30, height: 30, borderRadius: 9,
-                    background: `${color}1F`,
-                    border: `1px solid ${color}38`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', color,
-                }}>
-                    <Icon size={16} strokeWidth={1.8} />
-                </span>
+            {/* Cabeçalho: ícone + (label / NPS MÉDIO) · delta + vs. mês anterior */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <span style={{
+                        width: 36, height: 36, borderRadius: 9,
+                        background: `${color}1F`, border: `1px solid ${color}38`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', color,
+                        flexShrink: 0,
+                    }}>
+                        <Icon size={18} strokeWidth={1.9} />
+                    </span>
+                    <div style={{ minWidth: 0 }}>
+                        <div style={{ color, fontSize: 12, fontWeight: 800, letterSpacing: '0.09em' }}>{kicker}</div>
+                        <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: 9.5, fontWeight: 700, letterSpacing: '0.11em', marginTop: 2 }}>NPS MÉDIO</div>
+                    </div>
+                </div>
+                {/* Delta vs. mês anterior — pill neutro "—" quando ainda não há
+                    mês anterior com dado (não engana e o rótulo permanece). O
+                    valor só aparece quando os DOIS meses têm base (computeDelta). */}
+                <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <span style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 2,
+                        height: 22, padding: '0 9px', borderRadius: 999,
+                        fontSize: 12, fontWeight: 700,
+                        color: deltaColor,
+                        background: hexAlpha(deltaColor, 0.13),
+                        border: '1px solid ' + hexAlpha(deltaColor, 0.28),
+                    }}>
+                        {semBase ? '—' : (
+                            <>
+                                {subiu ? <ArrowUpRight size={13} /> : desceu ? <ArrowDownRight size={13} /> : null}
+                                {deltaSinal}{Math.abs(delta).toFixed(2)}
+                            </>
+                        )}
+                    </span>
+                    <div style={{ color: 'rgba(255,255,255,0.35)', fontSize: 10.5, marginTop: 5 }}>vs. mês anterior</div>
+                </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, marginTop: 14, position: 'relative' }}>
+
+            {/* Nota grande branca + / 5 */}
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7, marginTop: 14, position: 'relative' }}>
                 <span style={{
                     fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 40,
-                    lineHeight: 0.9, color: total === 0 ? 'rgba(255,255,255,0.25)' : scoreColor(valor),
+                    lineHeight: 0.85, color: temNota ? 'rgba(255,255,255,0.96)' : 'rgba(255,255,255,0.25)',
                 }}>
                     {val ?? '—'}
                 </span>
-                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 15, fontWeight: 600, marginBottom: 5 }}>/5</span>
-                <div style={{ flex: 1 }} />
-                <Sparkline data={sparkline} color={colorLine} gradientId={sparkId} />
+                <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 16, fontWeight: 600, marginBottom: 5 }}>/ 5</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 13, position: 'relative' }}>
-                {delta !== null ? (
-                    <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 12, fontWeight: 700,
-                        color: delta > 0 ? '#19e06a' : delta < 0 ? '#ff8a3c' : 'rgba(255,255,255,0.4)',
-                    }}>
-                        {delta > 0 ? <ArrowUp size={11} /> : delta < 0 ? <ArrowDown size={11} /> : '—'}
-                        {Math.abs(delta).toFixed(2)}
-                    </span>
-                ) : (
-                    <span style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, fontWeight: 600 }}>—</span>
-                )}
-                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11.5 }}>vs. mês anterior</span>
-                <div style={{ flex: 1 }} />
-                <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: 11.5 }}>
-                    {total} resp{pendentes > 0 && (
-                        <> · <span style={{ color: COL_ATENCAO }}>{pendentes} pend</span></>
-                    )}
+
+            {/* Barra de progresso colorida pela dimensão (0..5, sem meta) */}
+            <div style={{ height: 8, borderRadius: 999, background: 'rgba(255,255,255,0.08)', marginTop: 13, overflow: 'hidden', position: 'relative' }}>
+                <div style={{
+                    height: '100%', width: `${pct}%`, borderRadius: 999,
+                    background: `linear-gradient(90deg, ${hexAlpha(color, 0.75)}, ${color})`,
+                    transition: 'width .4s ease',
+                }} />
+            </div>
+
+            {/* Rodapé: respondidas · pendentes (com ícones) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 13, position: 'relative' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
+                    <User size={13} style={{ color: 'rgba(255,255,255,0.35)' }} />
+                    {total} respondida{total === 1 ? '' : 's'}
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
+                    <Clock size={13} style={{ color: COL_ATENCAO }} />
+                    <span style={{ color: pendentes > 0 ? COL_ATENCAO : 'rgba(255,255,255,0.55)' }}>{pendentes} pendente{pendentes === 1 ? '' : 's'}</span>
                 </span>
             </div>
+        </div>
+    );
+}
+
+// ═══ Tooltip do gráfico — dark, com swatch por série e nota em 2 casas ════
+// (Redesign 2026-07-16 · substitui o tooltip default; ordena por valor desc,
+// cor só no swatch, valor em tinta clara — legível no tema dark.)
+function NpsTooltip({ active, payload, label }) {
+    if (!active || !Array.isArray(payload) || payload.length === 0) return null;
+    const rows = payload
+        .filter(p => p.value != null)
+        .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
+    if (rows.length === 0) return null;
+    return (
+        <div style={{
+            background: '#171922', border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 9, padding: '9px 11px',
+            boxShadow: '0 14px 34px -14px rgba(0,0,0,0.85)',
+        }}>
+            <div style={{ color: 'rgba(255,255,255,0.55)', fontSize: 11, fontWeight: 600, marginBottom: 7 }}>{label}</div>
+            {rows.map(p => (
+                <div key={p.dataKey} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, lineHeight: '19px' }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: p.color || p.stroke, flexShrink: 0 }} />
+                    <span style={{ color: 'rgba(255,255,255,0.6)', flex: 1, paddingRight: 14 }}>{p.name}</span>
+                    <span style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{formatNota(p.value)}</span>
+                </div>
+            ))}
         </div>
     );
 }
@@ -367,13 +445,22 @@ function StatCard({ dim, kicker, icon: Icon, color, colorLine, valor, total, pen
 function ChartCard({ serie, cards, lines, setLines }) {
     const temDados = Array.isArray(serie) && serie.some(s => (s.estrategista ?? 0) > 0 || (s.analista ?? 0) > 0 || (s.empresa ?? 0) > 0);
 
-    const legPill = (on, dot, label, value) => ({
+    // Meses sem resposta chegam como 0 do backend e são plotados no PISO (eixo
+    // começa em 0) — decisão de produto: em produção o histórico ainda não
+    // existe, então a linha "vem de baixo" e sobe conforme os dados chegam.
+    const data = Array.isArray(serie) ? serie : [];
+
+    const legPill = (on) => ({
         display: 'inline-flex', alignItems: 'center', gap: 7,
         height: 30, padding: '0 12px', borderRadius: 999,
         border: '1px solid ' + (on ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.06)'),
         background: on ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.02)',
         color: on ? '#eef' : 'rgba(255,255,255,0.35)',
         fontSize: 12, fontWeight: 600, cursor: 'pointer',
+    });
+    // Swatch da legenda: traço nítido, sem halo/glow (opacidade cai quando off).
+    const legDot = (color, on) => ({
+        width: 9, height: 3, borderRadius: 2, background: color, opacity: on ? 1 : 0.4,
     });
 
     return (
@@ -395,15 +482,15 @@ function ChartCard({ serie, cards, lines, setLines }) {
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button type="button" onClick={() => setLines(v => ({ ...v, est: !v.est }))} style={legPill(lines.est)}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: COL_ESTRATEGISTA_LINE, boxShadow: `0 0 6px ${COL_ESTRATEGISTA_LINE}` }} />
+                        <span style={legDot(COL_ESTRATEGISTA_LINE, lines.est)} />
                         Estrategista <span style={{ opacity: 0.7 }}>{formatNota(cards.estrategista?.media) ?? '—'}</span>
                     </button>
                     <button type="button" onClick={() => setLines(v => ({ ...v, ana: !v.ana }))} style={legPill(lines.ana)}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: COL_ANALISTA, boxShadow: `0 0 6px ${COL_ANALISTA}` }} />
+                        <span style={legDot(COL_ANALISTA, lines.ana)} />
                         Analista <span style={{ opacity: 0.7 }}>{formatNota(cards.analista?.media) ?? '—'}</span>
                     </button>
                     <button type="button" onClick={() => setLines(v => ({ ...v, emp: !v.emp }))} style={legPill(lines.emp)}>
-                        <span style={{ width: 8, height: 8, borderRadius: '50%', background: COL_EMPRESA, boxShadow: `0 0 6px ${COL_EMPRESA}` }} />
+                        <span style={legDot(COL_EMPRESA, lines.emp)} />
                         Empresa <span style={{ opacity: 0.7 }}>{formatNota(cards.empresa?.media) ?? '—'}</span>
                     </button>
                 </div>
@@ -415,47 +502,25 @@ function ChartCard({ serie, cards, lines, setLines }) {
                     </div>
                 ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={serie} margin={{ top: 8, right: 12, left: 0, bottom: 4 }}>
-                            <defs>
-                                <linearGradient id="areaEmpresa" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%"   stopColor={COL_EMPRESA} stopOpacity={0.3} />
-                                    <stop offset="100%" stopColor={COL_EMPRESA} stopOpacity={0}   />
-                                </linearGradient>
-                                <filter id="glowLine" x="-50%" y="-50%" width="200%" height="200%">
-                                    <feGaussianBlur stdDeviation="3" />
-                                </filter>
-                            </defs>
-                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                            <XAxis dataKey="mes" stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} interval={0} />
-                            <YAxis domain={[1, 5]} stroke="rgba(255,255,255,0.4)" fontSize={11} ticks={[1, 2, 3, 4, 5]} tickLine={false} axisLine={false} />
-                            <Tooltip
-                                contentStyle={{ background: 'rgba(15,17,22,0.95)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 10, fontSize: 12, backdropFilter: 'blur(12px)' }}
-                                labelStyle={{ color: 'rgba(255,255,255,0.6)' }}
-                                itemStyle={{ color: '#eef' }}
-                                formatter={(v) => formatNota(v)}
-                            />
-                            {lines.emp && (
-                                <Area type="monotone" dataKey="empresa" stroke="transparent" fill="url(#areaEmpresa)" isAnimationActive={false} />
-                            )}
-                            {/* Halo (linha borrada por baixo) — visual glow */}
+                        <LineChart data={data} margin={{ top: 10, right: 16, left: 0, bottom: 4 }}>
+                            {/* Banda de meta (zona "bom" 4..5) — referência sutil. */}
+                            <ReferenceArea y1={4} y2={5} fill="rgba(25,224,106,0.05)" strokeOpacity={0} />
+                            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                            <XAxis dataKey="mes" stroke="rgba(255,255,255,0.4)" fontSize={11} tickLine={false} axisLine={false} interval={0} tickMargin={8} />
+                            <YAxis domain={[0, 5]} stroke="rgba(255,255,255,0.4)" fontSize={11} ticks={[0, 1, 2, 3, 4, 5]} tickLine={false} axisLine={false} width={26} />
+                            {/* Linha de meta 4.0 — pontilhada, discreta. */}
+                            <ReferenceLine y={4} stroke="rgba(255,255,255,0.16)" strokeDasharray="4 4"
+                                label={{ value: 'meta 4.0', position: 'insideTopRight', fill: 'rgba(255,255,255,0.35)', fontSize: 10 }} />
+                            <Tooltip content={<NpsTooltip />} cursor={{ stroke: 'rgba(255,255,255,0.14)', strokeWidth: 1 }} />
+                            {/* Linhas nítidas, 2px, sem glow. activeDot com anel na cor da superfície. */}
                             {lines.est && (
-                                <Line type="monotone" dataKey="estrategista" stroke={COL_ESTRATEGISTA_LINE} strokeWidth={5} strokeOpacity={0.25} dot={false} filter="url(#glowLine)" isAnimationActive={false} />
+                                <Line type="monotone" dataKey="estrategista" name="Estrategista" stroke={COL_ESTRATEGISTA_LINE} strokeWidth={2} dot={false} activeDot={{ r: 4, fill: COL_ESTRATEGISTA_LINE, stroke: '#0f1116', strokeWidth: 2 }} connectNulls isAnimationActive={false} />
                             )}
                             {lines.ana && (
-                                <Line type="monotone" dataKey="analista" stroke={COL_ANALISTA} strokeWidth={5} strokeOpacity={0.25} dot={false} filter="url(#glowLine)" isAnimationActive={false} />
+                                <Line type="monotone" dataKey="analista" name="Analista" stroke={COL_ANALISTA} strokeWidth={2} dot={false} activeDot={{ r: 4, fill: COL_ANALISTA, stroke: '#0f1116', strokeWidth: 2 }} connectNulls isAnimationActive={false} />
                             )}
                             {lines.emp && (
-                                <Line type="monotone" dataKey="empresa" stroke={COL_EMPRESA} strokeWidth={5} strokeOpacity={0.25} dot={false} filter="url(#glowLine)" isAnimationActive={false} />
-                            )}
-                            {/* Linhas principais */}
-                            {lines.est && (
-                                <Line type="monotone" dataKey="estrategista" name="Estrategista" stroke={COL_ESTRATEGISTA_LINE} strokeWidth={2.6} dot={false} activeDot={{ r: 5, fill: COL_ESTRATEGISTA_LINE, stroke: 'rgba(255,255,255,0.15)', strokeWidth: 2 }} isAnimationActive={false} />
-                            )}
-                            {lines.ana && (
-                                <Line type="monotone" dataKey="analista" name="Analista" stroke={COL_ANALISTA} strokeWidth={2.6} dot={false} activeDot={{ r: 5, fill: COL_ANALISTA, stroke: 'rgba(255,255,255,0.15)', strokeWidth: 2 }} isAnimationActive={false} />
-                            )}
-                            {lines.emp && (
-                                <Line type="monotone" dataKey="empresa" name="Empresa" stroke={COL_EMPRESA} strokeWidth={2.6} dot={false} activeDot={{ r: 5, fill: COL_EMPRESA, stroke: 'rgba(255,255,255,0.15)', strokeWidth: 2 }} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="empresa" name="Empresa" stroke={COL_EMPRESA} strokeWidth={2} dot={false} activeDot={{ r: 4, fill: COL_EMPRESA, stroke: '#0f1116', strokeWidth: 2 }} connectNulls isAnimationActive={false} />
                             )}
                         </LineChart>
                     </ResponsiveContainer>
@@ -491,17 +556,16 @@ function ConfiancaBadge({ confianca }) {
     );
 }
 
-function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, isAdmin }) {
-    // Contagens client-side sobre a página atual.
-    const contagens = useMemo(() => {
-        const list = surveys.data ?? [];
-        return {
-            todos: list.length,
-            completed: list.filter(s => s.status === 'completed').length,
-            pending:   list.filter(s => s.status === 'pending').length,
-            expired:   list.filter(s => s.status === 'expired').length,
-        };
-    }, [surveys.data]);
+function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, isAdmin }) {
+    // Bugfix 2026-07-16 · contagens vêm AGREGADAS do servidor (conjunto filtrado
+    // inteiro), não mais recalculadas sobre surveys.data (só os 20 da página).
+    // Os chips deixam de mudar de valor conforme a paginação.
+    const contagens = {
+        todos:     contadores.todos ?? 0,
+        completed: contadores.respondidos ?? 0,
+        pending:   contadores.pendentes ?? 0,
+        expired:   contadores.expirados ?? 0,
+    };
 
     const filtrados = useMemo(() => {
         const list = surveys.data ?? [];
@@ -550,16 +614,20 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
 
     const checkboxStyle = { accentColor: '#e84393', width: 15, height: 15, cursor: 'pointer', flexShrink: 0 };
 
+    // Destaque sóbrio por-status: o chip ativo adota a cor semântica do seu
+    // status (Todos = acento da marca) como tint suave — acento único, não o
+    // antigo gradiente arco-íris.
+    const CHIP_ACCENT = { todos: ACCENT, completed: '#19e06a', pending: '#ff8a3c', expired: '#f4436b' };
     const chipStyle = (key) => {
         const active = activeStatus === key;
+        const accent = CHIP_ACCENT[key] ?? ACCENT;
         return {
             display: 'inline-flex', alignItems: 'center', gap: 7,
             height: 32, padding: '0 13px', borderRadius: 999,
-            border: '1px solid ' + (active ? 'transparent' : 'rgba(255,255,255,0.08)'),
-            background: active ? GRAD_ECF : 'rgba(255,255,255,0.03)',
-            color: active ? '#fff' : 'rgba(255,255,255,0.6)',
+            border: '1px solid ' + (active ? hexAlpha(accent, 0.45) : 'rgba(255,255,255,0.08)'),
+            background: active ? hexAlpha(accent, 0.14) : 'rgba(255,255,255,0.03)',
+            color: active ? accent : 'rgba(255,255,255,0.6)',
             fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-            boxShadow: active ? '0 6px 18px -6px rgba(232,67,147,0.5)' : 'none',
             transition: 'all .18s ease',
         };
     };
@@ -573,6 +641,9 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
     const gridCols = isAdmin
         ? '32px 1.5fr 1.4fr 1.2fr 1.6fr 1.1fr 1fr 78px'
         : '1.5fr 1.4fr 1.2fr 1.7fr 1.1fr 1fr 60px';
+    // Largura mínima da grade: abaixo disso as colunas esmagavam texto/chips.
+    // O wrapper rola horizontalmente em telas estreitas em vez de quebrar.
+    const gridMinWidth = isAdmin ? 940 : 820;
 
     return (
         <div style={{
@@ -652,11 +723,19 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                 </div>
             )}
 
-            {/* Header da grid */}
+            {/* Área rolável (header + linhas) — rola na horizontal em telas
+                estreitas E na vertical: todas as pesquisas do mês numa página só,
+                a lista desce DENTRO do card (maxHeight) sem crescer a página.
+                Header e linhas compartilham a mesma minWidth p/ ficarem alinhados. */}
+            <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '60vh' }}>
+            {/* Header da grid — sticky no topo da área rolável; fundo sólido p/ as
+                linhas não aparecerem atrás dele ao descer. */}
             <div style={{
                 display: 'grid', gridTemplateColumns: gridCols, gap: 12,
-                padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)',
-                background: 'rgba(255,255,255,0.015)',
+                minWidth: gridMinWidth,
+                padding: '11px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                background: '#101218',
+                position: 'sticky', top: 0, zIndex: 2,
                 alignItems: 'center',
             }}>
                 {isAdmin && (
@@ -715,6 +794,7 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                 return (
                     <div key={s.id} style={{
                         display: 'grid', gridTemplateColumns: gridCols, gap: 12,
+                        minWidth: gridMinWidth,
                         padding: '13px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
                         alignItems: 'center',
                         background: rowSelected ? 'rgba(244,67,107,0.06)' : 'transparent',
@@ -856,36 +936,20 @@ function TableCard({ surveys, activeStatus, setActiveStatus, sort, setSort, onOp
                     </div>
                 );
             })}
+            </div>
 
-            {/* Rodapé + paginação (server-side) */}
+            {/* Rodapé — total do conjunto (sem paginação: a lista inteira rola
+                dentro do card). Com filtro de status ativo, mostra "X de Y". */}
             <div style={{
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 padding: '13px 18px', color: 'rgba(255,255,255,0.4)', fontSize: 12,
+                borderTop: '1px solid rgba(255,255,255,0.05)',
             }}>
-                <span>Mostrando {filtrados.length} de {surveys.total ?? filtrados.length}</span>
-                {surveys.last_page > 1 && (
-                    <div style={{ display: 'flex', gap: 6 }}>
-                        {Array.from({ length: Math.min(surveys.last_page, 6) }).map((_, i) => {
-                            const page = i + 1;
-                            const active = page === surveys.current_page;
-                            return (
-                                <span key={page} style={{
-                                    width: 28, height: 28, borderRadius: 8,
-                                    background: active ? GRAD_ECF : 'rgba(255,255,255,0.03)',
-                                    border: active ? 'none' : '1px solid rgba(255,255,255,0.08)',
-                                    color: active ? '#fff' : 'rgba(255,255,255,0.6)',
-                                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                    fontWeight: active ? 700 : 500, fontSize: 12.5,
-                                    boxShadow: active ? '0 4px 14px -4px rgba(232,67,147,0.5)' : 'none',
-                                    cursor: active ? 'default' : 'pointer',
-                                }}
-                                onClick={() => !active && router.get(route('nps.index'), { page }, { preserveState: true, preserveScroll: true })}>
-                                    {page}
-                                </span>
-                            );
-                        })}
-                    </div>
-                )}
+                <span>
+                    {filtrados.length === (surveys.total ?? filtrados.length)
+                        ? `${filtrados.length} pesquisa${filtrados.length === 1 ? '' : 's'}`
+                        : `Mostrando ${filtrados.length} de ${surveys.total ?? filtrados.length}`}
+                </span>
             </div>
         </div>
     );
@@ -920,6 +984,7 @@ export default function NpsIndex({
     pode_filtrar_por_pessoa = false,
     pode_ver_confianca = false, // Fase 95 (AB-95-3) · ausente (não `false`) pra não-admin
     cards = {},
+    contadores = {},
     serie_12m = [],
     mes_filtro = '',
     filtros = {},
@@ -1057,15 +1122,9 @@ export default function NpsIndex({
         setTimeout(() => setCopied(false), 2000);
     };
 
-    // ─── Derivados dinâmicos (sem prop nova) ─────────────────────────────
-    const pendentesList = useMemo(
-        () => (surveys.data ?? []).filter(s => s.status === 'pending'),
-        [surveys.data],
-    );
-
-    const sparkEst = useMemo(() => sparkData(serie_12m, 'estrategista'), [serie_12m]);
-    const sparkAna = useMemo(() => sparkData(serie_12m, 'analista'),     [serie_12m]);
-    const sparkEmp = useMemo(() => sparkData(serie_12m, 'empresa'),      [serie_12m]);
+    // ─── Derivados dinâmicos ─────────────────────────────────────────────
+    // Pendentes agregados vêm do servidor (contadores), não da página atual.
+    const pendentesTotal = contadores.pendentes ?? 0;
 
     const deltaEst = useMemo(() => computeDelta(serie_12m, 'estrategista'), [serie_12m]);
     const deltaAna = useMemo(() => computeDelta(serie_12m, 'analista'),     [serie_12m]);
@@ -1078,8 +1137,16 @@ export default function NpsIndex({
                 <div style={{ padding: '22px 0 34px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-                        {/* ─── Filter bar ────────────────────────────────────── */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        {/* ─── Título + Filter bar ───────────────────────────── */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                            <div style={{ marginRight: 6 }}>
+                                <h1 style={{ color: 'rgba(255,255,255,0.96)', fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: 21, lineHeight: 1.1 }}>
+                                    NPS Dashboard
+                                </h1>
+                                <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 12.5, marginTop: 2 }}>
+                                    Acompanhe a satisfação dos seus clientes
+                                </p>
+                            </div>
                             <GlassSelect
                                 icon={Calendar}
                                 active
@@ -1179,10 +1246,10 @@ export default function NpsIndex({
                                 style={{
                                     display: 'inline-flex', alignItems: 'center', gap: 8,
                                     height: 40, padding: '0 18px', borderRadius: 12,
-                                    border: 'none', background: GRAD_ECF,
-                                    color: '#fff', fontWeight: 800, fontSize: 13,
+                                    border: 'none', background: ACCENT,
+                                    color: '#050507', fontWeight: 800, fontSize: 13,
                                     cursor: 'pointer',
-                                    boxShadow: '0 10px 30px -8px rgba(232,67,147,0.6), inset 0 1px 0 rgba(255,255,255,0.25)',
+                                    boxShadow: '0 10px 26px -10px ' + hexAlpha(ACCENT, 0.55),
                                 }}
                             >
                                 <Plus size={16} strokeWidth={2.4} />
@@ -1191,45 +1258,33 @@ export default function NpsIndex({
                         </div>
 
                         {/* ─── 3 stat cards ────────────────────────────────────── */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                             <StatCard
-                                dim="estrategista"
                                 kicker="ESTRATEGISTA"
                                 icon={Briefcase}
-                                color={COL_ESTRATEGISTA}
-                                colorLine={COL_ESTRATEGISTA_LINE}
+                                color={COL_ESTRATEGISTA_LINE}
                                 valor={cards.estrategista?.media}
                                 total={cards.estrategista?.total ?? 0}
-                                pendentes={pendentesList.length}
+                                pendentes={pendentesTotal}
                                 delta={deltaEst}
-                                sparkline={sparkEst}
-                                sparkId="sparkEst"
                             />
                             <StatCard
-                                dim="analista"
                                 kicker="ANALISTA"
                                 icon={UsersIcon}
                                 color={COL_ANALISTA}
-                                colorLine={COL_ANALISTA}
                                 valor={cards.analista?.media}
                                 total={cards.analista?.total ?? 0}
-                                pendentes={pendentesList.length}
+                                pendentes={pendentesTotal}
                                 delta={deltaAna}
-                                sparkline={sparkAna}
-                                sparkId="sparkAna"
                             />
                             <StatCard
-                                dim="empresa"
                                 kicker="EMPRESA"
                                 icon={Building2}
                                 color={COL_EMPRESA}
-                                colorLine={COL_EMPRESA}
                                 valor={cards.empresa?.media}
                                 total={cards.empresa?.total ?? 0}
-                                pendentes={pendentesList.length}
+                                pendentes={pendentesTotal}
                                 delta={deltaEmp}
-                                sparkline={sparkEmp}
-                                sparkId="sparkEmp"
                             />
                         </div>
 
@@ -1239,6 +1294,7 @@ export default function NpsIndex({
                         {/* ─── Table card ──────────────────────────────────────── */}
                         <TableCard
                             surveys={surveys}
+                            contadores={contadores}
                             activeStatus={activeStatus}
                             setActiveStatus={setActiveStatus}
                             sort={sort}

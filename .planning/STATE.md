@@ -30,7 +30,7 @@ Plan: 5 of 5
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
 Status: Ready to execute
-Last activity: 2026-07-17
+Last activity: 2026-07-17 - Completed quick task 260717-fpc: upload de fotos do PC na grade em massa
 
 ## Performance Metrics
 
@@ -587,6 +587,7 @@ None.
 
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
+| 260717-fpc | Upload de fotos do PC na grade "Em massa" de `/mlb/anuncios`. Além de colar URL, botão **"Enviar fotos (PC)"** na toolbar da grade (habilitado com 1 linha marcada) abre o seletor de arquivos (múltiplo) e preenche as colunas de Foto vazias (`imagemUrl..imagemUrl6`) com a URL retornada, na ordem de seleção (1ª = capa). Backend: `MlImagemService::enviar()` passa a devolver `['id','url']` (`secure_url` da maior `variation`) e `uploadImagem` responde `{picture_id, url}` — `picture_id` inalterado (wizard individual intacto). Sem modal; colunas de URL mantidas; publicação/round-trip inalterados (já usam `pictures:[{source}]`). Limite prático 6 fotos/linha (colunas existentes). Inclui também: "Características secundárias" não nasce mais recolhida + cor de grupo saiu das células e foi FORTE (alpha 0.30) para o cabeçalho das colunas + faixa do grupo. Gates: `UploadImagemTest` 4/4, `npm run build` verde. **DEPLOYADO 260717** (`bbb67657`; deploy.sh — `Nothing to migrate`). Checkpoint E2E do upload pendente em prod (banco local sem empresa com `ml_token`). | 2026-07-17 | 59b9990f, 23cc9bc2, bbb67657 | [260717-fpc-upload-fotos-pc-grade-massa](.planning/quick/260717-fpc-upload-fotos-pc-grade-massa/) |
 | 260522-lds | Implementar sistema de envio de email do Relatorio Geral de Fechamento | 2026-05-22 | cb4f69a | [260522-lds-implementar-sistema-de-envio-de-email-do](.planning/quick/260522-lds-implementar-sistema-de-envio-de-email-do/) |
 | 260526-jgj | Módulo Serviços (Frente A) + ajustes na lista de empresas — coexiste com legacy | 2026-05-26 | 855038e | [260526-jgj-modulo-servicos-frente-a](.planning/quick/260526-jgj-modulo-servicos-frente-a/) |
 | 260601-fm3 | KPIs Adman (Faturamento/ACOS/TACOS/Margem%) para empresas ML-only via API do Mercado Livre | 2026-06-01 | a2e8237 | [260601-fm3-kpis-adman-via-ml](.planning/quick/260601-fm3-kpis-adman-via-ml/) |

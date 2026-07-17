@@ -744,9 +744,9 @@ class MlbAnuncioController extends Controller
 
         try {
             // Monta os parâmetros de upload — binário + nome original do arquivo
-            $company   = $rascunho->company;
-            $arquivo   = $request->file('imagem');
-            $pictureId = $this->imagem->enviar($company, $arquivo->get(), $arquivo->getClientOriginalName());
+            $company  = $rascunho->company;
+            $arquivo  = $request->file('imagem');
+            $resposta = $this->imagem->enviar($company, $arquivo->get(), $arquivo->getClientOriginalName());
         } catch (\Throwable $e) {
             // T-77-06: detalhe técnico apenas no log; resposta genérica em pt-BR para o front
             \Illuminate\Support\Facades\Log::error(
@@ -760,15 +760,20 @@ class MlbAnuncioController extends Controller
         }
 
         // Retorna null quando o ML aceita a requisição mas não retorna um id (ex.: HTTP 2xx sem body)
-        if ($pictureId === null) {
+        if ($resposta === null) {
             return response()->json([
                 'ok'    => false,
                 'erros' => [['mensagem' => 'Falha no upload da imagem para o Mercado Livre.']],
             ], 422);
         }
 
-        // Sucesso: devolve o picture_id para o front gravar na variação correspondente
-        return response()->json(['ok' => true, 'picture_id' => $pictureId]);
+        // Sucesso: `picture_id` (consumido pelo wizard individual) e `url` pública da
+        // imagem (consumida pela grade em massa p/ preencher as colunas de Foto).
+        return response()->json([
+            'ok'         => true,
+            'picture_id' => $resposta['id'],
+            'url'        => $resposta['url'],
+        ]);
     }
 
     /**

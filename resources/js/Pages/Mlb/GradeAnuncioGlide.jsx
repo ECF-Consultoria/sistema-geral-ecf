@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { DataEditor, GridCellKind, CompactSelection } from '@glideapps/glide-data-grid';
 import { DropdownCell } from '@glideapps/glide-data-grid-cells';
 // CSS obrigatorio da lib — sem ele o canvas renderiza quebrado. Fica SO aqui
 // (nao em app.jsx) pra nao pesar as outras paginas: a grade e lazy-loaded por rota.
 import '@glideapps/glide-data-grid/dist/index.css';
 import { cn } from '@/lib/utils';
-import { Barcode, Trash2, Undo2, Redo2 } from 'lucide-react';
+import { Barcode, Trash2, Undo2, Redo2, ImagePlus, Loader2 } from 'lucide-react';
 import {
     nomeCurto,
     parseDimensoes,
@@ -14,6 +14,7 @@ import {
     gerarEan13,
     errosLocaisLinha,
     normalizarPreco,
+    CAMPOS_FOTO,
 } from '@/Pages/Mlb/gradeMassaUtils';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -188,27 +189,40 @@ const G_DIMENSAO = 'Dimensões';
 const G_FOTOS    = 'Fotos';
 const G_SECUND   = 'Características secundárias';
 
+// A cor de cada grupo entra FORTE no CABEÇALHO (bgHeader + faixa do grupo), não
+// mais no fundo das células — a área de preenchimento fica limpa e a seção se
+// identifica de relance pela cor da coluna. Alpha alto (0.30) sobre o fundo escuro.
 const GRUPOS = {
-    [G_BASICO]:   { cor: 'rgba(96,165,250,0.05)',  colapsavel: false }, // blue-400
-    [G_PRECO]:    { cor: 'rgba(52,211,153,0.05)',  colapsavel: false }, // emerald-400
-    [G_IDENT]:    { cor: 'rgba(167,139,250,0.05)', colapsavel: true },  // violet-400
-    [G_DIMENSAO]: { cor: 'rgba(56,189,248,0.05)',  colapsavel: true },  // sky-400
-    [G_FOTOS]:    { cor: 'rgba(251,191,36,0.05)',  colapsavel: true },  // amber-400 (= "imagens" da Amazon)
-    [G_SECUND]:   { cor: 'rgba(148,163,184,0.05)', colapsavel: true },  // slate-400
+    [G_BASICO]:   { cor: 'rgba(96,165,250,0.30)',  colapsavel: false }, // blue-400
+    [G_PRECO]:    { cor: 'rgba(52,211,153,0.30)',  colapsavel: false }, // emerald-400
+    [G_IDENT]:    { cor: 'rgba(167,139,250,0.30)', colapsavel: true },  // violet-400
+    [G_DIMENSAO]: { cor: 'rgba(56,189,248,0.30)',  colapsavel: true },  // sky-400
+    [G_FOTOS]:    { cor: 'rgba(251,191,36,0.30)',  colapsavel: true },  // amber-400 (= "imagens" da Amazon)
+    [G_SECUND]:   { cor: 'rgba(148,163,184,0.30)', colapsavel: true },  // slate-400
 };
 
 // Ficha técnica leva o nome da categoria no título, então casa por prefixo
 const PREFIXO_FICHA = 'Ficha técnica';
-const COR_FICHA = 'rgba(244,114,182,0.05)'; // pink-400
+const COR_FICHA = 'rgba(244,114,182,0.30)'; // pink-400
 
-// Grupos que começam recolhidos
-const RECOLHIDOS_INICIAIS = [G_SECUND];
+// Grupos que começam recolhidos. Vazio de propósito: "Características secundárias"
+// NÃO nasce recolhida — preencher esses campos importa (peso na qualidade/busca).
+const RECOLHIDOS_INICIAIS = [];
 
-// A cor entra como themeOverride da coluna (a lib aceita por coluna — nativo)
+// Cor crua do grupo (string) — usada tanto no cabeçalho da coluna quanto na faixa
+// do grupo (getGroupDetails).
+const corDoGrupo = (grupo) => {
+    if (grupo?.startsWith(PREFIXO_FICHA)) return COR_FICHA;
+    return GRUPOS[grupo]?.cor;
+};
+
+// themeOverride por coluna: pinta o CABEÇALHO (não as células) e clareia o texto
+// do header para contrastar com a cor forte. A lib aceita themeOverride por coluna.
 const temaDoGrupo = (grupo) => {
-    if (grupo?.startsWith(PREFIXO_FICHA)) return { bgCell: COR_FICHA };
-    const g = GRUPOS[grupo];
-    return g ? { bgCell: g.cor } : undefined;
+    const cor = corDoGrupo(grupo);
+    return cor
+        ? { bgHeader: cor, bgHeaderHovered: cor, bgHeaderHasFocus: cor, textHeader: 'rgba(255,255,255,0.9)' }
+        : undefined;
 };
 
 const grupoColapsavel = (grupo) =>
@@ -273,6 +287,14 @@ export default function GradeAnuncioGlide({
     // Selecao CONTROLADA: a toolbar precisa saber quais linhas estao marcadas.
     const [selecao, setSelecao] = useState(SEM_SELECAO);
 
+    // ─── Upload de fotos do PC (COL-fotos-PC) ───
+    // Botao na toolbar (habilitado com 1 linha marcada) abre o seletor de arquivos.
+    // fileInputRef dispara o dialog; alvoUploadRef guarda o uid da linha entre o
+    // clique e o onChange do input. uploadFotos = texto de progresso (null = ocioso).
+    const fileInputRef = useRef(null);
+    const alvoUploadRef = useRef(null);
+    const [uploadFotos, setUploadFotos] = useState(null);
+
     // Grupos de coluna recolhidos (VIS-87-2). "Características secundárias" nasce
     // recolhido: e o grupo que mais infla (dezenas de opcionais por categoria).
     const [recolhidos, setRecolhidos] = useState(RECOLHIDOS_INICIAIS);
@@ -282,6 +304,20 @@ export default function GradeAnuncioGlide({
         setRecolhidos((prev) => prev.includes(grupo)
             ? prev.filter((g) => g !== grupo)
             : [...prev, grupo]);
+    }, []);
+
+    // ─── Cor forte também na FAIXA do grupo (a linha com "Fotos", "Preço"…) ───
+    // O themeOverride por coluna pinta o cabeçalho de cada coluna; a faixa do grupo
+    // acima é separada e só a lib colore, via getGroupDetails.overrideTheme.
+    const getGroupDetails = useCallback((grupo) => {
+        const cor = corDoGrupo(grupo);
+        // Esta versão da lib não tem bgGroupHeader — a faixa do grupo herda bgHeader.
+        return {
+            name: grupo,
+            overrideTheme: cor
+                ? { bgHeader: cor, bgHeaderHovered: cor, textGroupHeader: 'rgba(255,255,255,0.92)' }
+                : undefined,
+        };
     }, []);
 
     // ─── Colunas = 10 base + SO os obrigatorios da categoria ATIVA (SHEET-02) ───
@@ -646,6 +682,80 @@ export default function GradeAnuncioGlide({
 
     const nSel = uidsSelecionados.length;
 
+    // ─── Abrir o seletor de arquivos para a linha marcada ───
+    // So faz sentido com 1 linha (foto e por produto). Exige rascunho ja salvo:
+    // a rota de upload e por rascunho, entao a linha precisa ter id (edite qualquer
+    // campo para o autosave criar o rascunho antes de enviar fotos).
+    const abrirSeletorFotos = useCallback(() => {
+        if (nSel !== 1 || uploadFotos) return;
+        const uid = uidsSelecionados[0];
+        const l = aba.linhas.find((x) => x.uid === uid);
+        if (!l) return;
+        if (!l.id) {
+            window.alert('Salve a linha antes de enviar fotos: edite qualquer campo (ex.: Título) para o rascunho ser criado.');
+            return;
+        }
+        const vazios = CAMPOS_FOTO.filter((c) => !String(l[c] ?? '').trim());
+        if (vazios.length === 0) {
+            window.alert('As colunas de Foto desta linha já estão preenchidas (máx. 6). Apague uma URL para abrir espaço.');
+            return;
+        }
+        alvoUploadRef.current = uid;
+        fileInputRef.current?.click();
+    }, [nSel, uploadFotos, uidsSelecionados, aba.linhas]);
+
+    // ─── Enviar os arquivos selecionados → preencher as colunas de Foto vazias ───
+    // Envio sequencial (preserva a ordem de selecao); cada URL retornada vai para a
+    // proxima coluna vazia. A 1a coluna preenchida e a capa do anuncio. Os campos
+    // vazios sao calculados UMA vez aqui: onEditarCelula atualiza o estado da pagina
+    // de forma assincrona, entao `l` nao muda dentro do laco.
+    const enviarFotosSelecionadas = useCallback(async (fileList) => {
+        const arquivos = Array.from(fileList ?? []).filter(Boolean);
+        // Zera o input para que reselecionar o mesmo arquivo dispare o onChange de novo
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        if (arquivos.length === 0) return;
+
+        const uid = alvoUploadRef.current;
+        const l = aba.linhas.find((x) => x.uid === uid);
+        if (!l || !l.id) return;
+
+        const vazios = CAMPOS_FOTO.filter((c) => !String(l[c] ?? '').trim());
+        const aEnviar = arquivos.slice(0, vazios.length);
+        const excedente = arquivos.length - aEnviar.length;
+
+        let enviadas = 0;
+        let erro = null;
+        setUploadFotos(`Enviando 0/${aEnviar.length}…`);
+
+        for (const arquivo of aEnviar) {
+            try {
+                const r = await window.axios.postForm(
+                    route('mlb.anuncios.rascunho.imagem', { rascunho: l.id }),
+                    { imagem: arquivo },
+                );
+                const url = r.data?.url;
+                if (!url) { erro = 'O Mercado Livre não retornou a URL da imagem.'; continue; }
+                // Escreve na proxima coluna vazia (mesmo caminho da digitacao/paste)
+                onEditarCelula(uid, vazios[enviadas], url, { chaveOrigem: chaveOrigem(vazios[enviadas]) });
+                enviadas++;
+                setUploadFotos(`Enviando ${enviadas}/${aEnviar.length}…`);
+            } catch (e) {
+                erro = e.response?.data?.erros?.[0]?.mensagem
+                    ?? e.response?.data?.message
+                    ?? 'Erro ao enviar foto — tente novamente.';
+            }
+        }
+
+        setUploadFotos(null);
+        alvoUploadRef.current = null;
+
+        if (erro) {
+            window.alert(enviadas > 0 ? `${enviadas} foto(s) enviada(s), mas: ${erro}` : erro);
+        } else if (excedente > 0) {
+            window.alert(`${enviadas} foto(s) enviada(s). ${excedente} não coube(ram): a grade em massa aceita no máximo 6 fotos por linha.`);
+        }
+    }, [aba.linhas, onEditarCelula]);
+
     // ─── Ctrl+Z / Ctrl+Y no wrapper (FASE 84) ───
     // A lib NAO trata undo/redo (conferido no .d.ts: nao esta em ConfigurableKeybinds
     // nem em ForcedKeybinds), entao o evento borbulha ate aqui e nao ha conflito com
@@ -702,7 +812,38 @@ export default function GradeAnuncioGlide({
                         ? 'Selecione linhas pelo número à esquerda'
                         : `${nSel} linha${nSel !== 1 ? 's' : ''} selecionada${nSel !== 1 ? 's' : ''}`}
                 </span>
+                {/* Input escondido: o upload de fotos do PC dispara por ele (canvas
+                    nao aceita <input file> dentro da celula, entao o botao da toolbar
+                    aciona o dialog e escreve as URLs nas colunas de Foto vazias). */}
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => enviarFotosSelecionadas(e.target.files)}
+                />
                 <div className="ml-auto flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={abrirSeletorFotos}
+                        disabled={nSel !== 1 || !!uploadFotos}
+                        title={nSel !== 1
+                            ? 'Selecione 1 linha para enviar fotos do computador'
+                            : 'Enviar fotos do computador para esta linha (preenchem as colunas de Foto vazias; a 1ª é a capa)'}
+                        className={cn(
+                            'inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] transition',
+                            nSel !== 1 || uploadFotos
+                                ? 'cursor-not-allowed border-white/[0.06] text-white/20'
+                                : 'border-white/[0.1] bg-white/[0.03] text-white/60 hover:border-white/25 hover:text-white',
+                        )}
+                    >
+                        {uploadFotos ? (
+                            <><Loader2 className="h-3 w-3 animate-spin" /> {uploadFotos}</>
+                        ) : (
+                            <><ImagePlus className="h-3 w-3" /> Enviar fotos (PC)</>
+                        )}
+                    </button>
                     <button
                         type="button"
                         onClick={gerarEansEmLote}
@@ -774,6 +915,8 @@ export default function GradeAnuncioGlide({
                 // Reabrir e pelos chips acima da grade: recolhido, o cabecalho some junto
                 // com as colunas e nao ha onde clicar no canvas.
                 onGroupHeaderClicked={(col) => alternarGrupo(colunas[col]?.group)}
+                // Cor forte por seção: nome + tema da faixa do grupo (getGroupDetails)
+                getGroupDetails={getGroupDetails}
                 // SHEET2-03 — copiar/colar: getCellsForSelection habilita o Ctrl+C
                 // (copy e desabilitado por padrao na lib); onPaste intercepta o
                 // Ctrl+V e faz o split de TSV/CSV do Excel/Sheets.
