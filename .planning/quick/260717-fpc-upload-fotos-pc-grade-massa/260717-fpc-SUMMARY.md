@@ -31,6 +31,13 @@ cheias, excedente > 6.
 - `npm run build` → **verde** (GradeAnuncioGlide-*.js).
 - Ícones `ImagePlus`/`Loader2` confirmados no lucide-react instalado.
 
+## Deploy
+
+**DEPLOYADO 260717** via `deploy.sh` (commit `bbb67657` em origin/main). Branch
+`feat/anuncios-fotos-pc` FF→main (origin/main não tinha andado; 4 commits isolados).
+`Nothing to migrate`, `vite build` na VPS, workers reiniciados. Inclui também os 2
+ajustes de UI da grade (secundárias abertas + cor forte no cabeçalho).
+
 ## Não verificado (bloqueio conhecido)
 
 Checkpoint visual/funcional ponta-a-ponta **pendente**: precisa de empresa com
