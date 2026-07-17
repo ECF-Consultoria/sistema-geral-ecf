@@ -340,6 +340,11 @@ class NpsController extends Controller
         $responsesMes = NpsResponse::query()
             ->with(['survey', 'answers'])
             ->whereHas('survey', $responsesFilter)
+            // Phase 96 (AB-96-3) — resposta invalidada pelo admin sai dos
+            // cards de média. A LISTAGEM paginada ($surveys, abaixo) NÃO usa
+            // este filtro — o admin precisa continuar vendo a resposta para
+            // gerenciá-la/revalidar.
+            ->whereNull('invalidated_at')
             ->get();
 
         $agregarMedia = function ($responses, string $dimensao) use ($notaDe) {
@@ -383,6 +388,8 @@ class NpsController extends Controller
                     // Quick task 260612-flt — propaga filtros na serie 12m.
                     $aplicarFiltrosSurveys($qq);
                 })
+                // Phase 96 (AB-96-3) — mesmo filtro dos cards acima.
+                ->whereNull('invalidated_at')
                 ->get();
 
             $serieMeses[] = [
@@ -1471,6 +1478,117 @@ class NpsController extends Controller
         $survey->update(['status' => 'pending', 'completed_at' => null]);
 
         return back()->with('success', 'Resposta excluída. A pesquisa voltou para pendente.');
+    }
+
+    /**
+     * Phase 96 Plan 03 (AB-96-3) — admin invalida uma resposta suspeita SEM
+     * apagar nada. Diferente de `excluirResposta()` acima: NÃO reverte o
+     * survey para pending (evita ambiguidade no `hasOne` — 96-RESEARCH
+     * Pitfall 2) e NÃO toca em `nps_response_scores`/`nps_score_assignments`
+     * (o congelamento da Fase 79/DEC-79-C é preservado, reversível via
+     * `revalidarResposta()`).
+     *
+     * `motivo` é texto livre opcional, gravado só na trilha de auditoria
+     * (`activity_log`), nunca em `nps_responses` — `NpsResponse` não recebe
+     * `LogsActivity` para não poluir a auditoria com o `created` de toda
+     * resposta legítima (96-RESEARCH: trilha via activity() explícito).
+     */
+    public function invalidarResposta(Request $request, NpsSurvey $survey)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        if (!$survey->response) {
+            return back()->with('error', 'Esta pesquisa ainda não foi respondida.');
+        }
+        if ($survey->response->invalidated_at) {
+            return back()->with('error', 'Esta resposta já está invalidada.');
+        }
+
+        $validated = $request->validate([
+            'motivo' => 'nullable|string|max:500',
+        ]);
+
+        $survey->response->update([
+            'invalidated_at' => now(),
+            'invalidated_by' => $request->user()->id,
+        ]);
+
+        activity()
+            ->causedBy($request->user())
+            ->performedOn($survey->response)
+            ->withProperties([
+                'survey_id'  => $survey->id,
+                'company_id' => $survey->company_id,
+                'motivo'     => $validated['motivo'] ?? null,
+            ])
+            ->log('Resposta NPS invalidada');
+
+        $this->bustarCacheDoBonus($survey->response, $survey);
+
+        return back()->with('success', 'Resposta invalidada — não conta mais em dashboards nem no bônus.');
+    }
+
+    /**
+     * Phase 96 Plan 03 (AB-96-3) — reverte a invalidação (`invalidated_at =
+     * null`). Simétrico a `invalidarResposta()`: mesma trilha de auditoria,
+     * mesmo cache-busting (o bônus precisa refletir a resposta voltando a
+     * contar). Nunca re-roda o `NpsSnapshotService` — o snapshot congelado
+     * já existe intacto desde o submit original.
+     */
+    public function revalidarResposta(Request $request, NpsSurvey $survey)
+    {
+        abort_unless($request->user()->isAdmin(), 403);
+
+        if (!$survey->response || !$survey->response->invalidated_at) {
+            return back()->with('error', 'Esta resposta não está invalidada.');
+        }
+
+        $survey->response->update(['invalidated_at' => null, 'invalidated_by' => null]);
+
+        activity()
+            ->causedBy($request->user())
+            ->performedOn($survey->response)
+            ->withProperties([
+                'survey_id'  => $survey->id,
+                'company_id' => $survey->company_id,
+            ])
+            ->log('Resposta NPS revalidada');
+
+        $this->bustarCacheDoBonus($survey->response, $survey);
+
+        return back()->with('success', 'Resposta revalidada — volta a contar normalmente.');
+    }
+
+    /**
+     * Phase 96 Plan 03 (AB-96-3) — achado crítico do RESEARCH: o bônus de um
+     * mês FECHADO fica cacheado por até 7 dias (`DesempenhoScoreService::
+     * computeCached()`). Sem este `Cache::forget()` explícito, invalidar (ou
+     * revalidar) uma resposta pareceria "não ter feito nada" no /performance
+     * por até uma semana. RELIDO da versão atual do cache key em tempo de
+     * execução (`v4` no momento desta implementação — o projeto já fez bump
+     * v1→v4 por motivos parecidos, NUNCA hardcode a versão às cegas).
+     *
+     * Respostas LEGADAS (sem `template_id`/sem `NpsScoreAssignment`) não têm
+     * cache de bônus a bustar — `NpsSnapshotService::registrar()` retorna
+     * cedo para elas (Pitfall 5 do RESEARCH) — isso é CORRETO, não um bug:
+     * o loop simplesmente não encontra nenhum user_id e não faz nada.
+     */
+    private function bustarCacheDoBonus(NpsResponse $response, NpsSurvey $survey): void
+    {
+        $mesCompletado = $survey->completed_at?->copy()->startOfMonth();
+        if (!$mesCompletado) {
+            return;
+        }
+
+        $userIds = \App\Models\NpsScoreAssignment::where('nps_response_id', $response->id)
+            ->pluck('user_id')
+            ->unique();
+
+        foreach ($userIds as $userId) {
+            \Illuminate\Support\Facades\Cache::forget(
+                sprintf('desempenho.compute.v4.%d.%s', $userId, $mesCompletado->format('Y-m'))
+            );
+        }
     }
 
     /**

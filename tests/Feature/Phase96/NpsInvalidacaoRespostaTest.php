@@ -305,13 +305,16 @@ class NpsInvalidacaoRespostaTest extends TestCase
 
         // Cards: só a resposta válida (nota 5) entra na média do mês corrente.
         // Se a invalidada ainda contasse, a média cairia para 3.
-        $this->assertSame(5.0, $props['cards']['estrategista']['media']);
+        // assertEquals (não assertSame) — json_encode(5.0) vira inteiro 5 sem
+        // JSON_PRESERVE_ZERO_FRACTION, então o valor decodificado do payload
+        // Inertia chega como int quando a média é um número redondo.
+        $this->assertEquals(5.0, $props['cards']['estrategista']['media']);
         $this->assertSame(1, $props['cards']['estrategista']['total']);
 
         // Série 12m: o mês corrente (último item) também não pode contar a
         // invalidada — mesmo raciocínio dos cards.
         $serieMesCorrente = collect($props['serie_12m'])->last();
-        $this->assertSame(5.0, $serieMesCorrente['estrategista']);
+        $this->assertEquals(5.0, $serieMesCorrente['estrategista']);
 
         // Listagem paginada preserva as DUAS — admin precisa gerir/revalidar.
         $tokens = collect($props['surveys']['data'])->pluck('token');

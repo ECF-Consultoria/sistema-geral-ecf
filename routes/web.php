@@ -312,6 +312,16 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
     // (reverte survey para pending). Antes da rota publica /nps/{token}.
     Route::delete('/nps/{survey}/response', [NpsController::class, 'excluirResposta'])->name('nps.responses.destroy');
 
+    // Phase 96 Plan 03 (AB-96-3) — admin invalida/revalida uma resposta
+    // suspeita SEM apagar nada (flag invalidated_at/invalidated_by,
+    // reversível). Diferente de excluirResposta() acima: NÃO reverte o
+    // survey para pending (evita ambiguidade no hasOne, ver NpsResponse::
+    // scopeValida()/96-RESEARCH Pitfall 2). Antes da rota pública /nps/{token}.
+    Route::patch('/nps/{survey}/response/invalidar', [NpsController::class, 'invalidarResposta'])
+        ->name('nps.responses.invalidar');
+    Route::patch('/nps/{survey}/response/revalidar', [NpsController::class, 'revalidarResposta'])
+        ->name('nps.responses.revalidar');
+
     // 2026-07-13 — admin exclui a pesquisa NPS INTEIRA (qualquer status, inclusive
     // pendente) + exclusão em massa via checkboxes da listagem. O bulk é
     // registrado ANTES de /nps/{survey} para que "surveys/bulk" não caia no
