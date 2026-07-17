@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Phase96;
 
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PortfolioController;
 use App\Jobs\CalculateGoalResults;
 use App\Models\Company;
 use App\Models\NpsResponse;
@@ -16,6 +18,7 @@ use App\Models\User;
 use App\Services\DesempenhoScoreService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
@@ -261,6 +264,60 @@ class NpsInvalidacaoCallSitesTest extends TestCase
         return $metodo->invoke($controller, $user, $companyIds, $desde);
     }
 
+    /**
+     * Extrai o array de `props` de um `Inertia\Response` sem passar pelo
+     * middleware HTTP — constrói uma Request com o header `X-Inertia` (o
+     * mesmo que `Inertia\Response::toResponse()` verifica para decidir entre
+     * JSON e a view Blade completa).
+     */
+    private function inertiaProps(\Inertia\Response $response): array
+    {
+        $request = HttpRequest::create('/', 'GET');
+        $request->headers->set('X-Inertia', 'true');
+
+        return $response->toResponse($request)->getData(true)['props'];
+    }
+
+    private function invocarUserDashboard(User $user, Carbon $since, string $period = '30'): array
+    {
+        $this->app->instance('request', HttpRequest::create('/dashboard', 'GET'));
+
+        $controller = app(DashboardController::class);
+        $metodo     = new ReflectionMethod($controller, 'userDashboard');
+        $metodo->setAccessible(true);
+
+        return $this->inertiaProps($metodo->invoke($controller, $user, $since, $period));
+    }
+
+    private function invocarBuildRanking(\Illuminate\Support\Collection $users, Carbon $since): \Illuminate\Support\Collection
+    {
+        $controller = app(DashboardController::class);
+        $metodo     = new ReflectionMethod($controller, 'buildRanking');
+        $metodo->setAccessible(true);
+
+        return $metodo->invoke($controller, $users, $since);
+    }
+
+    private function invocarRenderPortfolio(User $user): array
+    {
+        $request = HttpRequest::create('/admin/users/' . $user->id . '/portfolio', 'GET');
+
+        $controller = app(PortfolioController::class);
+        $metodo     = new ReflectionMethod($controller, 'renderPortfolio');
+        $metodo->setAccessible(true);
+
+        return $this->inertiaProps($metodo->invoke($controller, $request, $user));
+    }
+
+    private function invocarComputeNpsDaMeta(int $companyId, int $year, int $month): ?float
+    {
+        $job    = new CalculateGoalResults(period: sprintf('%04d-%02d', $year, $month));
+        $metodo = new ReflectionMethod($job, 'computeNps');
+        $metodo->setAccessible(true);
+
+        return $metodo->invoke($job, $companyId, $year, $month);
+    }
+
     // ═══════════════════════════════════════════════════════════════════
     // Call-site #1 — DesempenhoScoreService::notasPorAtribuicao() (JOIN)
     // ═══════════════════════════════════════════════════════════════════
@@ -393,5 +450,155 @@ class NpsInvalidacaoCallSitesTest extends TestCase
         $this->assertCount(1, $linhas,
             'call-site #4: ramo B (legado) deve excluir a resposta invalidada dos widgets de carteira');
         $this->assertSame(4.0, $linhas->first()['nota']);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Call-site #5 — DashboardController::adminDashboard() widgets NPS
+    // (rota GET /dashboard como admin — stats.avg_nps)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_callsite_5_admin_dashboard_avg_nps_exclui_resposta_invalidada(): void
+    {
+        $admin       = $this->admin();
+        $empresa     = Company::factory()->create(['active' => true]);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+
+        $tpl = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_EMPRESA],
+            [$servicoPerf],
+            principal: true,
+        );
+
+        $respostaValida     = $this->responder($empresa, $tpl, 5);
+        $respostaInvalidada = $this->responder($empresa, $tpl, 1);
+        $this->invalidar($respostaInvalidada);
+
+        $props = null;
+        $this->actingAs($admin)
+            ->get('/dashboard')
+            ->assertOk()
+            ->assertInertia(function (\Inertia\Testing\AssertableInertia $page) use (&$props) {
+                $page->component('Dashboard/Admin');
+                $props = $page->toArray()['props'];
+            });
+
+        // Se a invalidada ainda contasse: (5.0 + 1.0) / 2 = 3.0. Só a válida: 5.0.
+        $this->assertSame(5.0, $props['stats']['avg_nps'],
+            'call-site #5: adminDashboard() deve excluir a resposta invalidada de stats.avg_nps');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Call-site #6 — DashboardController::userDashboard() widgets NPS
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_callsite_6_user_dashboard_avg_nps_exclui_resposta_invalidada(): void
+    {
+        $analista = $this->criarUserComCargo('Analista CS6', $this->cargoAnalistaId);
+        $empresa  = Company::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', null);
+
+        $tpl = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [],
+            principal: true,
+        );
+
+        $respostaValida     = $this->responder($empresa, $tpl, 5);
+        $respostaInvalidada = $this->responder($empresa, $tpl, 1);
+        $this->invalidar($respostaInvalidada);
+
+        $props = $this->invocarUserDashboard($analista, now()->subDays(30));
+
+        $this->assertSame(5.0, $props['stats']['avg_nps'],
+            'call-site #6: userDashboard() deve excluir a resposta invalidada de stats.avg_nps');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Call-site #7 — DashboardController::buildRanking() — $surveys
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_callsite_7_build_ranking_exclui_resposta_invalidada(): void
+    {
+        $analista = $this->criarUserComCargo('Analista CS7', $this->cargoAnalistaId);
+        $empresa  = Company::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', null);
+
+        $tpl = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [],
+            principal: true,
+        );
+
+        $respostaValida     = $this->responder($empresa, $tpl, 4);
+        $respostaInvalidada = $this->responder($empresa, $tpl, 1);
+        $this->invalidar($respostaInvalidada);
+
+        $ranking = $this->invocarBuildRanking(collect([$analista]), now()->subDays(30));
+        $linha   = $ranking->firstWhere('id', $analista->id);
+
+        $this->assertNotNull($linha, 'analista precisa aparecer no ranking construído por buildRanking()');
+        $this->assertSame(4.0, $linha['avg_nps'],
+            'call-site #7: buildRanking() deve excluir a resposta invalidada da média avg_nps');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Call-site #8 — PortfolioController — "Histórico NPS mensal" (renderPortfolio)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_callsite_8_portfolio_historico_nps_mensal_exclui_resposta_invalidada(): void
+    {
+        $analista = $this->criarUserComCargo('Analista CS8', $this->cargoAnalistaId);
+        $empresa  = Company::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', null);
+
+        $tpl = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [],
+            principal: true,
+        );
+
+        $respostaValida     = $this->responder($empresa, $tpl, 4);
+        $respostaInvalidada = $this->responder($empresa, $tpl, 1);
+        $this->invalidar($respostaInvalidada);
+
+        $props = $this->invocarRenderPortfolio($analista);
+
+        $mesAtual = collect($props['nps_history'])->firstWhere('month', $this->mesReferencia()->format('Y-m'));
+
+        $this->assertNotNull($mesAtual, 'o mês corrente precisa aparecer no histórico NPS');
+        $this->assertSame(1, $mesAtual['count'],
+            'call-site #8: histórico NPS mensal deve contar só a resposta válida');
+        $this->assertSame(4.0, $mesAtual['avg']);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Call-site #9 — CalculateGoalResults::computeNps() (metas NPS mensais)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_callsite_9_calculate_goal_results_computa_nps_exclui_resposta_invalidada(): void
+    {
+        $empresa = Company::factory()->create();
+
+        $tpl = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_EMPRESA],
+            [],
+            principal: true,
+        );
+
+        $respostaValida     = $this->responder($empresa, $tpl, 5);
+        $respostaInvalidada = $this->responder($empresa, $tpl, 1);
+        $this->invalidar($respostaInvalidada);
+
+        $media = $this->invocarComputeNpsDaMeta($empresa->id, 2026, 8);
+
+        $this->assertNotNull($media, 'computeNps() deveria retornar float — há 1 resposta válida no período');
+        $this->assertSame(5.0, $media,
+            'call-site #9: CalculateGoalResults::computeNps() deve excluir a resposta invalidada da meta NPS');
     }
 }
