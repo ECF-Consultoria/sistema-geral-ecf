@@ -186,6 +186,7 @@ const NAV_TREE = [
             // Phase 42 D-02 / REQ-42-07: item de UI de onboarding (Plan 41-05) removido daqui.
             // Rota /dev/sugadores-ml-onboarding permanece acessivel via URL direta (role:admin) como ferramenta tecnica.
             { label: 'ML OAuth',       routeName: 'ml.oauth.index',      page: 'MlOAuth/Index',       icon: Link2,     permission: 'sistema.ml_oauth' },
+            { label: 'Shopee OAuth',   routeName: 'shopee.oauth.index',  page: 'ShopeeOAuth/Index',   icon: Store,     permission: 'sistema.shopee_oauth' },
         ],
     },
 
