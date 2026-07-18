@@ -45,6 +45,26 @@ const NAV_TREE = [
     // não devem ver esse item; carteira própria é a fonte deles.
     { label: 'ECF Dashboard', routeName: 'ecf.dashboard', page: 'Dashboard/EcfShell', icon: PieChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
 
+    // ── Grupo: Gestão ECF (transversal — Phase 93 v17.0) ────────────────────
+    // Carteira, Desempenho e Metas atendem multi-marketplace (ML + Shopee) e
+    // multi-serviço — não são específicos do Mercado Livre, então saem do
+    // grupo ML e viram um grupo próprio. Fica logo abaixo de "ECF Dashboard"
+    // e acima de "Mercado Livre" (D-93-01). Aberto por default (D-93-03) por
+    // ser onde analista/estrategista vivem. Ver plano canônico
+    // `plano-carteira-desempenho-multi-servico.md` §5 "Ajustar menu".
+    // Empresas PERMANECE no grupo Mercado Livre (decisão do plano canônico —
+    // não movida aqui, ver comentário no grupo ML abaixo).
+    {
+        group: 'Gestão ECF',
+        icon: FolderKanban,
+        defaultOpen: true,
+        children: [
+            { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio', icon: Briefcase, permission: 'core.carteira' },
+            { label: 'Desempenho', routeName: 'performance.index', page: ['Performance/Index', 'Performance/Show', 'Desempenho/Configuracao'], icon: Trophy, permission: 'core.performance' },
+            { label: 'Metas',      routeName: 'goals.index',       page: 'Goals',     icon: Target,    permission: 'core.metas' },
+        ],
+    },
+
     {
         group: 'Mercado Livre',
         icon: Store,
@@ -60,18 +80,12 @@ const NAV_TREE = [
             // Dashboard (branching no controller). Ambos devem highlightar
             // este item quando na rota /dashboard/mercadolivre.
             { label: 'Dashboard', routeName: 'mercadolivre.dashboard', page: ['Dashboard/Admin', 'Performance/Dashboard'], icon: LayoutDashboard, permission: 'core.dashboard' },
-            // Desempenho fica com array explícito das páginas do ranking
-            // (Index + Show) pra não engolir Performance/Dashboard acima.
-            // Desempenho: ranking (Index) + view individual (Show). Ajuste 2026-07-09:
-            // a página Desempenho/Configuracao passou a ser acessada via botão no
-            // header da própria página de Desempenho (visível só para admin) —
-            // não fica mais como item separado na sidebar pra não confundir
-            // analistas/estrategistas que não têm permissão de configurar.
-            { label: 'Desempenho',  routeName: 'performance.index',   page: ['Performance/Index', 'Performance/Show', 'Desempenho/Configuracao'],  icon: Trophy,          permission: 'core.performance' },
+            // Phase 93 v17.0: Desempenho, Carteira e Metas foram movidos para o
+            // grupo transversal "Gestão ECF" (acima) — atendem ML + Shopee, não
+            // são exclusivos deste grupo. Empresas permanece aqui (decisão do
+            // plano canônico — pergunta em aberto D-93, ver 93-01-PLAN.md).
             { label: 'Empresas',    routeName: 'companies.index',     page: 'Companies',    icon: Building2,       permission: 'core.empresas' },
-            { label: 'Carteira',    routeName: 'portfolio.own',       page: 'Portfolio',    icon: Briefcase,       permission: 'core.carteira' },
             { label: 'Sugadores',   routeName: 'sugadores.index',     page: 'Sugadores',    icon: AlertTriangle,   permission: 'core.sugadores', showBadge: 'sugadores_pendentes' },
-            { label: 'Metas',       routeName: 'goals.index',         page: 'Goals',        icon: Target,          permission: 'core.metas' },
             { label: 'PPA',         routeName: 'ppa.index',           page: 'Ppa',          icon: FileText,        permission: 'core.ppa' },
             // ── Separator visual: Performance | Dados Estrategicos ─────
             // Feedback UAT 2026-07-03: dados vem do ECF Drive (fonte ML-only na
