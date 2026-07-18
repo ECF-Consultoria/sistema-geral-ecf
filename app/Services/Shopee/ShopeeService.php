@@ -45,6 +45,22 @@ class ShopeeService
         $this->signer     = new ShopeeSigner($this->partnerId, $this->partnerKey);
     }
 
+    /**
+     * Cliente HTTP base. Desliga a verificação SSL SOMENTE quando
+     * services.shopee.verify_ssl é false (dev local atrás de TLS interceptado /
+     * PHP sem cacert.pem). Em produção verify_ssl deve ser true.
+     */
+    private function http(): \Illuminate\Http\Client\PendingRequest
+    {
+        $req = Http::timeout(30);
+
+        if (! config('services.shopee.verify_ssl', true)) {
+            $req = $req->withoutVerifying();
+        }
+
+        return $req;
+    }
+
     // ═══ OAuth: geração de URL ════════════════════════════════════════════════
 
     /**
@@ -114,7 +130,7 @@ class ShopeeService
             'sign'       => $sign,
         ]);
 
-        $response = Http::post($url, [
+        $response = $this->http()->post($url, [
             'code'       => $code,
             'partner_id' => $this->partnerId,
             'shop_id'    => (int) $shopId,
@@ -193,7 +209,7 @@ class ShopeeService
                 }
 
                 try {
-                    $response = Http::post($url, $body);
+                    $response = $this->http()->post($url, $body);
                 } catch (\Illuminate\Http\Client\ConnectionException $e) {
                     Log::warning("[Shopee] Falha de conexão ao renovar token empresa {$companyId}: {$e->getMessage()}");
                     throw new \RuntimeException('[Shopee] Erro de conexão ao renovar token (transitório).');
@@ -301,7 +317,7 @@ class ShopeeService
             'sign'         => $sign,
         ], $query);
 
-        $response = Http::get($this->host . $apiPath, $params);
+        $response = $this->http()->get($this->host . $apiPath, $params);
         $json     = $response->json() ?? [];
 
         if (! $response->successful() || $this->isError($json)) {
@@ -315,6 +331,39 @@ class ShopeeService
     private function isError(array $json): bool
     {
         return isset($json['error']) && $json['error'] !== '' && $json['error'] !== null;
+    }
+
+    // ═══ Público (nível partner) ══════════════════════════════════════════════
+
+    /**
+     * Lista as lojas já autorizadas a este partner (public API — assinatura
+     * PÚBLICA, sem shop_id/token). Serve como smoke test de conectividade e
+     * assinatura, e para descobrir shop_ids já vinculados no sandbox.
+     *
+     * @return array resposta v2 crua (authed_shop_list, more, etc.)
+     * @throws \RuntimeException
+     */
+    public function fetchAuthedShops(int $pageNo = 1, int $pageSize = 100): array
+    {
+        $path      = '/api/v2/public/get_shops_by_partner';
+        $timestamp = time();
+        $sign      = $this->signer->sign($path, $timestamp);
+
+        $response = $this->http()->get($this->host . $path, [
+            'partner_id' => $this->partnerId,
+            'timestamp'  => $timestamp,
+            'sign'       => $sign,
+            'page_no'    => $pageNo,
+            'page_size'  => $pageSize,
+        ]);
+
+        $json = $response->json() ?? [];
+
+        if (! $response->successful() || $this->isError($json)) {
+            throw new \RuntimeException('[Shopee] get_shops_by_partner: ' . $response->body());
+        }
+
+        return $json;
     }
 
     // ═══ Dados: conta/loja ═════════════════════════════════════════════════════

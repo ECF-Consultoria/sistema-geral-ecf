@@ -56,16 +56,22 @@ return [
     // nunca vai na request). partner_id/partner_key/host são 1 por app (não por
     // empresa) e vêm do console de parceiro (open.shopee.com).
     //
-    // ⚠️ VALIDAR no console antes de produção:
-    //   - host BR: pode ser o global 'partner.shopeemobile.com' OU regional
-    //     'openplatform.shopee.com.br'. O console mostra o da sua região.
-    //   - sandbox: 'partner.test-stable.shopeemobile.com' (teste).
-    //   - a redirect URL abaixo precisa estar cadastrada no app da Shopee.
+    // Hosts (SHOPEE_HOST):
+    //   - Produção global (default): 'https://partner.shopeemobile.com'
+    //     ⚠️ host BR pode ser o global OU regional 'openplatform.shopee.com.br';
+    //        confirmar no console antes do go-live.
+    //   - Sandbox (VALIDADO): 'https://openplatform.sandbox.test-stable.shopee.sg'
+    //   - a redirect URL precisa estar cadastrada no app da Shopee.
+    //
+    // verify_ssl: NUNCA desligar em produção. Só existe para dev local atrás de
+    // TLS interceptado (AV/proxy) ou PHP sem cacert.pem — setar SHOPEE_VERIFY_SSL=false
+    // apenas no .env local.
     'shopee' => [
         'partner_id'  => env('SHOPEE_PARTNER_ID'),                 // int (numérico) do app
-        'partner_key' => env('SHOPEE_PARTNER_KEY'),               // chave HMAC (secreta)
+        'partner_key' => env('SHOPEE_PARTNER_KEY'),               // chave HMAC (secreta) — usar como está
         'host'        => env('SHOPEE_HOST', 'https://partner.shopeemobile.com'),
         'redirect'    => env('SHOPEE_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/shopee/callback'),
+        'verify_ssl'  => env('SHOPEE_VERIFY_SSL', true),
     ],
 
     'google' => [
