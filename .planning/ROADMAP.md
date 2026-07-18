@@ -696,7 +696,7 @@ Plans:
 **Goal:** Carteira e Desempenho (e Metas, quando fizer sentido) saem do grupo "Mercado Livre" para um grupo transversal "Gestão ECF"; o grupo Mercado Livre mantém apenas telas realmente ML.
 **Requirements**: MENU-01
 **Depends on:** Nada (independente — pode ir por último)
-**Plans:** TBD (rodar `/gsd-plan-phase 93`)
+**Plans:** 1 plano (93-01) — reorganização visual do menu
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -706,7 +706,7 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 93 to break down)
+- [ ] 93-01-PLAN.md — Menu: novo grupo transversal "Gestão ECF" (Carteira, Desempenho, Metas) + enxugar grupo Mercado Livre
 
 **UI hint**: yes
 
