@@ -682,6 +682,9 @@ class MlbImplementacaoController extends Controller
             'polo'             => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_POLO_OPCOES)],
             'fase'             => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_FASE_OPCOES)],
             'data_solicitacao' => ['nullable', 'date'],
+            // Entrada no projeto (planilha V2) — texto livre (aceita "criar novo valor").
+            'status_entrada'   => ['nullable', 'string', 'max:150'],
+            'chance_entrada'   => ['nullable', 'string', 'max:60'],
         ]);
 
         // Polo e Fase → mlb_empresas (NÃO em mlb_implementacoes)
@@ -694,9 +697,15 @@ class MlbImplementacaoController extends Controller
             $impl->empresa->update($dadosEmpresa);
         }
 
-        // Data de solicitação → mlb_implementacoes
-        if (array_key_exists('data_solicitacao', $validated)) {
-            $impl->update(['data_solicitacao' => $validated['data_solicitacao']]);
+        // Data de solicitação + entrada → mlb_implementacoes (só o que veio no request)
+        $dadosImpl = [];
+        foreach (['data_solicitacao', 'status_entrada', 'chance_entrada'] as $campo) {
+            if (array_key_exists($campo, $validated)) {
+                $dadosImpl[$campo] = $validated[$campo];
+            }
+        }
+        if (!empty($dadosImpl)) {
+            $impl->update($dadosImpl);
         }
 
         activity('implementacao')
@@ -717,6 +726,8 @@ class MlbImplementacaoController extends Controller
         $validated = $request->validate([
             'acesso_colaborador' => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES)],
             'gmail_colaborador'  => ['nullable', 'string', 'max:150'],
+            // Reunião de onboarding (planilha V2) — Sim/Não/Agendada/Não compareceu (texto livre).
+            'reuniao_onboarding' => ['nullable', 'string', 'max:60'],
             // grupo_whatsapp: aceita boolean, '0'/'1' e também strings 'true'/'false'
             // validado separadamente via $request->boolean() para maior compatibilidade
         ]);

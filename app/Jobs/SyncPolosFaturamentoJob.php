@@ -64,6 +64,7 @@ class SyncPolosFaturamentoJob implements ShouldQueue
         // Guarda a fase: o gasto de ADS só é apurado p/ M2–M4 (o AdsCard ignora M1).
         $empresas = MlbEmpresa::whereIn('fase', ['M1', 'M2', 'M3', 'M4'])
             ->where('projeto', 'POLOS')
+            ->whereNull('arquivado_em') // não aquece cache de empresas arquivadas
             ->get(['cust_id', 'fase'])
             ->map(fn ($e) => ['cust' => CustId::normaliza((string) $e->cust_id), 'fase' => (string) $e->fase])
             ->filter(fn ($e) => $e['cust'] !== '')

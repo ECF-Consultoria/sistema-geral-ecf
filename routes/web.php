@@ -780,6 +780,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Meta de entrantes por região × mês (aba Metas; JSON; mesmo gate operacional).
     Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
+    // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).
+    Route::post('/polos-painel/{empresa}/arquivar',    [PolosController::class, 'arquivar'])->name('polos-painel.arquivar');
+    Route::post('/polos-painel/{empresa}/desarquivar', [PolosController::class, 'desarquivar'])->name('polos-painel.desarquivar');
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
     Route::put('/treinamentos/{treinamento}',    [MlbController::class, 'updateTreinamento'])->name('treinamentos.update');

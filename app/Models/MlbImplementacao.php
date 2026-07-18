@@ -17,6 +17,10 @@ class MlbImplementacao extends Model
         // ── Campos do Onboarding (Wave 1 — ONB-03) ──
         'nome_contato',
         'data_solicitacao',
+        // ── Entrada no projeto (planilha "Dash Gerencial Polos V2") ──
+        'status_entrada',
+        'chance_entrada',
+        'reuniao_onboarding',
         'acesso_colaborador',
         'gmail_colaborador',
         'grupo_whatsapp',
@@ -79,6 +83,32 @@ class MlbImplementacao extends Model
     /** Fase do onboarding da empresa no polo (M0 = entrada, Churn = saída) */
     public const ONB_FASE_OPCOES = [
         'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
+    ];
+
+    /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */
+    public const ONB_STATUS_ENTRADA_OPCOES = [
+        'Feito',
+        'em contato',
+        'Reserva - entrada prox mês',
+        'Não tem CNPJ',
+        'Não tem conta ML',
+        'Não responde',
+        'Abandonou o projeto',
+    ];
+
+    /** Chance de entrada da empresa no projeto (planilha V2, coluna "chance de entrada") */
+    public const ONB_CHANCE_ENTRADA_OPCOES = [
+        'Alta',
+        'Média',
+        'Baixo',
+    ];
+
+    /** Status da reunião de onboarding (planilha V2 — NÃO é booleano) */
+    public const ONB_REUNIAO_ONBOARDING_OPCOES = [
+        'Sim',
+        'Não',
+        'Agendada',
+        'Não compareceu',
     ];
 
     /** Status do acesso colaborador dado pela empresa ao colaborador ECF */

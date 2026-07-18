@@ -6,6 +6,7 @@ import {
     Wallet, Target, Building2, ChevronDown, ChevronRight, Link2, BookUser,
     Sparkles, MegaphoneOff, ShieldAlert, Pencil, Trash2, Check, X,
     Minus, Send, Users, MapPin, GitBranch, SlidersHorizontal, Undo2, Maximize2, Minimize2, Copy,
+    Archive,
 } from 'lucide-react';
 import * as Popover from '@radix-ui/react-popover';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -37,7 +38,8 @@ const SEM_ESTAGIO = '__sem__';
 // Bloco da ficha responsável por salvar cada campo (rota PATCH parcial).
 const BLOCO_DE = {
     polo: 'identificacao', fase: 'identificacao', data_solicitacao: 'identificacao',
-    acesso_colaborador: 'acessos', gmail_colaborador: 'acessos', grupo_whatsapp: 'acessos',
+    status_entrada: 'identificacao', chance_entrada: 'identificacao',
+    acesso_colaborador: 'acessos', gmail_colaborador: 'acessos', grupo_whatsapp: 'acessos', reuniao_onboarding: 'acessos',
     planilha_produtos: 'produtos', listagem: 'produtos', publicacao: 'produtos', decola: 'produtos', campanha_criada: 'produtos',
     contextos_logistica: 'logistica', me1: 'logistica', integradora: 'logistica', places: 'logistica', erp: 'logistica',
 };
@@ -73,9 +75,9 @@ const corFase = (f) => COR_FASE[f] ?? 'text-white/70';
 
 // Cor do texto por valor de onboarding (verde=ok · âmbar=em progresso · vermelho=bloqueio).
 // Espelha a classificação da ficha (corStatus) — só a cor do texto, p/ a grade escaneável.
-const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado'];
-const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando'];
-const VAL_NEG  = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal'];
+const VAL_POS  = ['Com acesso', 'Já enviado', 'Já listado', 'Concluído', 'Concluido', 'Sim', 'Ativo', 'Checklist realizado', 'Feito', 'Alta'];
+const VAL_PROG = ['Pronto para listar', 'Estágio 2', 'Em contratação', 'Realizando checklist', 'Solicitado', 'Precisa de ME1', 'Aguardando contato', 'Conversando com cliente', 'Pendente com integradora', 'Preenchendo tabela', 'Verificando', 'Agendada', 'em contato', 'Média', 'Reserva - entrada prox mês'];
+const VAL_NEG  = ['Sem acesso', 'Banida', 'Churn', 'Encerrado', 'Não', 'Não enviado', 'Suspensa', 'Falta informação', 'Falta emissor fiscal', 'Falta certificado A1', 'Falta endereço fiscal', 'Baixo', 'Abandonou o projeto', 'Não compareceu', 'Não responde', 'Não tem CNPJ', 'Não tem conta ML'];
 function corValor(v) {
     if (!v) return 'text-white/25';
     if (VAL_POS.includes(v)) return 'text-emerald-300';
@@ -124,11 +126,11 @@ function fmtDataBR(v) {
 }
 
 // Campos de select editável que aceitam "＋ Criar novo valor" inline.
-const CAMPOS_CRIAVEIS = ['fase', 'polo', 'acesso_colaborador', 'planilha_produtos', 'listagem', 'publicacao', 'me1', 'integradora', 'places', 'erp'];
+const CAMPOS_CRIAVEIS = ['fase', 'polo', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'planilha_produtos', 'listagem', 'publicacao', 'me1', 'integradora', 'places', 'erp'];
 
 // ─── Edição em MASSA ────────────────────────────────────────────────────────────────
 // Campos que exigem ficha (o backend IGNORA empresas sem ficha p/ estes; fase/polo não).
-const CAMPOS_SO_FICHA = ['responsavel_id', 'status_envio', 'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'contextos_logistica', 'me1', 'integradora', 'places', 'erp', 'data_solicitacao'];
+const CAMPOS_SO_FICHA = ['responsavel_id', 'status_envio', 'status_entrada', 'chance_entrada', 'reuniao_onboarding', 'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada', 'contextos_logistica', 'me1', 'integradora', 'places', 'erp', 'data_solicitacao'];
 
 // Caixa de seleção temática (mesmo visual do AutoFiltro). state: 'on' | 'off' | 'ind'.
 function CaixaSel({ state }) {
@@ -301,6 +303,78 @@ function ToastLote({ info, temUndo, onUndo, onFechar, busy }) {
     );
 }
 
+// ─── Modal "Arquivados" ───────────────────────────────────────────────────────────
+// Lista as empresas arquivadas (ausentes na planilha V2). Só leitura + "Desarquivar".
+// Nada aqui conta em metas/faturamento/painel — é o "limbo" reversível.
+function ArquivadasModal({ arquivadas = [], onDesarquivar, onClose }) {
+    const [q, setQ] = useState('');
+    const ql = q.trim().toLowerCase();
+    const lista = ql
+        ? arquivadas.filter((a) => `${a.nome} ${a.cust_id ?? ''} ${a.polo ?? ''}`.toLowerCase().includes(ql))
+        : arquivadas;
+    return (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/10 bg-ecf-card shadow-2xl">
+                <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+                    <div>
+                        <h3 className="flex items-center gap-2 font-semibold text-white"><Archive size={16} /> Empresas arquivadas</h3>
+                        <p className="mt-0.5 text-[12px] text-white/40">{arquivadas.length} empresa{arquivadas.length === 1 ? '' : 's'} · fora do projeto Polos (não contam em metas, faturamento nem no painel).</p>
+                    </div>
+                    <button onClick={onClose} className="text-white/40 transition hover:text-white"><X size={18} /></button>
+                </div>
+                <div className="border-b border-white/[0.06] px-5 py-3">
+                    <div className="relative">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
+                        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar arquivada…"
+                            className="w-full rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
+                    </div>
+                </div>
+                <div className="flex-1 overflow-auto">
+                    {lista.length === 0 ? (
+                        <p className="px-5 py-12 text-center text-sm text-white/25">{arquivadas.length === 0 ? 'Nenhuma empresa arquivada.' : 'Nenhuma arquivada neste filtro.'}</p>
+                    ) : (
+                        <table className="w-full text-left text-[12px]">
+                            <thead className="sticky top-0 bg-ecf-card">
+                                <tr className="border-b border-white/[0.1] text-white/45 text-[11px] uppercase tracking-wider">
+                                    <th className="px-4 py-2.5 font-semibold">Empresa</th>
+                                    <th className="px-3 py-2.5 font-semibold">Fase</th>
+                                    <th className="px-3 py-2.5 font-semibold">Polo</th>
+                                    <th className="px-3 py-2.5 font-semibold">Arquivada em</th>
+                                    <th className="px-3 py-2.5 font-semibold">Motivo</th>
+                                    <th className="px-4 py-2.5" />
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {lista.map((a) => (
+                                    <tr key={a.id} className="border-b border-white/[0.05] hover:bg-white/[0.02]">
+                                        <td className="px-4 py-2.5">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-semibold text-white/90">{a.nome}</span>
+                                                {a.cust_id && <span className="rounded border border-white/10 bg-white/[0.04] px-1 py-0.5 font-mono text-[10px] text-white/45">{a.cust_id}</span>}
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-white/60">{a.fase || '—'}</td>
+                                        <td className="px-3 py-2.5 text-white/60">{a.polo || '—'}</td>
+                                        <td className="px-3 py-2.5 tabular-nums text-white/50">{a.arquivado_em || '—'}</td>
+                                        <td className="max-w-[220px] truncate px-3 py-2.5 text-white/45" title={a.arquivado_motivo ?? ''}>{a.arquivado_motivo || '—'}</td>
+                                        <td className="px-4 py-2.5 text-right">
+                                            <button type="button" onClick={() => onDesarquivar(a)}
+                                                className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20">
+                                                <Undo2 size={12} /> Desarquivar
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function Barra({ pct, cor }) {
     const p = Math.max(0, Math.min(100, Number(pct ?? 0)));
     return (
@@ -419,6 +493,7 @@ function EditDate({ e, campo, onSave, onCriar }) {
 export default function PolosPainel({
     isAdmin  = false,
     empresas = [],
+    arquivadas = [],
     usuarios = [],
     opcoes   = {},
     metasEntrada = [],
@@ -466,6 +541,7 @@ export default function PolosPainel({
     const [expandida, setExpandida]   = useState(null);
     const [verModal, setVerModal]     = useState(null);   // empresa aberta no modal "Ver"
     const [telaCheia, setTelaCheia]   = useState(false);  // modo planilha em tela cheia
+    const [mostrarArquivadas, setMostrarArquivadas] = useState(false); // modal "Arquivados"
     const [editNota, setEditNota]     = useState({});
     const [semanal, setSemanal]       = useState({});
 
@@ -527,9 +603,12 @@ export default function PolosPainel({
             responsavel:         { key: 'responsavel', label: 'Responsável', accessor: respNome, format: (v) => (v === VAZIO ? '(Sem responsável)' : v) },
             onboarding:          { key: 'onboarding', label: 'Onboarding', type: 'number', filter: false, accessor: (e) => e.onboarding_progresso?.pct ?? null },
             envio:               { key: 'envio', label: 'Envio', accessor: (e) => e.status_envio, format: (v) => (v === VAZIO ? '(Sem envio)' : (STATUS_ENVIO_LABELS[v] ?? v)) },
+            status_entrada:      { key: 'status_entrada', label: 'Status entrada', accessor: (e) => e.status_entrada },
+            chance_entrada:      { key: 'chance_entrada', label: 'Chance entrada', accessor: (e) => e.chance_entrada },
             acesso_colaborador:  { key: 'acesso_colaborador', label: 'Acesso colaborador', accessor: (e) => e.acesso_colaborador },
             gmail_colaborador:   { key: 'gmail_colaborador', label: 'Gmail colaborador', accessor: (e) => e.gmail_colaborador },
             grupo_whatsapp:      { key: 'grupo_whatsapp', label: 'Grupo WhatsApp', accessor: (e) => (e.grupo_whatsapp === true ? 'Sim' : e.grupo_whatsapp === false ? 'Não' : null) },
+            reuniao_onboarding:  { key: 'reuniao_onboarding', label: 'Reunião onboarding', accessor: (e) => e.reuniao_onboarding },
             data_solicitacao:    { key: 'data_solicitacao', label: 'Data solicitação', type: 'date', accessor: (e) => e.data_solicitacao, format: (v) => (v === VAZIO ? '(Vazios)' : fmtDataBR(v)) },
             data_cadastro:       { key: 'data_cadastro', label: 'Cadastro', type: 'date', sortable: true, accessor: (e) => e.data_cadastro, format: (v) => (v === VAZIO ? '(Sem data)' : fmtDataBR(v)) },
             planilha_produtos:   { key: 'planilha_produtos', label: 'Planilha produtos', accessor: (e) => e.planilha_produtos },
@@ -654,6 +733,9 @@ export default function PolosPainel({
         { campo: 'polo',               label: 'Polo',               tipo: 'select', opcoes: opcPolo },
         { campo: 'responsavel_id',     label: 'Responsável',        tipo: 'select', opcoes: opcResp },
         { campo: 'status_envio',       label: 'Envio do link',      tipo: 'select', opcoes: opcEnvio },
+        { campo: 'status_entrada',     label: 'Status entrada',     tipo: 'select', opcoes: enumOpc('status_entrada') },
+        { campo: 'chance_entrada',     label: 'Chance entrada',     tipo: 'select', opcoes: enumOpc('chance_entrada') },
+        { campo: 'reuniao_onboarding', label: 'Reunião onboarding', tipo: 'select', opcoes: enumOpc('reuniao_onboarding') },
         { campo: 'acesso_colaborador', label: 'Acesso colaborador', tipo: 'select', opcoes: enumOpc('acesso_colaborador') },
         { campo: 'planilha_produtos',  label: 'Planilha produtos',  tipo: 'select', opcoes: enumOpc('planilha_produtos') },
         { campo: 'listagem',           label: 'Listagem',           tipo: 'select', opcoes: enumOpc('listagem') },
@@ -713,6 +795,12 @@ export default function PolosPainel({
     const marcarEnviado = (e) => router.post(route('mlb.implementacao.marcar-enviado', e.impl_id), {}, reloadOpts);
     const desfazerEnvio = (e) => router.post(route('mlb.implementacao.desfazer-envio', e.impl_id), {}, reloadOpts);
     const criarOnboarding = (e) => { if (window.confirm(`Criar ficha de onboarding para "${e.nome}"?`)) router.post(route('mlb.implementacao.gerar', e.id), {}, reloadOpts); };
+    // Arquivar/desarquivar (aba Arquivados): reversível; recarrega empresas + arquivadas.
+    const arquivar = (e) => {
+        if (!window.confirm(`Arquivar "${e.nome}"?\n\nEla sai do Painel e não conta mais em metas, faturamento nem cockpit. É reversível pela aba "Arquivados".`)) return;
+        router.post(route('mlb.polos-painel.arquivar', e.id), {}, reloadOpts);
+    };
+    const desarquivar = (e) => router.post(route('mlb.polos-painel.desarquivar', e.id), {}, reloadOpts);
     const sincronizar = () =>
         router.post(route('polos.sync'), mesEfetivo ? { mes: mesEfetivo } : {}, {
             preserveScroll: true, preserveState: true,
@@ -740,7 +828,7 @@ export default function PolosPainel({
         window.axios.post(route('mlb.polos-painel.meta-entrada'), { polo, mes, meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [csrf_token]);
 
-    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, toggleExpandir, verEmpresa: setVerModal };
+    const handlers = { salvarCampo, trocarResponsavel, toggleProblema, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal };
 
     // ── Modo TELA CHEIA (planilha): overlay que estoura sidebar/max-width + Fullscreen API. ──
     const toggleTelaCheia = useCallback(() => {
@@ -929,14 +1017,24 @@ export default function PolosPainel({
                             </button>
                         ))}
                     </div>
-                    <button type="button" onClick={toggleTelaCheia}
-                        title={telaCheia ? 'Sair da tela cheia (Esc)' : 'Abrir a planilha em tela cheia'}
-                        className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition',
-                            telaCheia ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
-                                      : 'border-white/[0.1] bg-white/[0.04] text-white/80 hover:border-white/25 hover:bg-white/[0.08]')}>
-                        {telaCheia ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-                        {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                        <button type="button" onClick={() => setMostrarArquivadas(true)}
+                            title="Empresas arquivadas (fora do projeto Polos — não contam em nada)"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.04] px-3 py-1.5 text-[12px] font-semibold text-white/80 transition hover:border-white/25 hover:bg-white/[0.08]">
+                            <Archive size={13} /> Arquivados
+                            {arquivadas.length > 0 && (
+                                <span className="ml-0.5 rounded-full bg-white/[0.12] px-1.5 py-0.5 text-[10px] tabular-nums text-white/70">{arquivadas.length}</span>
+                            )}
+                        </button>
+                        <button type="button" onClick={toggleTelaCheia}
+                            title={telaCheia ? 'Sair da tela cheia (Esc)' : 'Abrir a planilha em tela cheia'}
+                            className={cn('inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[12px] font-semibold transition',
+                                telaCheia ? 'border-ecf-yellow/40 bg-ecf-yellow/10 text-ecf-yellow'
+                                          : 'border-white/[0.1] bg-white/[0.04] text-white/80 hover:border-white/25 hover:bg-white/[0.08]')}>
+                            {telaCheia ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                            {telaCheia ? 'Sair da tela cheia' : 'Tela cheia'}
+                        </button>
+                    </div>
                 </div>
 
                 {/* ── Aba Metas (dashboard + planilha) OU Grade (planilha das lentes) ── */}
@@ -1061,6 +1159,15 @@ export default function PolosPainel({
                     onClose={() => setVerModal(null)}
                 />
             )}
+
+            {/* Modal "Arquivados" — empresas fora do projeto Polos (não contam em nada) */}
+            {mostrarArquivadas && (
+                <ArquivadasModal
+                    arquivadas={arquivadas}
+                    onDesarquivar={desarquivar}
+                    onClose={() => setMostrarArquivadas(false)}
+                />
+            )}
         </AppLayout>
     );
 }
@@ -1074,14 +1181,14 @@ const COLS_POR_LENTE = {
     // Produtos → Logística → Financeiro admin → Ações). As fin_* só entram p/ admin (colsDaLente).
     geral: [
         'data_cadastro',
-        'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio',
-        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'data_solicitacao',
+        'fase', 'estagio', 'polo', 'responsavel', 'onboarding', 'envio', 'status_entrada', 'chance_entrada',
+        'acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'reuniao_onboarding', 'data_solicitacao',
         'planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada',
         'contextos_logistica', 'me1', 'integradora', 'places', 'erp',
         'fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status',
         '__acoes__',
     ],
-    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'data_solicitacao'],
+    acessos:    ['acesso_colaborador', 'gmail_colaborador', 'grupo_whatsapp', 'reuniao_onboarding', 'data_solicitacao'],
     produtos:   ['planilha_produtos', 'listagem', 'publicacao', 'decola', 'campanha_criada'],
     logistica:  ['contextos_logistica', 'me1', 'integradora', 'places', 'erp'],
     financeiro: ['fin_faturamento', 'fin_meta', 'fin_pct', 'fin_ads', 'fin_status'],
@@ -1217,12 +1324,15 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                 </div>
             ) : <span className="text-white/20 text-[12px]">—</span>}
         </td>
+        <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="status_entrada" opcoes={opcoes.status_entrada} presentes={valoresPresentes.status_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
+        <td className={td}><div className="min-w-[110px]"><EditSelect e={e} campo="chance_entrada" opcoes={opcoes.chance_entrada} presentes={valoresPresentes.chance_entrada} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
     </>);
 
     const celAcessos = (<>
         <td className={td}><div className="min-w-[140px]"><EditSelect e={e} campo="acesso_colaborador" opcoes={opcoes.acesso_colaborador} presentes={valoresPresentes.acesso_colaborador} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[200px]"><EditText e={e} campo="gmail_colaborador" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} placeholder="gmail…" wide /></div></td>
         <td className={td}><EditToggle e={e} campo="grupo_whatsapp" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></td>
+        <td className={td}><div className="min-w-[130px]"><EditSelect e={e} campo="reuniao_onboarding" opcoes={opcoes.reuniao_onboarding} presentes={valoresPresentes.reuniao_onboarding} onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} cor={corValor} /></div></td>
         <td className={td}><div className="min-w-[140px]"><EditDate e={e} campo="data_solicitacao" onSave={on.salvarCampo} onCriar={() => on.criarOnboarding(e)} /></div></td>
     </>);
 
@@ -1265,6 +1375,8 @@ function LinhaPainel({ e, idx, selecionada, onToggleSel, lente, isAdmin, opcoes,
                 ) : (
                     <button onClick={() => on.criarOnboarding(e)} className="inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-white/[0.05] hover:bg-white/[0.1] text-white/60 hover:text-white text-[11px] transition" title="Criar ficha de onboarding"><FilePlus2 size={12} /></button>
                 )}
+                <button onClick={() => on.arquivar(e)} title="Arquivar (sai do painel; não conta em nada — reversível)"
+                    className="p-1.5 rounded-lg text-white/40 transition hover:text-amber-300 hover:bg-white/[0.06]"><Archive size={13} /></button>
             </div>
         </td>
     );
