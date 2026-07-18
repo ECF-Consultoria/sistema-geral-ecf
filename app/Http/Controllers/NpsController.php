@@ -795,6 +795,28 @@ class NpsController extends Controller
             return Inertia::render('Nps/Expired');
         }
 
+        // Phase 96 AB-96-1 (hotfix 2026-07-17) — bloqueio já na ABERTURA:
+        // usuário interno autenticado que abre um survey respondível vê a tela
+        // de bloqueio no lugar das perguntas. Antes o bloqueio existia só no
+        // submit (POST), o que deixava o interno abrir e preencher o formulário
+        // inteiro para só então ser barrado — UX confusa e lida como "não
+        // funcionou". Clientes não têm login neste painel, então auth()->check()
+        // só é verdadeiro para colaborador interno. O bloqueio do submit
+        // permanece como defesa em profundidade (POST direto/API). O evento
+        // OPENED já foi registrado acima; aqui somamos o 'blocked' para auditar.
+        if (auth()->check()) {
+            NpsSurveyEvent::create([
+                'survey_id'  => $survey->id,
+                'event_type' => NpsSurveyEvent::TYPE_BLOCKED,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'user_id'    => auth()->id(),
+                'metadata'   => ['fase' => 'abertura'],
+            ]);
+
+            return Inertia::render('Nps/Blocked');
+        }
+
         $estrategista = $survey->company->users()->wherePivot('role', 'estrategista')->first();
         $analista     = $survey->company->users()->wherePivot('role', 'consultor')->first();
 

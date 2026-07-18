@@ -13,11 +13,14 @@ use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 /**
- * Phase 96 Plan 01 (AB-96-1) — endurecimento da Regra 4 da Fase 94: um POST
- * /nps/{token} em sessão autenticada de usuário interno passa a ser
- * BLOQUEADO (nenhuma NpsResponse é criada), com evento `blocked` auditado.
+ * Phase 96 Plan 01 (AB-96-1) — endurecimento da Regra 4 da Fase 94: uma
+ * requisição /nps/{token} em sessão autenticada de usuário interno passa a
+ * ser BLOQUEADA, com evento `blocked` auditado.
  *
- * A ABERTURA (GET) continua permitida e inalterada — só o SUBMIT é afetado.
+ * Hotfix 2026-07-17: o bloqueio passou a valer também na ABERTURA (GET) —
+ * o interno vê a tela `Nps/Blocked` no lugar das perguntas. O bloqueio do
+ * SUBMIT (POST) permanece como defesa em profundidade. A abertura anônima
+ * (cliente sem login) continua vendo as perguntas normalmente.
  */
 class NpsBloqueioSessaoInternaTest extends TestCase
 {
@@ -133,25 +136,61 @@ class NpsBloqueioSessaoInternaTest extends TestCase
         );
     }
 
+    // ═══ Hotfix 2026-07-17 — bloqueio também na ABERTURA (GET) ═══
+
     /**
-     * GET /nps/{token} logado como interno continua 200 e emitindo 'opened'
-     * — regressão do comportamento da Fase 94 (a ABERTURA nunca foi tocada).
+     * GET /nps/{token} logado como interno agora renderiza 'Nps/Blocked' (o
+     * interno NÃO vê as perguntas), mantendo o registro do 'opened' (rastro da
+     * Fase 94) e somando um 'blocked' com fase='abertura' e o user_id da sessão.
      */
-    public function test_get_logado_como_interno_continua_permitido_e_emite_opened(): void
+    public function test_get_de_usuario_interno_logado_renderiza_blocked(): void
     {
         $interno = User::factory()->create(['role' => 'admin']);
         $empresa = $this->criarEmpresa();
         $survey  = $this->criarSurveyPendente($empresa);
 
         $this->actingAs($interno)
+            ->withServerVariables(['REMOTE_ADDR' => '198.51.100.31'])
             ->get("/nps/{$survey->token}")
-            ->assertOk();
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Nps/Blocked'));
 
-        $evento = NpsSurveyEvent::where('survey_id', $survey->id)
-            ->where('event_type', NpsSurveyEvent::TYPE_OPENED)
+        // O rastro de abertura da Fase 94 permanece.
+        $this->assertNotNull(
+            NpsSurveyEvent::where('survey_id', $survey->id)
+                ->where('event_type', NpsSurveyEvent::TYPE_OPENED)
+                ->first()
+        );
+
+        // E o bloqueio da abertura é auditado com o discriminador de fase.
+        $blocked = NpsSurveyEvent::where('survey_id', $survey->id)
+            ->where('event_type', NpsSurveyEvent::TYPE_BLOCKED)
             ->first();
 
-        $this->assertNotNull($evento);
-        $this->assertSame($interno->id, $evento->user_id);
+        $this->assertNotNull($blocked);
+        $this->assertSame($interno->id, $blocked->user_id);
+        $this->assertSame('abertura', $blocked->metadata['fase'] ?? null);
+    }
+
+    /**
+     * GET ANÔNIMO (cliente sem login) NÃO é bloqueado — vê as perguntas
+     * (qualquer componente exceto 'Nps/Blocked') e nenhum evento 'blocked'
+     * é gerado. Prova que o fluxo público não regride.
+     */
+    public function test_get_anonimo_nao_e_bloqueado_e_ve_as_perguntas(): void
+    {
+        $empresa = $this->criarEmpresa();
+        $survey  = $this->criarSurveyPendente($empresa);
+
+        $this->get("/nps/{$survey->token}")
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page->component('Nps/Respond'));
+
+        $this->assertSame(
+            0,
+            NpsSurveyEvent::where('survey_id', $survey->id)
+                ->where('event_type', NpsSurveyEvent::TYPE_BLOCKED)
+                ->count()
+        );
     }
 }
