@@ -41,7 +41,7 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### MENU — Reorganização de navegação (Fase 93)
 
-- [ ] **MENU-01**: Carteira e Desempenho (e Metas, se fizer sentido) saem do grupo "Mercado Livre" para um grupo transversal "Gestão ECF"; o grupo Mercado Livre mantém apenas telas realmente ML
+- [x] **MENU-01**: Carteira e Desempenho (e Metas, se fizer sentido) saem do grupo "Mercado Livre" para um grupo transversal "Gestão ECF"; o grupo Mercado Livre mantém apenas telas realmente ML
 
 ## Critérios de aceite globais (do plano canônico)
 
@@ -82,4 +82,4 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 | DESEMP-06 | Fase 91 | Complete |
 | DESEMP-07 | Fase 91 | Complete |
 | DESEMP-08 | Fase 92 | Complete |
-| MENU-01 | Fase 93 | Pending |
+| MENU-01 | Fase 93 | Complete |
