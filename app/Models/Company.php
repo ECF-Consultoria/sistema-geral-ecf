@@ -31,6 +31,8 @@ class Company extends Model
         'cust_id_status', 'marketplace',
         'segment', 'active', 'status', 'notes', 'email_cliente', 'telefone',
         'parent_company_id', 'company_group_id', 'ml_link_generated_at', 'ml_link_url',
+        // Link pendente de autorização Shopee (espelha ml_link_*).
+        'shopee_link_generated_at', 'shopee_link_url',
         // Phase 34 Plan 34-01 — info do close comercial.
         'nicho', 'dor', 'vende_ml', 'faturamento_mensal',
         'marketplaces_extras', 'email_colaborador',
@@ -46,6 +48,7 @@ class Company extends Model
         'status'               => 'string',
         'cust_id_status'       => 'string',
         'ml_link_generated_at' => 'datetime',
+        'shopee_link_generated_at' => 'datetime',
         // Phase 34 Plan 34-01 — D-01 + D-09.
         'vende_ml'              => 'boolean',
         'empresa_nova'          => 'boolean',
@@ -344,6 +347,11 @@ class Company extends Model
     public function mlToken()
     {
         return $this->hasOne(MlToken::class);
+    }
+
+    public function shopeeToken()
+    {
+        return $this->hasOne(ShopeeToken::class);
     }
 
     /**
