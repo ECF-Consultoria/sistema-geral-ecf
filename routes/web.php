@@ -24,6 +24,7 @@ use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\MercadoLivreOAuthController;
+use App\Http\Controllers\ShopeeOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
@@ -90,6 +91,10 @@ Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::cla
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
     ->name('ml.oauth.callback');
+
+// Shopee OAuth — callback público (a Shopee redireciona com state+code+shop_id)
+Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
+    ->name('shopee.oauth.callback');
 
 // Google OAuth (público — sem autenticação durante o callback)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
@@ -679,6 +684,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/companies/{company}/ml/sync-now',   [MercadoLivreOAuthController::class, 'syncNow'])->name('ml.sync.now');
         // Sync global: dispara fan-out D-1 de todas as empresas com token ML ativo
         Route::post('/ml-oauth/sync-all',                  [MercadoLivreOAuthController::class, 'syncAll'])->name('ml.oauth.sync-all');
+
+        // Shopee OAuth — painel dedicado + ações por empresa (admin only, herdado do grupo)
+        Route::get('/shopee-oauth',                            [ShopeeOAuthController::class, 'adminIndex'])->name('shopee.oauth.index');
+        Route::post('/companies/{company}/shopee/initiate',   [ShopeeOAuthController::class, 'initiate'])->name('shopee.oauth.initiate');
+        Route::delete('/companies/{company}/shopee/disconnect',[ShopeeOAuthController::class, 'disconnect'])->name('shopee.oauth.disconnect');
+        Route::post('/companies/{company}/shopee/sync-now',   [ShopeeOAuthController::class, 'syncNow'])->name('shopee.sync.now');
 
         // ─── Módulo Serviços (Frente A) ──────────────────────────────────
         // Catálogo de serviços + contratos por empresa. Acesso admin-only
