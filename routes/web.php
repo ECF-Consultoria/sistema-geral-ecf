@@ -685,9 +685,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Sync global: dispara fan-out D-1 de todas as empresas com token ML ativo
         Route::post('/ml-oauth/sync-all',                  [MercadoLivreOAuthController::class, 'syncAll'])->name('ml.oauth.sync-all');
 
-        // Shopee OAuth — painel dedicado + ações por empresa (admin only, herdado do grupo)
-        Route::get('/shopee-oauth',                            [ShopeeOAuthController::class, 'adminIndex'])->name('shopee.oauth.index');
-        Route::post('/companies/{company}/shopee/initiate',   [ShopeeOAuthController::class, 'initiate'])->name('shopee.oauth.initiate');
+        // Shopee OAuth — painel dedicado + ações por empresa.
+        // Ver painel + gerar link: gated por permission:sistema.shopee_oauth
+        // (admin herda; também usado pela conta de review da Shopee no Go Live).
+        // Desconectar + sync manual permanecem admin-only (herdado do grupo).
+        Route::get('/shopee-oauth',                            [ShopeeOAuthController::class, 'adminIndex'])
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.index');
+        Route::post('/companies/{company}/shopee/initiate',   [ShopeeOAuthController::class, 'initiate'])
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.initiate');
         Route::delete('/companies/{company}/shopee/disconnect',[ShopeeOAuthController::class, 'disconnect'])->name('shopee.oauth.disconnect');
         Route::post('/companies/{company}/shopee/sync-now',   [ShopeeOAuthController::class, 'syncNow'])->name('shopee.sync.now');
 
