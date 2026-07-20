@@ -889,7 +889,7 @@ Plans:
 **Goal:** Existe uma camada dedicada (`AdmanMetricDiffService`) que lê a variação pronta da Adman (`.diff`) em vez de recalcular margem/faturamento na mão — hoje o `AdmanService` descarta o `.diff` e lê só `['value']` — com fallback marcado quando a Adman não trouxer o diff para a janela.
 **Requirements**: ADM-01, ADM-02, ADM-03, ADM-04, ADM-05
 **Depends on:** Nada (independente do resolver — pode ser planejada/executada em paralelo à Fase 100)
-**Plans:** TBD
+**Plans:** 2 plans em 2 waves
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -901,7 +901,8 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 101 to break down)
+- [ ] 101-01-PLAN.md — AdmanMetricDiffService (núcleo): leitura ao vivo do diff de período com gate por comparison_mode + fallback calculado + leitura detalhada aditiva de account-metrics (ADM-01/02/03/05)
+- [ ] 101-02-PLAN.md — ADM-04 reframado: helper de diff DIÁRIO do raw_data (scope=daily) + guard anti-confusão (Pitfall 1); sem backfill de colunas (live-read)
 
 ### Phase 102: Desempenho oficial por competência (v18.0)
 
