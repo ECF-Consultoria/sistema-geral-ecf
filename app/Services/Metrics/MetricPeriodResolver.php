@@ -169,6 +169,106 @@ class MetricPeriodResolver
         return $freshUntil;
     }
 
+    // ─────────────────────── Modo 2: oficial/bônus (último mês fechado) ───────────────────────
+
+    /**
+     * `last_closed_month` → `mode='official_bonus'`,
+     * `comparison_mode='previous_equal_length_window'`.
+     *
+     * Plano §131-173: competência = mês calendário anterior ao corrente
+     * (jan/2026 → competência dez/2025). current = mês completo da
+     * competência. baseline = N dias imediatamente anteriores a
+     * current_start (janela de mesmo tamanho — `baselineJanelaMesmoTamanho`).
+     * bonus_competence_month = competência; bonus_payment_month =
+     * competência + 1 mês (= mês corrente).
+     */
+    private function resolveLastClosedMonth(): array
+    {
+        $now            = $this->now();
+        $competenceStart = $now->copy()->startOfMonth()->subMonthNoOverflow()->startOfDay();
+
+        $currentStart = $competenceStart->copy();
+        $currentEnd   = $competenceStart->copy()->endOfMonth()->startOfDay();
+        $daysCount    = $currentStart->daysInMonth;
+
+        [$baselineStart, $baselineEnd] = $this->baselineJanelaMesmoTamanho($currentStart, $daysCount);
+
+        return $this->buildResult([
+            'mode'                   => 'official_bonus',
+            'period_key'             => 'last_closed_month',
+            'current_start'          => $currentStart,
+            'current_end'            => $currentEnd,
+            'baseline_start'         => $baselineStart,
+            'baseline_end'           => $baselineEnd,
+            'days_count'             => $daysCount,
+            'comparison_mode'        => 'previous_equal_length_window',
+            'data_fresh_until'       => $currentEnd,
+            'bonus_payment_month'    => $competenceStart->copy()->addMonthNoOverflow()->format('Y-m'),
+            'bonus_competence_month' => $competenceStart->format('Y-m'),
+            'is_current_month'       => false,
+            'is_closed'              => true,
+        ]);
+    }
+
+    // ─────────────────────── Modo 3: mês específico (YYYY-MM) ───────────────────────
+
+    /**
+     * `YYYY-MM` → `mode='closed_period'`,
+     * `comparison_mode='previous_equal_length_window'`.
+     *
+     * Plano §199-201: current = mês calendário completo selecionado;
+     * baseline = janela-de-mesmo-tamanho imediatamente anterior;
+     * `bonus_*=null` (bônus oficial é SÓ `last_closed_month`); `is_closed`
+     * = último dia do mês selecionado < hoje; `is_current_month` = mês
+     * selecionado == mês corrente.
+     */
+    private function resolveSpecificMonth(string $periodKey): array
+    {
+        $monthStart = Carbon::parse($periodKey . '-01', self::TIMEZONE)->startOfMonth()->startOfDay();
+        $currentEnd = $monthStart->copy()->endOfMonth()->startOfDay();
+        $daysCount  = $monthStart->daysInMonth;
+
+        [$baselineStart, $baselineEnd] = $this->baselineJanelaMesmoTamanho($monthStart, $daysCount);
+
+        $today = $this->now()->startOfDay();
+
+        return $this->buildResult([
+            'mode'                   => 'closed_period',
+            'period_key'             => $periodKey,
+            'current_start'          => $monthStart,
+            'current_end'            => $currentEnd,
+            'baseline_start'         => $baselineStart,
+            'baseline_end'           => $baselineEnd,
+            'days_count'             => $daysCount,
+            'comparison_mode'        => 'previous_equal_length_window',
+            'data_fresh_until'       => $currentEnd,
+            'bonus_payment_month'    => null,
+            'bonus_competence_month' => null,
+            'is_current_month'       => $monthStart->format('Y-m') === $today->format('Y-m'),
+            'is_closed'              => $currentEnd->lt($today),
+        ]);
+    }
+
+    // ─────────────────────── Helper compartilhado: janela de mesmo tamanho ───────────────────────
+
+    /**
+     * N dias imediatamente anteriores a `$currentStart` (inclusivos),
+     * N = `$daysCount`. Usado pelos modos `last_closed_month`, `YYYY-MM`
+     * e `custom` (janela-de-mesmo-tamanho — plano §158-173/199-206).
+     *
+     * `baseline_end` = `$currentStart` − 1 dia;
+     * `baseline_start` = `baseline_end` − (`$daysCount` − 1) dias.
+     *
+     * @return array{0: Carbon, 1: Carbon} [baselineStart, baselineEnd]
+     */
+    private function baselineJanelaMesmoTamanho(Carbon $currentStart, int $daysCount): array
+    {
+        $baselineEnd   = $currentStart->copy()->subDay();
+        $baselineStart = $baselineEnd->copy()->subDays($daysCount - 1);
+
+        return [$baselineStart, $baselineEnd];
+    }
+
     // ─────────────────────── Helpers de tempo/formatação ───────────────────────
 
     private function now(): Carbon
