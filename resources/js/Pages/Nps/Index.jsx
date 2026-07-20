@@ -3,7 +3,7 @@ import { Button } from '@/Components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/Components/ui/dialog';
 import { useForm, usePage, router } from '@inertiajs/react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Plus, Copy, CheckCircle,
     Briefcase, Users as UsersIcon, Building2, Eye,
@@ -317,6 +317,111 @@ function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, op
                     {options}
                 </SelectContent>
             </Select>
+        </div>
+    );
+}
+
+// ═══ SearchableGlassSelect — select com CAMPO DE BUSCA (2026-07-20) ═══════
+// O Radix Select puro (GlassSelect acima) não tem busca — com 150+ empresas
+// vira uma lista rolável impossível de filtrar ("não dá pra pesquisar"). Este
+// componente troca por um dropdown próprio: pill glass + painel com input de
+// busca (substring, case-insensitive) + lista filtrada. Fecha ao clicar fora
+// ou Esc; Enter seleciona o 1º resultado. `items` = [{ value, label }] (o 1º
+// costuma ser a opção "Todas ...", que nunca é filtrada).
+function SearchableGlassSelect({ icon: Icon, active, value, onValueChange, placeholder, items, width, searchPlaceholder = 'Buscar...', disabled = false }) {
+    const [open, setOpen]   = useState(false);
+    const [query, setQuery] = useState('');
+    const wrapRef  = useRef(null);
+    const inputRef = useRef(null);
+
+    const selected      = items.find(i => i.value === value);
+    const selectedLabel = selected?.label ?? placeholder;
+
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return items;
+        return items.filter(i => i.label.toLowerCase().includes(q));
+    }, [items, query]);
+
+    // fecha ao clicar fora
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+
+    // ao abrir: limpa a busca e foca o input
+    useEffect(() => {
+        if (open) { setQuery(''); const t = setTimeout(() => inputRef.current?.focus(), 10); return () => clearTimeout(t); }
+    }, [open]);
+
+    const pick = (v) => { onValueChange(v); setOpen(false); };
+
+    return (
+        <div ref={wrapRef} style={{ position: 'relative', width, maxWidth: '100%' }}>
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={() => { if (!disabled) setOpen(o => !o); }}
+                style={{ ...glassPillStyle(!!active), width: '100%', padding: 0, paddingLeft: Icon ? 10 : 12, overflow: 'hidden', justifyContent: 'flex-start', opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+            >
+                {Icon && <Icon size={15} style={{ color: 'rgba(255,255,255,0.5)', flexShrink: 0 }} />}
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                    {selectedLabel}
+                </span>
+                <ChevronDown size={13} style={{ color: 'rgba(255,255,255,0.4)', margin: '0 10px', flexShrink: 0 }} />
+            </button>
+
+            {open && (
+                <div style={{
+                    position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 60,
+                    width: '100%', minWidth: 260, maxWidth: '92vw',
+                    background: '#12141a', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 11, boxShadow: '0 14px 44px rgba(0,0,0,0.55)', overflow: 'hidden',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        <Search size={14} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
+                        <input
+                            ref={inputRef}
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Escape') setOpen(false);
+                                if (e.key === 'Enter' && filtered.length) { e.preventDefault(); pick(filtered[0].value); }
+                            }}
+                            placeholder={searchPlaceholder}
+                            style={{ flex: 1, background: 'transparent', border: 0, outline: 'none', color: '#eef', fontSize: 13 }}
+                        />
+                    </div>
+                    <div style={{ maxHeight: 300, overflowY: 'auto', padding: 4 }}>
+                        {filtered.length === 0 ? (
+                            <div style={{ padding: '10px 12px', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>Nada encontrado</div>
+                        ) : filtered.map(i => {
+                            const sel = i.value === value;
+                            return (
+                                <button
+                                    key={i.value}
+                                    type="button"
+                                    onClick={() => pick(i.value)}
+                                    style={{
+                                        display: 'block', width: '100%', textAlign: 'left',
+                                        padding: '7px 10px', borderRadius: 7, border: 0, cursor: 'pointer',
+                                        background: sel ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                        color: sel ? '#fff' : 'rgba(255,255,255,0.75)',
+                                        fontSize: 13, fontWeight: sel ? 600 : 500,
+                                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                    }}
+                                    onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'rgba(255,255,255,0.045)'; }}
+                                    onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    {i.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -1190,16 +1295,17 @@ export default function NpsIndex({
                                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                                 ))}
                             />
-                            <GlassSelect
+                            <SearchableGlassSelect
+                                icon={Building2}
+                                active={!!filtros.empresa_id}
                                 value={filtros.empresa_id ? String(filtros.empresa_id) : '__all__'}
                                 onValueChange={handleEmpresaChange}
                                 placeholder="Todas as empresas"
+                                searchPlaceholder="Buscar empresa..."
                                 width={210}
-                                options={[
-                                    <SelectItem key="__all__" value="__all__">Todas as empresas</SelectItem>,
-                                    ...companies.map(c => (
-                                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                                    )),
+                                items={[
+                                    { value: '__all__', label: 'Todas as empresas' },
+                                    ...companies.map(c => ({ value: String(c.id), label: c.name })),
                                 ]}
                             />
                             {/* Ajuste 2026-07-13 · filtro por modelo NPS. Só
@@ -1421,35 +1527,23 @@ export default function NpsIndex({
                             desabilitado até escolher o modelo / durante a carga. */}
                         <div className="space-y-1.5">
                             <label className="text-xs text-white/70 font-medium">2 · Empresa</label>
-                            <Select
-                                value={data.company_id || undefined}
-                                onValueChange={v => setData('company_id', v)}
+                            {/* 2026-07-20 · seletor pesquisável (o modelo "padrão"
+                                lista TODAS as empresas — sem busca virava lista
+                                impossível de rolar). */}
+                            <SearchableGlassSelect
+                                active={!!data.company_id}
                                 disabled={!data.template_id || carregandoEmpresas}
-                                required
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder={
-                                        !data.template_id
-                                            ? 'Escolha um modelo primeiro'
-                                            : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
-                                    } />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {empresasElegiveis.length === 0 && !carregandoEmpresas ? (
-                                        <div className="px-2 py-1.5 text-xs text-white/50">
-                                            Nenhuma empresa elegível para este modelo
-                                        </div>
-                                    ) : (
-                                        empresasElegiveis.map(c => {
-                                            // Pitfall 4 (Rollup): derivar value dentro do map.
-                                            const value = String(c.id);
-                                            return (
-                                                <SelectItem key={c.id} value={value}>{c.name}</SelectItem>
-                                            );
-                                        })
-                                    )}
-                                </SelectContent>
-                            </Select>
+                                value={data.company_id || ''}
+                                onValueChange={v => setData('company_id', v)}
+                                placeholder={
+                                    !data.template_id
+                                        ? 'Escolha um modelo primeiro'
+                                        : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
+                                }
+                                searchPlaceholder="Buscar empresa..."
+                                width="100%"
+                                items={empresasElegiveis.map(c => ({ value: String(c.id), label: c.name }))}
+                            />
                             {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
                         </div>
 
