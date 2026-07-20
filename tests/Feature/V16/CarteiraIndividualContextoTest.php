@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\Servico;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -16,11 +17,30 @@ use Tests\TestCase;
  * mesmo profissional aparece 1x, com `servicos[]` listando os 2 vinculos
  * separadamente; o vinculo Shopee sempre com `financial_metrics_eligible
  * === false`.
+ *
+ * ISOLAMENTO HTTP (Fase 103 Plan 01 — decisao travada 6): desde que
+ * `renderCarteiraProfissional()` passou a chamar
+ * `AdmanMetricDiffService::compute()` por empresa elegivel (leitura ao vivo
+ * fail-open da Adman), esta suite precisa de `Http::preventStrayRequests()`
+ * + fake 404 nos 2 endpoints pra forcar `calculated_fallback` deterministico
+ * (sem rede). Nenhum teste aqui asserta `margem_variacao_pct` — os NUMEROS
+ * nao mudam, so o isolamento de rede.
  */
 class CarteiraIndividualContextoTest extends TestCase
 {
     use RefreshDatabase;
     use CriaCenarioResponsaveis;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
+    }
 
     private function criarAdmin(): User
     {

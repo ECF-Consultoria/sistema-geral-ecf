@@ -7,6 +7,7 @@ use App\Models\Company;
 use App\Models\Servico;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -21,11 +22,30 @@ use Tests\TestCase;
  * `AdmanMetric` e por-EMPRESA (nao por-servico) — reference_date usa
  * `now()->startOfMonth()->addDays(2)` pra cair sempre dentro da janela do
  * mes em curso, independente do dia em que a suite roda.
+ *
+ * ISOLAMENTO HTTP (Fase 103 Plan 01 — decisao travada 6): desde que
+ * `renderCarteiraProfissional()` passou a chamar
+ * `AdmanMetricDiffService::compute()` por empresa elegivel (leitura ao vivo
+ * fail-open da Adman), esta suite precisa de `Http::preventStrayRequests()`
+ * + fake 404 nos 2 endpoints pra forcar `calculated_fallback` deterministico
+ * (sem rede). Nenhum teste aqui asserta `margem_variacao_pct`/
+ * `variacao_margem_pct` — os NUMEROS nao mudam, so o isolamento de rede.
  */
 class CarteiraFinanceiroElegibilidadeTest extends TestCase
 {
     use RefreshDatabase;
     use CriaCenarioResponsaveis;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
+    }
 
     private function criarAdmin(): User
     {

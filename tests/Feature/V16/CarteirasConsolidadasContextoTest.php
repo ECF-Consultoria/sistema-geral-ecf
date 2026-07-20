@@ -8,6 +8,7 @@ use App\Models\Servico;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
 /**
@@ -22,6 +23,15 @@ use Tests\TestCase;
  * esta suite precisa que o profissional apareça na LISTAGEM de cards — o que exige
  * vínculo em `user_setores` com cargo analista/estrategista (helpers locais
  * `vincularCargo()`, mesmo padrão de `DesempenhoScoreSnapshotTest::setUp()`).
+ *
+ * ISOLAMENTO HTTP (Fase 103 Plan 01 — decisao travada 6): os testes 9/10
+ * desta suite alcancam `route('portfolio.show', ...)`
+ * (`renderCarteiraProfissional`), que agora chama
+ * `AdmanMetricDiffService::compute()` por empresa elegivel (leitura ao vivo
+ * fail-open da Adman). `Http::preventStrayRequests()` + fake 404 nos 2
+ * endpoints forcam `calculated_fallback` deterministico (sem rede) pra toda
+ * a suite. Nenhum teste aqui asserta `margem_variacao_pct`/`avg_margin` —
+ * os NUMEROS nao mudam, so o isolamento de rede.
  */
 class CarteirasConsolidadasContextoTest extends TestCase
 {
@@ -35,6 +45,12 @@ class CarteirasConsolidadasContextoTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
 
         $this->setorId = DB::table('setores')->insertGetId([
             'nome'       => 'Performance',
