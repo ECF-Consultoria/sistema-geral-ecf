@@ -37,13 +37,38 @@ class ShopeeService
     private string $redirect;
     private ShopeeSigner $signer;
 
-    public function __construct()
+    /**
+     * @param string $app Qual app Shopee usar: 'erp' (Order/Payment) ou 'ads'
+     *                    (performance de anúncios). Cada um tem credenciais próprias.
+     *                    Default 'erp' — é o resolvido pela DI/container.
+     */
+    public function __construct(private string $app = 'erp')
     {
-        $this->partnerId  = (int) config('services.shopee.partner_id');
-        $this->partnerKey = (string) config('services.shopee.partner_key');
+        $cfg = (array) config("services.shopee.apps.{$this->app}", []);
+
+        $this->partnerId  = (int) ($cfg['partner_id'] ?? 0);
+        $this->partnerKey = (string) ($cfg['partner_key'] ?? '');
+        $this->redirect   = (string) ($cfg['redirect'] ?? '');
         $this->host       = rtrim((string) config('services.shopee.host'), '/');
-        $this->redirect   = (string) config('services.shopee.redirect');
         $this->signer     = new ShopeeSigner($this->partnerId, $this->partnerKey);
+    }
+
+    /** Instancia o serviço para um app específico ('erp' | 'ads'). */
+    public static function for(string $app): self
+    {
+        return new self($app);
+    }
+
+    /** Qual app este serviço representa. */
+    public function app(): string
+    {
+        return $this->app;
+    }
+
+    /** True se o app tem credenciais configuradas (usado p/ pular o passo Ads). */
+    public function isConfigured(): bool
+    {
+        return $this->partnerId > 0 && $this->partnerKey !== '';
     }
 
     /**
@@ -69,35 +94,32 @@ class ShopeeService
      * ao redirect e guardado em cache para vincular o callback à empresa — a
      * Shopee preserva o query do redirect e ainda anexa `code` e `shop_id`.
      *
-     * ⚠️ A base do redirect (config services.shopee.redirect) precisa estar
+     * ⚠️ A base do redirect (config services.shopee.apps.{app}.redirect) precisa estar
      *    cadastrada no console do app da Shopee.
      */
-    public function buildAuthUrl(Company $company): string
+    public function buildAuthUrl(Company $company, ?string $expectedShopId = null): string
     {
         $state     = Str::uuid()->toString();
         $timestamp = time();
         $sign      = $this->signer->sign(self::PATH_AUTH, $timestamp);
 
+        // O state amarra o callback à empresa, ao APP (erp/ads) e — no passo Ads —
+        // à loja já conectada no passo ERP (expected_shop_id), p/ barrar loja errada.
         Cache::put("shopee_oauth_state_{$state}", [
-            'company_id' => $company->id,
+            'company_id'       => $company->id,
+            'app'              => $this->app,
+            'expected_shop_id' => $expectedShopId,
         ], self::STATE_TTL);
 
         // redirect carrega nosso state; a Shopee anexa &code=&shop_id= depois.
         $redirect = $this->redirect . (str_contains($this->redirect, '?') ? '&' : '?') . 'state=' . $state;
 
-        $url = $this->host . self::PATH_AUTH . '?' . http_build_query([
+        return $this->host . self::PATH_AUTH . '?' . http_build_query([
             'partner_id' => $this->partnerId,
             'timestamp'  => $timestamp,
             'sign'       => $sign,
             'redirect'   => $redirect,
         ]);
-
-        $company->update([
-            'shopee_link_generated_at' => now(),
-            'shopee_link_url'          => $url,
-        ]);
-
-        return $url;
     }
 
     /**
@@ -155,7 +177,7 @@ class ShopeeService
         $expireIn = (int) ($data['expire_in'] ?? 14400);
 
         return ShopeeToken::updateOrCreate(
-            ['company_id' => $company->id],
+            ['company_id' => $company->id, 'app' => $this->app],
             [
                 'shop_id'            => (string) ($data['shop_id'] ?? $shopId),
                 'merchant_id'        => isset($data['merchant_id']) ? (string) $data['merchant_id'] : null,
@@ -182,7 +204,7 @@ class ShopeeService
         $companyId = $token->company_id;
 
         try {
-            return Cache::lock("shopee-refresh-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
+            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
                 // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
                 $token = $token->fresh() ?? $token;
 
@@ -273,7 +295,9 @@ class ShopeeService
      */
     public function ensureValidToken(Company $company): ?ShopeeToken
     {
-        $token = $company->shopeeToken ?? ShopeeToken::where('company_id', $company->id)->first();
+        $token = ShopeeToken::where('company_id', $company->id)
+            ->where('app', $this->app)
+            ->first();
 
         if (! $token || $token->status === 'revoked') {
             return null;
