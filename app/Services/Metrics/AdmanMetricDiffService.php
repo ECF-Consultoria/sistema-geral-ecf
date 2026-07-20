@@ -299,6 +299,56 @@ class AdmanMetricDiffService
         return round((($atual - $anterior) / $anterior) * 100.0, 2);
     }
 
+    // ─────────────────────── ADM-04 reframado — leitura de diff DIÁRIO do raw_data ───────────────────────
+
+    /**
+     * Lê o diff DIÁRIO (dia vs dia anterior) persistido em `AdmanMetric.raw_data`
+     * — resultado de `fetchPerformance($custId, $date, $date)`, DIA ÚNICO.
+     *
+     * ### Por que este método existe (ADM-04 reframado)
+     * O texto original do REQ pedia "backfill de `raw_data` antigo para
+     * preencher os novos campos de diff". O research provou que isso é um
+     * equívoco: `raw_data` é sempre resultado de um fetch de DIA ÚNICO, logo
+     * `raw_data.*.diff` é sempre "esse dia vs o dia anterior" — NUNCA "esse
+     * período vs o período anterior". Não há backfill de coluna (Fase 101 é
+     * live-read, sem colunas novas — decisão travada).
+     *
+     * Este helper existe SÓ para auditoria/metadados de fato diário (ex.:
+     * "como variou o faturamento de ontem pra hoje?"). O diff de PERÍODO
+     * (usado pelo bônus) segue exclusivamente por `compute()` ao vivo.
+     *
+     * ### PROIBIDO (Pitfall 1 do research)
+     * Reaproveitar o retorno deste método como se fosse diff de período é o
+     * erro que o research identificou como Pitfall 1. Por isso o retorno
+     * marca `scope='daily'` explicitamente e NUNCA contém `diff_source`
+     * (chave exclusiva do shape de `compute()`/`resolveField()`) nem o valor
+     * `'adman_diff'` — ninguém deve confundir os dois.
+     *
+     * `percentageMargin` NUNCA esteve em `raw_data` — só existe no endpoint
+     * `/accounts/{custId}/metrics` (lido por `fetchAccountMetricsDetailedCached`).
+     * Por isso `percentageMargin_diff` é sempre `null` aqui.
+     *
+     * Fail-open: `raw_data` ausente ou malformado (linhas antigas) retorna
+     * todos os diffs `null`, nunca lança (`?? null` em todo acesso aninhado).
+     *
+     * @return array{grossBilling_diff: ?float, profitMargin_diff: ?float, percentageMargin_diff: null, scope: string}
+     */
+    public function lerDiffDiarioRawData(AdmanMetric $metric): array
+    {
+        $summarized = $metric->raw_data['summarizedData'] ?? null;
+
+        $grossBillingDiff = $summarized['grossBilling']['diff'] ?? null;
+        $profitMarginDiff = $summarized['profitMargin']['diff'] ?? null;
+
+        return [
+            'grossBilling_diff'     => $grossBillingDiff !== null ? (float) $grossBillingDiff : null,
+            'profitMargin_diff'     => $profitMarginDiff !== null ? (float) $profitMarginDiff : null,
+            // percentageMargin nunca esteve em raw_data — só em /accounts/metrics.
+            'percentageMargin_diff' => null,
+            'scope'                 => 'daily',
+        ];
+    }
+
     // ─────────────────────── Shape / quality / cache ───────────────────────
 
     private function emptyMetrics(): array
