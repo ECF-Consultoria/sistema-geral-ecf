@@ -1637,9 +1637,12 @@ class NpsController extends Controller
      * mês FECHADO fica cacheado por até 7 dias (`DesempenhoScoreService::
      * computeCached()`). Sem este `Cache::forget()` explícito, invalidar (ou
      * revalidar) uma resposta pareceria "não ter feito nada" no /performance
-     * por até uma semana. RELIDO da versão atual do cache key em tempo de
-     * execução (`v4` no momento desta implementação — o projeto já fez bump
-     * v1→v4 por motivos parecidos, NUNCA hardcode a versão às cegas).
+     * por até uma semana. Fase 102 (BON-04/T-102-05): a chave passou a ter
+     * `period_key` embutido (operacional×oficial não colidem mais) — a
+     * montagem NUNCA é feita à mão aqui, sempre via
+     * `DesempenhoScoreService::cacheKey()` (helper público único), pra este
+     * método continuar apagando a chave certa sem precisar saber o formato
+     * exato nem o dígito de versão atual.
      *
      * Respostas LEGADAS (sem `template_id`/sem `NpsScoreAssignment`) não têm
      * cache de bônus a bustar — `NpsSnapshotService::registrar()` retorna
@@ -1657,9 +1660,11 @@ class NpsController extends Controller
             ->pluck('user_id')
             ->unique();
 
+        $scoreService = app(\App\Services\DesempenhoScoreService::class);
+
         foreach ($userIds as $userId) {
             \Illuminate\Support\Facades\Cache::forget(
-                sprintf('desempenho.compute.v4.%d.%s', $userId, $mesCompletado->format('Y-m'))
+                $scoreService->cacheKey($userId, $mesCompletado)
             );
         }
     }
