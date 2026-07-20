@@ -1,0 +1,346 @@
+<?php
+
+namespace App\Services\Metrics;
+
+use App\Models\AdmanMetric;
+use App\Models\Company;
+use App\Services\AdmanService;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
+
+/**
+ * Fase 101 (v18.0) — leitura AO VIVO da variação de período pronta da Adman
+ * (`.diff`), com gate por `comparison_mode` e fallback calculado guardado.
+ *
+ * ### Por que este service existe
+ * O `AdmanService` hoje descarta `.diff`/`.prev` e lê só `.value` — qualquer
+ * variação de período era recalculada na mão em outro lugar. A Adman já
+ * calcula a variação corretamente (fonte oficial); este service para de
+ * reinventar esse cálculo, MAS só quando o baseline nativo da Adman
+ * ("N dias imediatamente anteriores a `current_start`") é semanticamente
+ * igual ao baseline do `MetricPeriodResolver` — o que só é verdade quando
+ * `comparison_mode === 'previous_equal_length_window'` (achado empírico do
+ * research, ver 101-RESEARCH.md "Risco arquitetural").
+ *
+ * ### O gate (ADM-02)
+ * - `comparison_mode === 'previous_equal_length_window'` E a Adman devolveu
+ *   `.diff` não-nulo ⇒ `diff_source = 'adman_diff'` (usa o `.diff` nativo).
+ * - Qualquer outro caso (`same_interval_previous_month`, ou `.diff` ausente)
+ *   ⇒ `diff_source = 'calculated_fallback'`.
+ *
+ * ### calculated_fallback — duplicação TEMPORÁRIA e INTENCIONAL
+ * Os guards abaixo (`margem_dias` + interseção de dias-comuns) são cópias
+ * PRIVADAS, fiéis, dos guards já cicatrizados em
+ * `DesempenhoScoreService::computeVarMargem()`/`computeVarFaturamento()`
+ * (fix Luiz 2026-07-09 + audit Tomelin/LOJASINVAL/AVF2K 2026-07-13). Este
+ * service é BAIXO nível — NÃO chama `DesempenhoScoreService` (dependência
+ * invertida). A Fase 102, ao reconectar o `DesempenhoScoreService` para
+ * consumir este service, REMOVE a lógica duplicada de lá.
+ *
+ * Generalização: `DesempenhoScoreService` compara sempre mês-vs-mês (ambas
+ * janelas começam no dia 1), então usa "dia do mês" como chave de
+ * interseção. Aqui as janelas vêm do `MetricPeriodResolver` (podem começar
+ * em qualquer dia), então a interseção usa "offset em dias desde o início
+ * da janela" — equivalente generalizado da mesma ideia.
+ *
+ * ### Live-read, sem coluna nova (ADM-03)
+ * Nenhuma migration desta fase adiciona coluna de diff em `adman_metrics`.
+ * O resultado é cacheado (TTL 24h, chave por dia BRT — mesmo padrão de
+ * `AdmanService`), nunca persistido como fato.
+ */
+class AdmanMetricDiffService
+{
+    /**
+     * Sentinel de erro persistente — mesmo padrão de `AdmanService`.
+     */
+    private const ERROR_SENTINEL = '__error__';
+    private const ERROR_CACHE_MINUTES = 10;
+
+    /** As 3 chaves de métrica sempre presentes no shape de retorno. */
+    private const METRIC_KEYS = ['revenue', 'contribution_margin_value', 'contribution_margin_pct'];
+
+    public function __construct(private AdmanService $admanService)
+    {
+    }
+
+    /**
+     * Lê ao vivo o diff de período (revenue, margem R$, margem %) para uma
+     * empresa num período resolvido pelo `MetricPeriodResolver`.
+     *
+     * @param  array  $periodo  Objeto INTEIRO retornado por
+     *   `MetricPeriodResolver::resolve()` — precisa de `comparison_mode`,
+     *   `current_start`, `current_end`, `baseline_start`, `baseline_end`.
+     *
+     * @return array{
+     *     company_id: int,
+     *     period: array,
+     *     metrics: array<string, array{value: ?float, diff_pct: ?float, diff_source: ?string}>,
+     *     quality: array{status: string, source: string, computed_at: string},
+     * }
+     */
+    public function compute(Company $company, array $periodo): array
+    {
+        // Prioriza adman_account_id (alinhado com Company::cust_id — padrão do AdmanService).
+        $custId      = $company->adman_account_id ?: $company->ml_store_id;
+        $marketplace = $company->marketplace ?? 'meli';
+
+        if (empty($custId)) {
+            return $this->buildResult($company, $periodo, $this->emptyMetrics());
+        }
+
+        $cacheKey = "adman:diff:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+
+        $cached = Cache::get($cacheKey);
+        if ($cached !== null) {
+            return $cached === self::ERROR_SENTINEL
+                ? $this->buildResult($company, $periodo, $this->emptyMetrics())
+                : $cached;
+        }
+
+        $isJanelaIgual = ($periodo['comparison_mode'] ?? null) === 'previous_equal_length_window';
+
+        // Leitura ao vivo — fail-open (nunca deixa exceção virar 500; V5/T-101-01).
+        $revenueAdman     = null;
+        $marginValueAdman = null;
+        try {
+            $performance      = $this->admanService->fetchPerformance(
+                $custId, $periodo['current_start'], $periodo['current_end'], 3, $marketplace
+            );
+            $revenueAdman     = $performance['summarizedData']['grossBilling'] ?? null;
+            $marginValueAdman = $performance['summarizedData']['profitMargin'] ?? null;
+        } catch (\Throwable $e) {
+            Log::warning("[AdmanMetricDiff] performance custId={$custId} periodo={$periodo['current_start']}..{$periodo['current_end']}: " . $e->getMessage());
+        }
+
+        // fetchAccountMetricsDetailedCached já é fail-open (retorna null, não lança).
+        $accountMetrics = $this->admanService->fetchAccountMetricsDetailedCached(
+            $custId, $periodo['current_start'], $periodo['current_end'], 1440, false, $marketplace
+        );
+        $marginPctAdman = $accountMetrics['percentageMargin'] ?? null;
+
+        $metrics = [
+            'revenue'                   => $this->resolveField(
+                $revenueAdman, $isJanelaIgual,
+                fn () => $this->fallbackSomaSimples($company, $periodo, 'revenue'),
+            ),
+            'contribution_margin_value' => $this->resolveField(
+                $marginValueAdman, $isJanelaIgual,
+                fn () => $this->fallbackSomaSimples($company, $periodo, 'contribution_margin'),
+            ),
+            'contribution_margin_pct'   => $this->resolveField(
+                $marginPctAdman, $isJanelaIgual,
+                fn () => $this->fallbackMargemPct($company, $periodo),
+            ),
+        ];
+
+        $resultado = $this->buildResult($company, $periodo, $metrics);
+
+        // Só cacheia resultado "usável" (ao menos 1 metric com value) — total
+        // falha cacheia ERROR_SENTINEL (TTL curto, permite retry rápido).
+        if ($resultado['quality']['status'] === 'missing') {
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+        } else {
+            Cache::put($cacheKey, $resultado, now()->addMinutes(1440));
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Resolve UM campo de métrica: aplica o gate por comparison_mode e,
+     * quando não pode usar `.diff` nativo, chama o fallback.
+     *
+     * @param  ?array{value: ?float, diff: ?float, prev: ?float}  $adman
+     * @param  callable(): ?float  $fallback
+     * @return array{value: ?float, diff_pct: ?float, diff_source: ?string}
+     */
+    private function resolveField(?array $adman, bool $isJanelaIgual, callable $fallback): array
+    {
+        $value = isset($adman['value']) ? (float) $adman['value'] : null;
+        $adminDiff = $adman['diff'] ?? null;
+
+        if ($isJanelaIgual && $adminDiff !== null) {
+            return [
+                'value'       => $value,
+                'diff_pct'    => (float) $adminDiff,
+                'diff_source' => 'adman_diff',
+            ];
+        }
+
+        return [
+            'value'       => $value,
+            'diff_pct'    => $fallback(),
+            'diff_source' => 'calculated_fallback',
+        ];
+    }
+
+    // ─────────────────────── calculated_fallback (guards cicatrizados) ───────────────────────
+
+    /**
+     * Fallback de soma simples (revenue / contribution_margin) com os guards
+     * cicatrizados: (1) margem_dias — se um dos lados tem ZERO linhas com o
+     * campo NOT NULL, `null` (nunca -100% artificial); (2) interseção de
+     * dias-comuns — só soma os offsets presentes nas DUAS janelas.
+     */
+    private function fallbackSomaSimples(Company $company, array $periodo, string $campo): ?float
+    {
+        $somas = $this->somasComGuards($company, $periodo, $campo);
+
+        return $this->diffPctGuardado($somas['atual'], $somas['anterior']);
+    }
+
+    /**
+     * Fallback de margem % — NÃO soma percentuais diários (não faz sentido
+     * estatístico). Deriva de `SUM(contribution_margin)/SUM(revenue)*100`
+     * em cada janela (mesmo cálculo de `AdmanService::syncCompany()` para
+     * `contribution_margin_pct`), usando os MESMOS dias-comuns/guards do
+     * `contribution_margin`.
+     */
+    private function fallbackMargemPct(Company $company, array $periodo): ?float
+    {
+        $margem  = $this->somasComGuards($company, $periodo, 'contribution_margin');
+        $revenue = $this->somasComGuards($company, $periodo, 'revenue');
+
+        if ($margem['atual'] === null || $margem['anterior'] === null
+            || $revenue['atual'] === null || $revenue['anterior'] === null) {
+            return null;
+        }
+        if ($revenue['atual'] <= 0 || $revenue['anterior'] <= 0) {
+            return null;
+        }
+
+        $pctAtual    = ($margem['atual'] / $revenue['atual']) * 100.0;
+        $pctAnterior = ($margem['anterior'] / $revenue['anterior']) * 100.0;
+
+        return $this->diffPctGuardado($pctAtual, $pctAnterior);
+    }
+
+    /**
+     * Soma de `$campo` em AdmanMetric nas janelas atual/anterior do período,
+     * aplicando os guards cicatrizados. Retorna `['atual'=>null,'anterior'=>null]`
+     * quando qualquer guard barra o cálculo (margem_dias=0 num lado, ou
+     * nenhum dia comum entre as janelas).
+     *
+     * Guard margem_dias (fix Luiz 2026-07-09): COUNT de linhas com `$campo`
+     * NOT NULL em cada janela; se um dos lados é 0, não computa.
+     *
+     * Guard dias-comuns (audit Tomelin/LOJASINVAL/AVF2K 2026-07-13): as duas
+     * janelas podem ter dias com dado em posições diferentes (gap de sync no
+     * meio, empresa nova no meio do mês). Usa SÓ a interseção de "offset em
+     * dias desde o início da janela" presente nas DUAS — generalização do
+     * "dia do mês" do DesempenhoScoreService (lá as janelas sempre começam
+     * no dia 1; aqui podem começar em qualquer dia).
+     *
+     * @return array{atual: ?float, anterior: ?float}
+     */
+    private function somasComGuards(Company $company, array $periodo, string $campo): array
+    {
+        $currentStart  = Carbon::parse($periodo['current_start'])->startOfDay();
+        $currentEnd    = Carbon::parse($periodo['current_end'])->startOfDay();
+        $baselineStart = Carbon::parse($periodo['baseline_start'])->startOfDay();
+        $baselineEnd   = Carbon::parse($periodo['baseline_end'])->startOfDay();
+
+        $rowsAtual = AdmanMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', '>=', $currentStart->toDateString())
+            ->whereDate('reference_date', '<=', $currentEnd->toDateString())
+            ->whereNotNull($campo)
+            ->get(['reference_date', $campo]);
+
+        $rowsAnterior = AdmanMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', '>=', $baselineStart->toDateString())
+            ->whereDate('reference_date', '<=', $baselineEnd->toDateString())
+            ->whereNotNull($campo)
+            ->get(['reference_date', $campo]);
+
+        // Guard margem_dias: um dos lados sem NENHUM dia com dado ⇒ não computa.
+        if ($rowsAtual->isEmpty() || $rowsAnterior->isEmpty()) {
+            return ['atual' => null, 'anterior' => null];
+        }
+
+        $offset = fn ($data, Carbon $inicioJanela): int => Carbon::parse($data)->startOfDay()->diffInDays($inicioJanela);
+
+        $offsetsAtual    = $rowsAtual->pluck('reference_date')->map(fn ($d) => $offset($d, $currentStart))->unique()->values()->all();
+        $offsetsAnterior = $rowsAnterior->pluck('reference_date')->map(fn ($d) => $offset($d, $baselineStart))->unique()->values()->all();
+
+        $offsetsComuns = array_values(array_intersect($offsetsAtual, $offsetsAnterior));
+
+        if (empty($offsetsComuns)) {
+            return ['atual' => null, 'anterior' => null]; // sem dia coincidente — não comparável
+        }
+
+        $somaAtual = 0.0;
+        foreach ($rowsAtual as $row) {
+            if (in_array($offset($row->reference_date, $currentStart), $offsetsComuns, true)) {
+                $somaAtual += (float) $row->{$campo};
+            }
+        }
+
+        $somaAnterior = 0.0;
+        foreach ($rowsAnterior as $row) {
+            if (in_array($offset($row->reference_date, $baselineStart), $offsetsComuns, true)) {
+                $somaAnterior += (float) $row->{$campo};
+            }
+        }
+
+        return ['atual' => $somaAtual, 'anterior' => $somaAnterior];
+    }
+
+    /**
+     * `(atual - anterior) / anterior * 100`, guardado contra baseline
+     * zero/negativo (nunca -100%/divisão-por-zero artificial).
+     */
+    private function diffPctGuardado(?float $atual, ?float $anterior): ?float
+    {
+        if ($atual === null || $anterior === null || $anterior <= 0) {
+            return null;
+        }
+
+        return round((($atual - $anterior) / $anterior) * 100.0, 2);
+    }
+
+    // ─────────────────────── Shape / quality / cache ───────────────────────
+
+    private function emptyMetrics(): array
+    {
+        $vazio = ['value' => null, 'diff_pct' => null, 'diff_source' => null];
+
+        return array_fill_keys(self::METRIC_KEYS, $vazio);
+    }
+
+    private function buildResult(Company $company, array $periodo, array $metrics): array
+    {
+        return [
+            'company_id' => $company->id,
+            'period'     => $periodo,
+            'metrics'    => $metrics,
+            'quality'    => $this->buildQuality($metrics),
+        ];
+    }
+
+    private function buildQuality(array $metrics): array
+    {
+        $comValue = collect($metrics)->filter(fn ($m) => $m['value'] !== null)->count();
+
+        $status = match (true) {
+            $comValue === count(self::METRIC_KEYS) => 'complete',
+            $comValue === 0                        => 'missing',
+            default                                => 'partial',
+        };
+
+        return [
+            'status'      => $status,
+            'source'      => 'adman',
+            'computed_at' => now()->toIso8601String(),
+        ];
+    }
+
+    /**
+     * Data atual em BRT — mesmo padrão de `AdmanService::cacheDay()` (a API
+     * Adman é D-1, então chave por dia auto-invalida ao virar o dia).
+     */
+    private function cacheDay(): string
+    {
+        return now()->setTimezone(config('app.timezone'))->toDateString();
+    }
+}

@@ -2,8 +2,11 @@
 
 namespace Tests\Feature\V18;
 
+use App\Models\AdmanMetric;
 use App\Models\Company;
 use App\Services\AdmanService;
+use App\Services\Metrics\AdmanMetricDiffService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -100,5 +103,232 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertSame(530797.73, $simples['billing']);
         $this->assertSame(27.47, $simples['percentage_margin']);
         $this->assertSame(141428.81, $simples['liquid_margin']);
+    }
+
+    // ─────────────────────── Task 2 — AdmanMetricDiffService::compute ───────────────────────
+
+    /**
+     * Fake dos 2 endpoints Adman consumidos por compute() com os fixtures reais.
+     * `$percentageMarginDiff` permite simular payload SEM .diff (cenário c).
+     */
+    private function fakeAdmanEndpoints(?float $percentageMarginDiff = 14.09): void
+    {
+        $accountMetrics = $this->respostaAccountMetrics();
+        if ($percentageMarginDiff === null) {
+            unset($accountMetrics['metrics']['percentageMargin']['diff']);
+        } else {
+            $accountMetrics['metrics']['percentageMargin']['diff'] = $percentageMarginDiff;
+        }
+
+        Http::fake([
+            '*/performance/*'       => Http::response($this->respostaPerformance(), 200),
+            '*/accounts/*/metrics*' => Http::response($accountMetrics, 200),
+        ]);
+    }
+
+    /**
+     * Período `previous_equal_length_window` — mesma janela do research (18 dias):
+     * current 2026-07-01..18, baseline 2026-06-13..30 (N dias imediatamente
+     * anteriores, verificado empiricamente no research §93-97).
+     */
+    private function periodoJanelaIgual(): array
+    {
+        return [
+            'mode'                   => 'closed_period',
+            'period_key'             => 'custom',
+            'current_start'          => '2026-07-01',
+            'current_end'            => '2026-07-18',
+            'baseline_start'         => '2026-06-13',
+            'baseline_end'           => '2026-06-30',
+            'days_count'             => 18,
+            'comparison_mode'        => 'previous_equal_length_window',
+            'timezone'               => 'America/Sao_Paulo',
+            'data_fresh_until'       => '2026-07-18',
+            'bonus_payment_month'    => null,
+            'bonus_competence_month' => null,
+            'is_current_month'       => false,
+            'is_closed'              => true,
+        ];
+    }
+
+    /**
+     * Período `same_interval_previous_month` — mesmo range de 18 dias, mas
+     * baseline alinhado por dia-do-mês-anterior (modo operacional/mês em curso).
+     */
+    private function periodoOperacional(): array
+    {
+        return [
+            'mode'                   => 'operational',
+            'period_key'             => 'current_month',
+            'current_start'          => '2026-07-01',
+            'current_end'            => '2026-07-18',
+            'baseline_start'         => '2026-06-01',
+            'baseline_end'           => '2026-06-18',
+            'days_count'             => 18,
+            'comparison_mode'        => 'same_interval_previous_month',
+            'timezone'               => 'America/Sao_Paulo',
+            'data_fresh_until'       => '2026-07-18',
+            'bonus_payment_month'    => null,
+            'bonus_competence_month' => null,
+            'is_current_month'       => true,
+            'is_closed'              => false,
+        ];
+    }
+
+    /** Semeia AdmanMetric diário para uma empresa num range, com revenue/margem fixos. */
+    private function semearAdmanMetric(Company $company, string $inicio, string $fim, ?float $revenue, ?float $margem): void
+    {
+        $cursor = Carbon::parse($inicio);
+        $fimDate = Carbon::parse($fim);
+        while ($cursor->lte($fimDate)) {
+            AdmanMetric::create([
+                'company_id'              => $company->id,
+                'reference_date'          => $cursor->toDateString(),
+                'revenue'                 => $revenue,
+                'contribution_margin'     => $margem,
+                'contribution_margin_pct' => ($revenue !== null && $revenue > 0 && $margem !== null)
+                    ? round(($margem / $revenue) * 100, 4)
+                    : null,
+            ]);
+            $cursor->addDay();
+        }
+    }
+
+    /**
+     * CENÁRIO (a) — janela-igual (`previous_equal_length_window`) com .diff
+     * presente ⇒ diff_source='adman_diff', diff_pct=14.09 (percentageMargin.diff).
+     */
+    public function test_a_janela_igual_usa_adman_diff(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame(14.09, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertSame('adman_diff', $resultado['metrics']['revenue']['diff_source']);
+        $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_value']['diff_source']);
+    }
+
+    /**
+     * CENÁRIO (b) — modo operacional (`same_interval_previous_month`) força
+     * calculated_fallback MESMO com a Adman tendo mandado .diff.
+     */
+    public function test_b_modo_operacional_forca_calculated_fallback_mesmo_com_diff_adman(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        // Dados locais consistentes nas duas janelas (07-01..18 vs 06-01..18) —
+        // prova que o fallback de fato CALCULA, não só rotula.
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
+        $this->semearAdmanMetric($company, '2026-06-01', '2026-06-18', 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoOperacional());
+
+        $this->assertSame('calculated_fallback', $resultado['metrics']['revenue']['diff_source']);
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_value']['diff_source']);
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        // revenue: (18000-9000)/9000*100 = 100%
+        $this->assertSame(100.0, $resultado['metrics']['revenue']['diff_pct']);
+    }
+
+    /**
+     * CENÁRIO (c) — janela-igual mas Adman NÃO devolveu .diff (payload só
+     * value) ⇒ calculated_fallback (mesmo em previous_equal_length_window).
+     */
+    public function test_c_janela_igual_sem_diff_da_adman_usa_fallback(): void
+    {
+        $this->fakeAdmanEndpoints(percentageMarginDiff: null);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
+        $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertNotNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+    }
+
+    /**
+     * CENÁRIO (d) — ADM-05: Margem R$ (profitMargin) e Margem % (percentageMargin)
+     * em chaves distintas, nunca cruzadas (profitMargin.value != liquidMargin.value
+     * neste fixture seria indistinguível — o teste prova que o service usa o
+     * campo certo por endpoint).
+     */
+    public function test_d_margem_rs_e_pct_em_chaves_distintas(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame(141428.81, $resultado['metrics']['contribution_margin_value']['value']);
+        $this->assertSame(27.47, $resultado['metrics']['contribution_margin_pct']['value']);
+    }
+
+    /**
+     * CENÁRIO (e) — shape completo: company_id, period (objeto inteiro),
+     * metrics.{revenue,contribution_margin_value,contribution_margin_pct},
+     * quality{status,source,computed_at}. quality.status='complete' quando os
+     * 3 metrics têm value.
+     */
+    public function test_e_shape_e_quality_completos(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+        $periodo = $this->periodoJanelaIgual();
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $periodo);
+
+        $this->assertSame($company->id, $resultado['company_id']);
+        $this->assertSame($periodo, $resultado['period']);
+        $this->assertSame(
+            ['revenue', 'contribution_margin_value', 'contribution_margin_pct'],
+            array_keys($resultado['metrics'])
+        );
+        foreach ($resultado['metrics'] as $metric) {
+            $this->assertSame(['value', 'diff_pct', 'diff_source'], array_keys($metric));
+        }
+        $this->assertSame('complete', $resultado['quality']['status']);
+        $this->assertSame('adman', $resultado['quality']['source']);
+        $this->assertArrayHasKey('computed_at', $resultado['quality']);
+    }
+
+    /**
+     * CENÁRIO (f) — GAP DE SYNC PARCIAL (espelha audit-margem-luiz-ana.md):
+     * empresa ML-driven com contribution_margin populado no baseline (junho
+     * completo) mas NULL na janela atual (julho) inteira. Sem os guards
+     * cicatrizados, isso daria -100% ARTIFICIAL. Com os guards, diff_pct=null
+     * (margem_dias(atual)==0). revenue CONTINUA calculando normalmente (o gap
+     * é só de margem, não de faturamento — igual ao caso real).
+     */
+    public function test_f_gap_de_sync_parcial_nao_produz_variacao_artificial(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        // Baseline (junho): revenue + margem populados normalmente.
+        $this->semearAdmanMetric($company, '2026-06-01', '2026-06-18', 1000.0, 200.0);
+        // Atual (julho, ML-driven): revenue populado, margem NULL (API ML não
+        // expõe CMV — exatamente o cenário do audit-margem-luiz-ana.md).
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1100.0, null);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoOperacional());
+
+        // Guard margem_dias: atual tem ZERO dias com contribution_margin não-null.
+        $this->assertNull($resultado['metrics']['contribution_margin_value']['diff_pct']);
+        $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_value']['diff_source']);
+
+        // Sem os guards: SUM(atual)=0 vs SUM(baseline)=3600 => -100% artificial.
+        $this->assertNotEquals(-100.0, $resultado['metrics']['contribution_margin_value']['diff_pct']);
+
+        // Revenue NÃO é afetado pelo gap de margem — continua calculando.
+        $this->assertNotNull($resultado['metrics']['revenue']['diff_pct']);
+        // (19800-18000)/18000*100 = 10%
+        $this->assertSame(10.0, $resultado['metrics']['revenue']['diff_pct']);
     }
 }
