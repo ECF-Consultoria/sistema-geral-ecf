@@ -12,6 +12,8 @@ use App\Models\Servico;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
+use App\Services\Metrics\AdmanMetricDiffService;
+use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\DesempenhoScoreService;
 use App\Services\Nps\NpsPendingService;
@@ -29,6 +31,8 @@ class PortfolioController extends Controller
         private DesempenhoScoreService $scoreService,
         private MetricsProviderFactory $metricsFactory,
         private CarteiraContextService $carteiraContext,
+        private MetricPeriodResolver $periodResolver,
+        private AdmanMetricDiffService $admanDiffService,
     ) {}
 
     /**
@@ -140,11 +144,14 @@ class PortfolioController extends Controller
         // da empresa auditar meses FECHADOS pós-consolidação de bônus. Quando
         // ausente, usa o mês em curso (comportamento original).
         //
-        // Regras de comparação:
-        //  - Mês em curso: dia 1..HOJE vs dia 1..MESMO_DIA do mês anterior
-        //    (janela justa dia-a-dia, evita queda artificial no início do mês).
-        //  - Mês fechado (passado): mês calendário completo vs mês calendário
-        //    anterior completo (ambos fechados, comparação natural).
+        // Fase 103 (CAR-01) — período resolvido via `MetricPeriodResolver`
+        // (Fase 100), ÚNICO ponto de resolução de período do núcleo. Nenhum
+        // `now()`/`subMonth()`/`endOfMonth()` inline pra montar a janela
+        // (T-103-01 — a whitelist regex abaixo roda ANTES de repassar
+        // `$mesSelecionado` ao resolver, nunca a string crua da query).
+        // `?mes=YYYY-MM` é traduzido 1:1 pro `period_key` `closed_period`;
+        // ausente ou igual ao mês corrente usa `current_month` (mesma regra
+        // de comparação dia-a-dia acumulada de antes da migração).
         $hoje         = now();
         $mesQuery     = $request->query('mes');
         $mesCorrente  = $hoje->copy()->startOfMonth();
@@ -156,24 +163,19 @@ class PortfolioController extends Controller
         }
         $ehMesEmCurso = $mesSelecionado->equalTo($mesCorrente);
 
-        if ($ehMesEmCurso) {
-            $inicioMes   = $mesSelecionado->copy();
-            $fimMes      = $hoje->copy()->endOfDay();
-            $inicioAnter = $mesSelecionado->copy()->subMonth();
-            $fimAnter    = $inicioAnter->copy()
-                ->setDay(min($hoje->day, $inicioAnter->daysInMonth))
-                ->endOfDay();
-        } else {
-            $inicioMes   = $mesSelecionado->copy();
-            $fimMes      = $mesSelecionado->copy()->endOfMonth();
-            $inicioAnter = $mesSelecionado->copy()->subMonth();
-            $fimAnter    = $inicioAnter->copy()->endOfMonth();
-        }
+        $periodo = $ehMesEmCurso
+            ? $this->periodResolver->resolve(['period_key' => 'current_month'])
+            : $this->periodResolver->resolve(['period_key' => $mesSelecionado->format('Y-m')]);
 
-        $dateFrom     = $inicioMes->toDateString();
-        $dateTo       = $fimMes->toDateString();
-        $dateFromPrev = $inicioAnter->toDateString();
-        $dateToPrev   = $fimAnter->toDateString();
+        $inicioMes   = Carbon::parse($periodo['current_start']);
+        $fimMes      = Carbon::parse($periodo['current_end']);
+        $inicioAnter = Carbon::parse($periodo['baseline_start']);
+        $fimAnter    = Carbon::parse($periodo['baseline_end']);
+
+        $dateFrom     = $periodo['current_start'];
+        $dateTo       = $periodo['current_end'];
+        $dateFromPrev = $periodo['baseline_start'];
+        $dateToPrev   = $periodo['baseline_end'];
 
         // Fase 90 (CART-07) — filtro `?contexto=` (todos/performance/shopee),
         // vale pras DUAS telas de carteira (SC3). Default 'todos' preserva
@@ -232,53 +234,12 @@ class PortfolioController extends Controller
             ->get()
             ->keyBy('company_id');
 
-        // Ajuste 2026-07-13 (audit LOJASINVAL + AVF2K): recorte por DIAS
-        // COMUNS. Substitui o fix Tomelin (2026-07-10) que só cobria gap
-        // NO FIM da janela atual. Agora considera QUALQUER gap em QUALQUER
-        // posição de qualquer uma das duas janelas.
-        //
-        // Motivação:
-        //  - AVF2K: sync Adman falhou em 12-13/06 (incidente rate-limit)
-        //    → janela anterior tem gap NO FIM, fix Tomelin cobria
-        //  - LOJASINVAL: empresa cadastrada em 16/06 → 01-15/06 nunca teve
-        //    sync → janela anterior tem gap NO INÍCIO → fix Tomelin NÃO
-        //    cobria → variação estourava (+3856%)
-        //
-        // Solução: comparar SÓ os dias que têm margem em AMBAS as janelas.
-        // Se junho tem dado só nos dias 12 e 13 e julho tem 1-12, compara
-        // apenas o dia 12 vs dia 12 (offset alinhado por DAY(reference_date)).
-        //
-        // 2 queries por request: um SELECT que agrega dias com margem em
-        // cada janela; depois interseção em PHP; depois SUM só pros dias
-        // comuns (feito no closure do map).
-        // Helper cross-DB (SQLite não tem DAY()): agrega em PHP após pluck.
-        // Carbon lida com string ISO OU objeto Carbon (cast 'date' do model).
-        $extrairDiasDoMes = function ($rows) {
-            return $rows->pluck('reference_date')
-                ->map(fn ($d) => Carbon::parse($d)->day)
-                ->unique()
-                ->values()
-                ->all();
-        };
-
-        $diasComMargemAtualPorEmpresa    = collect();
-        $diasComMargemAnteriorPorEmpresa = collect();
-
-        if (! $companyIdsElegiveis->isEmpty()) {
-            $diasComMargemAtualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
-                ->whereBetween('reference_date', [$dateFrom, $dateTo])
-                ->whereNotNull('contribution_margin')
-                ->get(['company_id', 'reference_date'])
-                ->groupBy('company_id')
-                ->map($extrairDiasDoMes);
-
-            $diasComMargemAnteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
-                ->whereBetween('reference_date', [$dateFromPrev, $dateToPrev])
-                ->whereNotNull('contribution_margin')
-                ->get(['company_id', 'reference_date'])
-                ->groupBy('company_id')
-                ->map($extrairDiasDoMes);
-        }
+        // Fase 103 (CAR-02) — o recorte por dias-comuns (fix Tomelin/
+        // LOJASINVAL/AVF2K) e o cálculo de variação de margem migraram pra
+        // dentro do `AdmanMetricDiffService::compute()` (Fase 101), chamado
+        // por empresa elegível mais abaixo — os MESMOS guards, agora só
+        // num lugar (não mais duplicado aqui). Ver bloco "Variação de
+        // margem" dentro do `map()` abaixo.
 
         // Cache Adman gross + account metrics (fonte preferencial de revenue/
         // ad_spend/tacos no mês atual — mais completa que SUM DB local;
@@ -295,7 +256,7 @@ class PortfolioController extends Controller
         $grossAtual   = $this->adman->getCachedGrossBillingsMany($custIdsElegiveis, $dateFrom, $dateTo);
         $accountAtual = $this->adman->getCachedAccountMetricsMany($custIdsElegiveis, $dateFrom, $dateTo);
 
-        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $diasComMargemAtualPorEmpresa, $diasComMargemAnteriorPorEmpresa, $inicioMes, $inicioAnter, $companyIdsElegiveis, $porEmpresa) {
+        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $companyIdsElegiveis, $porEmpresa, $periodo) {
             $ehElegivel = $companyIdsElegiveis->contains($c->id);
 
             // Vínculos desta empresa — shape público CART-01/02: 1 entrada
@@ -352,68 +313,27 @@ class PortfolioController extends Controller
             $margemAtual       = $temMargemAtual    ? (float) $rowAtual->margem    : null;
             $margemAnterior    = $temMargemAnterior ? (float) $rowAnterior->margem : null;
 
-            // Recorte por DIAS COMUNS (ajuste 2026-07-13): se as duas janelas
-            // têm gap em posições diferentes, considera SÓ os dias que têm
-            // margem em AMBAS. Ex: junho só tem dado em 06-12 e 06-13, julho
-            // tem 01-12 → compara apenas o dia 12 vs dia 12. Substitui o fix
-            // Tomelin (só-gap-no-fim) por versão que cobre gap em qualquer
-            // posição, mais robusta pra empresas cadastradas em meio de mês.
-            if ($temMargemAtual && $temMargemAnterior) {
-                $diasAtual  = $diasComMargemAtualPorEmpresa->get($c->id, []);
-                $diasAnter  = $diasComMargemAnteriorPorEmpresa->get($c->id, []);
-                $diasComuns = array_values(array_intersect($diasAtual, $diasAnter));
-
-                // Se AMBAS as janelas cobrem exatamente os mesmos dias, o SUM
-                // original já está comparável — não precisa reconsultar.
-                $mudouAtual = count($diasComuns) !== count($diasAtual);
-                $mudouAnter = count($diasComuns) !== count($diasAnter);
-
-                if (empty($diasComuns)) {
-                    // Sem dia coincidente → não dá pra comparar. Preserva
-                    // exibição dos SUMs originais (info factual do que existe),
-                    // mas anula a variação — UI mostra "—" com tooltip.
-                    $margemAnterior = null;
-                } elseif ($mudouAtual || $mudouAnter) {
-                    // Reagrega SÓ nos dias comuns. Converte cada offset (dia do
-                    // mês) em data completa (Y-m-d) pra cada janela — cross-DB.
-                    $datasAtual = array_map(
-                        fn ($d) => $inicioMes->copy()->setDay($d)->toDateString(),
-                        $diasComuns,
-                    );
-                    $datasAnter = array_map(
-                        fn ($d) => $inicioAnter->copy()->setDay($d)->toDateString(),
-                        $diasComuns,
-                    );
-
-                    // `whereIn` não bate pois o cast 'date' serializa com
-                    // timestamp ('YYYY-MM-DD 00:00:00'). whereDate normaliza.
-                    $margemAtual = (float) AdmanMetric::where('company_id', $c->id)
-                        ->where(function ($q) use ($datasAtual) {
-                            foreach ($datasAtual as $d) {
-                                $q->orWhereDate('reference_date', $d);
-                            }
-                        })
-                        ->whereNotNull('contribution_margin')
-                        ->sum('contribution_margin');
-
-                    $margemAnterior = (float) AdmanMetric::where('company_id', $c->id)
-                        ->where(function ($q) use ($datasAnter) {
-                            foreach ($datasAnter as $d) {
-                                $q->orWhereDate('reference_date', $d);
-                            }
-                        })
-                        ->whereNotNull('contribution_margin')
-                        ->sum('contribution_margin');
-                }
-            }
-
-            // Só calcula variação quando temos dados válidos EM AMBAS as janelas
-            // E a baseline anterior é > 0. Caso contrário mostra "—" (evita o
-            // artificial -100% quando a empresa acabou de ativar no mês atual).
-            $margemVarPct = null;
-            if ($margemAtual !== null && $margemAnterior !== null && $margemAnterior > 0) {
-                $margemVarPct = round((($margemAtual - $margemAnterior) / $margemAnterior) * 100, 2);
-            }
+            // Fase 103 (CAR-02, Pitfall 1 do 103-RESEARCH.md) — variação de
+            // margem delegada ao `AdmanMetricDiffService::compute()` (Fase
+            // 101), chamado pra TODA empresa elegível (independente do que
+            // $atualPorEmpresa/$anteriorPorEmpresa acharam localmente — o
+            // diff service tem sua PRÓPRIA leitura ao vivo da Adman + seu
+            // próprio fallback local, com os MESMOS guards que existiam
+            // aqui — margem_dias + interseção de dias-comuns — fix Luiz/
+            // Tomelin/LOJASINVAL/AVF2K) e o gate ADM-02 (usa `.diff` nativo
+            // da Adman quando `comparison_mode=previous_equal_length_window`
+            // E o dado está presente; senão cai no calculated_fallback,
+            // mesma matemática de antes). Lê SEMPRE `contribution_margin_value`
+            // (mapeado de `profitMargin.diff` — variação % do VALOR EM R$
+            // da margem, a mesma semântica que este campo `margem_variacao_pct`
+            // sempre teve aqui) — NUNCA `contribution_margin_pct`
+            // (`percentageMargin.diff`, variação da margem-como-%-da-receita,
+            // métrica DIFERENTE usada pela Fase 102 no score de bônus).
+            // Confundir os dois muda silenciosamente o que esta tela reporta
+            // — já auditada 3× por divergência de número (Tomelin/Gabriela/
+            // LOJASINVAL).
+            $resultadoDiff = $this->admanDiffService->compute($c, $periodo);
+            $margemVarPct  = $resultadoDiff['metrics']['contribution_margin_value']['diff_pct'] ?? null;
 
             // Motivo pt-BR para tooltip/badge quando margem é null — ajuda o
             // admin/analista a entender POR QUE algumas empresas aparecem sem
@@ -547,6 +467,7 @@ class PortfolioController extends Controller
             'contexto' => $contextoFiltro['param'],
             'empresas' => $empresas,
             'periodo' => [
+                // Campos de display já existentes (Fase 89, PRESERVADOS).
                 'em_curso'         => $ehMesEmCurso,
                 'mes_selecionado'  => $mesSelecionado->format('Y-m'),
                 'meses_disponiveis' => $mesesDisponiveis,
@@ -555,6 +476,19 @@ class PortfolioController extends Controller
                 'mes_label'        => mb_strtolower($mesSelecionado->translatedFormat('F Y')),
                 'range_atual'      => sprintf('%s até %s', $inicioMes->format('d/m'), $fimMes->format('d/m')),
                 'range_anterior'   => sprintf('%s até %s', $inicioAnter->format('d/m'), $fimAnter->format('d/m')),
+                // Fase 103 (CAR-03) — datas cruas do MetricPeriodResolver,
+                // pra cards/séries que precisam da janela resolvida sem
+                // reparsear os campos de display acima. Não constrói
+                // seletor/toggle novo aqui (Fase 104 — Pitfall 3 do
+                // 103-RESEARCH.md).
+                'current_start'    => $periodo['current_start'],
+                'current_end'      => $periodo['current_end'],
+                'baseline_start'   => $periodo['baseline_start'],
+                'baseline_end'     => $periodo['baseline_end'],
+                'mode'             => $periodo['mode'],
+                'comparison_mode'  => $periodo['comparison_mode'],
+                'is_current_month' => $periodo['is_current_month'],
+                'is_closed'        => $periodo['is_closed'],
             ],
         ]);
     }
