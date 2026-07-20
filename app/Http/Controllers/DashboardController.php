@@ -281,7 +281,12 @@ class DashboardController extends Controller
      * cards/totais. `getSince()` continua sendo usado para chart de série
      * temporal e demais queries que aceitam Carbon — os dois coexistem.
      *
-     * @return array{from: string, to: string}
+     * Fase 97 Plan 01 — passou a devolver também a janela ANTERIOR (mesmo
+     * nº de dias, imediatamente antes de `from`) para os deltas de KPI
+     * (faturamento %, margem pp). Nunca "N dias atuais vs mês inteiro
+     * anterior" — janelas sempre do mesmo tamanho (CONTEXT §Claude's Discretion).
+     *
+     * @return array{from: string, to: string, prev_from: string, prev_to: string}
      */
     private function getPeriodRange(string $period): array
     {
@@ -293,9 +298,19 @@ class DashboardController extends Controller
             default => 30,
         };
 
+        $from = now()->subDays($days);
+        $to   = now();
+
+        // Janela anterior: termina no dia anterior a `from` e tem o MESMO
+        // número de dias — comparação simétrica (apples-to-apples).
+        $prevTo   = $from->copy()->subDay();
+        $prevFrom = $prevTo->copy()->subDays($days - 1);
+
         return [
-            'from' => now()->subDays($days)->toDateString(),
-            'to'   => now()->toDateString(),
+            'from'      => $from->toDateString(),
+            'to'        => $to->toDateString(),
+            'prev_from' => $prevFrom->toDateString(),
+            'prev_to'   => $prevTo->toDateString(),
         ];
     }
 
@@ -361,6 +376,72 @@ class DashboardController extends Controller
             ->where('reference_date', '>=', $since->toDateString())
             ->orderBy('reference_date')
             ->get();
+
+        // Fase 97 Plan 01 (D3) — "empresa nova no mês": contrato ATIVO em
+        // serviço de setor Performance cuja `data_contratacao` cai no mês
+        // corrente. NÃO usa `companies.created_at` (cadastro no sistema pode
+        // ser anterior ao início real do atendimento).
+        $mesInicioAtual = Carbon::now()->startOfMonth();
+        $novasEmpresasCount = Company::whereIn('id', $companies->pluck('id'))
+            ->whereHas('contratosServico', fn ($q) =>
+                $q->where('contratos_servico.ativo', true)
+                  ->whereHas('servico', fn ($qs) =>
+                      $qs->where('setor', Servico::SETOR_PERFORMANCE)
+                  )
+                  ->whereBetween('data_contratacao', [
+                      $mesInicioAtual->toDateString(),
+                      Carbon::now()->toDateString(),
+                  ])
+            )
+            ->count();
+
+        // ─── Janela período-anterior (Fase 97 Plan 01) ───────────────────────
+        //
+        // Delta % de faturamento e delta pp de margem comparam a janela atual
+        // com a janela IMEDIATAMENTE ANTERIOR de mesmo tamanho. Fonte: SUM/AVG
+        // direto em `adman_metrics` para os DOIS lados da comparação (o cache
+        // híbrido Adman não cobre a janela anterior, então usar fontes
+        // diferentes pros dois lados distorceria o delta).
+        [$currentFromN, , $prevFromN, $prevToN] = array_values($this->getPeriodRange($period));
+
+        // Limite superior EXCLUSIVO (< $currentFromN, não <= $prevToN): a
+        // coluna `reference_date` é `date`-cast mas persiste com sufixo
+        // " 00:00:00" no SQLite (confirmado em debug — bug pré-existente,
+        // fora do escopo desta fase, ver deferred-items.md). Um `whereBetween`
+        // com string pura "Y-m-d" no limite superior comparava
+        // "2026-06-19 00:00:00" > "2026-06-19" lexicograficamente e excluía o
+        // último dia da janela anterior. `<` contra o dia seguinte evita a
+        // ambiguidade independente do sufixo de horário armazenado.
+        $prevMetrics = AdmanMetric::whereIn('company_id', $companies->pluck('id'))
+            ->where('reference_date', '>=', $prevFromN)
+            ->where('reference_date', '<', $currentFromN)
+            ->get();
+
+        $totalRevenueAtualMetrics    = (float) $metrics->sum('revenue');
+        $totalRevenueAnteriorMetrics = (float) $prevMetrics->sum('revenue');
+
+        $totalRevenueDeltaPct = $totalRevenueAnteriorMetrics > 0
+            ? round((($totalRevenueAtualMetrics - $totalRevenueAnteriorMetrics) / $totalRevenueAnteriorMetrics) * 100, 2)
+            : null;
+
+        // Margem de contribuição PONDERADA por faturamento — substitui a
+        // média simples de `contribution_margin_pct`. SUM(revenue*margin) /
+        // SUM(revenue), considerando só registros com margem conhecida
+        // (não-nula) tanto no numerador quanto no denominador, pra não
+        // diluir a média com dias sem leitura de margem.
+        $pesarMargem = function ($colecao) {
+            $comMargem = $colecao->filter(fn ($m) => $m->contribution_margin_pct !== null && $m->revenue !== null);
+            $sumRevenue = (float) $comMargem->sum('revenue');
+            if ($sumRevenue <= 0) {
+                return 0.0;
+            }
+            $sumRevenueMargem = (float) $comMargem->sum(fn ($m) => (float) $m->revenue * (float) $m->contribution_margin_pct);
+            return $sumRevenueMargem / $sumRevenue;
+        };
+
+        $avgMarginPonderado         = $pesarMargem($metrics);
+        $avgMarginPonderadoAnterior = $pesarMargem($prevMetrics);
+        $avgMarginDeltaPp           = round($avgMarginPonderado - $avgMarginPonderadoAnterior, 2);
 
         // ─── Cards do período (Faturamento, Invest. Ads, TACOS médio) ────────
         //
@@ -590,9 +671,12 @@ class DashboardController extends Controller
         $byDate     = $metrics->groupBy(fn($m) => $m->reference_date->toDateString());
         $tacosByDate = $byDate->map(fn($g) => round($g->avg('tacos') ?? 0, 2));
         $revByDate   = $byDate->map(fn($g) => (float) $g->sum('revenue'));
+        // Fase 97 Plan 01 — margem ponderada por dia (mesmo eixo do revenue_chart).
+        $marginByDate = $byDate->map(fn($g) => round($pesarMargem($g), 2));
 
         $revenueChart = collect();
         $tacosChart   = collect();
+        $marginChart  = collect();
         $cursor = $since->copy()->startOfDay();
         $end    = now()->startOfDay();
         while ($cursor->lte($end)) {
@@ -600,10 +684,12 @@ class DashboardController extends Controller
             $lbl = $cursor->format('d/m');
             $revenueChart->push(['date' => $lbl, 'revenue' => (float) ($revByDate[$key] ?? 0)]);
             $tacosChart->push(['date' => $lbl, 'tacos' => (float) ($tacosByDate[$key] ?? 0)]);
+            $marginChart->push(['date' => $lbl, 'margin' => (float) ($marginByDate[$key] ?? 0)]);
             $cursor->addDay();
         }
         $revenueChart = $revenueChart->values();
         $tacosChart   = $tacosChart->values();
+        $marginChart  = $marginChart->values();
 
         // 2026-07-13 — só o modelo PRINCIPAL alimenta os widgets da home.
         // Phase 96 Plan 04 (AB-96-3 · call-site #5) — resposta invalidada
@@ -655,7 +741,10 @@ class DashboardController extends Controller
         $tacosValues = array_filter($tacosByCompany, fn($v) => $v !== null);
         $avgTacos    = !empty($tacosValues) ? array_sum($tacosValues) / count($tacosValues) : 0;
 
-        $avgMargin = $metrics->avg('contribution_margin_pct') ?? 0;
+        // Fase 97 Plan 01 — avg_margin agora é a margem PONDERADA por
+        // faturamento (não mais média simples de contribution_margin_pct);
+        // calculada acima em $avgMarginPonderado (compartilhada com o delta pp).
+        $avgMargin = $avgMarginPonderado;
         $productsWithoutCost = $metrics->avg(fn($m) => $m->products_without_cost_pct) ?? 0;
 
         $lastSyncDate = $metrics->max('reference_date');
@@ -926,6 +1015,11 @@ class DashboardController extends Controller
                 'avg_profit_share'         => round($avgProfitShare, 2),
                 'products_without_cost_pct' => round($productsWithoutCost, 2),
                 'last_sync_date'           => $lastSyncDate?->format('d/m/Y'),
+                // Fase 97 Plan 01 — deltas de KPI vs. janela período-anterior
+                // (mesmo nº de dias) + contagem de empresas novas no mês (D3).
+                'total_revenue_delta_pct'  => $totalRevenueDeltaPct,
+                'avg_margin_delta_pp'      => $avgMarginDeltaPp,
+                'novas_empresas_count'     => $novasEmpresasCount,
                 // Phase 61 Plan 61-01 — ADICIONA metadados só quando flag ON.
                 // Se null, Inertia serializa como null (aceito nos testes que
                 // usam ->missing() semanticamente pra "chave ausente ou null"
@@ -935,6 +1029,10 @@ class DashboardController extends Controller
             ],
             'revenue_chart'  => $revenueChart,
             'tacos_chart'    => $tacosChart,
+            // Fase 97 Plan 01 — série diária de margem ponderada (mesmo eixo
+            // de datas do revenue_chart), para a aba "Margem" do gráfico de
+            // evolução do redesign (D4).
+            'margin_chart'   => $marginChart,
             'nps_distribution' => $npsDistribution,
             // Quick 260623 — alimenta widget "Performance da equipe" que
             // substituiu NPS Distribuicao no Dashboard/Admin.jsx.
@@ -949,7 +1047,15 @@ class DashboardController extends Controller
                 'consultor_id'    => $consultorFilter,
                 'estrategista_id' => $estrategistaFilter,
                 'group_id'        => $grupoFilter,
+                // Fase 97 Plan 01 — corrige a base do bug do marketplace
+                // sumindo (CONTEXT Riscos §1): o front precisa receber de
+                // volta o recorte atual para preservá-lo ao reaplicar filtros.
+                'marketplace'     => $marketplaceFilter,
             ],
+            // Fase 97 Plan 01 — nome da rota atual ('dashboard' ou
+            // 'mercadolivre.dashboard'), para o front (Plan 97-03) navegar
+            // preservando o contexto ML ao aplicar filtros (Riscos §1).
+            'dashboard_route_name' => $request->route()?->getName(),
             'users'          => $users->map(fn($u) => ['id' => $u->id, 'name' => $u->name, 'role' => $u->role]),
             // (Quick task 260610-f69) Fonte da verdade nova pros filtros do
             // dashboard: vem do cargo no setor Performance via pivot, não do
