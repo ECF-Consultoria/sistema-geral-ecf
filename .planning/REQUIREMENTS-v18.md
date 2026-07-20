@@ -9,12 +9,12 @@
 
 ### PER — MetricPeriodResolver (Fase 100)
 
-- [ ] **PER-01**: `MetricPeriodResolver::resolve($filtros)` retorna `{mode, period_key, current_start, current_end, baseline_start, baseline_end, days_count, comparison_mode, timezone, data_fresh_until, bonus_payment_month, bonus_competence_month, is_current_month, is_closed}` com datas inclusivas e timezone America/Sao_Paulo
-- [ ] **PER-02**: Modo operacional (mês atual) resolve `01/mês..último dia confiável` vs. `mesmo intervalo do mês anterior` — nunca compara N dias do mês atual com o mês anterior inteiro, nunca usa dia ainda não consolidado pela fonte
-- [ ] **PER-03**: Modo oficial/bônus resolve a competência do último mês fechado: em julho/2026 → competência junho/2026, pagamento julho/2026, atual `01/06..30/06`, baseline `02/05..31/05` (janela de mesmo tamanho — N dias imediatamente anteriores, decisão do usuário 2026-07-17)
-- [ ] **PER-04**: Modo mês fechado selecionado resolve o mês calendário completo vs. janela anterior de mesmo tamanho (ex.: maio/2026 → `01/05..31/05` vs `31/03..30/04`); período custom `DD..DD` → baseline com a mesma contagem de dias imediatamente anterior
-- [ ] **PER-05**: Testes unitários cobrindo os 4 casos obrigatórios do plano (mês atual em 20/07; último fechado em 20/07; filtro junho; custom 01/06..15/06→17/05..31/05) — `tests/Unit/MetricPeriodResolverTest.php`
-- [ ] **PER-06**: Nenhum controller/tela monta período ou calcula "mês passado" manualmente fora do resolver (regra transversal — verificada por gate nos consumidores do núcleo)
+- [x] **PER-01**: `MetricPeriodResolver::resolve($filtros)` retorna `{mode, period_key, current_start, current_end, baseline_start, baseline_end, days_count, comparison_mode, timezone, data_fresh_until, bonus_payment_month, bonus_competence_month, is_current_month, is_closed}` com datas inclusivas e timezone America/Sao_Paulo
+- [x] **PER-02**: Modo operacional (mês atual) resolve `01/mês..último dia confiável` vs. `mesmo intervalo do mês anterior` — nunca compara N dias do mês atual com o mês anterior inteiro, nunca usa dia ainda não consolidado pela fonte
+- [x] **PER-03**: Modo oficial/bônus resolve a competência do último mês fechado: em julho/2026 → competência junho/2026, pagamento julho/2026, atual `01/06..30/06`, baseline `02/05..31/05` (janela de mesmo tamanho — N dias imediatamente anteriores, decisão do usuário 2026-07-17)
+- [x] **PER-04**: Modo mês fechado selecionado resolve o mês calendário completo vs. janela anterior de mesmo tamanho (ex.: maio/2026 → `01/05..31/05` vs `31/03..30/04`); período custom `DD..DD` → baseline com a mesma contagem de dias imediatamente anterior
+- [x] **PER-05**: Testes unitários cobrindo os 4 casos obrigatórios do plano (mês atual em 20/07; último fechado em 20/07; filtro junho; custom 01/06..15/06→17/05..31/05) — `tests/Unit/MetricPeriodResolverTest.php`
+- [x] **PER-06**: Nenhum controller/tela monta período ou calcula "mês passado" manualmente fora do resolver (regra transversal — verificada por gate nos consumidores do núcleo)
 
 ### ADM — AdmanMetricDiffService (Fase 101)
 
@@ -64,12 +64,12 @@
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| PER-01 | Fase 100 | Pending |
-| PER-02 | Fase 100 | Pending |
-| PER-03 | Fase 100 | Pending |
-| PER-04 | Fase 100 | Pending |
-| PER-05 | Fase 100 | Pending |
-| PER-06 | Fase 100 | Pending |
+| PER-01 | Fase 100 | Complete |
+| PER-02 | Fase 100 | Complete |
+| PER-03 | Fase 100 | Complete |
+| PER-04 | Fase 100 | Complete |
+| PER-05 | Fase 100 | Complete |
+| PER-06 | Fase 100 | Complete |
 | ADM-01 | Fase 101 | Pending |
 | ADM-02 | Fase 101 | Pending |
 | ADM-03 | Fase 101 | Pending |
