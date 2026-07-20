@@ -801,6 +801,28 @@ Plans:
 2. Admin gerencia a lista de IPs internos pela UI sem tocar em `.env`/deploy
 3. Invalidar resposta remove seu efeito de dashboards e do NPS médio do Desempenho (assignments), com registro de quem invalidou e quando
 
+### Phase 97: Redesign da Dashboard Mercado Livre (v-dash)
+
+**Goal:** Reformular por completo a dashboard do setor Mercado Livre (`Dashboard/Admin.jsx` + `DashboardController::adminDashboard`) seguindo o mockup do usuário: filtros práticos (rascunho→aplicar, chips, colapsável) que propagam a TODOS os widgets, 4 KPIs com variação vs período anterior e links para áreas completas, gráfico de evolução interativo (Faturamento/Margem), widget de detratores de NPS, score da equipe pela nota oficial, e novas empresas do mês.
+**Requirements**: DASH-97-1, DASH-97-2, DASH-97-3, DASH-97-4, DASH-97-5, DASH-97-6, DASH-97-7
+**Depends on:** Fase 96 (usa `scopeValida()` nas leituras de NPS) — já executada
+**Plans:** TBD (rodar `/gsd-plan-phase 97`)
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. Os filtros (Período/Empresa/Grupo/Estrategista/Analista) usam rascunho→Aplicar com chips removíveis, e **todos os widgets** (KPIs, gráfico, NPS ruim, score da equipe, novas empresas) refletem o recorte aplicado — incluindo os 2 que hoje ignoram (`performance_equipe` e `nps_pendentes`)
+2. Filtrar em `/dashboard/mercadolivre` preserva o recorte `marketplace='meli'` (corrige o bug do `route('dashboard')` hardcoded); a `/dashboard` genérica não regride
+3. Os 4 KPIs (Faturamento, Margem ponderada, NPS médio, Empresas ativas) mostram valor + variação vs período anterior + link para a área completa
+4. Gráfico "Evolução no período" com abas Faturamento/Margem, série diária do recorte e hover interativo (tooltip + Pico/Menor)
+5. Widget "NPS ruim" lista respostas nota ≤5 do recorte (excluindo invalidadas — Fase 96), com link para o NPS completo; "Score da equipe" usa `DesempenhoScoreService.nota_final` (0–5) respeitando o recorte; "Novas empresas no mês" usa início de `contratos_servico` no mês
+6. Estados de carregando/vazio/erro reais; `npm run build` exit 0
+
+**UI hint**: yes
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 97 to break down)
+
 ## Dependências — Iniciativa NPS Anti-Burlamento (Fases 94-96)
 
 - **94** é fundação (schema + captura + serviço de suspeita) — 95 e 96 dependem dela
