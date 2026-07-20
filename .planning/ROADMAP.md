@@ -909,7 +909,7 @@ Plans:
 **Goal:** `DesempenhoScoreService` passa a consumir o `MetricPeriodResolver` e o `AdmanMetricDiffService`: o ranking oficial de bônus usa a competência do mês fechado (julho paga junho) e `var_margem_pct` usa o diff pronto da Adman — preservando o score único e as invariantes de elegibilidade financeira da v17.0.
 **Requirements**: BON-01, BON-02, BON-03, BON-04, BON-05
 **Depends on:** Phase 100 (`MetricPeriodResolver`), Phase 101 (`AdmanMetricDiffService`)
-**Plans:** TBD
+**Plans:** 2 plans
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -921,7 +921,8 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 102 to break down)
+- [ ] 102-01-PLAN.md — Núcleo do cálculo: janelas via MetricPeriodResolver + margem via AdmanMetricDiffService + fixtures densos e âncora recalibrada (BON-01/02/03)
+- [ ] 102-02-PLAN.md — Metadados periodo/bonus + cache v5 com period_key + invariantes v17 + regressão dual-path (BON-02/04/05)
 
 ### Phase 103: Carteira por período (v18.0)
 
