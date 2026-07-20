@@ -870,7 +870,7 @@ Plans:
 **Goal:** Existe um resolvedor único de período (`MetricPeriodResolver`) que resolve janela atual + janela comparativa por modo (operacional / oficial-bônus / mês-fechado / custom), competência de bônus, datas inclusivas, timezone America/Sao_Paulo e label pra UI — nenhum controller do núcleo (Fases 102-104) monta período na mão.
 **Requirements**: PER-01, PER-02, PER-03, PER-04, PER-05, PER-06
 **Depends on:** Nada (fundação da milestone v18.0)
-**Plans:** TBD
+**Plans:** 1 plan em 1 wave
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -882,7 +882,7 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 100 to break down)
+- [ ] 100-01-PLAN.md — MetricPeriodResolver (service puro) + suite unitária: modos operacional/oficial-bônus/mês-fechado/custom + 4 casos obrigatórios
 
 ### Phase 101: AdmanMetricDiffService (v18.0)
 
