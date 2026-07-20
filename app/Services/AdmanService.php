@@ -787,6 +787,68 @@ class AdmanService
     }
 
     /**
+     * Variante DETALHADA de fetchAccountMetricsCached — leitura ADITIVA que
+     * preserva `{value, diff, prev}` por campo, em vez de extrair só `.value`
+     * (Fase 101, ADM-01). NÃO altera `fetchAccountMetricsCached()` — 5
+     * consumidores dependem do shape simplificado `{acos,tacos,...}` float.
+     *
+     * Chave de cache DISTINTA da simplificada (`adman:account_metrics_detailed:...`)
+     * pra não colidir com o cache já povoado no shape `{value}` float — os dois
+     * convivem, mesmo custId/range, TTLs independentes.
+     *
+     * Itera TODAS as chaves de `$data['metrics']` (não uma lista fixa) — assim
+     * cobre `percentageMargin` (usado pela Fase 101) sem precisar listar campo
+     * a campo. Todo acesso a campo aninhado usa `??` (payload externo — V5).
+     *
+     * @return array<string, array{value: ?float, diff: ?float, prev: ?float}>|null
+     */
+    public function fetchAccountMetricsDetailedCached(string $custId, string $dateFrom, string $dateTo, int $cacheMinutes = 1440, bool $forceRefresh = false, string $marketplace = 'meli'): ?array
+    {
+        $cacheKey = "adman:account_metrics_detailed:{$marketplace}:{$custId}:{$dateFrom}:{$dateTo}:" . $this->cacheDay();
+
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if ($cached !== null) {
+                return $cached === self::ERROR_SENTINEL ? null : $cached;
+            }
+        }
+
+        try {
+            $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo, $marketplace);
+
+            // Preserva {value,diff,prev} por campo — nunca assume chave presente.
+            $detalhado = fn(string $key): ?array => isset($data['metrics'][$key])
+                ? [
+                    'value' => $data['metrics'][$key]['value'] ?? null,
+                    'diff'  => $data['metrics'][$key]['diff']  ?? null,
+                    'prev'  => $data['metrics'][$key]['prev']  ?? null,
+                ]
+                : null;
+
+            $metrics = [];
+            foreach (array_keys($data['metrics'] ?? []) as $key) {
+                $metrics[$key] = $detalhado($key);
+            }
+
+            unset($data);
+            gc_collect_cycles();
+
+            // Resposta OK mas sem NENHUMA métrica — trata como erro (resposta inválida).
+            if (empty($metrics)) {
+                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+                return null;
+            }
+
+            Cache::put($cacheKey, $metrics, now()->addMinutes($cacheMinutes));
+            return $metrics;
+        } catch (\Throwable $e) {
+            Log::warning("[Adman/AccountMetricsDetailed] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+            Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+            return null;
+        }
+    }
+
+    /**
      * Lê APENAS do cache. Mesma motivação de getCachedGrossBilling: chamadas
      * síncronas em controllers com N empresas estouram memória/rate limit.
      */
