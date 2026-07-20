@@ -93,9 +93,14 @@ Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::cla
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
     ->name('ml.oauth.callback');
 
-// Shopee OAuth — callback público (a Shopee redireciona com state+code+shop_id)
+// Shopee OAuth — landing guiada (link único assinado que o admin manda ao cliente:
+// Passo 1 ERP → Passo 2 Ads) + callbacks públicos dos dois apps.
+Route::get('/shopee/conectar/{company}', [ShopeeOAuthController::class, 'connectLanding'])
+    ->name('shopee.connect.landing')->middleware('signed');
 Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
     ->name('shopee.oauth.callback');
+Route::get('/oauth/shopee/ads/callback', [ShopeeOAuthController::class, 'adsCallback'])
+    ->name('shopee.oauth.ads.callback');
 
 // Google OAuth (público — sem autenticação durante o callback)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
