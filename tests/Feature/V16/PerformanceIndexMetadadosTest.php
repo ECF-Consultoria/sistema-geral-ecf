@@ -10,6 +10,7 @@ use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -56,6 +57,16 @@ class PerformanceIndexMetadadosTest extends TestCase
         // de outro arquivo não é autoload-confiável quando a suite roda com
         // --filter (padrão já documentado em DesempenhoElegibilidadeTest).
         $this->app->instance(MetricsProviderFactory::class, new PerformanceIndexMetadadosTestProviderStub());
+
+        // Fase 102 (deviation Rule 1 — regressão real causada por 102-01 fora
+        // do edit-set declarado): compute() passou a delegar var_margem_pct a
+        // AdmanMetricDiffService, que retorna emptyMetrics() sem HTTP quando a
+        // empresa não tem adman_account_id. Isola qualquer request real.
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
 
         $this->setorId = DB::table('setores')->insertGetId([
             'nome'       => 'Performance',
@@ -156,6 +167,12 @@ class PerformanceIndexMetadadosTest extends TestCase
 
         $user    = $this->criarUserComCargo('Analista Official 92', $this->cargoAnalistaId);
         $empresa = $this->criarEmpresa();
+        // Fase 102 — adman_account_id necessário pro AdmanMetricDiffService
+        // conseguir calcular var_margem_pct (custId vazio = emptyMetrics(),
+        // sem HTTP, var_margem_pct sempre null → score_status vira 'partial').
+        // Este teste só precisa de um valor NÃO-NULO (não asserta o número
+        // exato) — mantém revenue/margem originais.
+        $empresa->forceFill(['adman_account_id' => 'CUST-9201-OFFICIAL', 'marketplace' => 'meli'])->save();
         $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE);
         $this->criarContrato($empresa->id, $servicoPerf, true);
         $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoPerf);

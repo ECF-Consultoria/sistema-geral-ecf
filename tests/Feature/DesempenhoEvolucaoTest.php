@@ -134,7 +134,12 @@ class DesempenhoEvolucaoTest extends TestCase
             return new class($self) extends DesempenhoScoreService {
                 public function __construct(private DesempenhoEvolucaoTest $owner) {}
 
-                public function compute(User $user, Carbon $mesReferencia): array
+                // Fase 102 (deviation Rule 3 — blocking, fora do edit-set
+                // declarado): compute() do parent ganhou `?array
+                // $periodoOverride = null` (BON-01/02) — a assinatura do
+                // override precisa ser compatível (LSP) senão é fatal error
+                // de PHP em tempo de boot, não um teste que falha.
+                public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
                 {
                     if (isset($this->owner->fakeScoresPublic()[$user->id])) {
                         return $this->owner->fakeScoresPublic()[$user->id];
