@@ -3,12 +3,14 @@
 namespace Tests\Feature\Phase72;
 
 use App\Models\Company;
+use App\Models\ContratoServico;
 use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
 use App\Models\NpsTemplate;
 use App\Models\NpsTemplateOption;
 use App\Models\NpsTemplateQuestion;
+use App\Models\Servico;
 use App\Models\Setor;
 use App\Models\User;
 use Carbon\Carbon;
@@ -76,8 +78,32 @@ class DashboardPendencyPropsTest extends TestCase
 
         $admin = User::factory()->create(['role' => 'admin']);
 
-        Company::factory()->create(['name' => 'Empresa Alpha']);
-        Company::factory()->create(['name' => 'Empresa Beta']);
+        // Fase 97 Plan 02 (DASH-97-1 · Riscos §2) — `nps_pendentes` do
+        // adminDashboard passou a usar `forCompanies($companies)` (o MESMO
+        // recorte "universo Performance" dos demais widgets) em vez de
+        // `forCarteira` (que para admin trazia TODAS as empresas do sistema,
+        // sem exigir contrato Performance ativo). Sem contrato, estas
+        // empresas de fixture cairiam FORA do recorte e sumiriam da lista —
+        // por isso cada uma ganha um contrato ativo de serviço Performance.
+        $empresaAlpha = Company::factory()->create(['name' => 'Empresa Alpha']);
+        $empresaBeta  = Company::factory()->create(['name' => 'Empresa Beta']);
+
+        foreach ([$empresaAlpha, $empresaBeta] as $empresa) {
+            $servico = Servico::create([
+                'nome'          => 'Gestao Fase72 ' . uniqid(),
+                'valor_padrao'  => 1000,
+                'tipo_cobranca' => Servico::TIPO_MENSAL,
+                'ativo'         => true,
+                'setor'         => Servico::SETOR_PERFORMANCE,
+            ]);
+            ContratoServico::create([
+                'company_id'       => $empresa->id,
+                'servico_id'       => $servico->id,
+                'valor_contratado' => 1000,
+                'data_contratacao' => now()->subYears(2)->toDateString(),
+                'ativo'            => true,
+            ]);
+        }
 
         $response = $this->actingAs($admin)->get(route('dashboard'));
 

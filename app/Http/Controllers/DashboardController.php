@@ -381,8 +381,12 @@ class DashboardController extends Controller
         // serviço de setor Performance cuja `data_contratacao` cai no mês
         // corrente. NÃO usa `companies.created_at` (cadastro no sistema pode
         // ser anterior ao início real do atendimento).
+        // Fase 97 Plan 02 (DASH-97-7) — guarda também os IDS (não só o count),
+        // reusados mais abaixo para montar os cards detalhados de
+        // `novas_empresas` a partir do MESMO critério (evita 2 fontes de
+        // verdade divergindo entre o número do KPI e a lista de cards).
         $mesInicioAtual = Carbon::now()->startOfMonth();
-        $novasEmpresasCount = Company::whereIn('id', $companies->pluck('id'))
+        $novasEmpresasIds = Company::whereIn('id', $companies->pluck('id'))
             ->whereHas('contratosServico', fn ($q) =>
                 $q->where('contratos_servico.ativo', true)
                   ->whereHas('servico', fn ($qs) =>
@@ -393,7 +397,8 @@ class DashboardController extends Controller
                       Carbon::now()->toDateString(),
                   ])
             )
-            ->count();
+            ->pluck('id');
+        $novasEmpresasCount = $novasEmpresasIds->count();
 
         // ─── Janela período-anterior (Fase 97 Plan 01) ───────────────────────
         //
@@ -768,6 +773,42 @@ class DashboardController extends Controller
             })->count(),
         ];
 
+        // Fase 97 Plan 02 (DASH-97-5) — widget "NPS ruim": respostas da
+        // dimensão empresa com nota BAIXA, do MESMO recorte usado acima
+        // ($npsResponses já filtra ->principal() + whereIn($companies) +
+        // janela $since). Régua de "nota ruim" = MESMA do bucket 'negativas'
+        // acima (nota <= 3 na escala 1-5 do sistema) — o "≤5"/"≥6" do mockup
+        // é herança da escala 0-10 antiga e NÃO se aplica aqui (usar ≤3 evita
+        // marcar quase todas as respostas como ruins).
+        // Invalidação (Fase 96): `$s->response` já vem eager-loaded com
+        // `->valida()` (linha acima) — uma resposta invalidada pelo admin tem
+        // `response=null` aqui, `$notaDe($s)` retorna null e cai fora do
+        // filtro automaticamente (T-97-02-02), sem precisar checar
+        // `invalidated_at` de novo.
+        $companiesById = $companies->keyBy('id');
+        $npsRuins = $npsResponses
+            ->filter(function ($s) use ($notaDe) {
+                $n = $notaDe($s);
+                return $n !== null && $n <= 3;
+            })
+            ->sortByDesc(fn ($s) => $s->completed_at)
+            ->values()
+            ->map(function ($s) use ($notaDe, $companiesById) {
+                $company = $companiesById->get($s->company_id);
+                return [
+                    // Ids para o link "Abrir NPS completo →" (Plan 97-04).
+                    'survey_id'    => $s->id,
+                    'company_id'   => $s->company_id,
+                    'company_name' => $company?->name,
+                    'data'         => $s->completed_at?->format('d/m/Y'),
+                    'nota'         => $notaDe($s),
+                    'comment'      => $s->response?->comment,
+                    'analista'     => $company?->consultor->first()?->name,
+                    'estrategista' => $company?->estrategista->first()?->name,
+                ];
+            })
+            ->values();
+
         // Ranking "Analistas e Mentores" + filtros: só time de consultoria.
         // Antes era `role != admin`, que deixava publicadores (role=consultor +
         // publication_role=publicador) vazarem para o ranking. Mesma regra da
@@ -923,7 +964,23 @@ class DashboardController extends Controller
         // carteira antes do ranking.
         $scoreService = app(\App\Services\DesempenhoScoreService::class);
         $mesReferenciaPerf = Carbon::now()->startOfMonth();
+
+        // Fase 97 Plan 02 (DASH-97-1 · Riscos §2) — "Score da equipe" ANTES
+        // ignorava por completo o recorte de filtros (company_id/consultor_id/
+        // estrategista_id/group_id/marketplace), mostrando SEMPRE todo o setor.
+        // Deriva o conjunto de user_id vinculados às empresas de $companies
+        // (recorte já aplicado acima, linha ~373) via pivot `company_users`,
+        // papel 'consultor' (=Analista) ou 'estrategista'. Quando NENHUM filtro
+        // está ativo, $companies já é TODO o universo Performance — então este
+        // conjunto coincide com a visão ampla de hoje (não regride).
+        $userIdsDoRecorte = DB::table('company_users')
+            ->whereIn('company_id', $companies->pluck('id'))
+            ->whereIn('role', ['consultor', 'estrategista'])
+            ->distinct()
+            ->pluck('user_id');
+
         $perfMembrosQuery = User::where('active', true)
+            ->whereIn('id', $userIdsDoRecorte)
             ->whereExists(function ($q) {
                 $q->from('user_setores as us')
                   ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
@@ -967,6 +1024,34 @@ class DashboardController extends Controller
                     // Campos legados pra compat visual do widget Admin.jsx:
                     'score'           => $notaFinal !== null ? round($notaFinal * 20, 0) : null,
                     'classificacao'   => $faixaParaClassificacao[$faixaSlug] ?? 'critico',
+                    // Fase 97 Plan 02 (D1) — breakdown pro card "Score da
+                    // equipe" (barra + composição). Chaves escolhidas
+                    // (decisão do executor, ver 97-02-PLAN.md Task 1):
+                    //   'carteira' => nº de empresas na carteira do profissional
+                    //                 (empresas_carteira, já resolvido por
+                    //                 CarteiraContextService — não é um
+                    //                 componente de nota, é contexto).
+                    //   'nps'      => pontos_componentes.nps (0-5, mesma escala
+                    //                 da nota_final, usado no cálculo da média).
+                    //   'margem'   => pontos_componentes.margem (0-5, idem).
+                    //   'tacos'    => SEMPRE null. O DesempenhoScoreService
+                    //                 (nota oficial D1) NÃO calcula um
+                    //                 componente de TACoS — os 3 componentes
+                    //                 reais da média são NPS/faturamento/margem
+                    //                 (o real 3º componente vem exposto abaixo
+                    //                 em 'faturamento'). Mantemos a chave
+                    //                 'tacos' só por compat com o layout de 4
+                    //                 barras do mock; o card (Plan 97-04) deve
+                    //                 tratar null como indisponível ou trocar o
+                    //                 rótulo por "Faturamento" ao consumir a
+                    //                 chave 'faturamento' real.
+                    'breakdown' => [
+                        'carteira'    => $r['empresas_carteira'] ?? 0,
+                        'nps'         => $r['pontos_componentes']['nps'] ?? null,
+                        'margem'      => $r['pontos_componentes']['margem'] ?? null,
+                        'faturamento' => $r['pontos_componentes']['faturamento'] ?? null,
+                        'tacos'       => null,
+                    ],
                 ];
             })
             // DESEMP-10 — remove users sem carteira do ranking.
@@ -995,8 +1080,52 @@ class DashboardController extends Controller
 
         // Phase 72 Plan 02 — SC#3: injeta lista de empresas pendentes de NPS no
         // mes corrente para o widget do Dashboard (Plan 72-03 renderiza).
-        // forCarteira ja respeita escopo: admin=todas as empresas ativas.
-        $npsPendentes = $this->npsPending->forCarteira($request->user());
+        // Fase 97 Plan 02 (DASH-97-1 · Riscos §2) — trocado de `forCarteira`
+        // (que para admin ignorava QUALQUER filtro e trazia TODAS as empresas
+        // do sistema) para `forCompanies($companies)`, que respeita o mesmo
+        // recorte (company_id/consultor_id/estrategista_id/group_id/
+        // marketplace) já aplicado a todos os outros widgets do dashboard.
+        $npsPendentes = $this->npsPending->forCompanies($companies);
+
+        // Fase 97 Plan 02 (DASH-97-7) — cards detalhados de "empresas novas
+        // no mês" (mesmo critério D3 de `$novasEmpresasIds` acima). Reusa as
+        // Company já carregadas em `$companies` (consultor/estrategista
+        // eager-loaded) — filtra pelos ids em vez de rodar uma 2ª query
+        // completa de Company, evitando 2 fontes de verdade divergentes.
+        $novasEmpresas = $companies
+            ->whereIn('id', $novasEmpresasIds)
+            ->sortBy('name')
+            ->values()
+            ->map(function ($c) use ($revenueByCompany, $tacosByCompany, $marginByCompany) {
+                $faturamentoParcial = (float) ($revenueByCompany[$c->id] ?? 0);
+                $margem = $marginByCompany[$c->id] ?? null;
+
+                // Fase 97 Plan 02 — regra do "status" do card (decisão do
+                // executor — o mockup não define o cálculo, só o rótulo):
+                //   'ramp-up'  → ainda sem faturamento apurado no período
+                //                (empresa recém-iniciada, dado ainda não
+                //                chegou ou ainda não há venda).
+                //   'atencao'  → já fatura, mas margem de contribuição
+                //                negativa.
+                //   'saudavel' → demais casos (fatura e margem >= 0, ou
+                //                margem ainda indisponível mas já com
+                //                faturamento).
+                $status = $faturamentoParcial <= 0
+                    ? 'ramp-up'
+                    : (($margem !== null && $margem < 0) ? 'atencao' : 'saudavel');
+
+                return [
+                    'id'                  => $c->id,
+                    'name'                => $c->name,
+                    'grupo'               => $c->grupo?->name,
+                    'status'              => $status,
+                    'faturamento_parcial' => $faturamentoParcial,
+                    'tacos'               => $tacosByCompany[$c->id] ?? null,
+                    'analista'            => $c->consultor->first()?->name,
+                    'estrategista'        => $c->estrategista->first()?->name,
+                ];
+            })
+            ->values();
 
         return Inertia::render('Dashboard/Admin', [
             'stats' => [
@@ -1098,6 +1227,14 @@ class DashboardController extends Controller
             // (shape [{company_id, name, template_id, template_nome,
             // month_reference, dias_atraso}]). Plan 72-03 renderiza o widget.
             'nps_pendentes'   => $npsPendentes,
+            // Fase 97 Plan 02 (DASH-97-5) — respostas de nota baixa (<=3) do
+            // recorte, excluindo invalidadas (Fase 96). Widget "NPS ruim"
+            // (Plan 97-04) renderiza o carrossel.
+            'nps_ruins'       => $npsRuins,
+            // Fase 97 Plan 02 (DASH-97-7) — cards das empresas com contrato
+            // ativo iniciado no mês corrente (D3). Widget "Novas empresas no
+            // mês" (Plan 97-04) renderiza.
+            'novas_empresas'  => $novasEmpresas,
         ]);
     }
 
