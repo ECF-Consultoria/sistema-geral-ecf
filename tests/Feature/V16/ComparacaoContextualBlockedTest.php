@@ -11,6 +11,7 @@ use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -50,6 +51,18 @@ class ComparacaoContextualBlockedTest extends TestCase
         Carbon::setTestNow(Carbon::parse('2026-08-15 10:00:00'));
 
         $this->app->instance(MetricsProviderFactory::class, new ComparacaoContextualBlockedTestProviderStub());
+
+        // Fase 102 (fix plan-checker — BLOCKER) — ISOLAMENTO HTTP OBRIGATÓRIO:
+        // este teste chama DesempenhoScoreService::compute() (direto e via
+        // controller), que agora delega margem a AdmanMetricDiffService. As
+        // empresas desta suite não têm adman_account_id (var_margem_pct não é
+        // asserido aqui — o teste usa compute() como oráculo self-referente),
+        // então nenhum request real é esperado; o fake é defesa em profundidade.
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
 
         $this->setorId = DB::table('setores')->insertGetId([
             'nome'       => 'Performance',

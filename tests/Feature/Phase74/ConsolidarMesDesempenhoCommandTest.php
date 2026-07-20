@@ -13,6 +13,7 @@ use App\Services\Metrics\MetricsProviderFactory;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -73,6 +74,18 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
 
         $this->providerStub = new DesempenhoScoreServiceTestProviderStub();
         $this->app->instance(MetricsProviderFactory::class, $this->providerStub);
+
+        // Fase 102 (fix plan-checker — BLOCKER) — ISOLAMENTO HTTP OBRIGATÓRIO:
+        // este comando chama compute() direto (não computeCached()), que
+        // agora delega margem a AdmanMetricDiffService (HTTP quando a empresa
+        // tem adman_account_id). As empresas desta suite NÃO têm custId
+        // (var_margem_pct não é asserida aqui), então nenhum request real é
+        // esperado — o fake abaixo é defesa em profundidade.
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
 
         // Setor + cargos analista/estrategista (mesma fonte canônica dos
         // controllers de Performance — user_setores → cargos.slug).

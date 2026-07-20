@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\TestCase;
 
@@ -77,6 +78,17 @@ class DesempenhoElegibilidadeTest extends TestCase
         // Phase74 de propósito: classe secundária de outro arquivo de teste
         // não é autoload-confiável quando a suite roda com --filter.
         $this->app->instance(MetricsProviderFactory::class, new DesempenhoElegibilidadeTestProviderStub());
+
+        // Fase 102 (fix plan-checker — BLOCKER) — ISOLAMENTO HTTP OBRIGATÓRIO:
+        // compute() agora delega margem a AdmanMetricDiffService (HTTP quando
+        // a empresa tem adman_account_id). O fake "sem .diff" força
+        // calculated_fallback determinístico — golden vem 100% do fixture
+        // local, nunca de prod.
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
 
         $this->setorId = DB::table('setores')->insertGetId([
             'nome'       => 'Performance',
@@ -195,13 +207,21 @@ class DesempenhoElegibilidadeTest extends TestCase
         // financeiro vem só do subconjunto elegível dele.
         $user = $this->criarUserComCargo('Analista Misto', $this->cargoAnalistaId);
 
-        // Empresa A — Performance elegível: +3.00% faturamento / +2.80% margem.
+        // Empresa A — Performance elegível: +3.00% faturamento.
+        // Fase 102 (BON-03) var_margem_pct: precisa de adman_account_id
+        // (senão AdmanMetricDiffService retorna emptyMetrics(), sem HTTP) e a
+        // margem passa a ser percentageMargin (não mais R$ absoluto):
+        // pctBaseline=2000/10000×100=20,00%; pctAtual=2117,68/10300×100=
+        // 20,56% (exato) → diff=(20,56-20,00)/20,00×100=+2,80% (mesmo valor
+        // numérico da v17, agora sob a fórmula pct-based — não é coincidência
+        // de preservação, é a álgebra escolhida pro fixture).
         $empresaA    = $this->criarEmpresa();
+        $empresaA->forceFill(['adman_account_id' => 'CUST-MISTO-A', 'marketplace' => 'meli'])->save();
         $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE);
         $this->criarContrato($empresaA->id, $servicoPerf, true);
         $this->inserirPivot($empresaA->id, $user->id, 'consultor', $servicoPerf);
-        $this->mockAdman($empresaA, '2026-08', revenue: 10300, margem: 10280);
-        $this->mockAdman($empresaA, '2026-07', revenue: 10000, margem: 10000);
+        $this->mockAdman($empresaA, '2026-08', revenue: 10300, margem: 2117.68);
+        $this->mockAdman($empresaA, '2026-07', revenue: 10000, margem: 2000.00);
 
         // Empresa B — Shopee, sem fonte financeira. Números absurdos: se
         // vazarem pro cálculo, o teste detecta (var_faturamento_pct explodiria).

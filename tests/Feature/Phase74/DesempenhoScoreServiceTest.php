@@ -15,11 +15,13 @@ use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
+use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Metrics\UnifiedMetricsDto;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -95,6 +97,19 @@ class DesempenhoScoreServiceTest extends TestCase
         // qualquer chamada HTTP real ao ML/Adman API (DESEMP-11 D-27).
         $this->providerStub = new DesempenhoScoreServiceTestProviderStub();
         $this->app->instance(MetricsProviderFactory::class, $this->providerStub);
+
+        // Fase 102 (fix plan-checker — BLOCKER) — ISOLAMENTO HTTP OBRIGATÓRIO:
+        // computeVarMargem() passa a delegar a AdmanMetricDiffService::compute(),
+        // que faz HTTP real (fetchPerformance + fetchAccountMetricsDetailedCached)
+        // por empresa QUANDO ela tem adman_account_id preenchido.
+        // Http::preventStrayRequests() falha ALTO se algum request escapar do
+        // fake abaixo; o fake "sem .diff" força calculated_fallback
+        // DETERMINÍSTICO (o golden vem do fixture local, nunca de prod).
+        Http::preventStrayRequests();
+        Http::fake([
+            '*/performance/*'       => Http::response([], 404),
+            '*/accounts/*/metrics*' => Http::response([], 404),
+        ]);
 
         // Setor Performance + cargos analista/estrategista — fonte canônica
         // do cargo do user (users.role é legacy; padrão das quicks 260610-f69).
@@ -214,8 +229,20 @@ class DesempenhoScoreServiceTest extends TestCase
      * `sem_carteira=true` (91-RESEARCH.md Pitfall 1). Os valores esperados
      * dos 12 testes NÃO mudam — só a fonte de dado por trás do universo.
      */
-    private function criarEmpresaNaCarteira(User $user, string $pivotCreatedAt = '-3 months', string $role = 'consultor'): Company
-    {
+    /**
+     * @param  ?string  $admanAccountId  Fase 102 — preencher quando o teste
+     *   for asserir `var_margem_pct` numérico: `AdmanMetricDiffService`
+     *   retorna `emptyMetrics()` (sem HTTP nenhum) quando o custId está
+     *   vazio, então SEM isso `var_margem_pct` fica sempre `null`. Testes
+     *   que não asserem margem numérica podem deixar `null` (comportamento
+     *   inalterado — zero HTTP, seguro sob `Http::preventStrayRequests()`).
+     */
+    private function criarEmpresaNaCarteira(
+        User $user,
+        string $pivotCreatedAt = '-3 months',
+        string $role = 'consultor',
+        ?string $admanAccountId = null,
+    ): Company {
         // Ajuste 2026-07-09 (força tarefa): o filtro "empresa nova" agora usa
         // companies.created_at (não pivot->created_at). Continuamos aceitando
         // $pivotCreatedAt como parâmetro para preservar a API dos testes, mas
@@ -223,7 +250,9 @@ class DesempenhoScoreServiceTest extends TestCase
         // cenário de teste bater com a lógica de produção.
         $ts = Carbon::parse($pivotCreatedAt)->toDateTimeString();
 
-        $company = Company::factory()->create();
+        $company = Company::factory()->create(
+            $admanAccountId !== null ? ['adman_account_id' => $admanAccountId, 'marketplace' => 'meli'] : []
+        );
         // Força companies.created_at no timestamp fixture-controlado.
         $company->timestamps = false;
         $company->forceFill(['created_at' => $ts, 'updated_at' => $ts])->save();
@@ -266,6 +295,46 @@ class DesempenhoScoreServiceTest extends TestCase
             'revenue'             => $revenue,
             'contribution_margin' => $margem,
         ]);
+    }
+
+    /**
+     * Fixture DENSA (Fase 102 · Pitfall 1 do 102-RESEARCH.md) — popula 1 row
+     * `AdmanMetric` por DIA nas janelas current/baseline REAIS de `$mesYm`
+     * (resolvidas via `MetricPeriodResolver`, mesmo resolver usado pelo
+     * service). Substitui o padrão "1 linha no dia 15": sob a régua nova
+     * (baseline = N dias imediatamente anteriores, não mais mês-calendário),
+     * um fixture esparso cai na interseção vazia de dias-comuns do
+     * `AdmanMetricDiffService` — `var_margem_pct` viraria `null` mesmo com
+     * dado presente.
+     */
+    private function mockAdmanDiario(
+        Company $c,
+        string $mesYm,
+        float $revenueAtual,
+        float $revenueAnterior,
+        ?float $margemAtual = null,
+        ?float $margemAnterior = null,
+    ): void {
+        $periodo = app(MetricPeriodResolver::class)->resolve(['period_key' => $mesYm]);
+
+        $this->semearDiario($c, $periodo['current_start'], $periodo['current_end'], $revenueAtual, $margemAtual);
+        $this->semearDiario($c, $periodo['baseline_start'], $periodo['baseline_end'], $revenueAnterior, $margemAnterior);
+    }
+
+    /** Popula 1 row `AdmanMetric` por DIA em `[$inicio,$fim]` (inclusive), valores constantes. */
+    private function semearDiario(Company $c, string $inicio, string $fim, float $revenue, ?float $margem): void
+    {
+        $cursor  = Carbon::parse($inicio);
+        $fimData = Carbon::parse($fim);
+        while ($cursor->lte($fimData)) {
+            AdmanMetric::create([
+                'company_id'          => $c->id,
+                'reference_date'      => $cursor->toDateString(),
+                'revenue'             => $revenue,
+                'contribution_margin' => $margem,
+            ]);
+            $cursor->addDay();
+        }
     }
 
     // Cache do template principal do teste (1 pergunta dimensão 'analista').
@@ -379,47 +448,72 @@ class DesempenhoScoreServiceTest extends TestCase
     /**
      * Fixture Carlos — DESEMP-01 âncora bloqueante.
      *
-     * Espec da diretoria (74-SPEC.md DESEMP-01) + Ajuste 2026-07-09:
-     *  - NPS médio: 4.25 → 4.25 pts (já é escala 1-5)
-     *  - % var faturamento: 3.00 → régua faturamento retorna 4 pts (faixa 1% a 5%)
-     *  - % var margem contribuição: 2.80 → régua margem retorna 4 pts (faixa 2% a 4%)
-     *  - nota_final = round((4.25 + 4 + 4) / 3, 2) = 4.08
-     *  - faixa_bonus = 'basico' (faixa 4.00 a 4.49)
+     * Espec da diretoria (74-SPEC.md DESEMP-01) + Ajuste 2026-07-09 (histórico):
+     * NPS médio 4.25, var_faturamento +3.00% (régua 4pts), var_margem +2.80%
+     * (régua 4pts) → nota_final=4.08, faixa 'basico'.
      *
-     * IMPORTANTE: Depois do primeiro deploy em prod, ficou claro que o cálculo
-     * "média direta em escalas naturais" (raw %) permitia notas fora do range
-     * [1, 5]: analistas com var_fat=-15% + var_margem=-20% ficavam com nota
-     * ~-10, distorcendo toda a régua de bônus. Fix: variações passam pelas
-     * réguas 1-5 (SPEC-04/SPEC-05) antes de entrar na média. Isso levou o
-     * fixture Carlos de 3.35 (sem bônus) para 4.08 (básico) — mudança
-     * intencional aprovada pela diretoria em 2026-07-09.
+     * Fase 102 (v18.0 · BON-01/02/03) — RECALIBRAÇÃO, não preservação. A
+     * âncora agora roda em modo MÊS FECHADO sob a régua nova: `compute()` com
+     * `mes=2026-07-01` e `now()=2026-08-01` resolve `period_key='2026-07'`
+     * (closed_period) → current=01/07..31/07 (31 dias), baseline = 31 dias
+     * IMEDIATAMENTE ANTERIORES a 01/07 = 31/05..30/06 (janela-de-mesmo-
+     * tamanho — NÃO MAIS 01/06..30/06 calendário). Ver 102-RESEARCH.md
+     * Pitfall 1.
      *
-     * Distribuição escolhida para determinismo (evita drift de arredondamento
-     * float): as 3 empresas convergem para os mesmos deltas — o cerne do
-     * teste é a MATEMÁTICA, não a variabilidade da carteira. Edge cases
-     * de variabilidade são cobertos em testes separados abaixo.
-     *  - Cada empresa: revenue julho 10.300 / junho 10.000 → +3.00%
-     *  - Cada empresa: margem julho 10.280 / junho 10.000 → +2.80%
-     *  - NPS: 4 respostas legacy score_analista distribuídas → média 4.25
-     *    (5, 4, 4, 4 → 17/4 = 4.25)
+     * ── var_faturamento_pct permanece EXATO em +3,00% ──────────────────────
+     * Fixture usa valor CONSTANTE por dia em ambas as janelas (10.300/dia
+     * atual, 10.000/dia baseline) — a razão soma-atual/soma-baseline NÃO
+     * depende do comprimento da janela: SUM(10300×31)/SUM(10000×31) =
+     * 10300/10000 = 1,03 exato, mesmo a baseline tendo mudado de forma.
+     * régua_faturamento(+3,00%) = 4 pts (faixa 1% a 5%) — inalterado.
+     *
+     * ── var_margem_pct MUDA DE DEFINIÇÃO (BON-03) ──────────────────────────
+     * Deixa de ser "% de variação da margem R$ absoluta" (fórmula antiga,
+     * removida) e passa a ser a variação do `percentageMargin` da Adman
+     * (margem como % da receita), via `AdmanMetricDiffService::
+     * fallbackMargemPct()` — SUM(margem)/SUM(revenue)×100 em cada janela,
+     * depois a variação % entre as duas:
+     *   margem baseline = R$ 2.000,00/dia sobre R$ 10.000,00/dia de revenue
+     *     → pctAnterior = 2000/10000×100 = 20,00%
+     *   margem atual = R$ 2.152,70/dia sobre R$ 10.300,00/dia de revenue
+     *     → pctAtual = 2152.70/10300×100 = 20,90%
+     *   var_margem_pct = (20,90 - 20,00) / 20,00 × 100 = +4,50%
+     * régua_margem(+4,50%) = 5 pts (>4%) — MUDA de bucket (era 4pts/+2,80%).
+     *
+     * ── nota_final NOVA (NÃO preservar 4,08) ────────────────────────────────
+     *   NPS 4,25 + régua_fat(+3,00%)=4pts + régua_margem(+4,50%)=5pts
+     *   → (4,25 + 4 + 5) / 3 = 13,25 / 3 = 4,4166... → round(2) = 4,42
+     * faixa_bonus permanece 'basico' ([4.00,4.49]) — o NÚMERO é novo (4,42,
+     * não 4,08), derivado da régua nova, JAMAIS ajustado só pra passar.
+     *
+     * Cada empresa tem `adman_account_id` distinto — necessário pro
+     * `AdmanMetricDiffService` conseguir montar a chave/chamada (custId vazio
+     * = `emptyMetrics()` sem HTTP). Fixture DENSA (1 row/dia) — Pitfall 1.
      */
     private function criarCarlosCompleto(): User
     {
         $carlos = $this->criarUserAnalista('Carlos');
 
         // 3 empresas na carteira há -3 meses (bem fora do filtro de empresa
-        // nova de 2 meses do DESEMP-04).
+        // nova de 2 meses do DESEMP-04), cada uma com custId distinto (a
+        // chave de cache do AdmanMetricDiffService não inclui company_id).
         $empresas = [
-            $this->criarEmpresaNaCarteira($carlos, '-3 months'),
-            $this->criarEmpresaNaCarteira($carlos, '-3 months'),
-            $this->criarEmpresaNaCarteira($carlos, '-3 months'),
+            $this->criarEmpresaNaCarteira($carlos, '-3 months', admanAccountId: 'CUST-CARLOS-A'),
+            $this->criarEmpresaNaCarteira($carlos, '-3 months', admanAccountId: 'CUST-CARLOS-B'),
+            $this->criarEmpresaNaCarteira($carlos, '-3 months', admanAccountId: 'CUST-CARLOS-C'),
         ];
 
-        // Revenue + margem em julho e junho/2026 — deltas convergem para
-        // 3.00% e 2.80% em TODAS as empresas.
+        // Fixture densa (1 row/dia) cobrindo current (01..31/07) e baseline
+        // (31/05..30/06) — ver aritmética completa no docblock acima.
         foreach ($empresas as $c) {
-            $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 10300, margem: 10280);
-            $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
+            $this->mockAdmanDiario(
+                $c,
+                '2026-07',
+                revenueAtual: 10300,
+                revenueAnterior: 10000,
+                margemAtual: 2152.70,
+                margemAnterior: 2000.00,
+            );
         }
 
         // NPS: 4 respostas legacy [5, 4, 4, 4] distribuídas — média 4.25 exata.
@@ -438,14 +532,17 @@ class DesempenhoScoreServiceTest extends TestCase
     // ─── DESEMP-01 · Fixture Carlos — âncora bloqueante ─────────────────────
 
     #[Test]
-    public function test_fixture_carlos_retorna_nota_4_08_basico(): void
+    public function test_fixture_carlos_retorna_nota_4_42_basico(): void
     {
-        // DESEMP-01 — contra regressão silenciosa. Se este teste quebra,
-        // é sinal de que a matemática da engine v2 divergiu da spec.
+        // DESEMP-01 / Fase 102 (BON-01/02/03) — contra regressão silenciosa.
+        // Se este teste quebra, é sinal de que a matemática da engine v2
+        // divergiu da spec OU a integração com MetricPeriodResolver/
+        // AdmanMetricDiffService regrediu.
         //
-        // Ajuste 2026-07-09: fixture Carlos passou de 3.35 (sem_bonus) para
-        // 4.08 (basico) quando as réguas 1-5 foram aplicadas às variações
-        // antes da média. Ver comentário no criarCarlosCompleto().
+        // RECALIBRAÇÃO Fase 102: o golden NÃO É MAIS 4.08 (v17, baseline
+        // calendário + margem R$ absoluta). A baseline de mês fechado agora é
+        // janela-de-mesmo-tamanho e var_margem_pct vem do percentageMargin da
+        // Adman — aritmética completa no docblock de criarCarlosCompleto().
         $carlos = $this->criarCarlosCompleto();
 
         /** @var DesempenhoScoreService $service */
@@ -456,21 +553,22 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->assertEqualsWithDelta(4.25, $result['componentes']['nps_medio'], 0.001,
             'NPS médio Carlos deve ser exatamente 4.25 (média legacy [5,4,4,4]).');
         $this->assertEqualsWithDelta(3.00, $result['componentes']['var_faturamento_pct'], 0.001,
-            'Var faturamento Carlos deve ser exatamente +3.00%.');
-        $this->assertEqualsWithDelta(2.80, $result['componentes']['var_margem_pct'], 0.001,
-            'Var margem contribuição Carlos deve ser exatamente +2.80%.');
+            'Var faturamento Carlos permanece +3.00% — fixture uniforme, ratio independe do comprimento da janela.');
+        $this->assertEqualsWithDelta(4.50, $result['componentes']['var_margem_pct'], 0.01,
+            'Var margem (Fase 102 · BON-03): (20,90%-20,00%)/20,00%×100 = +4,50% (percentageMargin, não mais R$).');
         $this->assertNull($result['componentes']['absenteismo_pct'],
             'Absenteísmo sempre null nesta phase (DESEMP-06).');
 
-        // Nota final — âncora bloqueante ajustada em 2026-07-09.
-        // Cálculo: NPS 4.25 + régua_fat(+3%) = 4 pts + régua_margem(+2.8%) = 4 pts
-        //          → média = (4.25 + 4 + 4) / 3 = 4.0833 → round(2) = 4.08.
-        $this->assertEqualsWithDelta(4.08, $result['nota_final'], 0.001,
-            'Nota final Carlos deve ser 4.08 (NPS 4.25 + régua_fat 4 + régua_margem 4 → média).');
+        // Nota final — âncora RECALIBRADA pela régua nova (Fase 102).
+        // Cálculo: NPS 4.25 + régua_fat(+3%)=4pts + régua_margem(+4.5%)=5pts
+        //          → média = (4.25 + 4 + 5) / 3 = 4.4167 → round(2) = 4.42.
+        $this->assertEqualsWithDelta(4.42, $result['nota_final'], 0.01,
+            'Nota final Carlos = 4.42 (NPS 4.25 + régua_fat 4 + régua_margem 5 → média) — NOVO, não 4.08.');
 
-        // Classificação — faixa básico ([4.00, 4.49]).
+        // Classificação — faixa básico ([4.00, 4.49]) — mesma faixa da v17,
+        // número interno diferente.
         $this->assertSame('basico', $result['faixa_bonus'],
-            'Faixa Carlos deve ser basico (4.08 dentro de [4.00, 4.49]).');
+            'Faixa Carlos permanece basico (4.42 dentro de [4.00, 4.49]).');
         $this->assertFalse($result['sem_carteira']);
         $this->assertFalse($result['faixa_promovida']);
         $this->assertSame(3, $result['empresas_carteira']);
@@ -628,26 +726,36 @@ class DesempenhoScoreServiceTest extends TestCase
     public function test_var_margem_usa_adman_como_fonte_canonica(): void
     {
         // DESEMP-05 — mesmo com caseFor='so-ml' para a empresa, a margem SEMPRE
-        // vem via AdmanMetric.contribution_margin (ML não expõe custo).
+        // vem via AdmanMetricDiffService (Adman canônico — ML não expõe custo).
         $u = $this->criarUserAnalista('Analista Margem ML');
-        $c = $this->criarEmpresaNaCarteira($u, '-3 months');
+        $c = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-MARGEM-ML');
 
-        // Provider ML sinaliza que a empresa é "so-ml", mas margem só vive
-        // no Adman local. O service não deve ignorar o Adman aqui.
+        // Provider ML sinaliza que a empresa é "so-ml" — mas var_margem_pct
+        // NUNCA passa pelo provider ML (nem antes nem depois da Fase 102);
+        // é sempre AdmanMetric local via AdmanMetricDiffService.
         $this->providerStub->configureCase($c, 'so-ml');
         $this->providerStub->configureRevenue($c, '2026-07', 20000.0);
         $this->providerStub->configureRevenue($c, '2026-06', 15000.0);
 
-        // AdmanMetric só tem margem — revenue vem via ML stub.
-        $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 0, margem: 11000);
-        $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 0, margem: 10000);
+        // Fase 102 (BON-03): AdmanMetric precisa de revenue > 0 (denominador
+        // de percentageMargin) — fixture DENSA cobrindo current/baseline REAIS
+        // (Pitfall 1). pctBaseline=2000/10000=20,00%; pctAtual=2300/10000=23,00%.
+        $this->mockAdmanDiario(
+            $c,
+            '2026-07',
+            revenueAtual: 10000,
+            revenueAnterior: 10000,
+            margemAtual: 2300,
+            margemAnterior: 2000,
+        );
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
-        // Margem: (11000 - 10000) / 10000 = +10.00%
-        $this->assertEqualsWithDelta(10.00, $r['componentes']['var_margem_pct'], 0.001,
-            'Margem vem sempre do Adman (contribution_margin), mesmo com caseFor=so-ml.');
+        // var_margem_pct (Fase 102 · BON-03) = (23,00-20,00)/20,00×100 = +15,00%
+        // — NÃO É MAIS "(atual R$ - anterior R$)/anterior R$" (fórmula antiga).
+        $this->assertEqualsWithDelta(15.00, $r['componentes']['var_margem_pct'], 0.01,
+            'Margem vem sempre do Adman via AdmanMetricDiffService, mesmo com caseFor=so-ml.');
     }
 
     #[Test]
@@ -666,8 +774,13 @@ class DesempenhoScoreServiceTest extends TestCase
         // junho (mesmo range relativo) — replica exatamente o cenário real.
         Carbon::setTestNow(Carbon::parse('2026-07-09 10:00:00'));
 
+        // Fase 102: custId necessário pro AdmanMetricDiffService não
+        // early-return (empty custId = emptyMetrics(), var_margem_pct=null).
+        // Mês EM CURSO (comparison_mode=same_interval_previous_month) — a
+        // baseline continua alinhada por dia (dia 1), Pitfall 1 NÃO se aplica
+        // aqui (só afeta mês FECHADO/previous_equal_length_window).
         $u = $this->criarUserAnalista('Analista Margem Lag Adman');
-        $c = $this->criarEmpresaNaCarteira($u, '-3 months');
+        $c = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-LAG-ADMAN');
 
         // Junho (janela anterior): 9 dias completos, margem 100/dia → soma 900.
         for ($dia = 1; $dia <= 9; $dia++) {
@@ -694,12 +807,21 @@ class DesempenhoScoreServiceTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
-        // Fix: janela anterior recortada para os mesmos 5 dias (100*5=500) —
-        // var = (750-500)/500 = +50.00% (positiva, reflete a melhora real).
-        // Sem o fix, o valor seria (750-900)/900 = -16.67% (sinal invertido).
+        // Fix: janela anterior recortada para os mesmos 5 dias comuns de
+        // margem (100×5=500 vs 150×5=750 — SUM(contribution_margin) próprio
+        // guard). Fase 102 (BON-03): o guard vive agora dentro de
+        // AdmanMetricDiffService::somasComGuards() (fonte única — este teste
+        // passou a provar o guard LÁ, não mais aqui). revenue tem seu PRÓPRIO
+        // recorte de dias-comuns (9 dias completos em ambas as janelas,
+        // nenhum NULL) → SUM(revenue)=9000 nos dois lados: pctAtual=
+        // 750/9000×100=8,3333%, pctAnterior=500/9000×100=5,5556% →
+        // (8,3333-5,5556)/5,5556×100=+50,00% — a razão percentageMargin
+        // coincide com a razão de margem R$ porque o denominador (revenue)
+        // é o MESMO nas duas janelas (750/500 = 1,5 → +50%, independente do
+        // valor absoluto do denominador comum).
         $this->assertEqualsWithDelta(50.00, $r['componentes']['var_margem_pct'], 0.01,
             'Dias finais sem margem na janela atual NÃO devem inverter o sinal da variação — '
-            .'janela anterior deve ser recortada pra mesma contagem de dias (fix Tomelin).');
+            .'o guard de dias-comuns (agora em AdmanMetricDiffService) recorta simetricamente (fix Tomelin).');
     }
 
     // ─── DESEMP-06 · Absenteísmo em standby ─────────────────────────────────
@@ -731,23 +853,34 @@ class DesempenhoScoreServiceTest extends TestCase
 
         // 3 empresas na carteira com faturamento/margem que geram nota_final
         // dentro da faixa intermediario (4.50-4.99). Calibragem pós réguas 1-5:
-        //   NPS 5.00 + régua_fat(+4.75%) = 4 pts + régua_margem(+4.50%) = 5 pts
+        //   NPS 5.00 + régua_fat(+4.75%) = 4 pts + régua_margem(+5.01%) = 5 pts
         //   → média = (5 + 4 + 5) / 3 = 14/3 ≈ 4.67 (intermediario).
-        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
+        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-1');
+        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-2');
+        $c3 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-3');
 
         // NPS 5.00 exato (3 respostas score_analista=5).
         $this->mockNpsRespostaPrincipal($c1, '2026-07', 5);
         $this->mockNpsRespostaPrincipal($c2, '2026-07', 5);
         $this->mockNpsRespostaPrincipal($c3, '2026-07', 5);
 
-        // Var faturamento: 4.75% (3 empresas variando +4.75% cada).
-        // Revenue prev 10.000 → current 10.475 → régua_fat 4 pts (faixa 1% a 5%)
-        // Var margem: 4.50% (margem prev 10.000 → current 10.450) → régua_margem 5 pts (>4%)
+        // Var faturamento: 4.75% (revenue prev 10.000/dia → current 10.475/dia,
+        // ratio independe do comprimento da janela) → régua_fat 4 pts (1% a 5%).
+        //
+        // Fase 102 (BON-03) var_margem_pct: percentageMargin, não mais R$.
+        // pctBaseline = 2000/10000×100 = 20,00%; pctAtual = 2200/10475×100 =
+        // 21,0024% → diff = (21,0024-20,00)/20,00×100 = 5,0119% → round(2) =
+        // 5,01% → régua_margem(5,01%) = 5 pts (>4%, mesmo bucket do valor
+        // antigo +4,50%, mas NÚMERO diferente — não é a fórmula antiga).
         foreach ([$c1, $c2, $c3] as $c) {
-            $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 10475, margem: 10450);
-            $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
+            $this->mockAdmanDiario(
+                $c,
+                '2026-07',
+                revenueAtual: 10475,
+                revenueAnterior: 10000,
+                margemAtual: 2200,
+                margemAnterior: 2000,
+            );
         }
 
         $service = app(DesempenhoScoreService::class);
@@ -801,16 +934,24 @@ class DesempenhoScoreServiceTest extends TestCase
         $b = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c = $this->criarEmpresaNaCarteira($u, '-3 months');
 
-        // Empresa A — só-ML. Stub retorna revenue 10.000 (jun) e 11.111 (jul)
+        // Empresa A — só-ML. Stub retorna revenue 11.111 (jul, key='2026-07')
         // → +11.11%. AdmanMetric intencionalmente vazio para a A.
+        //
+        // Fase 102 (BON-01, fix regressão do plan-checker): o service chama
+        // `readForCompany($company, $inicioAnter, $fimAnter)` para AMBAS as
+        // janelas (não só a atual) — o stub responde por CHAVE `Y-m` derivada
+        // de `$from`. Sob a régua nova, a baseline de mês FECHADO é a janela-
+        // de-mesmo-tamanho (`$periodo['baseline_start']`), que pode CRUZAR
+        // pro mês anterior ao calendário-anterior (Pitfall 1 do 102-RESEARCH.md)
+        // — para julho/2026 fechado, baseline_start=2026-05-31, cuja chave é
+        // '2026-05', NÃO '2026-06'. Resolve dinamicamente em vez de hardcode
+        // pra não recalcular a mão o offset de 31 dias.
+        $periodoJulho = app(MetricPeriodResolver::class)->resolve(['period_key' => '2026-07']);
+        $chaveBaselineA = Carbon::parse($periodoJulho['baseline_start'])->format('Y-m');
+
         $this->providerStub->configureCase($a, 'so-ml');
         $this->providerStub->configureRevenue($a, '2026-07', 11111.0);
-        $this->providerStub->configureRevenue($a, '2026-06', 10000.0);
-        // Mês anterior é SEMPRE Adman (baseline histórico local — service não
-        // chama ML para o mês passado). Precisamos preencher junho no Adman.
-        $this->mockAdmanRevenueMargem($a, '2026-06', revenue: 10000);
-        // Julho — sem row para forçar o service a usar o stub.
-        $this->mockAdmanRevenueMargem($a, '2026-07', revenue: 0);
+        $this->providerStub->configureRevenue($a, $chaveBaselineA, 10000.0);
 
         // Empresa B — só-Adman. AdmanMetric fornece 5.000 (jun) → 5.556 (jul)
         // → +11.12%.
@@ -849,15 +990,23 @@ class DesempenhoScoreServiceTest extends TestCase
         // Média = (5 + 5 + 5) / 3 = 5.00 exato → faixa maximo direto.
         $u = $this->criarUserAnalista('Analista Nota Cheia');
 
-        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
+        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-NOTA5-1');
+        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-NOTA5-2');
+        $c3 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-NOTA5-3');
 
-        // Revenue +10% (>5% → 5 pts), margem +5% (>4% → 5 pts).
+        // Revenue +10% (>5% → 5 pts). Fase 102 (BON-03) var_margem_pct:
+        // pctBaseline=2000/10000×100=20,00%; pctAtual=2750/11000×100=25,00%
+        // (exato) → diff=(25,00-20,00)/20,00×100=+25,00% (>4% → 5 pts).
         foreach ([$c1, $c2, $c3] as $c) {
             $this->mockNpsRespostaPrincipal($c, '2026-07', 5);
-            $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 11000, margem: 10500);
-            $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
+            $this->mockAdmanDiario(
+                $c,
+                '2026-07',
+                revenueAtual: 11000,
+                revenueAnterior: 10000,
+                margemAtual: 2750,
+                margemAnterior: 2000,
+            );
         }
 
         $service = app(DesempenhoScoreService::class);
