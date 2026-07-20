@@ -807,7 +807,7 @@ Plans:
 **Goal:** Reformular por completo a dashboard do setor Mercado Livre (`Dashboard/Admin.jsx` + `DashboardController::adminDashboard`) seguindo o mockup do usuário: filtros práticos (rascunho→aplicar, chips, colapsável) que propagam a TODOS os widgets, 4 KPIs com variação vs período anterior e links para áreas completas, gráfico de evolução interativo (Faturamento/Margem), widget de detratores de NPS, score da equipe pela nota oficial, e novas empresas do mês.
 **Requirements**: DASH-97-1, DASH-97-2, DASH-97-3, DASH-97-4, DASH-97-5, DASH-97-6, DASH-97-7
 **Depends on:** Fase 96 (usa `scopeValida()` nas leituras de NPS) — já executada
-**Plans:** 4 planos em 3 waves
+**Plans:** 1/4 plans executed
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -824,7 +824,7 @@ Plans:
 
 **Wave 1**
 
-- [ ] 97-01-PLAN.md — Backend: janelas período-anterior (deltas KPIs), margem ponderada, série diária de margem, contagem de empresas novas (D3) e base do fix do marketplace no payload
+- [x] 97-01-PLAN.md — Backend: janelas período-anterior (deltas KPIs), margem ponderada, série diária de margem, contagem de empresas novas (D3) e base do fix do marketplace no payload
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
