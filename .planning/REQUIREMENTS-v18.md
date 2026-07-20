@@ -34,9 +34,9 @@
 
 ### CAR — Carteira por período (Fase 103)
 
-- [ ] **CAR-01**: `renderCarteiraProfissional` e `renderCarteirasConsolidadas` resolvem período via `MetricPeriodResolver`; quando o filtro for mês fechado, o cálculo não usa `now()` nem "mês em curso"
-- [ ] **CAR-02**: A soma financeira da carteira usa as janelas do resolver (atual/baseline) e a variação de margem vem do diff da Adman quando disponível; elegibilidade financeira da v17.0 preservada (Shopee sem fonte não entra)
-- [ ] **CAR-03**: Todos os cards/tabelas/séries da carteira leem `period.current_start/end` e `period.baseline_start/end` — coerência de janela entre todos os blocos
+- [x] **CAR-01**: `renderCarteiraProfissional` e `renderCarteirasConsolidadas` resolvem período via `MetricPeriodResolver`; quando o filtro for mês fechado, o cálculo não usa `now()` nem "mês em curso"
+- [x] **CAR-02**: A soma financeira da carteira usa as janelas do resolver (atual/baseline) e a variação de margem vem do diff da Adman quando disponível; elegibilidade financeira da v17.0 preservada (Shopee sem fonte não entra)
+- [x] **CAR-03**: Todos os cards/tabelas/séries da carteira leem `period.current_start/end` e `period.baseline_start/end` — coerência de janela entre todos os blocos
 
 ### UIP — UI de período (Fase 104)
 
@@ -80,9 +80,9 @@
 | BON-03 | Fase 102 | Complete |
 | BON-04 | Fase 102 | Complete |
 | BON-05 | Fase 102 | Complete |
-| CAR-01 | Fase 103 | Pending |
-| CAR-02 | Fase 103 | Pending |
-| CAR-03 | Fase 103 | Pending |
+| CAR-01 | Fase 103 | Complete |
+| CAR-02 | Fase 103 | Complete |
+| CAR-03 | Fase 103 | Complete |
 | UIP-01 | Fase 104 | Pending |
 | UIP-02 | Fase 104 | Pending |
 | UIP-03 | Fase 104 | Pending |
