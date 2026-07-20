@@ -528,14 +528,25 @@ class PortfolioController extends Controller
      */
     private function renderCarteirasConsolidadas(Request $request, ?array $setoresFiltro = null): \Inertia\Response
     {
+        // Fase 103 Plan 02 (CAR-01) — a janela ROLANTE em dias (?period=
+        // 1/7/30/180, sem baseline) e substituida pela janela MENSAL do
+        // MetricPeriodResolver (mesmo resolvedor unico ja usado por
+        // renderCarteiraProfissional desde a Fase 103 Plan 01). `$period`
+        // (linha abaixo) e MANTIDO como atribuicao isolada — nao alimenta
+        // mais o calculo de janela, mas ainda alimenta o echo legado
+        // `'period' => $period` no payload (mais abaixo), que a
+        // Carteiras.jsx le ate a Fase 104 (known-gap 103<->104: o seletor
+        // visual rolante 1/7/30/180 continua exibido, mas o backend ja usa
+        // a janela mensal do resolver).
         $period = $request->get('period', '30');
-        $days   = match ($period) {
-            '1'   => 1,
-            '7'   => 7,
-            '180' => 180,
-            default => 30,
-        };
-        $since = now()->subDays($days);
+
+        // T-103-03 — whitelist regex ANTES de repassar ao resolver; fora do
+        // formato YYYY-MM cai em current_month, nunca string crua (evita
+        // InvalidArgumentException->500).
+        $mesQuery = $request->query('mes');
+        $periodo  = ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery))
+            ? $this->periodResolver->resolve(['period_key' => $mesQuery])
+            : $this->periodResolver->resolve(['period_key' => 'current_month']);
 
         // Quick 260623 — quando $setoresFiltro != null, restringe analistas e
         // estrategistas àqueles vinculados aos setores informados. Usado pra
@@ -577,8 +588,11 @@ class PortfolioController extends Controller
         // o renderPortfolio individual usa cache Adman gross + investment (mais
         // completo). Ex.: Ana Julia mostrava R$ 16,8M aqui vs R$ 20,6M no
         // individual. Mesma estrategia do hotfix cust_id aplicada antes.
-        $dateFrom = $since->toDateString();
-        $dateTo   = now()->toDateString();
+        //
+        // Fase 103 Plan 02 (CAR-01) — janela agora vem do resolver
+        // (current_start..current_end), nao mais de $since=now()->subDays().
+        $dateFrom = $periodo['current_start'];
+        $dateTo   = $periodo['current_end'];
 
         // Fase 90 (CART-06/07) — filtro `?contexto=` (todos/performance/shopee).
         // NAO confundir com $setoresFiltro acima (organizacional, ja existente).
@@ -676,8 +690,11 @@ class PortfolioController extends Controller
             $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
 
             // SUM DB (fallback completo) + cache Adman pra empresas com custId.
+            // Fase 103 Plan 02 (CAR-03) — janela FECHADA dos dois lados
+            // (current_start..current_end do resolver), nao mais so limite
+            // inferior (coerencia com a soma current_month/closed_period).
             $sumDb = AdmanMetric::whereIn('company_id', $companyIds)
-                ->where('reference_date', '>=', $dateFrom)
+                ->whereBetween('reference_date', [$dateFrom, $dateTo])
                 ->selectRaw('company_id, SUM(revenue) as rev, SUM(ad_spend) as ads, AVG(contribution_margin_pct) as margem')
                 ->groupBy('company_id')
                 ->get()
@@ -768,7 +785,27 @@ class PortfolioController extends Controller
 
         return Inertia::render('Portfolio/Carteiras', [
             'user_portfolios' => $portfolios,
+            // `period` (echo legado 1/7/30/180) — a Carteiras.jsx ainda le
+            // esse campo pro seletor visual rolante ate a Fase 104. O
+            // seletor visual e substituido pela janela mensal do resolver
+            // ja no BACKEND desta fase — mismatch UI intencional, resolvido
+            // na Fase 104 (known-gap 103<->104, ver 103-02-SUMMARY.md).
             'period'          => $period,
+            // Fase 103 Plan 02 (CAR-03) — janela do MetricPeriodResolver
+            // (current_month por default, closed_period via ?mes=YYYY-MM).
+            // Escopo MINIMO (decisao travada 3 do 103-02-PLAN.md): so as 4
+            // datas + metadados do resolver, SEM baseline/variacao nova por
+            // card (isso e Fase 104).
+            'periodo'         => [
+                'current_start'    => $periodo['current_start'],
+                'current_end'      => $periodo['current_end'],
+                'baseline_start'   => $periodo['baseline_start'],
+                'baseline_end'     => $periodo['baseline_end'],
+                'mode'             => $periodo['mode'],
+                'comparison_mode'  => $periodo['comparison_mode'],
+                'is_current_month' => $periodo['is_current_month'],
+                'is_closed'        => $periodo['is_closed'],
+            ],
             'contexto'        => $contextoFiltro['param'],
             'totais'          => $totais,
         ]);
