@@ -635,7 +635,13 @@ export default function PolosPainel({
 
     // Colunas visíveis da lente ativa (na Geral = planilha completa; fin_* só p/ admin).
     const colsVisiveis = useMemo(() => colsDaLente(lente, isAdmin), [lente, isAdmin]);
-    const af = useAutoFilter(empresas, COLUNAS, { search: busca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
+    // Busca global casa por NOME + cust_id (bruto e normalizado) + polo — assim digitar o
+    // cust_id da loja no campo já traz a empresa (espelha o filtro de "Arquivados").
+    const matchBusca = useCallback(
+        (e, q) => `${e.nome ?? ''} ${e.cust_id ?? ''} ${e.cust_norm ?? ''} ${e.polo ?? ''}`.toLowerCase().includes(q),
+        [],
+    );
+    const af = useAutoFilter(empresas, COLUNAS, { search: busca, matchSearch: matchBusca, storageKey: 'polos-painel-af', visibleKeys: colsVisiveis });
     const filtradas = af.filtered;
 
     // Indicador acionável → filtra + navega p/ a lente da coluna (ou limpa, se já isolado).
@@ -998,7 +1004,7 @@ export default function PolosPainel({
                     )}
                     <div className="relative ml-auto">
                         <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-white/30" />
-                        <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa…"
+                        <input type="text" value={busca} onChange={(ev) => setBusca(ev.target.value)} placeholder="Buscar empresa ou cust_id…"
                             className="w-52 rounded-lg border border-white/[0.08] bg-white/[0.03] pl-8 pr-3 py-1.5 text-[12px] text-white/90 outline-none focus:border-ecf-yellow/40" />
                     </div>
                     <span className="text-white/30 text-[12px] tabular-nums shrink-0">{filtradas.length}/{empresas.length}</span>
