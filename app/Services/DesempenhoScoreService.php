@@ -10,6 +10,8 @@ use App\Models\NpsResponse;
 use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
 use App\Models\User;
+use App\Services\Metrics\AdmanMetricDiffService;
+use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Nps\NpsScoreCalculator;
 use App\Services\Portfolio\CarteiraContextService;
@@ -65,6 +67,18 @@ use Illuminate\Support\Facades\Cache;
  *  - Plan 74-06 · `Performance/Dashboard.jsx` e `Show.jsx` (view individual)
  *  - Plans 74-09 / 74-10 · testes Feature com fixture Carlos como âncora
  *
+ * Fase 102 (v18.0 · BON-01/02/03) — `computeVarFaturamento`/`computeVarMargem`
+ * deixam de calcular janelas inline (`now()`/`startOfMonth()`/`subMonth()`) e
+ * passam a consumir `MetricPeriodResolver::resolve()` via `resolvePeriodo()`
+ * (privado) ou `$periodoOverride` explícito. `computeVarMargem` deixa de
+ * duplicar os guards de dias-comuns/margem_dias — delega por empresa a
+ * `AdmanMetricDiffService::compute()` (fonte única, Fase 101). Novo método
+ * público `computeOficial(User)` resolve o último mês FECHADO
+ * (`last_closed_month`) e é o caminho explícito pro "bônus oficial" (julho
+ * paga a competência junho) — ver `102-RESEARCH.md` "Opção B" para a
+ * justificativa de manter `compute(User, Carbon, ?array)` compatível com os
+ * ~40 call-sites existentes em vez de trocar a assinatura inteira.
+ *
  * Design:
  *  - Stateless entre chamadas exceto pelo cache in-memory de `BonusFaixa`
  *    (invalidado naturalmente entre requests / instâncias do container).
@@ -93,6 +107,8 @@ class DesempenhoScoreService
         private MetricsProviderFactory $metricsFactory,
         private NpsScoreCalculator $npsCalculator,
         private CarteiraContextService $carteiraContext,
+        private MetricPeriodResolver $periodResolver,
+        private AdmanMetricDiffService $admanDiffService,
     ) {
     }
 
@@ -205,9 +221,53 @@ class DesempenhoScoreService
         );
     }
 
-    public function compute(User $user, Carbon $mesReferencia): array
+    /**
+     * Resolve o `$periodo` (shape do `MetricPeriodResolver`) usado por
+     * `compute()` quando nenhum `$periodoOverride` é passado (Fase 102 ·
+     * BON-01/BON-02, decisão travada Opção B — ver 102-RESEARCH.md
+     * "Onde entra o modo bônus vs operacional").
+     *
+     * `$mes` é o MÊS CORRENTE (hoje) → `period_key='current_month'`
+     * (operacional, baseline alinhada por dia). Qualquer outro mês →
+     * `period_key='YYYY-MM'` (`closed_period`, baseline janela-de-mesmo-
+     * tamanho). Preserva 100% dos ~40 call-sites existentes de
+     * `compute($user, $mes)` — ninguém precisa passar `$periodoOverride`.
+     */
+    private function resolvePeriodo(Carbon $mes): array
     {
-        $mes = $mesReferencia->copy()->startOfMonth();
+        $mesCorrente = now()->startOfMonth();
+
+        return $mes->copy()->startOfMonth()->equalTo($mesCorrente)
+            ? $this->periodResolver->resolve(['period_key' => 'current_month'])
+            : $this->periodResolver->resolve(['period_key' => $mes->format('Y-m')]);
+    }
+
+    /**
+     * Modo OFICIAL de bônus (Fase 102 · BON-02): resolve o último mês
+     * FECHADO via `MetricPeriodResolver` (`last_closed_month`) e delega para
+     * `compute()` com o `$periodo` já resolvido — julho/2026 paga a
+     * competência junho/2026 (janela 01/06..30/06 vs baseline
+     * janela-de-mesmo-tamanho 02/05..31/05).
+     *
+     * Diferença vs `compute($user, $mesJunho)` "genérico" (sem override):
+     * as janelas current/baseline batem EXATAMENTE (mesmo resolver, mesmo
+     * mês), mas só este método popula os metadados `bonus_payment_month`/
+     * `bonus_competence_month` dentro do `$periodo` resolvido — o shape
+     * público de `compute()` ainda não expõe esses metadados nesta fase
+     * (BON-04 fica para o Plan 102-02).
+     */
+    public function computeOficial(User $user): array
+    {
+        $periodo = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+        $mes     = Carbon::parse($periodo['current_start'])->startOfMonth();
+
+        return $this->compute($user, $mes, $periodo);
+    }
+
+    public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
+    {
+        $mes     = $mesReferencia->copy()->startOfMonth();
+        $periodo = $periodoOverride ?? $this->resolvePeriodo($mes);
 
         // ── Universo (carteira ativa no mês) ─────────────────────────────────
         $universo = $this->computeUniverso($user, $mes);
@@ -226,8 +286,8 @@ class DesempenhoScoreService
         // somando todas as áreas do profissional, sem filtro de elegibilidade
         // financeira (DESEMP-03/D-91-02 — computeNpsMedio INTOCADO).
         $nps        = $this->computeNpsMedio($user, $mes);
-        $varFatData = $this->computeVarFaturamento($user, $mes, $companies);
-        $varMargem  = $this->computeVarMargem($user, $mes, $companies);
+        $varFatData = $this->computeVarFaturamento($user, $mes, $companies, $periodo);
+        $varMargem  = $this->computeVarMargem($user, $mes, $companies, $periodo);
         $absent     = $this->computeAbsenteismo($user, $mes);
 
         $varFat            = $varFatData['pct'];
@@ -645,10 +705,20 @@ class DesempenhoScoreService
      * TODO Plan 74-09: cobrir edge case "empresa nova" via factory que
      * sobreescreva `company_users.created_at` para exercitar o filtro.
      *
+     * Fase 102 (BON-01): as janelas current/baseline deixam de ser calculadas
+     * inline (`now()`/`startOfMonth()`/`subMonth()`) e passam a vir do
+     * `$periodo` já resolvido por `MetricPeriodResolver` (via
+     * `resolvePeriodo()`/`computeOficial()` em `compute()`). Mês em curso:
+     * janela idêntica à anterior (mesmo alinhamento por dia, mesmo clamp —
+     * troca 1:1, sem mudança de número). Mês fechado: baseline deixa de ser
+     * "mês calendário anterior completo" e passa a ser a janela-de-mesmo-
+     * tamanho imediatamente anterior (`previous_equal_length_window`).
+     *
      * @param  EloquentCollection<int, \App\Models\Company>  $companies  carteira ativa
+     * @param  array  $periodo  shape do `MetricPeriodResolver::resolve()`
      * @return array{pct: ?float, empresas_com_baseline: int}
      */
-    private function computeVarFaturamento(User $user, Carbon $mes, EloquentCollection $companies): array
+    private function computeVarFaturamento(User $user, Carbon $mes, EloquentCollection $companies, array $periodo): array
     {
         // ── Filtro "empresa nova na carteira" ────────────────────────────────
         // Ajuste 2026-07-09 (força tarefa): a spec original DESEMP-04 dizia
@@ -693,31 +763,16 @@ class DesempenhoScoreService
 
         $companyIds  = $companiesQualificadas->pluck('id');
 
-        // ── Comparação JUSTA de período (Ajuste 2026-07-09) ──────────────────
-        // Quando o mês de referência é o MÊS CORRENTE (ainda não fechou), comparar
-        // o intervalo dia 1 até HOJE com o MESMO range no mês anterior — evita a
-        // distorção de comparar "9 dias de julho" com "30 dias de junho" que
-        // gerava variações artificialmente negativas (-70%+) e distorcia toda a
-        // régua de bônus dos analistas/estrategistas.
-        //
-        // Quando o mês de referência é um MÊS FECHADO (passado), usar meses
-        // calendário completos (comportamento original).
-        $hoje       = now();
-        $mesCorrente = $mes->copy()->startOfMonth();
-        $ehMesEmCurso = $hoje->between($mesCorrente, $mesCorrente->copy()->endOfMonth());
-
-        if ($ehMesEmCurso) {
-            $diaAtual   = $hoje->day;
-            $inicioMes  = $mesCorrente->copy();
-            $fimMes     = $hoje->copy()->endOfDay();
-            $inicioAnter = $mesCorrente->copy()->subMonth();
-            $fimAnter    = $inicioAnter->copy()->setDay(min($diaAtual, $inicioAnter->daysInMonth))->endOfDay();
-        } else {
-            $inicioMes   = $mes->copy()->startOfMonth();
-            $fimMes      = $mes->copy()->endOfMonth();
-            $inicioAnter = $mes->copy()->subMonth()->startOfMonth();
-            $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
-        }
+        // ── Janelas do MetricPeriodResolver (Fase 102 · BON-01) ───────────────
+        // Substitui o cálculo inline de `$hoje`/`$ehMesEmCurso`/`$inicioMes`/
+        // `$fimMes`/`$inicioAnter`/`$fimAnter` — `$periodo` já resolveu a
+        // janela certa (mês em curso = mesmo alinhamento por dia de antes;
+        // mês fechado = janela-de-mesmo-tamanho, não mais calendário-vs-
+        // calendário).
+        $inicioMes   = Carbon::parse($periodo['current_start'])->startOfDay();
+        $fimMes      = Carbon::parse($periodo['current_end'])->endOfDay();
+        $inicioAnter = Carbon::parse($periodo['baseline_start'])->startOfDay();
+        $fimAnter    = Carbon::parse($periodo['baseline_end'])->endOfDay();
 
         // Adman fallback: 2 queries agregadas (mês atual + anterior).
         // whereDate para robustez SQLite (padrão SnapshotDesempenhoScores).
@@ -798,176 +853,39 @@ class DesempenhoScoreService
     }
 
     /**
-     * % variação de margem de contribuição vs mês anterior.
+     * % variação de margem de contribuição vs mês anterior (Fase 102 · BON-03).
      *
-     * Regras (DESEMP-05):
-     *  - Fonte SEMPRE `AdmanMetric` (spec conhece o gap: ML não expõe custo).
-     *  - SQL agregado `SUM(contribution_margin)` por empresa em ambos os meses.
-     *  - Descartar `margem_anterior <= 0`.
-     *  - Retornar média das variações ou `null` se nenhuma qualifica.
+     * Delega por empresa a `AdmanMetricDiffService::compute(company, periodo)`
+     * — fonte única de guards de dias-comuns/margem_dias (antes duplicados
+     * aqui, ver `AdmanMetricDiffService` docblock "calculated_fallback —
+     * duplicação TEMPORÁRIA e INTENCIONAL", agora removida). Lê
+     * `metrics['contribution_margin_pct']['diff_pct']` — NOTA DE
+     * NOMENCLATURA (ADM-05): `contribution_margin_pct` é a chave interna do
+     * diff service para o `percentageMargin` da Adman (margem como % da
+     * receita), DIFERENTE de `AdmanMetric.contribution_margin` (campo R$
+     * usado no `calculated_fallback` interno do diff service). O gate
+     * `diff_source` (`adman_diff` vs `calculated_fallback`) é decidido
+     * inteiramente dentro do diff service — este método só agrega o
+     * `diff_pct` já resolvido, nunca recalcula guard nenhum.
      *
      * @param  EloquentCollection<int, \App\Models\Company>  $companies
+     * @param  array  $periodo  shape do `MetricPeriodResolver::resolve()`
      */
-    private function computeVarMargem(User $user, Carbon $mes, EloquentCollection $companies): ?float
+    private function computeVarMargem(User $user, Carbon $mes, EloquentCollection $companies, array $periodo): ?float
     {
         if ($companies->isEmpty()) {
             return null;
         }
 
-        $companyIds  = $companies->pluck('id');
-
-        // ── Comparação JUSTA de período (Ajuste 2026-07-09) ──────────────────
-        // Mesmo pattern de computeVarFaturamento: mês em curso compara dia 1..hoje
-        // vs mesmo range no mês anterior, evitando queda artificial de margem
-        // por diferença de dias entre mês corrente parcial e mês passado completo.
-        $hoje         = now();
-        $mesCorrente  = $mes->copy()->startOfMonth();
-        $ehMesEmCurso = $hoje->between($mesCorrente, $mesCorrente->copy()->endOfMonth());
-
-        if ($ehMesEmCurso) {
-            $diaAtual   = $hoje->day;
-            $inicioMes  = $mesCorrente->copy();
-            $fimMes     = $hoje->copy()->endOfDay();
-            $inicioAnter = $mesCorrente->copy()->subMonth();
-            $fimAnter    = $inicioAnter->copy()->setDay(min($diaAtual, $inicioAnter->daysInMonth))->endOfDay();
-        } else {
-            $inicioMes   = $mes->copy()->startOfMonth();
-            $fimMes      = $mes->copy()->endOfMonth();
-            $inicioAnter = $mes->copy()->subMonth()->startOfMonth();
-            $fimAnter    = $mes->copy()->subMonth()->endOfMonth();
-        }
-
-        // Ajuste 2026-07-09 (fix Luiz): traz margem_dias (COUNT de linhas com
-        // contribution_margin NOT NULL) para distinguir "sem dados Adman" de
-        // "margem zero real". Sem esse guard, empresas OAuth com Adman
-        // sincronizado só numa das duas janelas puxavam a média para -100%
-        // artificial (via 0/positive = -100%).
-        $margemAtual = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereDate('reference_date', '>=', $inicioMes->toDateString())
-            ->whereDate('reference_date', '<=', $fimMes->toDateString())
-            ->selectRaw('company_id, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        $margemAnterior = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
-            ->whereDate('reference_date', '<=', $fimAnter->toDateString())
-            ->selectRaw('company_id, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        // Ajuste 2026-07-13 (audit LOJASINVAL + AVF2K): recorte por DIAS
-        // COMUNS. Substitui o fix Tomelin (2026-07-10, só gap-no-fim) por
-        // versão que cobre gap em qualquer posição em qualquer uma das
-        // duas janelas — inclusive empresas cadastradas em meio de mês
-        // (LOJASINVAL: 16/06 → dias 01-15/06 nunca tiveram sync) e
-        // incidentes de sync no meio da janela (AVF2K: 12-13/06 outage
-        // Adman rate-limit).
-        //
-        // Estratégia: pra cada empresa, buscar os DAYs com margem em cada
-        // janela; usar SÓ o subconjunto que existe em ambas. Se junho tem
-        // dado só em 06-12 e 06-13 e julho tem 01-12, compara apenas o
-        // dia 12 vs dia 12.
-        // Helper cross-DB (SQLite não tem DAY()): agrega em PHP após pluck.
-        // Carbon lida com string ISO OU objeto Carbon (cast 'date' do model).
-        $extrairDiasDoMes = function ($rows) {
-            return $rows->pluck('reference_date')
-                ->map(fn ($d) => Carbon::parse($d)->day)
-                ->unique()
-                ->values()
-                ->all();
-        };
-
-        $diasComMargemAtualPorEmpresa    = collect();
-        $diasComMargemAnteriorPorEmpresa = collect();
-
-        if (! $companyIds->isEmpty()) {
-            $diasComMargemAtualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
-                ->whereDate('reference_date', '>=', $inicioMes->toDateString())
-                ->whereDate('reference_date', '<=', $fimMes->toDateString())
-                ->whereNotNull('contribution_margin')
-                ->get(['company_id', 'reference_date'])
-                ->groupBy('company_id')
-                ->map($extrairDiasDoMes);
-
-            $diasComMargemAnteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIds)
-                ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
-                ->whereDate('reference_date', '<=', $fimAnter->toDateString())
-                ->whereNotNull('contribution_margin')
-                ->get(['company_id', 'reference_date'])
-                ->groupBy('company_id')
-                ->map($extrairDiasDoMes);
-        }
-
         $vars = collect();
 
         foreach ($companies as $company) {
-            $rowAtual    = $margemAtual->get($company->id);
-            $rowAnterior = $margemAnterior->get($company->id);
+            $resultado = $this->admanDiffService->compute($company, $periodo);
+            $diffPct   = $resultado['metrics']['contribution_margin_pct']['diff_pct'] ?? null;
 
-            // Precisa TER dados de margem em AMBAS as janelas — senão pula
-            // (evita o -100% artificial quando Adman sincronizou só uma delas).
-            $temDadosAtual    = $rowAtual    !== null && (int) $rowAtual->margem_dias    > 0;
-            $temDadosAnterior = $rowAnterior !== null && (int) $rowAnterior->margem_dias > 0;
-            if (! $temDadosAtual || ! $temDadosAnterior) {
-                continue;
+            if ($diffPct !== null) {
+                $vars->push($diffPct);
             }
-
-            $atual    = (float) $rowAtual->margem;
-            $anterior = (float) $rowAnterior->margem;
-
-            // Recorte por DIAS COMUNS (2026-07-13): se as duas janelas têm
-            // conjuntos de dias diferentes (por gap de sync ou empresa nova),
-            // reagrega SÓ pros dias presentes em AMBAS. Se não sobra nenhum
-            // dia coincidente, descarta empresa do cálculo.
-            $diasAtual  = $diasComMargemAtualPorEmpresa->get($company->id, []);
-            $diasAnter  = $diasComMargemAnteriorPorEmpresa->get($company->id, []);
-            $diasComuns = array_values(array_intersect($diasAtual, $diasAnter));
-
-            if (empty($diasComuns)) {
-                continue; // sem dia coincidente → não é comparável
-            }
-
-            if (count($diasComuns) !== count($diasAtual) || count($diasComuns) !== count($diasAnter)) {
-                // Converte offset (dia do mês) em datas concretas — cross-DB.
-                $datasAtual = array_map(
-                    fn ($d) => $inicioMes->copy()->setDay($d)->toDateString(),
-                    $diasComuns,
-                );
-                $datasAnter = array_map(
-                    fn ($d) => $inicioAnter->copy()->setDay($d)->toDateString(),
-                    $diasComuns,
-                );
-
-                // `whereIn(reference_date, [...])` não bate pois o cast 'date' do
-                // model serializa com timestamp ('YYYY-MM-DD 00:00:00'). whereDate
-                // aplica DATE() de ambos os lados e funciona em MySQL/SQLite.
-                $atual = (float) AdmanMetric::where('company_id', $company->id)
-                    ->where(function ($q) use ($datasAtual) {
-                        foreach ($datasAtual as $d) {
-                            $q->orWhereDate('reference_date', $d);
-                        }
-                    })
-                    ->whereNotNull('contribution_margin')
-                    ->sum('contribution_margin');
-
-                $anterior = (float) AdmanMetric::where('company_id', $company->id)
-                    ->where(function ($q) use ($datasAnter) {
-                        foreach ($datasAnter as $d) {
-                            $q->orWhereDate('reference_date', $d);
-                        }
-                    })
-                    ->whereNotNull('contribution_margin')
-                    ->sum('contribution_margin');
-            }
-
-            if ($anterior <= 0) {
-                continue; // sem baseline de margem — descarta
-            }
-
-            $vars->push((($atual - $anterior) / $anterior) * 100.0);
         }
 
         if ($vars->isEmpty()) {
