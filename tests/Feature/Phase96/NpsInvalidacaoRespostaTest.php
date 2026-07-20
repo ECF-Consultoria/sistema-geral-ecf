@@ -238,7 +238,10 @@ class NpsInvalidacaoRespostaTest extends TestCase
         $response = $this->criarResponse($survey);
         $this->criarSnapshot($response, $company, $pessoa);
 
-        $cacheKey = sprintf('desempenho.compute.v4.%d.%s', $pessoa->id, '2026-06');
+        // Fase 102 (BON-04/T-102-05): a chave passou a v5 com period_key
+        // embutido — junho/2026 é mês fechado nesta suíte (setTestNow julho),
+        // então period_key='2026-06' (mesmo formato Y-m de antes).
+        $cacheKey = sprintf('desempenho.compute.v5.%d.%s', $pessoa->id, '2026-06');
         Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
         $this->assertTrue(Cache::has($cacheKey), 'pré-condição: cache do bônus precisa existir antes da invalidação.');
 
@@ -337,7 +340,8 @@ class NpsInvalidacaoRespostaTest extends TestCase
         ]);
         $this->criarSnapshot($response, $company, $pessoa);
 
-        $cacheKey = sprintf('desempenho.compute.v4.%d.%s', $pessoa->id, '2026-06');
+        // Fase 102 (BON-04/T-102-05): chave v5, período fechado (2026-06).
+        $cacheKey = sprintf('desempenho.compute.v5.%d.%s', $pessoa->id, '2026-06');
         Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
 
         $this->actingAs($admin)
