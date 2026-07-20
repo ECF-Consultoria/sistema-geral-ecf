@@ -98,6 +98,13 @@ Schedule::command('ml:sync')
     ->name('sync-ml-direct')
     ->withoutOverlapping();
 
+// Sync direto Shopee (D-1) — 11:15, logo após o ml:sync.
+// Só processa empresas com token Shopee ativo; grava em shopee_metrics.
+Schedule::command('shopee:sync')
+    ->dailyAt('11:15')
+    ->name('sync-shopee-direct')
+    ->withoutOverlapping();
+
 // Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
 // Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
 Schedule::command('notifications:cleanup')

@@ -3,6 +3,7 @@
 namespace App\Services\Shopee;
 
 use App\Models\Company;
+use App\Models\ShopeeMetric;
 use App\Models\ShopeeToken;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -446,5 +447,31 @@ class ShopeeService
             'orders_count'  => $counted,
             'sold_quantity' => $soldQty,
         ];
+    }
+
+    // ═══ Sync: grava métricas diárias ═════════════════════════════════════════
+
+    /**
+     * Sincroniza o faturamento de UM dia da empresa para shopee_metrics.
+     * Dias sem pedidos não geram linha (mantém a tabela enxuta). Retorna a
+     * métrica gravada ou null (dia vazio / sem token).
+     */
+    public function syncCompanyDay(Company $company, string $date): ?ShopeeMetric
+    {
+        $summary = $this->fetchOrdersSummary($company, $date, $date);
+
+        if (($summary['orders_count'] ?? 0) === 0) {
+            return null;
+        }
+
+        return ShopeeMetric::updateOrCreate(
+            ['company_id' => $company->id, 'reference_date' => $date],
+            [
+                'revenue'       => $summary['revenue'],
+                'orders_count'  => $summary['orders_count'],
+                'sold_quantity' => $summary['sold_quantity'],
+                'synced_at'     => now(),
+            ]
+        );
     }
 }
