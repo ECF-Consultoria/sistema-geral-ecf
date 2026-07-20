@@ -896,7 +896,7 @@ Plans:
 1. `AdmanMetricDiffService` lê `revenue`, `profitMargin.value`/`.diff` e `percentageMargin.value`/`.diff` da resposta/cache Adman — cobrindo o gap atual do `AdmanService`, que descarta o `.diff`
 2. O service prefere o diff oficial da Adman (`diff_source='adman_diff'`); só usa fallback calculado quando o diff não existe para a janela consultada, marcando `diff_source='calculated_fallback'`
 3. O diff de período é persistido/retornado com contexto de período e fonte — não vira fato diário; fato diário continua guardando o valor do dia, snapshot/retorno de período guarda a comparação da janela
-4. Backfill preenche os novos campos quando `raw_data` antigo já tiver `profitMargin.diff`/`percentageMargin.diff`; quando não tiver, os campos ficam `null` e o fallback calculado marcado assume
+4. **[REFRAMADO por research empírico 2026-07-17]** Sem backfill de coluna — a arquitetura é live-read (fato diário `AdmanMetric` não recebe colunas de diff de período; o research provou que `raw_data.diff` é sempre DIÁRIO, não de período, e que `percentageMargin` nunca esteve no `raw_data`). O helper `lerDiffDiarioRawData(scope='daily')` expõe o diff diário legítimo do `raw_data` COM guard anti-confusão (nunca retorna `diff_source='adman_diff'`), impedindo que a Fase 102 confunda diff diário com diff de período. Aceito pelo usuário 2026-07-17.
 5. Labels separados sem ambiguidade — Margem R$ (`profitMargin`) distinta de Margem % (`percentageMargin`); teste garante que `percentageMargin.value` nunca é usado como se fosse variação manual de `contribution_margin`
 
 Plans:

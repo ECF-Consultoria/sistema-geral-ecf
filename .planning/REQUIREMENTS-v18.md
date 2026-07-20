@@ -18,11 +18,11 @@
 
 ### ADM — AdmanMetricDiffService (Fase 101)
 
-- [ ] **ADM-01**: `AdmanMetricDiffService` lê `revenue`, `profitMargin.value/.diff`, `percentageMargin.value/.diff` da resposta/cache Adman — hoje o `AdmanService` descarta o `.diff` (lê só `['value']`)
-- [ ] **ADM-02**: Prefere o diff oficial da Adman (`diff_source='adman_diff'`); só usa fallback calculado quando o diff não existe para a janela, marcando `diff_source='calculated_fallback'`
-- [ ] **ADM-03**: Diff de período é persistido/retornado com contexto de período e fonte — não vira fato diário; fato diário guarda valor do dia, snapshot/retorno de período guarda a comparação da janela
-- [ ] **ADM-04**: Backfill: quando `raw_data` antigo tiver `profitMargin.diff`/`percentageMargin.diff`, preencher os novos campos; quando não tiver, deixar null e permitir fallback marcado
-- [ ] **ADM-05**: Labels separados sem ambiguidade — Margem R$ (`profitMargin`) distinta de Margem % (`percentageMargin`); nunca misturar `percentageMargin.value` com variação manual de `contribution_margin`
+- [x] **ADM-01**: `AdmanMetricDiffService` lê `revenue`, `profitMargin.value/.diff`, `percentageMargin.value/.diff` da resposta/cache Adman — hoje o `AdmanService` descarta o `.diff` (lê só `['value']`)
+- [x] **ADM-02**: Prefere o diff oficial da Adman (`diff_source='adman_diff'`); só usa fallback calculado quando o diff não existe para a janela, marcando `diff_source='calculated_fallback'`
+- [x] **ADM-03**: Diff de período é persistido/retornado com contexto de período e fonte — não vira fato diário; fato diário guarda valor do dia, snapshot/retorno de período guarda a comparação da janela
+- [x] **ADM-04**: Backfill: quando `raw_data` antigo tiver `profitMargin.diff`/`percentageMargin.diff`, preencher os novos campos; quando não tiver, deixar null e permitir fallback marcado
+- [x] **ADM-05**: Labels separados sem ambiguidade — Margem R$ (`profitMargin`) distinta de Margem % (`percentageMargin`); nunca misturar `percentageMargin.value` com variação manual de `contribution_margin`
 
 ### BON — Desempenho oficial por competência (Fase 102)
 
@@ -70,11 +70,11 @@
 | PER-04 | Fase 100 | Complete |
 | PER-05 | Fase 100 | Complete |
 | PER-06 | Fase 100 | Complete |
-| ADM-01 | Fase 101 | Pending |
-| ADM-02 | Fase 101 | Pending |
-| ADM-03 | Fase 101 | Pending |
-| ADM-04 | Fase 101 | Pending |
-| ADM-05 | Fase 101 | Pending |
+| ADM-01 | Fase 101 | Complete |
+| ADM-02 | Fase 101 | Complete |
+| ADM-03 | Fase 101 | Complete |
+| ADM-04 | Fase 101 | Complete |
+| ADM-05 | Fase 101 | Complete |
 | BON-01 | Fase 102 | Pending |
 | BON-02 | Fase 102 | Pending |
 | BON-03 | Fase 102 | Pending |
