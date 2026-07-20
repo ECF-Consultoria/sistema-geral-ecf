@@ -216,7 +216,7 @@ Fonte: `app/Services/Metrics/AdmanMetricDiffService.php:82-148` (shape de retorn
 | A2 | `renderPortfolio()` está FORA do escopo de CAR-01..03 (REQUIREMENTS-v18 só cita as outras duas funções, apesar do plano canônico listar as três) | Pitfall 5 / Open Questions | Se o usuário/planner decidir que `renderPortfolio()` também deveria migrar nesta fase, o escopo de 103 cresce (mais um consumidor com padrão inline igual, mesmo transplante) |
 | A3 | O `?mes=YYYY-MM` existente na carteira individual pode ser traduzido 1:1 para `period_key` do resolver sem quebrar a UI atual (dropdown `meses_disponiveis`) | Code Examples / Pitfall 3 | Se o formato interno mudar, o dropdown existente (Fase pré-v18.0) para de funcionar até a Fase 104 ajustar o front — checar se isso é aceitável como estado intermediário entre 103 e 104 |
 
-## Open Questions
+## Open Questions (RESOLVED — travadas pelo orquestrador; ver plano canônico Fase 2 vs Fase 3 e os planos 103-01/02)
 
 1. **`renderPortfolio()` entra no escopo da Fase 103?**
    - O que se sabe: o plano canônico (`plano-carteira-desempenho-multi-servico.md:757-763`) lista as 3 funções afetadas; `REQUIREMENTS-v18.md` (CAR-01) e o `ROADMAP.md` da Fase 103 citam só `renderCarteiraProfissional`/`renderCarteirasConsolidadas`.
