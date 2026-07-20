@@ -295,20 +295,22 @@ const glassPillStyle = (active) => ({
 });
 
 function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, options, width }) {
-    // 2026-07-16 · trava a largura (max-width) e trunca o valor selecionado com
-    // ellipsis — nomes de modelo longos ("NPS | Performance ECF Consultoria &
-    // Assessoria (principal)") não estouram mais o layout. min-w-0 permite o
-    // flex-item encolher abaixo do conteúdo; overflow:hidden clipa; a seta e o
-    // ícone não encolhem (shrink-0).
+    // 2026-07-20 · trunca o valor selecionado com ellipsis para nomes de modelo
+    // longos ("NPS | Performance ECF Consultoria & Assessoria (principal)").
+    // ATENÇÃO: o Radix Select.Value (v2.2) DESCARTA className/style do <span> que
+    // renderiza — então o truncate precisa ser aplicado pelo trigger, mirando o
+    // span filho: [&>span]:flex-1 [&>span]:min-w-0 [&>span]:truncate.
+    // O chevron nativo do Radix é o último svg (após os filhos) → escondemos só
+    // ele com [&>svg:last-child]:hidden, preservando o ícone e a seta customizada.
     return (
         <div style={{ ...glassPillStyle(!!active), padding: 0, paddingLeft: Icon ? 10 : 0, width, maxWidth: '100%', overflow: 'hidden' }}>
             <Select value={value} onValueChange={onValueChange}>
                 <SelectTrigger
-                    className="border-0 bg-transparent hover:bg-transparent focus:ring-0 focus-visible:ring-0 shadow-none h-full w-full min-w-0 px-3 gap-2 [&>svg]:hidden"
+                    className="border-0 bg-transparent hover:bg-transparent focus:ring-0 focus-visible:ring-0 shadow-none h-full w-full min-w-0 px-3 gap-2 [&>svg:last-child]:hidden [&>span]:block [&>span]:flex-1 [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left"
                     style={{ fontSize: 13, color: active ? '#eef' : 'rgba(255,255,255,0.6)', fontWeight: active ? 600 : 500 }}
                 >
                     {Icon && <Icon size={15} style={{ color: 'rgba(255,255,255,0.5)', flexShrink: 0 }} />}
-                    <SelectValue className="min-w-0 flex-1 truncate text-left" placeholder={placeholder} />
+                    <SelectValue placeholder={placeholder} />
                     <ChevronDown size={13} style={{ color: 'rgba(255,255,255,0.4)', marginLeft: 4, flexShrink: 0 }} />
                 </SelectTrigger>
                 <SelectContent>
@@ -1130,6 +1132,36 @@ export default function NpsIndex({
     const deltaAna = useMemo(() => computeDelta(serie_12m, 'analista'),     [serie_12m]);
     const deltaEmp = useMemo(() => computeDelta(serie_12m, 'empresa'),      [serie_12m]);
 
+    // ─── Cards reativos ao filtro de pessoa (2026-07-20) ─────────────────
+    // Regra de produto: ao filtrar por UMA pessoa, os cards do topo colapsam
+    // para a nota dela — estrategista → dimensão estrategista; analista →
+    // dimensão analista. Com os DOIS filtros ativos, mostra um único card com
+    // a MÉDIA das duas dimensões. Sem filtro de pessoa, mantém os 3 cards de
+    // dimensão (comportamento original). O gráfico abaixo não muda.
+    const estrategistaId = filtros.estrategista_id ?? null;
+    const analistaId     = filtros.analista_id ?? null;
+    const soEstrategista = !!estrategistaId && !analistaId;
+    const soAnalista     = !!analistaId && !estrategistaId;
+    const ambosPessoa    = !!estrategistaId && !!analistaId;
+    const filtroPessoa   = soEstrategista || soAnalista || ambosPessoa;
+
+    // Média das duas dimensões — considera só a dimensão que teve resposta
+    // (total>0), para não puxar a média para baixo com um 0 "sem base".
+    const cardMedia = useMemo(() => {
+        const partes = [];
+        if ((cards.estrategista?.total ?? 0) > 0) partes.push(Number(cards.estrategista.media));
+        if ((cards.analista?.total ?? 0) > 0)     partes.push(Number(cards.analista.media));
+        const media = partes.length ? partes.reduce((a, b) => a + b, 0) / partes.length : 0;
+        return { media, total: contadores.respondidos ?? 0 };
+    }, [cards, contadores]);
+
+    // Delta da média = média dos deltas disponíveis (ambos já scoped pelo
+    // filtro via serie_12m). Null quando nenhuma dimensão tem base anterior.
+    const deltaMedia = useMemo(() => {
+        const ds = [deltaEst, deltaAna].filter((d) => d != null);
+        return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : null;
+    }, [deltaEst, deltaAna]);
+
     // ─── Render ──────────────────────────────────────────────────────────
     return (
         <AppLayout title="NPS">
@@ -1257,36 +1289,76 @@ export default function NpsIndex({
                             </button>
                         </div>
 
-                        {/* ─── 3 stat cards ────────────────────────────────────── */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-                            <StatCard
-                                kicker="ESTRATEGISTA"
-                                icon={Briefcase}
-                                color={COL_ESTRATEGISTA_LINE}
-                                valor={cards.estrategista?.media}
-                                total={cards.estrategista?.total ?? 0}
-                                pendentes={pendentesTotal}
-                                delta={deltaEst}
-                            />
-                            <StatCard
-                                kicker="ANALISTA"
-                                icon={UsersIcon}
-                                color={COL_ANALISTA}
-                                valor={cards.analista?.media}
-                                total={cards.analista?.total ?? 0}
-                                pendentes={pendentesTotal}
-                                delta={deltaAna}
-                            />
-                            <StatCard
-                                kicker="EMPRESA"
-                                icon={Building2}
-                                color={COL_EMPRESA}
-                                valor={cards.empresa?.media}
-                                total={cards.empresa?.total ?? 0}
-                                pendentes={pendentesTotal}
-                                delta={deltaEmp}
-                            />
-                        </div>
+                        {/* ─── Stat cards — reativos ao filtro de pessoa ────────── */}
+                        {filtroPessoa ? (
+                            <div style={{ display: 'flex', gap: 14 }}>
+                                <div style={{ width: 'min(100%, 380px)' }}>
+                                    {soEstrategista && (
+                                        <StatCard
+                                            kicker="ESTRATEGISTA"
+                                            icon={Briefcase}
+                                            color={COL_ESTRATEGISTA_LINE}
+                                            valor={cards.estrategista?.media}
+                                            total={cards.estrategista?.total ?? 0}
+                                            pendentes={pendentesTotal}
+                                            delta={deltaEst}
+                                        />
+                                    )}
+                                    {soAnalista && (
+                                        <StatCard
+                                            kicker="ANALISTA"
+                                            icon={UsersIcon}
+                                            color={COL_ANALISTA}
+                                            valor={cards.analista?.media}
+                                            total={cards.analista?.total ?? 0}
+                                            pendentes={pendentesTotal}
+                                            delta={deltaAna}
+                                        />
+                                    )}
+                                    {ambosPessoa && (
+                                        <StatCard
+                                            kicker="MÉDIA · EST + ANA"
+                                            icon={UsersIcon}
+                                            color={ACCENT}
+                                            valor={cardMedia.media}
+                                            total={cardMedia.total}
+                                            pendentes={pendentesTotal}
+                                            delta={deltaMedia}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                                <StatCard
+                                    kicker="ESTRATEGISTA"
+                                    icon={Briefcase}
+                                    color={COL_ESTRATEGISTA_LINE}
+                                    valor={cards.estrategista?.media}
+                                    total={cards.estrategista?.total ?? 0}
+                                    pendentes={pendentesTotal}
+                                    delta={deltaEst}
+                                />
+                                <StatCard
+                                    kicker="ANALISTA"
+                                    icon={UsersIcon}
+                                    color={COL_ANALISTA}
+                                    valor={cards.analista?.media}
+                                    total={cards.analista?.total ?? 0}
+                                    pendentes={pendentesTotal}
+                                    delta={deltaAna}
+                                />
+                                <StatCard
+                                    kicker="EMPRESA"
+                                    icon={Building2}
+                                    color={COL_EMPRESA}
+                                    valor={cards.empresa?.media}
+                                    total={cards.empresa?.total ?? 0}
+                                    pendentes={pendentesTotal}
+                                    delta={deltaEmp}
+                                />
+                            </div>
+                        )}
 
                         {/* ─── Chart card ──────────────────────────────────────── */}
                         <ChartCard serie={serie_12m} cards={cards} lines={lines} setLines={setLines} />
