@@ -3,6 +3,10 @@
 namespace Tests\Feature\V18;
 
 use App\Models\Company;
+use App\Models\NpsResponse;
+use App\Models\NpsResponseScore;
+use App\Models\NpsScoreAssignment;
+use App\Models\NpsSurvey;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
@@ -12,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -349,6 +354,81 @@ class DesempenhoMetadadosCacheTest extends TestCase
 
         $this->assertSame(0.0, $nota,
             'DESEMP-03 preservado: sem respostas no mês, computeNpsMedio continua 0.0 (penaliza).');
+    }
+
+    /**
+     * Cria 1 atribuição congelada da Fase 79 (`nps_score_assignments`) pro
+     * `$user`, com `average_score=$peso`, numa resposta `completed` no mês
+     * dado. Espelha `NpsInvalidacaoRespostaTest::criarSnapshot()` — mínimo
+     * suficiente pro ramo (A) de `computeNpsMedio` (join
+     * survey→response→assignment), sem precisar do fluxo real de
+     * template/perguntas/opções.
+     */
+    private function criarAtribuicaoNps(User $user, Company $company, Carbon $completedAt, float $peso): void
+    {
+        $survey = NpsSurvey::create([
+            'token'        => Str::uuid()->toString(),
+            'company_id'   => $company->id,
+            'generated_by' => null,
+            'expires_at'   => $completedAt->copy()->addDays(7),
+            'status'       => 'completed',
+            'completed_at' => $completedAt,
+            'template_id'  => null,
+        ]);
+
+        $response = NpsResponse::create([
+            'survey_id'       => $survey->id,
+            'respondent_name' => 'Cliente ' . uniqid(),
+        ]);
+
+        $score = NpsResponseScore::create([
+            'nps_response_id' => $response->id,
+            'company_id'      => $company->id,
+            'dimensao'        => 'analista',
+            'score_sum'       => $peso,
+            'question_count'  => 1,
+            'average_score'   => $peso,
+            'calculated_at'   => $completedAt,
+        ]);
+
+        NpsScoreAssignment::create([
+            'nps_response_id'       => $response->id,
+            'nps_response_score_id' => $score->id,
+            'company_id'            => $company->id,
+            'servico_id'            => null,
+            'service_setor'         => 'performance',
+            'role'                  => 'consultor',
+            'user_id'               => $user->id,
+            'average_score'         => $peso,
+            'assigned_at'           => $completedAt,
+        ]);
+    }
+
+    #[Test]
+    public function test_compute_nps_medio_bate_com_media_aritmetica_das_atribuicoes_mesma_formula_v17(): void
+    {
+        // Prova com DADOS reais (não só o caso trivial 0.0): a migração de
+        // período (BON-01/02/03) mexeu em janelas de faturamento/margem, mas
+        // computeNpsMedio continua sendo a MÉDIA ARITMÉTICA simples das notas
+        // do mês — mesma fórmula da v17 (Fase 91), NPS não filtra por
+        // elegibilidade financeira.
+        Carbon::setTestNow(Carbon::parse('2026-07-20 14:00:00'));
+
+        $user    = $this->criarUserAnalista('NPS Media Real V17');
+        $company = Company::factory()->create();
+
+        $this->criarAtribuicaoNps($user, $company, Carbon::parse('2026-06-05 10:00:00'), 4.0);
+        $this->criarAtribuicaoNps($user, $company, Carbon::parse('2026-06-20 10:00:00'), 2.0);
+
+        $service = app(DesempenhoScoreService::class);
+        $metodo  = new ReflectionMethod($service, 'computeNpsMedio');
+        $metodo->setAccessible(true);
+
+        $nota = $metodo->invoke($service, $user, Carbon::parse('2026-06-01'));
+
+        // Média aritmética simples: (4.0 + 2.0) / 2 = 3.0.
+        $this->assertSame(3.0, $nota,
+            'a fórmula da média aritmética (v17) permanece intocada pela migração de período do Plan 102-02.');
     }
 
     // ═══════════════════════════════════════════════════════════════════

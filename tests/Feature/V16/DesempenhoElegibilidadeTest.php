@@ -359,34 +359,39 @@ class DesempenhoElegibilidadeTest extends TestCase
     }
 
     #[Test]
-    public function test_cache_bumpado_para_v4(): void
+    public function test_cache_bumpado_para_v5(): void
     {
-        // Bump v3→v4 obrigatório desta fase — mesmo padrão de
-        // BonusDualPathRegressaoTest::test_cache_bumpado_para_v3, um passo
+        // Bump v4→v5 obrigatório da Fase 102 (BON-01/02/03) — mesmo padrão de
+        // BonusDualPathRegressaoTest::test_cache_bumpado_para_v5, um passo
         // adiante. User sem carteira de propósito: computeCached corta cedo
         // no shape sem_carteira e não toca o MetricsProviderFactory.
-        $user = $this->criarUserComCargo('Analista Cache v4', $this->cargoAnalistaId);
+        //
+        // A chave esperada vem do helper público `cacheKey()` (nunca
+        // hardcoded aqui): `$mes` (2026-08-01) é o mês CORRENTE nesta suíte
+        // (`Carbon::setTestNow` congela 15/08/2026) → period_key='current_month'.
+        $user = $this->criarUserComCargo('Analista Cache v5', $this->cargoAnalistaId);
 
         $mes     = Carbon::parse('2026-08-01');
-        $chaveV3 = sprintf('desempenho.compute.v3.%d.%s', $user->id, $mes->format('Y-m'));
         $chaveV4 = sprintf('desempenho.compute.v4.%d.%s', $user->id, $mes->format('Y-m'));
 
-        // Lixo reconhecível na chave v3 — representa o valor que o Redis de
-        // prod tem antes deste deploy.
-        Cache::put($chaveV3, ['nota_final' => 99.9], 600);
+        $service = app(DesempenhoScoreService::class);
+        $chaveV5 = $service->cacheKey($user->id, $mes);
 
-        $service   = app(DesempenhoScoreService::class);
+        // Lixo reconhecível na chave v4 — representa o valor que o Redis de
+        // prod tem antes deste deploy.
+        Cache::put($chaveV4, ['nota_final' => 99.9], 600);
+
         $resultado = $service->computeCached($user, $mes);
 
         $this->assertNotSame(99.9, $resultado['nota_final'] ?? null,
-            'computeCached NÃO pode devolver o valor cacheado sob a chave v3');
+            'computeCached NÃO pode devolver o valor cacheado sob a chave v4');
         $this->assertNull($resultado['nota_final'],
             'o retorno deve ser o shape recalculado (sem carteira → nota_final null)');
         $this->assertTrue($resultado['sem_carteira']);
-        $this->assertTrue(Cache::has($chaveV4),
-            'computeCached deve gravar o resultado sob a chave desempenho.compute.v4');
-        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV3),
-            'a chave v3 não é apagada — vira órfã e expira por TTL');
+        $this->assertTrue(Cache::has($chaveV5),
+            'computeCached deve gravar o resultado sob a chave desempenho.compute.v5 (via helper cacheKey())');
+        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV4),
+            'a chave v4 não é apagada — vira órfã e expira por TTL');
     }
 }
 
