@@ -249,6 +249,53 @@ class MetricPeriodResolver
         ]);
     }
 
+    // ─────────────────────── Modo 4: custom (período personalizado fechado) ───────────────────────
+
+    /**
+     * `custom` → `mode='closed_period'`,
+     * `comparison_mode='previous_equal_length_window'`.
+     *
+     * Plano §203-206: valida presença de `start`/`end` (T-100-01),
+     * `current_start`=`start`, `current_end`=`end` (inclusivas),
+     * `days_count`=diffInDays+1, baseline via
+     * `baselineJanelaMesmoTamanho()`. `bonus_*=null`, `is_current_month=false`,
+     * `is_closed` = (`end` < hoje).
+     *
+     * @throws InvalidArgumentException quando `start`/`end` ausentes.
+     */
+    private function resolveCustom(array $filtros): array
+    {
+        if (!isset($filtros['start'], $filtros['end'])) {
+            throw new InvalidArgumentException(
+                "period_key 'custom' exige 'start' e 'end' (strings YYYY-MM-DD) no filtro."
+            );
+        }
+
+        $currentStart = Carbon::parse($filtros['start'], self::TIMEZONE)->startOfDay();
+        $currentEnd   = Carbon::parse($filtros['end'], self::TIMEZONE)->startOfDay();
+        $daysCount    = (int) $currentStart->diffInDays($currentEnd) + 1;
+
+        [$baselineStart, $baselineEnd] = $this->baselineJanelaMesmoTamanho($currentStart, $daysCount);
+
+        $today = $this->now()->startOfDay();
+
+        return $this->buildResult([
+            'mode'                   => 'closed_period',
+            'period_key'             => 'custom',
+            'current_start'          => $currentStart,
+            'current_end'            => $currentEnd,
+            'baseline_start'         => $baselineStart,
+            'baseline_end'           => $baselineEnd,
+            'days_count'             => $daysCount,
+            'comparison_mode'        => 'previous_equal_length_window',
+            'data_fresh_until'       => $currentEnd,
+            'bonus_payment_month'    => null,
+            'bonus_competence_month' => null,
+            'is_current_month'       => false,
+            'is_closed'              => $currentEnd->lt($today),
+        ]);
+    }
+
     // ─────────────────────── Helper compartilhado: janela de mesmo tamanho ───────────────────────
 
     /**
