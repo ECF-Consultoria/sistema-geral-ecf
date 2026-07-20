@@ -271,7 +271,7 @@ Os testes existentes (`DesempenhoScoreServiceTest::setUp()`) já congelam `Carbo
 
 **Se esta tabela estivesse vazia:** não está — A1/A2 são recomendações técnicas que dependem de preferência de longo prazo do usuário; A3 é uma decisão de negócio explícita; A4 é uma dedução matemática não verificada empiricamente nesta sessão (nenhum teste foi executado).
 
-## Open Questions
+## Open Questions (RESOLVED — decisões travadas nos plans 102-01/102-02)
 
 1. **Reprocessar junho/2026?** (ver `## Decisões de produto`) — pergunta direta ao usuário/diretoria antes de executar o plano. Recomenda-se incluir como pergunta de discuss-phase ou checkpoint explícito no plano.
 2. **Opção A vs B de assinatura de `compute()`** — decisão arquitetural com impacto nas Fases 103/104 (que também vão precisar declarar operacional-vs-fechado). Recomenda-se decidir agora para não migrar 2x.
