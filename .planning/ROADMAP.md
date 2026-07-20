@@ -783,6 +783,7 @@ Plans:
 **Requirements**: AB-96-1, AB-96-2, AB-96-3
 **Depends on:** Phase 95
 **Plans:** 5/5 plans complete
+
 - [x] 96-01-PLAN.md — AB-96-1: bloqueio de submit em sessão interna (7º event_type `blocked` + página amigável)
 - [x] 96-02-PLAN.md — AB-96-2: IPs/CIDRs internos configuráveis pela UI (Configuracao ∪ .env)
 - [x] 96-03-PLAN.md — AB-96-3: fundação da invalidação (flag + scopeValida + ação admin + cache-busting + UI)
@@ -821,9 +822,17 @@ Plans:
 
 Plans:
 
+**Wave 1**
+
 - [ ] 97-01-PLAN.md — Backend: janelas período-anterior (deltas KPIs), margem ponderada, série diária de margem, contagem de empresas novas (D3) e base do fix do marketplace no payload
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
 - [ ] 97-02-PLAN.md — Backend: widgets no recorte (Score da equipe filtrado + nps_pendentes via forCompanies), NPS ruim com scopeValida (Fase 96) e novas empresas detalhadas
 - [ ] 97-03-PLAN.md — Frontend: filtros rascunho→aplicar + chips + colapsável, correção da navegação do marketplace e 4 KPIs com delta/link
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
 - [ ] 97-04-PLAN.md — Frontend: gráfico Faturamento/Margem interativo, cards NPS ruim/Score/Novas empresas, estados reais + checkpoint visual
 
 ## Dependências — Iniciativa NPS Anti-Burlamento (Fases 94-96)
@@ -888,7 +897,6 @@ Plans:
 *Roadmap atualizado: 2026-07-15 — Phase 86 planejada: 4 plans / 3 waves cobrindo HIST-86-1..3. HIST-86-2 e a clonagem NÃO são reimplementados: `duplicarComoTemplate`/`criarTemplateInterno` (Phase 81, 6 testes) já clonam o payload inteiro e zeram os `ml_item_id` — a fase liga o botão neles e o front redireciona (a rota devolve JSON e mantém o consumidor vivo em `AnunciarML.jsx:1355`). `Mlb/Historico.jsx` já é de outro módulo → página nova = `AnunciosHistorico.jsx`. Busca por título atravessa JSON (`payload->title`): verificada de fato em MariaDB (prod) e SQLite (phpunit) no planejamento. Nenhum pacote novo*
 *Roadmap atualizado: 2026-07-16 — Iniciativa NPS Anti-Burlamento anexada via /gsd-import de `PLANO_NPS_ANTI_BURLAMENTO_DIGISAC.md`: 3 fases (94-96) cobrindo AB-94-1..5, AB-95-1..4, AB-96-1..3. Escopo reduzido no import: seções Digisac e unicidade mensal do plano descartadas por já estarem entregues (v15.5/v16.0). Cadeia 94→95→96, independente da v17.0.*
 *Roadmap atualizado: 2026-07-16 — Milestone v17.0 (Carteira e Desempenho multi-servico) anexada: 6 fases (88-93) cobrindo as 22 REQs (CTX/CART/DESEMP/MENU) do REQUIREMENTS.md, estrutura vinda do plano canonico do usuario (plano-carteira-desempenho-multi-servico.md). Fundacao em 88 (CarteiraContextService); 89->90 (individual antes de consolidada); 91 depende de 88, 92 depende de 91; 93 independente. Fases 60-87 preservadas intactas.*
-
 
 ### Phase 100: MetricPeriodResolver (v18.0)
 

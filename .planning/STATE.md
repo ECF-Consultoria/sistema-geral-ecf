@@ -4,14 +4,14 @@ milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
 status: executing
 stopped_at: Completed 96-04-PLAN.md
-last_updated: "2026-07-17T20:27:42.998Z"
-last_activity: 2026-07-17
+last_updated: "2026-07-20T18:45:22.434Z"
+last_activity: 2026-07-20 -- Phase 97 planning complete
 progress:
-  total_phases: 9
-  completed_phases: 7
-  total_plans: 19
-  completed_plans: 18
-  percent: 78
+  total_phases: 15
+  completed_phases: 12
+  total_plans: 29
+  completed_plans: 25
+  percent: 80
 ---
 
 # Project State
@@ -30,7 +30,7 @@ Plan: 5 of 5
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
 Status: Ready to execute
-Last activity: 2026-07-17 - Completed quick task 260717-fpc: upload de fotos do PC na grade em massa
+Last activity: 2026-07-20 -- Phase 97 planning complete
 
 ## Performance Metrics
 
