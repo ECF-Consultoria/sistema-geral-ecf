@@ -89,6 +89,18 @@ function formatNota(v) {
     return n.toFixed(2);
 }
 
+// Nota "ordenável" de uma linha da tabela: média das dimensões que têm nota
+// (E · A · EMP). Usada pelo cabeçalho NOTAS pra trazer as mais altas/mais
+// baixas ao topo. Linhas sem nota nenhuma (pendente/expirada) retornam null e
+// são jogadas para o fim da ordenação, em qualquer direção.
+function notaMediaRow(s) {
+    const vals = [s.score_estrategista, s.score_analista, s.score_empresa]
+        .map(Number)
+        .filter(n => Number.isFinite(n) && n > 0);
+    if (vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
 // Delta entre penúltimo e último mês (>0 sobe / <0 desce). Retorna null quando
 // QUALQUER um dos dois meses não tem dado (média 0/NaN) — sem isso o delta virava
 // "nota − 0" e mostrava o valor cheio (ex.: ↑4.96) como se fosse variação real.
@@ -683,6 +695,15 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
             if (sort.key === 'company') {
                 return dir * (a.company_name || '').localeCompare(b.company_name || '');
             }
+            if (sort.key === 'nota') {
+                const na = notaMediaRow(a);
+                const nb = notaMediaRow(b);
+                // Linhas sem nota (pendente/expirada) sempre no fim, em qualquer direção.
+                if (na === null && nb === null) return 0;
+                if (na === null) return 1;
+                if (nb === null) return -1;
+                return dir * (na - nb);
+            }
             // por data (created_at "dd/mm/yyyy hh:mm" — comparação de string bem-formada funciona invertido)
             return dir * (a.created_at || '').localeCompare(b.created_at || '');
         });
@@ -862,7 +883,16 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                 }}>
                     EMPRESA {sort.key === 'company' ? (sort.dir === 'asc' ? '↑' : '↓') : ''}
                 </button>
-                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>NOTAS (E · A · EMP)</span>
+                <button type="button" onClick={() => toggleSort('nota')}
+                    title="Ordenar pelas notas — 1 clique: mais baixas no topo · 2º clique: mais altas no topo"
+                    style={{
+                        textAlign: 'left', background: 'none', border: 'none', padding: 0,
+                        cursor: 'pointer', color: 'rgba(255,255,255,0.4)',
+                        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}>
+                    NOTAS (E · A · EMP) {sort.key === 'nota' ? (sort.dir === 'asc' ? '↑' : '↓') : ''}
+                </button>
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>RESPONDENTE</span>
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>COMENTÁRIO</span>
                 <button type="button" onClick={() => toggleSort('date')} style={{
