@@ -23,12 +23,19 @@ Schedule::command('goals:calculate')
     ->name('calculate-goal-results')
     ->withoutOverlapping();
 
-// Remove links NPS pendentes com mais de 2 dias sem resposta
-Schedule::call(function () {
-    \App\Models\NpsSurvey::where('status', 'pending')
-        ->where('created_at', '<', now()->subDays(2))
-        ->delete();
-})->daily()->name('prune-pending-nps-surveys');
+// DESLIGADO 2026-07-20 — este prune diário apagava TODO link NPS pendente com
+// >2 dias sem resposta (mass-delete, sem passar pelo Eloquent → sem activity_log).
+// Efeito colateral em produção: links gerados e enviados ao cliente sumiam em 48h
+// ("os gerados sumindo"), levando o cliente a uma página quebrada. Decisão do dev:
+// nunca apagar pendentes automaticamente — expiram sozinhos por expires_at e o
+// admin pode excluir manualmente pela UI (destroy/bulkDestroy). Mantido comentado
+// como documentação; reative apenas com uma janela larga (ex.: subDays(30)) se um
+// dia a limpeza voltar a fazer sentido.
+// Schedule::call(function () {
+//     \App\Models\NpsSurvey::where('status', 'pending')
+//         ->where('created_at', '<', now()->subDays(2))
+//         ->delete();
+// })->daily()->name('prune-pending-nps-surveys');
 
 // Phase 20 — Sincroniza grants via API HTTP do ECF Drive (substitui pipeline SFTP).
 // O comando grants:sync-sftp permanece no repo como rollback safety por +1 fase
