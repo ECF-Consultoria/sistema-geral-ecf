@@ -20,15 +20,19 @@ use Illuminate\Support\Str;
 class SyncPolosPlanilha extends Command
 {
     protected $signature = 'polos:sync-planilha
-        {--file= : Caminho do CSV exportado da planilha}
+        {--file= : Caminho do CSV/XLSX exportado da planilha}
+        {--sheet=Dash Gerencial Polos V2 : Nome da aba (usado só p/ arquivos XLSX)}
         {--apply : Grava de fato (padrão é dry-run/preview)}
-        {--limit=0 : Processa só as N primeiras linhas (0 = todas)}';
+        {--limit=0 : Processa só as N primeiras linhas (0 = todas)}
+        {--arquivar-ausentes : Arquiva empresas POLOS que não estão na planilha (some do painel; reversível)}';
 
-    protected $description = 'Sincroniza mlb_empresas/mlb_implementacoes a partir do CSV da planilha de Polos (dry-run por padrão)';
+    protected $description = 'Sincroniza mlb_empresas/mlb_implementacoes a partir da planilha de Polos — CSV ou XLSX (dry-run por padrão)';
 
     // ─── Mapeamentos confirmados com o usuário ───────────────────────────────
     private const FASE_MAP = [
         'M0' => 'M0', 'M1' => 'M1', 'M2' => 'M2', 'M3' => 'M3', 'M4' => 'M4',
+        // "Aceite no Projeto" = empresa aceita, ainda em entrada → M0 (fase de entrada).
+        'ACEITE NO PROJETO' => 'M0',
         'CHRUN' => 'Churn', 'CHURN' => 'Churn', 'PROTOCOLO CHURN' => 'Churn',
         'DESISTÊNCIA' => 'Churn', 'DESISTENCIA' => 'Churn', 'ENCERRADO' => 'Encerrado',
     ];
@@ -57,11 +61,16 @@ class SyncPolosPlanilha extends Command
         'gmail colaborador'   => 'gmail_colaborador',
         'Planilha Produtos'   => 'planilha_produtos',
         'Listagem'            => 'listagem',
+        'Publicação'          => 'publicacao',
         'Contextos logistica' => 'contextos_logistica',
         'ME1'                 => 'me1',
         'Integradora'         => 'integradora',
         'Places'              => 'places',
         'ERP'                 => 'erp',
+        // ── Colunas novas da V2 (confirmadas com o usuário) ──
+        'status de entrada'     => 'status_entrada',
+        'chance de entrada'     => 'chance_entrada',
+        'Reunião de onboarding' => 'reuniao_onboarding',
     ];
 
     // Colunas booleanas (Sim=true / Não=false / vazio=não mexe).
@@ -73,7 +82,7 @@ class SyncPolosPlanilha extends Command
 
     private array $rel = [
         'update_empresa' => 0, 'create_empresa' => 0, 'update_ficha' => 0, 'create_ficha' => 0,
-        'skip_publicador' => 0, 'skip_erro' => 0, 'linhas' => 0,
+        'skip_publicador' => 0, 'skip_erro' => 0, 'linhas' => 0, 'arquivadas' => 0,
     ];
     private array $skipPublicador = [];
     private array $fasesDesconhecidas = [];
@@ -82,22 +91,36 @@ class SyncPolosPlanilha extends Command
     private array $criadas = [];
     private array $campoChanges = [];
 
+    // Presença na planilha (p/ o arquivamento de ausentes): custs numéricos e nomes normalizados.
+    private array $v2Custs = [];
+    private array $v2Nomes = [];
+    private array $aArquivar = []; // amostra p/ o relatório
+
     public function handle(): int
     {
         $file = $this->option('file') ?: base_path('../polos_planilha.csv');
         if (! is_file($file)) {
-            $this->error("CSV não encontrado: {$file}. Use --file=caminho.csv");
+            $this->error("Arquivo não encontrado: {$file}. Use --file=caminho.csv|.xlsx");
             return self::FAILURE;
         }
-        $apply = (bool) $this->option('apply');
-        $limit = (int) $this->option('limit');
+        $apply    = (bool) $this->option('apply');
+        $limit    = (int) $this->option('limit');
+        $arquivar = (bool) $this->option('arquivar-ausentes');
 
         $this->info('╔══════════════════════════════════════════════════════════╗');
         $this->info('║  Sync Planilha Polos  ·  '.($apply ? 'APLICANDO (grava!)' : 'DRY-RUN (preview)').str_repeat(' ', $apply ? 12 : 15).'║');
         $this->info('╚══════════════════════════════════════════════════════════╝');
-        $this->line("CSV: {$file}");
+        $this->line("Arquivo: {$file}");
 
-        [$header, $rows] = $this->lerCsv($file);
+        // CSV ou XLSX (a planilha oficial é XLSX; lê valores em cache — sem recalcular fórmulas).
+        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        if (in_array($ext, ['xlsx', 'xls', 'xlsm'], true)) {
+            $sheet = (string) $this->option('sheet');
+            $this->line("Aba XLSX: {$sheet}");
+            [$header, $rows] = $this->lerXlsx($file, $sheet);
+        } else {
+            [$header, $rows] = $this->lerCsv($file);
+        }
         $idx = [];
         foreach ($header as $i => $h) {
             $idx[trim($h)] = $i;
@@ -134,7 +157,11 @@ class SyncPolosPlanilha extends Command
             $run();
         }
 
-        $this->relatorio($apply);
+        // Arquivamento de ausentes: preview sempre; grava só com --apply --arquivar-ausentes.
+        // Precisa rodar DEPOIS do $run (v2Custs/v2Nomes são preenchidos ao processar as linhas).
+        $this->arquivarAusentes($apply && $arquivar);
+
+        $this->relatorio($apply, $arquivar);
 
         return self::SUCCESS;
     }
@@ -150,6 +177,12 @@ class SyncPolosPlanilha extends Command
             return;
         }
         $custNum = preg_match('/^\d{5,}$/', $custRaw) ? $custRaw : null;
+
+        // Marca presença na planilha (base do arquivamento de ausentes).
+        if ($custNum !== null) {
+            $this->v2Custs[$custNum] = true;
+        }
+        $this->v2Nomes[$this->normNome($nome)] = true;
 
         // ── Match escopado a POLOS ──────────────────────────────────────────
         [$empresa, $motivoSkip] = $this->encontrarEmpresaPolos($custNum, $nome);
@@ -197,6 +230,13 @@ class SyncPolosPlanilha extends Command
             } else {
                 $this->setCampo($empresa, 'estagio', $est);
             }
+        }
+
+        // contexto (V2 coluna "contexto") → mlb_empresas.contexto (campo já existente).
+        // Só grava se vier preenchido — não apaga um contexto já cadastrado.
+        $ctxRaw = $get('contexto');
+        if ($ctxRaw !== '') {
+            $this->setCampo($empresa, 'contexto', $ctxRaw);
         }
 
         if ($apply) {
@@ -315,6 +355,16 @@ class SyncPolosPlanilha extends Command
         if ($v === '') {
             return null;
         }
+        // XLSX entrega datas como serial do Excel (ex.: 46211). Converte se na faixa ~1982..2064.
+        if (is_numeric($v)) {
+            $n = (float) $v;
+            if ($n > 30000 && $n < 60000) {
+                try {
+                    return \PhpOffice\PhpSpreadsheet\Shared\Date::excelToDateTimeObject($n)->format('Y-m-d');
+                } catch (\Throwable) {
+                }
+            }
+        }
         foreach (['d/m/Y', 'd/m/y', 'Y-m-d', 'd-m-Y'] as $fmt) {
             try {
                 $d = Carbon::createFromFormat($fmt, $v);
@@ -356,7 +406,90 @@ class SyncPolosPlanilha extends Command
         return [$header, $rows];
     }
 
-    private function relatorio(bool $apply): void
+    /**
+     * Lê uma aba de um XLSX devolvendo [header, rows] no MESMO formato do lerCsv().
+     * Usa os VALORES EM CACHE das células (getOldCalculatedValue) — a planilha vem do
+     * Google Sheets cheia de fórmulas e recalcular quebra (Formula Error). Ignora linhas
+     * totalmente vazias.
+     *
+     * @return array{0: array<int,mixed>, 1: array<int,array<int,mixed>>}
+     */
+    private function lerXlsx(string $file, string $sheetName): array
+    {
+        $reader = \PhpOffice\PhpSpreadsheet\IOFactory::createReaderForFile($file);
+        $reader->setReadDataOnly(true);
+        $reader->setLoadSheetsOnly([$sheetName]);
+        $spread = $reader->load($file);
+        $sheet  = $spread->getSheetByName($sheetName);
+        if (! $sheet) {
+            throw new \RuntimeException("Aba '{$sheetName}' não encontrada no XLSX.");
+        }
+
+        $maxRow = $sheet->getHighestDataRow();
+        $maxCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($sheet->getHighestDataColumn());
+
+        $matrix = [];
+        for ($r = 1; $r <= $maxRow; $r++) {
+            $row = [];
+            for ($c = 1; $c <= $maxCol; $c++) {
+                $cell = $sheet->getCell(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c) . $r);
+                $row[] = $cell->getDataType() === \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA
+                    ? $cell->getOldCalculatedValue()
+                    : $cell->getValue();
+            }
+            $matrix[] = $row;
+        }
+
+        $header = array_shift($matrix) ?? [];
+        $rows   = array_values(array_filter(
+            $matrix,
+            fn ($r) => count(array_filter($r, fn ($x) => trim((string) $x) !== '')) > 0,
+        ));
+
+        return [$header, $rows];
+    }
+
+    /**
+     * Arquiva (ou só lista, em dry-run/sem a flag) as empresas POLOS ATIVAS que NÃO estão
+     * na planilha — casadas por cust_id numérico OU nome normalizado. Reversível: só marca
+     * arquivado_em (nada é apagado). NUNCA toca empresas de outros projetos.
+     *
+     * ATENÇÃO (de-para de contas): se um seller trocou de conta ML, o cust_id do sistema
+     * pode diferir do da planilha. O fallback por NOME cobre a maioria; o resto aparece na
+     * lista do relatório para revisão humana ANTES do --apply.
+     */
+    private function arquivarAusentes(bool $gravar): void
+    {
+        $ehPolos = fn ($e) => (($e->getAttributes()['projeto'] ?? null)
+            ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS';
+
+        $candidatas = MlbEmpresa::whereNull('arquivado_em')->orderBy('nome')->get()->filter($ehPolos);
+        $motivo = 'Ausente na planilha V2 (' . now()->format('Y-m-d') . ')';
+
+        foreach ($candidatas as $e) {
+            $cust    = trim((string) $e->cust_id);
+            $custNum = preg_match('/^\d{5,}$/', $cust) ? $cust : null;
+            $nomeN   = $this->normNome($e->nome);
+
+            $presente = ($custNum !== null && isset($this->v2Custs[$custNum])) || isset($this->v2Nomes[$nomeN]);
+            if ($presente) {
+                continue;
+            }
+
+            $this->rel['arquivadas']++;
+            $this->aArquivar[] = "{$e->nome} (cust " . ($cust ?: 'sem id') . ', fase ' . ($e->fase ?? '?') . ')';
+
+            if ($gravar) {
+                $e->update([
+                    'arquivado_em'     => now(),
+                    'arquivado_por'    => null, // sync automático (sem usuário logado)
+                    'arquivado_motivo' => $motivo,
+                ]);
+            }
+        }
+    }
+
+    private function relatorio(bool $apply, bool $arquivar = false): void
     {
         $this->newLine();
         $this->info('─── RESUMO '.($apply ? '(APLICADO)' : '(DRY-RUN)').' ───');
@@ -368,6 +501,7 @@ class SyncPolosPlanilha extends Command
             ['Fichas CRIADAS',                $this->rel['create_ficha']],
             ['PULADAS (registro publicador)', $this->rel['skip_publicador']],
             ['Puladas (erro/sem nome)',       $this->rel['skip_erro']],
+            [($apply && $arquivar ? 'Empresas ARQUIVADAS' : 'Ausentes (a arquivar)'), $this->rel['arquivadas']],
         ]);
 
         if ($this->campoChanges) {
@@ -410,11 +544,26 @@ class SyncPolosPlanilha extends Command
                 $this->line('   ... +'.(count($this->criadas) - 40).' outras');
             }
         }
+
+        if ($this->aArquivar) {
+            $verbo = ($apply && $arquivar) ? 'ARQUIVADAS' : 'que seriam ARQUIVADAS (ausentes na planilha)';
+            $this->warn("\n⚠ Empresas {$verbo} — REVISE antes de aplicar (até 60):");
+            foreach (array_slice($this->aArquivar, 0, 60) as $a) {
+                $this->line("   ⤵ {$a}");
+            }
+            if (count($this->aArquivar) > 60) {
+                $this->line('   ... +'.(count($this->aArquivar) - 60).' outras');
+            }
+            if (! ($apply && $arquivar)) {
+                $this->comment('   (nenhuma foi arquivada — passe --apply --arquivar-ausentes para arquivar de fato)');
+            }
+        }
+
         $this->newLine();
         if (! $apply) {
-            $this->comment('Preview apenas. Para gravar: rode de novo com --apply');
+            $this->comment('Preview apenas. Para gravar: rode de novo com --apply' . ($this->rel['arquivadas'] ? ' --arquivar-ausentes' : ''));
         } else {
-            $this->info('✔ Alterações gravadas.');
+            $this->info('✔ Alterações gravadas.' . ($arquivar ? '' : ' (arquivamento de ausentes NÃO aplicado — faltou --arquivar-ausentes)'));
         }
     }
 }

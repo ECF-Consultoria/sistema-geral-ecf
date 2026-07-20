@@ -9,6 +9,7 @@ use App\Models\Meeting;
 use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\Servico;
+use App\Models\ShopeeMetric;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
@@ -167,14 +168,82 @@ class DashboardController extends Controller
     }
 
     /**
-     * Phase 58 DASH-03 — Shell Shopee. Renderiza direto (bypass pipeline)
-     * para evitar KPIs zerados enganosos (CONTEXT §2).
+     * Dashboard Shopee — dados EXCLUSIVAMENTE da Shopee (isolado do ML).
+     * Lê shopee_metrics (alimentada por `shopee:sync`) só das empresas com token
+     * Shopee ativo, agrega por período (seletor via ?from=&to=; padrão mês atual)
+     * e devolve KPIs + série diária + quebra por loja.
      */
     public function shopee(Request $request)
     {
+        $request->validate([
+            'from' => 'nullable|date',
+            'to'   => 'nullable|date',
+        ]);
+
+        // Universo isolado: empresas com Shopee conectada (token ativo).
+        $companyIds = Company::whereHas('shopeeToken', fn ($q) => $q->where('status', 'active'))
+            ->pluck('id');
+
+        // Limites de dados disponíveis (para o seletor saber o alcance).
+        $bounds = ShopeeMetric::whereIn('company_id', $companyIds)
+            ->selectRaw('MIN(reference_date) as min_date, MAX(reference_date) as max_date')
+            ->first();
+
+        // Período selecionado — padrão: mês atual.
+        $from = $request->filled('from')
+            ? Carbon::parse($request->input('from'))->startOfDay()
+            : now()->startOfMonth();
+        $to = $request->filled('to')
+            ? Carbon::parse($request->input('to'))->endOfDay()
+            : now()->endOfDay();
+
+        $metrics = ShopeeMetric::whereIn('company_id', $companyIds)
+            ->whereBetween('reference_date', [$from->toDateString(), $to->toDateString()])
+            ->get();
+
+        $revenue = round((float) $metrics->sum('revenue'), 2);
+        $orders  = (int) $metrics->sum('orders_count');
+        $items   = (int) $metrics->sum('sold_quantity');
+
+        // Série diária (gráfico).
+        $series = $metrics
+            ->groupBy(fn ($m) => $m->reference_date->toDateString())
+            ->sortKeys()
+            ->map(fn ($g, $date) => [
+                'date'    => $date,
+                'revenue' => round((float) $g->sum('revenue'), 2),
+                'orders'  => (int) $g->sum('orders_count'),
+            ])
+            ->values();
+
+        // Quebra por loja no período (enriquecida com o nome da empresa).
+        $names = Company::whereIn('id', $metrics->pluck('company_id')->unique())->pluck('name', 'id');
+        $porLoja = $metrics
+            ->groupBy('company_id')
+            ->map(fn ($g, $cid) => [
+                'company_id' => (int) $cid,
+                'name'       => $names[$cid] ?? ('#' . $cid),
+                'revenue'    => round((float) $g->sum('revenue'), 2),
+                'orders'     => (int) $g->sum('orders_count'),
+            ])
+            ->values()
+            ->sortByDesc('revenue')
+            ->values();
+
         return Inertia::render('Dashboard/ShopeeShell', [
             'marketplace' => 'shopee',
             'label'       => 'Shopee',
+            'period'      => ['from' => $from->toDateString(), 'to' => $to->toDateString()],
+            'bounds'      => ['min' => $bounds?->min_date, 'max' => $bounds?->max_date],
+            'kpis'        => [
+                'revenue'      => $revenue,
+                'orders'       => $orders,
+                'items'        => $items,
+                'ticket_medio' => $orders > 0 ? round($revenue / $orders, 2) : 0.0,
+                'lojas'        => $companyIds->count(),
+            ],
+            'series'  => $series,
+            'porLoja' => $porLoja,
         ]);
     }
 

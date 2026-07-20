@@ -1706,8 +1706,10 @@ class MlbController extends Controller
 
         $ordenPolos = ['M0', 'M1', 'M2', 'M3', 'M4'];
 
-        // Carrega empresas com mesmo mapeamento de projetos()
+        // Carrega empresas com mesmo mapeamento de projetos() — exclui arquivadas
+        // (fora do projeto Polos; não devem aparecer nesta grade por fase).
         $todas = MlbEmpresa::with(['responsavel:id,name', 'implementacao'])
+            ->whereNull('arquivado_em')
             ->orderBy('nome')
             ->get()
             ->map(fn($e) => [

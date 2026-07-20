@@ -19,11 +19,21 @@ class NpsSurvey extends Model
             ->logOnly(['company_id', 'generated_by', 'status', 'template_id'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
-            ->setDescriptionForEvent(fn(string $eventName) => match($eventName) {
-                'created' => 'NPS gerado',
-                'updated' => 'NPS atualizado',
-                'deleted' => 'NPS excluído',
-                default   => $eventName,
+            ->setDescriptionForEvent(function (string $eventName) {
+                // 2026-07-20 · inclui a EMPRESA na descrição para auditoria.
+                // Antes era só "NPS excluído"/"NPS gerado" e o company_id ficava
+                // apenas nas `properties` (JSON) — invisível na tela do log, o
+                // que impedia saber de qual empresa era o NPS apagado/gerado.
+                // Nome congelado no momento do evento (sobrevive a rename/exclusão
+                // da empresa); fallback pro id se a relação não resolver.
+                $empresa = $this->company?->name ?? "empresa #{$this->company_id}";
+
+                return match ($eventName) {
+                    'created' => "NPS gerado — {$empresa}",
+                    'updated' => "NPS atualizado — {$empresa}",
+                    'deleted' => "NPS excluído — {$empresa}",
+                    default   => $eventName,
+                };
             });
     }
 

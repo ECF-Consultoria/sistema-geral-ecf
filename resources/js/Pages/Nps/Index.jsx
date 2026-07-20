@@ -3,7 +3,7 @@ import { Button } from '@/Components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/Components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/Components/ui/dialog';
 import { useForm, usePage, router } from '@inertiajs/react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Plus, Copy, CheckCircle,
     Briefcase, Users as UsersIcon, Building2, Eye,
@@ -87,6 +87,18 @@ function formatNota(v) {
     const n = Number(v);
     if (Number.isNaN(n)) return String(v);
     return n.toFixed(2);
+}
+
+// Nota "ordenável" de uma linha da tabela: média das dimensões que têm nota
+// (E · A · EMP). Usada pelo cabeçalho NOTAS pra trazer as mais altas/mais
+// baixas ao topo. Linhas sem nota nenhuma (pendente/expirada) retornam null e
+// são jogadas para o fim da ordenação, em qualquer direção.
+function notaMediaRow(s) {
+    const vals = [s.score_estrategista, s.score_analista, s.score_empresa]
+        .map(Number)
+        .filter(n => Number.isFinite(n) && n > 0);
+    if (vals.length === 0) return null;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
 // Delta entre penúltimo e último mês (>0 sobe / <0 desce). Retorna null quando
@@ -295,26 +307,133 @@ const glassPillStyle = (active) => ({
 });
 
 function GlassSelect({ icon: Icon, active, value, onValueChange, placeholder, options, width }) {
-    // 2026-07-16 · trava a largura (max-width) e trunca o valor selecionado com
-    // ellipsis — nomes de modelo longos ("NPS | Performance ECF Consultoria &
-    // Assessoria (principal)") não estouram mais o layout. min-w-0 permite o
-    // flex-item encolher abaixo do conteúdo; overflow:hidden clipa; a seta e o
-    // ícone não encolhem (shrink-0).
+    // 2026-07-20 · trunca o valor selecionado com ellipsis para nomes de modelo
+    // longos ("NPS | Performance ECF Consultoria & Assessoria (principal)").
+    // ATENÇÃO: o Radix Select.Value (v2.2) DESCARTA className/style do <span> que
+    // renderiza — então o truncate precisa ser aplicado pelo trigger, mirando o
+    // span filho: [&>span]:flex-1 [&>span]:min-w-0 [&>span]:truncate.
+    // O chevron nativo do Radix é o último svg (após os filhos) → escondemos só
+    // ele com [&>svg:last-child]:hidden, preservando o ícone e a seta customizada.
     return (
         <div style={{ ...glassPillStyle(!!active), padding: 0, paddingLeft: Icon ? 10 : 0, width, maxWidth: '100%', overflow: 'hidden' }}>
             <Select value={value} onValueChange={onValueChange}>
                 <SelectTrigger
-                    className="border-0 bg-transparent hover:bg-transparent focus:ring-0 focus-visible:ring-0 shadow-none h-full w-full min-w-0 px-3 gap-2 [&>svg]:hidden"
+                    className="border-0 bg-transparent hover:bg-transparent focus:ring-0 focus-visible:ring-0 shadow-none h-full w-full min-w-0 px-3 gap-2 [&>svg:last-child]:hidden [&>span]:block [&>span]:flex-1 [&>span]:min-w-0 [&>span]:truncate [&>span]:text-left"
                     style={{ fontSize: 13, color: active ? '#eef' : 'rgba(255,255,255,0.6)', fontWeight: active ? 600 : 500 }}
                 >
                     {Icon && <Icon size={15} style={{ color: 'rgba(255,255,255,0.5)', flexShrink: 0 }} />}
-                    <SelectValue className="min-w-0 flex-1 truncate text-left" placeholder={placeholder} />
+                    <SelectValue placeholder={placeholder} />
                     <ChevronDown size={13} style={{ color: 'rgba(255,255,255,0.4)', marginLeft: 4, flexShrink: 0 }} />
                 </SelectTrigger>
                 <SelectContent>
                     {options}
                 </SelectContent>
             </Select>
+        </div>
+    );
+}
+
+// ═══ SearchableGlassSelect — select com CAMPO DE BUSCA (2026-07-20) ═══════
+// O Radix Select puro (GlassSelect acima) não tem busca — com 150+ empresas
+// vira uma lista rolável impossível de filtrar ("não dá pra pesquisar"). Este
+// componente troca por um dropdown próprio: pill glass + painel com input de
+// busca (substring, case-insensitive) + lista filtrada. Fecha ao clicar fora
+// ou Esc; Enter seleciona o 1º resultado. `items` = [{ value, label }] (o 1º
+// costuma ser a opção "Todas ...", que nunca é filtrada).
+function SearchableGlassSelect({ icon: Icon, active, value, onValueChange, placeholder, items, width, searchPlaceholder = 'Buscar...', disabled = false }) {
+    const [open, setOpen]   = useState(false);
+    const [query, setQuery] = useState('');
+    const wrapRef  = useRef(null);
+    const inputRef = useRef(null);
+
+    const selected      = items.find(i => i.value === value);
+    const selectedLabel = selected?.label ?? placeholder;
+
+    const filtered = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        if (!q) return items;
+        return items.filter(i => i.label.toLowerCase().includes(q));
+    }, [items, query]);
+
+    // fecha ao clicar fora
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+
+    // ao abrir: limpa a busca e foca o input
+    useEffect(() => {
+        if (open) { setQuery(''); const t = setTimeout(() => inputRef.current?.focus(), 10); return () => clearTimeout(t); }
+    }, [open]);
+
+    const pick = (v) => { onValueChange(v); setOpen(false); };
+
+    return (
+        <div ref={wrapRef} style={{ position: 'relative', width, maxWidth: '100%' }}>
+            <button
+                type="button"
+                disabled={disabled}
+                onClick={() => { if (!disabled) setOpen(o => !o); }}
+                style={{ ...glassPillStyle(!!active), width: '100%', padding: 0, paddingLeft: Icon ? 10 : 12, overflow: 'hidden', justifyContent: 'flex-start', opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}
+            >
+                {Icon && <Icon size={15} style={{ color: 'rgba(255,255,255,0.5)', flexShrink: 0 }} />}
+                <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                    {selectedLabel}
+                </span>
+                <ChevronDown size={13} style={{ color: 'rgba(255,255,255,0.4)', margin: '0 10px', flexShrink: 0 }} />
+            </button>
+
+            {open && (
+                <div style={{
+                    position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 60,
+                    width: '100%', minWidth: 260, maxWidth: '92vw',
+                    background: '#12141a', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 11, boxShadow: '0 14px 44px rgba(0,0,0,0.55)', overflow: 'hidden',
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+                        <Search size={14} style={{ color: 'rgba(255,255,255,0.4)', flexShrink: 0 }} />
+                        <input
+                            ref={inputRef}
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Escape') setOpen(false);
+                                if (e.key === 'Enter' && filtered.length) { e.preventDefault(); pick(filtered[0].value); }
+                            }}
+                            placeholder={searchPlaceholder}
+                            style={{ flex: 1, background: 'transparent', border: 0, outline: 'none', color: '#eef', fontSize: 13 }}
+                        />
+                    </div>
+                    <div style={{ maxHeight: 300, overflowY: 'auto', padding: 4 }}>
+                        {filtered.length === 0 ? (
+                            <div style={{ padding: '10px 12px', color: 'rgba(255,255,255,0.4)', fontSize: 12 }}>Nada encontrado</div>
+                        ) : filtered.map(i => {
+                            const sel = i.value === value;
+                            return (
+                                <button
+                                    key={i.value}
+                                    type="button"
+                                    onClick={() => pick(i.value)}
+                                    style={{
+                                        display: 'block', width: '100%', textAlign: 'left',
+                                        padding: '7px 10px', borderRadius: 7, border: 0, cursor: 'pointer',
+                                        background: sel ? 'rgba(255,255,255,0.08)' : 'transparent',
+                                        color: sel ? '#fff' : 'rgba(255,255,255,0.75)',
+                                        fontSize: 13, fontWeight: sel ? 600 : 500,
+                                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                    }}
+                                    onMouseEnter={e => { if (!sel) e.currentTarget.style.background = 'rgba(255,255,255,0.045)'; }}
+                                    onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'transparent'; }}
+                                >
+                                    {i.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
@@ -576,6 +695,15 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
             if (sort.key === 'company') {
                 return dir * (a.company_name || '').localeCompare(b.company_name || '');
             }
+            if (sort.key === 'nota') {
+                const na = notaMediaRow(a);
+                const nb = notaMediaRow(b);
+                // Linhas sem nota (pendente/expirada) sempre no fim, em qualquer direção.
+                if (na === null && nb === null) return 0;
+                if (na === null) return 1;
+                if (nb === null) return -1;
+                return dir * (na - nb);
+            }
             // por data (created_at "dd/mm/yyyy hh:mm" — comparação de string bem-formada funciona invertido)
             return dir * (a.created_at || '').localeCompare(b.created_at || '');
         });
@@ -755,7 +883,16 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                 }}>
                     EMPRESA {sort.key === 'company' ? (sort.dir === 'asc' ? '↑' : '↓') : ''}
                 </button>
-                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>NOTAS (E · A · EMP)</span>
+                <button type="button" onClick={() => toggleSort('nota')}
+                    title="Ordenar pelas notas — 1 clique: mais baixas no topo · 2º clique: mais altas no topo"
+                    style={{
+                        textAlign: 'left', background: 'none', border: 'none', padding: 0,
+                        cursor: 'pointer', color: 'rgba(255,255,255,0.4)',
+                        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em',
+                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                    }}>
+                    NOTAS (E · A · EMP) {sort.key === 'nota' ? (sort.dir === 'asc' ? '↑' : '↓') : ''}
+                </button>
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>RESPONDENTE</span>
                 <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>COMENTÁRIO</span>
                 <button type="button" onClick={() => toggleSort('date')} style={{
@@ -1130,6 +1267,36 @@ export default function NpsIndex({
     const deltaAna = useMemo(() => computeDelta(serie_12m, 'analista'),     [serie_12m]);
     const deltaEmp = useMemo(() => computeDelta(serie_12m, 'empresa'),      [serie_12m]);
 
+    // ─── Cards reativos ao filtro de pessoa (2026-07-20) ─────────────────
+    // Regra de produto: ao filtrar por UMA pessoa, os cards do topo colapsam
+    // para a nota dela — estrategista → dimensão estrategista; analista →
+    // dimensão analista. Com os DOIS filtros ativos, mostra um único card com
+    // a MÉDIA das duas dimensões. Sem filtro de pessoa, mantém os 3 cards de
+    // dimensão (comportamento original). O gráfico abaixo não muda.
+    const estrategistaId = filtros.estrategista_id ?? null;
+    const analistaId     = filtros.analista_id ?? null;
+    const soEstrategista = !!estrategistaId && !analistaId;
+    const soAnalista     = !!analistaId && !estrategistaId;
+    const ambosPessoa    = !!estrategistaId && !!analistaId;
+    const filtroPessoa   = soEstrategista || soAnalista || ambosPessoa;
+
+    // Média das duas dimensões — considera só a dimensão que teve resposta
+    // (total>0), para não puxar a média para baixo com um 0 "sem base".
+    const cardMedia = useMemo(() => {
+        const partes = [];
+        if ((cards.estrategista?.total ?? 0) > 0) partes.push(Number(cards.estrategista.media));
+        if ((cards.analista?.total ?? 0) > 0)     partes.push(Number(cards.analista.media));
+        const media = partes.length ? partes.reduce((a, b) => a + b, 0) / partes.length : 0;
+        return { media, total: contadores.respondidos ?? 0 };
+    }, [cards, contadores]);
+
+    // Delta da média = média dos deltas disponíveis (ambos já scoped pelo
+    // filtro via serie_12m). Null quando nenhuma dimensão tem base anterior.
+    const deltaMedia = useMemo(() => {
+        const ds = [deltaEst, deltaAna].filter((d) => d != null);
+        return ds.length ? ds.reduce((a, b) => a + b, 0) / ds.length : null;
+    }, [deltaEst, deltaAna]);
+
     // ─── Render ──────────────────────────────────────────────────────────
     return (
         <AppLayout title="NPS">
@@ -1158,16 +1325,17 @@ export default function NpsIndex({
                                     <SelectItem key={m.value} value={m.value}>{m.label}</SelectItem>
                                 ))}
                             />
-                            <GlassSelect
+                            <SearchableGlassSelect
+                                icon={Building2}
+                                active={!!filtros.empresa_id}
                                 value={filtros.empresa_id ? String(filtros.empresa_id) : '__all__'}
                                 onValueChange={handleEmpresaChange}
                                 placeholder="Todas as empresas"
+                                searchPlaceholder="Buscar empresa..."
                                 width={210}
-                                options={[
-                                    <SelectItem key="__all__" value="__all__">Todas as empresas</SelectItem>,
-                                    ...companies.map(c => (
-                                        <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                                    )),
+                                items={[
+                                    { value: '__all__', label: 'Todas as empresas' },
+                                    ...companies.map(c => ({ value: String(c.id), label: c.name })),
                                 ]}
                             />
                             {/* Ajuste 2026-07-13 · filtro por modelo NPS. Só
@@ -1257,36 +1425,76 @@ export default function NpsIndex({
                             </button>
                         </div>
 
-                        {/* ─── 3 stat cards ────────────────────────────────────── */}
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-                            <StatCard
-                                kicker="ESTRATEGISTA"
-                                icon={Briefcase}
-                                color={COL_ESTRATEGISTA_LINE}
-                                valor={cards.estrategista?.media}
-                                total={cards.estrategista?.total ?? 0}
-                                pendentes={pendentesTotal}
-                                delta={deltaEst}
-                            />
-                            <StatCard
-                                kicker="ANALISTA"
-                                icon={UsersIcon}
-                                color={COL_ANALISTA}
-                                valor={cards.analista?.media}
-                                total={cards.analista?.total ?? 0}
-                                pendentes={pendentesTotal}
-                                delta={deltaAna}
-                            />
-                            <StatCard
-                                kicker="EMPRESA"
-                                icon={Building2}
-                                color={COL_EMPRESA}
-                                valor={cards.empresa?.media}
-                                total={cards.empresa?.total ?? 0}
-                                pendentes={pendentesTotal}
-                                delta={deltaEmp}
-                            />
-                        </div>
+                        {/* ─── Stat cards — reativos ao filtro de pessoa ────────── */}
+                        {filtroPessoa ? (
+                            <div style={{ display: 'flex', gap: 14 }}>
+                                <div style={{ width: 'min(100%, 380px)' }}>
+                                    {soEstrategista && (
+                                        <StatCard
+                                            kicker="ESTRATEGISTA"
+                                            icon={Briefcase}
+                                            color={COL_ESTRATEGISTA_LINE}
+                                            valor={cards.estrategista?.media}
+                                            total={cards.estrategista?.total ?? 0}
+                                            pendentes={pendentesTotal}
+                                            delta={deltaEst}
+                                        />
+                                    )}
+                                    {soAnalista && (
+                                        <StatCard
+                                            kicker="ANALISTA"
+                                            icon={UsersIcon}
+                                            color={COL_ANALISTA}
+                                            valor={cards.analista?.media}
+                                            total={cards.analista?.total ?? 0}
+                                            pendentes={pendentesTotal}
+                                            delta={deltaAna}
+                                        />
+                                    )}
+                                    {ambosPessoa && (
+                                        <StatCard
+                                            kicker="MÉDIA · EST + ANA"
+                                            icon={UsersIcon}
+                                            color={ACCENT}
+                                            valor={cardMedia.media}
+                                            total={cardMedia.total}
+                                            pendentes={pendentesTotal}
+                                            delta={deltaMedia}
+                                        />
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
+                                <StatCard
+                                    kicker="ESTRATEGISTA"
+                                    icon={Briefcase}
+                                    color={COL_ESTRATEGISTA_LINE}
+                                    valor={cards.estrategista?.media}
+                                    total={cards.estrategista?.total ?? 0}
+                                    pendentes={pendentesTotal}
+                                    delta={deltaEst}
+                                />
+                                <StatCard
+                                    kicker="ANALISTA"
+                                    icon={UsersIcon}
+                                    color={COL_ANALISTA}
+                                    valor={cards.analista?.media}
+                                    total={cards.analista?.total ?? 0}
+                                    pendentes={pendentesTotal}
+                                    delta={deltaAna}
+                                />
+                                <StatCard
+                                    kicker="EMPRESA"
+                                    icon={Building2}
+                                    color={COL_EMPRESA}
+                                    valor={cards.empresa?.media}
+                                    total={cards.empresa?.total ?? 0}
+                                    pendentes={pendentesTotal}
+                                    delta={deltaEmp}
+                                />
+                            </div>
+                        )}
 
                         {/* ─── Chart card ──────────────────────────────────────── */}
                         <ChartCard serie={serie_12m} cards={cards} lines={lines} setLines={setLines} />
@@ -1349,35 +1557,23 @@ export default function NpsIndex({
                             desabilitado até escolher o modelo / durante a carga. */}
                         <div className="space-y-1.5">
                             <label className="text-xs text-white/70 font-medium">2 · Empresa</label>
-                            <Select
-                                value={data.company_id || undefined}
-                                onValueChange={v => setData('company_id', v)}
+                            {/* 2026-07-20 · seletor pesquisável (o modelo "padrão"
+                                lista TODAS as empresas — sem busca virava lista
+                                impossível de rolar). */}
+                            <SearchableGlassSelect
+                                active={!!data.company_id}
                                 disabled={!data.template_id || carregandoEmpresas}
-                                required
-                            >
-                                <SelectTrigger>
-                                    <SelectValue placeholder={
-                                        !data.template_id
-                                            ? 'Escolha um modelo primeiro'
-                                            : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
-                                    } />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {empresasElegiveis.length === 0 && !carregandoEmpresas ? (
-                                        <div className="px-2 py-1.5 text-xs text-white/50">
-                                            Nenhuma empresa elegível para este modelo
-                                        </div>
-                                    ) : (
-                                        empresasElegiveis.map(c => {
-                                            // Pitfall 4 (Rollup): derivar value dentro do map.
-                                            const value = String(c.id);
-                                            return (
-                                                <SelectItem key={c.id} value={value}>{c.name}</SelectItem>
-                                            );
-                                        })
-                                    )}
-                                </SelectContent>
-                            </Select>
+                                value={data.company_id || ''}
+                                onValueChange={v => setData('company_id', v)}
+                                placeholder={
+                                    !data.template_id
+                                        ? 'Escolha um modelo primeiro'
+                                        : (carregandoEmpresas ? 'Carregando empresas...' : 'Selecionar empresa...')
+                                }
+                                searchPlaceholder="Buscar empresa..."
+                                width="100%"
+                                items={empresasElegiveis.map(c => ({ value: String(c.id), label: c.name }))}
+                            />
                             {errors.company_id && <p className="text-destructive text-xs">{errors.company_id}</p>}
                         </div>
 

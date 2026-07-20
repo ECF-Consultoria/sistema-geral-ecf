@@ -68,19 +68,20 @@ class NpsController extends Controller
         $empresaId      = $request->integer('empresa_id') ?: null;
         $estrategistaId = $request->integer('estrategista_id') ?: null;
         $analistaId     = $request->integer('analista_id') ?: null;
-        // Ajuste 2026-07-13 · por padrão o dashboard NPS conta apenas o modelo
-        // PRINCIPAL (is_default) — decisão de produto: só o principal alimenta
-        // métricas. O <select> "Todos os modelos" envia template_id=__todos__
-        // para ver tudo; um id numérico filtra por aquele modelo específico.
-        // Ausência do parâmetro (carga inicial) cai no principal.
+        // Ajuste 2026-07-20 · o dashboard NPS agora abre em TODOS os modelos por
+        // padrão. Antes (13/07) o default caía no modelo PRINCIPAL, mas com só 1
+        // modelo ativo o <select> de modelo nem é renderizado (Index.jsx:1208) —
+        // então o default-principal escondia respondidos de OUTROS modelos (ex.:
+        // 12 respostas do modelo #3) SEM o usuário ter como revelá-los. Agora:
+        // id numérico → filtra aquele modelo; '__todos__' ou ausência do
+        // parâmetro → todos os modelos (lista, cards e série 12m).
         $templateParam = $request->input('template_id');
-        $templateTodos = ($templateParam === '__todos__');
-        if ($templateTodos) {
-            $templateId = null;                                   // sem filtro — todos
-        } elseif (is_numeric($templateParam)) {
-            $templateId = (int) $templateParam;                   // modelo específico
+        if (is_numeric($templateParam)) {
+            $templateId    = (int) $templateParam;   // modelo específico
+            $templateTodos = false;
         } else {
-            $templateId = \App\Models\NpsTemplate::principalId();  // default — principal
+            $templateId    = null;                   // sem filtro — todos os modelos
+            $templateTodos = true;
         }
 
         $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId, $templateId) {
@@ -605,8 +606,10 @@ class NpsController extends Controller
      *
      * Surveys criadas aqui ficam com `auto_generated=false` e
      * `month_reference=null`, distinguindo-as das surveys mensais
-     * automatizadas (Plan 02 / Plan 04). `expires_at` continua em 7 dias
-     * para manuais (vs. 30 dias para automáticas — D-12).
+     * automatizadas (Plan 02 / Plan 04). `expires_at` = 14 dias para manuais
+     * (2026-07-20: subiu de 7 → 14 dias, junto com o desligamento do prune de
+     * pendentes — links não somem mais em 48h; agora valem 14 dias e depois só
+     * expiram na tela, sem serem apagados).
      */
     public function generate(Request $request, NpsTemplateService $templateService)
     {
@@ -697,7 +700,7 @@ class NpsController extends Controller
             'token'          => Str::uuid()->toString(),
             'company_id'     => $data['company_id'],
             'generated_by'   => $user->id,
-            'expires_at'     => now()->addDays(7),
+            'expires_at'     => now()->addDays(14), // 2026-07-20: 7 → 14 dias (link vale 2 semanas)
             'status'         => 'pending',
             // REQ-31-08: explicita auto_generated=false em surveys manuais
             // para o admin filtrar "manual vs automatico" na UI (Plan 31-04).

@@ -335,7 +335,10 @@ class PolosController extends Controller
         );
 
         // Lista operacional ancorada em MlbEmpresa projeto=POLOS (só DB — sem ECF Drive).
-        $empresas = MlbEmpresa::with([
+        // ATIVAS apenas: empresas arquivadas (ausentes na planilha) saem daqui e NÃO
+        // contam em nada — vão para a aba "Arquivados" (prop `arquivadas`, abaixo).
+        $empresas = MlbEmpresa::ativas()
+            ->with([
                 'responsavel:id,name',
                 'implementacao',
                 'implementacao.responsavel:id,name',
@@ -391,6 +394,10 @@ class PolosController extends Controller
                     // Caminho de edição de Fase/Polo: com ficha → bloco.identificacao (parcial);
                     // sem ficha → empresas.update (exige payload completo, anexado abaixo).
                     'fase_endpoint'            => $impl ? 'bloco' : 'empresa',
+                    // ── Entrada no projeto (planilha V2; null sem ficha) ──
+                    'status_entrada'           => $impl?->status_entrada,
+                    'chance_entrada'           => $impl?->chance_entrada,
+                    'reuniao_onboarding'       => $impl?->reuniao_onboarding,
                     // ── Valores do onboarding (edição inline tipo planilha; null sem ficha) ──
                     'acesso_colaborador'       => $impl?->acesso_colaborador,
                     'gmail_colaborador'        => $impl?->gmail_colaborador,
@@ -440,10 +447,30 @@ class PolosController extends Controller
             })
             ->values();
 
+        // ── Empresas ARQUIVADAS (aba "Arquivados") — ausentes na planilha, fora do projeto.
+        // Shape enxuto (só o necessário p/ listar + desarquivar); não entram em nenhuma conta.
+        $arquivadas = MlbEmpresa::arquivadas()
+            ->with('arquivadoPor:id,name')
+            ->orderByDesc('arquivado_em')
+            ->get()
+            ->filter(fn ($e) => (($e->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$e->fase ?? ''] ?? null)) === 'POLOS')
+            ->map(fn ($e) => [
+                'id'               => $e->id,
+                'nome'             => $e->nome,
+                'cust_id'          => $e->cust_id,
+                'fase'             => $e->fase,
+                'polo'             => $e->polo,
+                'arquivado_em'     => $e->arquivado_em?->format('d/m/Y'),
+                'arquivado_por'    => $e->arquivadoPor?->name,
+                'arquivado_motivo' => $e->arquivado_motivo,
+            ])
+            ->values();
+
         return Inertia::render('Polos/Painel', [
-            'isAdmin'  => $user->isAdmin(),
-            'empresas' => $empresas,
-            'usuarios' => User::where('active', true)->orderBy('name')->get(['id', 'name']),
+            'isAdmin'    => $user->isAdmin(),
+            'empresas'   => $empresas,
+            'arquivadas' => $arquivadas,
+            'usuarios'   => User::where('active', true)->orderBy('name')->get(['id', 'name']),
             // Metas de entrantes por região × mês (aba Metas). Alvos cadastrados; realizado
             // é derivado no front a partir de `empresas` (cust_id + acesso + grupo whatsapp).
             'metasEntrada' => PoloMetaEntrada::all(['polo', 'mes', 'meta']),
@@ -456,6 +483,9 @@ class PolosController extends Controller
             'opcoes'   => [
                 'polo'               => MlbImplementacao::ONB_POLO_OPCOES,
                 'fase'               => MlbImplementacao::ONB_FASE_OPCOES,
+                'status_entrada'     => MlbImplementacao::ONB_STATUS_ENTRADA_OPCOES,
+                'chance_entrada'     => MlbImplementacao::ONB_CHANCE_ENTRADA_OPCOES,
+                'reuniao_onboarding' => MlbImplementacao::ONB_REUNIAO_ONBOARDING_OPCOES,
                 'acesso_colaborador' => MlbImplementacao::ONB_ACESSO_COLABORADOR_OPCOES,
                 'planilha_produtos'  => MlbImplementacao::ONB_PLANILHA_PRODUTOS_OPCOES,
                 'listagem'           => MlbImplementacao::ONB_LISTAGEM_OPCOES,
@@ -590,6 +620,10 @@ class PolosController extends Controller
                     $ignoradas[] = ['id' => $e->id, 'nome' => $e->nome, 'campos' => array_keys($it['changes'] ?? []), 'motivo' => 'fora do escopo Polos'];
                     continue;
                 }
+                if ($e->arquivado_em !== null) {
+                    $ignoradas[] = ['id' => $e->id, 'nome' => $e->nome, 'campos' => array_keys($it['changes'] ?? []), 'motivo' => 'empresa arquivada'];
+                    continue;
+                }
                 $impl = $e->implementacao;
 
                 $mudEmpresa = [];
@@ -693,6 +727,76 @@ class PolosController extends Controller
         );
 
         return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Arquiva UMA empresa Polos (RF-Arquivamento): sai do Painel e NÃO conta mais em
+     * metas/faturamento/cockpit. Reversível (nada é apagado — só marca `arquivado_em`).
+     * Usado tanto pelo botão manual do Painel quanto (via command) pelo sync da planilha.
+     *
+     * Gate operacional (mesma régua do painel): admin OU permissão mlb.projetos.
+     */
+    public function arquivar(Request $request, MlbEmpresa $empresa): \Illuminate\Http\RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        // Escopo: só empresas do projeto POLOS (não deixa arquivar publicador/assessoria).
+        $proj = ($empresa->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$empresa->fase ?? ''] ?? null);
+        abort_unless($proj === 'POLOS', 403, 'Só é possível arquivar empresas do projeto Polos.');
+
+        if ($empresa->arquivado_em === null) {
+            $motivo = trim((string) $request->input('motivo', '')) ?: 'Arquivada manualmente';
+            $empresa->update([
+                'arquivado_em'     => now(),
+                'arquivado_por'    => $user->id,
+                'arquivado_motivo' => $motivo,
+            ]);
+
+            activity('polos')
+                ->causedBy($user)
+                ->performedOn($empresa)
+                ->withProperties(['motivo' => $motivo])
+                ->log("[Polos] Empresa arquivada: {$empresa->nome}");
+        }
+
+        return back()->with('success', "\"{$empresa->nome}\" arquivada. Não conta mais em metas/faturamento.");
+    }
+
+    /**
+     * Desarquiva UMA empresa Polos — volta ao Painel e às contas. Limpa os campos de
+     * arquivamento. Mesmo gate/escopo do arquivar().
+     */
+    public function desarquivar(Request $request, MlbEmpresa $empresa): \Illuminate\Http\RedirectResponse
+    {
+        $user = $request->user();
+        abort_unless(
+            $user->isAdmin() || $user->hasPermission('mlb.projetos'),
+            403,
+            'Acesso restrito ao módulo de Polos.'
+        );
+
+        $proj = ($empresa->getAttributes()['projeto'] ?? null) ?: (MlbEmpresa::FASE_PARA_PROJETO[$empresa->fase ?? ''] ?? null);
+        abort_unless($proj === 'POLOS', 403, 'Só é possível desarquivar empresas do projeto Polos.');
+
+        if ($empresa->arquivado_em !== null) {
+            $empresa->update([
+                'arquivado_em'     => null,
+                'arquivado_por'    => null,
+                'arquivado_motivo' => null,
+            ]);
+
+            activity('polos')
+                ->causedBy($user)
+                ->performedOn($empresa)
+                ->log("[Polos] Empresa desarquivada: {$empresa->nome}");
+        }
+
+        return back()->with('success', "\"{$empresa->nome}\" desarquivada. Voltou ao Painel Polos.");
     }
 
     /**
@@ -1126,6 +1230,7 @@ class PolosController extends Controller
         if ($parcial || $mesSel === null) {
             return MlbEmpresa::whereIn('fase', ['M2', 'M3', 'M4', 'Fechamento'])
                 ->where('projeto', 'POLOS')
+                ->whereNull('arquivado_em') // arquivadas não contam em meta/faturamento
                 ->get(['id', 'nome', 'cust_id', 'polo', 'fase', 'problema', 'problema_nota', 'ads_desligado'])
                 ->toArray();
         }
@@ -1195,6 +1300,7 @@ class PolosController extends Controller
             // descartadas logo abaixo pelo guard `$id === ''`, então não inflam a conta.
             foreach (
                 MlbEmpresa::whereIn('fase', ['M1', 'M0'])->where('projeto', 'POLOS')
+                    ->whereNull('arquivado_em') // arquivadas não contam na coorte M1
                     ->get(['nome', 'cust_id', 'polo']) as $e
             ) {
                 $id = CustId::normaliza((string) $e->cust_id);

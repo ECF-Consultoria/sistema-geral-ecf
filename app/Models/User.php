@@ -190,11 +190,13 @@ class User extends Authenticatable
             // (+ admin). A permission shopee.empresas NÃO é concedida aos membros do
             // setor (removida de setor_permissoes por migration) — só o líder a recebe
             // aqui. É o líder quem atribui a empresa a um analista/estrategista do setor.
+            // O líder do Shopee também gerencia as conexões OAuth Shopee (painel
+            // /shopee-oauth) — daí sistema.shopee_oauth junto.
             $lideraShopee = $this->setoresLiderados()
                 ->where('setores.slug', 'shopee')
                 ->exists();
             if ($lideraShopee) {
-                $keys = array_values(array_unique(array_merge($keys, [Permissions::SHOPEE_EMPRESAS])));
+                $keys = array_values(array_unique(array_merge($keys, [Permissions::SHOPEE_EMPRESAS, Permissions::SISTEMA_SHOPEE_OAUTH])));
             }
         }
 

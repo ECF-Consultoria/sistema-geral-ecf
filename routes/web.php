@@ -24,6 +24,7 @@ use App\Http\Controllers\MlbController;
 use App\Http\Controllers\MlbImplementacaoController;
 use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\MercadoLivreOAuthController;
+use App\Http\Controllers\ShopeeOAuthController;
 use App\Http\Controllers\GrantController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\MeetingController;
@@ -90,6 +91,10 @@ Route::get('/implementacao/{token}/publicador', [MlbImplementacaoController::cla
 // ML OAuth — callback público (o cliente autoriza fora do painel)
 Route::get('/oauth/mercadolivre/callback', [MercadoLivreOAuthController::class, 'callback'])
     ->name('ml.oauth.callback');
+
+// Shopee OAuth — callback público (a Shopee redireciona com state+code+shop_id)
+Route::get('/oauth/shopee/callback', [ShopeeOAuthController::class, 'callback'])
+    ->name('shopee.oauth.callback');
 
 // Google OAuth (público — sem autenticação durante o callback)
 Route::get('/google/connect', [GoogleCalendarController::class, 'connect'])
@@ -680,6 +685,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Sync global: dispara fan-out D-1 de todas as empresas com token ML ativo
         Route::post('/ml-oauth/sync-all',                  [MercadoLivreOAuthController::class, 'syncAll'])->name('ml.oauth.sync-all');
 
+        // Shopee OAuth — painel dedicado + ações por empresa.
+        // Ver painel + gerar link: gated por permission:sistema.shopee_oauth
+        // (admin herda; também usado pela conta de review da Shopee no Go Live).
+        // Desconectar + sync manual permanecem admin-only (herdado do grupo).
+        Route::get('/shopee-oauth',                            [ShopeeOAuthController::class, 'adminIndex'])
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.index');
+        Route::post('/companies/{company}/shopee/initiate',   [ShopeeOAuthController::class, 'initiate'])
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.initiate');
+        Route::delete('/companies/{company}/shopee/disconnect',[ShopeeOAuthController::class, 'disconnect'])->name('shopee.oauth.disconnect');
+        Route::post('/companies/{company}/shopee/sync-now',   [ShopeeOAuthController::class, 'syncNow'])->name('shopee.sync.now');
+
         // ─── Módulo Serviços (Frente A) ──────────────────────────────────
         // Catálogo de serviços + contratos por empresa. Acesso admin-only
         // herdado do grupo pai. Frente B fará data migration + drop legacy.
@@ -780,6 +796,9 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Meta de entrantes por região × mês (aba Metas; JSON; mesmo gate operacional).
     Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
+    // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).
+    Route::post('/polos-painel/{empresa}/arquivar',    [PolosController::class, 'arquivar'])->name('polos-painel.arquivar');
+    Route::post('/polos-painel/{empresa}/desarquivar', [PolosController::class, 'desarquivar'])->name('polos-painel.desarquivar');
     Route::get('/treinamentos',   [MlbController::class, 'treinamentos'])->name('treinamentos');
     Route::post('/treinamentos',  [MlbController::class, 'storeTreinamento'])->name('treinamentos.store');
     Route::put('/treinamentos/{treinamento}',    [MlbController::class, 'updateTreinamento'])->name('treinamentos.update');

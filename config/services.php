@@ -51,6 +51,29 @@ return [
         'redirect'      => env('ML_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/mercadolivre/callback'),
     ],
 
+    // Shopee Open Platform (API v2). Diferente do ML: NÃO usa PKCE nem scope na
+    // URL — toda request é assinada com HMAC-SHA256 (partner_key é a chave HMAC,
+    // nunca vai na request). partner_id/partner_key/host são 1 por app (não por
+    // empresa) e vêm do console de parceiro (open.shopee.com).
+    //
+    // Hosts (SHOPEE_HOST):
+    //   - Produção global (default): 'https://partner.shopeemobile.com'
+    //     ⚠️ host BR pode ser o global OU regional 'openplatform.shopee.com.br';
+    //        confirmar no console antes do go-live.
+    //   - Sandbox (VALIDADO): 'https://openplatform.sandbox.test-stable.shopee.sg'
+    //   - a redirect URL precisa estar cadastrada no app da Shopee.
+    //
+    // verify_ssl: NUNCA desligar em produção. Só existe para dev local atrás de
+    // TLS interceptado (AV/proxy) ou PHP sem cacert.pem — setar SHOPEE_VERIFY_SSL=false
+    // apenas no .env local.
+    'shopee' => [
+        'partner_id'  => env('SHOPEE_PARTNER_ID'),                 // int (numérico) do app
+        'partner_key' => env('SHOPEE_PARTNER_KEY'),               // chave HMAC (secreta) — usar como está
+        'host'        => env('SHOPEE_HOST', 'https://partner.shopeemobile.com'),
+        'redirect'    => env('SHOPEE_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/shopee/callback'),
+        'verify_ssl'  => env('SHOPEE_VERIFY_SSL', true),
+    ],
+
     'google' => [
         'client_id'     => env('GOOGLE_CLIENT_ID'),
         'client_secret' => env('GOOGLE_CLIENT_SECRET'),

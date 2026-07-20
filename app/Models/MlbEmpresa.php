@@ -39,6 +39,7 @@ class MlbEmpresa extends Model
         'encerramento', 'criado_por',
         'problema', 'problema_nota', 'problema_em', 'ads_desligado',
         'company_id',
+        'arquivado_em', 'arquivado_por', 'arquivado_motivo',
     ];
 
     protected $casts = [
@@ -52,7 +53,31 @@ class MlbEmpresa extends Model
         'problema'       => 'boolean',
         'problema_em'    => 'datetime',
         'ads_desligado'  => 'boolean',
+        'arquivado_em'   => 'datetime',
     ];
+
+    /** Empresa arquivada = fora do projeto Polos (não conta em metas/faturamento/painel). */
+    public function arquivada(): bool
+    {
+        return $this->arquivado_em !== null;
+    }
+
+    /** Escopo: só empresas ATIVAS (não arquivadas). Aplicar em toda listagem/agregação de Polos. */
+    public function scopeAtivas(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereNull('arquivado_em');
+    }
+
+    /** Escopo: só empresas ARQUIVADAS (aba "Arquivados"). */
+    public function scopeArquivadas(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereNotNull('arquivado_em');
+    }
+
+    public function arquivadoPor(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'arquivado_por');
+    }
 
     /**
      * Mapeamento fase → projeto. Mantido para compatibilidade com código antigo
