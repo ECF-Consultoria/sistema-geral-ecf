@@ -26,11 +26,11 @@
 
 ### BON — Desempenho oficial por competência (Fase 102)
 
-- [ ] **BON-01**: `DesempenhoScoreService` consome o `MetricPeriodResolver` — o cálculo de var. faturamento/margem usa `period.current_*`/`period.baseline_*`, não `now()`/`startOfMonth` inline
-- [ ] **BON-02**: Ranking oficial de bônus em julho/2026 usa competência junho/2026 fechada (atual `01/06..30/06` vs `02/05..31/05`); o score de junho é exibido/pago em julho
-- [ ] **BON-03**: `var_margem_pct` usa `percentageMargin.diff` da Adman quando disponível (via `AdmanMetricDiffService`); fallback calculado só quando ausente, marcado — nenhum teste aceita variação manual quando `adman_diff` existe
-- [ ] **BON-04**: O retorno do service adiciona `periodo` (janelas atual/baseline) e `bonus` (`payment_month`, `competence_month`) aos metadados; score único preservado (sem score por marketplace — invariante da v17.0)
-- [ ] **BON-05**: Leitura operacional segue disponível (mês em curso) mas marcada como operacional/parcial; a régua de elegibilidade financeira da v17.0 (`financial_metrics_eligible`, `score_status`) permanece intacta
+- [x] **BON-01**: `DesempenhoScoreService` consome o `MetricPeriodResolver` — o cálculo de var. faturamento/margem usa `period.current_*`/`period.baseline_*`, não `now()`/`startOfMonth` inline
+- [x] **BON-02**: Ranking oficial de bônus em julho/2026 usa competência junho/2026 fechada (atual `01/06..30/06` vs `02/05..31/05`); o score de junho é exibido/pago em julho
+- [x] **BON-03**: `var_margem_pct` usa `percentageMargin.diff` da Adman quando disponível (via `AdmanMetricDiffService`); fallback calculado só quando ausente, marcado — nenhum teste aceita variação manual quando `adman_diff` existe
+- [x] **BON-04**: O retorno do service adiciona `periodo` (janelas atual/baseline) e `bonus` (`payment_month`, `competence_month`) aos metadados; score único preservado (sem score por marketplace — invariante da v17.0)
+- [x] **BON-05**: Leitura operacional segue disponível (mês em curso) mas marcada como operacional/parcial; a régua de elegibilidade financeira da v17.0 (`financial_metrics_eligible`, `score_status`) permanece intacta
 
 ### CAR — Carteira por período (Fase 103)
 
@@ -75,11 +75,11 @@
 | ADM-03 | Fase 101 | Complete |
 | ADM-04 | Fase 101 | Complete |
 | ADM-05 | Fase 101 | Complete |
-| BON-01 | Fase 102 | Pending |
-| BON-02 | Fase 102 | Pending |
-| BON-03 | Fase 102 | Pending |
-| BON-04 | Fase 102 | Pending |
-| BON-05 | Fase 102 | Pending |
+| BON-01 | Fase 102 | Complete |
+| BON-02 | Fase 102 | Complete |
+| BON-03 | Fase 102 | Complete |
+| BON-04 | Fase 102 | Complete |
+| BON-05 | Fase 102 | Complete |
 | CAR-01 | Fase 103 | Pending |
 | CAR-02 | Fase 103 | Pending |
 | CAR-03 | Fase 103 | Pending |
