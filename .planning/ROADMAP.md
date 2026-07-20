@@ -962,7 +962,7 @@ Plans:
 **Goal:** `renderCarteiraProfissional` e `renderCarteirasConsolidadas` usam o `MetricPeriodResolver` + filtro de período e a variação financeira vem do diff da Adman quando disponível — coerência de janela entre todos os blocos da tela, sem regredir a elegibilidade financeira da v17.0.
 **Requirements**: CAR-01, CAR-02, CAR-03
 **Depends on:** Phase 100 (`MetricPeriodResolver`), Phase 101 (`AdmanMetricDiffService`)
-**Plans:** TBD
+**Plans:** 2 plans
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -972,7 +972,8 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd:plan-phase 103 to break down)
+- [ ] 103-01-PLAN.md — Carteira individual: periodo via MetricPeriodResolver + variacao de margem via AdmanMetricDiffService (contribution_margin_value) + payload periodo (CAR-01/02/03)
+- [ ] 103-02-PLAN.md — Carteira consolidada: janela do resolver para as somas + payload periodo, escopo minimo sem variacao nova (CAR-01/03)
 
 ### Phase 104: UI de período (v18.0)
 
