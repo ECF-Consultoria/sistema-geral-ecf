@@ -158,4 +158,83 @@ class MetricPeriodResolverTest extends TestCase
 
         $this->assertSame(20, $resultado['days_count']);
     }
+
+    // ─────────────────────── CASO OBRIGATÓRIO §1201 (last_closed_month) ───────────────────────
+
+    public function test_caso_obrigatorio_bonus_20_07_2026_ultimo_mes_fechado(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-20', 'America/Sao_Paulo'));
+
+        $resultado = $this->resolver()->resolve(['period_key' => 'last_closed_month']);
+
+        $this->assertSame('official_bonus', $resultado['mode']);
+        $this->assertSame('previous_equal_length_window', $resultado['comparison_mode']);
+        $this->assertSame('2026-06-01', $resultado['current_start']);
+        $this->assertSame('2026-06-30', $resultado['current_end']);
+        $this->assertSame(30, $resultado['days_count']);
+        $this->assertSame('2026-05-31', $resultado['baseline_end']);
+        $this->assertSame('2026-05-02', $resultado['baseline_start']);
+        $this->assertSame('2026-06', $resultado['bonus_competence_month']);
+        $this->assertSame('2026-07', $resultado['bonus_payment_month']);
+        $this->assertFalse($resultado['is_current_month']);
+        $this->assertTrue($resultado['is_closed']);
+    }
+
+    public function test_bonus_com_virada_de_ano(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-01-10', 'America/Sao_Paulo'));
+
+        $resultado = $this->resolver()->resolve(['period_key' => 'last_closed_month']);
+
+        $this->assertSame('2025-12', $resultado['bonus_competence_month']);
+        $this->assertSame('2026-01', $resultado['bonus_payment_month']);
+        $this->assertSame('2025-12-01', $resultado['current_start']);
+        $this->assertSame('2025-12-31', $resultado['current_end']);
+        $this->assertSame(31, $resultado['days_count']);
+        $this->assertSame('2025-10-31', $resultado['baseline_start']);
+        $this->assertSame('2025-11-30', $resultado['baseline_end']);
+    }
+
+    // ─────────────────────── CASO OBRIGATÓRIO §1202 (mês específico) ───────────────────────
+
+    public function test_caso_obrigatorio_filtro_junho_2026(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-20', 'America/Sao_Paulo'));
+
+        $resultado = $this->resolver()->resolve(['period_key' => '2026-06']);
+
+        $this->assertSame('closed_period', $resultado['mode']);
+        $this->assertSame('previous_equal_length_window', $resultado['comparison_mode']);
+        $this->assertSame('2026-06-01', $resultado['current_start']);
+        $this->assertSame('2026-06-30', $resultado['current_end']);
+        $this->assertSame(30, $resultado['days_count']);
+        $this->assertSame('2026-05-02', $resultado['baseline_start']);
+        $this->assertSame('2026-05-31', $resultado['baseline_end']);
+        $this->assertNull($resultado['bonus_payment_month']);
+        $this->assertNull($resultado['bonus_competence_month']);
+        $this->assertTrue($resultado['is_closed']);
+    }
+
+    public function test_mes_especifico_maio_2026(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-20', 'America/Sao_Paulo'));
+
+        $resultado = $this->resolver()->resolve(['period_key' => '2026-05']);
+
+        $this->assertSame('2026-05-01', $resultado['current_start']);
+        $this->assertSame('2026-05-31', $resultado['current_end']);
+        $this->assertSame(31, $resultado['days_count']);
+        $this->assertSame('2026-03-31', $resultado['baseline_start']);
+        $this->assertSame('2026-04-30', $resultado['baseline_end']);
+    }
+
+    public function test_mes_especifico_igual_ao_mes_corrente(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-20', 'America/Sao_Paulo'));
+
+        $resultado = $this->resolver()->resolve(['period_key' => '2026-07']);
+
+        $this->assertTrue($resultado['is_current_month']);
+        $this->assertFalse($resultado['is_closed']);
+    }
 }
