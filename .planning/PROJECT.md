@@ -15,7 +15,28 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v17.0 Carteira e Desempenho multi-serviço
+## Current Milestone: v18.0 Períodos, competência de bônus e variação via Adman
+
+**Goal:** Padronizar a regra de período em todas as telas críticas (carteira, desempenho, bônus) via um resolvedor único `MetricPeriodResolver`, separando leitura **operacional** (mês em curso vs. mesmo intervalo do mês anterior) de leitura **oficial de bônus** (mês fechado com competência: julho paga junho fechado, baseline de janela de mesmo tamanho). E passar a usar a **variação pronta da Adman** (`percentageMargin.diff` / `profitMargin.diff`) em vez de recalcular margem na mão, com fallback marcado quando a Adman não trouxer o diff. Continuação direta da v17.0: aquela acertou *quem* entra na conta; esta acerta *qual período* e *de onde vem a variação*.
+
+**Target features (5 fases, 100-104 — buffer 97-99 p/ milestone NPS do dev paralelo):**
+- **F100. `MetricPeriodResolver`:** service único que resolve janela atual + comparativa por modo (operacional / oficial-bônus / mês-fechado / custom), competência de bônus, datas inclusivas, timezone America/Sao_Paulo, label pra UI. Nenhum controller monta período na mão.
+- **F101. `AdmanMetricDiffService`:** lê `percentageMargin.diff`/`profitMargin.diff`/revenue diff da Adman (hoje o `.diff` é descartado no `AdmanService`); prefere o diff oficial, fallback calculado marcado `diff_source`; persiste diff por período (snapshot/campos).
+- **F102. Desempenho oficial por competência:** `DesempenhoScoreService` usa o resolver; ranking oficial de bônus em julho usa competência junho fechada; `var_margem_pct` usa `percentageMargin.diff` da Adman; operacional segue mostrando mês em curso marcado como parcial.
+- **F103. Carteira por período:** `renderCarteiraProfissional`/`renderCarteirasConsolidadas` usam o resolver + filtro de período; financeiro usa diff da Adman quando disponível.
+- **F104. UI de período:** toggle Em curso / Bônus atual / Mês fechado no ranking e na carteira; payload carrega `periodo` + `bonus.competence_month`/`payment_month`; filtro de período nas telas de resultado do núcleo.
+
+**Key context:**
+- Plano canônico (expandido): `plano-carteira-desempenho-multi-servico.md` (raiz) — seções "Regra de período/fechamento/pagamento", "Regra de variação de margem via Adman", Fases 0 e 2-5
+- **Decisão do usuário 2026-07-17 (baseline):** mês fechado compara com os N dias imediatamente anteriores, janela de mesmo tamanho (junho = 01/06–30/06 vs **02/05–31/05**), NÃO mês calendário
+- **Decisão do usuário 2026-07-17 (escopo):** núcleo — Resolver + Desempenho + Carteira + Adman diff. A propagação geral (Fase 7 do plano: dashboards, detalhe de empresa, metas, relatórios) fica para a milestone seguinte
+- Alto risco: muda o número que a v17.0 acabou de deployar (v17 computa julho em curso; v18 faz o oficial usar junho fechado) — comunicar ao time
+- Reusa fundação da v17.0: `CarteiraContextService`, elegibilidade financeira, os 6 metadados, `score_status`, cache versionado (bump necessário)
+- Fatos diários guardam valor do dia; diffs de período ficam em snapshot/retorno com fonte declarada — não transformar diff de período em fato diário
+- Deploy gate ativo — dev paralelo em milestone NPS (fases 94-96+); numeração de fases com buffer p/ evitar colisão no ROADMAP compartilhado
+- pt-BR em tudo
+
+## Milestone anterior: v17.0 Carteira e Desempenho multi-serviço
 
 **Goal:** Corrigir a arquitetura de Carteira e Desempenho para suportar empresas com Performance/Mercado Livre e Shopee ao mesmo tempo — sem duplicar empresa e sem misturar métricas financeiras de ML em carteiras/vínculos Shopee. **Empresa compartilhada ≠ métrica compartilhada.** O score de desempenho permanece **único por profissional**; a separação existe no universo da carteira, nas fontes de dados e na elegibilidade das métricas, nunca na nota final.
 

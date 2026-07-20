@@ -863,3 +863,139 @@ Plans:
 *Roadmap atualizado: 2026-07-15 — Phase 86 planejada: 4 plans / 3 waves cobrindo HIST-86-1..3. HIST-86-2 e a clonagem NÃO são reimplementados: `duplicarComoTemplate`/`criarTemplateInterno` (Phase 81, 6 testes) já clonam o payload inteiro e zeram os `ml_item_id` — a fase liga o botão neles e o front redireciona (a rota devolve JSON e mantém o consumidor vivo em `AnunciarML.jsx:1355`). `Mlb/Historico.jsx` já é de outro módulo → página nova = `AnunciosHistorico.jsx`. Busca por título atravessa JSON (`payload->title`): verificada de fato em MariaDB (prod) e SQLite (phpunit) no planejamento. Nenhum pacote novo*
 *Roadmap atualizado: 2026-07-16 — Iniciativa NPS Anti-Burlamento anexada via /gsd-import de `PLANO_NPS_ANTI_BURLAMENTO_DIGISAC.md`: 3 fases (94-96) cobrindo AB-94-1..5, AB-95-1..4, AB-96-1..3. Escopo reduzido no import: seções Digisac e unicidade mensal do plano descartadas por já estarem entregues (v15.5/v16.0). Cadeia 94→95→96, independente da v17.0.*
 *Roadmap atualizado: 2026-07-16 — Milestone v17.0 (Carteira e Desempenho multi-servico) anexada: 6 fases (88-93) cobrindo as 22 REQs (CTX/CART/DESEMP/MENU) do REQUIREMENTS.md, estrutura vinda do plano canonico do usuario (plano-carteira-desempenho-multi-servico.md). Fundacao em 88 (CarteiraContextService); 89->90 (individual antes de consolidada); 91 depende de 88, 92 depende de 91; 93 independente. Fases 60-87 preservadas intactas.*
+
+
+### Phase 100: MetricPeriodResolver (v18.0)
+
+**Goal:** Existe um resolvedor único de período (`MetricPeriodResolver`) que resolve janela atual + janela comparativa por modo (operacional / oficial-bônus / mês-fechado / custom), competência de bônus, datas inclusivas, timezone America/Sao_Paulo e label pra UI — nenhum controller do núcleo (Fases 102-104) monta período na mão.
+**Requirements**: PER-01, PER-02, PER-03, PER-04, PER-05, PER-06
+**Depends on:** Nada (fundação da milestone v18.0)
+**Plans:** TBD
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. `MetricPeriodResolver::resolve($filtros)` retorna o shape completo (`mode`, `period_key`, `current_start/end`, `baseline_start/end`, `days_count`, `comparison_mode`, `timezone`, `data_fresh_until`, `bonus_payment_month`, `bonus_competence_month`, `is_current_month`, `is_closed`) com datas inclusivas e timezone `America/Sao_Paulo`
+2. Modo operacional resolve `01/mês..último dia confiável` vs. mesmo intervalo do mês anterior — nunca compara N dias do mês atual com o mês anterior inteiro, nunca usa dia ainda não consolidado pela fonte
+3. Modo oficial/bônus resolve a competência do último mês fechado com baseline de janela de mesmo tamanho (exemplo canônico: em julho/2026 → competência junho/2026, pagamento julho/2026, atual `01/06..30/06`, baseline `02/05..31/05`); modo mês fechado selecionado e período custom seguem a mesma regra de janela-de-mesmo-tamanho (ex.: maio/2026 → `01/05..31/05` vs `31/03..30/04`; custom `01/06..15/06` → baseline `17/05..31/05`)
+4. Suite `tests/Unit/MetricPeriodResolverTest.php` cobre os 4 casos obrigatórios do plano canônico (mês atual em 20/07; último fechado em 20/07; filtro junho; custom 01/06..15/06) — todos verdes
+5. O resolver é a única fonte de período do núcleo — nenhum controller/tela consumidor (Fases 102-104) monta janela ou calcula "mês passado" manualmente fora dele; contrato único documentado e verificável por gate nos consumidores
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 100 to break down)
+
+### Phase 101: AdmanMetricDiffService (v18.0)
+
+**Goal:** Existe uma camada dedicada (`AdmanMetricDiffService`) que lê a variação pronta da Adman (`.diff`) em vez de recalcular margem/faturamento na mão — hoje o `AdmanService` descarta o `.diff` e lê só `['value']` — com fallback marcado quando a Adman não trouxer o diff para a janela.
+**Requirements**: ADM-01, ADM-02, ADM-03, ADM-04, ADM-05
+**Depends on:** Nada (independente do resolver — pode ser planejada/executada em paralelo à Fase 100)
+**Plans:** TBD
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. `AdmanMetricDiffService` lê `revenue`, `profitMargin.value`/`.diff` e `percentageMargin.value`/`.diff` da resposta/cache Adman — cobrindo o gap atual do `AdmanService`, que descarta o `.diff`
+2. O service prefere o diff oficial da Adman (`diff_source='adman_diff'`); só usa fallback calculado quando o diff não existe para a janela consultada, marcando `diff_source='calculated_fallback'`
+3. O diff de período é persistido/retornado com contexto de período e fonte — não vira fato diário; fato diário continua guardando o valor do dia, snapshot/retorno de período guarda a comparação da janela
+4. Backfill preenche os novos campos quando `raw_data` antigo já tiver `profitMargin.diff`/`percentageMargin.diff`; quando não tiver, os campos ficam `null` e o fallback calculado marcado assume
+5. Labels separados sem ambiguidade — Margem R$ (`profitMargin`) distinta de Margem % (`percentageMargin`); teste garante que `percentageMargin.value` nunca é usado como se fosse variação manual de `contribution_margin`
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 101 to break down)
+
+### Phase 102: Desempenho oficial por competência (v18.0)
+
+**Goal:** `DesempenhoScoreService` passa a consumir o `MetricPeriodResolver` e o `AdmanMetricDiffService`: o ranking oficial de bônus usa a competência do mês fechado (julho paga junho) e `var_margem_pct` usa o diff pronto da Adman — preservando o score único e as invariantes de elegibilidade financeira da v17.0.
+**Requirements**: BON-01, BON-02, BON-03, BON-04, BON-05
+**Depends on:** Phase 100 (`MetricPeriodResolver`), Phase 101 (`AdmanMetricDiffService`)
+**Plans:** TBD
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. `DesempenhoScoreService` consome o `MetricPeriodResolver` — o cálculo de var. faturamento/margem usa `period.current_*`/`period.baseline_*`, não `now()`/`startOfMonth` inline
+2. Ranking oficial de bônus em julho/2026 usa competência junho/2026 fechada (atual `01/06..30/06` vs `02/05..31/05`) — o score de junho é exibido/pago em julho
+3. `var_margem_pct` usa `percentageMargin.diff` da Adman via `AdmanMetricDiffService` quando disponível; fallback calculado só quando ausente, marcado — nenhum teste aceita variação manual quando `adman_diff` existe
+4. O retorno do service adiciona `periodo` (janelas atual/baseline) e `bonus` (`payment_month`, `competence_month`) aos metadados; score único preservado — sem score por marketplace (invariante da v17.0)
+5. Leitura operacional segue disponível (mês em curso) mas marcada como operacional/parcial; a régua de elegibilidade financeira da v17.0 (`financial_metrics_eligible`, `score_status`) permanece intacta
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 102 to break down)
+
+### Phase 103: Carteira por período (v18.0)
+
+**Goal:** `renderCarteiraProfissional` e `renderCarteirasConsolidadas` usam o `MetricPeriodResolver` + filtro de período e a variação financeira vem do diff da Adman quando disponível — coerência de janela entre todos os blocos da tela, sem regredir a elegibilidade financeira da v17.0.
+**Requirements**: CAR-01, CAR-02, CAR-03
+**Depends on:** Phase 100 (`MetricPeriodResolver`), Phase 101 (`AdmanMetricDiffService`)
+**Plans:** TBD
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. `renderCarteiraProfissional` e `renderCarteirasConsolidadas` resolvem período via `MetricPeriodResolver`; quando o filtro for mês fechado, o cálculo não usa `now()` nem "mês em curso"
+2. A soma financeira da carteira usa as janelas do resolver (atual/baseline) e a variação de margem vem do diff da Adman via `AdmanMetricDiffService` quando disponível; elegibilidade financeira da v17.0 preservada (Shopee sem fonte continua sem entrar)
+3. Todos os cards/tabelas/séries da carteira leem `period.current_start/end` e `period.baseline_start/end` — coerência de janela entre todos os blocos da mesma tela
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 103 to break down)
+
+### Phase 104: UI de período (v18.0)
+
+**Goal:** O ranking `/performance` e a carteira exibem um toggle de contexto de período (Em curso / Bônus atual / Mês fechado) e o payload carrega `periodo` + `bonus.competence_month`/`payment_month` — a tela nunca deixa o usuário confundir número em curso com número de pagamento.
+**Requirements**: UIP-01, UIP-02, UIP-03, UIP-04
+**Depends on:** Phase 102 (Desempenho oficial por competência), Phase 103 (Carteira por período)
+**Plans:** TBD
+
+**Success Criteria** (o que deve ser VERDADE):
+
+1. O ranking `/performance` e a carteira exibem um toggle/segmento de contexto de período — "Em curso" / "Bônus atual" / "Mês fechado" (+ mês específico) — com rótulos sem jargão
+2. O payload Inertia dessas telas carrega `periodo` (janelas + label) e, no modo bônus, `bonus.competence_month`/`payment_month`; a tela mostra a competência avaliada e o mês de pagamento
+3. Filtro de período disponível nas telas de resultado do núcleo (carteira individual, consolidada, ranking); toda comparação exibida vem da janela resolvida, não de cálculo próprio da tela
+4. A tela indica claramente quando está em modo operacional/parcial vs. oficial de bônus — para não confundir o número em curso com o número de pagamento
+
+Plans:
+
+- [ ] TBD (run /gsd:plan-phase 104 to break down)
+
+**UI hint**: yes
+
+## Dependências — Milestone v18.0 (Fases 100-104)
+
+- **100** (`MetricPeriodResolver`) e **101** (`AdmanMetricDiffService`) são fundação independente uma da outra — nenhuma depende da outra; podem ser planejadas/executadas em paralelo
+- **102** depende de **100** e **101** — o cálculo oficial de bônus precisa do resolver de período e do diff da Adman para `var_margem_pct`
+- **103** depende de **100** e **101** — mesma razão da 102, aplicada à carteira
+- **104** depende de **102** e **103** — a UI de período consome o payload (`periodo`, `bonus`) que 102/103 passam a expor
+- Independente das Fases 94-96 (NPS Anti-Burlamento, dev paralelo) — numeração com buffer 97-99 evita colisão
+
+## Coverage Map — Milestone v18.0
+
+| Categoria | REQ | Fase |
+|-----------|-----|------|
+| PER (MetricPeriodResolver) | PER-01 | Fase 100 |
+| PER | PER-02 | Fase 100 |
+| PER | PER-03 | Fase 100 |
+| PER | PER-04 | Fase 100 |
+| PER | PER-05 | Fase 100 |
+| PER | PER-06 | Fase 100 |
+| ADM (AdmanMetricDiffService) | ADM-01 | Fase 101 |
+| ADM | ADM-02 | Fase 101 |
+| ADM | ADM-03 | Fase 101 |
+| ADM | ADM-04 | Fase 101 |
+| ADM | ADM-05 | Fase 101 |
+| BON (Desempenho oficial) | BON-01 | Fase 102 |
+| BON | BON-02 | Fase 102 |
+| BON | BON-03 | Fase 102 |
+| BON | BON-04 | Fase 102 |
+| BON | BON-05 | Fase 102 |
+| CAR (Carteira por período) | CAR-01 | Fase 103 |
+| CAR | CAR-02 | Fase 103 |
+| CAR | CAR-03 | Fase 103 |
+| UIP (UI de período) | UIP-01 | Fase 104 |
+| UIP | UIP-02 | Fase 104 |
+| UIP | UIP-03 | Fase 104 |
+| UIP | UIP-04 | Fase 104 |
+
+**Cobertura:** 23/23 REQs v18.0 mapeadas ✓ — zero órfãos, zero duplicatas.
+
+---
+*Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
