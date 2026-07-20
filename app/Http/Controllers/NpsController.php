@@ -307,6 +307,70 @@ class NpsController extends Controller
             'pendentes'   => max(0, $totalGeral - $respondidos - $expirados),
         ];
 
+        // ─── Faltantes (2026-07-20) ──────────────────────────────────────────
+        // Empresas que AINDA NÃO tiveram NENHUM link NPS gerado no mês
+        // selecionado — diferente de "pendente" (quem tem link mas não
+        // RESPONDEU): aqui é quem sequer RECEBEU o link.
+        //
+        // Universo "elegível" = empresa ativa com contrato ATIVO em serviço
+        // coberto por algum modelo NPS com envio automático mensal — mesma
+        // regra do nps:disparar-mensal (quem o sistema deveria disparar).
+        // Não exige que o dia do aniversário do cadastro já tenha passado:
+        // lista tudo que segue sem link no mês. Respeita escopo de carteira
+        // (não-admin) + filtros de pessoa/empresa (mesmos da listagem, mas a
+        // nível de Company — o whereHas de survey usa company.users; aqui é
+        // users direto). Ignora o filtro de MODELO de propósito: faltante é
+        // company-level (nenhum link de nenhum modelo no mês).
+        $servicoIdsCobertos = \App\Models\NpsTemplate::query()
+            ->where('active', true)
+            ->where('envio_automatico_mensal', true)
+            ->with('servicos:id')
+            ->get()
+            ->flatMap(fn ($t) => $t->servicos->pluck('id'))
+            ->unique()
+            ->values();
+
+        $faltantes = [];
+        if ($servicoIdsCobertos->isNotEmpty()) {
+            // Empresas que JÁ têm ≥1 survey no mês (qualquer status/modelo).
+            $comSurveyNoMes = NpsSurvey::query()
+                ->where(function ($q) use ($mesInicio, $mesFim) {
+                    $q->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
+                      ->orWhere(function ($qq) use ($mesInicio, $mesFim) {
+                          $qq->whereNull('month_reference')
+                             ->whereBetween('created_at', [$mesInicio, $mesFim]);
+                      });
+                })
+                ->distinct()
+                ->pluck('company_id');
+
+            $faltantesQuery = Company::query()
+                ->where('active', true)
+                ->whereHas('contratosServico', fn ($q) => $q->active()->whereIn('servico_id', $servicoIdsCobertos))
+                ->whereNotIn('id', $comSurveyNoMes);
+
+            if (!$user->isAdmin()) {
+                $faltantesQuery->whereIn('id', $user->companies()->pluck('companies.id'));
+            }
+            if ($empresaId) {
+                $faltantesQuery->where('id', $empresaId);
+            }
+            if ($estrategistaId) {
+                $faltantesQuery->whereHas('users', fn ($q) => $q->where('users.id', $estrategistaId)
+                    ->where('company_users.role', 'estrategista'));
+            }
+            if ($analistaId) {
+                $faltantesQuery->whereHas('users', fn ($q) => $q->where('users.id', $analistaId)
+                    ->where('company_users.role', 'consultor'));
+            }
+
+            $faltantes = $faltantesQuery->orderBy('name')->get(['id', 'name'])
+                ->map(fn ($c) => ['company_id' => $c->id, 'name' => $c->name])
+                ->all();
+        }
+
+        $contadores['faltantes'] = count($faltantes);
+
         // Status efetivo por linha — coerente com os contadores acima (mesma
         // regra de "expirado"). Apresentação pura; a coluna `status` do banco
         // permanece intacta.
@@ -491,6 +555,7 @@ class NpsController extends Controller
             'pode_filtrar_por_pessoa' => $podeFiltrarPorPessoa,
             'cards'          => $cards,
             'contadores'     => $contadores,
+            'faltantes'      => $faltantes,
             'serie_12m'      => $serieMeses,
             'mes_filtro'     => $mesFiltro,
             'filtros'        => [
@@ -606,10 +671,13 @@ class NpsController extends Controller
      *
      * Surveys criadas aqui ficam com `auto_generated=false` e
      * `month_reference=null`, distinguindo-as das surveys mensais
-     * automatizadas (Plan 02 / Plan 04). `expires_at` = 14 dias para manuais
-     * (2026-07-20: subiu de 7 → 14 dias, junto com o desligamento do prune de
-     * pendentes — links não somem mais em 48h; agora valem 14 dias e depois só
-     * expiram na tela, sem serem apagados).
+     * automatizadas (Plan 02 / Plan 04).
+     *
+     * `expires_at` = FIM DO MÊS CORRENTE (2026-07-20: o link vale apenas dentro
+     * do mês em que foi gerado; ao virar o mês ele expira). Antes eram 14 dias
+     * fixos (e 7 antes disso). Combinado com o desligamento do prune de
+     * pendentes, o link nunca é apagado — só passa a exibir status "expirado"
+     * na tela quando o mês vira.
      */
     public function generate(Request $request, NpsTemplateService $templateService)
     {
@@ -700,7 +768,7 @@ class NpsController extends Controller
             'token'          => Str::uuid()->toString(),
             'company_id'     => $data['company_id'],
             'generated_by'   => $user->id,
-            'expires_at'     => now()->addDays(14), // 2026-07-20: 7 → 14 dias (link vale 2 semanas)
+            'expires_at'     => now()->endOfMonth(), // 2026-07-20: link vale só no mês corrente; expira ao virar o mês (sem ser apagado)
             'status'         => 'pending',
             // REQ-31-08: explicita auto_generated=false em surveys manuais
             // para o admin filtrar "manual vs automatico" na UI (Plan 31-04).

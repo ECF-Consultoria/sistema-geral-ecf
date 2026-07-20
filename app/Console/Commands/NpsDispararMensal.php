@@ -39,7 +39,8 @@ use RuntimeException;
  * Empresas sem email_cliente são silenciosamente puladas (D-04 Phase 31).
  *
  * Surveys criadas têm `auto_generated=true`, `month_reference=YYYY-MM-01`,
- * `expires_at=hoje+30d`, `generated_by=NULL`.
+ * `expires_at=fim do mês corrente` (2026-07-20: o link vale só dentro do mês
+ * do disparo; ao virar o mês expira, sem ser apagado), `generated_by=NULL`.
  *
  * Schedule registrado em routes/console.php às 09:00 BRT.
  *
@@ -252,7 +253,9 @@ class NpsDispararMensal extends Command
                                 'token'           => Str::uuid()->toString(),
                                 'company_id'      => $empresa->id,
                                 'generated_by'    => null,
-                                'expires_at'      => $hoje->copy()->addDays(30),
+                                // 2026-07-20: link vale só no mês corrente — expira ao virar
+                                // o mês (sem ser apagado; prune de pendentes foi desligado).
+                                'expires_at'      => $hoje->copy()->endOfMonth(),
                                 'status'          => 'pending',
                                 'month_reference' => $mesAtual,
                                 'auto_generated'  => true,

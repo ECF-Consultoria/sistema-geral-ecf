@@ -105,8 +105,9 @@ class Phase31NpsDispararMensalTest extends TestCase
         $this->assertSame('pending', $survey->status);
         $this->assertNull($survey->generated_by);
         $this->assertNotEmpty($survey->token);
-        // expires_at = hoje + 30 dias
-        $this->assertSame('2026-07-18', $survey->expires_at->toDateString());
+        // expires_at = FIM DO MÊS corrente (2026-07-20: link vale só no mês do
+        // disparo; hoje=18/06 → expira 30/06). Antes era hoje+30d (18/07).
+        $this->assertSame('2026-06-30', $survey->expires_at->toDateString());
 
         Mail::assertSent(NpsMonthlyMail::class, function ($mail) use ($empresa) {
             return $mail->hasTo($empresa->email_cliente);

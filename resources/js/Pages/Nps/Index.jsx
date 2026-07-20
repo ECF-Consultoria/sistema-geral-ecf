@@ -9,7 +9,7 @@ import {
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
     ArrowUpRight, ArrowDownRight, Clock, User,
-    Calendar, Star, Trash2, ShieldCheck,
+    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -675,7 +675,7 @@ function ConfiancaBadge({ confianca }) {
     );
 }
 
-function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, isAdmin }) {
+function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, setActiveStatus, sort, setSort, onOpenSurvey, onCopyLink, onGerarLink, isAdmin }) {
     // Bugfix 2026-07-16 · contagens vêm AGREGADAS do servidor (conjunto filtrado
     // inteiro), não mais recalculadas sobre surveys.data (só os 20 da página).
     // Os chips deixam de mudar de valor conforme a paginação.
@@ -684,11 +684,20 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
         completed: contadores.respondidos ?? 0,
         pending:   contadores.pendentes ?? 0,
         expired:   contadores.expirados ?? 0,
+        faltantes: contadores.faltantes ?? 0,
     };
+
+    // 2026-07-20 · busca por nome da empresa DENTRO da lista carregada (mês
+    // filtrado, todas as linhas numa página só). Antes a caixa "Buscar empresa"
+    // da toolbar era um <div> decorativo — não dava pra digitar. Agora é um
+    // input real que filtra client-side por substring, case-insensitive.
+    const [buscaEmpresa, setBuscaEmpresa] = useState('');
 
     const filtrados = useMemo(() => {
         const list = surveys.data ?? [];
-        const f = activeStatus === 'todos' ? list : list.filter(s => s.status === activeStatus);
+        const q = buscaEmpresa.trim().toLowerCase();
+        let f = activeStatus === 'todos' ? list : list.filter(s => s.status === activeStatus);
+        if (q) f = f.filter(s => (s.company_name || '').toLowerCase().includes(q));
         // Sort client-side por company/date
         const dir = sort.dir === 'asc' ? 1 : -1;
         return [...f].sort((a, b) => {
@@ -707,7 +716,7 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
             // por data (created_at "dd/mm/yyyy hh:mm" — comparação de string bem-formada funciona invertido)
             return dir * (a.created_at || '').localeCompare(b.created_at || '');
         });
-    }, [surveys.data, activeStatus, sort]);
+    }, [surveys.data, activeStatus, sort, buscaEmpresa]);
 
     // ─── Seleção para exclusão em massa (admin) ──────────────────────────────
     // 2026-07-13 · Set de ids selecionados. Reseta ao trocar de filtro ou de
@@ -745,7 +754,7 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
     // Destaque sóbrio por-status: o chip ativo adota a cor semântica do seu
     // status (Todos = acento da marca) como tint suave — acento único, não o
     // antigo gradiente arco-íris.
-    const CHIP_ACCENT = { todos: ACCENT, completed: '#19e06a', pending: '#ff8a3c', expired: '#f4436b' };
+    const CHIP_ACCENT = { todos: ACCENT, completed: '#19e06a', pending: '#ff8a3c', expired: '#f4436b', faltantes: '#5b8def' };
     const chipStyle = (key) => {
         const active = activeStatus === key;
         const accent = CHIP_ACCENT[key] ?? ACCENT;
@@ -801,6 +810,17 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                     <button type="button" onClick={() => setActiveStatus('expired')} style={chipStyle('expired')}>
                         Expirados <span style={{ opacity: 0.6, fontWeight: 700 }}>{contagens.expired}</span>
                     </button>
+                    {/* 2026-07-20 · Faltantes = empresas elegíveis SEM nenhum link
+                        no mês (não é filtro sobre surveys — troca a vista pela
+                        lista de empresas). Título explica pra evitar jargão. */}
+                    <button
+                        type="button"
+                        onClick={() => setActiveStatus('faltantes')}
+                        style={chipStyle('faltantes')}
+                        title="Empresas que ainda não tiveram link de NPS gerado neste mês"
+                    >
+                        Faltantes <span style={{ opacity: 0.6, fontWeight: 700 }}>{contagens.faltantes}</span>
+                    </button>
                 </div>
                 <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 8,
@@ -809,7 +829,26 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                     border: '1px solid rgba(255,255,255,0.08)',
                     color: 'rgba(255,255,255,0.4)', fontSize: 12.5,
                 }}>
-                    <Search size={14} />Buscar empresa
+                    <Search size={14} style={{ flexShrink: 0 }} />
+                    <input
+                        value={buscaEmpresa}
+                        onChange={e => setBuscaEmpresa(e.target.value)}
+                        placeholder="Buscar empresa"
+                        style={{
+                            background: 'transparent', border: 0, outline: 'none',
+                            color: '#eef', fontSize: 12.5, width: 150,
+                        }}
+                    />
+                    {buscaEmpresa && (
+                        <button
+                            type="button"
+                            onClick={() => setBuscaEmpresa('')}
+                            title="Limpar busca"
+                            style={{ background: 'transparent', border: 0, color: 'rgba(255,255,255,0.4)', cursor: 'pointer', padding: 0, lineHeight: 0 }}
+                        >
+                            <X size={13} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -851,6 +890,14 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                 </div>
             )}
 
+            {/* 2026-07-20 · o chip "Faltantes" troca a vista inteira: em vez das
+                pesquisas do mês, mostra a lista de EMPRESAS elegíveis que ainda
+                não receberam link neste mês (dado vem pronto do servidor, já
+                respeitando os filtros de pessoa/empresa). */}
+            {activeStatus === 'faltantes' ? (
+                <FaltantesView faltantes={faltantes} onGerarLink={onGerarLink} />
+            ) : (
+              <>
             {/* Área rolável (header + linhas) — rola na horizontal em telas
                 estreitas E na vertical: todas as pesquisas do mês numa página só,
                 a lista desce DENTRO do card (maxHeight) sem crescer a página.
@@ -1088,6 +1135,71 @@ function TableCard({ surveys, contadores = {}, activeStatus, setActiveStatus, so
                         : `Mostrando ${filtrados.length} de ${surveys.total ?? filtrados.length}`}
                 </span>
             </div>
+              </>
+            )}
+        </div>
+    );
+}
+
+// ═══ FaltantesView — empresas elegíveis SEM link de NPS no mês (2026-07-20) ══
+// Renderizada no lugar da tabela quando o chip "Faltantes" está ativo. A lista
+// já chega filtrada do servidor (escopo de carteira + pessoa/empresa). Cada
+// linha oferece um atalho pra abrir o modal "Gerar link".
+function FaltantesView({ faltantes = [], onGerarLink }) {
+    if (!faltantes.length) {
+        return (
+            <div style={{ padding: '48px 18px', textAlign: 'center' }}>
+                <CheckCircle size={26} style={{ color: '#19e06a', marginBottom: 10 }} />
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>
+                    Nenhuma empresa faltante — todas as elegíveis já têm link de NPS neste mês.
+                </p>
+            </div>
+        );
+    }
+    return (
+        <div>
+            <div style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                color: 'rgba(255,255,255,0.6)', fontSize: 12.5,
+            }}>
+                <AlertCircle size={14} style={{ color: '#5b8def', flexShrink: 0 }} />
+                <span>
+                    <strong style={{ color: '#eef' }}>{faltantes.length}</strong> empresa{faltantes.length === 1 ? '' : 's'} ainda sem link de NPS neste mês
+                </span>
+            </div>
+            <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                {faltantes.map((c) => (
+                    <div key={c.company_id} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                        padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+                            <Building2 size={15} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
+                            <span style={{
+                                color: '#eef', fontSize: 13.5, fontWeight: 600,
+                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            }}>{c.name}</span>
+                        </div>
+                        {onGerarLink && (
+                            <button
+                                type="button"
+                                onClick={onGerarLink}
+                                style={{
+                                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                                    height: 30, padding: '0 12px', borderRadius: 8,
+                                    border: '1px solid rgba(91,141,239,0.35)',
+                                    background: 'rgba(91,141,239,0.14)', color: '#9cc0ff',
+                                    fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                                }}
+                                title="Gerar link de NPS"
+                            >
+                                <Plus size={13} /> Gerar link
+                            </button>
+                        )}
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }
@@ -1122,6 +1234,7 @@ export default function NpsIndex({
     pode_ver_confianca = false, // Fase 95 (AB-95-3) · ausente (não `false`) pra não-admin
     cards = {},
     contadores = {},
+    faltantes = [],
     serie_12m = [],
     mes_filtro = '',
     filtros = {},
@@ -1503,12 +1616,14 @@ export default function NpsIndex({
                         <TableCard
                             surveys={surveys}
                             contadores={contadores}
+                            faltantes={faltantes}
                             activeStatus={activeStatus}
                             setActiveStatus={setActiveStatus}
                             sort={sort}
                             setSort={setSort}
                             onOpenSurvey={abrirModalSurvey}
                             onCopyLink={copyLink}
+                            onGerarLink={() => setOpen(true)}
                             isAdmin={isAdmin}
                         />
 
