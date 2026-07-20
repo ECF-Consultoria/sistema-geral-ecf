@@ -136,6 +136,17 @@ class DesempenhoScoreService
      *                                       // OU quando score_status='blocked' (D-91-01)
      *   'faixa_bonus'           => ?string, // slug de BonusFaixa
      *   'faixa_promovida'       => bool,    // true se DESEMP-08 alterou a faixa
+     *   // ── Metadados de período (Fase 102 · BON-04) ──────────────────────────
+     *   'periodo' => [
+     *     'current_start' => string, 'current_end' => string,       // YYYY-MM-DD
+     *     'baseline_start' => string, 'baseline_end' => string,     // YYYY-MM-DD
+     *     'mode' => string,             // 'operational'|'official_bonus'|'closed_period'
+     *     'comparison_mode' => string,  // 'same_interval_previous_month'|'previous_equal_length_window'
+     *   ],
+     *   'bonus' => [
+     *     'competence_month' => ?string, // 'YYYY-MM'; null quando mês em curso
+     *     'payment_month'    => ?string, // 'YYYY-MM' (competência + 1 mês); null quando mês em curso
+     *   ],
      *   // ── Metadados de elegibilidade (Fase 91 · DESEMP-05) ─────────────────
      *   'empresas_unicas'               => int,    // de CarteiraContextService::contadores()
      *   'vinculos_servico'              => int,
@@ -181,7 +192,7 @@ class DesempenhoScoreService
      * Não use dentro de jobs/commands de snapshot ou consolidação —
      * chame `compute()` direto pra garantir dado fresco.
      */
-    public function computeCached(User $user, Carbon $mesReferencia): array
+    public function computeCached(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
     {
         $mes         = $mesReferencia->copy()->startOfMonth();
         $mesCorrente = Carbon::now()->startOfMonth();
@@ -204,7 +215,20 @@ class DesempenhoScoreService
         // (mês fechado) mesmo com o código novo em prod. As chaves v3 viram
         // órfãs e expiram sozinhas por TTL — não precisa (nem deve) rodar
         // `cache:clear`.
-        $cacheKey    = sprintf('desempenho.compute.v4.%d.%s', $user->id, $mes->format('Y-m'));
+        // Bump v4→v5 em 2026-07-20 (Fase 102 · BON-01/02/03): a régua de baseline
+        // de mês fechado mudou de "mês calendário anterior completo" para
+        // "janela-de-mesmo-tamanho imediatamente anterior" (`MetricPeriodResolver`),
+        // e a fonte de `var_margem_pct` mudou de cálculo manual (R$ absoluto) para
+        // `AdmanMetricDiffService` (percentageMargin da Adman) — os valores gravados
+        // sob a v4 têm janelas e definição de margem DIFERENTES, invalidando todas
+        // as chaves antigas. Sem este bump o Redis continuaria servindo o bônus
+        // velho por até 7 dias (mês fechado) mesmo com o código novo em prod.
+        // Além do dígito de versão, a chave passa a incluir `period_key` (D-02):
+        // sem isso, o modo operacional (`current_month`) e o modo oficial
+        // (`YYYY-MM` do mesmo mês) colidiriam na MESMA chave e um pisaria no
+        // cache do outro (T-102-04). Helper único: `cacheKey()` — nunca hardcode
+        // o formato da chave em outro lugar (ex.: `NpsController::bustarCacheDoBonus`).
+        $cacheKey = $this->cacheKey($user->id, $mes);
 
         // Mês fechado (passado): dado estável, cache longo — invalida só quando
         // rodar o snapshot mensal ou passar do TTL.
@@ -217,8 +241,28 @@ class DesempenhoScoreService
         return Cache::remember(
             $cacheKey,
             $ttl,
-            fn () => $this->compute($user, $mesReferencia),
+            fn () => $this->compute($user, $mesReferencia, $periodoOverride),
         );
+    }
+
+    /**
+     * Helper público ÚNICO de montagem da chave de cache de `computeCached()`
+     * (Fase 102 · BON-04/T-102-03/T-102-04) — nenhum consumidor deve montar
+     * a chave na mão. `NpsController::bustarCacheDoBonus` chama este método
+     * para invalidar a chave certa após invalidar/revalidar uma resposta NPS.
+     *
+     * Mesma regra de `resolvePeriodo()`: `$mes` igual ao mês corrente →
+     * `period_key='current_month'` (chave operacional); qualquer outro mês →
+     * `period_key='YYYY-MM'` (chave oficial/fechada). Os dois modos do MESMO
+     * mês calendário NUNCA colidem — chaves distintas (T-102-04).
+     */
+    public function cacheKey(int $userId, Carbon $mes): string
+    {
+        $mes         = $mes->copy()->startOfMonth();
+        $mesCorrente = Carbon::now()->startOfMonth();
+        $periodKey   = $mes->equalTo($mesCorrente) ? 'current_month' : $mes->format('Y-m');
+
+        return sprintf('desempenho.compute.v5.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -363,6 +407,30 @@ class DesempenhoScoreService
                 'em_curso'        => $ehMesEmCurso,
                 'dias_decorridos' => $diasDecorridos,
                 'dias_no_mes'     => $diasNoMes,
+            ],
+            // ── Metadados de período (Fase 102 · BON-04) ──────────────────────
+            // Espelha o `$periodo` já resolvido (via `resolvePeriodo()` ou
+            // `computeOficial()`) — UI consome pra rotular a janela comparada
+            // sem recalcular nada. `periodo_meta` acima é preservado por
+            // transição (remoção fica pra Fase 104).
+            'periodo' => [
+                'current_start'   => $periodo['current_start'],
+                'current_end'     => $periodo['current_end'],
+                'baseline_start'  => $periodo['baseline_start'],
+                'baseline_end'    => $periodo['baseline_end'],
+                'mode'            => $periodo['mode'],
+                'comparison_mode' => $periodo['comparison_mode'],
+            ],
+            // ── Metadados de competência de bônus (Fase 102 · BON-02) ─────────
+            // Derivados de `$mes` (não do `$periodo` resolvido) — qualquer mês
+            // FECHADO (inclusive `compute($u, $mesJunho)` sem override) rotula
+            // a competência/pagamento igual. Mês EM CURSO não tem competência
+            // (o bônus só paga mês fechado) — nulls coerentes com o resolver
+            // (`bonus_competence_month`/`bonus_payment_month` também nulls fora
+            // de `last_closed_month`).
+            'bonus' => [
+                'competence_month' => $ehMesEmCurso ? null : $mes->format('Y-m'),
+                'payment_month'    => $ehMesEmCurso ? null : $mes->copy()->addMonthNoOverflow()->format('Y-m'),
             ],
             // ── Metadados de elegibilidade (Fase 91 · DESEMP-05) ──────────────
             'empresas_unicas'               => $contadores['empresas_unicas'],
