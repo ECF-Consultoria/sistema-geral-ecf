@@ -80,9 +80,13 @@ class MlbImplementacao extends Model
         'São Bento do Sul',
     ];
 
-    /** Fase do onboarding da empresa no polo (M0 = entrada, Churn = saída) */
+    /**
+     * Fase do onboarding da empresa no polo.
+     * "Aceite no Projeto" = aceitou, ainda entrando (pré-M0; espelha a planilha) → M0 = entrada
+     * efetiva → M1..M4 → Encerrado/Churn = saída.
+     */
     public const ONB_FASE_OPCOES = [
-        'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
+        'Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn',
     ];
 
     /** Status de entrada da empresa no projeto (funil — planilha V2, coluna "status de entrada") */

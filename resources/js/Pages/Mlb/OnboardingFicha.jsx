@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 
 // ═══ CONSTANTES DE FALLBACK (usadas quando opcoes não chegam via props) ═══
 const ONB_POLO_OPCOES     = ['Arapongas', 'S. J. Rio Preto', 'Bento Gonçalves', 'São Bento do Sul'];
-const ONB_FASE_OPCOES     = ['M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
+const ONB_FASE_OPCOES     = ['Aceite no Projeto', 'M0', 'M1', 'M2', 'M3', 'M4', 'Encerrado', 'Churn'];
 const ONB_ACESSO_COLABORADOR_OPCOES = ['Com acesso', 'Sem acesso'];
 const ONB_PLANILHA_PRODUTOS_OPCOES  = ['Já enviado', 'Não enviado'];
 const ONB_LISTAGEM_OPCOES           = ['Não', 'Pronto para listar', 'Já listado', 'Falta informação'];
