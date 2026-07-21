@@ -140,8 +140,54 @@ class PerformanceController extends Controller
             ->get()
             ->keyBy('user_id');
 
-        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso) {
+        // Fase 106 Plan 02 (PERF-01 · SC2/SC3) — gate quente/frio. Em período
+        // FECHADO, cada profissional sem cache pronto (`isCached`) vira
+        // placeholder `calculando:true` em vez de pagar o compute() síncrono
+        // (~14 users × chamadas Adman/ML => timeout). `$usuariosFrios` é
+        // coletado aqui e usado LOGO ABAIXO (fora do map) pra disparar o warm
+        // sob-demanda uma única vez, com lock anti-empilhamento (Task 2).
+        $usuariosFrios = [];
+
+        $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso, $periodoResolvido, &$usuariosFrios) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
+
+            // Gate SC2/SC3 — só atua em período FECHADO. Mês em curso é
+            // sempre aquecido pelo warm agendado (106-01) e não passa por
+            // aqui (INTOCADO). Frio: NÃO computa ao vivo — devolve
+            // placeholder e coleta o ID pro dispatch do warm sob-demanda.
+            if ($periodoResolvido['is_closed'] && ! $this->scoreService->isCached($u, $mesReferencia)) {
+                $usuariosFrios[] = $u->id;
+
+                return [
+                    'id'                    => $u->id,
+                    'name'                  => $u->name,
+                    'role'                  => $u->role,
+                    'cargo_slug'            => $cargoSlug,
+                    'cargo_label'           => $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista',
+                    'empresas_carteira'     => 0,
+                    'empresas_com_baseline' => 0,
+                    'sem_carteira'          => false,
+                    'motivo'                => null,
+                    'nota_final'            => null,
+                    'faixa_bonus'           => null,
+                    'faixa_promovida'       => false,
+                    'componentes'           => [
+                        'nps_medio'           => null,
+                        'var_faturamento_pct' => null,
+                        'var_margem_pct'      => null,
+                        'absenteismo_pct'     => null,
+                    ],
+                    'pontos_componentes'    => null,
+                    'mes_referencia'        => $mesReferencia->toDateString(),
+                    'empresas_unicas'               => 0,
+                    'vinculos_servico'               => 0,
+                    'vinculos_financeiros'           => 0,
+                    'vinculos_sem_fonte_financeira'  => 0,
+                    'score_status'                   => 'calculando',
+                    'componentes_disponiveis'        => null,
+                    'calculando'                     => true,
+                ];
+            }
 
             // Mês em curso → compute live. Mês passado → prefere snapshot mensal
             // fechado; se não existe (user sem snapshot naquele mês), compute
@@ -192,8 +238,12 @@ class PerformanceController extends Controller
                 'vinculos_sem_fonte_financeira'  => (int) ($resultado['vinculos_sem_fonte_financeira'] ?? 0),
                 'score_status'                   => (string) ($resultado['score_status'] ?? 'blocked'),
                 'componentes_disponiveis'        => $resultado['componentes_disponiveis'] ?? null,
+                'calculando'                     => false,
             ];
         });
+
+        // ── Fase 106 Plan 02 (SC2) — expõe se há warm em andamento ──────────
+        $aquecendo = ! empty($usuariosFrios);
 
         // DESEMP-10 · remove users sem carteira antes do sort.
         $rankingRaw = $rankingRaw->reject(fn ($r) => $r['sem_carteira'] === true);
@@ -301,6 +351,9 @@ class PerformanceController extends Controller
             // fora de escopo). `bonus` só não-null em período fechado.
             'periodo'            => $periodoResolvido,
             'bonus'              => $bonusMeta,
+            // Fase 106 Plan 02 (SC2) — true quando ≥1 profissional está frio
+            // (calculando em background); front usa pra exibir aviso/poll.
+            'aquecendo'          => $aquecendo,
         ]);
     }
 
