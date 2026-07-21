@@ -190,12 +190,18 @@ Schedule::command('desempenho:snapshot-scores')
     ->onOneServer()
     ->withoutOverlapping();
 
-// Phase 74 D-08 / DESEMP-09 — Consolida snapshot mensal fechado no dia 1 às 14:00 BRT,
-// após o sync Adman D-1 (11:00) do dia anterior estar completo. Idempotente via
-// updateOrCreate((user_id, mes_referencia)). Aceita --mes=YYYY-MM para reprocessamento
-// manual (catch-up pós-incident). Users sem carteira são pulados (DESEMP-10).
+// Phase 74 D-08 / DESEMP-09 — Consolida snapshot mensal fechado.
+// v18.0 · Fase 105 (D2, NPSWIN-03): congela no ÚLTIMO DIA do mês de coleta
+// (fim de M+1), consolidando a competência M cujo NPS acabou de ser
+// coletado — não mais no dia 1 (início da coleta de M+1, quando quase
+// nenhuma resposta existia ainda). Consequência aceita: o pagamento de
+// junho desliza pro fim de julho / início de agosto (não começo de
+// julho) — decisão D2, sem snapshot provisório + refechamento.
+// Idempotente via updateOrCreate((user_id, mes_referencia)). Aceita
+// --mes=YYYY-MM para reprocessamento manual (catch-up pós-incident).
+// Users sem carteira são pulados (DESEMP-10).
 Schedule::command('desempenho:consolidar-mes')
-    ->monthlyOn(1, '14:00')
+    ->lastDayOfMonth('14:00')
     ->timezone('America/Sao_Paulo')
     ->name('desempenho-consolidar-mes')
     ->onOneServer()

@@ -12,8 +12,16 @@ use Illuminate\Support\Facades\Log;
 
 /**
  * Phase 74 D-08 / DESEMP-09 — Consolida snapshot MENSAL FECHADO do módulo
- * Desempenho no dia 1 de cada mês às 14:00 BRT, após o sync Adman D-1
- * (11:00) do dia anterior estar completo.
+ * Desempenho.
+ *
+ * v18.0 · Fase 105 (D2, NPSWIN-03): roda no ÚLTIMO DIA de cada mês às 14:00
+ * BRT (não mais no dia 1) — após a coleta de NPS do mês corrente (M+1)
+ * fechar. A competência congelada é sempre `today->subMonthNoOverflow()`
+ * (mês anterior ao hoje = M), cujo NPS acabou de terminar de ser coletado
+ * em M+1. Rodar no dia 1 (timing antigo) congelava a competência M no
+ * INÍCIO da coleta de M+1, quando quase nenhuma resposta existia ainda —
+ * pior que o bug original de janela (105-CONTEXT.md, Pitfall 3 do
+ * RESEARCH). Ver `routes/console.php` (bloco `desempenho-consolidar-mes`).
  *
  * Diferente do `desempenho:snapshot-scores` (diário, mes_referencia=NULL),
  * este comando grava rows com `mes_referencia = YYYY-MM-01` e representa
@@ -42,7 +50,7 @@ class ConsolidarMesDesempenho extends Command
     protected $signature = 'desempenho:consolidar-mes
         {--mes= : YYYY-MM (default = mês anterior ao hoje)}';
 
-    protected $description = 'Consolida snapshot mensal fechado do mês passado (dia 1 mês seguinte após sync Adman 11:00).';
+    protected $description = 'Consolida snapshot mensal fechado do mês passado (último dia do mês, após a coleta de NPS de M+1 fechar — v18.0 D2).';
 
     public function __construct(private DesempenhoScoreService $scoreService)
     {
@@ -53,14 +61,22 @@ class ConsolidarMesDesempenho extends Command
     {
         // Constraint SPEC: batch mensal costuma exigir mais RAM do que os 256MB
         // padrão do PHP-FPM (queries agregadas por empresa + provider ML/Adman).
-        // Bump conservador de 512M evita OOM na cascata dia 1 14:00 BRT.
+        // Bump conservador de 512M evita OOM na cascata do último dia do mês
+        // 14:00 BRT (v18.0 D2 — antes rodava dia 1).
         ini_set('memory_limit', '512M');
 
         // ── Deriva $mes (Carbon do 1º dia do mês alvo) ───────────────────────
         $mesOption = $this->option('mes');
         if ($mesOption) {
             try {
-                $mes = Carbon::createFromFormat('Y-m', $mesOption)->startOfMonth();
+                // Rule 1 (bug pré-existente exposto pela v18.0 D2): NÃO usar
+                // createFromFormat('Y-m', ...) — sem o dia explícito, o PHP
+                // preenche o dia com o de "hoje" (agora tipicamente o último
+                // dia do mês, 28-31) e ESTOURA para o mês seguinte quando o
+                // mês alvo tem menos dias (ex.: hoje=31, --mes=2026-06 vira
+                // 2026-07-01, não 2026-06-01). Ancorar no dia 1 explícito
+                // elimina o overflow.
+                $mes = Carbon::createFromFormat('Y-m-d', $mesOption . '-01')->startOfMonth();
             } catch (\Throwable $e) {
                 $this->error("[Desempenho Mensal] Formato inválido para --mes: '{$mesOption}' (esperado YYYY-MM).");
                 return self::FAILURE;
