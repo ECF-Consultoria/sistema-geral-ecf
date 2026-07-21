@@ -31,6 +31,14 @@ class PerformanceController extends Controller
 
     public function index(Request $request)
     {
+        // Ranking completo é EXCLUSIVO de admin (decisão 2026-07-21). O link
+        // continua no menu para quem tem `core.performance` (admin + líder de
+        // Performance), mas o não-admin que clicar é redirecionado ao PRÓPRIO
+        // desempenho individual — cada um vê a sua página, não o ranking geral.
+        if (! $request->user()->isAdmin()) {
+            return redirect()->route('performance.show', $request->user());
+        }
+
         // Phase 49 UAT 2026-06-30: /performance é exclusivamente consultoria.
         // Publicações tem rota própria /publicacao/desempenho via indexPublicacao().
         // Param ?setor=polos é IGNORADO aqui — qualquer tentativa retorna ranking de consultoria.
