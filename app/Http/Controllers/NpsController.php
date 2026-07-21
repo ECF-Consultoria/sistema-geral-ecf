@@ -413,6 +413,13 @@ class NpsController extends Controller
 
         $contadores['faltantes'] = count($faltantes);
 
+        // "Todos" = TODAS as empresas da carteira filtrada (2026-07-21):
+        // respondidas + pendentes + expiradas (os surveys do mês) + faltantes
+        // (empresas sem link no mês). Antes contava só os surveys e escondia os
+        // faltantes do total. Respeita o filtro de pessoa aplicado — filtrando
+        // por um estrategista/analista, "Todos" reflete a carteira dele.
+        $contadores['todos'] = $totalGeral + count($faltantes);
+
         // Status efetivo por linha — coerente com os contadores acima (mesma
         // regra de "expirado"). Apresentação pura; a coluna `status` do banco
         // permanece intacta.
