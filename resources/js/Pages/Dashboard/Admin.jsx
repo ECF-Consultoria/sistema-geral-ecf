@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
     XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
@@ -8,7 +8,7 @@ import {
 import {
     Star, Users, Award,
     DollarSign, BarChart2, Clock, Tv, X, Trophy, ChevronRight, TrendingUp,
-    ExternalLink,
+    ExternalLink, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
@@ -18,6 +18,12 @@ import NpsPendingWidget from '@/Components/Nps/NpsPendingWidget';
 // + chips + fix da navegação do marketplace. PERIOD_OPTIONS reexportado daqui
 // para o modo TV (abaixo) e o header usarem o MESMO conjunto de períodos.
 import FiltrosDashboard, { PERIOD_OPTIONS } from '@/Components/Dashboard/FiltrosDashboard';
+// Fase 97 Plan 04 (DASH-97-4/5/6/7) — gráfico interativo Faturamento/Margem +
+// cards "NPS ruim"/"Score da equipe"/"Novas empresas no mês".
+import ChartEvolucao from '@/Components/Dashboard/ChartEvolucao';
+import NpsRuimCarrossel from '@/Components/Dashboard/NpsRuimCarrossel';
+import ScoreEquipe from '@/Components/Dashboard/ScoreEquipe';
+import NovasEmpresas from '@/Components/Dashboard/NovasEmpresas';
 
 // Phase 18 W5-T4 — Badge "Cust ID Inválido" inline. Renderiza apenas
 // quando status === 'invalido' (demais valores ficam neutros). Sem emoji
@@ -79,6 +85,9 @@ export default function AdminDashboard({
     stats = {},
     revenue_chart = [],
     tacos_chart = [],
+    // Fase 97 Plan 01 — série diária de margem ponderada (mesmo eixo do
+    // revenue_chart), consumida pela aba "Margem" do ChartEvolucao (Plan 97-04).
+    margin_chart = [],
     nps_distribution = { positivas: 0, negativas: 0 },
     performance_equipe = [],
     period = '30',
@@ -99,12 +108,29 @@ export default function AdminDashboard({
     // (já excluindo invalidadas, Fase 96). Usado aqui só para "M ruins" do
     // KPI de NPS; o carrossel completo é do Plan 97-04.
     nps_ruins = [],
+    // Fase 97 Plan 02 (DASH-97-7) — cards das empresas com contrato ativo
+    // iniciado no mês corrente (D3). Widget "Novas empresas no mês" (Plan 97-04).
+    novas_empresas = [],
     // Fase 97 Plan 01 — nome da rota Inertia atual ('dashboard' ou
     // 'mercadolivre.dashboard'). Base do fix do bug do marketplace: navegar
     // sempre pela rota CORRENTE, nunca por uma rota fixa (Fase 97 Riscos §1).
     dashboard_route_name = 'dashboard',
 }) {
     const [tvMode, setTvMode] = useState(false);
+
+    // Fase 97 Plan 04 — estados REAIS de carregando/erro (sem toggle de
+    // demo): `isNavigating` acompanha uma navegação Inertia em andamento
+    // (aplicar filtro, remover chip); `navError` acompanha uma falha de
+    // rede/servidor durante essa navegação. `router.on` já é o padrão do
+    // projeto (ver resources/js/app.jsx — before/success globais).
+    const [isNavigating, setIsNavigating] = useState(false);
+    const [navError, setNavError] = useState(false);
+    useEffect(() => {
+        const offStart = router.on('start', () => { setIsNavigating(true); setNavError(false); });
+        const offFinish = router.on('finish', () => setIsNavigating(false));
+        const offError = router.on('error', () => setNavError(true));
+        return () => { offStart(); offFinish(); offError(); };
+    }, []);
 
     // Phase 61-05 (DASH-04/DATA-05) — legenda multi-fonte no header.
     // Guard `sourceCounts &&` mantém backward compat quando flag OFF (undefined).
@@ -166,6 +192,13 @@ export default function AdminDashboard({
     const npsRuinsCount = Array.isArray(nps_ruins) ? nps_ruins.length : (nps_distribution.negativas ?? 0);
 
     const periodLabel = PERIOD_OPTIONS.find(p => p.value === period)?.label ?? '';
+
+    // Fase 97 Plan 04 (DASH-97-4) — nome da empresa quando o filtro `company_id`
+    // está ativo, para o subtítulo do ChartEvolucao ("... · Nome da Empresa"
+    // em vez de "· N empresas"). `companies_list` já vem completo do backend.
+    const empresaFiltrada = filters.company_id
+        ? companies_list.find(c => String(c.id) === String(filters.company_id))
+        : null;
 
     /* ── TV MODE ─────────────────────────────────────────── */
     if (tvMode) {
@@ -293,6 +326,16 @@ export default function AdminDashboard({
                     />
 
                     <div className="flex items-center gap-2 shrink-0">
+                        {/* Fase 97 Plan 04 — estado REAL de "carregando": pill visível
+                            enquanto uma navegação Inertia (aplicar filtro/remover chip)
+                            está em andamento (`router.on('start'/'finish')`, sem toggle
+                            de demo). */}
+                        {isNavigating && (
+                            <div className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-ecf-yellow/20 bg-ecf-yellow/[0.06] text-ecf-yellow text-[12px] font-semibold">
+                                <Loader2 size={12} className="animate-spin" />
+                                Atualizando…
+                            </div>
+                        )}
                         {/* Phase 61-05 — Legenda `stats.source_counts` (DASH-04/DATA-05).
                             Ordem canônica ML → Agregado → Adman → Sem integração. */}
                         {sourceCounts && (
@@ -323,6 +366,30 @@ export default function AdminDashboard({
                         </button>
                     </div>
                 </div>
+
+                {/* Fase 97 Plan 04 — estado REAL de "erro" (sem toggle de demo):
+                    quando uma navegação Inertia (aplicar filtro) falha de verdade
+                    (`router.on('error')`), troca todo o conteúdo abaixo por um bloco
+                    com "Tentar novamente" (recarrega o recorte atual via router.reload). */}
+                {navError ? (
+                    <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.03] px-6 py-14 flex flex-col items-center text-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center">
+                            <AlertTriangle className="text-red-400" size={22} />
+                        </div>
+                        <p className="text-white/85 text-[15px] font-bold">Não foi possível carregar os dados do recorte</p>
+                        <p className="text-white/40 text-[13px] max-w-[380px]">
+                            A conexão com a base do setor falhou ao aplicar o filtro. Os últimos dados exibidos podem estar desatualizados.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => router.reload()}
+                            className="mt-1 h-10 px-4 rounded-xl bg-ecf-yellow text-[#252525] text-[13px] font-bold hover:-translate-y-0.5 hover:shadow-lg hover:shadow-ecf-yellow/20 transition-all"
+                        >
+                            Tentar novamente
+                        </button>
+                    </div>
+                ) : (
+                <div className={cn('space-y-6 transition-opacity', isNavigating && 'opacity-50 pointer-events-none')}>
 
                 {/* Empty state banner */}
                 {noData && (
@@ -441,31 +508,17 @@ export default function AdminDashboard({
 
                 {/* Charts row 1 */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    {/* Revenue */}
-                    <div className="lg:col-span-2 card-ecf rounded-2xl p-6">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1">Faturamento</p>
-                        <p className="text-white font-display font-extrabold text-lg mb-5 tracking-tight">Evolução no período</p>
-                        {revenue_chart.length === 0 ? (
-                            <div className="h-[240px] flex items-center justify-center">
-                                <p className="text-white/20 text-sm">Sem dados para exibir</p>
-                            </div>
-                        ) : (
-                            <ResponsiveContainer width="100%" height={240}>
-                                <AreaChart data={revenue_chart}>
-                                    <defs>
-                                        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#ffe600" stopOpacity={0.2} />
-                                            <stop offset="95%" stopColor="#ffe600" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid {...chartStyle.grid} />
-                                    <XAxis dataKey="date" {...chartStyle.axis} />
-                                    <YAxis {...chartStyle.axis} tickFormatter={v => formatCurrency(v)} width={85} />
-                                    <Tooltip {...chartStyle.tooltip} formatter={v => [formatCurrency(v), 'Faturamento']} />
-                                    <Area type="monotone" dataKey="revenue" stroke="#ffe600" strokeWidth={2} fill="url(#revGrad)" dot={false} activeDot={{ r: 4, fill: '#ffe600', strokeWidth: 0 }} />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        )}
+                    {/* Fase 97 Plan 04 (DASH-97-4) — "Evolução no período" com abas
+                        Faturamento/Margem (D4), hover interativo (tooltip + Pico/Menor).
+                        Substitui a AreaChart fixa de Faturamento (Plan 97-01/02/03). */}
+                    <div className="lg:col-span-2">
+                        <ChartEvolucao
+                            revenueChart={revenue_chart}
+                            marginChart={margin_chart}
+                            periodLabel={periodLabel}
+                            companiesCount={s.total_companies}
+                            companyName={empresaFiltrada?.name ?? null}
+                        />
                     </div>
 
                     {/* Performance da equipe (substituiu NPS Distribuição em 2026-06-23).
@@ -569,6 +622,18 @@ export default function AdminDashboard({
                     </div>
                 </div>
 
+                {/* Fase 97 Plan 04 (DASH-97-5/DASH-97-6) — linha 2.1fr/1fr do mockup:
+                    "NPS ruim" (carrossel) + "Score da equipe" (nota 0-5 + breakdown,
+                    pior→melhor). */}
+                <div className="grid grid-cols-1 lg:grid-cols-[2.1fr_1fr] gap-4 items-start">
+                    <NpsRuimCarrossel respostas={nps_ruins} />
+                    <ScoreEquipe membros={performance_equipe} />
+                </div>
+
+                {/* Fase 97 Plan 04 (DASH-97-7) — "Novas empresas no mês", largura
+                    total e CONDICIONAL (o próprio componente retorna null se vazio). */}
+                <NovasEmpresas empresas={novas_empresas} />
+
                 {/* Charts row 2 */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {/* TACOS */}
@@ -636,6 +701,9 @@ export default function AdminDashboard({
                     Recebe lista via prop nps_pendentes (Plan 72-02 injection). Empty state
                     tratado dentro do próprio widget — sempre é seguro renderizar. */}
                 <NpsPendingWidget pendentes={nps_pendentes ?? []} />
+
+                </div>
+                )}
 
             </div>
         </AppLayout>
