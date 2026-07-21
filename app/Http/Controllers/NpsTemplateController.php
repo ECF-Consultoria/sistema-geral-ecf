@@ -240,7 +240,18 @@ class NpsTemplateController extends Controller
         $clone = DB::transaction(function () use ($template) {
             // replicate() já ignora PK e timestamps; herda
             // active/priority/envio_automatico_mensal/mensagem_whatsapp/descricao.
-            $clone = $template->replicate();
+            //
+            // Bugfix 2026-07-20 — no MariaDB/MySQL de produção a unique parcial
+            // de `is_default` é implementada por uma COLUNA GERADA
+            // `is_default_key` (VIRTUAL, ver migration ...create_nps_templates_v15).
+            // replicate() copia TODOS os atributos carregados (inclui a coluna
+            // gerada), e o INSERT resultante referenciando-a dispara
+            // QueryException no MariaDB ("value specified for generated column
+            // is_default_key is not allowed"). O SQLite dos testes usa índice
+            // parcial real — sem essa coluna — por isso o erro só aparece em
+            // produção. Excluí-la do replicate resolve (no-op no SQLite, onde a
+            // coluna não existe).
+            $clone = $template->replicate(['is_default_key']);
 
             // INVARIANTES — nunca respeitar o valor do original nesses campos.
             $clone->is_default = false;                       // Pitfall 2

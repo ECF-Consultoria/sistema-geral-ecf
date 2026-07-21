@@ -84,7 +84,54 @@ class NpsController extends Controller
             $templateTodos = true;
         }
 
-        $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId, $templateId) {
+        // Filtro por pessoa (estrategista/analista) — Bugfix 2026-07-20.
+        //
+        // Atribui cada SURVEY à pessoa responsável POR SERVIÇO, não pela empresa
+        // inteira. Empresas com 2 serviços (ex.: ML/Performance + Shopee) têm 1
+        // NPS por modelo, cada um do responsável do SEU serviço. O filtro antigo
+        // (whereHas('company.users')) casava a empresa toda e vazava o NPS do
+        // outro serviço/pessoa — bug reportado: na aba "Respondidos", filtrando
+        // por uma pessoa, empresas multi-serviço apareciam 2x (uma resposta da
+        // pessoa, a outra de outra pessoa).
+        //
+        // (a) Respondidas: usa a atribuição CONGELADA (nps_score_assignments) —
+        //     a MESMA fonte que o modal mostra como "responsável", então filtro
+        //     e exibição nunca divergem.
+        // (b) Sem resposta (pendente/expirada, logo sem atribuição congelada):
+        //     atribui pelo serviço coberto pelo MODELO do survey — a pessoa é
+        //     responsável (role) da empresa naquele serviço. servico_id NULL na
+        //     pivot = responsável CONSOLIDADO (cobre qualquer serviço).
+        $filtroPorPessoa = function ($query, int $personId, string $role) {
+            $query->where(function ($outer) use ($personId, $role) {
+                $outer->whereHas('response.scoreAssignments', function ($q) use ($personId, $role) {
+                    $q->where('user_id', $personId)->where('role', $role);
+                })
+                ->orWhere(function ($sub) use ($personId, $role) {
+                    $sub->whereDoesntHave('response')
+                        ->whereExists(function ($ex) use ($personId, $role) {
+                            $ex->selectRaw('1')
+                               ->from('company_users as cu')
+                               ->whereColumn('cu.company_id', 'nps_surveys.company_id')
+                               ->where('cu.user_id', $personId)
+                               ->where('cu.role', $role)
+                               ->where(function ($w) {
+                                   // Consolidado (servico_id NULL) cobre qualquer
+                                   // serviço; senão, o serviço da pivot precisa
+                                   // estar coberto pelo modelo do survey.
+                                   $w->whereNull('cu.servico_id')
+                                     ->orWhereExists(function ($sc) {
+                                         $sc->selectRaw('1')
+                                            ->from('nps_template_service_scopes as scp')
+                                            ->whereColumn('scp.template_id', 'nps_surveys.template_id')
+                                            ->whereColumn('scp.servico_id', 'cu.servico_id');
+                                     });
+                               });
+                        });
+                });
+            });
+        };
+
+        $aplicarFiltrosSurveys = function ($query) use ($empresaId, $estrategistaId, $analistaId, $templateId, $filtroPorPessoa) {
             if ($empresaId) {
                 $query->where('company_id', $empresaId);
             }
@@ -92,16 +139,10 @@ class NpsController extends Controller
                 $query->where('template_id', $templateId);
             }
             if ($estrategistaId) {
-                $query->whereHas('company.users', function ($q) use ($estrategistaId) {
-                    $q->where('users.id', $estrategistaId)
-                      ->where('company_users.role', 'estrategista');
-                });
+                $filtroPorPessoa($query, $estrategistaId, 'estrategista');
             }
             if ($analistaId) {
-                $query->whereHas('company.users', function ($q) use ($analistaId) {
-                    $q->where('users.id', $analistaId)
-                      ->where('company_users.role', 'consultor');
-                });
+                $filtroPorPessoa($query, $analistaId, 'consultor');
             }
         };
 
@@ -125,6 +166,7 @@ class NpsController extends Controller
         $eagerLoads = [
             'company',
             'generatedBy',
+            'template', // 2026-07-20 — nome do modelo na coluna "Modelo" da listagem (evita N+1)
             'response.respostasCustomizadas',
             'response.answers',
             'response.survey.template',
@@ -397,6 +439,10 @@ class NpsController extends Controller
                 'company_name'       => $s->company->name,
                 'company_id'         => $s->company_id,
                 'status'             => $statusEfetivo($s),
+                // 2026-07-20 — modelo (template) do NPS, pra distinguir na
+                // listagem qual foi respondido em empresas multi-serviço
+                // (ML/Performance vs Shopee). Legado sem template → null.
+                'modelo'             => $s->template?->nome,
                 'auto_generated'     => (bool) $s->auto_generated,
                 'generated_by'       => $s->generatedBy?->name,
                 'created_at'         => $s->created_at->format('d/m/Y H:i'),

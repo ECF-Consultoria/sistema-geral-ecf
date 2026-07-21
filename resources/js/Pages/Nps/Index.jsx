@@ -775,12 +775,14 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
 
     // Admin ganha uma coluna de checkbox no início e a coluna de ação mais
     // larga (2 botões: copiar/ver + excluir).
+    // 2026-07-20 · coluna MODELO adicionada após EMPRESA (distingue ML/Performance
+    // vs Shopee em empresas multi-serviço).
     const gridCols = isAdmin
-        ? '32px 1.5fr 1.4fr 1.2fr 1.6fr 1.1fr 1fr 78px'
-        : '1.5fr 1.4fr 1.2fr 1.7fr 1.1fr 1fr 60px';
+        ? '32px 1.4fr 1fr 1.3fr 1.1fr 1.5fr 1.1fr 1fr 78px'
+        : '1.4fr 1fr 1.3fr 1.1fr 1.6fr 1.1fr 1fr 60px';
     // Largura mínima da grade: abaixo disso as colunas esmagavam texto/chips.
     // O wrapper rola horizontalmente em telas estreitas em vez de quebrar.
-    const gridMinWidth = isAdmin ? 940 : 820;
+    const gridMinWidth = isAdmin ? 1050 : 930;
 
     return (
         <div style={{
@@ -930,6 +932,7 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                 }}>
                     EMPRESA {sort.key === 'company' ? (sort.dir === 'asc' ? '↑' : '↓') : ''}
                 </button>
+                <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 10.5, fontWeight: 700, letterSpacing: '0.08em' }}>MODELO</span>
                 <button type="button" onClick={() => toggleSort('nota')}
                     title="Ordenar pelas notas — 1 clique: mais baixas no topo · 2º clique: mais altas no topo"
                     style={{
@@ -1003,6 +1006,24 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                                 color: s.auto_generated ? 'rgba(255,255,255,0.6)' : '#ffb020',
                                 fontSize: 9.5, fontWeight: 700, letterSpacing: '0.04em',
                             }}>{s.auto_generated ? 'MENSAL' : 'MANUAL'}</span>
+                        </div>
+
+                        {/* 2026-07-20 · Modelo (template) do NPS — distingue
+                            ML/Performance vs Shopee em empresas multi-serviço. */}
+                        <div style={{ minWidth: 0 }}>
+                            {s.modelo ? (
+                                <span title={s.modelo} style={{
+                                    display: 'inline-block', maxWidth: '100%',
+                                    padding: '3px 9px', borderRadius: 6,
+                                    background: 'rgba(91,141,239,0.12)',
+                                    border: '1px solid rgba(91,141,239,0.25)',
+                                    color: '#9cc0ff', fontSize: 11.5, fontWeight: 600,
+                                    whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                    verticalAlign: 'middle',
+                                }}>{s.modelo}</span>
+                            ) : (
+                                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: 12 }}>—</span>
+                            )}
                         </div>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
