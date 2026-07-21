@@ -142,7 +142,7 @@ export default function ChartEvolucao({
                             fill={`url(#${metric.gradientId})`}
                             dot={false}
                             activeDot={{ r: 4, fill: metric.color, strokeWidth: 0 }}
-                            style={{ filter: `drop-shadow(0 0 6px ${metric.color}) drop-shadow(0 0 10px ${metric.color}66)` }}
+                            style={{ filter: `drop-shadow(0 4px 6px ${metric.color}) drop-shadow(0 7px 14px ${metric.color}55)` }}
                         />
                         {peakIndex >= 0 && (
                             <ReferenceDot

@@ -1,15 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
-import {
-    AreaChart, Area, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from 'recharts';
-import {
-    Star, Users,
-    DollarSign, BarChart2, Tv, X, TrendingUp,
-    ExternalLink, Loader2, AlertTriangle,
-} from 'lucide-react';
+import { Tv, X, ExternalLink, Loader2, AlertTriangle } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
 // Fase 97 Plan 03 (DASH-97-1/DASH-97-2) — painel de filtros rascunho→aplicar
@@ -23,61 +15,52 @@ import NpsRuimCarrossel from '@/Components/Dashboard/NpsRuimCarrossel';
 import ScoreEquipe from '@/Components/Dashboard/ScoreEquipe';
 import NovasEmpresas from '@/Components/Dashboard/NovasEmpresas';
 
-// Phase 18 W5-T4 — Badge "Cust ID Inválido" inline. Renderiza apenas
-// quando status === 'invalido' (demais valores ficam neutros). Sem emoji
-// por convenção do projeto; tooltip pt-BR via title nativo HTML.
-function CustIdInvalidoBadge({ status }) {
-    if (status !== 'invalido') return null;
+// Fase 97 (2026-07-21) — KPI com GLOW blur na cor da métrica + delta vs
+// período anterior. Reutilizado no modo normal E no modo TV para os dois
+// layouts ficarem idênticos. O delta é computado DENTRO do componente (por
+// card) — pitfall Rollup: nunca herdar flag derivada de escopo externo.
+function KpiGlowCard({ def, noData }) {
+    let delta = null;
+    if (def.deltaPct !== undefined) {
+        const semBase = def.deltaPct === null || def.deltaPct === undefined;
+        const dir = semBase ? 'neutral' : (def.deltaPct >= 0 ? 'good' : 'bad');
+        delta = { dir, arrow: dir === 'good' ? '▲' : dir === 'bad' ? '▼' : '•', label: semBase ? 'sem base' : `${def.deltaPct > 0 ? '+' : ''}${def.deltaPct.toFixed(1)}%` };
+    } else if (def.deltaPp !== undefined) {
+        const semBase = def.deltaPp === null || def.deltaPp === undefined;
+        const dir = semBase ? 'neutral' : (def.deltaPp >= 0 ? 'good' : 'bad');
+        delta = { dir, arrow: dir === 'good' ? '▲' : dir === 'bad' ? '▼' : '•', label: semBase ? 'sem base' : `${def.deltaPp > 0 ? '+' : ''}${def.deltaPp.toFixed(1)} pp` };
+    }
+    const deltaColors = { good: 'text-emerald-400 bg-emerald-500/10', bad: 'text-red-400 bg-red-500/10', neutral: 'text-white/50 bg-white/[0.06]' };
     return (
-        <span
-            title="Cust ID corrompido — Adman não reconhece. Conectar OAuth ML ou ajustar cadastro."
-            className="inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20 tracking-wide"
-        >
-            Cust ID Inválido
-        </span>
-    );
-}
-
-function KpiCard({ title, value, sub, icon: Icon, color = 'yellow', empty = false }) {
-    const colors = {
-        yellow: { text: 'text-ecf-yellow', bg: 'bg-ecf-yellow/10', border: 'border-ecf-yellow/20', dot: 'bg-ecf-yellow' },
-        green:  { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', dot: 'bg-emerald-400' },
-        red:    { text: 'text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/20', dot: 'bg-red-400' },
-        blue:   { text: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', dot: 'bg-blue-400' },
-        purple: { text: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20', dot: 'bg-purple-400' },
-    };
-    const c = colors[color];
-
-    return (
-        <div className="card-ecf rounded-2xl p-5 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-                <p className="text-white/50 text-[12px] font-semibold tracking-wide uppercase">{title}</p>
-                <div className={cn('w-8 h-8 rounded-xl flex items-center justify-center', c.bg, 'border', c.border)}>
-                    <Icon size={15} className={c.text} />
+        <div className="group relative card-ecf rounded-2xl p-4 overflow-hidden">
+            <div
+                className="pointer-events-none absolute -top-14 left-1/2 -translate-x-1/2 h-28 w-[78%] rounded-full blur-2xl opacity-[0.22] group-hover:opacity-45 transition-opacity duration-300"
+                style={{ background: def.topBar }}
+            />
+            <div className="relative z-10 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between gap-2">
+                    <p className="text-white/40 text-[10.5px] font-bold uppercase tracking-wide">{def.label}</p>
+                    <Link href={def.href} title={def.linkTitle} className="w-5 h-5 rounded-md flex items-center justify-center text-white/30 hover:text-ecf-yellow hover:bg-white/[0.06] transition-colors shrink-0">
+                        <ExternalLink size={12} />
+                    </Link>
                 </div>
-            </div>
-            <div>
-                <p className={cn('font-display font-extrabold text-3xl tracking-tight', empty ? 'text-white/20' : c.text)}>
-                    {empty ? '—' : value}
-                </p>
-                {sub && <p className="text-white/30 text-xs mt-1">{sub}</p>}
+                <p className={cn('font-display font-extrabold text-2xl tracking-tight', noData ? 'text-white/20' : 'text-white')}>{noData ? '—' : def.value}</p>
+                {!noData && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {delta && (
+                            <span className={cn('inline-flex items-center gap-1 text-[11.5px] font-bold px-1.5 py-0.5 rounded-md', deltaColors[delta.dir])}>
+                                {delta.arrow} {delta.label}
+                            </span>
+                        )}
+                        <span className="text-white/30 text-[11px]">{def.legendaSemDelta || def.sub}</span>
+                    </div>
+                )}
             </div>
         </div>
     );
 }
 
-const chartStyle = {
-    tooltip: { contentStyle: { background: '#0f1116', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 10, fontSize: 12 }, labelStyle: { color: '#9ba0aa' } },
-    grid: { stroke: 'rgba(255,255,255,0.04)', strokeDasharray: '4 4' },
-    axis: { tick: { fill: '#6a6f79', fontSize: 11 } },
-};
-
 /* ─── main ─────────────────────────────────────────────── */
-// roleLabel: legacy — usado APENAS no card de ranking (que ainda recebe
-// `u.role` do backend via buildRanking). O mapeamento `tipoLabel` para a
-// taxonomia nova (cargo no setor Performance) foi movido para
-// resources/js/Pages/Portfolio/Carteiras.jsx (quick 260610-lj6).
-const roleLabel = { consultor: 'Analista', mentor: 'Estrategista' };
 
 export default function AdminDashboard({
     stats = {},
@@ -168,20 +151,8 @@ export default function AdminDashboard({
 
     const noData = s.total_companies === 0;
 
+    // Total de respostas de NPS do recorte (base do "N respostas" no KPI).
     const npsTotal = (nps_distribution.positivas ?? 0) + (nps_distribution.negativas ?? 0);
-    const npsScore = npsTotal > 0
-        ? Math.round(((nps_distribution.positivas - nps_distribution.negativas) / npsTotal) * 100)
-        : 0;
-
-    // Phase 73 Plan 01 v15.0 — buckets simplificados escala 1-5.
-    // Backend (DashboardController) agora envia apenas positivas (nota >= 4)
-    // e negativas (nota <= 3). Classificação Promotor/Neutro/Detrator (herança
-    // NPS 0-10 clássico) foi removida.
-    const npsData = [
-        { name: 'Positivas (4-5)', value: nps_distribution.positivas ?? 0, color: '#19e06a' },
-        { name: 'Negativas (1-3)', value: nps_distribution.negativas ?? 0, color: '#ff4d4d' },
-    ];
-    const npsDataFilled = npsTotal === 0 ? [{ name: 'Sem dados', value: 1, color: 'rgba(255,255,255,0.06)' }] : npsData;
 
     // Fase 97 Plan 03 (DASH-97-3) — "M ruins" do KPI de NPS. Usa a contagem
     // real de `nps_ruins` (Plan 97-02, já filtrado pelo recorte e sem
@@ -198,12 +169,26 @@ export default function AdminDashboard({
         ? companies_list.find(c => String(c.id) === String(filters.company_id))
         : null;
 
+    // Fase 97 — definições dos 4 KPIs (Faturamento, Margem, NPS, Empresas),
+    // usadas TANTO no modo normal QUANTO no modo TV (layouts idênticos).
+    const kpiDefs = [
+        { key: 'faturamento', label: 'Faturamento total', value: formatCurrency(s.total_revenue), deltaPct: stats.total_revenue_delta_pct, legendaSemDelta: 'vs período anterior', href: route('companies.index'), linkTitle: 'Performance por empresa', topBar: '#60a5fa' },
+        { key: 'margem', label: 'Margem contrib. média', value: formatPercent(s.avg_margin), deltaPp: stats.avg_margin_delta_pp, legendaSemDelta: 'ponderada por faturamento', href: route('performance.index'), linkTitle: 'Margem por profissional (Área da equipe)', topBar: '#34d399' },
+        { key: 'nps', label: 'NPS médio', value: (s.avg_nps ?? 0).toFixed(2), sub: `${npsTotal} respostas · ${npsRuinsCount} ruins`, href: route('nps.index'), linkTitle: 'Respostas de NPS', topBar: '#22c55e' },
+        { key: 'empresas', label: 'Empresas ativas', value: String(s.total_companies), sub: `+${stats.novas_empresas_count ?? 0} novas no mês`, href: route('companies.index'), linkTitle: 'Cadastro de empresas', topBar: '#ffe600' },
+    ];
+
     /* ── TV MODE ─────────────────────────────────────────── */
+    // Reproduz o MESMO layout do modo normal (KPIs com glow + gráfico
+    // Evolução + Score da equipe + NPS ruim), em fullscreen sem a sidebar.
     if (tvMode) {
         return (
-            <div className="fixed inset-0 bg-[#050507] z-50 flex flex-col gap-4 p-6">
+            <div className="fixed inset-0 bg-[#050507] z-50 flex flex-col gap-4 p-6 overflow-auto">
+                {/* Glow de identidade */}
+                <div className="pointer-events-none fixed -top-24 right-10 h-96 w-96 rounded-full blur-[140px] opacity-[0.07] bg-ecf-yellow" />
+
                 {/* Header */}
-                <div className="flex items-center justify-between shrink-0">
+                <div className="relative flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2.5">
                             <div className="w-9 h-9 rounded-xl bg-ecf-yellow flex items-center justify-center">
@@ -214,9 +199,8 @@ export default function AdminDashboard({
                                 <p className="text-white/30 text-xs">{periodLabel} · {new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
                             </div>
                         </div>
-                        {/* Gradient separator */}
                         <div className="h-8 w-[2px] bg-ecf-grad opacity-60 rounded-full" />
-                        <p className="text-ecf-yellow/60 text-sm font-semibold tracking-widest uppercase">Dashboard Operacional</p>
+                        <p className="text-ecf-yellow/60 text-sm font-semibold tracking-widest uppercase">Mercado Livre</p>
                     </div>
                     <button
                         onClick={() => setTvMode(false)}
@@ -226,61 +210,26 @@ export default function AdminDashboard({
                     </button>
                 </div>
 
-                {/* Top gradient line */}
-                <div className="h-[2px] bg-ecf-grad rounded-full shrink-0" />
-
-                {/* KPIs */}
-                <div className="grid grid-cols-5 gap-3 shrink-0">
-                    {[
-                        { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue', sub: 'Carteira ativa Performance' },
-                        { title: 'Margem méd.', value: formatPercent(s.avg_margin), icon: BarChart2, color: 'yellow', sub: 'Ponderada por faturamento' },
-                        { title: 'NPS Score', value: (s.avg_nps ?? 0).toFixed(2), icon: Star, color: 'green', sub: `Média ${(s.avg_nps ?? 0).toFixed(2)}/5` },
-                        { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red', sub: 'Últimos 30 dias · Adman' },
-                        { title: 'Faturamento', value: formatCurrency(s.total_revenue), icon: DollarSign, color: 'purple', sub: 'Últimos 30 dias · Adman' },
-                    ].map(k => <KpiCard key={k.title} {...k} empty={noData} />)}
+                {/* KPIs — mesmos do modo normal */}
+                <div className="relative grid grid-cols-2 lg:grid-cols-4 gap-3 shrink-0">
+                    {kpiDefs.map(k => <KpiGlowCard key={k.key} def={k} noData={noData} />)}
                 </div>
 
-                {/* Charts */}
-                <div className="grid grid-cols-3 gap-3 flex-1 min-h-0">
-                    <div className="col-span-2 card-ecf rounded-2xl p-5 flex flex-col">
-                        <p className="text-white/60 text-xs font-semibold tracking-wide uppercase mb-4">Faturamento</p>
-                        <div className="flex-1">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <AreaChart data={revenue_chart}>
-                                    <defs>
-                                        <linearGradient id="tvRev" x1="0" y1="0" x2="0" y2="1">
-                                            <stop offset="5%" stopColor="#ffe600" stopOpacity={0.25} />
-                                            <stop offset="95%" stopColor="#ffe600" stopOpacity={0} />
-                                        </linearGradient>
-                                    </defs>
-                                    <CartesianGrid {...chartStyle.grid} />
-                                    <XAxis dataKey="date" {...chartStyle.axis} />
-                                    <YAxis {...chartStyle.axis} tickFormatter={v => formatCurrency(v)} width={90} />
-                                    <Tooltip {...chartStyle.tooltip} formatter={v => [formatCurrency(v), 'Faturamento']} />
-                                    <Area type="monotone" dataKey="revenue" stroke="#ffe600" strokeWidth={2} fill="url(#tvRev)" dot={false} />
-                                </AreaChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
+                {/* Gráfico Evolução + Score da equipe */}
+                <div className="relative grid grid-cols-1 lg:grid-cols-[2.1fr_1fr] gap-4 items-stretch">
+                    <ChartEvolucao
+                        revenueChart={revenue_chart}
+                        marginChart={margin_chart}
+                        periodLabel={periodLabel}
+                        companiesCount={s.total_companies}
+                        companyName={empresaFiltrada?.name ?? null}
+                    />
+                    <ScoreEquipe membros={performance_equipe} />
+                </div>
 
-                    <div className="card-ecf rounded-2xl p-5 flex flex-col min-h-0">
-                        <div className="flex items-center justify-between mb-3">
-                            <p className="text-white/60 text-xs font-semibold tracking-wide uppercase">NPS</p>
-                            <span className={cn('text-lg font-display font-extrabold', npsScore >= 50 ? 'text-green-400' : npsScore >= 0 ? 'text-ecf-yellow' : 'text-red-400')}>
-                                {npsTotal > 0 ? npsScore : '—'}
-                            </span>
-                        </div>
-                        <div className="flex-1">
-                            <ResponsiveContainer width="100%" height="100%">
-                                <PieChart>
-                                    <Pie data={npsDataFilled} cx="50%" cy="50%" innerRadius="38%" outerRadius="72%" dataKey="value" strokeWidth={0}>
-                                        {npsDataFilled.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                    </Pie>
-                                    {npsTotal > 0 && <Tooltip {...chartStyle.tooltip} />}
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </div>
-                    </div>
+                {/* NPS ruim — largura total */}
+                <div className="relative shrink-0">
+                    <NpsRuimCarrossel respostas={nps_ruins} />
                 </div>
             </div>
         );
@@ -289,7 +238,7 @@ export default function AdminDashboard({
     /* ── NORMAL MODE ─────────────────────────────────────── */
     return (
         <AppLayout title="Dashboard Mercado Livre">
-            <div className="relative space-y-5 max-w-[1400px]">
+            <div className="relative space-y-5">
 
                 {/* Glow de identidade — brilho suave contido no container (não
                     vaza pra sidebar). Dá o "ar" da marca sem poluir. */}
@@ -382,116 +331,11 @@ export default function AdminDashboard({
                     </div>
                 )}
 
-                {/* KPI Cards — Fase 97 Plan 03 (DASH-97-3): 4 indicadores do
-                    redesign, cada um com valor + variação vs. período anterior
-                    (quando aplicável) + link para a área completa. Substitui a
-                    grade antiga de 5 cards sem delta/link (modo TV mantém o
-                    formato antigo — ver bloco `tvMode` acima). */}
+                {/* KPI Cards — Fase 97: 4 indicadores com glow + variação vs.
+                    período anterior + link. `KpiGlowCard`/`kpiDefs` são
+                    compartilhados com o modo TV. */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    {[
-                        {
-                            key: 'faturamento',
-                            label: 'Faturamento total',
-                            value: formatCurrency(s.total_revenue),
-                            deltaPct: stats.total_revenue_delta_pct,
-                            legendaSemDelta: 'vs período anterior',
-                            href: route('companies.index'),
-                            linkTitle: 'Performance por empresa',
-                            topBar: '#60a5fa',
-                        },
-                        {
-                            key: 'margem',
-                            label: 'Margem contrib. média',
-                            value: formatPercent(s.avg_margin),
-                            deltaPp: stats.avg_margin_delta_pp,
-                            legendaSemDelta: 'ponderada por faturamento',
-                            href: route('performance.index'),
-                            linkTitle: 'Margem por profissional (Área da equipe)',
-                            topBar: '#34d399',
-                        },
-                        {
-                            key: 'nps',
-                            label: 'NPS médio',
-                            value: (s.avg_nps ?? 0).toFixed(2),
-                            sub: `${npsTotal} respostas · ${npsRuinsCount} ruins`,
-                            href: route('nps.index'),
-                            linkTitle: 'Respostas de NPS',
-                            topBar: '#22c55e',
-                        },
-                        {
-                            key: 'empresas',
-                            label: 'Empresas ativas',
-                            value: String(s.total_companies),
-                            sub: `+${stats.novas_empresas_count ?? 0} novas no mês`,
-                            href: route('companies.index'),
-                            linkTitle: 'Cadastro de empresas',
-                            topBar: '#ffe600',
-                        },
-                    ].map(k => {
-                        // Cor/seta/rótulo do delta computados AQUI, DENTRO do
-                        // callback do .map() — pitfall Rollup (Fase 97): nunca
-                        // herdar flag derivada de variável de escopo externo.
-                        let delta = null;
-                        if (k.deltaPct !== undefined) {
-                            const semBase = k.deltaPct === null || k.deltaPct === undefined;
-                            const dir = semBase ? 'neutral' : (k.deltaPct >= 0 ? 'good' : 'bad');
-                            delta = {
-                                dir,
-                                arrow: dir === 'good' ? '▲' : dir === 'bad' ? '▼' : '•',
-                                label: semBase ? 'sem base' : `${k.deltaPct > 0 ? '+' : ''}${k.deltaPct.toFixed(1)}%`,
-                            };
-                        } else if (k.deltaPp !== undefined) {
-                            const semBase = k.deltaPp === null || k.deltaPp === undefined;
-                            const dir = semBase ? 'neutral' : (k.deltaPp >= 0 ? 'good' : 'bad');
-                            delta = {
-                                dir,
-                                arrow: dir === 'good' ? '▲' : dir === 'bad' ? '▼' : '•',
-                                label: semBase ? 'sem base' : `${k.deltaPp > 0 ? '+' : ''}${k.deltaPp.toFixed(1)} pp`,
-                            };
-                        }
-                        const deltaColors = {
-                            good: 'text-emerald-400 bg-emerald-500/10',
-                            bad: 'text-red-400 bg-red-500/10',
-                            neutral: 'text-white/50 bg-white/[0.06]',
-                        };
-
-                        return (
-                            <div key={k.key} className="group relative card-ecf rounded-2xl p-4 overflow-hidden">
-                                {/* Brilho blur de fundo na cor do KPI (2026-07-21) —
-                                    substitui a antiga barra sólida de 2px por um glow
-                                    suave que intensifica no hover. */}
-                                <div
-                                    className="pointer-events-none absolute -top-14 left-1/2 -translate-x-1/2 h-28 w-[78%] rounded-full blur-2xl opacity-[0.22] group-hover:opacity-45 transition-opacity duration-300"
-                                    style={{ background: k.topBar }}
-                                />
-                                <div className="relative z-10 flex flex-col gap-2.5">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <p className="text-white/40 text-[10.5px] font-bold uppercase tracking-wide">{k.label}</p>
-                                        <Link
-                                            href={k.href}
-                                            title={k.linkTitle}
-                                            className="w-5 h-5 rounded-md flex items-center justify-center text-white/30 hover:text-ecf-yellow hover:bg-white/[0.06] transition-colors shrink-0"
-                                        >
-                                            <ExternalLink size={12} />
-                                        </Link>
-                                    </div>
-                                    <p className={cn('font-display font-extrabold text-2xl tracking-tight', noData ? 'text-white/20' : 'text-white')}>
-                                        {noData ? '—' : k.value}
-                                    </p>
-                                    {!noData && (
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            {delta && (
-                                                <span className={cn('inline-flex items-center gap-1 text-[11.5px] font-bold px-1.5 py-0.5 rounded-md', deltaColors[delta.dir])}>
-                                                    {delta.arrow} {delta.label}
-                                                </span>
-                                            )}
-                                            <span className="text-white/30 text-[11px]">{k.legendaSemDelta || k.sub}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    })}
+                    {kpiDefs.map(k => <KpiGlowCard key={k.key} def={k} noData={noData} />)}
                 </div>
 
                 {/* Fase 97 — "Evolução no período" em LARGURA TOTAL (mock): abas
