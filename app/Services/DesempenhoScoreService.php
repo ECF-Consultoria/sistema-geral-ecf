@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\AdmanMetric;
 use App\Models\BonusFaixa;
+use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\NpsResponse;
@@ -356,6 +357,18 @@ class DesempenhoScoreService
         $companies = $universo['companies_elegiveis'];
         $contadores = $universo['contadores'];
 
+        // ── Invalidação por competência (item 3/4 · 2026-07-21) ──────────────
+        // Empresas que o admin tirou do bônus DESTE mês (empresa inteira:
+        // financeiro E NPS). Competência = $mes (mês financeiro M); o NPS de M
+        // coletado em M+1 usa a MESMA competência M (não o mês deslocado) —
+        // por isso o set é resolvido aqui, 1×, e repassado ao computeNpsWindow.
+        $invalidadas = BonusInvalidacao::companyIdsInvalidadas($mes);
+        if ($invalidadas->isNotEmpty()) {
+            $companies = $companies
+                ->reject(fn ($c) => $invalidadas->contains($c->id))
+                ->values();
+        }
+
         // ── 4 componentes independentes ──────────────────────────────────────
         // Faturamento/margem usam SÓ as empresas elegíveis financeiramente
         // (`financial_metrics_eligible=true` — DESEMP-04). NPS continua
@@ -367,7 +380,7 @@ class DesempenhoScoreService
         // cliente só avalia DEPOIS do trabalho feito). `$periodo['is_closed']`
         // já resolvido acima (linha ~314) é o sinal CANÔNICO de "mês fechado"
         // — nunca recalcular via now()/between aqui.
-        $nps = $this->computeNpsWindow($user, $mes, $periodo['is_closed']);
+        $nps = $this->computeNpsWindow($user, $mes, $periodo['is_closed'], $invalidadas);
         $varFatData = $this->computeVarFaturamento($user, $mes, $companies, $periodo);
         $varMargem  = $this->computeVarMargem($user, $mes, $companies, $periodo);
         $absent     = $this->computeAbsenteismo($user, $mes);
@@ -611,7 +624,7 @@ class DesempenhoScoreService
      * @return ?float null quando excluído (em curso OU M+1 ainda coletando
      *                com 0 respostas); float (>= 0.0) quando disponível.
      */
-    private function computeNpsWindow(User $user, Carbon $mes, bool $mesFechado): ?float
+    private function computeNpsWindow(User $user, Carbon $mes, bool $mesFechado, ?Collection $invalidadas = null): ?float
     {
         if (! $mesFechado) {
             // Mês em curso ainda não tem NPS (vem em M+1). Piso 1.0 mantém o
@@ -620,8 +633,11 @@ class DesempenhoScoreService
             return 1.0;
         }
 
+        // O NPS da competência M é coletado em M+1, mas a invalidação de empresa
+        // é chaveada pela competência M — o set $invalidadas (resolvido em
+        // compute() com $mes) é repassado como está, SEM deslocar (item 3/4).
         $mesNps = $mes->copy()->addMonthNoOverflow();
-        $nps    = $this->computeNpsMedio($user, $mesNps);
+        $nps    = $this->computeNpsMedio($user, $mesNps, $invalidadas);
 
         if ($nps > 0.0) {
             return $nps;
@@ -665,20 +681,24 @@ class DesempenhoScoreService
      *
      * @return float sempre >= 0.0
      */
-    private function computeNpsMedio(User $user, Carbon $mes): float
+    private function computeNpsMedio(User $user, Carbon $mes, ?Collection $invalidadas = null): float
     {
         $inicio = $mes->copy()->startOfMonth();
         $fim    = $mes->copy()->endOfMonth();
+
+        // Empresas invalidadas para bônus (item 3/4) — suas respostas de NPS
+        // saem da média. `null` = chamada legada (nenhuma exclusão).
+        $invalidadas = $invalidadas ?? collect();
 
         $notas = collect();
 
         // ── (A) Atribuições congeladas da Fase 79 — todas as áreas ───────────
         $notas = $notas->merge(
-            $this->notasPorAtribuicao($user, $inicio, $fim)->pluck('average_score')
+            $this->notasPorAtribuicao($user, $inicio, $fim, $invalidadas)->pluck('average_score')
         );
 
         // ── (B) Caminho legado — só as respostas que o snapshot não cobriu ───
-        $notas = $notas->merge($this->notasLegado($user, $inicio, $fim));
+        $notas = $notas->merge($this->notasLegado($user, $inicio, $fim, $invalidadas));
 
         if ($notas->isEmpty()) {
             // DESEMP-03 · Sem respostas no mês FORÇA nps = 0 (penaliza) por
@@ -718,7 +738,7 @@ class DesempenhoScoreService
      *
      * @return Collection<int, object{response_id:int, role:string, average_score:float}>
      */
-    private function notasPorAtribuicao(User $user, Carbon $inicio, Carbon $fim): Collection
+    private function notasPorAtribuicao(User $user, Carbon $inicio, Carbon $fim, ?Collection $invalidadas = null): Collection
     {
         return NpsScoreAssignment::query()
             ->join('nps_responses as r', 'r.id', '=', 'nps_score_assignments.nps_response_id')
@@ -729,6 +749,9 @@ class DesempenhoScoreService
             // Phase 96 Plan 04 (AB-96-3 · call-site #1) — resposta invalidada
             // pelo admin some do bônus. Ver NpsResponse::scopeValida().
             ->whereNull('r.invalidated_at')
+            // Item 3/4 — empresa invalidada para bônus na competência some do NPS.
+            ->when($invalidadas && $invalidadas->isNotEmpty(),
+                fn ($q) => $q->whereNotIn('s.company_id', $invalidadas->all()))
             ->groupBy('nps_score_assignments.nps_response_id', 'nps_score_assignments.role')
             // selectRaw só com nomes de coluna literais — zero interpolação de
             // variável; todos os valores entram por bind (where/whereBetween).
@@ -785,7 +808,7 @@ class DesempenhoScoreService
      *
      * @return Collection<int, float>
      */
-    private function notasLegado(User $user, Carbon $inicio, Carbon $fim): Collection
+    private function notasLegado(User $user, Carbon $inicio, Carbon $fim, ?Collection $invalidadas = null): Collection
     {
         // 2026-07-13 — dimensão POR CARGO (estrategista/analista), fonte
         // canônica user_setores→cargos. Antes usava isMentor() (role do
@@ -811,6 +834,9 @@ class DesempenhoScoreService
         $surveys = NpsSurvey::with(['response' => fn ($q) => $q->valida()])
             ->principal()
             ->whereIn('company_id', $companyIds)
+            // Item 3/4 — empresa invalidada para bônus na competência some do NPS.
+            ->when($invalidadas && $invalidadas->isNotEmpty(),
+                fn ($q) => $q->whereNotIn('company_id', $invalidadas->all()))
             ->where('status', 'completed')
             ->whereBetween('completed_at', [$inicio, $fim])
             ->get();

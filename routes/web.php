@@ -36,6 +36,7 @@ use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
+use App\Http\Controllers\BonusAuditoriaController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PpaController;
@@ -505,6 +506,16 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('/api/performance/{user}/evolucao', [PerformanceController::class, 'evolucao'])
         ->middleware('permission:core.performance')
         ->name('performance.evolucao');
+
+    // Auditoria de pagamento de bônus (item 3/4 · 2026-07-21) — admin-only.
+    // Invalida o resultado de uma empresa para bônus numa competência (empresa
+    // sem custo preenchido infla margem injustamente). Ver BonusAuditoriaController.
+    Route::get('/desempenho/auditoria-bonus', [BonusAuditoriaController::class, 'index'])
+        ->middleware('role:admin')
+        ->name('desempenho.auditoria-bonus');
+    Route::post('/desempenho/auditoria-bonus/toggle', [BonusAuditoriaController::class, 'toggle'])
+        ->middleware('role:admin')
+        ->name('desempenho.auditoria-bonus.toggle');
 
     // Adman: leitura do ultimo sync (admin apenas).
     // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):

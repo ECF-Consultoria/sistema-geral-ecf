@@ -62,6 +62,10 @@ const NAV_TREE = [
             { label: 'Carteira',   routeName: 'portfolio.own',     page: 'Portfolio', icon: Briefcase, permission: 'core.carteira' },
             { label: 'Desempenho', routeName: 'performance.index', page: ['Performance/Index', 'Performance/Show', 'Desempenho/Configuracao'], icon: Trophy, permission: 'core.performance' },
             { label: 'Metas',      routeName: 'goals.index',       page: 'Goals',     icon: Target,    permission: 'core.metas' },
+            // Auditoria de bônus (item 3/4 · 2026-07-21) — admin-only. Gate por
+            // excludeRoles (mesmo padrão da Configuração NPS): esconde de todos
+            // os papéis não-admin. A rota também é protegida por role:admin.
+            { label: 'Auditoria de bônus', routeName: 'desempenho.auditoria-bonus', page: 'Desempenho/Auditoria', icon: Shield, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
 
