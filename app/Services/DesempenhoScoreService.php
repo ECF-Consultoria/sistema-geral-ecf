@@ -277,9 +277,11 @@ class DesempenhoScoreService
         $periodKey   = $mes->equalTo($mesCorrente) ? 'current_month' : $mes->format('Y-m');
 
         // v7 (2026-07-21): remoção do filtro created_at no faturamento (item 1)
-        // + piso NPS 1.0 no mês em curso (item 2) mudam a nota — bump força
-        // recomputo, senão o Redis serve v6 por até 7 dias.
-        return sprintf('desempenho.compute.v7.%d.%s', $userId, $periodKey);
+        // + piso NPS 1.0 no mês em curso (item 2).
+        // v8 (2026-07-21): trava de cobertura no fallback Adman do faturamento
+        // (remove inflação do baseline parcial de maio). Cada bump força
+        // recomputo — senão o Redis serve a versão anterior por até 7 dias.
+        return sprintf('desempenho.compute.v8.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -951,6 +953,22 @@ class DesempenhoScoreService
             ->get()
             ->keyBy('company_id');
 
+        // Cobertura Adman: menor data de métrica por empresa (1 query, sem N+1).
+        // Trava do fallback Adman (2026-07-21): o histórico Adman só começa em
+        // ~21/05, mas o baseline de junho é o mês de maio inteiro (02–31/05).
+        // Somar junho-cheio ÷ maio-parcial explodia a variação (+80% a +293%,
+        // saturando a régua) — inflação isolada 100% no fallback Adman (o ML
+        // entrega o mês cheio real). Regra: só confiar no baseline Adman quando
+        // o Adman da empresa cobre o INÍCIO da janela de baseline; senão a soma
+        // é parcial e a empresa é descartada do faturamento (usa ML real quando
+        // houver, ou fica de fora). Auto-cura: quando o histórico Adman passar a
+        // anteceder o baseline, as empresas só-Adman voltam sozinhas.
+        $admanMinData = AdmanMetric::whereIn('company_id', $companyIds)
+            ->selectRaw('company_id, MIN(reference_date) as min_date')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
         $vars              = collect();
         $empresasBaseline  = 0;
 
@@ -987,8 +1005,15 @@ class DesempenhoScoreService
                 }
             }
 
-            // Fallback (ou fonte única para so-adman): Adman em AMBAS as janelas.
+            // Fallback (ou fonte única para so-adman): Adman em AMBAS as janelas
+            // — SÓ se o Adman cobre o início do baseline (trava de cobertura, ver
+            // bloco $admanMinData acima). Cobertura parcial → baseline inflado →
+            // descarta a empresa do faturamento.
             if ($fonteConsistente === null) {
+                $minAdman = $admanMinData->get($company->id)?->min_date;
+                if ($minAdman === null || Carbon::parse($minAdman)->gt($inicioAnter)) {
+                    continue; // sem baseline Adman confiável (histórico começa depois do baseline)
+                }
                 $revAtual    = (float) ($admanAtual->get($company->id)?->rev ?? 0.0);
                 $revAnterior = (float) ($admanAnterior->get($company->id)?->rev ?? 0.0);
             }
