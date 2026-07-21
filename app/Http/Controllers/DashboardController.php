@@ -294,6 +294,14 @@ class DashboardController extends Controller
             '1'   => 1,
             '7'   => 7,
             '30'  => 30,
+            // Fase 97 Plan 03 — '60'/'90' adicionados: o redesign do painel de
+            // filtros (FiltrosDashboard.jsx) oferece esse recorte (mockup do
+            // usuário), mas sem este case o match caía no `default => 30` e
+            // filtrar "Últimos 60 dias" silenciosamente devolvia 30 dias —
+            // bug de correção de dados (Rule 1), não mudança de escopo:
+            // '1'/'180' continuam aceitos por compat com links antigos.
+            '60'  => 60,
+            '90'  => 90,
             '180' => 180,
             default => 30,
         };
