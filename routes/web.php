@@ -532,6 +532,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Quick 260623 — portfolio.show acessível pra admin (todos) e líder de setor
     // (apenas users do setor liderado). Autorização granular no controller.
     Route::get('/admin/users/{user}/portfolio', [PortfolioController::class, 'show'])->name('portfolio.show');
+    // Fase 3 do plano de otimização (2026-07-21) — carteira de transparência
+    // (§8.3), página NOVA/aditiva. Autorização granular no controller (mesma
+    // regra de portfolio.show: admin/self/líder-do-setor).
+    Route::get('/portfolio/transparencia/{user}', [PortfolioController::class, 'transparencia'])->name('portfolio.transparencia');
 
     // Detalhe da empresa: admin/lider com core.empresas veem qualquer empresa;
     // analista/estrategista veem apenas empresas da propria carteira.

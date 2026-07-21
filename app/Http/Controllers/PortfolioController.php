@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AdmanMetric;
+use App\Models\BonusInvalidacao;
 use App\Models\Goal;
 use App\Models\GoalResult;
 use App\Models\NpsSurvey;
@@ -120,6 +121,168 @@ class PortfolioController extends Controller
         }
 
         return $this->renderPortfolio($request, $user);
+    }
+
+    /**
+     * Fase 3 do plano de otimização (2026-07-21) — CARTEIRA DE TRANSPARÊNCIA
+     * (§8.3): uma linha por empresa com fonte, faturamento, margem R$, margem %,
+     * variações (badges), status de qualidade e invalidação — tudo alinhado ao
+     * contrato de período (`?modo=`/`?mes=`) e SEM misturar fonte.
+     *
+     * Página NOVA e ADITIVA (Portfolio/Transparencia) — NÃO altera as telas de
+     * carteira existentes (renderPortfolio/renderCarteiraProfissional). O usuário
+     * avalia antes de decidir se ela vira a carteira canônica.
+     *
+     * Fonte única dos números: `AdmanMetricDiffService::compute()`, que devolve
+     * `revenue`/`contribution_margin_value`/`contribution_margin_pct` — cada um
+     * com `value` + `diff_pct` + `diff_source` — de fonte CONSISTENTE nas duas
+     * janelas (nunca ML no atual e Adman no baseline). `contribution_margin_pct`
+     * é a margem-como-%-da-receita (percentageMargin); `contribution_margin_value`
+     * é o valor em R$ (profitMargin) — os dois expostos e rotulados na tela.
+     */
+    public function transparencia(Request $request, User $user): \Inertia\Response
+    {
+        $atual = $request->user();
+        $autorizado = $atual->isAdmin()
+            || $atual->id === $user->id
+            || (
+                $atual->isLider()
+                && DB::table('user_setores as us')
+                    ->whereIn('us.setor_id', $atual->setoresLiderados()->pluck('setores.id'))
+                    ->where('us.user_id', $user->id)
+                    ->exists()
+            );
+        abort_unless($autorizado, 403);
+
+        // ── Período — MESMO contrato do ranking/carteira (?modo=/?mes=) ───────
+        $modo = $request->query('modo');
+        if (! in_array($modo, ['em_curso', 'bonus_atual'], true)) {
+            $modo = null;
+        }
+        $mesQuery    = $request->query('mes');
+        $mesCorrente = now()->startOfMonth();
+
+        if ($modo === 'bonus_atual') {
+            $periodo = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+            $mesSelecionado = Carbon::parse($periodo['bonus_competence_month'] . '-01')->startOfMonth();
+        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+            $mesSelecionado = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
+            $periodo = $this->periodResolver->resolve(['period_key' => $mesSelecionado->format('Y-m')]);
+        } else {
+            $mesSelecionado = $mesCorrente->copy();
+            $periodo = $this->periodResolver->resolve(['period_key' => 'current_month']);
+        }
+        $ehMesEmCurso = $mesSelecionado->equalTo($mesCorrente);
+
+        $bonusMeta = null;
+        if ($periodo['is_closed']) {
+            $bonusMeta = [
+                'competence_month' => $periodo['bonus_competence_month'] ?? $mesSelecionado->format('Y-m'),
+                'payment_month'    => $periodo['bonus_payment_month'] ?? $mesSelecionado->copy()->addMonthNoOverflow()->format('Y-m'),
+            ];
+        }
+
+        // ── Vínculos (contexto de serviço) + invalidadas da competência ──────
+        $contextoFiltro = $this->contextoFiltro($request);
+        $vinculos       = $this->carteiraContext->forUser($user, ['active' => true, 'setor' => $contextoFiltro['setor']]);
+        $porEmpresa     = $vinculos->groupBy('company_id');
+        $invalidadas    = BonusInvalidacao::companyIdsInvalidadas($mesSelecionado);
+
+        $companies = Company::whereIn('id', $porEmpresa->keys())
+            ->with('mlToken')
+            ->orderBy('name')
+            ->get();
+
+        $empresas = $companies->map(function ($c) use ($porEmpresa, $invalidadas, $periodo) {
+            $vs         = $porEmpresa->get($c->id, collect());
+            $ehElegivel = $vs->where('financial_metrics_eligible', true)->isNotEmpty();
+            $invalidada = $invalidadas->contains($c->id);
+
+            $servicos = $vs->map(fn ($v) => [
+                'servico_nome' => $v['servico_nome'],
+                'setor'        => $v['setor'],
+                'role_label'   => $v['role_label'],
+                'elegivel'     => $v['financial_metrics_eligible'],
+            ])->values();
+
+            $vinculoElegivel = $vs->firstWhere('financial_metrics_eligible', true);
+            $fonteFat        = $vinculoElegivel['financial_source'] ?? null;
+
+            $base = [
+                'id'                => $c->id,
+                'name'              => $c->name,
+                'has_ml_oauth'      => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+                'servicos'          => $servicos,
+                'fonte_faturamento' => $fonteFat,
+                'fonte_margem'      => $ehElegivel ? 'adman' : null,
+                'invalidada'        => $invalidada,
+            ];
+
+            // Empresa sem vínculo financeiro elegível (ex.: só-Shopee): não entra
+            // no financeiro — status 'sem_fonte' (não é problema de sync).
+            if (! $ehElegivel) {
+                return $base + [
+                    'faturamento'         => null,
+                    'faturamento_var_pct' => null,
+                    'margem_rs'           => null,
+                    'margem_rs_var_pct'   => null,
+                    'margem_pct'          => null,
+                    'margem_pct_var_pct'  => null,
+                    'diff_source'         => null,
+                    'status'              => 'sem_fonte',
+                ];
+            }
+
+            $r    = $this->admanDiffService->compute($c, $periodo);
+            $rev  = $r['metrics']['revenue'] ?? [];
+            $mRs  = $r['metrics']['contribution_margin_value'] ?? [];
+            $mPct = $r['metrics']['contribution_margin_pct'] ?? [];
+
+            $revVal = $rev['value'] ?? null;
+            $status = $invalidada
+                ? 'invalidada'
+                : ($revVal === null
+                    ? 'sem_dados'
+                    : ((($rev['diff_pct'] ?? null) === null && ($mRs['diff_pct'] ?? null) === null)
+                        ? 'sem_baseline'
+                        : ((($mPct['value'] ?? null) === null) ? 'parcial' : 'completo')));
+
+            return $base + [
+                'faturamento'         => $revVal !== null ? round((float) $revVal, 2) : null,
+                'faturamento_var_pct' => $rev['diff_pct'] ?? null,
+                'margem_rs'           => isset($mRs['value']) ? round((float) $mRs['value'], 2) : null,
+                'margem_rs_var_pct'   => $mRs['diff_pct'] ?? null,
+                'margem_pct'          => isset($mPct['value']) ? round((float) $mPct['value'], 2) : null,
+                'margem_pct_var_pct'  => $mPct['diff_pct'] ?? null,
+                'diff_source'         => $rev['diff_source'] ?? ($mRs['diff_source'] ?? null),
+                'status'              => $status,
+            ];
+        })->values();
+
+        return Inertia::render('Portfolio/Transparencia', [
+            'profissional' => ['id' => $user->id, 'name' => $user->name],
+            'modo'         => $modo,
+            'contexto'     => $contextoFiltro['param'],
+            'empresas'     => $empresas,
+            'resumo'       => [
+                'total_empresas'    => $empresas->count(),
+                'total_faturamento' => round((float) $empresas->sum(fn ($e) => $e['faturamento'] ?? 0), 2),
+                'total_margem_rs'   => round((float) $empresas->sum(fn ($e) => $e['margem_rs'] ?? 0), 2),
+                'invalidadas'       => $empresas->where('invalidada', true)->count(),
+                'por_status'        => $empresas->countBy('status'),
+            ],
+            'periodo' => [
+                'mes_selecionado' => $mesSelecionado->format('Y-m'),
+                'em_curso'        => $ehMesEmCurso,
+                'current_start'   => $periodo['current_start'],
+                'current_end'     => $periodo['current_end'],
+                'baseline_start'  => $periodo['baseline_start'],
+                'baseline_end'    => $periodo['baseline_end'],
+                'comparison_mode' => $periodo['comparison_mode'],
+                'is_closed'       => $periodo['is_closed'],
+            ],
+            'bonus' => $bonusMeta,
+        ]);
     }
 
     /**
