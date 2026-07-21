@@ -17,6 +17,8 @@ use App\Services\PlanoMetasPublicacaoService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -244,6 +246,24 @@ class PerformanceController extends Controller
 
         // ── Fase 106 Plan 02 (SC2) — expõe se há warm em andamento ──────────
         $aquecendo = ! empty($usuariosFrios);
+
+        // Dispatch do warm sob-demanda (Task 2) — só quando há ≥1 frio.
+        // Lock de 3min por mês evita empilhar job a cada poll de 6s do front
+        // (RESEARCH Pitfall 3, T-106-03): só o 1º request dentro da janela
+        // adquire o lock e dispara; requests seguintes (mesmo mês) veem o
+        // lock já ocupado e não disparam 2º job. `$usuariosFrios` vem da
+        // query interna já filtrada (nunca de input cru — T-106-04);
+        // `$mesReferencia` já validado por preg_match no bloco de resolução
+        // de mês acima.
+        if (! empty($usuariosFrios)) {
+            $lockKey = 'desempenho.warm.lock.' . $mesReferencia->format('Y-m');
+            if (Cache::add($lockKey, true, now()->addMinutes(3))) {
+                Artisan::queue('desempenho:warm-cache', [
+                    '--mes'  => $mesReferencia->format('Y-m'),
+                    '--user' => array_values(array_unique($usuariosFrios)),
+                ]);
+            }
+        }
 
         // DESEMP-10 · remove users sem carteira antes do sort.
         $rankingRaw = $rankingRaw->reject(fn ($r) => $r['sem_carteira'] === true);

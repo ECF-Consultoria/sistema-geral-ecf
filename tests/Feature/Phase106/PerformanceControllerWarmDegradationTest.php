@@ -198,8 +198,13 @@ class PerformanceControllerWarmDegradationTest extends TestCase
         $this->actingAsAdmin();
         $frio = $this->criarUserAnalista();
 
-        // Zero compute ao vivo — qualquer HTTP real estoura o teste.
+        // Zero compute ao vivo — qualquer HTTP real estoura o teste. Queue::fake()
+        // isola o dispatch do warm sob-demanda (Task 2, testado à parte) — sem
+        // fake, QUEUE_CONNECTION=sync (phpunit.xml) rodaria o Artisan::queue
+        // SINCRONAMENTE dentro da própria requisição, o que aqueceria o cache
+        // do frio ali mesmo e mascararia a prova de "zero compute na requisição".
         Http::preventStrayRequests();
+        Queue::fake();
 
         $response = $this->get('/performance?mes=2026-06');
         $response->assertStatus(200);
@@ -262,5 +267,81 @@ class PerformanceControllerWarmDegradationTest extends TestCase
         $this->assertNotNull($linha);
         $this->assertFalse($linha['calculando'] ?? true, 'modo em curso não deve gerar linha calculando');
         $this->assertFalse($props['aquecendo'] ?? true, 'modo em curso: gate não atua, aquecendo=false');
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // Task 2 — Dispatch do warm sob-demanda com lock anti-duplicação
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Extrai `func_get_args()` gravado em `QueuedCommand::$data` (protected) —
+     * `Illuminate\Foundation\Console\Kernel::queue()` chama
+     * `QueuedCommand::dispatch(func_get_args())`, então `$data[0]` é o nome do
+     * comando e `$data[1]` são os parâmetros (`--mes`/`--user`).
+     */
+    private function dadosDoJob(QueuedCommand $job): array
+    {
+        $ref = new \ReflectionProperty(QueuedCommand::class, 'data');
+        $ref->setAccessible(true);
+
+        return $ref->getValue($job);
+    }
+
+    public function test_frio_dispara_warm_sob_demanda_uma_vez(): void
+    {
+        Carbon::setTestNow('2026-07-15 10:00:00');
+        $this->actingAsAdmin();
+        $frio = $this->criarUserAnalista();
+
+        Queue::fake();
+
+        $response = $this->get('/performance?mes=2026-06');
+        $response->assertStatus(200);
+
+        Queue::assertPushed(QueuedCommand::class, 1);
+
+        Queue::assertPushed(QueuedCommand::class, function (QueuedCommand $job) use ($frio) {
+            $dados   = $this->dadosDoJob($job);
+            $comando = $dados[0] ?? null;
+            $params  = $dados[1] ?? [];
+
+            return $comando === 'desempenho:warm-cache'
+                && ($params['--mes'] ?? null) === '2026-06'
+                && in_array($frio->id, $params['--user'] ?? [], true);
+        });
+    }
+
+    public function test_segundo_request_nao_duplica_dispatch_por_causa_do_lock(): void
+    {
+        Carbon::setTestNow('2026-07-15 10:00:00');
+        $this->actingAsAdmin();
+        $this->criarUserAnalista();
+
+        Queue::fake();
+
+        $this->get('/performance?mes=2026-06')->assertStatus(200);
+        $this->get('/performance?mes=2026-06')->assertStatus(200);
+
+        Queue::assertPushed(QueuedCommand::class, 1);
+    }
+
+    public function test_todos_quentes_nao_dispara_warm(): void
+    {
+        Carbon::setTestNow('2026-07-15 10:00:00');
+        $this->actingAsAdmin();
+        $quente = $this->criarUserAnalista();
+
+        $mes = Carbon::createFromFormat('Y-m-d', '2026-06-01')->startOfMonth();
+        $this->preAquecerCache($quente, $mes, 4.0);
+
+        Queue::fake();
+
+        $response = $this->get('/performance?mes=2026-06');
+        $response->assertStatus(200);
+
+        $props = $this->propsDaResposta($response);
+        $this->assertFalse($props['aquecendo'] ?? true, 'todos quentes: aquecendo deve ser false');
+
+        Queue::assertNotPushed(QueuedCommand::class);
     }
 }
