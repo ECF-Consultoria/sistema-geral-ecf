@@ -90,7 +90,19 @@ class DesempenhoScoreServiceTest extends TestCase
 
         // Congela o "agora" no primeiro dia de agosto/2026 às 14:05 BRT —
         // depois do sync Adman D-1 (11:00), como no cron do consolidar-mes.
-        // Julho/2026 é o mês fechado; agosto/2026 é o corrente.
+        // Julho/2026 é o mês fechado; agosto/2026 é o corrente. Mantido em
+        // 2026-08-01 (não movido pra setembro): o filtro "empresa nova"
+        // (DESEMP-04, `computeVarFaturamento`) usa `$mes->subMonth()` como
+        // limite e as fixtures usam offsets RELATIVOS a `now()` (`-3 months`)
+        // — mover "agora" pra setembro empurraria esse offset para cima do
+        // limite (edge exato), quebrando testes financeiros sem relação com
+        // esta fase. Fase 105 (v18.0 · NPSWIN-01/02/04): a competência julho
+        // passa a ler o NPS de AGOSTO (M+1) — como "agora" ainda é
+        // 01/08 (início da janela M+1, ainda em coleta), os testes com NPS
+        // real movido pra agosto funcionam normalmente (nps > 0 não passa
+        // pela mecânica exclui-vs-penaliza); o único teste sensível ao
+        // boundary "M+1 já fechou?" (`test_nps_medio_e_zero...`) documenta a
+        // mudança de expectativa no próprio teste.
         Carbon::setTestNow(Carbon::parse('2026-08-01 14:05:00'));
 
         // Substitui MetricsProviderFactory por um stub controlável — isola
@@ -489,6 +501,17 @@ class DesempenhoScoreServiceTest extends TestCase
      * Cada empresa tem `adman_account_id` distinto — necessário pro
      * `AdmanMetricDiffService` conseguir montar a chave/chamada (custId vazio
      * = `emptyMetrics()` sem HTTP). Fixture DENSA (1 row/dia) — Pitfall 1.
+     *
+     * Fase 105 (v18.0 · NPSWIN-03/04) — deslocamento da janela de NPS.
+     * `computeNpsWindow()` (105-01) lê o NPS da competência FECHADA em M+1,
+     * não mais em M: a competência julho/2026 agora lê o NPS coletado em
+     * AGOSTO/2026 (não julho). As 4 respostas legacy [5,4,4,4] foram
+     * movidas de `completed_at` julho→agosto — a RÉGUA e a ARITMÉTICA não
+     * mudam (a média continua 4.25; `computeNpsMedio` filtra só pelo mês
+     * passado, que agora é agosto em vez de julho), então o golden
+     * (nps_medio 4.25 / nota_final 4.42 / faixa 'basico') permanece
+     * IDÊNTICO — só a JANELA de leitura do NPS mudou, provando que o
+     * dual-path e a régua seguem íntegros.
      */
     private function criarCarlosCompleto(): User
     {
@@ -518,11 +541,13 @@ class DesempenhoScoreServiceTest extends TestCase
 
         // NPS: 4 respostas legacy [5, 4, 4, 4] distribuídas — média 4.25 exata.
         // Distribuição: empresa 0 recebe 2 surveys (scores 5 e 4); empresas 1
-        // e 2 recebem 1 survey cada (score 4 em ambas).
-        $this->mockNpsRespostaPrincipal($empresas[0], '2026-07', 5);
-        $this->mockNpsRespostaPrincipal($empresas[0], '2026-07', 4);
-        $this->mockNpsRespostaPrincipal($empresas[1], '2026-07', 4);
-        $this->mockNpsRespostaPrincipal($empresas[2], '2026-07', 4);
+        // e 2 recebem 1 survey cada (score 4 em ambas). Fase 105 (NPSWIN-04):
+        // completed_at em AGOSTO (M+1 de julho), não mais julho — ver
+        // docblock desta função.
+        $this->mockNpsRespostaPrincipal($empresas[0], '2026-08', 5);
+        $this->mockNpsRespostaPrincipal($empresas[0], '2026-08', 4);
+        $this->mockNpsRespostaPrincipal($empresas[1], '2026-08', 4);
+        $this->mockNpsRespostaPrincipal($empresas[2], '2026-08', 4);
 
         return $carlos;
     }
@@ -620,8 +645,20 @@ class DesempenhoScoreServiceTest extends TestCase
     #[Test]
     public function test_nps_medio_e_zero_quando_user_sem_respostas_no_mes(): void
     {
-        // DESEMP-03 — user com carteira ativa mas ZERO NpsResponse no mês
-        // recebe nps_medio = 0.0 (penaliza, decisão da diretoria).
+        // DESEMP-03 (regra ORIGINAL, sem deslocamento) — user com carteira
+        // ativa mas ZERO NpsResponse no mês recebia nps_medio = 0.0
+        // (penaliza, decisão da diretoria).
+        //
+        // Fase 105 (v18.0 · NPSWIN-02) — FALLOUT ESPERADO: a competência
+        // julho agora lê o NPS de AGOSTO (M+1), não mais de julho. "agora" é
+        // 2026-08-01 (setUp) — a janela de agosto AINDA ESTÁ EM COLETA (só o
+        // dia 1 se passou), então `computeNpsWindow()` aplica a mecânica
+        // exclui-vs-penaliza (105-01) e retorna `null` (EXCLUÍDO — a
+        // competência ainda vai receber NPS), não mais `0.0`. Isto NÃO é
+        // regressão: é a semântica nova documentada em D1/105-CONTEXT.md —
+        // só passaria a penalizar (0.0) se a janela de agosto já tivesse
+        // fechado (ver `test_nps_medio_e_zero_com_m1_fechada_penaliza_com_0`
+        // logo abaixo, que cobre o caso 0.0 explicitamente).
         $u = $this->criarUserAnalista('Sem NPS');
         $c = $this->criarEmpresaNaCarteira($u, '-3 months');
 
@@ -632,22 +669,47 @@ class DesempenhoScoreServiceTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
+        $this->assertNull($r['componentes']['nps_medio'],
+            'Sem NpsResponse E janela M+1 (agosto) ainda em coleta → nps_medio = null (excluído, não penaliza ainda).');
+    }
+
+    #[Test]
+    public function test_nps_medio_e_zero_com_m1_fechada_penaliza_com_0(): void
+    {
+        // Fase 105 (v18.0 · NPSWIN-02) — complemento do teste acima: quando a
+        // janela M+1 (agosto) JÁ FECHOU e continua sem nenhuma resposta real,
+        // a mecânica exclui-vs-penaliza de `computeNpsWindow()` volta a
+        // penalizar com 0.0 — comportamento original de DESEMP-03 preservado,
+        // só que agora medido na janela de agosto (M+1), não julho.
+        Carbon::setTestNow(Carbon::parse('2026-09-01 14:05:00'));
+
+        $u = $this->criarUserAnalista('Sem NPS M+1 fechada');
+        $c = $this->criarEmpresaNaCarteira($u, '-3 months');
+
+        $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 10500, margem: 10250);
+        $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 10000, margem: 10000);
+
+        $service = app(DesempenhoScoreService::class);
+        $r = $service->compute($u, Carbon::parse('2026-07-01'));
+
         $this->assertSame(0.0, $r['componentes']['nps_medio'],
-            'Sem NpsResponse no mês → nps_medio = 0.0 (não null, penaliza).');
+            'Sem NpsResponse E janela M+1 (agosto) já fechou → nps_medio = 0.0 (penaliza).');
     }
 
     #[Test]
     public function test_nps_medio_e_media_das_notas_recebidas_no_mes(): void
     {
         // DESEMP-03 — user com 3 respostas legacy [5, 4, 3] → média 4.00.
+        // Fase 105 (NPSWIN-04): completed_at em AGOSTO — competência julho
+        // lê o NPS de M+1 (agosto). Régua/aritmética inalteradas.
         $u = $this->criarUserAnalista('Analista NPS 4.0');
         $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
 
-        $this->mockNpsRespostaPrincipal($c1, '2026-07', 5);
-        $this->mockNpsRespostaPrincipal($c2, '2026-07', 4);
-        $this->mockNpsRespostaPrincipal($c3, '2026-07', 3);
+        $this->mockNpsRespostaPrincipal($c1, '2026-08', 5);
+        $this->mockNpsRespostaPrincipal($c2, '2026-08', 4);
+        $this->mockNpsRespostaPrincipal($c3, '2026-08', 3);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
@@ -859,10 +921,11 @@ class DesempenhoScoreServiceTest extends TestCase
         $c2 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-2');
         $c3 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-PROMO-3');
 
-        // NPS 5.00 exato (3 respostas score_analista=5).
-        $this->mockNpsRespostaPrincipal($c1, '2026-07', 5);
-        $this->mockNpsRespostaPrincipal($c2, '2026-07', 5);
-        $this->mockNpsRespostaPrincipal($c3, '2026-07', 5);
+        // NPS 5.00 exato (3 respostas score_analista=5). Fase 105 (NPSWIN-04):
+        // completed_at em AGOSTO (M+1 de julho) — régua inalterada.
+        $this->mockNpsRespostaPrincipal($c1, '2026-08', 5);
+        $this->mockNpsRespostaPrincipal($c2, '2026-08', 5);
+        $this->mockNpsRespostaPrincipal($c3, '2026-08', 5);
 
         // Var faturamento: 4.75% (revenue prev 10.000/dia → current 10.475/dia,
         // ratio independe do comprimento da janela) → régua_fat 4 pts (1% a 5%).
@@ -998,7 +1061,8 @@ class DesempenhoScoreServiceTest extends TestCase
         // pctBaseline=2000/10000×100=20,00%; pctAtual=2750/11000×100=25,00%
         // (exato) → diff=(25,00-20,00)/20,00×100=+25,00% (>4% → 5 pts).
         foreach ([$c1, $c2, $c3] as $c) {
-            $this->mockNpsRespostaPrincipal($c, '2026-07', 5);
+            // Fase 105 (NPSWIN-04): completed_at em AGOSTO (M+1 de julho).
+            $this->mockNpsRespostaPrincipal($c, '2026-08', 5);
             $this->mockAdmanDiario(
                 $c,
                 '2026-07',

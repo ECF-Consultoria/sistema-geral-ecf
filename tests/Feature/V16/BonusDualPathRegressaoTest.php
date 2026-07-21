@@ -507,24 +507,26 @@ class BonusDualPathRegressaoTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // Test 5 — Fase 102 (BON-04/T-102-03): o cache foi bumpado para v5
+    // Test 5 — Fase 105 (v18.0 · NPSWIN-03/04, ex-BON-04/T-102-03): o cache
+    // foi bumpado para v6
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_cache_bumpado_para_v5(): void
+    public function test_cache_bumpado_para_v6(): void
     {
         // O bump é o que faz a correção APARECER. Sem ele o código novo sobe em
         // prod e o Redis continua devolvendo a nota antiga por até 7 dias no mês
         // fechado — o ranking /performance, os widgets e o PortfolioController
         // serviriam bônus errado sem nenhum sinal de erro.
         //
-        // Nota 2026-07-20 (Fase 102 · BON-01/02/03): o PAR de versões avança mais
-        // um passo — a v4 agora é a chave que fica órfã (representa a régua de
-        // baseline calendário + margem R$ absoluta, pré-MetricPeriodResolver/
-        // AdmanMetricDiffService), e a v5 é o alvo de gravação do cálculo por
-        // competência oficial. A chave passa a incluir `period_key` — a chave
-        // esperada vem do helper público `cacheKey()` (nunca hardcoded aqui),
-        // pois `$mesReferencia()` == mês corrente nesta suíte
+        // Fase 105 (v18.0 · NPSWIN-01/02, fallout esperado do bump v5→v6): o PAR
+        // de versões avança mais um passo — a v5 agora é a chave que fica órfã
+        // (representa a régua pré-deslocamento da janela de NPS, `nps_medio`
+        // lido do próprio mês em vez de M+1), e a v6 é o alvo de gravação do
+        // cálculo por competência oficial (`DesempenhoScoreService::
+        // computeNpsWindow()`, 105-01). A chave passa a incluir `period_key` — a
+        // chave esperada vem do helper público `cacheKey()` (nunca hardcoded
+        // aqui), pois `$mesReferencia()` == mês corrente nesta suíte
         // (`Carbon::setTestNow` congela agosto/2026) → period_key='current_month',
         // não 'YYYY-MM'.
         //
@@ -533,36 +535,36 @@ class BonusDualPathRegressaoTest extends TestCase
         $analista = $this->criarUserComCargo('Analista Cache', $this->cargoAnalistaId);
 
         $mes     = $this->mesReferencia();
-        $chaveV4 = sprintf('desempenho.compute.v4.%d.%s', $analista->id, $mes->format('Y-m'));
+        $chaveV5 = sprintf('desempenho.compute.v5.%d.%s', $analista->id, $mes->format('Y-m'));
 
         /** @var DesempenhoScoreService $service */
         $service = app(DesempenhoScoreService::class);
-        $chaveV5 = $service->cacheKey($analista->id, $mes);
+        $chaveV6 = $service->cacheKey($analista->id, $mes);
 
         // Lixo RECONHECÍVEL na chave antiga — representa o valor que prod tem hoje
-        // no Redis (nota calculada sob a régua de baseline/margem pré-Fase 102).
-        // Se `computeCached` ainda apontasse para a v4, ele devolveria este array
+        // no Redis (nota calculada sob a régua pré-deslocamento da janela de NPS).
+        // Se `computeCached` ainda apontasse para a v5, ele devolveria este array
         // em vez de recalcular.
-        Cache::put($chaveV4, ['nota_final' => 99.9], 600);
+        Cache::put($chaveV5, ['nota_final' => 99.9], 600);
 
         $resultado = $service->computeCached($analista, $mes);
 
-        // O valor v4 é IGNORADO: o retorno é o shape recalculado, não o lixo.
+        // O valor v5 é IGNORADO: o retorno é o shape recalculado, não o lixo.
         $this->assertNotSame(99.9, $resultado['nota_final'] ?? null,
-            'computeCached NÃO pode devolver o valor cacheado sob a chave v4');
+            'computeCached NÃO pode devolver o valor cacheado sob a chave v5');
         $this->assertNull($resultado['nota_final'],
             'o retorno deve ser o shape recalculado (sem carteira → nota_final null)');
         $this->assertTrue($resultado['sem_carteira']);
         $this->assertSame($analista->id, $resultado['user_id']);
 
-        // A v5 passou a existir — é onde o valor novo é gravado a partir de agora.
-        $this->assertTrue(Cache::has($chaveV5),
-            'computeCached deve gravar o resultado sob a chave desempenho.compute.v5 (via helper cacheKey())');
+        // A v6 passou a existir — é onde o valor novo é gravado a partir de agora.
+        $this->assertTrue(Cache::has($chaveV6),
+            'computeCached deve gravar o resultado sob a chave desempenho.compute.v6 (via helper cacheKey())');
 
-        // A v4 fica intacta e ÓRFÃ: expira sozinha por TTL. Nenhum `cache:clear`
+        // A v5 fica intacta e ÓRFÃ: expira sozinha por TTL. Nenhum `cache:clear`
         // é adicionado a script algum, e o WarmDesempenhoCache (cron 8min)
-        // repopula a v5 sozinho.
-        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV4),
-            'a chave v4 não é apagada — vira órfã e expira por TTL');
+        // repopula a v6 sozinho.
+        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV5),
+            'a chave v5 não é apagada — vira órfã e expira por TTL');
     }
 }
