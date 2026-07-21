@@ -320,7 +320,7 @@ if (!empty($usuariosFrios)) {
 
 **Se esta tabela estivesse vazia:** não está — as 3 assunções acima precisam de confirmação leve (rodar `php artisan tinker` ou um teste manual do `Artisan::queue()` com array option) antes ou durante a execução do plan; nenhuma é bloqueante para começar a implementação.
 
-## Open Questions
+## Open Questions (RESOLVED — travadas nos plans: Q1 aceita salto, Q2 teto ~20, Q3 cron intocado)
 
 1. **A linha "calculando…" deve manter a posição do ranking anterior (mês fechado já consolidado antes) ou ficar sem posição até resolver?**
    - O que sabemos: o `sortByDesc(nota_final ?? -1)` empurra `null` para o fim — Pitfall 4 documenta o "salto visual".
