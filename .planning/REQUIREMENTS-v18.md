@@ -40,10 +40,10 @@
 
 ### UIP — UI de período (Fase 104)
 
-- [ ] **UIP-01**: O ranking `/performance` e a carteira exibem um toggle/segmento de contexto de período: "Em curso" / "Bônus atual" / "Mês fechado" (+ mês específico) — rótulos sem jargão
-- [ ] **UIP-02**: O payload Inertia dessas telas carrega `periodo` (janelas + label) e, no modo bônus, `bonus.competence_month`/`payment_month`; a tela mostra a competência avaliada e o mês de pagamento
-- [ ] **UIP-03**: Filtro de período nas telas de resultado do núcleo (carteira individual, consolidada, ranking); toda comparação exibida vem da janela resolvida, não de cálculo próprio da tela
-- [ ] **UIP-04**: A tela indica claramente quando está em modo operacional/parcial vs. oficial de bônus (para não confundir número em curso com número de pagamento)
+- [x] **UIP-01**: O ranking `/performance` e a carteira exibem um toggle/segmento de contexto de período: "Em curso" / "Bônus atual" / "Mês fechado" (+ mês específico) — rótulos sem jargão
+- [x] **UIP-02**: O payload Inertia dessas telas carrega `periodo` (janelas + label) e, no modo bônus, `bonus.competence_month`/`payment_month`; a tela mostra a competência avaliada e o mês de pagamento
+- [x] **UIP-03**: Filtro de período nas telas de resultado do núcleo (carteira individual, consolidada, ranking); toda comparação exibida vem da janela resolvida, não de cálculo próprio da tela
+- [x] **UIP-04**: A tela indica claramente quando está em modo operacional/parcial vs. oficial de bônus (para não confundir número em curso com número de pagamento)
 
 ## Critérios de aceite globais (do plano canônico)
 
@@ -83,9 +83,9 @@
 | CAR-01 | Fase 103 | Complete |
 | CAR-02 | Fase 103 | Complete |
 | CAR-03 | Fase 103 | Complete |
-| UIP-01 | Fase 104 | Pending |
-| UIP-02 | Fase 104 | Pending |
-| UIP-03 | Fase 104 | Pending |
-| UIP-04 | Fase 104 | Pending |
+| UIP-01 | Fase 104 | Complete |
+| UIP-02 | Fase 104 | Complete |
+| UIP-03 | Fase 104 | Complete |
+| UIP-04 | Fase 104 | Complete |
 
 **Cobertura:** 23/23 requirements v18.0 mapeados ✓ — zero órfãos, zero duplicatas.
