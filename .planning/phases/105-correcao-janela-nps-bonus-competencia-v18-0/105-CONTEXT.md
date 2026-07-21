@@ -39,3 +39,7 @@ Decisão: **congelar no FIM do mês de coleta.** A competência M fecha ao fim d
 
 ## Validação pós-fix (prod)
 Felipe competência junho → ~3.5 (NPS julho 4.97 + margem -2.37%), não 1.5. Rodar por profissional antes de comunicar ao time.
+
+## Adendo (usuário 2026-07-21): propósito da aba "Em curso"
+
+A aba "Em curso" (mês atual) **CONTINUA existindo** — mas o propósito dela é **acompanhar o desempenho das empresas AO VIVO, no dia a dia** (financeiro/operacional em tempo quase-real), NÃO é preview de bônus. Por isso não tem NPS (NPS é componente de bônus e só vem no mês seguinte). Confirma D1: "Em curso" sem NPS é correto/esperado. Implicação UI (Fase 104-tweak): rotular "Em curso" como monitoramento operacional, não como nota de bônus; esconder o card de NPS (via componentes_disponiveis['nps_medio']=false quando null). A régua de bônus oficial fica só no "Bônus atual"/mês fechado.
