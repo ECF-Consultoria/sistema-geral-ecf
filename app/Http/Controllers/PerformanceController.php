@@ -12,6 +12,7 @@ use App\Models\Publicacao;
 use App\Models\Servico;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
+use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\PlanoMetasPublicacaoService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -21,7 +22,10 @@ use Inertia\Inertia;
 
 class PerformanceController extends Controller
 {
-    public function __construct(private DesempenhoScoreService $scoreService) {}
+    public function __construct(
+        private DesempenhoScoreService $scoreService,
+        private MetricPeriodResolver $periodResolver,
+    ) {}
 
     public function index(Request $request)
     {
@@ -79,14 +83,46 @@ class PerformanceController extends Controller
         // DESEMP-10 · users com sem_carteira=true são REMOVIDOS do ranking.
         // Identifica cargo (analista/estrategista) via user_setores → cargos
         // (fonte da verdade desde quick 260610-f69). users.role eh legacy.
+        //
+        // Fase 104 (UIP-02/UIP-03) — `?modo=` é conveniência de UI que decide
+        // QUAL mês vira `$mesReferencia`; NÃO cria segundo score (DESEMP-02),
+        // só escolhe o parâmetro passado ao `computeCached()` já existente.
+        // `$periodoResolvido` é a ÚNICA chamada a `MetricPeriodResolver::resolve()`
+        // desta página (1× nível de página) — fonte tanto de `$mesReferencia`
+        // (quando `modo=bonus_atual`) quanto do payload `periodo`/`bonus` mais
+        // abaixo. NÃO ler periodo do sub-array de `compute()` (só 6 chaves,
+        // sem `is_closed`/`bonus_*`).
+        $modo = $request->query('modo');
+        if (!in_array($modo, ['em_curso', 'bonus_atual'], true)) {
+            $modo = null;
+        }
+
         $mesQuery = $request->query('mes');
         $mesCorrente = Carbon::now()->startOfMonth();
-        if ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+        if ($modo === 'bonus_atual') {
+            $periodoResolvido = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+            $mesReferencia = Carbon::parse($periodoResolvido['bonus_competence_month'] . '-01')->startOfMonth();
+        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
             $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
+            $periodoResolvido = $this->periodResolver->resolve(['period_key' => $mesReferencia->format('Y-m')]);
         } else {
             $mesReferencia = $mesCorrente->copy();
+            $periodoResolvido = $this->periodResolver->resolve(['period_key' => 'current_month']);
         }
         $ehMesEmCurso = $mesReferencia->equalTo($mesCorrente);
+
+        // `bonus` só existe quando o período resolvido é FECHADO. `last_closed_month`
+        // já popula `bonus_competence_month`/`bonus_payment_month` no resolver; o
+        // modo mês-específico (`?mes=YYYY-MM`, `closed_period`) não popula essas
+        // chaves (bônus oficial é SÓ `last_closed_month`) — deriva da própria
+        // competência selecionada (mês auditado) + mês seguinte (pagamento).
+        $bonusMeta = null;
+        if ($periodoResolvido['is_closed']) {
+            $bonusMeta = [
+                'competence_month' => $periodoResolvido['bonus_competence_month'] ?? $mesReferencia->format('Y-m'),
+                'payment_month'    => $periodoResolvido['bonus_payment_month'] ?? $mesReferencia->copy()->addMonthNoOverflow()->format('Y-m'),
+            ];
+        }
 
         $cargosPorUser = DB::table('user_setores as us')
             ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
@@ -259,6 +295,12 @@ class PerformanceController extends Controller
             // decide o que destacar/filtrar usando os metadados já presentes
             // em cada linha do `ranking` (sem novo round-trip ao backend).
             'contexto'           => $contextoFiltro['param'],
+            // Fase 104 (UIP-02/UIP-03) — objeto periodo do MetricPeriodResolver
+            // (shape completo, 14 chaves incl. is_closed/bonus_*), substitui a
+            // string estática que só existia no dashboardCarteira (linha 563,
+            // fora de escopo). `bonus` só não-null em período fechado.
+            'periodo'            => $periodoResolvido,
+            'bonus'              => $bonusMeta,
         ]);
     }
 
