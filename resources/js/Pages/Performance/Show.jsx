@@ -95,6 +95,13 @@ function formatPercent(v) {
     return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
 }
 
+// 'YYYY-MM-DD' → 'DD/MM' (para o intervalo de baseline no banner de mês fechado).
+function fmtDia(iso) {
+    if (!iso) return '';
+    const s = String(iso);
+    return `${s.slice(8, 10)}/${s.slice(5, 7)}`;
+}
+
 // ─── Card de parâmetro ───────────────────────────────────────────────────
 function ParametroCard({ icone: Icone, titulo, valor, sublabel, accentColor = 'ecf-yellow', emBreve = false, trendDir }) {
     return (
@@ -288,20 +295,32 @@ export default function PerformanceShow({
     user,
     resultado = {},
     mes_selecionado,
-    mes_fechado,
+    modo = null,
     meses_disponiveis = [],
+    periodo = null,
+    bonus = null,
+    nps_window = null,
+    empresas_invalidadas = 0,
 }) {
     const c = resultado?.componentes ?? {};
     const semCarteira = resultado?.sem_carteira === true;
+    const isClosed = periodo?.is_closed === true;
 
-    // Handler de troca de mês (query param).
-    const trocarMes = (iso) => {
-        router.get(
-            route('performance.show', user.id),
-            { mes: iso },
-            { preserveState: false, preserveScroll: true },
-        );
-    };
+    // Modo ativo do segmento (mesmo contrato do ranking).
+    const modoAtivo = modo === 'bonus_atual' ? 'bonus_atual' : (isClosed ? 'mes_fechado' : 'em_curso');
+
+    // Sublabel do card de NPS — reflete o modelo de 2 meses (janela M+1).
+    const npsSublabel = modoAtivo === 'em_curso'
+        ? 'Mês em curso ainda sem NPS — piso 1,0 até a coleta do mês seguinte.'
+        : (nps_window?.collection_month
+            ? `Média das respostas coletadas em ${mesExtenso(nps_window.collection_month)} (escala 1-5).`
+            : 'Média das respostas NPS da competência (escala 1-5).');
+
+    const irPara = (params) => router.get(
+        route('performance.show', user.id), params,
+        { preserveState: false, preserveScroll: true },
+    );
+    const trocarMes = (ym) => irPara({ mes: ym });
 
     return (
         <AppLayout title={`Desempenho — ${user?.name ?? 'Analista'}`}>
@@ -332,43 +351,116 @@ export default function PerformanceShow({
                         </div>
                     </div>
 
-                    {/* Toggle de mês fechado (D-19) */}
-                    {Array.isArray(meses_disponiveis) && meses_disponiveis.length > 0 && (
-                        <div className="flex items-center gap-2">
-                            <label className="text-white/50 text-xs">Mês:</label>
+                    {/* Segmento de período — MESMO contrato do ranking (Fase 2) */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                        <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] p-0.5 text-[13px]">
+                            <button
+                                type="button"
+                                onClick={() => irPara({})}
+                                className={cn('px-3 h-8 rounded-lg transition-colors',
+                                    modoAtivo === 'em_curso' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
+                            >
+                                Em curso
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => irPara({ modo: 'bonus_atual' })}
+                                className={cn('px-3 h-8 rounded-lg transition-colors',
+                                    modoAtivo === 'bonus_atual' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
+                            >
+                                Bônus atual
+                            </button>
+                            <button
+                                type="button"
+                                disabled={meses_disponiveis.length === 0}
+                                onClick={() => meses_disponiveis.length && trocarMes(meses_disponiveis[0])}
+                                className={cn('px-3 h-8 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed',
+                                    modoAtivo === 'mes_fechado' ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80')}
+                                title={meses_disponiveis.length === 0 ? 'Nenhum mês fechado disponível ainda' : undefined}
+                            >
+                                Mês fechado
+                            </button>
+                        </div>
+
+                        {modoAtivo === 'mes_fechado' && meses_disponiveis.length > 0 && (
                             <select
-                                value={mes_selecionado ?? ''}
+                                value={String(mes_selecionado ?? '').slice(0, 7)}
                                 onChange={(e) => trocarMes(e.target.value)}
-                                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
+                                className="appearance-none h-8 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
                             >
                                 {meses_disponiveis.map(m => (
                                     <option key={m} value={m}>{mesExtenso(m)}</option>
                                 ))}
                             </select>
-                        </div>
-                    )}
+                        )}
+                    </div>
                 </div>
 
-                {/* Banner "mês em curso — dados parciais" (Ajuste 2026-07-09) */}
-                {!semCarteira && resultado?.periodo_meta?.em_curso && (
-                    <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
-                            <Calendar size={16} className="text-amber-300" />
-                        </div>
-                        <div className="text-sm">
-                            <div className="text-amber-200 font-semibold">
-                                Mês em curso — dados parciais
+                {/* Banner de contexto de período (Fase 2 · mesmo modelo do ranking) */}
+                {!semCarteira && (
+                    modoAtivo === 'bonus_atual' ? (
+                        <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] p-4 flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-ecf-yellow/15 flex items-center justify-center shrink-0">
+                                <Trophy size={16} className="text-ecf-yellow" />
                             </div>
-                            <div className="text-amber-100/70 text-xs mt-1 leading-relaxed">
-                                As variações de faturamento e margem comparam
-                                <span className="text-white font-medium"> dia 1 até {resultado.periodo_meta.dias_decorridos} </span>
-                                do mês atual com o
-                                <span className="text-white font-medium"> mesmo intervalo do mês anterior </span>
-                                — comparação justa dia-a-dia.
-                                A nota consolidada oficial (usada para bônus) só é calculada quando o mês fecha
-                                ({resultado.periodo_meta.dias_no_mes} dias completos).
+                            <div className="text-sm">
+                                <div className="text-ecf-yellow font-semibold">
+                                    Bônus atual — competência {mesExtenso(bonus?.competence_month)}
+                                    {bonus?.payment_month && <>, pago em {mesExtenso(bonus.payment_month)}</>}
+                                </div>
+                                <div className="text-white/60 text-xs mt-1 leading-relaxed">
+                                    Usa os resultados financeiros de <span className="text-white font-medium">{mesExtenso(bonus?.competence_month)}</span> comparados
+                                    com a janela anterior de mesmo tamanho, e o <span className="text-white font-medium">NPS coletado em {mesExtenso(nps_window?.collection_month)}</span>
+                                    {nps_window?.status === 'coletando' ? ' (ainda em coleta)' : ' (coleta encerrada)'}.
+                                    O NPS pertence ao mês de coleta seguinte à competência financeira.
+                                </div>
                             </div>
                         </div>
+                    ) : modoAtivo === 'em_curso' ? (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/[0.06] p-4 flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-amber-500/15 flex items-center justify-center shrink-0">
+                                <Calendar size={16} className="text-amber-300" />
+                            </div>
+                            <div className="text-sm">
+                                <div className="text-amber-200 font-semibold">
+                                    Mês em curso — acompanhamento operacional
+                                </div>
+                                <div className="text-amber-100/70 text-xs mt-1 leading-relaxed">
+                                    Não é fechamento de bônus. As variações comparam
+                                    <span className="text-white font-medium"> dia 1 até a data disponível </span>
+                                    contra o <span className="text-white font-medium">mesmo intervalo do mês anterior</span>.
+                                    O NPS deste mês só é coletado no mês seguinte — até lá entra com <span className="text-white font-medium">piso 1,0</span>.
+                                </div>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="rounded-xl border border-white/[0.1] bg-white/[0.03] p-4 flex items-start gap-3">
+                            <div className="w-8 h-8 rounded-lg bg-white/[0.06] flex items-center justify-center shrink-0">
+                                <Calendar size={16} className="text-white/50" />
+                            </div>
+                            <div className="text-sm">
+                                <div className="text-white/80 font-semibold">
+                                    Mês fechado — {mesExtenso(String(mes_selecionado).slice(0, 7))}
+                                </div>
+                                <div className="text-white/50 text-xs mt-1 leading-relaxed">
+                                    Comparação contra a janela anterior oficial (mesmo tamanho).
+                                    {periodo?.baseline_start && periodo?.baseline_end && (
+                                        <> Baseline: {fmtDia(periodo.baseline_start)}–{fmtDia(periodo.baseline_end)}.</>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )
+                )}
+
+                {/* Empresas invalidadas para bônus nesta competência (item 3/4) */}
+                {!semCarteira && empresas_invalidadas > 0 && (
+                    <div className="rounded-xl border border-red-500/25 bg-red-500/[0.06] px-4 py-2.5 flex items-center gap-2 text-sm text-red-200">
+                        <Info size={14} className="text-red-300 shrink-0" />
+                        <span>
+                            <strong>{empresas_invalidadas}</strong> empresa{empresas_invalidadas > 1 ? 's' : ''} invalidada{empresas_invalidadas > 1 ? 's' : ''} para bônus nesta competência —
+                            removida{empresas_invalidadas > 1 ? 's' : ''} do financeiro e do NPS desta nota.
+                        </span>
                     </div>
                 )}
 
@@ -391,7 +483,7 @@ export default function PerformanceShow({
                                 icone={Star}
                                 titulo="NPS médio"
                                 valor={c.nps_medio != null ? Number(c.nps_medio).toFixed(2) : '—'}
-                                sublabel="Média das respostas NPS no mês (escala 0-5). Sem respostas → 0."
+                                sublabel={npsSublabel}
                                 accentColor="ecf-yellow"
                             />
 

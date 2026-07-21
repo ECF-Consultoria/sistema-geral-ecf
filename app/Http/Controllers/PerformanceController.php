@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AdmanMetric;
+use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\DesempenhoScoreSnapshot;
 use App\Models\Meeting;
@@ -102,37 +103,15 @@ class PerformanceController extends Controller
         // (quando `modo=bonus_atual`) quanto do payload `periodo`/`bonus` mais
         // abaixo. NÃO ler periodo do sub-array de `compute()` (só 6 chaves,
         // sem `is_closed`/`bonus_*`).
-        $modo = $request->query('modo');
-        if (!in_array($modo, ['em_curso', 'bonus_atual'], true)) {
-            $modo = null;
-        }
-
-        $mesQuery = $request->query('mes');
-        $mesCorrente = Carbon::now()->startOfMonth();
-        if ($modo === 'bonus_atual') {
-            $periodoResolvido = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
-            $mesReferencia = Carbon::parse($periodoResolvido['bonus_competence_month'] . '-01')->startOfMonth();
-        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
-            $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
-            $periodoResolvido = $this->periodResolver->resolve(['period_key' => $mesReferencia->format('Y-m')]);
-        } else {
-            $mesReferencia = $mesCorrente->copy();
-            $periodoResolvido = $this->periodResolver->resolve(['period_key' => 'current_month']);
-        }
-        $ehMesEmCurso = $mesReferencia->equalTo($mesCorrente);
-
-        // `bonus` só existe quando o período resolvido é FECHADO. `last_closed_month`
-        // já popula `bonus_competence_month`/`bonus_payment_month` no resolver; o
-        // modo mês-específico (`?mes=YYYY-MM`, `closed_period`) não popula essas
-        // chaves (bônus oficial é SÓ `last_closed_month`) — deriva da própria
-        // competência selecionada (mês auditado) + mês seguinte (pagamento).
-        $bonusMeta = null;
-        if ($periodoResolvido['is_closed']) {
-            $bonusMeta = [
-                'competence_month' => $periodoResolvido['bonus_competence_month'] ?? $mesReferencia->format('Y-m'),
-                'payment_month'    => $periodoResolvido['bonus_payment_month'] ?? $mesReferencia->copy()->addMonthNoOverflow()->format('Y-m'),
-            ];
-        }
+        // Fase 1 do plano de otimização (2026-07-21): a resolução de período
+        // saiu daqui pro helper `resolveContextoPeriodo()` — FONTE ÚNICA
+        // compartilhada com `show()`. `$bonus`/`$nps` já vêm prontos.
+        $ctx              = $this->resolveContextoPeriodo($request);
+        $mesReferencia    = $ctx['mesReferencia'];
+        $mesCorrente      = $ctx['mesCorrente'];
+        $periodoResolvido = $ctx['periodo'];
+        $ehMesEmCurso     = $ctx['ehMesEmCurso'];
+        $bonusMeta        = $ctx['bonus'];
 
         $cargosPorUser = DB::table('user_setores as us')
             ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
@@ -1138,30 +1117,74 @@ class PerformanceController extends Controller
      *  - `desempenho_score_snapshots` filtrado por `user_id` + `mes_referencia`
      *     não-null + `>= 2026-08-01` (DESEMP-14).
      */
+    /**
+     * Resolve o CONTEXTO DE PERÍODO das telas de desempenho a partir de
+     * `?modo=`/`?mes=YYYY-MM` — FONTE ÚNICA (Fase 1 do plano de otimização
+     * 2026-07-21). Reusado por `index()` (ranking) e `show()` (individual) para
+     * o MESMO contrato de período/bônus; o `MetricPeriodResolver` é a única
+     * fonte das janelas (nenhum controller monta baseline à mão).
+     *
+     *  - `bonus_atual` → último mês fechado (competência do bônus).
+     *  - `?mes=YYYY-MM` (mês fechado específico) → aquele mês.
+     *  - default → mês em curso (current_month, operacional).
+     *
+     * @return array{modo: ?string, mesReferencia: Carbon, mesCorrente: Carbon,
+     *   periodo: array, ehMesEmCurso: bool, bonus: ?array, nps: ?array}
+     */
+    private function resolveContextoPeriodo(Request $request): array
+    {
+        $modo = $request->query('modo');
+        if (! in_array($modo, ['em_curso', 'bonus_atual'], true)) {
+            $modo = null;
+        }
+
+        $mesQuery    = $request->query('mes');
+        $mesCorrente = Carbon::now()->startOfMonth();
+
+        if ($modo === 'bonus_atual') {
+            $periodo       = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+            $mesReferencia = Carbon::parse($periodo['bonus_competence_month'] . '-01')->startOfMonth();
+        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+            $mesReferencia = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
+            $periodo       = $this->periodResolver->resolve(['period_key' => $mesReferencia->format('Y-m')]);
+        } else {
+            $mesReferencia = $mesCorrente->copy();
+            $periodo       = $this->periodResolver->resolve(['period_key' => 'current_month']);
+        }
+
+        $ehMesEmCurso = $mesReferencia->equalTo($mesCorrente);
+
+        // Bônus só existe em período FECHADO. Competência = mês financeiro M;
+        // pagamento = M+1 (após encerrar a coleta de NPS de M+1).
+        $bonus = null;
+        $nps   = null;
+        if ($periodo['is_closed']) {
+            $bonus = [
+                'competence_month' => $periodo['bonus_competence_month'] ?? $mesReferencia->format('Y-m'),
+                'payment_month'    => $periodo['bonus_payment_month'] ?? $mesReferencia->copy()->addMonthNoOverflow()->format('Y-m'),
+            ];
+            // Janela de NPS: a competência M usa o NPS coletado em M+1 (Fase 105).
+            $mesNps = $mesReferencia->copy()->addMonthNoOverflow();
+            $nps = [
+                'collection_month' => $mesNps->format('Y-m'),
+                'collection_start' => $mesNps->copy()->startOfMonth()->toDateString(),
+                'collection_end'   => $mesNps->copy()->endOfMonth()->toDateString(),
+                // 'fechada' quando o mês de coleta já terminou; senão ainda 'coletando'.
+                'status'           => now()->startOfDay()->gte($mesNps->copy()->endOfMonth()->startOfDay())
+                    ? 'fechada' : 'coletando',
+            ];
+        }
+
+        return compact('modo', 'mesReferencia', 'mesCorrente', 'periodo', 'ehMesEmCurso', 'bonus', 'nps');
+    }
+
     public function show(Request $request, User $user): \Inertia\Response
     {
-        // Meses fechados disponíveis para este user (DESEMP-14 · >= 2026-08-01).
-        $mesesFechados = DesempenhoScoreSnapshot::mensal()
-            ->where('user_id', $user->id)
-            ->whereDate('mes_referencia', '>=', '2026-08-01')
-            ->orderByDesc('mes_referencia')
-            ->pluck('mes_referencia')
-            ->map(fn ($d) => Carbon::parse($d)->toDateString())
-            ->unique()
-            ->values();
-
-        $mesFechadoMaisRecente = $mesesFechados->first(); // string YYYY-MM-01 ou null
-
-        // Mês selecionado — via query, com fallback para o mais recente fechado
-        // ou para o mês em curso quando ainda não há fechamento.
-        $mesQuery = $request->query('mes');
-        if ($mesQuery && preg_match('/^\d{4}-\d{2}-\d{2}$/', $mesQuery)) {
-            $mesSelecionado = Carbon::parse($mesQuery)->startOfMonth();
-        } elseif ($mesFechadoMaisRecente) {
-            $mesSelecionado = Carbon::parse($mesFechadoMaisRecente)->startOfMonth();
-        } else {
-            $mesSelecionado = Carbon::now()->startOfMonth();
-        }
+        // Fase 2 do plano de otimização (2026-07-21) — MESMO contrato de período
+        // do ranking (`?modo=em_curso|bonus_atual`, `?mes=YYYY-MM`) via a fonte
+        // única `resolveContextoPeriodo()`. Substitui o seletor antigo de mês.
+        $ctx           = $this->resolveContextoPeriodo($request);
+        $mesReferencia = $ctx['mesReferencia'];
 
         // Resolve cargo canônico via user_setores → cargos (padrão do projeto).
         $cargoRow = DB::table('user_setores as us')
@@ -1173,18 +1196,36 @@ class PerformanceController extends Controller
         $cargoSlug  = $cargoRow?->slug ?? ($user->isMentor() ? 'estrategista' : 'analista');
         $cargoLabel = $cargoSlug === 'estrategista' ? 'Estrategista' : 'Analista';
 
-        // Tenta usar snapshot mensal do mês selecionado; senão compute() on-the-fly.
+        // Tenta usar snapshot mensal do mês selecionado; senão compute() cacheado.
         $snap = DesempenhoScoreSnapshot::mensal()
             ->where('user_id', $user->id)
-            ->whereDate('mes_referencia', $mesSelecionado->toDateString())
+            ->whereDate('mes_referencia', $mesReferencia->toDateString())
             ->first();
 
         if ($snap && is_array($snap->breakdown_json) && isset($snap->breakdown_json['componentes'])) {
             $resultado = $snap->breakdown_json;
         } else {
             // Ajuste 2026-07-10 (audit performance-lentidao): cacheado.
-            $resultado = $this->scoreService->computeCached($user, $mesSelecionado);
+            $resultado = $this->scoreService->computeCached($user, $mesReferencia);
         }
+
+        // Meses fechados disponíveis para o dropdown (DESEMP-14 · >= 2026-08-01),
+        // em 'Y-m' pra bater com o `?mes=` do contrato novo.
+        $mesesFechados = DesempenhoScoreSnapshot::mensal()
+            ->where('user_id', $user->id)
+            ->whereDate('mes_referencia', '>=', '2026-08-01')
+            ->orderByDesc('mes_referencia')
+            ->pluck('mes_referencia')
+            ->map(fn ($d) => Carbon::parse($d)->format('Y-m'))
+            ->unique()
+            ->values();
+
+        // Empresas invalidadas para bônus nesta competência (item 3/4) que
+        // saíram da conta DESTE profissional.
+        $invalidadasComp   = BonusInvalidacao::companyIdsInvalidadas($mesReferencia);
+        $invalidadasDoUser = $invalidadasComp->isEmpty()
+            ? 0
+            : $user->companies()->pluck('companies.id')->intersect($invalidadasComp)->count();
 
         return Inertia::render('Performance/Show', [
             'user' => [
@@ -1194,10 +1235,14 @@ class PerformanceController extends Controller
                 'cargo_slug'  => $cargoSlug,
                 'cargo_label' => $cargoLabel,
             ],
-            'resultado'         => $resultado,
-            'mes_selecionado'   => $mesSelecionado->toDateString(),
-            'mes_fechado'       => $mesFechadoMaisRecente,
-            'meses_disponiveis' => $mesesFechados->values(),
+            'resultado'            => $resultado,
+            'mes_selecionado'      => $mesReferencia->toDateString(),
+            'modo'                 => $ctx['modo'],
+            'meses_disponiveis'    => $mesesFechados,
+            'periodo'              => $ctx['periodo'],
+            'bonus'                => $ctx['bonus'],
+            'nps_window'           => $ctx['nps'],
+            'empresas_invalidadas' => $invalidadasDoUser,
         ]);
     }
 }
