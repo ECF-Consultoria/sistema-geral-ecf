@@ -995,6 +995,24 @@ Plans:
 
 **UI hint**: yes
 
+### Phase 105: Correção — janela do NPS no bônus por competência (v18.0)
+
+**Goal:** O componente NPS do bônus de competência M passa a ler as respostas coletadas em M+1 (o mês de pagamento) — não as do próprio mês M. Regra do usuário 2026-07-21: "o NPS rodando AGORA (julho) conta pra nota de junho paga este mês; o NPS de agosto contará pro bônus de julho". O financeiro (faturamento/margem) continua na competência M; só o NPS é deslocado +1 mês.
+**Requirements**: NPSWIN-01 (a definir na fase)
+**Depends on:** Phase 102 (computeOficial/closed-month), Phase 100 (resolver — pode precisar de uma janela de NPS separada da financeira)
+**Origem:** bug exposto pela validação numérica pós-deploy da v18 — Felipe competência junho deu 1.50 (NPS lido de junho=0 respostas→0.0) quando deveria ser ~3.5 (NPS lido de julho=13 respostas→4.97). Confirmado em prod 2026-07-21.
+
+**Success Criteria** (a refinar no discuss/research — escopo aberto por decisão do usuário):
+
+1. computeOficial(M) lê o componente NPS das atribuições coletadas em M+1 (não em M); financeiro segue em M
+2. Decisão de escopo pendente (discuss): a regra +1 vale só pro bônus oficial de mês fechado, ou também pra tela "Em curso"? Impacto em snapshots e no caminho operacional (byte-idêntico à v17) a mapear
+3. Regressões preservadas: score único, elegibilidade financeira, o caminho operacional atual não regride sem decisão explícita
+4. Validação numérica em prod pós-fix: os profissionais com NPS coletado em M+1 refletem o número correto (Felipe junho ~3.5, não 1.5)
+
+Plans:
+
+- [ ] TBD (discuss-phase primeiro — escopo aberto)
+
 ## Dependências — Milestone v18.0 (Fases 100-104)
 
 - **100** (`MetricPeriodResolver`) e **101** (`AdmanMetricDiffService`) são fundação independente uma da outra — nenhuma depende da outra; podem ser planejadas/executadas em paralelo
