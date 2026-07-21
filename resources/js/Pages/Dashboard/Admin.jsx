@@ -2,18 +2,16 @@ import AppLayout from '@/Layouts/AppLayout';
 import { router, Link } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
 import {
-    AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
-    XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList
+    AreaChart, Area, PieChart, Pie, Cell,
+    XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import {
-    Star, Users, Award,
-    DollarSign, BarChart2, Clock, Tv, X, Trophy, ChevronRight, TrendingUp,
+    Star, Users,
+    DollarSign, BarChart2, Tv, X, TrendingUp,
     ExternalLink, Loader2, AlertTriangle,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
-// Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS no mês corrente
-import NpsPendingWidget from '@/Components/Nps/NpsPendingWidget';
 // Fase 97 Plan 03 (DASH-97-1/DASH-97-2) — painel de filtros rascunho→aplicar
 // + chips + fix da navegação do marketplace. PERIOD_OPTIONS reexportado daqui
 // para o modo TV (abaixo) e o header usarem o MESMO conjunto de períodos.
@@ -235,7 +233,7 @@ export default function AdminDashboard({
                 <div className="grid grid-cols-5 gap-3 shrink-0">
                     {[
                         { title: 'Empresas', value: s.total_companies, icon: Users, color: 'blue', sub: 'Carteira ativa Performance' },
-                        { title: 'TACOS Médio', value: formatPercent(s.avg_tacos), icon: BarChart2, color: 'yellow', sub: 'Últimos 30 dias · Adman' },
+                        { title: 'Margem méd.', value: formatPercent(s.avg_margin), icon: BarChart2, color: 'yellow', sub: 'Ponderada por faturamento' },
                         { title: 'NPS Score', value: (s.avg_nps ?? 0).toFixed(2), icon: Star, color: 'green', sub: `Média ${(s.avg_nps ?? 0).toFixed(2)}/5` },
                         { title: 'Invest. Ads (30d)', value: formatCurrency(s.total_ad_investment_30d), icon: TrendingUp, color: 'red', sub: 'Últimos 30 dias · Adman' },
                         { title: 'Faturamento', value: formatCurrency(s.total_revenue), icon: DollarSign, color: 'purple', sub: 'Últimos 30 dias · Adman' },
@@ -265,39 +263,22 @@ export default function AdminDashboard({
                         </div>
                     </div>
 
-                    <div className="flex flex-col gap-3">
-                        <div className="card-ecf rounded-2xl p-5 flex flex-col flex-1 min-h-0">
-                            <div className="flex items-center justify-between mb-3">
-                                <p className="text-white/60 text-xs font-semibold tracking-wide uppercase">NPS</p>
-                                <span className={cn('text-lg font-display font-extrabold', npsScore >= 50 ? 'text-green-400' : npsScore >= 0 ? 'text-ecf-yellow' : 'text-red-400')}>
-                                    {npsTotal > 0 ? npsScore : '—'}
-                                </span>
-                            </div>
-                            <div className="flex-1">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <PieChart>
-                                        <Pie data={npsDataFilled} cx="50%" cy="50%" innerRadius="38%" outerRadius="72%" dataKey="value" strokeWidth={0}>
-                                            {npsDataFilled.map((e, i) => <Cell key={i} fill={e.color} />)}
-                                        </Pie>
-                                        {npsTotal > 0 && <Tooltip {...chartStyle.tooltip} />}
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </div>
+                    <div className="card-ecf rounded-2xl p-5 flex flex-col min-h-0">
+                        <div className="flex items-center justify-between mb-3">
+                            <p className="text-white/60 text-xs font-semibold tracking-wide uppercase">NPS</p>
+                            <span className={cn('text-lg font-display font-extrabold', npsScore >= 50 ? 'text-green-400' : npsScore >= 0 ? 'text-ecf-yellow' : 'text-red-400')}>
+                                {npsTotal > 0 ? npsScore : '—'}
+                            </span>
                         </div>
-
-                        <div className="card-ecf rounded-2xl p-5 flex flex-col flex-1 min-h-0">
-                            <p className="text-white/60 text-xs font-semibold tracking-wide uppercase mb-3">TACOS</p>
-                            <div className="flex-1">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart data={tacos_chart}>
-                                        <CartesianGrid {...chartStyle.grid} />
-                                        <XAxis dataKey="date" {...chartStyle.axis} />
-                                        <YAxis {...chartStyle.axis} tickFormatter={v => `${v}%`} />
-                                        <Tooltip {...chartStyle.tooltip} formatter={v => [`${v}%`, 'TACOS']} />
-                                        <Bar dataKey="tacos" fill="#ffe600" radius={[3, 3, 0, 0]} />
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
+                        <div className="flex-1">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie data={npsDataFilled} cx="50%" cy="50%" innerRadius="38%" outerRadius="72%" dataKey="value" strokeWidth={0}>
+                                        {npsDataFilled.map((e, i) => <Cell key={i} fill={e.color} />)}
+                                    </Pie>
+                                    {npsTotal > 0 && <Tooltip {...chartStyle.tooltip} />}
+                                </PieChart>
+                            </ResponsiveContainer>
                         </div>
                     </div>
                 </div>
@@ -307,53 +288,40 @@ export default function AdminDashboard({
 
     /* ── NORMAL MODE ─────────────────────────────────────── */
     return (
-        <AppLayout title="Dashboard">
-            <div className="space-y-6 max-w-[1400px]">
+        <AppLayout title="Dashboard Mercado Livre">
+            <div className="space-y-5 max-w-[1400px]">
 
-                {/* Filters bar — Fase 97 Plan 03 (DASH-97-1/DASH-97-2): painel
-                    rascunho→aplicar + chips, com fix da navegação do marketplace
-                    embutido em `applyFilters` (definido acima). */}
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <FiltrosDashboard
-                        period={period}
-                        filters={filters}
-                        companiesList={companies_list}
-                        gruposList={grupos_list}
-                        analistas={analistas}
-                        estrategistas={estrategistas}
-                        combinacoes={combinacoes}
-                        onApply={applyFilters}
-                    />
+                {/* Cabeçalho do setor — Fase 97 (mock): ícone gradiente + título
+                    "Mercado Livre" + subtítulo, e à direita o indicador de
+                    atualização (D-1 Adman) + Modo TV. */}
+                <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div className="flex items-center gap-3">
+                        <div
+                            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                            style={{ background: 'linear-gradient(150deg,#ffe600,#ffc400)', boxShadow: '0 6px 20px rgba(255,214,0,.28)' }}
+                        >
+                            <TrendingUp size={22} className="text-[#12151c]" strokeWidth={2.4} />
+                        </div>
+                        <div>
+                            <p className="text-white font-display font-extrabold text-xl tracking-tight leading-tight">Mercado Livre</p>
+                            <p className="text-white/40 text-[12.5px] font-medium">Dashboard operacional do setor · ECF</p>
+                        </div>
+                    </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                        {/* Fase 97 Plan 04 — estado REAL de "carregando": pill visível
-                            enquanto uma navegação Inertia (aplicar filtro/remover chip)
-                            está em andamento (`router.on('start'/'finish')`, sem toggle
-                            de demo). */}
+                        {/* Estado REAL de "carregando" (navegação Inertia em andamento). */}
                         {isNavigating && (
                             <div className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-ecf-yellow/20 bg-ecf-yellow/[0.06] text-ecf-yellow text-[12px] font-semibold">
                                 <Loader2 size={12} className="animate-spin" />
                                 Atualizando…
                             </div>
                         )}
-                        {/* Phase 61-05 — Legenda `stats.source_counts` (DASH-04/DATA-05).
-                            Ordem canônica ML → Agregado → Adman → Sem integração. */}
-                        {sourceCounts && (
-                            <div className="flex items-center gap-2 text-[11px] text-white/50 flex-wrap" data-testid="dashboard-source-legend">
-                                <span className="uppercase tracking-wider">Fontes:</span>
-                                {sourceCounts.ml > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="ml" />{sourceCounts.ml}</span>}
-                                {sourceCounts.unified > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="unified" />{sourceCounts.unified}</span>}
-                                {sourceCounts.adman > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="adman" />{sourceCounts.adman}</span>}
-                                {sourceCounts.none > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="none" />{sourceCounts.none}</span>}
-                            </div>
-                        )}
-                        {/* Badge D-1 da Adman — substitui o antigo botão "Sincronizar agora"
-                            (Phase 16, SC-5/SC-7). Sync é automático 1×/dia às 11h BRT. */}
+                        {/* Indicador de atualização (D-1 Adman) — "Atualizado há X" do mock. */}
                         <div
                             title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. Sincronização automática diária às 11h."
                             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/50 text-[12px]"
                         >
-                            <Clock size={12} />
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]" />
                             {adman_last_sync
                                 ? `Atualizado em ${adman_last_sync.label} · D-1 da Adman`
                                 : 'D-1 da Adman · sem sync ainda'}
@@ -365,6 +333,32 @@ export default function AdminDashboard({
                             <Tv size={13} /> Modo TV
                         </button>
                     </div>
+                </div>
+
+                {/* Filtros — Fase 97 Plan 03 (DASH-97-1/2): painel rascunho→aplicar
+                    + chips, com fix da navegação do marketplace em `applyFilters`. */}
+                <div className="flex items-center gap-3 flex-wrap">
+                    <FiltrosDashboard
+                        period={period}
+                        filters={filters}
+                        companiesList={companies_list}
+                        gruposList={grupos_list}
+                        analistas={analistas}
+                        estrategistas={estrategistas}
+                        combinacoes={combinacoes}
+                        onApply={applyFilters}
+                    />
+                    {/* Phase 61-05 — Legenda multi-fonte (só renderiza com a flag
+                        `metrics.unified_metrics_enabled` ligada). */}
+                    {sourceCounts && (
+                        <div className="flex items-center gap-2 text-[11px] text-white/50 flex-wrap ml-auto" data-testid="dashboard-source-legend">
+                            <span className="uppercase tracking-wider">Fontes:</span>
+                            {sourceCounts.ml > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="ml" />{sourceCounts.ml}</span>}
+                            {sourceCounts.unified > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="unified" />{sourceCounts.unified}</span>}
+                            {sourceCounts.adman > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="adman" />{sourceCounts.adman}</span>}
+                            {sourceCounts.none > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="none" />{sourceCounts.none}</span>}
+                        </div>
+                    )}
                 </div>
 
                 {/* Fase 97 Plan 04 — estado REAL de "erro" (sem toggle de demo):
@@ -506,121 +500,17 @@ export default function AdminDashboard({
                     })}
                 </div>
 
-                {/* Charts row 1 */}
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                    {/* Fase 97 Plan 04 (DASH-97-4) — "Evolução no período" com abas
-                        Faturamento/Margem (D4), hover interativo (tooltip + Pico/Menor).
-                        Substitui a AreaChart fixa de Faturamento (Plan 97-01/02/03). */}
-                    <div className="lg:col-span-2">
-                        <ChartEvolucao
-                            revenueChart={revenue_chart}
-                            marginChart={margin_chart}
-                            periodLabel={periodLabel}
-                            companiesCount={s.total_companies}
-                            companyName={empresaFiltrada?.name ?? null}
-                        />
-                    </div>
-
-                    {/* Performance da equipe (substituiu NPS Distribuição em 2026-06-23).
-                        BarChart horizontal: 1 barra por membro do setor Performance,
-                        comprimento proporcional ao score 0-100. Click leva pra carteira
-                        individual. Cores por classificação (excelente/bom/atenção/crítico). */}
-                    <div className="card-ecf rounded-2xl p-6">
-                        {/* Cabeçalho clicável — navega para /performance via Inertia Link */}
-                        <Link
-                            href={route('performance.index')}
-                            className="group block mb-5"
-                        >
-                            <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1 flex items-center gap-1.5 group-hover:text-white/70 transition-colors">
-                                <Award size={12} /> Desempenho da equipe
-                            </p>
-                            <div className="flex items-baseline gap-2">
-                                <p className="text-white font-display font-extrabold text-lg tracking-tight group-hover:text-ecf-yellow transition-colors">Score por membro</p>
-                                <span className="text-white/40 text-[11px]">
-                                    · {performance_equipe.length} {performance_equipe.length === 1 ? 'pessoa' : 'pessoas'}
-                                </span>
-                                <ChevronRight size={14} className="text-white/20 group-hover:text-ecf-yellow/60 transition-colors ml-auto self-center" />
-                            </div>
-                        </Link>
-                        {performance_equipe.length === 0 ? (
-                            <div className="h-[260px] flex items-center justify-center">
-                                <p className="text-white/20 text-sm">Sem dados de score</p>
-                            </div>
-                        ) : (
-                            <div style={{ height: Math.max(200, performance_equipe.length * 36) }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <BarChart
-                                        data={performance_equipe}
-                                        layout="vertical"
-                                        margin={{ top: 5, right: 50, left: 0, bottom: 5 }}
-                                        onClick={(e) => {
-                                            const id = e?.activePayload?.[0]?.payload?.id;
-                                            if (id) router.visit(route('portfolio.show', id));
-                                        }}
-                                    >
-                                        <XAxis type="number" domain={[0, 100]} hide />
-                                        <YAxis
-                                            type="category"
-                                            dataKey="name"
-                                            width={130}
-                                            tick={{ fill: 'rgba(255,255,255,0.6)', fontSize: 11 }}
-                                            axisLine={false}
-                                            tickLine={false}
-                                        />
-                                        <Tooltip
-                                            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
-                                            contentStyle={{
-                                                backgroundColor: 'rgba(15,16,22,0.95)',
-                                                border: '1px solid rgba(255,255,255,0.12)',
-                                                borderRadius: 8,
-                                                fontSize: 12,
-                                                color: 'rgba(255,255,255,0.9)',
-                                            }}
-                                            labelStyle={{ color: 'rgba(255,255,255,0.95)', fontWeight: 600, marginBottom: 4 }}
-                                            itemStyle={{ color: 'rgba(255,255,255,0.85)' }}
-                                            formatter={(value, _name, props) => {
-                                                // Ajuste 2026-07-09: exibe nota real (1-5) em vez de "pts" (0-100).
-                                                // O value do bar é score (0-100 = nota × 20); dividimos por 20 para
-                                                // mostrar a nota que o time entende.
-                                                const p = props?.payload ?? {};
-                                                const nota = p.nota_final != null ? Number(p.nota_final).toFixed(2) : '—';
-                                                const faixa = p.faixa_bonus ?? '';
-                                                const faixaLabel = {
-                                                    maximo:        'Máximo',
-                                                    intermediario: 'Intermediário',
-                                                    basico:        'Básico',
-                                                    sem_bonus:     'Sem bônus',
-                                                }[faixa] ?? faixa;
-                                                return [`${nota} / 5,00 · ${faixaLabel}`, 'Nota'];
-                                            }}
-                                        />
-                                        <Bar
-                                            dataKey="score"
-                                            radius={[4, 4, 4, 4]}
-                                            cursor="pointer"
-                                        >
-                                            {performance_equipe.map((m, i) => (
-                                                <Cell key={i} fill={
-                                                    m.classificacao === 'excelente' ? '#10b981'
-                                                    : m.classificacao === 'bom'       ? '#3b82f6'
-                                                    : m.classificacao === 'atencao'   ? '#f59e0b'
-                                                    : '#ef4444'
-                                                } />
-                                            ))}
-                                            <LabelList
-                                                dataKey="nota_final"
-                                                position="right"
-                                                fill="rgba(255,255,255,0.85)"
-                                                fontSize={11}
-                                                formatter={(v) => v != null ? Number(v).toFixed(2) : '—'}
-                                            />
-                                        </Bar>
-                                    </BarChart>
-                                </ResponsiveContainer>
-                            </div>
-                        )}
-                    </div>
-                </div>
+                {/* Fase 97 — "Evolução no período" em LARGURA TOTAL (mock): abas
+                    Faturamento/Margem (D4) + hover (tooltip + Pico/Menor). O
+                    BarChart horizontal antigo de "Desempenho da equipe" foi
+                    REMOVIDO — o card "Score da equipe" (abaixo) é o substituto. */}
+                <ChartEvolucao
+                    revenueChart={revenue_chart}
+                    marginChart={margin_chart}
+                    periodLabel={periodLabel}
+                    companiesCount={s.total_companies}
+                    companyName={empresaFiltrada?.name ?? null}
+                />
 
                 {/* Fase 97 Plan 04 (DASH-97-5/DASH-97-6) — linha 2.1fr/1fr do mockup:
                     "NPS ruim" (carrossel) + "Score da equipe" (nota 0-5 + breakdown,
@@ -634,73 +524,12 @@ export default function AdminDashboard({
                     total e CONDICIONAL (o próprio componente retorna null se vazio). */}
                 <NovasEmpresas empresas={novas_empresas} />
 
-                {/* Charts row 2 */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                    {/* TACOS */}
-                    <div className="card-ecf rounded-2xl p-6">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1">TACOS</p>
-                        <p className="text-white font-display font-extrabold text-lg mb-5 tracking-tight">Média por período</p>
-                        {tacos_chart.length === 0 ? (
-                            <div className="h-[200px] flex items-center justify-center">
-                                <p className="text-white/20 text-sm">Sem dados para exibir</p>
-                            </div>
-                        ) : (
-                            <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={tacos_chart}>
-                                    <CartesianGrid {...chartStyle.grid} />
-                                    <XAxis dataKey="date" {...chartStyle.axis} />
-                                    <YAxis {...chartStyle.axis} tickFormatter={v => `${v}%`} />
-                                    <Tooltip {...chartStyle.tooltip} formatter={v => [`${v}%`, 'TACOS']} />
-                                    <Bar dataKey="tacos" fill="#ffe600" radius={[4, 4, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        )}
-                    </div>
-
-                    {/* Companies table */}
-                    <div className="card-ecf rounded-2xl p-6">
-                        <p className="text-white/50 text-[11px] font-semibold tracking-widest uppercase mb-1">Empresas</p>
-                        <p className="text-white font-display font-extrabold text-lg mb-5 tracking-tight">Performance por empresa</p>
-                        <div className="space-y-2.5 max-h-[200px] overflow-y-auto">
-                            {(companies_performance || []).length === 0 ? (
-                                <p className="text-white/20 text-sm text-center py-6">Nenhuma empresa com dados</p>
-                            ) : (
-                                companies_performance.map(c => (
-                                    <div key={c.id} className="flex items-center justify-between py-2.5 border-b border-white/[0.04] last:border-0">
-                                        <div>
-                                            {/* Phase 18 W5-T4 — Badge "Cust ID Inválido" inline ao lado do nome */}
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <p className="text-white/80 text-[13px] font-semibold">{c.name}</p>
-                                                <CustIdInvalidoBadge status={c.cust_id_status} />
-                                                {/* Phase 61-05 (DATA-05) — badge de fonte por linha; guard `c.source &&` mantém backward compat flag OFF */}
-                                                {c.source && <SourceBadge variant={c.source} />}
-                                            </div>
-                                            <p className="text-white/30 text-xs mt-0.5">{c.consultor ?? '—'} / {c.estrategista ?? '—'}</p>
-                                        </div>
-                                        <div className="text-right space-y-0.5">
-                                            <p className="text-[11px] text-white/30">
-                                                TACOS <span className="text-ecf-yellow font-bold">{c.tacos ? formatPercent(c.tacos) : '—'}</span>
-                                            </p>
-                                            <p className="text-[11px] text-white/30">
-                                                Fat <span className="text-blue-400 font-bold">{c.revenue ? formatCurrency(c.revenue) : '—'}</span>
-                                            </p>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-
-                {/* Quick 260623 — "Ranking Analistas e Mentores" removido: widget
-                    legado usava avg_nps como métrica única; substituído pelo
-                    "Desempenho da equipe" (BarChart por score acima). Cobertura
-                    completa do ranking continua disponível em /performance. */}
-
-                {/* Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS este mês.
-                    Recebe lista via prop nps_pendentes (Plan 72-02 injection). Empty state
-                    tratado dentro do próprio widget — sempre é seguro renderizar. */}
-                <NpsPendingWidget pendentes={nps_pendentes ?? []} />
+                {/* Fase 97 (rework 2026-07-21) — os widgets antigos "TACOS média
+                    por período", "Performance por empresa" (tabela) e "Empresas
+                    pendentes de NPS" foram REMOVIDOS desta dashboard para bater com
+                    o mock: o dado de TACOS/empresa vive no drill-down (KPIs linkam
+                    para /companies e /performance) e o NPS pendente foi superado
+                    pelo card "NPS ruim". */}
 
                 </div>
                 )}
