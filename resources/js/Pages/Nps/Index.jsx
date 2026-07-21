@@ -1186,12 +1186,12 @@ function FaltantesView({ faltantes = [], onGerarLink }) {
             }}>
                 <AlertCircle size={14} style={{ color: '#5b8def', flexShrink: 0 }} />
                 <span>
-                    <strong style={{ color: '#eef' }}>{faltantes.length}</strong> empresa{faltantes.length === 1 ? '' : 's'} ainda sem link de NPS neste mês
+                    <strong style={{ color: '#eef' }}>{faltantes.length}</strong> NPS ainda sem link neste mês (por empresa e modelo)
                 </span>
             </div>
             <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
                 {faltantes.map((c) => (
-                    <div key={c.company_id} style={{
+                    <div key={`${c.company_id}-${c.template_id ?? 'x'}`} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                         padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
                     }}>
@@ -1201,6 +1201,15 @@ function FaltantesView({ faltantes = [], onGerarLink }) {
                                 color: '#eef', fontSize: 13.5, fontWeight: 600,
                                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                             }}>{c.name}</span>
+                            {c.modelo && (
+                                <span title={c.modelo} style={{
+                                    flexShrink: 0, padding: '2px 8px', borderRadius: 6,
+                                    background: 'rgba(91,141,239,0.12)',
+                                    border: '1px solid rgba(91,141,239,0.25)',
+                                    color: '#9cc0ff', fontSize: 11, fontWeight: 600,
+                                    whiteSpace: 'nowrap',
+                                }}>{c.modelo}</span>
+                            )}
                         </div>
                         {onGerarLink && (
                             <button
