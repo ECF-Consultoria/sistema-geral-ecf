@@ -349,51 +349,64 @@ class NpsController extends Controller
             'pendentes'   => max(0, $totalGeral - $respondidos - $expirados),
         ];
 
-        // ─── Faltantes por (empresa, modelo) — Bugfix 2026-07-21 ─────────────
-        // Cada NPS é POR MODELO (serviço coberto). "Faltante" = par
-        // (empresa, modelo aplicável) SEM survey desse modelo no mês.
+        // ─── Faltantes por (empresa, SETOR) — Bugfix 2026-07-21 (v2) ─────────
+        // NPS é conceitualmente por SETOR de serviço (Mercado Livre/performance
+        // e Shopee), não por modelo. Em produção há 2 modelos automáticos que
+        // cobrem os MESMOS serviços de performance ("NPS Performance" is_default
+        // + "NPS Mentoria"), então o cálculo por MODELO contava cada empresa de
+        // ML duas vezes (132 empresas × 2 modelos + 28 Shopee = 292). Bug
+        // reportado: "Todos" mostrava 292 e no Faltantes toda empresa aparecia
+        // 2×. Agrupando por SETOR a empresa aparece 1× por setor que participa
+        // (132 performance + 28 shopee = 160), com o modelo REPRESENTANTE do
+        // setor (is_default vence). Uma empresa só aparece 2× se estiver nos
+        // dois setores (ML + Shopee).
         //
-        // Antes o cálculo era por EMPRESA (excluía quem tivesse QUALQUER survey
-        // no mês), o que escondia gaps por serviço: uma empresa com o NPS de ML
-        // respondido mas sem o de Shopee sumia dos faltantes — inclusive para o
-        // responsável Shopee. Bug reportado: "By Mobile" não aparecia para o
-        // Matheus Estrela (Shopee dela) porque ela já tinha o survey de ML no
-        // mês. Agora o gap é detectado por modelo/serviço.
-        //
-        // Universo por modelo M = empresa ativa com contrato ATIVO em serviço
-        // coberto por M (mesma regra do nps:disparar-mensal). Respeita carteira
-        // (não-admin) + filtro de empresa + filtro de pessoa POR SERVIÇO: a
-        // pessoa precisa ser responsável (role) da empresa num serviço coberto
-        // por M — ou consolidada (servico_id NULL). NÃO usa o filtro de MODELO
-        // do topo (cada par já carrega o seu modelo).
+        // Universo do setor = empresa ativa com contrato ATIVO em serviço
+        // daquele setor coberto por um modelo automático (mesma régua do
+        // nps:disparar-mensal). Respeita carteira (não-admin) + filtro de
+        // empresa + filtro de pessoa POR SERVIÇO do setor (ou consolidada,
+        // servico_id NULL). "Tem survey" no setor = survey de QUALQUER modelo
+        // que cobre o setor.
         $autoModelos = \App\Models\NpsTemplate::query()
             ->where('active', true)
             ->where('envio_automatico_mensal', true)
-            ->with('servicos:id')
+            ->with('servicos')
             ->get();
 
-        // Filtro de pessoa por serviço (reaproveitado por modelo).
-        $filtroPessoaFaltante = function ($q, int $personId, string $role, $servicoIds) {
+        // Agrupa por setor: serviços cobertos, modelos que cobrem o setor e o
+        // modelo representante (is_default vence; senão o primeiro visto).
+        $setores = [];
+        foreach ($autoModelos as $m) {
+            foreach ($m->servicos as $s) {
+                $setores[$s->setor]['servicoIds'][]  = $s->id;
+                $setores[$s->setor]['templateIds'][] = $m->id;
+                if (!isset($setores[$s->setor]['modeloNome']) || $m->is_default) {
+                    $setores[$s->setor]['modeloNome'] = $m->nome;
+                    $setores[$s->setor]['templateId'] = $m->id;
+                }
+            }
+        }
+
+        // Filtro de pessoa por serviço (reaproveitado por setor).
+        $filtroPessoaFaltante = function ($q, int $personId, string $role, array $servicoIds) {
             $q->whereHas('users', function ($u) use ($personId, $role, $servicoIds) {
                 $u->where('users.id', $personId)
                   ->where('company_users.role', $role)
                   ->where(function ($w) use ($servicoIds) {
                       $w->whereNull('company_users.servico_id')
-                        ->orWhereIn('company_users.servico_id', $servicoIds->all());
+                        ->orWhereIn('company_users.servico_id', $servicoIds);
                   });
             });
         };
 
         $faltantes = [];
-        foreach ($autoModelos as $modelo) {
-            $servicoIds = $modelo->servicos->pluck('id');
-            if ($servicoIds->isEmpty()) {
-                continue; // modelo sem serviços cobertos não gera faltante
-            }
+        foreach ($setores as $setor => $info) {
+            $servicoIds  = array_values(array_unique($info['servicoIds']));
+            $templateIds = array_values(array_unique($info['templateIds']));
 
             $q = Company::query()
                 ->where('active', true)
-                ->whereHas('contratosServico', fn ($c) => $c->active()->whereIn('servico_id', $servicoIds->all()));
+                ->whereHas('contratosServico', fn ($c) => $c->active()->whereIn('servico_id', $servicoIds));
 
             if (!$user->isAdmin()) {
                 $q->whereIn('id', $user->companies()->pluck('companies.id'));
@@ -408,9 +421,9 @@ class NpsController extends Controller
                 $filtroPessoaFaltante($q, $analistaId, 'consultor', $servicoIds);
             }
 
-            // Empresas que JÁ têm survey DESTE modelo no mês (qualquer status).
-            $comSurveyDoModelo = NpsSurvey::query()
-                ->where('template_id', $modelo->id)
+            // Empresas que JÁ têm survey de QUALQUER modelo deste setor no mês.
+            $comSurvey = NpsSurvey::query()
+                ->whereIn('template_id', $templateIds)
                 ->where(function ($s) use ($mesInicio, $mesFim) {
                     $s->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
                       ->orWhere(function ($ss) use ($mesInicio, $mesFim) {
@@ -421,14 +434,15 @@ class NpsController extends Controller
                 ->distinct()
                 ->pluck('company_id');
 
-            $q->whereNotIn('id', $comSurveyDoModelo);
+            $q->whereNotIn('id', $comSurvey);
 
             foreach ($q->get(['id', 'name']) as $c) {
                 $faltantes[] = [
                     'company_id'  => $c->id,
                     'name'        => $c->name,
-                    'modelo'      => $modelo->nome,
-                    'template_id' => $modelo->id,
+                    'modelo'      => $info['modeloNome'],
+                    'template_id' => $info['templateId'],
+                    'setor'       => $setor,
                 ];
             }
         }
