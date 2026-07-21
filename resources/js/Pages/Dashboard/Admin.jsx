@@ -289,26 +289,28 @@ export default function AdminDashboard({
     /* ── NORMAL MODE ─────────────────────────────────────── */
     return (
         <AppLayout title="Dashboard Mercado Livre">
-            <div className="space-y-5 max-w-[1400px]">
+            <div className="relative space-y-5 max-w-[1400px]">
 
-                {/* Cabeçalho do setor — Fase 97 (mock): ícone gradiente + título
-                    "Mercado Livre" + subtítulo, e à direita o indicador de
-                    atualização (D-1 Adman) + Modo TV. */}
-                <div className="flex items-start justify-between gap-4 flex-wrap">
-                    <div className="flex items-center gap-3">
-                        <div
-                            className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                            style={{ background: 'linear-gradient(150deg,#ffe600,#ffc400)', boxShadow: '0 6px 20px rgba(255,214,0,.28)' }}
-                        >
-                            <TrendingUp size={22} className="text-[#12151c]" strokeWidth={2.4} />
-                        </div>
-                        <div>
-                            <p className="text-white font-display font-extrabold text-xl tracking-tight leading-tight">Mercado Livre</p>
-                            <p className="text-white/40 text-[12.5px] font-medium">Dashboard operacional do setor · ECF</p>
-                        </div>
-                    </div>
+                {/* Glow de identidade — brilho suave contido no container (não
+                    vaza pra sidebar). Dá o "ar" da marca sem poluir. */}
+                <div className="pointer-events-none absolute -top-20 right-4 h-72 w-72 rounded-full blur-[120px] opacity-[0.07] bg-ecf-yellow" />
+                <div className="pointer-events-none absolute top-40 -left-10 h-64 w-64 rounded-full blur-[120px] opacity-[0.05] bg-blue-500" />
 
-                    <div className="flex items-center gap-2 shrink-0">
+                {/* Barra de filtros + controles. Cabeçalho/ícone removidos a
+                    pedido (2026-07-21) — a dashboard entra direto no conteúdo. */}
+                <div className="relative flex items-center gap-3 flex-wrap">
+                    <FiltrosDashboard
+                        period={period}
+                        filters={filters}
+                        companiesList={companies_list}
+                        gruposList={grupos_list}
+                        analistas={analistas}
+                        estrategistas={estrategistas}
+                        combinacoes={combinacoes}
+                        onApply={applyFilters}
+                    />
+
+                    <div className="flex items-center gap-2 shrink-0 ml-auto">
                         {/* Estado REAL de "carregando" (navegação Inertia em andamento). */}
                         {isNavigating && (
                             <div className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-ecf-yellow/20 bg-ecf-yellow/[0.06] text-ecf-yellow text-[12px] font-semibold">
@@ -316,7 +318,17 @@ export default function AdminDashboard({
                                 Atualizando…
                             </div>
                         )}
-                        {/* Indicador de atualização (D-1 Adman) — "Atualizado há X" do mock. */}
+                        {/* Phase 61-05 — Legenda multi-fonte (só com a flag ligada). */}
+                        {sourceCounts && (
+                            <div className="flex items-center gap-2 text-[11px] text-white/50 flex-wrap" data-testid="dashboard-source-legend">
+                                <span className="uppercase tracking-wider">Fontes:</span>
+                                {sourceCounts.ml > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="ml" />{sourceCounts.ml}</span>}
+                                {sourceCounts.unified > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="unified" />{sourceCounts.unified}</span>}
+                                {sourceCounts.adman > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="adman" />{sourceCounts.adman}</span>}
+                                {sourceCounts.none > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="none" />{sourceCounts.none}</span>}
+                            </div>
+                        )}
+                        {/* Indicador de atualização (D-1 Adman). */}
                         <div
                             title="Dados defasados em 1 dia — a API Adman publica D-1 ao redor das 10h BRT. Sincronização automática diária às 11h."
                             className="inline-flex items-center gap-1.5 h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-white/50 text-[12px]"
@@ -333,32 +345,6 @@ export default function AdminDashboard({
                             <Tv size={13} /> Modo TV
                         </button>
                     </div>
-                </div>
-
-                {/* Filtros — Fase 97 Plan 03 (DASH-97-1/2): painel rascunho→aplicar
-                    + chips, com fix da navegação do marketplace em `applyFilters`. */}
-                <div className="flex items-center gap-3 flex-wrap">
-                    <FiltrosDashboard
-                        period={period}
-                        filters={filters}
-                        companiesList={companies_list}
-                        gruposList={grupos_list}
-                        analistas={analistas}
-                        estrategistas={estrategistas}
-                        combinacoes={combinacoes}
-                        onApply={applyFilters}
-                    />
-                    {/* Phase 61-05 — Legenda multi-fonte (só renderiza com a flag
-                        `metrics.unified_metrics_enabled` ligada). */}
-                    {sourceCounts && (
-                        <div className="flex items-center gap-2 text-[11px] text-white/50 flex-wrap ml-auto" data-testid="dashboard-source-legend">
-                            <span className="uppercase tracking-wider">Fontes:</span>
-                            {sourceCounts.ml > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="ml" />{sourceCounts.ml}</span>}
-                            {sourceCounts.unified > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="unified" />{sourceCounts.unified}</span>}
-                            {sourceCounts.adman > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="adman" />{sourceCounts.adman}</span>}
-                            {sourceCounts.none > 0 && <span className="inline-flex items-center gap-1"><SourceBadge variant="none" />{sourceCounts.none}</span>}
-                        </div>
-                    )}
                 </div>
 
                 {/* Fase 97 Plan 04 — estado REAL de "erro" (sem toggle de demo):
@@ -470,31 +456,39 @@ export default function AdminDashboard({
                         };
 
                         return (
-                            <div key={k.key} className="relative card-ecf rounded-2xl p-4 flex flex-col gap-2.5 overflow-hidden">
-                                <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: k.topBar }} />
-                                <div className="flex items-center justify-between gap-2">
-                                    <p className="text-white/40 text-[10.5px] font-bold uppercase tracking-wide">{k.label}</p>
-                                    <Link
-                                        href={k.href}
-                                        title={k.linkTitle}
-                                        className="w-5 h-5 rounded-md flex items-center justify-center text-white/30 hover:text-ecf-yellow hover:bg-white/[0.06] transition-colors shrink-0"
-                                    >
-                                        <ExternalLink size={12} />
-                                    </Link>
-                                </div>
-                                <p className={cn('font-display font-extrabold text-2xl tracking-tight', noData ? 'text-white/20' : 'text-white')}>
-                                    {noData ? '—' : k.value}
-                                </p>
-                                {!noData && (
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                        {delta && (
-                                            <span className={cn('inline-flex items-center gap-1 text-[11.5px] font-bold px-1.5 py-0.5 rounded-md', deltaColors[delta.dir])}>
-                                                {delta.arrow} {delta.label}
-                                            </span>
-                                        )}
-                                        <span className="text-white/30 text-[11px]">{k.legendaSemDelta || k.sub}</span>
+                            <div key={k.key} className="group relative card-ecf rounded-2xl p-4 overflow-hidden">
+                                {/* Brilho blur de fundo na cor do KPI (2026-07-21) —
+                                    substitui a antiga barra sólida de 2px por um glow
+                                    suave que intensifica no hover. */}
+                                <div
+                                    className="pointer-events-none absolute -top-14 left-1/2 -translate-x-1/2 h-28 w-[78%] rounded-full blur-2xl opacity-[0.22] group-hover:opacity-45 transition-opacity duration-300"
+                                    style={{ background: k.topBar }}
+                                />
+                                <div className="relative z-10 flex flex-col gap-2.5">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <p className="text-white/40 text-[10.5px] font-bold uppercase tracking-wide">{k.label}</p>
+                                        <Link
+                                            href={k.href}
+                                            title={k.linkTitle}
+                                            className="w-5 h-5 rounded-md flex items-center justify-center text-white/30 hover:text-ecf-yellow hover:bg-white/[0.06] transition-colors shrink-0"
+                                        >
+                                            <ExternalLink size={12} />
+                                        </Link>
                                     </div>
-                                )}
+                                    <p className={cn('font-display font-extrabold text-2xl tracking-tight', noData ? 'text-white/20' : 'text-white')}>
+                                        {noData ? '—' : k.value}
+                                    </p>
+                                    {!noData && (
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            {delta && (
+                                                <span className={cn('inline-flex items-center gap-1 text-[11.5px] font-bold px-1.5 py-0.5 rounded-md', deltaColors[delta.dir])}>
+                                                    {delta.arrow} {delta.label}
+                                                </span>
+                                            )}
+                                            <span className="text-white/30 text-[11px]">{k.legendaSemDelta || k.sub}</span>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         );
                     })}
@@ -515,7 +509,7 @@ export default function AdminDashboard({
                 {/* Fase 97 Plan 04 (DASH-97-5/DASH-97-6) — linha 2.1fr/1fr do mockup:
                     "NPS ruim" (carrossel) + "Score da equipe" (nota 0-5 + breakdown,
                     pior→melhor). */}
-                <div className="grid grid-cols-1 lg:grid-cols-[2.1fr_1fr] gap-4 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-[2.1fr_1fr] gap-4 items-stretch">
                     <NpsRuimCarrossel respostas={nps_ruins} />
                     <ScoreEquipe membros={performance_equipe} />
                 </div>

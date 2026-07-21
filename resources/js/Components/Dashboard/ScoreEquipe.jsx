@@ -22,7 +22,7 @@ export default function ScoreEquipe({ membros = [] }) {
     const ordenada = [...lista].sort((a, b) => (a.nota_final ?? -1) - (b.nota_final ?? -1));
 
     return (
-        <div className="card-ecf rounded-2xl p-6">
+        <div className="card-ecf rounded-2xl p-6 h-full flex flex-col">
             <div className="flex items-center justify-between mb-4">
                 <p className="text-white font-display font-extrabold text-lg tracking-tight">Score da equipe</p>
                 <Link
@@ -34,11 +34,11 @@ export default function ScoreEquipe({ membros = [] }) {
             </div>
 
             {ordenada.length === 0 ? (
-                <div className="py-9 text-center">
+                <div className="flex-1 flex items-center justify-center py-9 text-center">
                     <p className="text-white/30 text-sm">Sem profissionais no recorte atual.</p>
                 </div>
             ) : (
-                <div className="flex flex-col gap-4 max-h-[420px] overflow-y-auto pr-1">
+                <div className="flex flex-col gap-4 flex-1 max-h-[440px] overflow-y-auto pr-1">
                     {ordenada.map((m) => {
                         // Cor da nota/barra computada AQUI, DENTRO do callback do
                         // .map() — pitfall Rollup (Fase 97): nunca herdar de

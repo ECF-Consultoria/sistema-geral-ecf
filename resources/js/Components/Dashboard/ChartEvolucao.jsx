@@ -138,10 +138,11 @@ export default function ChartEvolucao({
                             type="monotone"
                             dataKey={metric.dataKey}
                             stroke={metric.color}
-                            strokeWidth={2}
+                            strokeWidth={2.5}
                             fill={`url(#${metric.gradientId})`}
                             dot={false}
                             activeDot={{ r: 4, fill: metric.color, strokeWidth: 0 }}
+                            style={{ filter: `drop-shadow(0 0 6px ${metric.color}) drop-shadow(0 0 10px ${metric.color}66)` }}
                         />
                         {peakIndex >= 0 && (
                             <ReferenceDot

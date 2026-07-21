@@ -20,7 +20,7 @@ export default function NpsRuimCarrossel({ respostas = [] }) {
     };
 
     return (
-        <div className="card-ecf rounded-2xl p-6">
+        <div className="card-ecf rounded-2xl p-6 h-full flex flex-col">
             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
                 <div className="flex items-center gap-2.5">
                     <p className="text-white font-display font-extrabold text-lg tracking-tight">NPS ruim</p>
@@ -64,11 +64,11 @@ export default function NpsRuimCarrossel({ respostas = [] }) {
             </div>
 
             {lista.length === 0 ? (
-                <div className="py-9 text-center">
+                <div className="flex-1 flex items-center justify-center py-9 text-center">
                     <p className="text-white/30 text-sm">Nenhuma nota baixa no período.</p>
                 </div>
             ) : (
-                <div ref={scrollRef} className="flex gap-3 overflow-x-auto pb-1 scroll-smooth">
+                <div ref={scrollRef} className="flex gap-3 overflow-x-auto pb-1 scroll-smooth items-stretch">
                     {lista.map((n) => {
                         // Cor da nota computada AQUI, DENTRO do callback do .map()
                         // — pitfall Rollup (Fase 97): nunca herdar flag/cor de
