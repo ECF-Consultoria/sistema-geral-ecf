@@ -119,6 +119,67 @@ function mesExtensoDate(iso) {
     }
 }
 
+// ─── Fase 104 (UIP-01/UIP-03/UIP-04) — toggle de período/contexto de bônus ─
+// Rótulos travados pelo usuário — nunca renderizar slug cru ('em_curso'/
+// 'bonus_atual'/'closed_period'/'official' na tela).
+const MESES_EXTENSO = [
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+// 'YYYY-MM' → "junho/2026"
+function formatCompetencia(yyyyMm) {
+    if (!yyyyMm) return '—';
+    const [y, m] = String(yyyyMm).split('-');
+    return `${MESES_EXTENSO[parseInt(m, 10) - 1] ?? '—'}/${y}`;
+}
+
+// 'YYYY-MM' → "julho" (sem ano — usado no "pago em {mês}")
+function formatMesSolo(yyyyMm) {
+    if (!yyyyMm) return '—';
+    const [, m] = String(yyyyMm).split('-');
+    return MESES_EXTENSO[parseInt(m, 10) - 1] ?? '—';
+}
+
+// 'YYYY-MM-DD' → "01/06" (subtítulo discreto de auditoria)
+function formatRangeCurto(iso) {
+    if (!iso) return '—';
+    const [, m, d] = String(iso).split('-');
+    return `${d}/${m}`;
+}
+
+const PERIODO_SEGMENTOS = [
+    { key: 'em_curso', label: 'Em curso' },
+    { key: 'bonus_atual', label: 'Bônus atual' },
+    { key: 'mes_fechado', label: 'Mês fechado' },
+];
+
+// 3 botões-segmento reaproveitados nas 3 telas de período (Performance/
+// AdminCarteira/Carteiras) — repetido de propósito (sem módulo compartilhado
+// pra só 3 usos, mesma convenção de CONTEXTO_OPTIONS duplicada no projeto).
+function PeriodoToggle({ segmentoAtivo, onSelect }) {
+    return (
+        <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
+            {PERIODO_SEGMENTOS.map((opt, i) => (
+                <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => onSelect(opt.key)}
+                    className={cn(
+                        'px-3 h-9 text-[13px] font-medium transition-colors',
+                        segmentoAtivo === opt.key
+                            ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
+                            : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]',
+                        i > 0 && 'border-l border-white/[0.08]',
+                    )}
+                >
+                    {opt.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 // % com sinal + 1 casa; null → "—".
 function formatPercent(v) {
     if (v == null || Number.isNaN(Number(v))) return '—';
@@ -155,6 +216,11 @@ export default function PerformanceIndex({
     // Fase 92 (SC3) — filtro de auditoria por contexto. O backend (Plan 92-01)
     // só valida a whitelist e ecoa esta prop; a filtragem visual é client-side.
     contexto: contextoInicial = 'todos',
+    // Fase 104 (UIP-02/UIP-03) — objeto periodo do MetricPeriodResolver
+    // (shape completo, 14 chaves incl. is_closed/bonus_*) e bloco bonus
+    // (competence_month/payment_month, null quando o mês está em curso).
+    periodo = null,
+    bonus = null,
 }) {
     const isPolos = setor === 'polos';
 
@@ -170,6 +236,30 @@ export default function PerformanceIndex({
             params,
             { preserveState: true },
         );
+    };
+
+    // Fase 104 (UIP-01) — segmento ativo do toggle de período lido da própria
+    // URL (?modo=), não de estado local — reflete exatamente o que o backend
+    // resolveu (evita divergência entre o que o usuário clicou e o que o
+    // Inertia efetivamente carregou). 'mes_fechado' é o fallback quando o
+    // mês selecionado não é o corrente e não veio de ?modo=bonus_atual.
+    const modoUrl = isPolos ? null : new URLSearchParams(window.location.search).get('modo');
+    const segmentoAtivo = modoUrl === 'bonus_atual'
+        ? 'bonus_atual'
+        : (mes_em_curso ? 'em_curso' : 'mes_fechado');
+
+    // Troca de segmento — preserva setor/cargo já filtrados. 'mes_fechado'
+    // sem seleção prévia cai no mês fechado mais recente disponível.
+    const applyPeriodo = (segmento) => {
+        const params = { setor, cargo };
+        if (segmento === 'bonus_atual') {
+            params.modo = 'bonus_atual';
+        } else if (segmento === 'mes_fechado') {
+            const fallback = meses_disponiveis.find((m) => !m.em_curso)?.value;
+            params.mes = mes_em_curso ? fallback : mes_selecionado;
+        }
+        // 'em_curso' → sem mes/modo → backend resolve o mês corrente.
+        applyFilter(params);
     };
 
     // Phase 46-03 — user selecionado abre o EvolucaoDrawer à direita
@@ -236,7 +326,7 @@ export default function PerformanceIndex({
                                 </h1>
                                 {mes_em_curso ? (
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-amber-500/15 text-amber-300 border border-amber-500/30 tracking-wider">
-                                        Mês em curso
+                                        parcial · mês em andamento
                                     </span>
                                 ) : (
                                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 tracking-wider">
@@ -249,10 +339,30 @@ export default function PerformanceIndex({
                                     ? 'Ranking parcial — a consolidação mensal fecha dia 1 do mês seguinte.'
                                     : 'Ranking consolidado — dados do mês fechado (usados na régua de bônus).'}
                             </p>
+                            {/* Fase 104 (UIP-03) — no modo Bônus atual, deixa explícito qual
+                                competência está sendo avaliada e quando ela é paga. */}
+                            {segmentoAtivo === 'bonus_atual' && bonus && (
+                                <p className="text-ecf-yellow/80 text-xs mt-1 font-medium">
+                                    Competência {formatCompetencia(bonus.competence_month)} · pago em {formatMesSolo(bonus.payment_month)}
+                                </p>
+                            )}
+                            {/* Subtítulo discreto de auditoria — janela atual vs baseline. */}
+                            {periodo?.current_start && periodo?.baseline_start && (
+                                <p className="text-white/30 text-[11px] mt-1">
+                                    {formatRangeCurto(periodo.current_start)}–{formatRangeCurto(periodo.current_end)}
+                                    {' vs '}
+                                    {formatRangeCurto(periodo.baseline_start)}–{formatRangeCurto(periodo.baseline_end)}
+                                </p>
+                            )}
                         </div>
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* Fase 104 (UIP-01) — toggle de contexto de período: Em curso /
+                            Bônus atual / Mês fechado (usa o dropdown de mês ao lado). */}
+                        {!isPolos && (
+                            <PeriodoToggle segmentoAtivo={segmentoAtivo} onSelect={applyPeriodo} />
+                        )}
                         {/* Ajuste 2026-07-09 — Filtro de mês (auditar bônus consolidados) */}
                         {Array.isArray(meses_disponiveis) && meses_disponiveis.length > 0 && (
                             <select
@@ -301,9 +411,15 @@ export default function PerformanceIndex({
                                 <div key={opt.value ?? 'geral'} className="flex">
                                     <button
                                         onClick={() => applyFilter(
-                                            opt.value
-                                                ? { setor: 'consultoria', cargo: opt.value, mes: mes_selecionado }
-                                                : { setor: 'consultoria', mes: mes_selecionado }
+                                            segmentoAtivo === 'bonus_atual'
+                                                // Fase 104 — preserva o segmento "Bônus atual" ao trocar de
+                                                // cargo (não perde o modo pra "mês fechado" comum).
+                                                ? (opt.value
+                                                    ? { setor: 'consultoria', cargo: opt.value, modo: 'bonus_atual' }
+                                                    : { setor: 'consultoria', modo: 'bonus_atual' })
+                                                : (opt.value
+                                                    ? { setor: 'consultoria', cargo: opt.value, mes: mes_selecionado }
+                                                    : { setor: 'consultoria', mes: mes_selecionado })
                                         )}
                                         className={cn(
                                             'px-3 h-9 text-[13px] font-medium transition-colors',

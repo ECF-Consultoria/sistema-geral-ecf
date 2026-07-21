@@ -63,6 +63,58 @@ const CONTEXTO_OPTIONS = [
     { value: 'shopee', label: 'Shopee' },
 ];
 
+// ─── Fase 104 (UIP-01/UIP-03/UIP-04) — toggle de período/contexto de bônus ─
+// Rótulos travados pelo usuário — nunca renderizar slug cru ('em_curso'/
+// 'bonus_atual'/'closed_period'/'official' na tela). Duplicado de propósito
+// em Performance/Index.jsx e Carteiras.jsx (mesma convenção de CONTEXTO_OPTIONS).
+const MESES_EXTENSO = [
+    'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+    'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+];
+
+// 'YYYY-MM' → "junho/2026"
+function formatCompetencia(yyyyMm) {
+    if (!yyyyMm) return '—';
+    const [y, m] = String(yyyyMm).split('-');
+    return `${MESES_EXTENSO[parseInt(m, 10) - 1] ?? '—'}/${y}`;
+}
+
+// 'YYYY-MM' → "julho" (sem ano — usado no "pago em {mês}")
+function formatMesSolo(yyyyMm) {
+    if (!yyyyMm) return '—';
+    const [, m] = String(yyyyMm).split('-');
+    return MESES_EXTENSO[parseInt(m, 10) - 1] ?? '—';
+}
+
+const PERIODO_SEGMENTOS = [
+    { key: 'em_curso', label: 'Em curso' },
+    { key: 'bonus_atual', label: 'Bônus atual' },
+    { key: 'mes_fechado', label: 'Mês fechado' },
+];
+
+function PeriodoToggle({ segmentoAtivo, onSelect }) {
+    return (
+        <div className="flex rounded-xl border border-white/[0.08] overflow-hidden">
+            {PERIODO_SEGMENTOS.map((opt, i) => (
+                <button
+                    key={opt.key}
+                    type="button"
+                    onClick={() => onSelect(opt.key)}
+                    className={cn(
+                        'px-3 h-9 text-[13px] font-medium transition-colors',
+                        segmentoAtivo === opt.key
+                            ? 'bg-ecf-yellow/[0.12] text-ecf-yellow'
+                            : 'text-white/50 hover:text-white/80 hover:bg-white/[0.04]',
+                        i > 0 && 'border-l border-white/[0.08]',
+                    )}
+                >
+                    {opt.label}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 // ─── KPI compacto ─────────────────────────────────────────────────────────
 function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white' }) {
     return (
@@ -98,10 +150,42 @@ function VariacaoChip({ pct, size = 'sm' }) {
     );
 }
 
-export default function AdminCarteira({ profissional, resumo, empresas = [], periodo, contexto = 'todos' }) {
+export default function AdminCarteira({ profissional, resumo, empresas = [], periodo, contexto = 'todos', bonus = null }) {
     const [busca, setBusca] = useState('');
     const [sortCol, setSortCol] = useState('faturamento');
     const [sortDir, setSortDir] = useState('desc');
+
+    // Fase 104 (UIP-01) — segmento ativo lido da URL (?modo=), não de estado
+    // local — reflete exatamente o que o backend resolveu.
+    const modoUrl = new URLSearchParams(window.location.search).get('modo');
+    const segmentoAtivo = modoUrl === 'bonus_atual'
+        ? 'bonus_atual'
+        : (periodo?.em_curso ? 'em_curso' : 'mes_fechado');
+
+    // Navegação unificada — preserva ?contexto= e, quando presente, ?modo=,
+    // sobrescrevendo só o que o `overrides` pedir. Usada pelos 3 controles
+    // de período (contexto, mês, toggle) pra nenhum perder o estado dos outros.
+    const navigate = (overrides) => {
+        const base = { contexto, mes: periodo?.mes_selecionado ?? '', modo: modoUrl ?? undefined };
+        const params = new URLSearchParams();
+        Object.entries({ ...base, ...overrides }).forEach(([k, v]) => {
+            if (v !== undefined && v !== null && v !== '') params.set(k, v);
+        });
+        router.visit(window.location.pathname + '?' + params.toString(), { preserveScroll: true });
+    };
+
+    // Troca de segmento do toggle — 'mes_fechado' sem seleção prévia cai no
+    // mês fechado mais recente disponível na lista já carregada.
+    const applyPeriodo = (segmento) => {
+        if (segmento === 'bonus_atual') {
+            navigate({ modo: 'bonus_atual', mes: undefined });
+        } else if (segmento === 'mes_fechado') {
+            const fallback = periodo?.meses_disponiveis?.find((m) => !m.em_curso)?.value;
+            navigate({ modo: undefined, mes: periodo?.em_curso ? fallback : periodo?.mes_selecionado });
+        } else {
+            navigate({ modo: undefined, mes: undefined });
+        }
+    };
 
     const empresasView = useMemo(() => {
         const q = busca.trim().toLowerCase();
@@ -173,18 +257,17 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap">
+                        {/* Fase 104 (UIP-01) — toggle de contexto de período: Em curso /
+                            Bônus atual / Mês fechado (usa o dropdown de mês ao lado). */}
+                        <PeriodoToggle segmentoAtivo={segmentoAtivo} onSelect={applyPeriodo} />
+
                         {/* Fase 90 (CART-07) · filtro de contexto (Todos/Mercado Livre/Shopee),
-                            preserva o ?mes= ativo ao trocar (decisão travada). */}
+                            preserva o ?mes= e ?modo= ativos ao trocar (decisão travada). */}
                         <div className="flex items-center gap-2">
                             <span className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">Contexto</span>
                             <select
                                 value={contexto}
-                                onChange={(e) => {
-                                    const target = e.target.value;
-                                    const currentPath = window.location.pathname;
-                                    const mes = periodo?.mes_selecionado ?? '';
-                                    router.visit(currentPath + '?contexto=' + target + '&mes=' + mes, { preserveScroll: false });
-                                }}
+                                onChange={(e) => navigate({ contexto: e.target.value })}
                                 title="Filtrar por contexto de serviço"
                                 className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
                             >
@@ -195,17 +278,14 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                         </div>
 
                         {/* Ajuste 2026-07-09 · filtro de mês (audita bônus consolidados).
-                            Fase 90 — passa a preservar ?contexto= ativo ao trocar de mês. */}
+                            Fase 90 — passa a preservar ?contexto= ativo ao trocar de mês.
+                            Fase 104 — trocar o mês manualmente sai do modo "Bônus atual". */}
                         {Array.isArray(periodo?.meses_disponiveis) && periodo.meses_disponiveis.length > 0 && (
                             <div className="flex items-center gap-2">
                                 <span className="text-white/40 text-[11px] uppercase tracking-widest font-semibold">Mês</span>
                                 <select
                                     value={periodo?.mes_selecionado ?? ''}
-                                    onChange={(e) => {
-                                        const target = e.target.value;
-                                        const currentPath = window.location.pathname;
-                                        router.visit(currentPath + '?mes=' + target + '&contexto=' + contexto, { preserveScroll: false });
-                                    }}
+                                    onChange={(e) => navigate({ mes: e.target.value, modo: undefined })}
                                     title="Selecionar mês da carteira"
                                     className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
                                 >
@@ -228,6 +308,14 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                         )}
                     </div>
                 </header>
+
+                {/* Fase 104 (UIP-03) — no modo Bônus atual, deixa explícito qual
+                    competência está sendo avaliada e quando ela é paga. */}
+                {segmentoAtivo === 'bonus_atual' && bonus && (
+                    <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] px-4 py-2.5 text-ecf-yellow/90 text-sm font-medium">
+                        Competência {formatCompetencia(bonus.competence_month)} · pago em {formatMesSolo(bonus.payment_month)}
+                    </div>
+                )}
 
                 {/* ─── Banner de contexto do período — muda conforme mês em curso vs fechado ─── */}
                 <div className={cn(
