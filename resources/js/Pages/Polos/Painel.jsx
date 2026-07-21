@@ -27,6 +27,7 @@ import { corEstagio } from './components/estagioBadge';
 import { corAds } from './components/adsCor';
 import OperacoesPanel from './components/OperacoesPanel';
 import MetasPanel from './components/MetasPanel';
+import EntrantesM0Panel from './components/EntrantesM0Panel';
 import ImplModal from '@/Pages/Mlb/components/ImplModal';
 
 // ─── Domínio (strings EXATAS — chaves de comparação no banco) ─────────────────────
@@ -517,6 +518,8 @@ export default function PolosPainel({
         return isAdmin ? [...base, { key: 'financeiro', label: 'Performance' }] : base;
     }, [isAdmin]);
     const [lente, setLente] = useState('geral');
+    // Sub-visão da lente Metas: "Entrantes (M0)" (espelha o PDF) | "Visão geral" (MetasPanel).
+    const [metaView, setMetaView] = useState('entrantes');
 
     // Metas de entrantes por região × mês (aba Metas) — seed das props; edição otimista.
     const [metas, setMetas] = useState(metasEntrada);
@@ -1043,18 +1046,35 @@ export default function PolosPainel({
                     </div>
                 </div>
 
-                {/* ── Aba Metas (dashboard + planilha) OU Grade (planilha das lentes) ── */}
+                {/* ── Aba Metas (Entrantes M0 | Visão geral) OU Grade (planilha das lentes) ── */}
                 {lente === 'metas' ? (
-                    <MetasPanel
-                        empresas={empresas}
-                        regioes={opcoes.polo ?? []}
-                        metasEntrada={metas}
-                        onSalvarMeta={salvarMetaEntrada}
-                        fin={fin}
-                        finLoaded={fin !== null}
-                        finErro={finErro}
-                        isAdmin={isAdmin}
-                    />
+                    <div className="space-y-4">
+                        {/* Sub-toggle da lente Metas */}
+                        <div className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5">
+                            {[['entrantes', 'Entrantes (M0)'], ['torre', 'Visão geral']].map(([k, lbl]) => (
+                                <button key={k} type="button" onClick={() => setMetaView(k)}
+                                    className={cn('rounded-md px-3 py-1.5 text-[12px] font-semibold transition',
+                                        metaView === k ? 'bg-ecf-yellow/15 text-ecf-yellow' : 'text-white/50 hover:text-white/80')}>
+                                    {lbl}
+                                </button>
+                            ))}
+                        </div>
+
+                        {metaView === 'entrantes' ? (
+                            <EntrantesM0Panel empresas={empresas} regioes={opcoes.polo ?? []} />
+                        ) : (
+                            <MetasPanel
+                                empresas={empresas}
+                                regioes={opcoes.polo ?? []}
+                                metasEntrada={metas}
+                                onSalvarMeta={salvarMetaEntrada}
+                                fin={fin}
+                                finLoaded={fin !== null}
+                                finErro={finErro}
+                                isAdmin={isAdmin}
+                            />
+                        )}
+                    </div>
                 ) : (
                 /* Altura limitada + overflow-auto: a barra de rolagem HORIZONTAL passa a ficar no
                     rodapé de uma caixa do tamanho da tela (não no fim de TODAS as linhas) — dá pra ir
