@@ -211,10 +211,14 @@ class PortfolioController extends Controller
             $temMl     = (bool) ($c->mlToken && $c->mlToken->status === 'active');
             $temAdman  = ! empty($c->adman_account_id);
             $temShopee = $vs->contains(fn ($v) => ($v['setor'] ?? null) === 'shopee');
-            if ($ehElegivel) {
-                $fonte = ($temMl && $temAdman) ? 'ml_adman' : ($temMl ? 'ml' : ($temAdman ? 'adman' : 'outro'));
+            if ($ehElegivel && ($temMl || $temAdman)) {
+                $fonte = ($temMl && $temAdman) ? 'ml_adman' : ($temMl ? 'ml' : 'adman');
+            } elseif ($temShopee) {
+                $fonte = 'shopee';
             } else {
-                $fonte = $temShopee ? 'shopee' : 'sem_fonte';
+                // Elegível mas sem ML/Adman conectado (ex.: empresa nova) OU sem
+                // vínculo financeiro — nas duas situações não há fonte de dados.
+                $fonte = 'sem_fonte';
             }
 
             $base = [
