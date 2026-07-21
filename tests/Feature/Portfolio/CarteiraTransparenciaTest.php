@@ -47,22 +47,24 @@ class CarteiraTransparenciaTest extends TestCase
                 ->where('bonus', null)
                 ->has('empresas')
                 ->has('resumo.total_empresas')
+                ->has('meses_disponiveis')
             );
     }
 
     #[Test]
-    public function test_modo_bonus_atual_resolve_competencia_fechada(): void
+    public function test_mes_passado_via_query_resolve_fechado(): void
     {
+        // O filtro é SÓ o mês: um mês passado (?mes=2026-06) resolve fechado
+        // (base do bônus), sem precisar de ?modo=.
         $admin = User::factory()->create(['role' => 'admin', 'active' => true]);
         $alvo  = User::factory()->create(['role' => 'consultor', 'active' => true]);
 
         $this->actingAs($admin)
-            ->get(route('portfolio.transparencia', $alvo) . '?modo=bonus_atual')
+            ->get(route('portfolio.transparencia', $alvo) . '?mes=2026-06')
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->component('Portfolio/Transparencia')
                 ->where('periodo.is_closed', true)
-                ->where('modo', 'bonus_atual')
                 ->where('bonus.competence_month', '2026-06')
             );
     }

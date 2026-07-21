@@ -275,7 +275,7 @@ function FaixaBonusCard({ resultado, user }) {
                 nota em contexto: quais empresas geraram a média, faturamento,
                 margem etc. */}
             {user?.id && (
-                <div className="relative mt-4 pt-4 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5">
+                <div className="relative mt-4 pt-4 border-t border-white/[0.06]">
                     <Link
                         href={route('portfolio.show', user.id)}
                         className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white transition-colors group"
@@ -283,15 +283,6 @@ function FaixaBonusCard({ resultado, user }) {
                         <Briefcase size={14} className="text-ecf-yellow" />
                         <span>Detalhes sobre as empresas da carteira</span>
                         <ChevronRight size={14} className="text-white/40 group-hover:text-white/80 group-hover:translate-x-0.5 transition-all" />
-                    </Link>
-                    {/* Fase 3 — nova carteira de transparência (§8.3), pra avaliação */}
-                    <Link
-                        href={route('portfolio.transparencia', user.id)}
-                        className="inline-flex items-center gap-2 text-sm text-ecf-yellow/90 hover:text-ecf-yellow transition-colors group"
-                    >
-                        <Info size={14} />
-                        <span>Carteira de transparência <span className="text-[10px] uppercase bg-ecf-yellow/10 border border-ecf-yellow/30 rounded px-1 py-0.5 ml-1">nova</span></span>
-                        <ChevronRight size={14} className="text-white/40 group-hover:text-ecf-yellow group-hover:translate-x-0.5 transition-all" />
                     </Link>
                 </div>
             )}

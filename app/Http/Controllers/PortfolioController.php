@@ -205,17 +205,25 @@ class PortfolioController extends Controller
                 'elegivel'     => $v['financial_metrics_eligible'],
             ])->values();
 
-            $vinculoElegivel = $vs->firstWhere('financial_metrics_eligible', true);
-            $fonteFat        = $vinculoElegivel['financial_source'] ?? null;
+            // Fonte de dados COMBINADA da empresa (badge §8.3) — reflete de onde
+            // vêm os números: ML OAuth, Adman (adman_account_id), ambos, só
+            // Shopee (vínculo shopee sem fonte financeira) ou sem fonte alguma.
+            $temMl     = (bool) ($c->mlToken && $c->mlToken->status === 'active');
+            $temAdman  = ! empty($c->adman_account_id);
+            $temShopee = $vs->contains(fn ($v) => ($v['setor'] ?? null) === 'shopee');
+            if ($ehElegivel) {
+                $fonte = ($temMl && $temAdman) ? 'ml_adman' : ($temMl ? 'ml' : ($temAdman ? 'adman' : 'outro'));
+            } else {
+                $fonte = $temShopee ? 'shopee' : 'sem_fonte';
+            }
 
             $base = [
-                'id'                => $c->id,
-                'name'              => $c->name,
-                'has_ml_oauth'      => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
-                'servicos'          => $servicos,
-                'fonte_faturamento' => $fonteFat,
-                'fonte_margem'      => $ehElegivel ? 'adman' : null,
-                'invalidada'        => $invalidada,
+                'id'           => $c->id,
+                'name'         => $c->name,
+                'has_ml_oauth' => $temMl,
+                'servicos'     => $servicos,
+                'fonte'        => $fonte,
+                'invalidada'   => $invalidada,
             ];
 
             // Empresa sem vínculo financeiro elegível (ex.: só-Shopee): não entra
@@ -259,11 +267,24 @@ class PortfolioController extends Controller
             ];
         })->values();
 
+        // Meses do filtro (últimos 6) — o filtro é SÓ o mês: mês corrente = em
+        // curso; mês passado = base do bônus (o usuário deduz pelo mês).
+        $mesesDisponiveis = [];
+        for ($i = 0; $i < 6; $i++) {
+            $m = $mesCorrente->copy()->subMonths($i);
+            $mesesDisponiveis[] = [
+                'value'    => $m->format('Y-m'),
+                'label'    => mb_strtolower($m->translatedFormat('F/Y')),
+                'em_curso' => $m->equalTo($mesCorrente),
+            ];
+        }
+
         return Inertia::render('Portfolio/Transparencia', [
             'profissional' => ['id' => $user->id, 'name' => $user->name],
             'modo'         => $modo,
             'contexto'     => $contextoFiltro['param'],
             'empresas'     => $empresas,
+            'meses_disponiveis' => $mesesDisponiveis,
             'resumo'       => [
                 'total_empresas'    => $empresas->count(),
                 'total_faturamento' => round((float) $empresas->sum(fn ($e) => $e['faturamento'] ?? 0), 2),

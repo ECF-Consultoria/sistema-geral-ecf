@@ -51,28 +51,37 @@ function VarBadge({ v }) {
     );
 }
 
-function FonteBadge({ fonte, hasMlOauth }) {
-    if (!fonte) return <span className="text-white/25 text-xs">—</span>;
-    const isMl = fonte === 'ml' || fonte === 'mercado_livre' || hasMlOauth;
+const FONTE = {
+    ml:        { label: 'Mercado Livre', icon: Store,        cls: 'text-yellow-300 border-yellow-500/25 bg-yellow-500/[0.08]' },
+    adman:     { label: 'Adman',         icon: Coins,        cls: 'text-sky-300 border-sky-500/25 bg-sky-500/[0.08]' },
+    ml_adman:  { label: 'ML + Adman',    icon: Store,        cls: 'text-emerald-300 border-emerald-500/25 bg-emerald-500/[0.08]' },
+    shopee:    { label: 'Shopee',        icon: ShoppingCart, cls: 'text-orange-300 border-orange-500/25 bg-orange-500/[0.08]' },
+    sem_fonte: { label: 'Sem fonte',     icon: Ban,          cls: 'text-white/40 border-white/[0.1] bg-white/[0.03]' },
+    outro:     { label: 'Outra',         icon: Coins,        cls: 'text-white/40 border-white/[0.1] bg-white/[0.03]' },
+};
+function FonteBadge({ fonte }) {
+    const f = FONTE[fonte] ?? FONTE.sem_fonte;
+    const Icon = f.icon;
     return (
-        <span className="inline-flex items-center gap-1 text-[11px] text-white/60">
-            {isMl ? <Store size={12} className="text-yellow-400" /> : <Coins size={12} className="text-white/40" />}
-            {fonte === 'adman' ? 'Adman' : isMl ? 'Mercado Livre' : fonte}
+        <span className={cn('inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap', f.cls)}>
+            <Icon size={11} /> {f.label}
         </span>
     );
 }
 
 export default function Transparencia() {
     const { props } = usePage();
-    const { profissional, contexto, empresas = [], resumo = {}, periodo = {}, bonus = null } = props;
+    const { profissional, empresas = [], resumo = {}, periodo = {}, bonus = null, meses_disponiveis = [] } = props;
 
     const isClosed = periodo?.is_closed === true;
-    const modoAtivo = props.modo === 'bonus_atual' ? 'bonus_atual' : (isClosed ? 'mes_fechado' : 'em_curso');
 
     const irPara = (params) => router.get(route('portfolio.transparencia', profissional.id), params, { preserveScroll: true, preserveState: false });
 
-    const seg = (active) => cn('px-3 h-8 rounded-lg transition-colors text-[13px]',
-        active ? 'bg-ecf-yellow/15 text-ecf-yellow font-semibold' : 'text-white/50 hover:text-white/80');
+    // Filtro é SÓ o mês: mês atual → em curso (sem param); mês passado → fechado.
+    const trocarMes = (value) => {
+        const m = meses_disponiveis.find((x) => x.value === value);
+        if (m?.em_curso) irPara({}); else irPara({ mes: value });
+    };
 
     return (
         <AppLayout title={`Carteira — ${profissional?.name ?? ''}`}>
@@ -94,27 +103,35 @@ export default function Transparencia() {
                         </div>
                     </div>
 
-                    {/* Segmento de período (mesmo contrato do ranking) */}
-                    <div className="inline-flex rounded-xl border border-white/[0.08] bg-white/[0.03] p-0.5">
-                        <button type="button" onClick={() => irPara({})} className={seg(modoAtivo === 'em_curso')}>Em curso</button>
-                        <button type="button" onClick={() => irPara({ modo: 'bonus_atual' })} className={seg(modoAtivo === 'bonus_atual')}>Bônus atual</button>
+                    {/* Filtro: SÓ o mês. Atual = em curso; passado = base do bônus. */}
+                    <div className="flex items-center gap-2">
+                        <label className="text-white/40 text-xs">Mês:</label>
+                        <select
+                            value={periodo.mes_selecionado ?? ''}
+                            onChange={(e) => trocarMes(e.target.value)}
+                            className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer capitalize"
+                        >
+                            {meses_disponiveis.map((m) => (
+                                <option key={m.value} value={m.value}>{m.label}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
 
-                {/* Banner de contexto */}
-                {modoAtivo === 'bonus_atual' ? (
+                {/* Banner de contexto — deduzido do mês (fechado = bônus; atual = operacional) */}
+                {isClosed ? (
                     <div className="rounded-xl border border-ecf-yellow/25 bg-ecf-yellow/[0.05] p-3 flex items-center gap-2 text-sm">
                         <Trophy size={15} className="text-ecf-yellow shrink-0" />
                         <span className="text-white/70">
-                            Base financeira do bônus — competência <strong className="text-white">{mesExtenso(bonus?.competence_month)}</strong>,
-                            comparada com a janela anterior de mesmo tamanho ({fmtDia(periodo.baseline_start)}–{fmtDia(periodo.baseline_end)}).
+                            Mês fechado — base financeira do bônus (competência <strong className="text-white">{mesExtenso(bonus?.competence_month ?? periodo.mes_selecionado)}</strong>),
+                            comparado com a janela anterior de mesmo tamanho ({fmtDia(periodo.baseline_start)}–{fmtDia(periodo.baseline_end)}).
                         </span>
                     </div>
                 ) : (
                     <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.05] p-3 flex items-center gap-2 text-sm">
                         <Calendar size={15} className="text-amber-300 shrink-0" />
                         <span className="text-white/70">
-                            Acompanhamento operacional — <strong className="text-white">{fmtDia(periodo.current_start)}–{fmtDia(periodo.current_end)}</strong> contra
+                            Mês em curso — acompanhamento operacional. <strong className="text-white">{fmtDia(periodo.current_start)}–{fmtDia(periodo.current_end)}</strong> contra
                             o mesmo intervalo do mês anterior ({fmtDia(periodo.baseline_start)}–{fmtDia(periodo.baseline_end)}).
                         </span>
                     </div>
@@ -149,7 +166,7 @@ export default function Transparencia() {
                             <thead>
                                 <tr className="border-b border-white/[0.08] text-left text-[10px] uppercase tracking-wider text-white/40">
                                     <th className="px-4 py-3 font-semibold">Empresa</th>
-                                    <th className="px-3 py-3 font-semibold">Fonte fat.</th>
+                                    <th className="px-3 py-3 font-semibold">Fonte de dados</th>
                                     <th className="px-3 py-3 font-semibold text-right">Faturamento</th>
                                     <th className="px-3 py-3 font-semibold text-right" title="Margem de contribuição em R$ (fonte Adman)">Margem R$</th>
                                     <th className="px-3 py-3 font-semibold text-right" title="Margem de contribuição como % da receita (percentageMargin da Adman)">Margem %</th>
@@ -180,7 +197,7 @@ export default function Transparencia() {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-3 py-3"><FonteBadge fonte={e.fonte_faturamento} hasMlOauth={e.has_ml_oauth} /></td>
+                                            <td className="px-3 py-3"><FonteBadge fonte={e.fonte} /></td>
                                             <td className="px-3 py-3 text-right">
                                                 <div className="text-white/85 tabular-nums">{fmtBRL(e.faturamento)}</div>
                                                 <div className="flex justify-end"><VarBadge v={e.faturamento_var_pct} /></div>
