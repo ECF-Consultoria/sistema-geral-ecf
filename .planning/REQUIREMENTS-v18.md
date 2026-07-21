@@ -60,6 +60,13 @@
 - **Régua de bônus do Shopee sem financeiro** — segue decisão de diretoria (herdada da v17.0; Matheus permanece `blocked`).
 - **Fonte financeira Shopee** — continua inexistente; vínculos Shopee seguem sem fonte.
 
+### NPSWIN — Correção janela do NPS no bônus (Fase 105)
+
+- [x] **NPSWIN-01**: computeNpsMedio para competência M lê respostas coletadas em M+1 (só no caminho oficial/fechado); financeiro fica em M
+- [x] **NPSWIN-02**: mês em curso exclui o NPS (null, não 0.0); exclui-vs-0.0 por DATA no boundary do cron
+- [x] **NPSWIN-03**: cron consolidar-mes congela no fim do mês de coleta (lastDayOfMonth); bustarCacheDoBonus invalida competência X-1
+- [x] **NPSWIN-04**: cache bump v5→v6; regressões preservadas (score único, elegibilidade, dual-path, âncora Carlos)
+
 ## Traceability
 
 | REQ-ID | Phase | Status |
@@ -89,3 +96,7 @@
 | UIP-04 | Fase 104 | Complete |
 
 **Cobertura:** 23/23 requirements v18.0 mapeados ✓ — zero órfãos, zero duplicatas.
+| NPSWIN-01 | Fase 105 | Complete |
+| NPSWIN-02 | Fase 105 | Complete |
+| NPSWIN-03 | Fase 105 | Complete |
+| NPSWIN-04 | Fase 105 | Complete |
