@@ -303,10 +303,12 @@ class JanelaNpsBonusTest extends TestCase
     // ═══ Teste 2 — mês em curso EXCLUI o NPS (null, nunca 0.0) ═════════════
 
     #[Test]
-    public function test_mes_em_curso_exclui_componente_nps(): void
+    public function test_mes_em_curso_usa_piso_nps(): void
     {
         // "Agora" = 20/07/2026, dentro do próprio mês de julho → julho é o
-        // mês CORRENTE (operacional, D1: sem NPS de bônus).
+        // mês CORRENTE (operacional). Item 2 (2026-07-21): mês em curso usa
+        // PISO NPS 1.0 (supera a exclusão da Fase 105) — o NPS entra com 1.0
+        // desde o dia 1 pra não inflar a nota só com financeiro.
         Carbon::setTestNow(Carbon::parse('2026-07-20 14:00:00'));
         $this->fakeAdmanSemDiff();
 
@@ -323,16 +325,15 @@ class JanelaNpsBonusTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($user, Carbon::parse('2026-07-01'));
 
-        $this->assertNull($r['componentes']['nps_medio'],
-            'D1: mês em curso EXCLUI o componente NPS (null) — o NPS de julho só é coletado em agosto, ainda não existe.');
-        $this->assertFalse($r['componentes_disponiveis']['nps_medio'],
-            'componentes_disponiveis.nps_medio reflete a exclusão — UI "Em curso" esconde o card sem tankar a nota.');
+        $this->assertSame(1.0, $r['componentes']['nps_medio'],
+            'Item 2: mês em curso usa PISO NPS 1.0 (não mais null) — o NPS real entra quando o mês fecha.');
+        $this->assertTrue($r['componentes_disponiveis']['nps_medio'],
+            'componentes_disponiveis.nps_medio = true: o piso 1.0 é um componente presente.');
 
-        // nota_final = round((fatPts=5.0 + margemPts=3.0)/2, 2) = 4.00 — só os
-        // 2 componentes financeiros disponíveis entram na média (nps excluído,
-        // não tankado como 0.0 entraria).
-        $this->assertEqualsWithDelta(4.0, $r['nota_final'], 0.01,
-            'nota_final calculada só com os componentes financeiros disponíveis, não tankada por um NPS 0.0 fantasma.');
+        // nota_final = round((nps=1.0 + fatPts=5.0 + margemPts=3.0)/3, 2) = 3.00
+        // — o piso NPS 1.0 entra na média junto com os 2 financeiros.
+        $this->assertEqualsWithDelta(3.0, $r['nota_final'], 0.01,
+            'nota_final com o piso NPS 1.0 + os 2 financeiros disponíveis.');
     }
 
     // ═══ Teste 3 — fechada, janela M+1 JÁ ENCERRADA, 0 respostas → 0.0 ═════

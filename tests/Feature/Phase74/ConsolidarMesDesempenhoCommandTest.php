@@ -227,6 +227,18 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
             'revenue'             => 10000,
             'contribution_margin' => 10000,
         ]);
+        // Histórico pré-baseline (item 1 · trava de cobertura Adman): a baseline
+        // de mês fechado começa antes do dia 1 do mês anterior (janela-de-mesmo-
+        // tamanho), então o Adman precisa cobrir esse início. 2 meses antes de
+        // $mesYm (fora das janelas somadas) prova que a empresa opera desde
+        // antes do baseline — senão a trava a descartaria e a nota ficaria null.
+        $preBaseline = Carbon::parse($mesYm . '-01')->subMonths(2)->format('Y-m');
+        AdmanMetric::create([
+            'company_id'          => $c->id,
+            'reference_date'      => Carbon::parse($preBaseline . '-15')->toDateString(),
+            'revenue'             => 9500,
+            'contribution_margin' => 9500,
+        ]);
 
         // Fase 105 (v18.0 · NPSWIN-01/02) — FALLOUT ESPERADO: a competência
         // `$mesYm` (fechada) agora lê o NPS de M+1 (`computeNpsWindow()`,

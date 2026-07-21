@@ -739,6 +739,13 @@ class DesempenhoScoreServiceTest extends TestCase
         // Empresa 3: 10400 / 10000 = +4%
         $this->mockAdmanRevenueMargem($c3, '2026-07', revenue: 10400);
         $this->mockAdmanRevenueMargem($c3, '2026-06', revenue: 10000);
+        // Histórico pré-baseline (item 1 · trava de cobertura Adman): baseline
+        // de julho fechado começa em 31/05, então o Adman precisa ter dado
+        // antes disso pra provar que a empresa opera desde antes da janela.
+        // Maio (dia 15) fica FORA da janela [31/05–30/06] → não entra na soma.
+        $this->mockAdmanRevenueMargem($c1, '2026-05', revenue: 9000);
+        $this->mockAdmanRevenueMargem($c2, '2026-05', revenue: 9000);
+        $this->mockAdmanRevenueMargem($c3, '2026-05', revenue: 9000);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
@@ -752,8 +759,12 @@ class DesempenhoScoreServiceTest extends TestCase
     #[Test]
     public function test_var_faturamento_exclui_empresa_nova_da_media(): void
     {
-        // DESEMP-04 — empresa recém-adicionada (pivot há 15 dias) NÃO entra
-        // no cálculo de variação; só as antigas contam.
+        // Item 1 (2026-07-21) — o antigo filtro por `created_at` foi REMOVIDO
+        // (reimportação em massa o tornava tóxico). A empresa genuinamente nova
+        // é excluída AGORA pela TRAVA DE COBERTURA Adman: ela não tem histórico
+        // antes do baseline (31/05), então seu baseline é parcial e ela sai do
+        // faturamento — que é exatamente o que o filtro tosco tentava aproximar,
+        // só que por um sinal de DADOS confiável em vez da data de cadastro.
         $u = $this->criarUserAnalista('Analista Empresa Nova');
 
         $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
@@ -761,13 +772,19 @@ class DesempenhoScoreServiceTest extends TestCase
         $cNova = $this->criarEmpresaNaCarteira($u, '-15 days');
 
         // C1 e C2 ficam com deltas simétricos (+2% e +8% → média 5%).
+        // Ambas com histórico pré-baseline (maio, fora da janela) → cobrem o
+        // início do baseline e QUALIFICAM.
         $this->mockAdmanRevenueMargem($c1, '2026-07', revenue: 10200);
         $this->mockAdmanRevenueMargem($c1, '2026-06', revenue: 10000);
+        $this->mockAdmanRevenueMargem($c1, '2026-05', revenue: 9000);
         $this->mockAdmanRevenueMargem($c2, '2026-07', revenue: 10800);
         $this->mockAdmanRevenueMargem($c2, '2026-06', revenue: 10000);
+        $this->mockAdmanRevenueMargem($c2, '2026-05', revenue: 9000);
 
-        // A empresa NOVA teria delta absurdo (+100%). Se entrasse na média,
-        // puxaria o resultado para acima de 5.00 — o filtro precisa excluí-la.
+        // A empresa NOVA teria delta absurdo (+100%). Ela NÃO tem dado de maio
+        // (pré-baseline) — só jul/jun — então a trava de cobertura a descarta:
+        // seu baseline é parcial (começa DENTRO da janela). Sem esse descarte,
+        // puxaria a média pra acima de 5.00.
         $this->mockAdmanRevenueMargem($cNova, '2026-07', revenue: 20000);
         $this->mockAdmanRevenueMargem($cNova, '2026-06', revenue: 10000);
 
@@ -775,9 +792,9 @@ class DesempenhoScoreServiceTest extends TestCase
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
         $this->assertEqualsWithDelta(5.00, $r['componentes']['var_faturamento_pct'], 0.001,
-            'Empresa nova (pivot -15 dias) NÃO entra na média — apenas C1 e C2 contam.');
+            'Empresa nova (sem histórico pré-baseline) é excluída pela trava de cobertura — só C1 e C2 contam.');
         $this->assertSame(2, $r['empresas_com_baseline'],
-            'Só 2 empresas antigas qualificam (empresas_com_baseline).');
+            'Só 2 empresas com cobertura Adml antes do baseline qualificam.');
         $this->assertSame(3, $r['empresas_carteira'],
             'Carteira total continua sendo 3 empresas (a nova não some dela).');
     }
@@ -1021,6 +1038,10 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->providerStub->configureCase($b, 'so-adman');
         $this->mockAdmanRevenueMargem($b, '2026-07', revenue: 5556);
         $this->mockAdmanRevenueMargem($b, '2026-06', revenue: 5000);
+        // Histórico pré-baseline (item 1 · trava de cobertura): maio (fora da
+        // janela [31/05–30/06]) prova que B opera desde antes do baseline —
+        // sem isso a trava descartaria o fallback Adman por cobertura parcial.
+        $this->mockAdmanRevenueMargem($b, '2026-05', revenue: 4500);
 
         // Empresa C — 'none'. Deve ser EXCLUÍDA logo no filtro
         // "provider aplicável" do computeVarFaturamento (não conta como baseline).

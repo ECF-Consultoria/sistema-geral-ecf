@@ -337,7 +337,11 @@ class DesempenhoPeriodoOficialTest extends TestCase
         $u  = $this->criarUserAnalista('Var Fat Janela');
         $c1 = $this->criarEmpresaElegivel($u, 'CUST-FAT-1');
         $c2 = $this->criarEmpresaElegivel($u, 'CUST-FAT-2');
-        // Empresa nova (dentro dos 2 meses) — deve ser EXCLUÍDA (DESEMP-04, preservado).
+        // Empresa nova — deve ser EXCLUÍDA. Item 1 (2026-07-21): o filtro por
+        // created_at foi removido; a empresa nova agora é excluída pela TRAVA
+        // DE COBERTURA — ela não tem histórico Adman antes do baseline (é nova
+        // de verdade: só tem junho, nada em maio), então revAnterior=0/cobertura
+        // parcial e ela sai do faturamento. Sinal de DADOS, não data de cadastro.
         $cNova = $this->criarEmpresaElegivel($u, 'CUST-FAT-NOVA', createdAt: '-10 days');
 
         // C1: current 1000/dia, baseline 900/dia → (30000-27000)/27000*100 = +11,1111...%
@@ -346,9 +350,10 @@ class DesempenhoPeriodoOficialTest extends TestCase
         // C2: current 1200/dia, baseline 1000/dia → (36000-30000)/30000*100 = +20,00%
         $this->semearDiario($c2, '2026-06-01', '2026-06-30', revenue: 1200.0, margem: null);
         $this->semearDiario($c2, '2026-05-02', '2026-05-31', revenue: 1000.0, margem: null);
-        // Nova: delta absurdo — se entrasse na média, distorceria muito.
+        // Nova: só tem junho (empresa nova de verdade — nenhum dado em maio).
+        // Sem baseline (revAnterior=0) + cobertura parcial → EXCLUÍDA. Se
+        // entrasse, o delta absurdo distorceria muito a média.
         $this->semearDiario($cNova, '2026-06-01', '2026-06-30', revenue: 100000.0, margem: null);
-        $this->semearDiario($cNova, '2026-05-02', '2026-05-31', revenue: 1.0, margem: null);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-06-01'));

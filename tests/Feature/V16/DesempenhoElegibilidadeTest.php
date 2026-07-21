@@ -191,13 +191,13 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertNull($r['componentes']['var_faturamento_pct'],
             'Financeiro da empresa Shopee NÃO pode vazar pro score bloqueado.');
         $this->assertNull($r['componentes']['var_margem_pct']);
-        // Fase 105 (v18.0 · NPSWIN-01) — FALLOUT ESPERADO: `$mes` (2026-08-01)
-        // é o mês EM CURSO nesta suíte (setTestNow 15/08/2026) →
-        // `computeNpsWindow()` exclui o componente direto (`null`, nunca
-        // desloca nem usa 0.0 — D1). Não é mais o fallback DESEMP-03 de
-        // "sem respostas → 0.0" (esse só se aplica a mês FECHADO).
-        $this->assertNull($r['componentes']['nps_medio'],
-            'Mês em curso → nps_medio excluído (null), não mais 0.0 (Fase 105 · NPSWIN-01).');
+        // Item 2 (2026-07-21) — mês EM CURSO (setTestNow 15/08/2026) usa PISO
+        // NPS 1.0 (supera a exclusão da Fase 105): o componente entra com 1.0
+        // desde o dia 1 para não inflar a nota só com financeiro. Como o user
+        // é `blocked`, a nota_final continua null (D-91-01, linha acima) — o
+        // piso do NPS não muda o bloqueio.
+        $this->assertSame(1.0, $r['componentes']['nps_medio'],
+            'Mês em curso → piso NPS 1.0 (item 2), não mais null.');
         $this->assertSame(1, $r['empresas_unicas']);
         $this->assertSame(1, $r['vinculos_servico']);
         $this->assertSame(0, $r['vinculos_financeiros']);
@@ -227,6 +227,12 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->inserirPivot($empresaA->id, $user->id, 'consultor', $servicoPerf);
         $this->mockAdman($empresaA, '2026-08', revenue: 10300, margem: 2117.68);
         $this->mockAdman($empresaA, '2026-07', revenue: 10000, margem: 2000.00);
+        // Histórico pré-baseline (item 1 · trava de cobertura): a empresa opera
+        // desde antes do baseline (junho), então o Adman cobre o início da
+        // janela. Sem isso, a trava trataria o baseline como parcial e
+        // descartaria a empresa. Junho fica FORA das janelas jul/ago → não
+        // altera var_faturamento nem var_margem.
+        $this->mockAdman($empresaA, '2026-06', revenue: 9500, margem: 1900.00);
 
         // Empresa B — Shopee, sem fonte financeira. Números absurdos: se
         // vazarem pro cálculo, o teste detecta (var_faturamento_pct explodiria).
@@ -247,14 +253,14 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertSame(2, $r['vinculos_servico']);
         $this->assertSame(1, $r['vinculos_financeiros']);
         $this->assertSame(1, $r['vinculos_sem_fonte_financeira']);
-        // Fase 105 (v18.0 · NPSWIN-01) — FALLOUT ESPERADO: `$mes` (2026-08-01)
-        // é mês EM CURSO → nps_medio excluído (null), não mais 0.0→clamp 1pt.
-        // nota_final passa a ser a média só dos financeiros disponíveis:
-        // régua_fat(+3.00%)=4pts; régua_margem(+2.80%)=4pts → (4 + 4) / 2 = 4.00
-        // (era 3.00 quando o NPS 0.0 ainda entrava na média).
-        $this->assertEqualsWithDelta(4.00, $r['nota_final'], 0.001);
-        $this->assertSame('basico', $r['faixa_bonus'],
-            'nota 4.00 cai na faixa basico [4.00,4.49] (seed bonus_faixas) — antes era sem_bonus com o NPS 0.0 puxando a média pra baixo.');
+        // Item 2 (2026-07-21) — mês EM CURSO usa PISO NPS 1.0. A nota passa a
+        // ser a média dos 3 componentes: nps=1.0; régua_fat(+3.00%)=4pts;
+        // régua_margem(+2.80%)=4pts → (1.0 + 4 + 4) / 3 = 3.00.
+        $this->assertSame(1.0, $r['componentes']['nps_medio'],
+            'Mês em curso → piso NPS 1.0 (item 2).');
+        $this->assertEqualsWithDelta(3.00, $r['nota_final'], 0.001);
+        $this->assertSame('sem_bonus', $r['faixa_bonus'],
+            'nota 3.00 cai na faixa sem_bonus [0.00,3.99] (seed bonus_faixas).');
         $this->assertSame(2, $r['empresas_carteira'],
             'Compat DESEMP-05: empresas_carteira reflete empresas_unicas.');
     }
@@ -275,6 +281,9 @@ class DesempenhoElegibilidadeTest extends TestCase
 
         $this->mockAdman($empresa, '2026-08', revenue: 10500);
         $this->mockAdman($empresa, '2026-07', revenue: 10000);
+        // Histórico pré-baseline (item 1 · trava de cobertura) — junho fora das
+        // janelas jul/ago, só prova que a empresa opera desde antes do baseline.
+        $this->mockAdman($empresa, '2026-06', revenue: 9500);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($user, Carbon::parse('2026-08-01'));
@@ -308,15 +317,14 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertSame('partial', $r['score_status']);
         $this->assertNull($r['componentes']['var_faturamento_pct']);
         $this->assertNull($r['componentes']['var_margem_pct']);
-        // Fase 105 (v18.0 · NPSWIN-01) — FALLOUT ESPERADO: `$mes` (2026-08-01)
-        // é mês EM CURSO → nps_medio também é `null` (excluído, não mais
-        // 0.0→clamp 1pt). Com os 3 componentes null, `computeNotaFinal`
-        // retorna null — não há mais nenhum componente disponível pra média
-        // (antes o NPS 0.0 sozinho sustentava nota_final=1.00).
-        $this->assertNull($r['componentes']['nps_medio']);
-        $this->assertNull($r['nota_final'],
-            'Fase 105: mês em curso exclui NPS também — sem nenhum componente disponível, nota_final vira null (era 1.00 quando o NPS 0.0 sozinho sustentava a média).');
-        $this->assertNull($r['faixa_bonus']);
+        // Item 2 (2026-07-21) — mês EM CURSO usa PISO NPS 1.0. Sem financeiro
+        // (var_fat/var_margem null), a nota é só o NPS piso: computeNotaFinal(
+        // 1.0, null, null) = 1.00 → faixa sem_bonus [0.00,3.99]. (Supera a Fase
+        // 105, que excluía o NPS e deixava nota_final null.)
+        $this->assertSame(1.0, $r['componentes']['nps_medio']);
+        $this->assertEqualsWithDelta(1.00, $r['nota_final'], 0.001,
+            'Item 2: piso NPS 1.0 sustenta a nota mesmo sem financeiro (era null na Fase 105).');
+        $this->assertSame('sem_bonus', $r['faixa_bonus']);
     }
 
     #[Test]

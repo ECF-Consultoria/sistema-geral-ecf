@@ -178,6 +178,10 @@ class PerformanceIndexMetadadosTest extends TestCase
         $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoPerf);
         $this->mockAdman($empresa, '2026-08', revenue: 10300, margem: 10280);
         $this->mockAdman($empresa, '2026-07', revenue: 10000, margem: 10000);
+        // Histórico pré-baseline (item 1 · trava de cobertura): junho prova que
+        // a empresa opera desde antes do baseline → qualifica no faturamento e
+        // score_status fica 'official'. Sem isso a trava a deixaria 'partial'.
+        $this->mockAdman($empresa, '2026-06', revenue: 9500, margem: 9500);
 
         $response = $this->get('/performance');
         $response->assertStatus(200);
