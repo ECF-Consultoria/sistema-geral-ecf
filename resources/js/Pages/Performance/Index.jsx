@@ -1,6 +1,6 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router, Link, usePage } from '@inertiajs/react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
     Trophy, ChevronDown, TrendingUp, CheckSquare, ChevronRight, X,
     Users, Target, CheckCircle2, Crown, Award, ShoppingCart, Percent,
@@ -221,6 +221,9 @@ export default function PerformanceIndex({
     // (competence_month/payment_month, null quando o mês está em curso).
     periodo = null,
     bonus = null,
+    // Fase 106 (SC2) — true enquanto o warm sob-demanda do cache de desempenho
+    // roda em background (mês fechado com ≥1 profissional ainda frio).
+    aquecendo = false,
 }) {
     const isPolos = setor === 'polos';
 
@@ -272,6 +275,42 @@ export default function PerformanceIndex({
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
     }, [userSelecionado]);
+
+    // ── Fase 106 (SC2) — poll parcial enquanto o cache do mês fechado está
+    // sendo aquecido em background (warm sob-demanda, Plan 106-02). Mesmo
+    // padrão do Modo TV (RankingConsultoria não pollava antes), mas
+    // condicionado a 'aquecendo' e com teto de tentativas pra não pollar
+    // pra sempre caso o job de warm falhe/trave.
+    const POLL_AQUECENDO_TETO = 20; // ~20 x 6s ≈ 2min
+    const tentativasAquecendoRef = useRef(0);
+    const [pollEsgotado, setPollEsgotado] = useState(false);
+
+    useEffect(() => {
+        if (!aquecendo) {
+            tentativasAquecendoRef.current = 0;
+            setPollEsgotado(false);
+            return undefined;
+        }
+        const id = setInterval(() => {
+            if (tentativasAquecendoRef.current >= POLL_AQUECENDO_TETO) {
+                clearInterval(id);
+                setPollEsgotado(true);
+                return;
+            }
+            if (!document.hidden) {
+                tentativasAquecendoRef.current += 1;
+                router.reload({ only: ['ranking', 'aquecendo'], preserveScroll: true, preserveState: true });
+            }
+        }, 6000);
+        return () => clearInterval(id);
+    }, [aquecendo]);
+
+    // Botão manual do aviso de teto esgotado — zera o contador e tenta de novo.
+    const recarregarAquecendoManual = () => {
+        tentativasAquecendoRef.current = 0;
+        setPollEsgotado(false);
+        router.reload({ only: ['ranking', 'aquecendo'], preserveScroll: true, preserveState: true });
+    };
 
     // ── DESEMP-10 · separação sem_carteira / rankable ────────────────────
     const rankingElegivel = useMemo(
@@ -482,6 +521,24 @@ export default function PerformanceIndex({
                     )}
                 </div>
 
+                {/* Fase 106 (SC2) — aviso quando o poll de aquecimento atingiu o teto
+                    (~2min) sem o mês terminar de esquentar; oferece recarga manual. */}
+                {pollEsgotado && aquecendo && (
+                    <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-2 text-amber-200/80 text-sm">
+                            <Clock size={14} className="text-amber-300/70 shrink-0" />
+                            Demorando mais que o esperado para calcular este mês.
+                        </div>
+                        <button
+                            type="button"
+                            onClick={recarregarAquecendoManual}
+                            className="shrink-0 h-8 px-3 rounded-lg border border-amber-500/30 text-amber-200 text-[12px] font-semibold hover:bg-amber-500/10 transition-colors"
+                        >
+                            Recarregar
+                        </button>
+                    </div>
+                )}
+
                 {rankingFiltrado.length === 0 ? (
                     <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-12 text-center">
                         <Trophy size={32} className="mx-auto mb-3 text-white/20" />
@@ -558,6 +615,10 @@ function RankingConsultoria({ ranking, onSelectUser }) {
 
             <div className="divide-y divide-white/[0.04]">
                 {ranking.map((u, idx) => {
+                    // Fase 106 (SC2) — linha "fria": mês fechado sem cache pronto,
+                    // warm rodando em background (Plan 106-02). Nota/faixa/deltas
+                    // ficam em estado transitório "calculando…" até o poll atualizar.
+                    const calculando = u.calculando === true;
                     const faixaSlug = u.faixa_bonus ?? 'sem_bonus';
                     const faixaCls = FAIXA_BADGE_CLS[faixaSlug] ?? FAIXA_BADGE_CLS.sem_bonus;
                     const faixaLbl = FAIXA_LABEL[faixaSlug] ?? faixaSlug;
@@ -567,10 +628,11 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                         <div
                             key={u.id}
                             className={cn(
-                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors hover:bg-white/[0.04] cursor-pointer',
+                                'grid grid-cols-[2.5rem_minmax(0,1fr)_6rem_7.5rem_5rem_4.5rem_5rem_5rem_5rem_2rem] gap-2 px-5 py-3 items-center transition-colors',
                                 idx === 0 && 'bg-ecf-yellow/[0.03]',
+                                calculando ? 'cursor-default' : 'hover:bg-white/[0.04] cursor-pointer',
                             )}
-                            onClick={() => router.visit(route('performance.show', u.id))}
+                            onClick={() => { if (!calculando) router.visit(route('performance.show', u.id)); }}
                         >
                             {/* Posição */}
                             <div className="flex items-center justify-center">
@@ -588,54 +650,71 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                             {/* Nota final + conta que gerou (ex: "(3+5+4)/3") ou badge de
                                 status (Fase 92) quando a nota não é 100% oficial. */}
                             <div className="text-right">
-                                <span className="text-white font-display font-extrabold text-[16px] tabular-nums">{nota}</span>
-                                {u.score_status && u.score_status !== 'official' ? (
+                                {calculando ? (
                                     <span
-                                        className={cn(
-                                            'block mt-0.5 text-right text-[8.5px] leading-tight font-semibold px-1.5 py-0.5 rounded-md border',
-                                            SCORE_STATUS_BADGE_CLS[u.score_status] ?? SCORE_STATUS_BADGE_CLS.partial,
-                                        )}
-                                        title={SCORE_STATUS_TOOLTIP[u.score_status] ?? ''}
+                                        className="text-white/40 text-[12px] font-medium animate-pulse tabular-nums"
+                                        title="Calculando a nota deste profissional em segundo plano — a página atualiza sozinha."
                                     >
-                                        {SCORE_STATUS_LABEL[u.score_status] ?? u.score_status}
+                                        calculando…
                                     </span>
                                 ) : (
-                                    <span
-                                        className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
-                                        title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
-                                    >
-                                        {formatContaNota(u.pontos_componentes)}
-                                    </span>
+                                    <>
+                                        <span className="text-white font-display font-extrabold text-[16px] tabular-nums">{nota}</span>
+                                        {u.score_status && u.score_status !== 'official' ? (
+                                            <span
+                                                className={cn(
+                                                    'block mt-0.5 text-right text-[8.5px] leading-tight font-semibold px-1.5 py-0.5 rounded-md border',
+                                                    SCORE_STATUS_BADGE_CLS[u.score_status] ?? SCORE_STATUS_BADGE_CLS.partial,
+                                                )}
+                                                title={SCORE_STATUS_TOOLTIP[u.score_status] ?? ''}
+                                            >
+                                                {SCORE_STATUS_LABEL[u.score_status] ?? u.score_status}
+                                            </span>
+                                        ) : (
+                                            <span
+                                                className="text-white/30 text-[10px] block leading-none mt-0.5 tabular-nums"
+                                                title="Média dos pontos NPS, faturamento e margem (régua 1-5)"
+                                            >
+                                                {formatContaNota(u.pontos_componentes)}
+                                            </span>
+                                        )}
+                                    </>
                                 )}
                             </div>
 
-                            {/* Faixa + promovida */}
+                            {/* Faixa + promovida — omitida enquanto a linha está calculando */}
                             <div className="flex items-center gap-1.5 flex-wrap">
-                                <span className={cn(
-                                    'inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border',
-                                    faixaCls,
-                                )}>
-                                    {faixaLbl}
-                                </span>
-                                {u.faixa_promovida && (
-                                    <span
-                                        className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
-                                        title="Promovida por 2 meses consecutivos em Intermediário"
-                                    >
-                                        <Sparkles size={9} />
-                                        PROMOVIDA
-                                    </span>
+                                {calculando ? (
+                                    <span className="text-white/20 text-[11px]">—</span>
+                                ) : (
+                                    <>
+                                        <span className={cn(
+                                            'inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border',
+                                            faixaCls,
+                                        )}>
+                                            {faixaLbl}
+                                        </span>
+                                        {u.faixa_promovida && (
+                                            <span
+                                                className="inline-flex items-center gap-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full border bg-emerald-500/15 text-emerald-300 border-emerald-500/30"
+                                                title="Promovida por 2 meses consecutivos em Intermediário"
+                                            >
+                                                <Sparkles size={9} />
+                                                PROMOVIDA
+                                            </span>
+                                        )}
+                                    </>
                                 )}
                             </div>
 
-                            {/* Delta vs mês passado */}
+                            {/* Delta vs mês passado — sempre '—' enquanto calculando */}
                             <div className="text-right">
-                                <DeltaMes delta={u.delta_vs_mes_passado} />
+                                <DeltaMes delta={calculando ? null : u.delta_vs_mes_passado} />
                             </div>
 
                             {/* NPS médio */}
                             <div className="text-right">
-                                {u.componentes?.nps_medio != null ? (
+                                {!calculando && u.componentes?.nps_medio != null ? (
                                     <span className="text-white/85 font-semibold tabular-nums text-[12px]">
                                         {Number(u.componentes.nps_medio).toFixed(2)}
                                     </span>
@@ -646,12 +725,12 @@ function RankingConsultoria({ ranking, onSelectUser }) {
 
                             {/* Var Faturamento */}
                             <div className="text-right">
-                                <PctToneCell value={u.componentes?.var_faturamento_pct} />
+                                <PctToneCell value={calculando ? null : u.componentes?.var_faturamento_pct} />
                             </div>
 
                             {/* Var Margem */}
                             <div className="text-right">
-                                <PctToneCell value={u.componentes?.var_margem_pct} />
+                                <PctToneCell value={calculando ? null : u.componentes?.var_margem_pct} />
                             </div>
 
                             {/* Empresas — tooltip com os metadados de elegibilidade (Fase 92 · SC2):
