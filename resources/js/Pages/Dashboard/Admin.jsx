@@ -7,36 +7,17 @@ import {
 } from 'recharts';
 import {
     Star, Users, Award,
-    DollarSign, BarChart2, Clock, Tv, ChevronDown, X, Trophy, ChevronRight, TrendingUp
+    DollarSign, BarChart2, Clock, Tv, X, Trophy, ChevronRight, TrendingUp,
+    ExternalLink,
 } from 'lucide-react';
 import { formatCurrency, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
 // Phase 72 Plan 03 v15.0 — Widget de empresas pendentes de NPS no mês corrente
 import NpsPendingWidget from '@/Components/Nps/NpsPendingWidget';
-
-
-const PERIOD_OPTIONS = [
-    { value: '1', label: 'Último dia' },
-    { value: '7', label: 'Últimos 7 dias' },
-    { value: '30', label: 'Últimos 30 dias' },
-    { value: '180', label: 'Últimos 6 meses' },
-];
-
-function ECFSelect({ value, onChange, placeholder, options }) {
-    return (
-        <div className="relative">
-            <select
-                value={value || ''}
-                onChange={e => onChange(e.target.value)}
-                className="appearance-none h-9 pl-3 pr-8 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 focus:border-ecf-yellow/40 transition-all cursor-pointer"
-            >
-                {placeholder && <option value="">{placeholder}</option>}
-                {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 pointer-events-none" />
-        </div>
-    );
-}
+// Fase 97 Plan 03 (DASH-97-1/DASH-97-2) — painel de filtros rascunho→aplicar
+// + chips + fix da navegação do marketplace. PERIOD_OPTIONS reexportado daqui
+// para o modo TV (abaixo) e o header usarem o MESMO conjunto de períodos.
+import FiltrosDashboard, { PERIOD_OPTIONS } from '@/Components/Dashboard/FiltrosDashboard';
 
 // Phase 18 W5-T4 — Badge "Cust ID Inválido" inline. Renderiza apenas
 // quando status === 'invalido' (demais valores ficam neutros). Sem emoji
@@ -114,6 +95,14 @@ export default function AdminDashboard({
     // Phase 72 Plan 03 v15.0 — lista de empresas pendentes de NPS este mês
     // (injetada pelo DashboardController via NpsPendingService::forCarteira)
     nps_pendentes = [],
+    // Fase 97 Plan 02 (DASH-97-5) — respostas de NPS nota baixa do recorte
+    // (já excluindo invalidadas, Fase 96). Usado aqui só para "M ruins" do
+    // KPI de NPS; o carrossel completo é do Plan 97-04.
+    nps_ruins = [],
+    // Fase 97 Plan 01 — nome da rota Inertia atual ('dashboard' ou
+    // 'mercadolivre.dashboard'). Base do fix do bug do marketplace: navegar
+    // sempre pela rota CORRENTE, nunca por uma rota fixa (Fase 97 Riscos §1).
+    dashboard_route_name = 'dashboard',
 }) {
     const [tvMode, setTvMode] = useState(false);
 
@@ -121,11 +110,21 @@ export default function AdminDashboard({
     // Guard `sourceCounts &&` mantém backward compat quando flag OFF (undefined).
     const sourceCounts = stats?.source_counts ?? null;
 
-    const applyFilter = (key, value) => {
-        router.get(route('dashboard'), {
-            ...filters,
-            period,
-            [key]: value || undefined,
+    // Fase 97 Plan 03 (DASH-97-2) — FIX do bug do marketplace: o antigo
+    // `applyFilter` usava `route('dashboard')` fixo, então filtrar em
+    // /dashboard/mercadolivre caía na dashboard genérica e perdia o recorte
+    // `marketplace=meli` (Fase 97 CONTEXT Riscos §1). Agora navega SEMPRE
+    // pela rota corrente (`dashboard_route_name`, vindo do backend) e
+    // preserva `filters.marketplace` explicitamente — nunca inventado pelo
+    // front, sempre o valor que o próprio backend validou (threat T-97-03-01).
+    const applyFilters = (next) => {
+        router.get(route(dashboard_route_name), {
+            period: next.period,
+            company_id: next.company_id || undefined,
+            group_id: next.group_id || undefined,
+            consultor_id: next.consultor_id || undefined,
+            estrategista_id: next.estrategista_id || undefined,
+            marketplace: filters.marketplace || undefined,
         }, { preserveState: true, preserveScroll: true });
     };
 
@@ -160,23 +159,11 @@ export default function AdminDashboard({
     ];
     const npsDataFilled = npsTotal === 0 ? [{ name: 'Sem dados', value: 1, color: 'rgba(255,255,255,0.06)' }] : npsData;
 
-    // (Quick task 260610-f69) Listas dos selects derivam de `analistas` /
-    // `estrategistas` vindos do backend — não mais do `users.role` legacy.
-    // Cross-filter: quando um lado está selecionado, o outro lista apenas
-    // profissionais que coabitam ao menos uma empresa via `combinacoes`.
-    const analistasFiltrados = filters.estrategista_id
-        ? analistas.filter(a => combinacoes.some(c =>
-            String(c.analista_id) === String(a.id) &&
-            String(c.estrategista_id) === String(filters.estrategista_id)
-          ))
-        : analistas;
-
-    const estrategistasFiltrados = filters.consultor_id
-        ? estrategistas.filter(e => combinacoes.some(c =>
-            String(c.estrategista_id) === String(e.id) &&
-            String(c.analista_id) === String(filters.consultor_id)
-          ))
-        : estrategistas;
+    // Fase 97 Plan 03 (DASH-97-3) — "M ruins" do KPI de NPS. Usa a contagem
+    // real de `nps_ruins` (Plan 97-02, já filtrado pelo recorte e sem
+    // invalidadas) quando disponível; cai em `nps_distribution.negativas`
+    // como fallback (compat com payloads antigos/flag OFF).
+    const npsRuinsCount = Array.isArray(nps_ruins) ? nps_ruins.length : (nps_distribution.negativas ?? 0);
 
     const periodLabel = PERIOD_OPTIONS.find(p => p.value === period)?.label ?? '';
 
@@ -290,41 +277,22 @@ export default function AdminDashboard({
         <AppLayout title="Dashboard">
             <div className="space-y-6 max-w-[1400px]">
 
-                {/* Filters bar */}
-                <div className="flex flex-wrap items-center gap-2">
-                    <ECFSelect
-                        value={period}
-                        onChange={v => applyFilter('period', v)}
-                        options={PERIOD_OPTIONS}
-                    />
-                    <ECFSelect
-                        value={filters.company_id || ''}
-                        onChange={v => applyFilter('company_id', v)}
-                        placeholder="Todas as empresas"
-                        options={(companies_list || []).map(c => ({ value: String(c.id), label: c.name }))}
-                    />
-                    {grupos_list.length > 0 && (
-                        <ECFSelect
-                            value={filters.group_id || ''}
-                            onChange={v => applyFilter('group_id', v)}
-                            placeholder="Todos os grupos"
-                            options={grupos_list.map(g => ({ value: String(g.id), label: g.name }))}
-                        />
-                    )}
-                    <ECFSelect
-                        value={filters.consultor_id || ''}
-                        onChange={v => applyFilter('consultor_id', v)}
-                        placeholder="Todos analistas"
-                        options={analistasFiltrados.map(u => ({ value: String(u.id), label: u.name }))}
-                    />
-                    <ECFSelect
-                        value={filters.estrategista_id || ''}
-                        onChange={v => applyFilter('estrategista_id', v)}
-                        placeholder="Todos estrategistas"
-                        options={estrategistasFiltrados.map(u => ({ value: String(u.id), label: u.name }))}
+                {/* Filters bar — Fase 97 Plan 03 (DASH-97-1/DASH-97-2): painel
+                    rascunho→aplicar + chips, com fix da navegação do marketplace
+                    embutido em `applyFilters` (definido acima). */}
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <FiltrosDashboard
+                        period={period}
+                        filters={filters}
+                        companiesList={companies_list}
+                        gruposList={grupos_list}
+                        analistas={analistas}
+                        estrategistas={estrategistas}
+                        combinacoes={combinacoes}
+                        onApply={applyFilters}
                     />
 
-                    <div className="ml-auto flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                         {/* Phase 61-05 — Legenda `stats.source_counts` (DASH-04/DATA-05).
                             Ordem canônica ML → Agregado → Adman → Sem integração. */}
                         {sourceCounts && (
@@ -367,13 +335,108 @@ export default function AdminDashboard({
                     </div>
                 )}
 
-                {/* KPI Cards — visão geral */}
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                    <KpiCard title="Empresas" value={s.total_companies} sub="Carteira ativa Performance" icon={Users} color="blue" empty={noData} />
-                    <KpiCard title="TACOS Médio" value={formatPercent(s.avg_tacos)} sub="Últimos 30 dias · Adman" icon={BarChart2} color="yellow" empty={noData} />
-                    <KpiCard title="NPS Médio" value={(s.avg_nps ?? 0).toFixed(2)} sub={`Média ${(s.avg_nps ?? 0).toFixed(2)}/5`} icon={Star} color="green" empty={noData} />
-                    <KpiCard title="Invest. Ads (30d)" value={formatCurrency(s.total_ad_investment_30d)} sub="Últimos 30 dias · Adman" icon={TrendingUp} color="red" empty={noData} />
-                    <KpiCard title="Faturamento Total" value={formatCurrency(s.total_revenue)} sub="Últimos 30 dias · Adman" icon={DollarSign} color="purple" empty={noData} />
+                {/* KPI Cards — Fase 97 Plan 03 (DASH-97-3): 4 indicadores do
+                    redesign, cada um com valor + variação vs. período anterior
+                    (quando aplicável) + link para a área completa. Substitui a
+                    grade antiga de 5 cards sem delta/link (modo TV mantém o
+                    formato antigo — ver bloco `tvMode` acima). */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {[
+                        {
+                            key: 'faturamento',
+                            label: 'Faturamento total',
+                            value: formatCurrency(s.total_revenue),
+                            deltaPct: stats.total_revenue_delta_pct,
+                            legendaSemDelta: 'vs período anterior',
+                            href: route('companies.index'),
+                            linkTitle: 'Performance por empresa',
+                            topBar: '#60a5fa',
+                        },
+                        {
+                            key: 'margem',
+                            label: 'Margem contrib. média',
+                            value: formatPercent(s.avg_margin),
+                            deltaPp: stats.avg_margin_delta_pp,
+                            legendaSemDelta: 'ponderada por faturamento',
+                            href: route('performance.index'),
+                            linkTitle: 'Margem por profissional (Área da equipe)',
+                            topBar: '#34d399',
+                        },
+                        {
+                            key: 'nps',
+                            label: 'NPS médio',
+                            value: (s.avg_nps ?? 0).toFixed(2),
+                            sub: `${npsTotal} respostas · ${npsRuinsCount} ruins`,
+                            href: route('nps.index'),
+                            linkTitle: 'Respostas de NPS',
+                            topBar: '#22c55e',
+                        },
+                        {
+                            key: 'empresas',
+                            label: 'Empresas ativas',
+                            value: String(s.total_companies),
+                            sub: `+${stats.novas_empresas_count ?? 0} novas no mês`,
+                            href: route('companies.index'),
+                            linkTitle: 'Cadastro de empresas',
+                            topBar: '#ffe600',
+                        },
+                    ].map(k => {
+                        // Cor/seta/rótulo do delta computados AQUI, DENTRO do
+                        // callback do .map() — pitfall Rollup (Fase 97): nunca
+                        // herdar flag derivada de variável de escopo externo.
+                        let delta = null;
+                        if (k.deltaPct !== undefined) {
+                            const semBase = k.deltaPct === null || k.deltaPct === undefined;
+                            const dir = semBase ? 'neutral' : (k.deltaPct >= 0 ? 'good' : 'bad');
+                            delta = {
+                                dir,
+                                arrow: dir === 'good' ? '▲' : dir === 'bad' ? '▼' : '•',
+                                label: semBase ? 'sem base' : `${k.deltaPct > 0 ? '+' : ''}${k.deltaPct.toFixed(1)}%`,
+                            };
+                        } else if (k.deltaPp !== undefined) {
+                            const semBase = k.deltaPp === null || k.deltaPp === undefined;
+                            const dir = semBase ? 'neutral' : (k.deltaPp >= 0 ? 'good' : 'bad');
+                            delta = {
+                                dir,
+                                arrow: dir === 'good' ? '▲' : dir === 'bad' ? '▼' : '•',
+                                label: semBase ? 'sem base' : `${k.deltaPp > 0 ? '+' : ''}${k.deltaPp.toFixed(1)} pp`,
+                            };
+                        }
+                        const deltaColors = {
+                            good: 'text-emerald-400 bg-emerald-500/10',
+                            bad: 'text-red-400 bg-red-500/10',
+                            neutral: 'text-white/50 bg-white/[0.06]',
+                        };
+
+                        return (
+                            <div key={k.key} className="relative card-ecf rounded-2xl p-4 flex flex-col gap-2.5 overflow-hidden">
+                                <div className="absolute inset-x-0 top-0 h-[2px]" style={{ background: k.topBar }} />
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-white/40 text-[10.5px] font-bold uppercase tracking-wide">{k.label}</p>
+                                    <Link
+                                        href={k.href}
+                                        title={k.linkTitle}
+                                        className="w-5 h-5 rounded-md flex items-center justify-center text-white/30 hover:text-ecf-yellow hover:bg-white/[0.06] transition-colors shrink-0"
+                                    >
+                                        <ExternalLink size={12} />
+                                    </Link>
+                                </div>
+                                <p className={cn('font-display font-extrabold text-2xl tracking-tight', noData ? 'text-white/20' : 'text-white')}>
+                                    {noData ? '—' : k.value}
+                                </p>
+                                {!noData && (
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {delta && (
+                                            <span className={cn('inline-flex items-center gap-1 text-[11.5px] font-bold px-1.5 py-0.5 rounded-md', deltaColors[delta.dir])}>
+                                                {delta.arrow} {delta.label}
+                                            </span>
+                                        )}
+                                        <span className="text-white/30 text-[11px]">{k.legendaSemDelta || k.sub}</span>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {/* Charts row 1 */}
