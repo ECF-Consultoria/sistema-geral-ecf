@@ -127,7 +127,10 @@ class DesempenhoScoreService
      *   'empresas_carteira'     => int,     // compat: recebe o valor de empresas_unicas (Fase 91)
      *   'empresas_com_baseline' => int,     // usadas em var_faturamento
      *   'componentes' => [
-     *     'nps_medio'           => ?float,  // 0.0 quando user não recebeu notas no mês
+     *     'nps_medio'           => ?float,  // Fase 105 (NPSWIN-01/02): mês fechado lê a
+     *                                       // janela M+1 (0.0 quando M+1 fechou sem notas,
+     *                                       // penaliza); null quando excluído (mês em curso
+     *                                       // OU M+1 ainda coletando com 0 respostas)
      *     'var_faturamento_pct' => ?float,  // null quando nenhuma empresa qualifica
      *     'var_margem_pct'      => ?float,
      *     'absenteismo_pct'     => null,    // sempre null nesta phase (DESEMP-06)
@@ -154,7 +157,8 @@ class DesempenhoScoreService
      *   'vinculos_sem_fonte_financeira' => int,
      *   'score_status'                  => string, // 'official'|'partial'|'blocked'
      *   'componentes_disponiveis' => [
-     *     'nps_medio'           => bool, // sempre true (DESEMP-03 força 0.0)
+     *     'nps_medio'           => bool, // Fase 105 (NPSWIN-02): true se != null
+     *                                    // (false = mês em curso OU M+1 ainda coletando)
      *     'var_faturamento_pct' => bool, // true se != null
      *     'var_margem_pct'      => bool, // true se != null
      *   ],
@@ -228,6 +232,16 @@ class DesempenhoScoreService
         // (`YYYY-MM` do mesmo mês) colidiriam na MESMA chave e um pisaria no
         // cache do outro (T-102-04). Helper único: `cacheKey()` — nunca hardcode
         // o formato da chave em outro lugar (ex.: `NpsController::bustarCacheDoBonus`).
+        // Bump v5→v6 em 2026-07-21 (Fase 105 · v18.0 · NPSWIN-01/02): a RÉGUA
+        // da janela de leitura do componente NPS mudou — competência FECHADA
+        // passa a ler o NPS coletado em M+1 (antes lia M, sempre 0 respostas
+        // → 0.0 → nota tankada, bug de prod do Felipe/105-CONTEXT.md); mês EM
+        // CURSO passa a EXCLUIR o componente (null) em vez de forçar 0.0. Os
+        // valores gravados sob a v5 têm a nota ERRADA (janela antiga) —
+        // servi-los do Redis por até 7 dias (mês fechado) continuaria pagando
+        // bônus errado mesmo com o código novo em prod. As chaves v5 viram
+        // órfãs e expiram sozinhas por TTL — não precisa (nem deve) rodar
+        // `cache:clear`.
         $cacheKey = $this->cacheKey($user->id, $mes);
 
         // Mês fechado (passado): dado estável, cache longo — invalida só quando
@@ -262,7 +276,7 @@ class DesempenhoScoreService
         $mesCorrente = Carbon::now()->startOfMonth();
         $periodKey   = $mes->equalTo($mesCorrente) ? 'current_month' : $mes->format('Y-m');
 
-        return sprintf('desempenho.compute.v5.%d.%s', $userId, $periodKey);
+        return sprintf('desempenho.compute.v6.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -329,7 +343,13 @@ class DesempenhoScoreService
         // (`financial_metrics_eligible=true` — DESEMP-04). NPS continua
         // somando todas as áreas do profissional, sem filtro de elegibilidade
         // financeira (DESEMP-03/D-91-02 — computeNpsMedio INTOCADO).
-        $nps        = $this->computeNpsMedio($user, $mes);
+        //
+        // Fase 105 (v18.0 · NPSWIN-01/02, D1 do 105-CONTEXT.md) — a janela de
+        // bônus dura 2 meses: M coleta o FINANCEIRO, M+1 coleta o NPS (o
+        // cliente só avalia DEPOIS do trabalho feito). `$periodo['is_closed']`
+        // já resolvido acima (linha ~314) é o sinal CANÔNICO de "mês fechado"
+        // — nunca recalcular via now()/between aqui.
+        $nps = $this->computeNpsWindow($user, $mes, $periodo['is_closed']);
         $varFatData = $this->computeVarFaturamento($user, $mes, $companies, $periodo);
         $varMargem  = $this->computeVarMargem($user, $mes, $companies, $periodo);
         $absent     = $this->computeAbsenteismo($user, $mes);
@@ -439,7 +459,12 @@ class DesempenhoScoreService
             'vinculos_sem_fonte_financeira' => $contadores['vinculos_sem_fonte_financeira'],
             'score_status'                  => $scoreStatus,
             'componentes_disponiveis' => [
-                'nps_medio'           => true, // DESEMP-03 força 0.0 — nunca indisponível.
+                // Fase 105 (v18.0 · NPSWIN-02): deixa de ser hardcoded `true`
+                // (DESEMP-03 forçava 0.0 sempre "disponível") — agora reflete
+                // a exclusão do componente (mês em curso OU M+1 ainda em
+                // coleta com 0 respostas). A UI "Em curso"/janela-em-coleta
+                // usa esta flag pra esconder o card de NPS sem tankar a nota.
+                'nps_medio'           => $nps !== null,
                 'var_faturamento_pct' => $varFat !== null,
                 'var_margem_pct'      => $varMargem !== null,
             ],
@@ -522,6 +547,67 @@ class DesempenhoScoreService
         }
 
         return 'official';
+    }
+
+    /**
+     * Resolve o componente NPS do bônus a partir do sinal `is_closed` do
+     * período (Fase 105 · v18.0 · NPSWIN-01/02, D1 do 105-CONTEXT.md).
+     *
+     * Modelo de negócio: a janela de bônus dura 2 meses — mês M coleta o
+     * FINANCEIRO, mês M+1 coleta o NPS (o cliente só avalia DEPOIS do
+     * trabalho feito; o NPS de M é enviado/respondido em M+1).
+     *
+     *  - Mês EM CURSO (`is_closed=false`): NPS EXCLUÍDO — retorna `null`. NÃO
+     *    desloca, NÃO usa 0.0. O NPS de um mês em curso só é coletado no mês
+     *    seguinte, que ainda não existe (D1 — "Em curso" é monitoramento
+     *    operacional, não preview de bônus).
+     *  - Mês FECHADO (`is_closed=true`): a janela de NPS desloca +1
+     *    (`addMonthNoOverflow` — evita o edge do dia 31) e delega a
+     *    `computeNpsMedio($user, $mesNps)`. O financeiro (chamado
+     *    separadamente em `compute()`) CONTINUA em `$mes`, sem deslocamento.
+     *
+     *    Mecânica exclui-vs-penaliza (usa a sentinela 0.0 de
+     *    `computeNpsMedio` — média não-vazia é sempre >= 1.0, DESEMP-03):
+     *      · `computeNpsMedio($mesNps) == 0.0` (vazio) E a janela M+1 AINDA
+     *        EM COLETA → `null` (EXCLUÍDO — não tanka; a competência ainda
+     *        vai receber NPS).
+     *      · `computeNpsMedio($mesNps) == 0.0` E a janela M+1 JÁ FECHOU →
+     *        mantém `0.0` (PENALIZA — 0 respostas de verdade, decisão da
+     *        diretoria).
+     *      · Qualquer valor >= 1.0 → usa como está (não passa pela
+     *        mecânica exclui-vs-penaliza).
+     *
+     *    ⚠ BLOCKER 1 (plan-checker) — "a janela M+1 já fechou?" é comparada
+     *    por DATA, NUNCA por timestamp. O cron `desempenho:consolidar-mes`
+     *    (105-02) congela no ÚLTIMO DIA de M+1 às 14h — `endOfMonth($mesNps)`
+     *    é 23:59:59 do MESMO dia, então `endOfMonth($mesNps) < now()` seria
+     *    SEMPRE FALSO nesse instante e toda competência com 0 NPS real cairia
+     *    em "ainda coletando" (null) em vez de "fechada com 0" (0.0) — o
+     *    OPOSTO da regra. `now()->startOfDay()->gte(endOfMonth($mesNps)->
+     *    startOfDay())` (hoje é >= o último dia calendário de M+1) é imune a
+     *    esse boundary — ver `JanelaNpsBonusTest::test_boundary_...`.
+     *
+     * @return ?float null quando excluído (em curso OU M+1 ainda coletando
+     *                com 0 respostas); float (>= 0.0) quando disponível.
+     */
+    private function computeNpsWindow(User $user, Carbon $mes, bool $mesFechado): ?float
+    {
+        if (! $mesFechado) {
+            return null;
+        }
+
+        $mesNps = $mes->copy()->addMonthNoOverflow();
+        $nps    = $this->computeNpsMedio($user, $mesNps);
+
+        if ($nps > 0.0) {
+            return $nps;
+        }
+
+        // $nps === 0.0 (sentinela de "vazio" — DESEMP-03) — decide entre
+        // excluir (M+1 ainda em coleta) ou penalizar (M+1 já fechou).
+        $janelaNpsFechada = now()->startOfDay()->gte($mesNps->copy()->endOfMonth()->startOfDay());
+
+        return $janelaNpsFechada ? 0.0 : null;
     }
 
     /**
