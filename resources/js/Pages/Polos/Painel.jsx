@@ -518,7 +518,7 @@ export default function PolosPainel({
         return isAdmin ? [...base, { key: 'financeiro', label: 'Performance' }] : base;
     }, [isAdmin]);
     const [lente, setLente] = useState('geral');
-    // Sub-visão da lente Metas: "Entrantes (M0)" (espelha o PDF) | "Torre de Comando" (MetasPanel).
+    // Sub-visão da lente Metas: "Entrantes (M0)" (espelha o PDF) | "Visão geral" (MetasPanel).
     const [metaView, setMetaView] = useState('entrantes');
 
     // Metas de entrantes por região × mês (aba Metas) — seed das props; edição otimista.
@@ -1046,12 +1046,12 @@ export default function PolosPainel({
                     </div>
                 </div>
 
-                {/* ── Aba Metas (Entrantes M0 | Torre de Comando) OU Grade (planilha das lentes) ── */}
+                {/* ── Aba Metas (Entrantes M0 | Visão geral) OU Grade (planilha das lentes) ── */}
                 {lente === 'metas' ? (
                     <div className="space-y-4">
                         {/* Sub-toggle da lente Metas */}
                         <div className="inline-flex items-center gap-1 rounded-lg border border-white/[0.08] bg-white/[0.02] p-0.5">
-                            {[['entrantes', 'Entrantes (M0)'], ['torre', 'Torre de Comando']].map(([k, lbl]) => (
+                            {[['entrantes', 'Entrantes (M0)'], ['torre', 'Visão geral']].map(([k, lbl]) => (
                                 <button key={k} type="button" onClick={() => setMetaView(k)}
                                     className={cn('rounded-md px-3 py-1.5 text-[12px] font-semibold transition',
                                         metaView === k ? 'bg-ecf-yellow/15 text-ecf-yellow' : 'text-white/50 hover:text-white/80')}>
