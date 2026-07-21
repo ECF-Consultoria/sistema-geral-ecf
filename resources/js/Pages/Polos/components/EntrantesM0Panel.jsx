@@ -1,35 +1,35 @@
 import { useMemo } from 'react';
-import { UserPlus, KeyRound, Users, MessagesSquare, MapPin, ClipboardList, AlertCircle } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { UserPlus, KeyRound, Users, MessagesSquare, MapPin, ClipboardList, Hourglass } from 'lucide-react';
 import HeroKpi from './HeroKpi';
 import { montarCorDoPolo } from './poloCores';
 
 /**
- * EntrantesM0Panel — aba "Entrantes (M0)" da lente Metas, espelhando o layout do PDF
- * "MAPEAMENTO POLOS - Entrantes". Fonte = dados do SISTEMA (prop `empresas`), escopo
- * Fase M0 (coorte de entrada). NÃO lê a planilha — os números saem do banco.
+ * EntrantesM0Panel — aba "Entrantes (M0)" da lente Metas. Espelha o funil de entrada da
+ * planilha (Dash Gerencial Polos V2), que tem DUAS fases próprias — lidas direto de `empresa.fase`:
+ *  · ACEITE NO PROJETO = aceitou, ainda entrando (pré-M0).
+ *  · ENTRANTE (M0)     = entrou de fato (fase M0).
  *
- * Regra de negócio (definida pelo usuário) — 3 requisitos:
- *  · ENTRANTE (M0)     = tem Cust ID + Acesso Colaborador ('Com acesso') + Grupo WhatsApp.
- *  · ACEITE NO PROJETO = empresa M0 que ainda NÃO tem os 3 (falta 1, 2 ou 3). Ao completar
- *                        os 3 itens, vira Entrante. (NÃO usa `status_entrada`.)
+ * Fonte = SISTEMA (prop `empresas`). Os números batem com a planilha DEPOIS de rodar
+ * `polos:sync-planilha`, que agora PRESERVA "Aceite no Projeto" como fase (antes fundia em M0
+ * e o número de aceites sumia — era a causa da divergência painel × planilha).
  *
- * Blocos: (1) Meta M0 (Entrantes 3/3, hero + por polo) · (2) Checklist M0 (os 3 itens) ·
- *         (3) Aceites no Projeto (contador + o que falta + quão perto).
+ * O checklist dos 3 itens (Cust ID + Acesso + Grupo WhatsApp) NÃO define mais aceite/entrante:
+ * virou só "prontidão de setup" dos M0 (informativo).
  */
 
 const CARD = 'relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02] p-5 before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/[0.10] before:to-transparent';
-const HEX = { yellow: '#ffe600', green: '#22c55e', sky: '#38bdf8', amber: '#fcd34d', red: '#ef4444', violet: '#a855f7' };
+const HEX = { yellow: '#ffe600', green: '#22c55e', sky: '#38bdf8', amber: '#fcd34d', red: '#ef4444', violet: '#a855f7', fuchsia: '#e879f9' };
 
 const MESES_BR = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-// ── Predicados de domínio — os 3 requisitos ─────────────────────────────────────
-const ehM0        = (e) => e.fase === 'M0';
-const temCust     = (e) => !!(e.cust_id && String(e.cust_id).trim());
-const temAcesso   = (e) => e.acesso_colaborador === 'Com acesso';
-const temGrupo    = (e) => e.grupo_whatsapp === true;
-const nReq        = (e) => (temCust(e) ? 1 : 0) + (temAcesso(e) ? 1 : 0) + (temGrupo(e) ? 1 : 0);
-const ehEntrante  = (e) => nReq(e) === 3;
+// ── Fases do funil de entrada (strings EXATAS do banco / planilha) ──────────────
+const ehAceite = (e) => e.fase === 'Aceite no Projeto';   // aceitou, ainda entrando
+const ehM0     = (e) => e.fase === 'M0';                   // entrou (Entrante)
+
+// Os 3 itens de setup — agora só medem "prontidão dos M0", não definem aceite.
+const temCust   = (e) => !!(e.cust_id && String(e.cust_id).trim());
+const temAcesso = (e) => e.acesso_colaborador === 'Com acesso';
+const temGrupo  = (e) => e.grupo_whatsapp === true;
 
 const pct = (n, t) => (t > 0 ? Math.round((n / t) * 100) : 0);
 
@@ -51,57 +51,34 @@ function BarraTem({ label, icone: Ico, n, total, cor }) {
     );
 }
 
-// Barra "falta o item" (gargalo) — largura relativa ao maior gargalo.
-function BarraFalta({ label, n, max, cor }) {
-    return (
-        <div className="flex items-center gap-3">
-            <span className="w-32 shrink-0 truncate text-[12px] text-white/70">{label}</span>
-            <div className="relative h-5 flex-1 overflow-hidden rounded-md bg-white/[0.04]">
-                <div className="h-full rounded-md transition-all duration-500" style={{ width: `${(n / max) * 100}%`, background: `${cor}cc` }} />
-            </div>
-            <span className="w-7 shrink-0 text-right text-[13px] font-semibold tabular-nums text-white/85">{n}</span>
-        </div>
-    );
-}
-
 export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
     const mesLabel = useMemo(() => { const d = new Date(); return `${MESES_BR[d.getMonth()]} / ${d.getFullYear()}`; }, []);
 
-    // ── Coorte de entrada = Fase M0 ──
-    const m0 = useMemo(() => empresas.filter(ehM0), [empresas]);
-    const totalM0   = m0.length;
-    const entrantes = useMemo(() => m0.filter(ehEntrante).length, [m0]);   // tem os 3
-    const aceites   = totalM0 - entrantes;                                  // falta >= 1
-    const pctMeta   = pct(entrantes, totalM0);
+    // ── Funil de entrada = Aceite no Projeto ∪ M0 ──
+    const aceites   = useMemo(() => empresas.filter(ehAceite), [empresas]);
+    const entrantes = useMemo(() => empresas.filter(ehM0), [empresas]);
+    const nAceites   = aceites.length;
+    const nEntrantes = entrantes.length;
+    const coorte     = nAceites + nEntrantes;
+    const pctEntrada = pct(nEntrantes, coorte);   // dos que estão no funil, quantos já entraram
 
-    // Checklist — quantos têm cada item (de todos os M0)
-    const comCust   = useMemo(() => m0.filter(temCust).length, [m0]);
-    const comAcesso = useMemo(() => m0.filter(temAcesso).length, [m0]);
-    const comGrupo  = useMemo(() => m0.filter(temGrupo).length, [m0]);
+    // Prontidão de setup dos M0 (informativo — não é mais a régua de aceite)
+    const comCust   = useMemo(() => entrantes.filter(temCust).length, [entrantes]);
+    const comAcesso = useMemo(() => entrantes.filter(temAcesso).length, [entrantes]);
+    const comGrupo  = useMemo(() => entrantes.filter(temGrupo).length, [entrantes]);
 
-    // Falta cada item (só cai nos aceites — entrantes têm tudo)
-    const faltaCust   = totalM0 - comCust;
-    const faltaAcesso = totalM0 - comAcesso;
-    const faltaGrupo  = totalM0 - comGrupo;
-    const maxFalta    = Math.max(1, faltaCust, faltaAcesso, faltaGrupo);
-
-    // Proximidade dos aceites (quantos itens já têm)
-    const tem2 = useMemo(() => m0.filter((e) => nReq(e) === 2).length, [m0]); // quase lá
-    const tem1 = useMemo(() => m0.filter((e) => nReq(e) === 1).length, [m0]);
-    const tem0 = useMemo(() => m0.filter((e) => nReq(e) === 0).length, [m0]);
-
-    // ── Por polo ──
+    // ── Por polo (aceites × entrantes) ──
     const polosOrdenados = useMemo(() => {
-        const presentes = [...new Set(m0.map((e) => e.polo).filter(Boolean))];
+        const presentes = [...new Set([...aceites, ...entrantes].map((e) => e.polo).filter(Boolean))];
         const ordem = [...new Set([...regioes, ...presentes])];
         return ordem.filter((p) => presentes.includes(p));
-    }, [m0, regioes]);
+    }, [aceites, entrantes, regioes]);
     const corDoPolo = useMemo(() => montarCorDoPolo(polosOrdenados.map((p) => ({ polo: p }))), [polosOrdenados]);
-    const porPolo = useMemo(() => polosOrdenados.map((polo) => {
-        const doPolo = m0.filter((e) => e.polo === polo);
-        const ent = doPolo.filter(ehEntrante).length;
-        return { polo, total: doPolo.length, ent, ace: doPolo.length - ent };
-    }), [m0, polosOrdenados]);
+    const porPolo = useMemo(() => polosOrdenados.map((polo) => ({
+        polo,
+        ace: aceites.filter((e) => e.polo === polo).length,
+        ent: entrantes.filter((e) => e.polo === polo).length,
+    })), [aceites, entrantes, polosOrdenados]);
 
     return (
         <div className="space-y-4">
@@ -111,50 +88,43 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                     <UserPlus size={18} className="text-ecf-yellow" /> Entrantes (M0)
                 </h2>
                 <span className="rounded-full bg-white/[0.05] px-2.5 py-1 text-[11px] uppercase tracking-wider text-white/45">
-                    Fase M0 · {totalM0} sellers
+                    Funil de entrada · {coorte} sellers
                 </span>
             </div>
 
-            {/* ── Linha 1: Meta M0 (Entrantes) + Checklist dos 3 itens ── */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                <div className="lg:col-span-1">
-                    <HeroKpi
-                        titulo={`Meta M0 — ${mesLabel}`}
-                        icone={UserPlus}
-                        valor={`${entrantes}/${totalM0}`}
-                        gauge={totalM0 > 0 ? pctMeta : null}
-                        glow="yellow"
-                        sublabel={<>Entrantes = sellers com os <b className="text-white/70">3 itens</b> (Cust ID + Acesso + Grupo). Faltam <b className="text-white/80">{aceites}</b>.</>}
-                    />
-                </div>
-
-                <div className={cn(CARD, 'lg:col-span-2')}>
-                    <div className="mb-3 flex items-center gap-1.5">
-                        <ClipboardList size={15} className="text-ecf-yellow" />
-                        <h3 className="text-sm font-semibold text-white/80">Checklist M0 — os 3 itens</h3>
-                        <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">base {totalM0}</span>
-                    </div>
-                    <div className="space-y-3.5">
-                        <BarraTem label="Cust ID"            icone={KeyRound}       n={comCust}   total={totalM0} cor={HEX.yellow} />
-                        <BarraTem label="Acesso Colaborador" icone={Users}          n={comAcesso} total={totalM0} cor={HEX.sky} />
-                        <BarraTem label="Grupo WhatsApp"     icone={MessagesSquare} n={comGrupo}  total={totalM0} cor={HEX.green} />
-                    </div>
-                </div>
+            {/* ── Linha 1: as 2 fases do funil (batem com a planilha) ── */}
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                <HeroKpi
+                    titulo={`Entrantes (M0) — ${mesLabel}`}
+                    icone={UserPlus}
+                    valor={String(nEntrantes)}
+                    gauge={coorte > 0 ? pctEntrada : null}
+                    glow="yellow"
+                    sublabel={<>Sellers que <b className="text-white/70">entraram de fato</b> (fase M0). {pctEntrada}% do funil de entrada.</>}
+                />
+                <HeroKpi
+                    titulo="Aceite no Projeto"
+                    icone={Hourglass}
+                    valor={String(nAceites)}
+                    glow="none"
+                    sublabel={<>Aceitaram, ainda <b className="text-fuchsia-300">entrando</b> (pré-M0). Viram Entrante ao concluir a entrada.</>}
+                />
             </div>
 
             {/* ── Linha 2: por polo ── */}
             <div className={CARD}>
                 <div className="mb-3 flex items-center gap-1.5">
                     <MapPin size={15} className="text-ecf-yellow" />
-                    <h3 className="text-sm font-semibold text-white/80">Entrantes por polo</h3>
-                    <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">com os 3 itens / total</span>
+                    <h3 className="text-sm font-semibold text-white/80">Funil de entrada por polo</h3>
+                    <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">entrantes (M0) · aceites</span>
                 </div>
                 {porPolo.length === 0 ? (
-                    <p className="py-6 text-center text-[12px] text-white/30">Nenhum seller em Fase M0.</p>
+                    <p className="py-6 text-center text-[12px] text-white/30">Nenhum seller no funil de entrada.</p>
                 ) : (
                     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                         {porPolo.map((p) => {
-                            const pc = pct(p.ent, p.total);
+                            const tot = p.ent + p.ace;
+                            const pc = pct(p.ent, tot);
                             const cor = corDoPolo[p.polo] ?? HEX.yellow;
                             return (
                                 <div key={p.polo} className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">
@@ -164,13 +134,13 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                                     </div>
                                     <div className="flex items-end gap-1.5">
                                         <span className="font-display text-2xl font-extrabold tabular-nums text-white leading-none">{p.ent}</span>
-                                        <span className="mb-0.5 text-[12px] text-white/40">/ {p.total}</span>
+                                        <span className="mb-0.5 text-[12px] text-white/40">M0</span>
                                         <span className="mb-0.5 ml-auto text-[13px] font-semibold tabular-nums" style={{ color: cor }}>{pc}%</span>
                                     </div>
                                     <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
                                         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pc}%`, background: cor }} />
                                     </div>
-                                    <p className="mt-1.5 text-[11px] text-white/40">Aceites: <b className="text-amber-300/80">{p.ace}</b></p>
+                                    <p className="mt-1.5 text-[11px] text-white/40">Aceites: <b className="text-fuchsia-300/90">{p.ace}</b></p>
                                 </div>
                             );
                         })}
@@ -178,50 +148,23 @@ export default function EntrantesM0Panel({ empresas = [], regioes = [] }) {
                 )}
             </div>
 
-            {/* ── Linha 3: Aceites no Projeto (definido pelos 3 itens) ── */}
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                <div className="lg:col-span-1">
-                    <HeroKpi
-                        titulo="Aceites no Projeto"
-                        icone={AlertCircle}
-                        valor={String(aceites)}
-                        glow="none"
-                        sublabel={<>Em M0 sem os 3 itens. <b className="text-emerald-400">{tem2}</b> estão a 1 item de virar Entrante.</>}
-                    />
+            {/* ── Linha 3: prontidão de setup dos M0 (informativo, NÃO define aceite) ── */}
+            <div className={CARD}>
+                <div className="mb-1 flex items-center gap-1.5">
+                    <ClipboardList size={15} className="text-ecf-yellow" />
+                    <h3 className="text-sm font-semibold text-white/80">Prontidão de setup dos Entrantes (M0)</h3>
+                    <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">base {nEntrantes}</span>
                 </div>
-
-                <div className={cn(CARD, 'lg:col-span-2')}>
-                    <div className="mb-1 flex items-center gap-1.5">
-                        <AlertCircle size={15} className="text-ecf-yellow" />
-                        <h3 className="text-sm font-semibold text-white/80">Falta para virar Entrante</h3>
-                        <span className="ml-auto text-[10px] uppercase tracking-wider text-white/35">itens em aberto</span>
+                <p className="mb-3 text-[11px] text-white/40">Quantos dos {nEntrantes} entrantes M0 já têm cada item de setup. Indicador operacional — não é a régua de "aceite".</p>
+                {nEntrantes === 0 ? (
+                    <p className="py-6 text-center text-[12px] text-white/30">Nenhum seller em Fase M0.</p>
+                ) : (
+                    <div className="space-y-3.5">
+                        <BarraTem label="Cust ID"            icone={KeyRound}       n={comCust}   total={nEntrantes} cor={HEX.yellow} />
+                        <BarraTem label="Acesso Colaborador" icone={Users}          n={comAcesso} total={nEntrantes} cor={HEX.sky} />
+                        <BarraTem label="Grupo WhatsApp"     icone={MessagesSquare} n={comGrupo}  total={nEntrantes} cor={HEX.green} />
                     </div>
-                    <p className="mb-3 text-[11px] text-white/40">Quantos dos {aceites} aceites ainda precisam de cada item.</p>
-                    {aceites === 0 ? (
-                        <p className="py-6 text-center text-[12px] text-white/30">Todos os M0 já têm os 3 itens.</p>
-                    ) : (
-                        <>
-                            <div className="space-y-2.5">
-                                <BarraFalta label="Acesso Colaborador" n={faltaAcesso} max={maxFalta} cor={HEX.red} />
-                                <BarraFalta label="Cust ID"            n={faltaCust}   max={maxFalta} cor={HEX.amber} />
-                                <BarraFalta label="Grupo WhatsApp"     n={faltaGrupo}  max={maxFalta} cor={HEX.green} />
-                            </div>
-                            {/* Proximidade */}
-                            <div className="mt-4 grid grid-cols-3 gap-2 border-t border-white/[0.06] pt-3">
-                                {[
-                                    { n: tem2, l: 'têm 2 dos 3', cor: HEX.green, tag: 'quase lá' },
-                                    { n: tem1, l: 'têm 1 dos 3', cor: HEX.amber, tag: null },
-                                    { n: tem0, l: 'nenhum item', cor: '#9ca3af', tag: null },
-                                ].map((c, i) => (
-                                    <div key={i} className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5">
-                                        <div className="font-display text-xl font-extrabold tabular-nums" style={{ color: c.cor }}>{c.n}</div>
-                                        <div className="text-[11px] text-white/50">{c.l}{c.tag && <span className="ml-1 rounded bg-emerald-500/15 px-1 text-[9px] font-semibold uppercase text-emerald-300">{c.tag}</span>}</div>
-                                    </div>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
+                )}
             </div>
         </div>
     );

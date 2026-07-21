@@ -31,8 +31,9 @@ class SyncPolosPlanilha extends Command
     // ─── Mapeamentos confirmados com o usuário ───────────────────────────────
     private const FASE_MAP = [
         'M0' => 'M0', 'M1' => 'M1', 'M2' => 'M2', 'M3' => 'M3', 'M4' => 'M4',
-        // "Aceite no Projeto" = empresa aceita, ainda em entrada → M0 (fase de entrada).
-        'ACEITE NO PROJETO' => 'M0',
+        // "Aceite no Projeto" = empresa aceita, ainda em entrada. Preservada como fase PRÓPRIA
+        // (pré-M0) para espelhar a planilha — antes era fundida em M0 e sumia o número de aceites.
+        'ACEITE NO PROJETO' => 'Aceite no Projeto',
         'CHRUN' => 'Churn', 'CHURN' => 'Churn', 'PROTOCOLO CHURN' => 'Churn',
         'DESISTÊNCIA' => 'Churn', 'DESISTENCIA' => 'Churn', 'ENCERRADO' => 'Encerrado',
     ];

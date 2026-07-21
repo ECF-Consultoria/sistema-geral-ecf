@@ -86,6 +86,7 @@ class MlbEmpresa extends Model
      * canônica — esta constante é fallback apenas.
      */
     public const FASE_PARA_PROJETO = [
+        'Aceite no Projeto' => 'POLOS',
         'M0' => 'POLOS', 'M1' => 'POLOS', 'M2' => 'POLOS', 'M3' => 'POLOS', 'M4' => 'POLOS',
         'ASSESSORIA' => 'Assessoria',
         'Incubadora' => 'Incubadora',
