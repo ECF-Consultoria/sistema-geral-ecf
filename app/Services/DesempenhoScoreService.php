@@ -280,6 +280,19 @@ class DesempenhoScoreService
     }
 
     /**
+     * Wrapper fino da Fase 106 (SC2 — gate isCached): responde "está em
+     * cache?" para (user, mês) SEM nunca computar. Reusa a MESMA chave que
+     * `computeCached()` escreve/lê (`cacheKey()`) — nunca dispara `compute()`
+     * nem `computeCached()`, portanto zero chamada HTTP à Adman/ML. É o
+     * gancho que `PerformanceController` (Plan 106-02) usa pra decidir
+     * "computo ou degrado" sem pagar o custo do compute() caro.
+     */
+    public function isCached(User $user, Carbon $mes): bool
+    {
+        return Cache::has($this->cacheKey($user->id, $mes));
+    }
+
+    /**
      * Resolve o `$periodo` (shape do `MetricPeriodResolver`) usado por
      * `compute()` quando nenhum `$periodoOverride` é passado (Fase 102 ·
      * BON-01/BON-02, decisão travada Opção B — ver 102-RESEARCH.md
