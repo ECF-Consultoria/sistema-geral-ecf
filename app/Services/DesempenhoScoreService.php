@@ -276,7 +276,10 @@ class DesempenhoScoreService
         $mesCorrente = Carbon::now()->startOfMonth();
         $periodKey   = $mes->equalTo($mesCorrente) ? 'current_month' : $mes->format('Y-m');
 
-        return sprintf('desempenho.compute.v6.%d.%s', $userId, $periodKey);
+        // v7 (2026-07-21): remoção do filtro created_at no faturamento (item 1)
+        // + piso NPS 1.0 no mês em curso (item 2) mudam a nota — bump força
+        // recomputo, senão o Redis serve v6 por até 7 dias.
+        return sprintf('desempenho.compute.v7.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -570,10 +573,13 @@ class DesempenhoScoreService
      * FINANCEIRO, mês M+1 coleta o NPS (o cliente só avalia DEPOIS do
      * trabalho feito; o NPS de M é enviado/respondido em M+1).
      *
-     *  - Mês EM CURSO (`is_closed=false`): NPS EXCLUÍDO — retorna `null`. NÃO
-     *    desloca, NÃO usa 0.0. O NPS de um mês em curso só é coletado no mês
-     *    seguinte, que ainda não existe (D1 — "Em curso" é monitoramento
-     *    operacional, não preview de bônus).
+     *  - Mês EM CURSO (`is_closed=false`): NPS = **piso 1.0** (decisão diretoria
+     *    2026-07-21). O NPS do mês em curso só é coletado no mês seguinte, então
+     *    ainda não existe — mas EXCLUIR o componente (retornar null) inflava a
+     *    nota, deixando a pessoa "começar o mês bem" só com margem+faturamento.
+     *    Usar 1.0 como piso mantém o NPS na média desde o dia 1; quando a coleta
+     *    de M+1 começar (no mês fechado), a nota real substitui o piso. Supera a
+     *    D1 original da Fase 105 (que excluía o NPS em curso).
      *  - Mês FECHADO (`is_closed=true`): a janela de NPS desloca +1
      *    (`addMonthNoOverflow` — evita o edge do dia 31) e delega a
      *    `computeNpsMedio($user, $mesNps)`. O financeiro (chamado
@@ -606,7 +612,10 @@ class DesempenhoScoreService
     private function computeNpsWindow(User $user, Carbon $mes, bool $mesFechado): ?float
     {
         if (! $mesFechado) {
-            return null;
+            // Mês em curso ainda não tem NPS (vem em M+1). Piso 1.0 mantém o
+            // componente na média desde o dia 1 — não infla a nota (decisão
+            // diretoria 2026-07-21). A nota real entra quando o mês fecha.
+            return 1.0;
         }
 
         $mesNps = $mes->copy()->addMonthNoOverflow();
@@ -887,40 +896,23 @@ class DesempenhoScoreService
      */
     private function computeVarFaturamento(User $user, Carbon $mes, EloquentCollection $companies, array $periodo): array
     {
-        // ── Filtro "empresa nova na carteira" ────────────────────────────────
-        // Ajuste 2026-07-09 (força tarefa): a spec original DESEMP-04 dizia
-        // "empresa nova (menos de 2 meses na carteira) não conta". O código
-        // usava `company_users.created_at` como proxy — MAS o pivot foi
-        // recriado recentemente para praticamente todas as empresas (rebind
-        // administrativo), o que fez 97% das empresas serem consideradas
-        // "novas" e o ranking ficar quase vazio (6 empresas qualificadas
-        // de 212 na equipe toda).
-        //
-        // Diagnóstico do VPS mostrou que trocar o filtro para
-        // `companies.created_at` (data de CADASTRO da empresa no sistema)
-        // sobe a qualificação para 160 de 212 (~75%) — que é o resultado
-        // que faz sentido semanticamente: filtrar empresas RECÉM cadastradas
-        // no sistema, não empresas com vínculo recém-recriado.
-        $limiteNova = $mes->copy()->subMonth()->startOfMonth();
-
-        $companiesQualificadas = $companies->filter(function ($company) use ($limiteNova) {
-            $createdAt = $company->created_at;
-            if ($createdAt === null) {
-                return true; // fallback: não descartar por erro de dado
-            }
-            $createdCarbon = $createdAt instanceof Carbon
-                ? $createdAt
-                : Carbon::parse($createdAt);
-
-            return $createdCarbon->lt($limiteNova);
-        });
-
-        if ($companiesQualificadas->isEmpty()) {
-            return ['pct' => null, 'empresas_com_baseline' => 0];
-        }
-
         // ── Filtro "provider aplicável" ──────────────────────────────────────
-        $companiesQualificadas = $companiesQualificadas->filter(
+        // NOTA (2026-07-21): o antigo filtro "empresa nova" por
+        // `companies.created_at < mês-1` foi REMOVIDO. A base de empresas foi
+        // reimportada em massa (quase todas com `created_at` = 2026-05-25), o
+        // que fazia 100% virarem "novas" e o baseline de faturamento zerar —
+        // todo profissional caía em `partial` (só Ana Julia escapava, por ter 2
+        // empresas cadastradas em abril). `created_at` (na company OU no pivot)
+        // reflete evento de importação, não realidade de negócio; e o histórico
+        // de métricas só começa em ~21/05, então nenhum teste de "2 meses
+        // operando" é viável hoje sem re-zerar todo mundo. A proteção real
+        // contra "sem baseline" é o guard `revAnterior <= 0` logo abaixo:
+        // empresa sem faturamento no mês anterior é descartada naturalmente;
+        // empresa com baseline real (maio via ML, que entrega o mês cheio)
+        // conta. Decisão do usuário "contar quem tem baseline real"
+        // (2026-07-21). O teste de "2 meses" volta a fazer sentido sozinho
+        // quando o histórico acumular — reavaliar então.
+        $companiesQualificadas = $companies->filter(
             fn ($c) => $this->metricsFactory->caseFor($c) !== 'none'
         );
 
