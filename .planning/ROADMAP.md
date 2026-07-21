@@ -1033,7 +1033,9 @@ Plans:
 
 Plans:
 
-- [ ] TBD (run /gsd-plan-phase 106)
+- [ ] 106-01-PLAN.md — Backend: warm de 2 alvos (corrente + último fechado) + wrapper isCached (SC1/SC2)
+- [ ] 106-02-PLAN.md — Controller: gate quente/frio no modo fechado + dispatch warm com lock (SC2/SC3)
+- [ ] 106-03-PLAN.md — Frontend: estado "calculando…" + poll parcial com teto (SC2/SC3)
 
 ## Dependências — Milestone v18.0 (Fases 100-104)
 
