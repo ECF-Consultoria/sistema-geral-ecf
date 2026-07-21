@@ -1772,6 +1772,16 @@ class NpsController extends Controller
      * cache de bônus a bustar — `NpsSnapshotService::registrar()` retorna
      * cedo para elas (Pitfall 5 do RESEARCH) — isso é CORRETO, não um bug:
      * o loop simplesmente não encontra nenhum user_id e não faz nada.
+     *
+     * Fase 105 · v18.0 (NPSWIN-03) — a competência bustada é `$mesCompletado`
+     * MENOS 1 MÊS, não `$mesCompletado`. Desde a 105-01, `DesempenhoScoreService
+     * ::computeNpsWindow()` desloca a leitura do NPS +1 mês: a competência M
+     * (fechada) lê o NPS coletado em M+1. Logo uma resposta com
+     * `completed_at` em X (=M+1 de alguma competência) alimenta o bônus da
+     * competência X−1, não o de X. Bustar a chave de X faria `Cache::forget`
+     * numa chave que ninguém lê — o `computeCached()` de X−1 continuaria
+     * servindo o valor stale por até 7 dias. `subMonthNoOverflow()` evita
+     * overflow de dia-do-mês (ex.: 31/03 − 1 mês não deve virar 03/04).
      */
     private function bustarCacheDoBonus(NpsResponse $response, NpsSurvey $survey): void
     {
@@ -1779,6 +1789,8 @@ class NpsController extends Controller
         if (!$mesCompletado) {
             return;
         }
+
+        $mesCompetencia = $mesCompletado->copy()->subMonthNoOverflow()->startOfMonth();
 
         $userIds = \App\Models\NpsScoreAssignment::where('nps_response_id', $response->id)
             ->pluck('user_id')
@@ -1788,7 +1800,7 @@ class NpsController extends Controller
 
         foreach ($userIds as $userId) {
             \Illuminate\Support\Facades\Cache::forget(
-                $scoreService->cacheKey($userId, $mesCompletado)
+                $scoreService->cacheKey($userId, $mesCompetencia)
             );
         }
     }

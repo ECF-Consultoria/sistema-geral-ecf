@@ -238,10 +238,12 @@ class NpsInvalidacaoRespostaTest extends TestCase
         $response = $this->criarResponse($survey);
         $this->criarSnapshot($response, $company, $pessoa);
 
-        // Fase 102 (BON-04/T-102-05): a chave passou a v5 com period_key
-        // embutido — junho/2026 é mês fechado nesta suíte (setTestNow julho),
-        // então period_key='2026-06' (mesmo formato Y-m de antes).
-        $cacheKey = sprintf('desempenho.compute.v5.%d.%s', $pessoa->id, '2026-06');
+        // Fase 105 (NPSWIN-03): completed_at em junho/2026 (X) alimenta a
+        // competência X−1 = maio/2026 (DesempenhoScoreService::computeNpsWindow
+        // desloca a leitura do NPS +1 mês desde a 105-01 — maio lê o NPS de
+        // junho). O bust tem que atingir a chave de MAIO, não a de junho.
+        // Prefixo v6 (bump v5→v6 na 105-01).
+        $cacheKey = sprintf('desempenho.compute.v6.%d.%s', $pessoa->id, '2026-05');
         Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
         $this->assertTrue(Cache::has($cacheKey), 'pré-condição: cache do bônus precisa existir antes da invalidação.');
 
@@ -340,8 +342,9 @@ class NpsInvalidacaoRespostaTest extends TestCase
         ]);
         $this->criarSnapshot($response, $company, $pessoa);
 
-        // Fase 102 (BON-04/T-102-05): chave v5, período fechado (2026-06).
-        $cacheKey = sprintf('desempenho.compute.v5.%d.%s', $pessoa->id, '2026-06');
+        // Fase 105 (NPSWIN-03): idem — competência bustada é X−1 = maio/2026,
+        // chave v6 (ver comentário do teste de invalidar acima).
+        $cacheKey = sprintf('desempenho.compute.v6.%d.%s', $pessoa->id, '2026-05');
         Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
 
         $this->actingAs($admin)
