@@ -164,8 +164,21 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
 
     private function criarEmpresaNaCarteira(User $user, string $pivotCreatedAt = '-3 months'): Company
     {
-        $company = Company::factory()->create();
         $ts = Carbon::parse($pivotCreatedAt)->toDateTimeString();
+
+        $company = Company::factory()->create();
+        // Rule 1 (bug pré-existente, achado durante 105-03 ao investigar
+        // fallout financeiro/mês-corrente): sem forçar `companies.created_at`,
+        // a empresa fica com o timestamp do factory (=`now()`) e cai no
+        // filtro "empresa nova" de `computeVarFaturamento` (DESEMP-04, Ajuste
+        // 2026-07-09 — usa `companies.created_at`, não o pivot). Isso zerava
+        // `empresas_com_baseline`/`var_faturamento_pct`/`var_margem_pct` para
+        // TODA fixture desta suite, independente da janela de NPS — mesmo
+        // padrão já corrigido em
+        // `Phase74/DesempenhoScoreServiceTest::criarEmpresaNaCarteira()`.
+        $company->timestamps = false;
+        $company->forceFill(['created_at' => $ts, 'updated_at' => $ts])->save();
+        $company->timestamps = true;
 
         $servicoPerfId = $this->servicoPerformanceId();
 
@@ -215,9 +228,13 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
             'contribution_margin' => 10000,
         ]);
 
-        // 1 NpsResponse legacy — score_analista int.
+        // Fase 105 (v18.0 · NPSWIN-01/02) — FALLOUT ESPERADO: a competência
+        // `$mesYm` (fechada) agora lê o NPS de M+1 (`computeNpsWindow()`,
+        // 105-01), não mais do próprio `$mesYm`. 1 NpsResponse legacy —
+        // score_analista int — com completed_at em M+1.
+        $mesNps = Carbon::parse($mesYm . '-01')->addMonthNoOverflow()->format('Y-m');
         $survey = NpsSurvey::factory()->for($c)->completed()->create([
-            'completed_at' => Carbon::parse($mesYm . '-10 09:00:00'),
+            'completed_at' => Carbon::parse($mesNps . '-10 09:00:00'),
         ]);
         NpsResponse::factory()->create([
             'survey_id'      => $survey->id,

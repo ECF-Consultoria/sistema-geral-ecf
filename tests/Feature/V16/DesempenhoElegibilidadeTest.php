@@ -191,8 +191,13 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertNull($r['componentes']['var_faturamento_pct'],
             'Financeiro da empresa Shopee NÃO pode vazar pro score bloqueado.');
         $this->assertNull($r['componentes']['var_margem_pct']);
-        $this->assertSame(0.0, $r['componentes']['nps_medio'],
-            'DESEMP-03 continua intocado: sem respostas no mês → 0.0.');
+        // Fase 105 (v18.0 · NPSWIN-01) — FALLOUT ESPERADO: `$mes` (2026-08-01)
+        // é o mês EM CURSO nesta suíte (setTestNow 15/08/2026) →
+        // `computeNpsWindow()` exclui o componente direto (`null`, nunca
+        // desloca nem usa 0.0 — D1). Não é mais o fallback DESEMP-03 de
+        // "sem respostas → 0.0" (esse só se aplica a mês FECHADO).
+        $this->assertNull($r['componentes']['nps_medio'],
+            'Mês em curso → nps_medio excluído (null), não mais 0.0 (Fase 105 · NPSWIN-01).');
         $this->assertSame(1, $r['empresas_unicas']);
         $this->assertSame(1, $r['vinculos_servico']);
         $this->assertSame(0, $r['vinculos_financeiros']);
@@ -242,10 +247,14 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertSame(2, $r['vinculos_servico']);
         $this->assertSame(1, $r['vinculos_financeiros']);
         $this->assertSame(1, $r['vinculos_sem_fonte_financeira']);
-        // nps 0.0 → clamp 1pt; régua_fat(+3.00%)=4pts; régua_margem(+2.80%)=4pts.
-        // (1 + 4 + 4) / 3 = 3.00.
-        $this->assertEqualsWithDelta(3.00, $r['nota_final'], 0.001);
-        $this->assertSame('sem_bonus', $r['faixa_bonus']);
+        // Fase 105 (v18.0 · NPSWIN-01) — FALLOUT ESPERADO: `$mes` (2026-08-01)
+        // é mês EM CURSO → nps_medio excluído (null), não mais 0.0→clamp 1pt.
+        // nota_final passa a ser a média só dos financeiros disponíveis:
+        // régua_fat(+3.00%)=4pts; régua_margem(+2.80%)=4pts → (4 + 4) / 2 = 4.00
+        // (era 3.00 quando o NPS 0.0 ainda entrava na média).
+        $this->assertEqualsWithDelta(4.00, $r['nota_final'], 0.001);
+        $this->assertSame('basico', $r['faixa_bonus'],
+            'nota 4.00 cai na faixa basico [4.00,4.49] (seed bonus_faixas) — antes era sem_bonus com o NPS 0.0 puxando a média pra baixo.');
         $this->assertSame(2, $r['empresas_carteira'],
             'Compat DESEMP-05: empresas_carteira reflete empresas_unicas.');
     }
@@ -299,10 +308,15 @@ class DesempenhoElegibilidadeTest extends TestCase
         $this->assertSame('partial', $r['score_status']);
         $this->assertNull($r['componentes']['var_faturamento_pct']);
         $this->assertNull($r['componentes']['var_margem_pct']);
-        // Só NPS (0.0 → clamp 1pt) entra na média → nota_final = 1.00.
-        $this->assertEqualsWithDelta(1.00, $r['nota_final'], 0.001,
-            'partial NÃO zera a nota — calcula normalmente com os componentes disponíveis.');
-        $this->assertSame('sem_bonus', $r['faixa_bonus']);
+        // Fase 105 (v18.0 · NPSWIN-01) — FALLOUT ESPERADO: `$mes` (2026-08-01)
+        // é mês EM CURSO → nps_medio também é `null` (excluído, não mais
+        // 0.0→clamp 1pt). Com os 3 componentes null, `computeNotaFinal`
+        // retorna null — não há mais nenhum componente disponível pra média
+        // (antes o NPS 0.0 sozinho sustentava nota_final=1.00).
+        $this->assertNull($r['componentes']['nps_medio']);
+        $this->assertNull($r['nota_final'],
+            'Fase 105: mês em curso exclui NPS também — sem nenhum componente disponível, nota_final vira null (era 1.00 quando o NPS 0.0 sozinho sustentava a média).');
+        $this->assertNull($r['faixa_bonus']);
     }
 
     #[Test]
@@ -359,39 +373,40 @@ class DesempenhoElegibilidadeTest extends TestCase
     }
 
     #[Test]
-    public function test_cache_bumpado_para_v5(): void
+    public function test_cache_bumpado_para_v6(): void
     {
-        // Bump v4→v5 obrigatório da Fase 102 (BON-01/02/03) — mesmo padrão de
-        // BonusDualPathRegressaoTest::test_cache_bumpado_para_v5, um passo
+        // Bump v5→v6 obrigatório da Fase 105 (v18.0 · NPSWIN-01/02, ex-v4→v5
+        // da Fase 102/BON-01/02/03) — mesmo padrão de
+        // BonusDualPathRegressaoTest::test_cache_bumpado_para_v6, um passo
         // adiante. User sem carteira de propósito: computeCached corta cedo
         // no shape sem_carteira e não toca o MetricsProviderFactory.
         //
         // A chave esperada vem do helper público `cacheKey()` (nunca
         // hardcoded aqui): `$mes` (2026-08-01) é o mês CORRENTE nesta suíte
         // (`Carbon::setTestNow` congela 15/08/2026) → period_key='current_month'.
-        $user = $this->criarUserComCargo('Analista Cache v5', $this->cargoAnalistaId);
+        $user = $this->criarUserComCargo('Analista Cache v6', $this->cargoAnalistaId);
 
         $mes     = Carbon::parse('2026-08-01');
-        $chaveV4 = sprintf('desempenho.compute.v4.%d.%s', $user->id, $mes->format('Y-m'));
+        $chaveV5 = sprintf('desempenho.compute.v5.%d.%s', $user->id, $mes->format('Y-m'));
 
         $service = app(DesempenhoScoreService::class);
-        $chaveV5 = $service->cacheKey($user->id, $mes);
+        $chaveV6 = $service->cacheKey($user->id, $mes);
 
-        // Lixo reconhecível na chave v4 — representa o valor que o Redis de
+        // Lixo reconhecível na chave v5 — representa o valor que o Redis de
         // prod tem antes deste deploy.
-        Cache::put($chaveV4, ['nota_final' => 99.9], 600);
+        Cache::put($chaveV5, ['nota_final' => 99.9], 600);
 
         $resultado = $service->computeCached($user, $mes);
 
         $this->assertNotSame(99.9, $resultado['nota_final'] ?? null,
-            'computeCached NÃO pode devolver o valor cacheado sob a chave v4');
+            'computeCached NÃO pode devolver o valor cacheado sob a chave v5');
         $this->assertNull($resultado['nota_final'],
             'o retorno deve ser o shape recalculado (sem carteira → nota_final null)');
         $this->assertTrue($resultado['sem_carteira']);
-        $this->assertTrue(Cache::has($chaveV5),
-            'computeCached deve gravar o resultado sob a chave desempenho.compute.v5 (via helper cacheKey())');
-        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV4),
-            'a chave v4 não é apagada — vira órfã e expira por TTL');
+        $this->assertTrue(Cache::has($chaveV6),
+            'computeCached deve gravar o resultado sob a chave desempenho.compute.v6 (via helper cacheKey())');
+        $this->assertSame(['nota_final' => 99.9], Cache::get($chaveV5),
+            'a chave v5 não é apagada — vira órfã e expira por TTL');
     }
 }
 

@@ -211,29 +211,31 @@ class DesempenhoMetadadosCacheTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // (b)/(c)/(d) Cache v5 com period_key — helper público único
+    // (b)/(c)/(d) Cache v6 com period_key — helper público único
+    // Fase 105 (v18.0 · NPSWIN-01/02): bump v5→v6 — fallout esperado, só o
+    // literal de versão mudou (a mecânica period_key é intocada).
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_compute_cached_grava_sob_v5_com_period_key_mes_fechado(): void
+    public function test_compute_cached_grava_sob_v6_com_period_key_mes_fechado(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-20 14:00:00'));
 
         // User sem carteira de propósito: computeCached corta cedo no shape
         // sem_carteira e não toca o MetricsProviderFactory — zero HTTP.
-        $user = $this->criarUserAnalista('Cache V5 Fechado');
+        $user = $this->criarUserAnalista('Cache V6 Fechado');
         $mes  = Carbon::parse('2026-06-01');
 
         $service = app(DesempenhoScoreService::class);
         $chaveEsperada = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v5.' . $user->id . '.2026-06', $chaveEsperada,
-            'mês fechado usa period_key=YYYY-MM na chave v5.');
+        $this->assertSame('desempenho.compute.v6.' . $user->id . '.2026-06', $chaveEsperada,
+            'mês fechado usa period_key=YYYY-MM na chave v6.');
 
         $resultado = $service->computeCached($user, $mes);
 
         $this->assertTrue(Cache::has($chaveEsperada),
-            'computeCached deve gravar sob a chave v5 construída pelo helper cacheKey().');
+            'computeCached deve gravar sob a chave v6 construída pelo helper cacheKey().');
         $this->assertTrue($resultado['sem_carteira']);
     }
 
@@ -253,9 +255,9 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $mes     = Carbon::parse('2026-08-01');
 
         $chaveOperacional = $service->cacheKey($userId, $mes);
-        $chaveFechadaHipotetica = sprintf('desempenho.compute.v5.%d.%s', $userId, $mes->format('Y-m'));
+        $chaveFechadaHipotetica = sprintf('desempenho.compute.v6.%d.%s', $userId, $mes->format('Y-m'));
 
-        $this->assertSame('desempenho.compute.v5.999.current_month', $chaveOperacional,
+        $this->assertSame('desempenho.compute.v6.999.current_month', $chaveOperacional,
             'mês corrente usa period_key=current_month — nunca YYYY-MM.');
         $this->assertNotSame($chaveFechadaHipotetica, $chaveOperacional,
             'a chave operacional do mês corrente NUNCA é igual à chave YYYY-MM do mesmo mês (T-102-04).');
@@ -266,13 +268,13 @@ class DesempenhoMetadadosCacheTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse('2026-07-20 14:00:00'));
 
-        $user = $this->criarUserAnalista('Cache V5 Helper Bate');
+        $user = $this->criarUserAnalista('Cache V6 Helper Bate');
         $mes  = Carbon::parse('2026-07-01'); // mês CORRENTE
 
         $service = app(DesempenhoScoreService::class);
         $chaveHelper = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v5.' . $user->id . '.current_month', $chaveHelper);
+        $this->assertSame('desempenho.compute.v6.' . $user->id . '.current_month', $chaveHelper);
 
         $service->computeCached($user, $mes);
 
