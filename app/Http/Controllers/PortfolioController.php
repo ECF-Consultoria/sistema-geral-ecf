@@ -152,20 +152,45 @@ class PortfolioController extends Controller
         // `?mes=YYYY-MM` é traduzido 1:1 pro `period_key` `closed_period`;
         // ausente ou igual ao mês corrente usa `current_month` (mesma regra
         // de comparação dia-a-dia acumulada de antes da migração).
+        // Fase 104 (UIP-02/UIP-03, blocker 2 do plan-check) — `?modo=bonus_atual`
+        // é SIMÉTRICO ao PerformanceController (Plan 104-01 Task 1): sem isso,
+        // o toggle "Bônus atual" cairia no mês em curso rotulado como bônus.
+        // `?modo=` é conveniência de UI que decide QUAL mês vira `$mesSelecionado`;
+        // não cria segundo score — só decide a janela repassada aos cálculos
+        // já existentes abaixo.
+        $modo = $request->query('modo');
+        if (!in_array($modo, ['em_curso', 'bonus_atual'], true)) {
+            $modo = null;
+        }
+
         $hoje         = now();
         $mesQuery     = $request->query('mes');
         $mesCorrente  = $hoje->copy()->startOfMonth();
 
-        if ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+        if ($modo === 'bonus_atual') {
+            $periodo = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+            $mesSelecionado = Carbon::parse($periodo['bonus_competence_month'] . '-01')->startOfMonth();
+        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
             $mesSelecionado = Carbon::createFromFormat('Y-m-d', $mesQuery . '-01')->startOfMonth();
+            $periodo = $this->periodResolver->resolve(['period_key' => $mesSelecionado->format('Y-m')]);
         } else {
             $mesSelecionado = $mesCorrente->copy();
+            $periodo = $this->periodResolver->resolve(['period_key' => 'current_month']);
         }
         $ehMesEmCurso = $mesSelecionado->equalTo($mesCorrente);
 
-        $periodo = $ehMesEmCurso
-            ? $this->periodResolver->resolve(['period_key' => 'current_month'])
-            : $this->periodResolver->resolve(['period_key' => $mesSelecionado->format('Y-m')]);
+        // `bonus` só existe quando o período resolvido é FECHADO — mesma regra
+        // do PerformanceController::index() (Plan 104-01 Task 1). `last_closed_month`
+        // já popula bonus_competence_month/bonus_payment_month; `closed_period`
+        // (?mes=YYYY-MM específico) não popula essas chaves, então deriva da
+        // própria competência selecionada + mês seguinte (pagamento).
+        $bonusMeta = null;
+        if ($periodo['is_closed']) {
+            $bonusMeta = [
+                'competence_month' => $periodo['bonus_competence_month'] ?? $mesSelecionado->format('Y-m'),
+                'payment_month'    => $periodo['bonus_payment_month'] ?? $mesSelecionado->copy()->addMonthNoOverflow()->format('Y-m'),
+            ];
+        }
 
         $inicioMes   = Carbon::parse($periodo['current_start']);
         $fimMes      = Carbon::parse($periodo['current_end']);
@@ -490,6 +515,9 @@ class PortfolioController extends Controller
                 'is_current_month' => $periodo['is_current_month'],
                 'is_closed'        => $periodo['is_closed'],
             ],
+            // Fase 104 (UIP-02/UIP-03) — bloco bonus (competence_month/
+            // payment_month) presente só em período fechado; null em curso.
+            'bonus' => $bonusMeta,
         ]);
     }
 
@@ -540,13 +568,37 @@ class PortfolioController extends Controller
         // a janela mensal do resolver).
         $period = $request->get('period', '30');
 
+        // Fase 104 (UIP-02/UIP-03, blocker 2 do plan-check) — `?modo=bonus_atual`
+        // SIMÉTRICO ao PerformanceController + renderCarteiraProfissional
+        // (Plan 104-01). Sem isso, o toggle "Bônus atual" cairia no mês em
+        // curso rotulado como bônus.
+        $modo = $request->query('modo');
+        if (!in_array($modo, ['em_curso', 'bonus_atual'], true)) {
+            $modo = null;
+        }
+
         // T-103-03 — whitelist regex ANTES de repassar ao resolver; fora do
         // formato YYYY-MM cai em current_month, nunca string crua (evita
         // InvalidArgumentException->500).
         $mesQuery = $request->query('mes');
-        $periodo  = ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery))
-            ? $this->periodResolver->resolve(['period_key' => $mesQuery])
-            : $this->periodResolver->resolve(['period_key' => 'current_month']);
+        if ($modo === 'bonus_atual') {
+            $periodo = $this->periodResolver->resolve(['period_key' => 'last_closed_month']);
+        } elseif ($mesQuery && preg_match('/^\d{4}-\d{2}$/', $mesQuery)) {
+            $periodo = $this->periodResolver->resolve(['period_key' => $mesQuery]);
+        } else {
+            $periodo = $this->periodResolver->resolve(['period_key' => 'current_month']);
+        }
+
+        // `bonus` só existe quando o período resolvido é FECHADO — mesma regra
+        // do PerformanceController/renderCarteiraProfissional (Plan 104-01).
+        $bonusMeta = null;
+        if ($periodo['is_closed']) {
+            $competenciaFallback = Carbon::parse($periodo['current_start'])->format('Y-m');
+            $bonusMeta = [
+                'competence_month' => $periodo['bonus_competence_month'] ?? $competenciaFallback,
+                'payment_month'    => $periodo['bonus_payment_month'] ?? Carbon::parse($periodo['current_start'])->addMonthNoOverflow()->format('Y-m'),
+            ];
+        }
 
         // Quick 260623 — quando $setoresFiltro != null, restringe analistas e
         // estrategistas àqueles vinculados aos setores informados. Usado pra
@@ -806,6 +858,9 @@ class PortfolioController extends Controller
                 'is_current_month' => $periodo['is_current_month'],
                 'is_closed'        => $periodo['is_closed'],
             ],
+            // Fase 104 (UIP-02/UIP-03) — bloco bonus (competence_month/
+            // payment_month) presente só em período fechado; null em curso.
+            'bonus'           => $bonusMeta,
             'contexto'        => $contextoFiltro['param'],
             'totais'          => $totais,
         ]);
