@@ -1017,6 +1017,24 @@ Plans:
 - [ ] 105-02-PLAN.md — Cron desempenho:consolidar-mes congela no fim do mês de coleta (D2), consolidando a competência certa (NPSWIN-03)
 - [ ] 105-03-PLAN.md — NpsController bust por competência (X−1) + regressão âncoras (janela M+1, golden documentado) (NPSWIN-03/04)
 
+### Phase 106: Fix timeout do mês fechado — warm cache + degradação graciosa (v18.0)
+
+**Goal:** O ranking /performance nos modos "Bônus atual"/"Mês fechado" nunca dá tela branca por timeout. O `WarmDesempenhoCache` agendado passa a aquecer também a competência do último mês fechado (mantém "Bônus atual" sempre rápido), e a tela degrada com "calculando…" quando o mês pedido está frio, em vez de computar ~14 profissionais ao vivo na requisição (N+1 Adman → >300s → tela branca).
+**Requirements**: PERF-01 (a definir na fase)
+**Depends on:** Phase 102 (closed-month compute), Phase 104 (toggles Bônus atual/Mês fechado)
+**Origem:** bug de produção reportado pelo usuário 2026-07-21 — clicar "Bônus atual"/"Mês fechado" carrega longo e dá tela branca. Causa: 0 snapshots mensais → ranking computa todos ao vivo; ~8.9s/profissional cold (Adman N+1) × ~14 = >125s + concorrência > timeout web 300s. WarmDesempenhoCache só aquece o mês corrente. Band-aid aplicado: cache de junho aquecido manualmente em prod (dura ~7d).
+
+**Success Criteria** (a refinar):
+
+1. `WarmDesempenhoCache` aquece o mês corrente E a competência do último mês fechado (via MetricPeriodResolver last_closed_month) — "Bônus atual" sempre quente
+2. O ranking no modo fechado, quando o mês pedido está FRIO, não computa tudo ao vivo na requisição — degrada (estado "calculando…"/warm em background), sem estourar o timeout web
+3. Nenhuma tela branca por timeout em nenhum modo; "Em curso" (já aquecido) intocado
+4. Não regride os números (v18/105) nem a régua — só o CAMINHO de carregamento
+
+Plans:
+
+- [ ] TBD (run /gsd-plan-phase 106)
+
 ## Dependências — Milestone v18.0 (Fases 100-104)
 
 - **100** (`MetricPeriodResolver`) e **101** (`AdmanMetricDiffService`) são fundação independente uma da outra — nenhuma depende da outra; podem ser planejadas/executadas em paralelo
