@@ -8,7 +8,7 @@ import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Target, AlertTriangle,
     Trophy, Briefcase, Building2, ShoppingCart, Award, Users, Minus,
-    Coins, Percent, Clock,
+    Percent, Clock,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
@@ -753,20 +753,14 @@ export default function PortfolioShow({
                     />
                 </div>
 
-                {/* ── 3.1 KPIs de Margem de Contribuição (Ajuste 2026-07-09) ──
-                    Total absoluto + variação vs mesmo intervalo do mês anterior.
-                    Métrica-chave da nova régua de bônus + resposta à pergunta:
-                    "por que a margem está aparecendo negativa?" O KPI mostra
-                    a comparação dia-a-dia justa; se ainda estiver negativo,
-                    é queda real. */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <KpiCard
-                        label="Margem de contribuição total"
-                        value={formatCurrencyCompact(summary?.total_margin_abs ?? 0)}
-                        sub="soma das empresas no período"
-                        icon={Coins}
-                        help="Soma de contribution_margin (Adman) de todas as empresas da carteira no intervalo do período selecionado."
-                    />
+                {/* ── 3.1 KPIs de Variação de Margem (Ajuste 2026-07-09) ──
+                    Variação vs mesmo intervalo do mês anterior. O total de margem
+                    em R$ foi removido (2026-07-22): a margem em R$ não é mais
+                    exibida — o que importa é a variação da margem. Responde à
+                    pergunta "por que a margem está aparecendo negativa?" com a
+                    comparação dia-a-dia justa; se ainda estiver negativo, é
+                    queda real. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <KpiCard
                         label="Variação de margem (carteira)"
                         value={summary?.margin_growth_pct !== null && summary?.margin_growth_pct !== undefined

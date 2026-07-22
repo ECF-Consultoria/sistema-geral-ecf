@@ -315,8 +315,14 @@ class CarteiraPeriodoDiffTest extends TestCase
         // o número teoricamente "correto" de uma query diferente).
         $this->assertSame(19000.0, $props['resumo']['total_faturamento'],
             'total_faturamento idêntico antes/depois — bloco $atualPorEmpresa não foi tocado por esta fase.');
+        // 2026-07-22 (unificação margem %): o resumo passou a ler
+        // `margem_pct_var_pct` (variação do percentageMargin, métrica do bônus),
+        // não mais `margem_variacao_pct` (variação da margem R$). Aqui a receita
+        // é CONSTANTE (1000/dia nas duas janelas), então a variação da margem %
+        // e a da margem R$ coincidem em +25,00% — a troca de fonte não muda este
+        // golden, mas o número agora reflete a margem %.
         $this->assertEqualsWithDelta(25.00, $props['resumo']['variacao_margem_pct'], 0.01,
-            'variacao_margem_pct do resumo (média por empresa) idêntica ao cálculo manual.');
+            'variacao_margem_pct do resumo = média das variações de margem % por empresa.');
     }
 
     // ─── CAR-02 · elegibilidade v17 preservada (Shopee sem fonte) ────────────

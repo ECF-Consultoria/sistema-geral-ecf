@@ -376,13 +376,13 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                         accent="text-white"
                     />
                     <KpiCard
-                        label="Variação da margem de contribuição"
+                        label="Variação da margem %"
                         value={
                             resumo?.variacao_margem_pct !== null && resumo?.variacao_margem_pct !== undefined
                                 ? `${resumo.variacao_margem_pct >= 0 ? '+' : ''}${resumo.variacao_margem_pct.toFixed(1)}%`
                                 : '—'
                         }
-                        sub="Média das variações por empresa"
+                        sub="Média das variações de margem % por empresa (mesma métrica do bônus)"
                         icon={resumo?.variacao_margem_pct != null && resumo.variacao_margem_pct >= 0 ? TrendingUp : TrendingDown}
                         accent={
                             resumo?.variacao_margem_pct == null
@@ -462,7 +462,6 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                         <th className="text-left font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('name')}>Empresa</th>
                                         <th className="text-left font-semibold px-3 py-3">Fonte de dados</th>
                                         <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('faturamento')}>Faturamento</th>
-                                        <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('margem_rs')} title="Margem de contribuição em R$ (fonte Adman)">Margem R$</th>
                                         <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('margem_pct')} title="Margem como % da receita (percentageMargin da Adman)">Margem %</th>
                                         <th className="text-left font-semibold px-3 py-3">Status</th>
                                     </tr>
@@ -470,7 +469,7 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                 <tbody>
                                     {empresasView.length === 0 && (
                                         <tr>
-                                            <td colSpan={6} className="text-center text-white/40 py-8">
+                                            <td colSpan={5} className="text-center text-white/40 py-8">
                                                 {busca ? 'Nenhuma empresa encontrada com esse filtro.' : 'Este profissional não tem empresas ativas em carteira.'}
                                             </td>
                                         </tr>
@@ -511,10 +510,6 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                             <td className="px-3 py-3 text-right">
                                                 <div className="text-white/90 tabular-nums">{c.faturamento !== null && c.faturamento !== undefined ? formatCurrencyCompact(c.faturamento) : '—'}</div>
                                                 <div className="flex justify-end"><VarBadge v={c.faturamento_var_pct} /></div>
-                                            </td>
-                                            <td className="px-3 py-3 text-right">
-                                                <div className="text-white/80 tabular-nums">{c.margem_rs !== null && c.margem_rs !== undefined ? formatCurrencyCompact(c.margem_rs) : '—'}</div>
-                                                <div className="flex justify-end"><VarBadge v={c.margem_rs_var_pct} /></div>
                                             </td>
                                             <td className="px-3 py-3 text-right">
                                                 <div className="text-white/80 tabular-nums">{fmtPctVal(c.margem_pct)}</div>

@@ -96,7 +96,7 @@ export default function Transparencia() {
                 )}
 
                 {/* Resumo */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                         <p className="text-white/40 text-[10px] uppercase tracking-wider">Empresas</p>
                         <p className="text-white text-2xl font-black tabular-nums mt-1">{resumo.total_empresas ?? 0}</p>
@@ -104,10 +104,6 @@ export default function Transparencia() {
                     <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                         <p className="text-white/40 text-[10px] uppercase tracking-wider">Faturamento</p>
                         <p className="text-white text-2xl font-black tabular-nums mt-1">{fmtBRL(resumo.total_faturamento)}</p>
-                    </div>
-                    <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
-                        <p className="text-white/40 text-[10px] uppercase tracking-wider">Margem contrib. (R$)</p>
-                        <p className="text-white text-2xl font-black tabular-nums mt-1">{fmtBRL(resumo.total_margem_rs)}</p>
                     </div>
                     <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                         <p className="text-white/40 text-[10px] uppercase tracking-wider">Invalidadas p/ bônus</p>
@@ -126,14 +122,13 @@ export default function Transparencia() {
                                     <th className="px-4 py-3 font-semibold">Empresa</th>
                                     <th className="px-3 py-3 font-semibold">Fonte de dados</th>
                                     <th className="px-3 py-3 font-semibold text-right">Faturamento</th>
-                                    <th className="px-3 py-3 font-semibold text-right" title="Margem de contribuição em R$ (fonte Adman)">Margem R$</th>
                                     <th className="px-3 py-3 font-semibold text-right" title="Margem de contribuição como % da receita (percentageMargin da Adman)">Margem %</th>
                                     <th className="px-3 py-3 font-semibold">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {empresas.length === 0 && (
-                                    <tr><td colSpan={6} className="px-4 py-10 text-center text-white/40">Nenhuma empresa na carteira neste contexto.</td></tr>
+                                    <tr><td colSpan={5} className="px-4 py-10 text-center text-white/40">Nenhuma empresa na carteira neste contexto.</td></tr>
                                 )}
                                 {empresas.map((e) => {
                                     return (
@@ -160,10 +155,6 @@ export default function Transparencia() {
                                                 <div className="flex justify-end"><VarBadge v={e.faturamento_var_pct} /></div>
                                             </td>
                                             <td className="px-3 py-3 text-right">
-                                                <div className="text-white/85 tabular-nums">{fmtBRL(e.margem_rs)}</div>
-                                                <div className="flex justify-end"><VarBadge v={e.margem_rs_var_pct} /></div>
-                                            </td>
-                                            <td className="px-3 py-3 text-right">
                                                 <div className="text-white/85 tabular-nums">{fmtPctVal(e.margem_pct)}</div>
                                                 <div className="flex justify-end"><VarBadge v={e.margem_pct_var_pct} /></div>
                                             </td>
@@ -179,8 +170,8 @@ export default function Transparencia() {
                 {/* Legenda / notas */}
                 <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4 text-xs text-white/50 leading-relaxed">
                     <div className="flex items-center gap-1.5 mb-1.5 text-white/70 font-semibold"><Info size={13} className="text-ecf-yellow/70" /> Como ler</div>
-                    <strong className="text-white/70">Margem R$</strong> é o valor absoluto da margem de contribuição; <strong className="text-white/70">Margem %</strong> é a
-                    margem como percentual da receita (percentageMargin da Adman). As setas mostram a variação vs a janela anterior de mesmo tamanho.
+                    <strong className="text-white/70">Margem %</strong> é a margem de contribuição como percentual da receita (percentageMargin da Adman).
+                    As setas mostram a variação vs a janela anterior de mesmo tamanho.
                     Empresas <strong className="text-white/70">só-Shopee</strong> aparecem como "sem fonte financeira" (não entram no financeiro do bônus enquanto a Shopee não entregar margem).
                     A margem vem sempre da <strong className="text-white/70">Adman</strong> (fonte canônica).
                 </div>

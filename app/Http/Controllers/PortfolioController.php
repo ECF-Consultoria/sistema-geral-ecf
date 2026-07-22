@@ -663,15 +663,17 @@ class PortfolioController extends Controller
         $totalMargemAtual    = (float) $empresas->sum(fn ($e) => $e['margem_contribuicao'] ?? 0);
         $totalMargemAnterior = (float) $empresas->sum(fn ($e) => $e['margem_contribuicao_anterior'] ?? 0);
 
-        // Ajuste 2026-07-10 (audit Gabriela): variação % agora é a MÉDIA das
-        // variações POR EMPRESA — mesma fórmula que DesempenhoScoreService::
-        // computeVarMargem usa no ranking. Antes usava variação do total
-        // agregado (SUM/SUM), que pesava empresas grandes e podia divergir do
-        // ranking em sinal (Gabriela: ranking +18,2% vs carteira -16,6%).
-        // Alinhamento com ranking = fonte de verdade da nota / bônus.
-        // Totais em R$ acima continuam agregados (info factual de volume).
+        // Ajuste 2026-07-10 (audit Gabriela): variação % é a MÉDIA das variações
+        // POR EMPRESA (não o total agregado SUM/SUM, que pesava empresas grandes
+        // e divergia do ranking em sinal).
+        // 2026-07-22 (unificação margem %): a margem de contribuição em R$ saiu da
+        // carteira — o que importa é a margem % e a variação DELA. Este KPI agora
+        // lê `margem_pct_var_pct` (variação do percentageMargin da Adman), a MESMA
+        // métrica que DesempenhoScoreService::computeVarMargem usa no bônus desde
+        // a Fase 102 (antes lia `margem_variacao_pct` = variação da margem R$, que
+        // divergia do bônus quando a receita mudava entre as janelas).
         $variacoesPorEmpresa = $empresas
-            ->pluck('margem_variacao_pct')
+            ->pluck('margem_pct_var_pct')
             ->filter(fn ($v) => $v !== null);
 
         $variacaoMargemPct = $variacoesPorEmpresa->isNotEmpty()
