@@ -200,6 +200,9 @@ class PolosController extends Controller
                 'parcial'          => $parcial,
                 'fonteFaturamento' => $fonteFaturamento,
                 'adsLimites'       => $adsLimites,
+                // Meta ÚNICA de faturamento do projeto Polos (R$), editável no painel.
+                // NÃO é a soma das metas por empresa (limiar×ativos) — é um alvo global.
+                'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
                 'm1'               => $m1,
                 'erro'             => null,
             ];
@@ -730,6 +733,28 @@ class PolosController extends Controller
     }
 
     /**
+     * Grava a META ÚNICA de faturamento do projeto Polos (R$) — o alvo global
+     * usado no card "% Geral da meta". NÃO é a soma das metas por empresa; é um
+     * número editável (default R$ 3.200.000), persistido em Configuracao.
+     *
+     * Admin-only: a camada financeira do painel é exclusiva de admin (mesmo gate
+     * de painelFinanceiro()).
+     */
+    public function salvarMetaFaturamento(Request $request): \Illuminate\Http\JsonResponse
+    {
+        abort_unless($request->user()?->isAdmin(), 403);
+
+        $data = $request->validate([
+            'meta' => ['required', 'numeric', 'min:0', 'max:1000000000'],
+        ]);
+
+        $meta = (int) round($data['meta']);
+        Configuracao::set('polo_meta_faturamento', $meta);
+
+        return response()->json(['ok' => true, 'meta' => $meta]);
+    }
+
+    /**
      * Arquiva UMA empresa Polos (RF-Arquivamento): sai do Painel e NÃO conta mais em
      * metas/faturamento/cockpit. Reversível (nada é apagado — só marca `arquivado_em`).
      * Usado tanto pelo botão manual do Painel quanto (via command) pelo sync da planilha.
@@ -1037,6 +1062,7 @@ class PolosController extends Controller
             'parcial'          => false,
             'fonteFaturamento' => 'csv',
             'adsLimites'       => ['teto' => 3000, 'alerta1' => 1000, 'alerta2' => 2000],
+            'metaFaturamento'  => (float) Configuracao::get('polo_meta_faturamento', 3200000),
             'm1'               => ['total' => 0, 'faturando' => 0, 'nao' => 0, 'faturamento' => 0, 'empresas' => [], 'polos' => []],
             'erro'             => $mensagem,
         ];
