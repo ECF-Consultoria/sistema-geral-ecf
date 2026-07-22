@@ -89,7 +89,10 @@ class AdmanMetricDiffService
             return $this->buildResult($company, $periodo, $this->emptyMetrics());
         }
 
-        $cacheKey = "adman:diff:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        // v2 (2026-07-22): o bump descarta os resultados PARCIAIS envenenados
+        // que a versão anterior cacheava pelo dia inteiro (ver bloco de cache
+        // no fim de compute()). Caso ByMobille: margem % "-" + variação errada.
+        $cacheKey = "adman:diff:v2:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
 
         $cached = Cache::get($cacheKey);
         if ($cached !== null) {
@@ -136,10 +139,19 @@ class AdmanMetricDiffService
 
         $resultado = $this->buildResult($company, $periodo, $metrics);
 
-        // Só cacheia resultado "usável" (ao menos 1 metric com value) — total
-        // falha cacheia ERROR_SENTINEL (TTL curto, permite retry rápido).
-        if ($resultado['quality']['status'] === 'missing') {
+        // Política de TTL por qualidade (fix 2026-07-22):
+        //  - missing (0 metrics) → ERROR_SENTINEL, TTL curto (retry rápido).
+        //  - partial (faltou 1+ metric, ex.: percentageMargin nulo por falha
+        //    transitória/rate-limit) → TTL CURTO. Cachear pelo dia CONGELARIA o
+        //    número degradado (margem % "-" + variação no fallback local errada,
+        //    ex.: ByMobille -53,85% vs +18,46% real). TTL curto → re-tenta e
+        //    auto-cura quando o endpoint volta.
+        //  - complete (as 3 metrics com value) → TTL do dia (1440).
+        $status = $resultado['quality']['status'];
+        if ($status === 'missing') {
             Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
+        } elseif ($status === 'partial') {
+            Cache::put($cacheKey, $resultado, now()->addMinutes(self::ERROR_CACHE_MINUTES));
         } else {
             Cache::put($cacheKey, $resultado, now()->addMinutes(1440));
         }
