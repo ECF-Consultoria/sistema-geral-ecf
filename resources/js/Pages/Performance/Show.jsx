@@ -498,9 +498,9 @@ export default function PerformanceShow({
 
                             <ParametroCard
                                 icone={Coins}
-                                titulo="Margem de contribuição"
+                                titulo="Variação da margem %"
                                 valor={formatPercent(c.var_margem_pct)}
-                                sublabel="Variação vs mês anterior · fonte Adman canônica"
+                                sublabel="Variação da margem % (percentageMargin) vs mês anterior · fonte Adman"
                                 accentColor="blue"
                                 trendDir={c.var_margem_pct != null ? (c.var_margem_pct >= 0 ? 'up' : 'down') : null}
                             />
