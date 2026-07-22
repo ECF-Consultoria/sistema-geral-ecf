@@ -58,10 +58,10 @@ function ShopeeConexao({ company }) {
     if (isConnected) {
         return (
             <span
-                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400"
+                className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold text-emerald-400"
                 title={token.shop_id ? `Loja #${token.shop_id} · renovação automática` : 'Conectada à Shopee'}
             >
-                <CheckCircle2 className="h-3.5 w-3.5" /> Conectada
+                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Conectada
             </span>
         );
     }
@@ -71,9 +71,9 @@ function ShopeeConexao({ company }) {
         const days = daysLeft(company.shopee_link_expires_at);
         const expired = days !== null && days <= 0;
         return (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold', expired ? 'text-red-400' : 'text-amber-400')}>
-                    <Clock className="h-3.5 w-3.5" />
+                    <Clock className="h-3.5 w-3.5 shrink-0" />
                     {expired ? 'Link expirado' : `Aguardando${days !== null ? ` · ${days}d` : ''}`}
                 </span>
                 <button onClick={copiar} title="Copiar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors">
@@ -91,11 +91,11 @@ function ShopeeConexao({ company }) {
         <button
             onClick={gerarLink}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors hover:brightness-110 disabled:opacity-40"
             style={{ backgroundColor: `${SHOPEE_ORANGE}1a`, border: `1px solid ${SHOPEE_ORANGE}33`, color: SHOPEE_ORANGE }}
             title="Gerar o link de conexão Shopee para enviar ao cliente"
         >
-            {loading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Store className="h-3 w-3" />}
+            {loading ? <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" /> : <Store className="h-3.5 w-3.5 shrink-0" />}
             Gerar link
         </button>
     );
@@ -148,12 +148,12 @@ function ServicoBadges({ contratos }) {
     return (
         <div className="flex flex-wrap items-center gap-1">
             {visible.map(ct => (
-                <span key={ct.id} title={tooltip(ct)} className="inline-flex items-center bg-white/10 border border-white/10 text-white/85 text-[10px] px-1.5 py-0.5 rounded-full">
+                <span key={ct.id} title={tooltip(ct)} className="inline-flex items-center whitespace-nowrap bg-white/10 border border-white/10 text-white/85 text-[10px] leading-5 px-2 py-0.5 rounded-full">
                     {ct.servico?.nome ?? '—'}
                 </span>
             ))}
             {extra > 0 && (
-                <span title={contratos.slice(2).map(tooltip).join('\n')} className="inline-flex items-center bg-white/10 border border-white/10 text-white/50 text-[10px] px-1.5 py-0.5 rounded-full">
+                <span title={contratos.slice(2).map(tooltip).join('\n')} className="inline-flex items-center whitespace-nowrap bg-white/10 border border-white/10 text-white/50 text-[10px] leading-5 px-2 py-0.5 rounded-full">
                     +{extra}
                 </span>
             )}
