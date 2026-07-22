@@ -811,6 +811,8 @@ Route::middleware(['auth', 'verified'])->prefix('mlb')->name('mlb.')->group(func
     Route::post('/polos-painel/bulk', [PolosController::class, 'painelBulk'])->name('polos-painel.bulk');
     // Meta de entrantes por região × mês (aba Metas; JSON; mesmo gate operacional).
     Route::post('/polos-painel/meta-entrada', [PolosController::class, 'salvarMetaEntrada'])->name('polos-painel.meta-entrada');
+    // Meta ÚNICA de faturamento Polos (card "% Geral da meta"; JSON; admin-only).
+    Route::post('/polos-painel/meta-faturamento', [PolosController::class, 'salvarMetaFaturamento'])->name('polos-painel.meta-faturamento');
     // Arquivar / desarquivar empresa Polos (aba "Arquivados"; mesmo gate operacional).
     Route::post('/polos-painel/{empresa}/arquivar',    [PolosController::class, 'arquivar'])->name('polos-painel.arquivar');
     Route::post('/polos-painel/{empresa}/desarquivar', [PolosController::class, 'desarquivar'])->name('polos-painel.desarquivar');

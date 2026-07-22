@@ -557,6 +557,10 @@ export default function PolosPainel({
     const [cockpitAberto, setCockpitAberto] = useState(false); // recolhido por padrão
     const [sincronizando, setSincronizando] = useState(false);
     const [syncMsg, setSyncMsg] = useState(null);
+    // Meta ÚNICA de faturamento (R$) — override local após editar (null = usa a do backend).
+    const [metaFatOverride, setMetaFatOverride] = useState(null);
+    const [editandoMeta, setEditandoMeta] = useState(false);
+    const [metaInput, setMetaInput] = useState('');
 
     useEffect(() => {
         if (!isAdmin) return;
@@ -766,9 +770,10 @@ export default function PolosPainel({
 
     // ── KPIs macro (do cockpit async) ──
     const totalFat    = polosCk.reduce((a, p) => a + (p.faturamento ?? 0), 0);
-    const totalMeta   = polosCk.reduce((a, p) => a + (p.meta ?? 0), 0);
     const totalAtivos = polosCk.reduce((a, p) => a + (p.ativos ?? 0), 0);
-    const pctGeral    = totalMeta > 0 ? totalFat / totalMeta * 100 : 0;
+    // Meta ÚNICA de faturamento (alvo global editável), NÃO a soma das metas por empresa.
+    const metaFat     = metaFatOverride ?? cockpit?.metaFaturamento ?? 3200000;
+    const pctGeral    = metaFat > 0 ? totalFat / metaFat * 100 : 0;
     const alertas = useMemo(() => {
         let ads = 0, prob = 0, n = 0;
         polosCk.forEach((p) => (p.empresas ?? []).forEach((e) => {
@@ -836,6 +841,20 @@ export default function PolosPainel({
         setMetas((prev) => [...prev.filter((m) => !(m.polo === polo && m.mes === mes)), { polo, mes, meta: n }]);
         window.axios.post(route('mlb.polos-painel.meta-entrada'), { polo, mes, meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
     }, [csrf_token]);
+
+    // Abre a edição da meta de faturamento com o valor atual (em R$ inteiros) no input.
+    const abrirEdicaoMeta = useCallback(() => {
+        setMetaInput(String(Math.round(metaFat)));
+        setEditandoMeta(true);
+    }, [metaFat]);
+
+    // Grava a meta ÚNICA de faturamento (aceita "3.200.000" / "3200000"): otimista + POST.
+    const salvarMetaFat = useCallback(() => {
+        const n = Math.max(0, Math.round(Number(String(metaInput).replace(/[^\d]/g, '')) || 0));
+        setMetaFatOverride(n);
+        setEditandoMeta(false);
+        window.axios.post(route('mlb.polos-painel.meta-faturamento'), { meta: n }, { headers: { 'X-CSRF-TOKEN': csrf_token } }).catch(() => {});
+    }, [metaInput, csrf_token]);
 
     const handlers = { salvarCampo, trocarResponsavel, toggleProblema, salvarNota, removerProblema, marcarEnviado, desfazerEnvio, criarOnboarding, arquivar, toggleExpandir, verEmpresa: setVerModal };
 
@@ -914,7 +933,7 @@ export default function PolosPainel({
                             {finLoading && <RefreshCw size={13} className="animate-spin text-white/30" />}
                             {!cockpitAberto && cockpit && (
                                 <span className="ml-2 text-[12px] font-normal text-white/40">
-                                    {formatCurrency(totalFat)} / {formatCurrency(totalMeta)} · {pctGeral.toFixed(0)}% · {totalAtivos} ativos
+                                    {formatCurrency(totalFat)} / {formatCurrency(metaFat)} · {pctGeral.toFixed(0)}% · {totalAtivos} ativos
                                     {!fechado && alertas.n > 0 ? ` · ${alertas.n} alertas` : ''}
                                 </span>
                             )}
@@ -934,7 +953,29 @@ export default function PolosPainel({
                                             <HeroKpi titulo="Faturamento total" valor={formatCurrency(totalFat)} icone={Wallet} glow="yellow"
                                                 sublabel={cockpit.mesRefLabel ? `${cockpit.mesRefLabel} · ${parcial ? 'parcial' : 'fechado'}` : null} />
                                             <HeroKpi titulo="% Geral da meta" valor={`${pctGeral.toFixed(0)}%`} icone={Target} glow="yellow"
-                                                sublabel={`${formatCurrency(totalFat)} / ${formatCurrency(totalMeta)}`} />
+                                                sublabel={`${formatCurrency(totalFat)} / ${formatCurrency(metaFat)}`}
+                                                extra={editandoMeta ? (
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className="relative flex-1">
+                                                            <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-white/40">R$</span>
+                                                            <input
+                                                                type="text" inputMode="numeric" autoFocus value={metaInput}
+                                                                onChange={(ev) => setMetaInput(ev.target.value)}
+                                                                onKeyDown={(ev) => { if (ev.key === 'Enter') salvarMetaFat(); if (ev.key === 'Escape') setEditandoMeta(false); }}
+                                                                className="w-full rounded-lg border border-ecf-yellow/40 bg-ecf-bg pl-7 pr-2 py-1 text-[12px] text-white/90 tabular-nums outline-none focus:border-ecf-yellow"
+                                                                placeholder="3200000" />
+                                                        </div>
+                                                        <button type="button" onClick={salvarMetaFat} title="Salvar meta"
+                                                            className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-1.5 text-emerald-300 transition hover:bg-emerald-500/20"><Check size={13} /></button>
+                                                        <button type="button" onClick={() => setEditandoMeta(false)} title="Cancelar"
+                                                            className="rounded-lg border border-white/10 bg-white/[0.04] p-1.5 text-white/50 transition hover:text-white/80"><X size={13} /></button>
+                                                    </div>
+                                                ) : (
+                                                    <button type="button" onClick={abrirEdicaoMeta}
+                                                        className="inline-flex items-center gap-1 text-[11px] text-white/40 transition hover:text-ecf-yellow">
+                                                        <Pencil size={11} /> Editar meta
+                                                    </button>
+                                                )} />
                                             <HeroKpi titulo="Empresas ativas" valor={totalAtivos} icone={Building2}
                                                 sublabel={`${polosCk.length} ${polosCk.length === 1 ? 'polo' : 'polos'}`} />
                                             <HeroKpi titulo="Alertas" valor={fechado ? '—' : alertas.n} icone={AlertTriangle}
