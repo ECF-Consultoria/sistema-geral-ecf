@@ -7,6 +7,10 @@ import {
     Briefcase, DollarSign, Coins, Calendar, Percent,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
+import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
+
+// Margem % (valor) — "35.8%". Null → "—".
+const fmtPctVal = (n) => (n === null || n === undefined ? '—' : `${Number(n).toFixed(1)}%`);
 
 /**
  * `Portfolio/AdminCarteira.jsx` — view enxuta para admin/líder visualizar a
@@ -452,77 +456,39 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                         </div>
 
                         <div className="overflow-x-auto -mx-1">
-                            <table className="w-full text-[13px]">
+                            <table className="w-full text-[13px] min-w-[840px]">
                                 <thead>
                                     <tr className="text-white/50 text-[11px] uppercase tracking-wider border-b border-white/[0.06]">
-                                        <th
-                                            className="text-left font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors"
-                                            onClick={() => toggleSort('name')}
-                                        >
-                                            Empresa
-                                        </th>
-                                        <th
-                                            className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors"
-                                            onClick={() => toggleSort('faturamento')}
-                                        >
-                                            Faturamento
-                                        </th>
-                                        <th
-                                            className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors"
-                                            onClick={() => toggleSort('margem_contribuicao')}
-                                            title="Soma de contribution_margin (Adman) no período"
-                                        >
-                                            Margem R$
-                                        </th>
-                                        <th
-                                            className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors"
-                                            onClick={() => toggleSort('margem_variacao_pct')}
-                                            title="Variação % vs mesmo intervalo mês anterior"
-                                        >
-                                            Var. margem
-                                        </th>
+                                        <th className="text-left font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('name')}>Empresa</th>
+                                        <th className="text-left font-semibold px-3 py-3">Fonte de dados</th>
+                                        <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('faturamento')}>Faturamento</th>
+                                        <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('margem_rs')} title="Margem de contribuição em R$ (fonte Adman)">Margem R$</th>
+                                        <th className="text-right font-semibold px-3 py-3 cursor-pointer hover:text-white transition-colors" onClick={() => toggleSort('margem_pct')} title="Margem como % da receita (percentageMargin da Adman)">Margem %</th>
+                                        <th className="text-left font-semibold px-3 py-3">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {empresasView.length === 0 && (
                                         <tr>
-                                            <td colSpan={4} className="text-center text-white/40 py-8">
+                                            <td colSpan={6} className="text-center text-white/40 py-8">
                                                 {busca ? 'Nenhuma empresa encontrada com esse filtro.' : 'Este profissional não tem empresas ativas em carteira.'}
                                             </td>
                                         </tr>
                                     )}
 
                                     {empresasView.map(c => {
-                                        // Fase 89 (CART-01/02) — flag computada DENTRO do callback do map
-                                        // (pitfall conhecido: variável de escopo do componente usada dentro
-                                        // de .map() some do bundle Rollup — memória feedback_rollup_map_scope_bug).
                                         const servicosLinha = c.servicos ?? [];
-                                        const temFonteFinanceira = servicosLinha.some(s => s.financial_metrics_eligible);
-
                                         return (
-                                        <tr key={c.id} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
+                                        <tr key={c.id} className={cn('border-b border-white/[0.04] hover:bg-white/[0.02]', c.invalidada && 'bg-red-500/[0.04]')}>
                                             <td className="px-3 py-3">
                                                 <div className="flex items-center gap-2 flex-wrap">
-                                                    <Link
-                                                        href={route('companies.show', c.id)}
-                                                        className="text-white/90 hover:text-ecf-yellow font-medium"
-                                                    >
+                                                    <Link href={route('companies.show', c.id)} className="text-white/90 hover:text-ecf-yellow font-medium">
                                                         {c.name}
                                                     </Link>
-                                                    {/* Badge ML SVG quando OAuth vendedor ativo */}
                                                     {c.has_ml_oauth && (
-                                                        <img
-                                                            src="/images/mercado-livre-87.svg"
-                                                            alt="Conectada ao Mercado Livre"
-                                                            title="Conectada ao Mercado Livre via OAuth"
-                                                            className="inline-block shrink-0"
-                                                            style={{ width: 18, height: 18 }}
-                                                        />
+                                                        <img src="/images/mercado-livre-87.svg" alt="Conectada ao Mercado Livre" title="Conectada ao Mercado Livre via OAuth" className="inline-block shrink-0" style={{ width: 16, height: 16 }} />
                                                     )}
                                                 </div>
-                                                {/* Fase 89 (CART-01/02) — 1 badge por vínculo de serviço. Empresa
-                                                    com Performance+Shopee do mesmo profissional aparece 1x acima,
-                                                    com os 2 vínculos separados aqui. */}
                                                 {servicosLinha.length > 0 && (
                                                     <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
                                                         {servicosLinha.map((s, idx) => (
@@ -536,53 +502,25 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                                                 )}
                                                             >
                                                                 {SETOR_LABELS[s.setor] ?? s.servico_nome ?? 'Outro serviço'} · {s.role_label}
-                                                                {!s.financial_metrics_eligible && ' — sem fonte financeira'}
                                                             </span>
                                                         ))}
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="px-3 py-3 text-right text-white/90 tabular-nums">
-                                                {!temFonteFinanceira ? (
-                                                    <span
-                                                        title="Sem fonte financeira conectada — vínculo Shopee ainda não tem faturamento no painel"
-                                                        className="text-white/40 cursor-help"
-                                                    >
-                                                        —
-                                                    </span>
-                                                ) : c.faturamento !== null ? formatCurrencyCompact(c.faturamento) : '—'}
-                                            </td>
-                                            <td className="px-3 py-3 text-right text-white/70 tabular-nums">
-                                                {!temFonteFinanceira ? (
-                                                    <span
-                                                        title="Sem fonte financeira conectada — vínculo Shopee ainda não tem faturamento no painel"
-                                                        className="text-white/40 cursor-help"
-                                                    >
-                                                        —
-                                                    </span>
-                                                ) : c.margem_contribuicao !== null && c.margem_contribuicao !== undefined
-                                                    ? formatCurrencyCompact(c.margem_contribuicao)
-                                                    : (
-                                                        <span
-                                                            title={c.motivo_sem_margem ?? 'Sem dados de margem no período'}
-                                                            className="inline-flex items-center gap-1 text-rose-300/80 text-[11px] font-medium cursor-help"
-                                                        >
-                                                            — <span className="text-rose-300/60">?</span>
-                                                        </span>
-                                                    )}
+                                            <td className="px-3 py-3"><FonteBadge fonte={c.fonte} /></td>
+                                            <td className="px-3 py-3 text-right">
+                                                <div className="text-white/90 tabular-nums">{c.faturamento !== null && c.faturamento !== undefined ? formatCurrencyCompact(c.faturamento) : '—'}</div>
+                                                <div className="flex justify-end"><VarBadge v={c.faturamento_var_pct} /></div>
                                             </td>
                                             <td className="px-3 py-3 text-right">
-                                                {!temFonteFinanceira ? (
-                                                    <span
-                                                        title="Sem fonte financeira conectada — vínculo Shopee ainda não tem faturamento no painel"
-                                                        className="text-white/40 cursor-help"
-                                                    >
-                                                        —
-                                                    </span>
-                                                ) : (
-                                                    <VariacaoChip pct={c.margem_variacao_pct} />
-                                                )}
+                                                <div className="text-white/80 tabular-nums">{c.margem_rs !== null && c.margem_rs !== undefined ? formatCurrencyCompact(c.margem_rs) : '—'}</div>
+                                                <div className="flex justify-end"><VarBadge v={c.margem_rs_var_pct} /></div>
                                             </td>
+                                            <td className="px-3 py-3 text-right">
+                                                <div className="text-white/80 tabular-nums">{fmtPctVal(c.margem_pct)}</div>
+                                                <div className="flex justify-end"><VarBadge v={c.margem_pct_var_pct} /></div>
+                                            </td>
+                                            <td className="px-3 py-3"><StatusBadge status={c.status} invalidada={c.invalidada} /></td>
                                         </tr>
                                         );
                                     })}

@@ -5,6 +5,7 @@ import {
     Trophy, Calendar, Info, Coins, Ban, ShoppingCart, Store,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
+import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Carteira de transparência (§8.3 · Fase 3 do plano de otimização · 2026-07-21)
@@ -16,17 +17,7 @@ import { cn, formatCurrency } from '@/lib/utils';
 // existente — é pra avaliação.
 // ═══════════════════════════════════════════════════════════════════════
 
-const STATUS = {
-    completo:     { label: 'Completo',            cls: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25' },
-    parcial:      { label: 'Parcial',             cls: 'bg-amber-500/10 text-amber-200 border-amber-500/25' },
-    sem_baseline: { label: 'Sem baseline',        cls: 'bg-amber-500/10 text-amber-200/80 border-amber-500/20' },
-    sem_dados:    { label: 'Sem dados Adman',     cls: 'bg-white/[0.04] text-white/50 border-white/[0.1]' },
-    sem_fonte:    { label: 'Sem fonte financeira', cls: 'bg-sky-500/10 text-sky-300 border-sky-500/25' },
-    invalidada:   { label: 'Invalidada p/ bônus', cls: 'bg-red-500/10 text-red-300 border-red-500/30' },
-};
-
 const fmtBRL = (n) => (n === null || n === undefined ? '—' : formatCurrency(n));
-const fmtPctVar = (n) => (n === null || n === undefined ? null : `${n >= 0 ? '+' : ''}${Number(n).toFixed(1)}%`);
 const fmtPctVal = (n) => (n === null || n === undefined ? '—' : `${Number(n).toFixed(1)}%`);
 
 function mesExtenso(ym) {
@@ -35,39 +26,6 @@ function mesExtenso(ym) {
     return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 }
 const fmtDia = (iso) => (iso ? `${String(iso).slice(8, 10)}/${String(iso).slice(5, 7)}` : '');
-
-// Badge de variação (crescimento/queda).
-function VarBadge({ v }) {
-    const txt = fmtPctVar(v);
-    if (txt === null) return <span className="text-white/25 text-xs">—</span>;
-    const up = Number(v) >= 0;
-    const zero = Number(v) === 0;
-    return (
-        <span className={cn('inline-flex items-center gap-0.5 text-xs font-medium tabular-nums',
-            zero ? 'text-white/40' : up ? 'text-emerald-400' : 'text-rose-400')}>
-            {zero ? <Minus size={11} /> : up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-            {txt}
-        </span>
-    );
-}
-
-const FONTE = {
-    ml:        { label: 'Mercado Livre', icon: Store,        cls: 'text-yellow-300 border-yellow-500/25 bg-yellow-500/[0.08]' },
-    adman:     { label: 'Adman',         icon: Coins,        cls: 'text-sky-300 border-sky-500/25 bg-sky-500/[0.08]' },
-    ml_adman:  { label: 'ML + Adman',    icon: Store,        cls: 'text-emerald-300 border-emerald-500/25 bg-emerald-500/[0.08]' },
-    shopee:    { label: 'Shopee',        icon: ShoppingCart, cls: 'text-orange-300 border-orange-500/25 bg-orange-500/[0.08]' },
-    sem_fonte: { label: 'Sem fonte',     icon: Ban,          cls: 'text-white/40 border-white/[0.1] bg-white/[0.03]' },
-    outro:     { label: 'Outra',         icon: Coins,        cls: 'text-white/40 border-white/[0.1] bg-white/[0.03]' },
-};
-function FonteBadge({ fonte }) {
-    const f = FONTE[fonte] ?? FONTE.sem_fonte;
-    const Icon = f.icon;
-    return (
-        <span className={cn('inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap', f.cls)}>
-            <Icon size={11} /> {f.label}
-        </span>
-    );
-}
 
 export default function Transparencia() {
     const { props } = usePage();
@@ -178,7 +136,6 @@ export default function Transparencia() {
                                     <tr><td colSpan={6} className="px-4 py-10 text-center text-white/40">Nenhuma empresa na carteira neste contexto.</td></tr>
                                 )}
                                 {empresas.map((e) => {
-                                    const st = STATUS[e.status] ?? STATUS.sem_dados;
                                     return (
                                         <tr key={e.id} className={cn('border-b border-white/[0.05] hover:bg-white/[0.02]', e.invalidada && 'bg-red-500/[0.04]')}>
                                             <td className="px-4 py-3">
@@ -210,12 +167,7 @@ export default function Transparencia() {
                                                 <div className="text-white/85 tabular-nums">{fmtPctVal(e.margem_pct)}</div>
                                                 <div className="flex justify-end"><VarBadge v={e.margem_pct_var_pct} /></div>
                                             </td>
-                                            <td className="px-3 py-3">
-                                                <span className={cn('inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border', st.cls)}>
-                                                    {e.invalidada && <Ban size={10} />}
-                                                    {st.label}
-                                                </span>
-                                            </td>
+                                            <td className="px-3 py-3"><StatusBadge status={e.status} invalidada={e.invalidada} /></td>
                                         </tr>
                                     );
                                 })}

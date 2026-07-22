@@ -469,7 +469,11 @@ class PortfolioController extends Controller
         $grossAtual   = $this->adman->getCachedGrossBillingsMany($custIdsElegiveis, $dateFrom, $dateTo);
         $accountAtual = $this->adman->getCachedAccountMetricsMany($custIdsElegiveis, $dateFrom, $dateTo);
 
-        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $companyIdsElegiveis, $porEmpresa, $periodo) {
+        // Fase 3 (2026-07-21) — empresas invalidadas para bônus na competência
+        // (alimenta o status/badge da tabela, igual à transparência).
+        $invalidadas = BonusInvalidacao::companyIdsInvalidadas($mesSelecionado);
+
+        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $companyIdsElegiveis, $porEmpresa, $periodo, $invalidadas) {
             $ehElegivel = $companyIdsElegiveis->contains($c->id);
 
             // Vínculos desta empresa — shape público CART-01/02: 1 entrada
@@ -482,6 +486,21 @@ class PortfolioController extends Controller
                 'role_label'                  => $v['role_label'],
                 'financial_metrics_eligible'  => $v['financial_metrics_eligible'],
             ])->values();
+
+            // Fase 3 (2026-07-21) — fonte de dados COMBINADA + invalidação, os
+            // MESMOS campos da tabela de transparência (aditivo — as chaves
+            // antigas seguem intactas para os testes/consumidores existentes).
+            $temMl     = (bool) ($c->mlToken && $c->mlToken->status === 'active');
+            $temAdman  = ! empty($c->adman_account_id);
+            $temShopee = $servicos->contains(fn ($s) => ($s['setor'] ?? null) === 'shopee');
+            if ($ehElegivel && ($temMl || $temAdman)) {
+                $fonte = ($temMl && $temAdman) ? 'ml_adman' : ($temMl ? 'ml' : 'adman');
+            } elseif ($temShopee) {
+                $fonte = 'shopee';
+            } else {
+                $fonte = 'sem_fonte';
+            }
+            $invalidada = $invalidadas->contains($c->id);
 
             // CART-04 — empresa SEM vínculo elegível (ex.: profissional só
             // responde por Shopee nessa empresa): financeiro inteiro null.
@@ -498,8 +517,17 @@ class PortfolioController extends Controller
                     'motivo_sem_margem'            => null,
                     'ad_spend'                     => null,
                     'tacos'                        => null,
-                    'has_ml_oauth'                 => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+                    'has_ml_oauth'                 => $temMl,
                     'servicos'                     => $servicos,
+                    // Campos §8.3 (aditivo)
+                    'fonte'                        => $fonte,
+                    'faturamento_var_pct'          => null,
+                    'margem_rs'                    => null,
+                    'margem_rs_var_pct'            => null,
+                    'margem_pct'                   => null,
+                    'margem_pct_var_pct'           => null,
+                    'status'                       => 'sem_fonte',
+                    'invalidada'                   => $invalidada,
                 ];
             }
 
@@ -548,6 +576,14 @@ class PortfolioController extends Controller
             $resultadoDiff = $this->admanDiffService->compute($c, $periodo);
             $margemVarPct  = $resultadoDiff['metrics']['contribution_margin_value']['diff_pct'] ?? null;
 
+            // Fase 3 (2026-07-21) — campos §8.3 extras vindos do MESMO diff
+            // service (fonte consistente): variação de faturamento + margem %
+            // (percentageMargin) + sua variação. `margem_rs`/`margem_rs_var_pct`
+            // são aliases de nome dos campos R$ já existentes acima.
+            $fatVarPct  = $resultadoDiff['metrics']['revenue']['diff_pct'] ?? null;
+            $margPctVal = $resultadoDiff['metrics']['contribution_margin_pct']['value'] ?? null;
+            $margPctVar = $resultadoDiff['metrics']['contribution_margin_pct']['diff_pct'] ?? null;
+
             // Motivo pt-BR para tooltip/badge quando margem é null — ajuda o
             // admin/analista a entender POR QUE algumas empresas aparecem sem
             // dados de margem (sync não rodou / conexão Adman ausente / etc).
@@ -589,8 +625,23 @@ class PortfolioController extends Controller
                 'motivo_sem_margem'           => $motivoSemMargem,
                 'ad_spend'                    => $adSpend !== null ? round($adSpend, 2) : null,
                 'tacos'                       => $tacos,
-                'has_ml_oauth'                => (bool) ($c->mlToken && $c->mlToken->status === 'active'),
+                'has_ml_oauth'                => $temMl,
                 'servicos'                    => $servicos,
+                // Campos §8.3 (aditivo) — mesma tabela da transparência.
+                'fonte'                       => $fonte,
+                'faturamento_var_pct'         => $fatVarPct,
+                'margem_rs'                   => $margemAtual !== null ? round($margemAtual, 2) : null,
+                'margem_rs_var_pct'           => $margemVarPct,
+                'margem_pct'                  => $margPctVal !== null ? round((float) $margPctVal, 2) : null,
+                'margem_pct_var_pct'          => $margPctVar,
+                'status'                      => $invalidada
+                    ? 'invalidada'
+                    : ($revenue === null
+                        ? 'sem_dados'
+                        : (($fatVarPct === null && $margemVarPct === null)
+                            ? 'sem_baseline'
+                            : ($margPctVal === null ? 'parcial' : 'completo'))),
+                'invalidada'                  => $invalidada,
             ];
         })->values();
 
