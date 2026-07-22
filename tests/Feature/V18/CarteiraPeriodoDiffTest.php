@@ -138,17 +138,20 @@ class CarteiraPeriodoDiffTest extends TestCase
      * endpoint de account metrics), com valores DISTINTOS — prova a escolha
      * de campo do Pitfall 1 (Teste C).
      */
-    private function fakeAdmanComDiff(float $profitMarginDiff, float $percentageMarginDiff): void
+    private function fakeAdmanComDiff(float $liquidMarginDiff, float $percentageMarginDiff): void
     {
         Http::fake([
             '*/performance/*' => Http::response([
                 'summarizedData' => [
                     'grossBilling' => ['value' => 1000.0, 'diff' => 5.0, 'prev' => 950.0],
-                    'profitMargin' => ['value' => 300.0, 'diff' => $profitMarginDiff, 'prev' => 260.0],
+                    'profitMargin' => ['value' => 300.0, 'diff' => 42.0, 'prev' => 260.0],
                 ],
             ], 200),
+            // contribution_margin_value = liquidMargin (endpoint detalhado) desde
+            // 2026-07-22 — NÃO mais profitMargin do performance.
             '*/accounts/*/metrics*' => Http::response([
                 'metrics' => [
+                    'liquidMargin'     => ['value' => 300.0, 'diff' => $liquidMarginDiff, 'prev' => 260.0],
                     'percentageMargin' => ['value' => 27.0, 'diff' => $percentageMarginDiff, 'prev' => 20.0],
                 ],
             ], 200),
@@ -212,9 +215,9 @@ class CarteiraPeriodoDiffTest extends TestCase
     public function test_margem_variacao_pct_le_contribution_margin_value_nao_pct(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-20 14:00:00'));
-        // profitMargin.diff=15.0 (contribution_margin_value) E
+        // liquidMargin.diff=15.0 (contribution_margin_value) E
         // percentageMargin.diff=99.0 (contribution_margin_pct) — DISTINTOS.
-        $this->fakeAdmanComDiff(profitMarginDiff: 15.0, percentageMarginDiff: 99.0);
+        $this->fakeAdmanComDiff(liquidMarginDiff: 15.0, percentageMarginDiff: 99.0);
 
         $admin        = $this->criarAdmin();
         $profissional = User::factory()->create();
@@ -227,7 +230,7 @@ class CarteiraPeriodoDiffTest extends TestCase
         $props = $response->viewData('page')['props'];
 
         $this->assertSame(15.0, $props['empresas'][0]['margem_variacao_pct'],
-            'Deve ler contribution_margin_value.diff_pct (profitMargin.diff=15.0), NUNCA contribution_margin_pct (percentageMargin.diff=99.0).');
+            'Deve ler contribution_margin_value.diff_pct (liquidMargin.diff=15.0), NUNCA contribution_margin_pct (percentageMargin.diff=99.0).');
     }
 
     #[Test]

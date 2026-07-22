@@ -89,10 +89,10 @@ class AdmanMetricDiffService
             return $this->buildResult($company, $periodo, $this->emptyMetrics());
         }
 
-        // v2 (2026-07-22): o bump descarta os resultados PARCIAIS envenenados
-        // que a versão anterior cacheava pelo dia inteiro (ver bloco de cache
-        // no fim de compute()). Caso ByMobille: margem % "-" + variação errada.
-        $cacheKey = "adman:diff:v2:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        // v2 (2026-07-22): descarta resultados PARCIAIS envenenados (ByMobille).
+        // v3 (2026-07-22): margem R$ passou de `profitMargin` para `liquidMargin`
+        // (caso Utilarshop) — o valor muda, então o bump invalida o cache v2.
+        $cacheKey = "adman:diff:v3:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
 
         $cached = Cache::get($cacheKey);
         if ($cached !== null) {
@@ -104,14 +104,12 @@ class AdmanMetricDiffService
         $isJanelaIgual = ($periodo['comparison_mode'] ?? null) === 'previous_equal_length_window';
 
         // Leitura ao vivo — fail-open (nunca deixa exceção virar 500; V5/T-101-01).
-        $revenueAdman     = null;
-        $marginValueAdman = null;
+        $revenueAdman = null;
         try {
-            $performance      = $this->admanService->fetchPerformance(
+            $performance  = $this->admanService->fetchPerformance(
                 $custId, $periodo['current_start'], $periodo['current_end'], 3, $marketplace
             );
-            $revenueAdman     = $performance['summarizedData']['grossBilling'] ?? null;
-            $marginValueAdman = $performance['summarizedData']['profitMargin'] ?? null;
+            $revenueAdman = $performance['summarizedData']['grossBilling'] ?? null;
         } catch (\Throwable $e) {
             Log::warning("[AdmanMetricDiff] performance custId={$custId} periodo={$periodo['current_start']}..{$periodo['current_end']}: " . $e->getMessage());
         }
@@ -121,6 +119,14 @@ class AdmanMetricDiffService
             $custId, $periodo['current_start'], $periodo['current_end'], 1440, false, $marketplace
         );
         $marginPctAdman = $accountMetrics['percentageMargin'] ?? null;
+        // MARGEM DE CONTRIBUIÇÃO R$ = `liquidMargin` do endpoint detalhado — o
+        // MESMO campo/valor da UI da Adman (fix 2026-07-22, caso Utilarshop:
+        // 55.502,36 -75,24%). ANTES usava `profitMargin` do fetchPerformance,
+        // que é OUTRO metric (margem operacional): coincidia com a UI na PETSHOP
+        // (39.159≈39.074) mas divergia muito na Utilarshop (98.033 vs 55.502).
+        // `percentageMargin` = liquidMargin/netBilling — por isso a margem % já
+        // estava certa enquanto a margem R$ não.
+        $marginValueAdman = $accountMetrics['liquidMargin'] ?? null;
 
         $metrics = [
             'revenue'                   => $this->resolveField(
