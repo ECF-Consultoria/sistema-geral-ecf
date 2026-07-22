@@ -977,6 +977,24 @@ class MlbImplementacaoController extends Controller
 
         $impl->update(['dados' => $dados]);
 
+        // ME-ONBOARDING: ao salvar a Planilha de Produtos, se ALGUMA embalagem
+        // ultrapassar os limites do Mercado Envios (maior lado > 200cm, soma dos
+        // lados > 300cm ou peso > 50kg), marca o ME1 da empresa como "Precisa de ME1"
+        // automaticamente. Regra do usuário: só MARCA — nunca reverte se estiver dentro
+        // do limite; e não sobrescreve caso já esteja em "Precisa de ME1".
+        if ($id === 'planilha_produtos' && $campo === 'produtos') {
+            $produtos = $dados['itens']['planilha_produtos']['produtos'] ?? [];
+            if (is_array($produtos)
+                && $impl->me1 !== 'Precisa de ME1'
+                && MlbImplementacao::planilhaExcedeMercadoEnvios($produtos)) {
+                $impl->update(['me1' => 'Precisa de ME1']);
+
+                activity('implementacao')
+                    ->withProperties(['empresa' => $impl->empresa->nome])
+                    ->log('[Onboarding] ME1 definido como "Precisa de ME1" automaticamente — medidas da embalagem excedem o Mercado Envios na implementação de "' . $impl->empresa->nome . '" (cliente)');
+            }
+        }
+
         // Log público (cliente preenchendo o checklist) — sem usuário autenticado
         if ($campo === 'feito') {
             activity('implementacao')

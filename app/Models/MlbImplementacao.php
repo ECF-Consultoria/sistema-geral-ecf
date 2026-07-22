@@ -464,6 +464,68 @@ class MlbImplementacao extends Model
         return null;
     }
 
+    // ══════════════════════════════════════════════════════════════════
+    // Regra do Mercado Envios para as MEDIDAS DA EMBALAGEM (ME-ONBOARDING)
+    // Fonte: limites de logística do Mercado Envios. Aplicada à Planilha de
+    // Produtos do checklist público — se algum produto estourar, a empresa
+    // "Precisa de ME1" (marca automática do campo me1 no salvarItem).
+    // ══════════════════════════════════════════════════════════════════
+
+    /** Maior lado da embalagem não pode passar de 200 cm. */
+    public const ME_LADO_MAX_CM = 200;
+    /** Soma dos três lados da embalagem não pode passar de 300 cm. */
+    public const ME_SOMA_MAX_CM = 300;
+    /** Peso da embalagem não pode ultrapassar 50 kg. */
+    public const ME_PESO_MAX_KG = 50;
+
+    /**
+     * Verdadeiro se ALGUM produto da Planilha de Produtos ultrapassa os limites
+     * do Mercado Envios nas MEDIDAS DA EMBALAGEM (altura_emb/largura_emb/prof_emb
+     * em cm e peso_emb_kg em kg):
+     *   - maior lado > 200 cm, OU
+     *   - soma dos três lados > 300 cm, OU
+     *   - peso > 50 kg
+     *
+     * Usada em MlbImplementacaoController::salvarItem para marcar o campo me1
+     * como "Precisa de ME1" quando o cliente preenche a planilha. Basta um
+     * produto excedente para retornar true.
+     *
+     * @param array $produtos Lista de produtos (dados.itens.planilha_produtos.produtos).
+     */
+    public static function planilhaExcedeMercadoEnvios(array $produtos): bool
+    {
+        foreach ($produtos as $p) {
+            if (!is_array($p)) continue;
+
+            $alt  = self::medidaParaNumero($p['altura_emb']  ?? null);
+            $larg = self::medidaParaNumero($p['largura_emb'] ?? null);
+            $prof = self::medidaParaNumero($p['prof_emb']    ?? null);
+            $peso = self::medidaParaNumero($p['peso_emb_kg'] ?? null);
+
+            $maiorLado = max($alt, $larg, $prof);
+            $somaLados = $alt + $larg + $prof;
+
+            if ($maiorLado > self::ME_LADO_MAX_CM
+                || $somaLados > self::ME_SOMA_MAX_CM
+                || $peso > self::ME_PESO_MAX_KG) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Converte uma medida digitada pelo cliente (string livre) em float.
+     * Aceita vírgula ou ponto como separador decimal; vazio/nulo/inválido → 0.0.
+     */
+    private static function medidaParaNumero($valor): float
+    {
+        $s = trim((string) $valor);
+        if ($s === '') return 0.0;
+        return (float) str_replace(',', '.', $s);
+    }
+
     public function progresso(): array
     {
         $itens = $this->dados['itens'] ?? [];
