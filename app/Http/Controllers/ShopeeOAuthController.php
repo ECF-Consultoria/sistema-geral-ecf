@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Company;
+use App\Models\Servico;
 use App\Services\Shopee\ShopeeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,7 +27,18 @@ class ShopeeOAuthController extends Controller
      */
     public function adminIndex(): \Inertia\Response
     {
-        $companies = Company::with('shopeeToken')
+        $companies = Company::query()
+            // Só empresas que contrataram o serviço Shopee (contrato ATIVO de setor
+            // 'shopee' — mesmo critério da aba /shopee/empresas), MAIS qualquer empresa
+            // que já tenha token Shopee (para nunca perder do painel uma conexão viva,
+            // mesmo que o contrato tenha sido cancelado depois).
+            ->where(function ($q) {
+                $q->whereHas('contratosServico', fn ($ct) =>
+                    $ct->where('contratos_servico.ativo', true)
+                       ->whereHas('servico', fn ($s) => $s->where('setor', Servico::SETOR_SHOPEE))
+                )->orWhereHas('shopeeTokens');
+            })
+            ->with('shopeeToken')
             ->orderBy('name')
             ->get(['id', 'name', 'shopee_link_generated_at', 'shopee_link_url'])
             ->map(fn ($c) => [
