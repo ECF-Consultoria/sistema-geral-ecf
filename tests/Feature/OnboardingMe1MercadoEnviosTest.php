@@ -85,6 +85,24 @@ class OnboardingMe1MercadoEnviosTest extends TestCase
         $this->assertNull($impl->me1); // coluna intocada
     }
 
+    public function test_dentro_do_limite_limpa_me1_automatico(): void
+    {
+        $impl = $this->criarImpl(); // me1 nulo, não travado
+
+        // 1) Excede → marca "Precisa de ME1".
+        $this->salvarProdutos($impl, [$this->produtoExcedente()])->assertOk();
+        $impl->refresh();
+        $this->assertEquals('Precisa de ME1', $impl->me1);
+        $this->assertFalse($impl->me1_manual);
+
+        // 2) Volta a caber (50x50x50 / 30kg) → limpa o valor automático (reativo).
+        $this->salvarProdutos($impl, [
+            ['sku' => 'A1', 'produto' => 'Item ok', 'altura_emb' => '50', 'largura_emb' => '50', 'prof_emb' => '50', 'peso_emb_kg' => '30'],
+        ])->assertOk();
+        $impl->refresh();
+        $this->assertNull($impl->me1);
+    }
+
     public function test_salvar_outro_item_nao_toca_me1(): void
     {
         // Um save que não é planilha_produtos/produtos jamais mexe no ME1.
@@ -109,6 +127,19 @@ class OnboardingMe1MercadoEnviosTest extends TestCase
 
         $this->salvarProdutos($impl, [
             ['sku' => 'A1', 'produto' => 'Pesado', 'altura_emb' => '10', 'largura_emb' => '10', 'prof_emb' => '10', 'peso_emb_kg' => '90'],
+        ])->assertOk();
+
+        $impl->refresh();
+        $this->assertEquals('Ativo', $impl->me1);
+    }
+
+    public function test_dentro_do_limite_nao_limpa_me1_manual(): void
+    {
+        // ME1 travado manualmente ("Ativo"); planilha dentro do limite NÃO deve limpar.
+        $impl = $this->criarImpl(['me1' => 'Ativo', 'me1_manual' => true]);
+
+        $this->salvarProdutos($impl, [
+            ['sku' => 'A1', 'produto' => 'Item ok', 'altura_emb' => '50', 'largura_emb' => '50', 'prof_emb' => '50', 'peso_emb_kg' => '30'],
         ])->assertOk();
 
         $impl->refresh();

@@ -983,25 +983,32 @@ class MlbImplementacaoController extends Controller
 
         $impl->update(['dados' => $dados]);
 
-        // ME-ONBOARDING: ao salvar a Planilha de Produtos, se ALGUMA embalagem
-        // ultrapassar os limites do Mercado Envios (maior lado > 200cm, soma dos
-        // lados > 300cm ou peso > 50kg), marca o ME1 da empresa como "Precisa de ME1"
-        // automaticamente. Regra do usuário: só MARCA — nunca reverte se estiver dentro
-        // do limite; e não sobrescreve caso já esteja em "Precisa de ME1".
+        // ME-ONBOARDING: ao salvar a Planilha de Produtos, o ME1 da empresa reflete
+        // (de forma REATIVA) se as medidas da embalagem cabem no Mercado Envios:
+        //   - alguma embalagem excede (maior lado > 200cm, soma > 300cm ou peso > 50kg)
+        //     → marca "Precisa de ME1";
+        //   - todas voltaram a caber E o valor atual é o automático "Precisa de ME1"
+        //     → limpa (null).
         // Trava manual (me1_manual): a partir do momento em que o consultor edita o ME1
-        // na mão (Painel Polos / ficha), o valor fica travado e a regra automática não
-        // o toca mais — o consultor controla o status (Ativo, ou outro caso específico).
+        // na mão (Painel Polos / ficha), o valor fica travado e a regra automática NÃO o
+        // toca mais (nem marca nem limpa) — o consultor controla o status. Por isso o
+        // "limpar" só age sobre o valor automático "Precisa de ME1", nunca sobre override.
         if ($id === 'planilha_produtos' && $campo === 'produtos') {
             $produtos = $dados['itens']['planilha_produtos']['produtos'] ?? [];
-            if (is_array($produtos)
-                && !$impl->me1_manual
-                && $impl->me1 !== 'Precisa de ME1'
-                && MlbImplementacao::planilhaExcedeMercadoEnvios($produtos)) {
-                $impl->update(['me1' => 'Precisa de ME1']);
+            if (is_array($produtos) && !$impl->me1_manual) {
+                $excede = MlbImplementacao::planilhaExcedeMercadoEnvios($produtos);
 
-                activity('implementacao')
-                    ->withProperties(['empresa' => $impl->empresa->nome])
-                    ->log('[Onboarding] ME1 definido como "Precisa de ME1" automaticamente — medidas da embalagem excedem o Mercado Envios na implementação de "' . $impl->empresa->nome . '" (cliente)');
+                if ($excede && $impl->me1 !== 'Precisa de ME1') {
+                    $impl->update(['me1' => 'Precisa de ME1']);
+                    activity('implementacao')
+                        ->withProperties(['empresa' => $impl->empresa->nome])
+                        ->log('[Onboarding] ME1 definido como "Precisa de ME1" automaticamente — medidas da embalagem excedem o Mercado Envios na implementação de "' . $impl->empresa->nome . '" (cliente)');
+                } elseif (!$excede && $impl->me1 === 'Precisa de ME1') {
+                    $impl->update(['me1' => null]);
+                    activity('implementacao')
+                        ->withProperties(['empresa' => $impl->empresa->nome])
+                        ->log('[Onboarding] ME1 automático limpo — medidas da embalagem voltaram a caber no Mercado Envios na implementação de "' . $impl->empresa->nome . '" (cliente)');
+                }
             }
         }
 
