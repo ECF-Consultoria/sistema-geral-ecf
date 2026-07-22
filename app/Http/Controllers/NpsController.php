@@ -110,7 +110,17 @@ class NpsController extends Controller
                       ->when($role !== null, fn ($qq) => $qq->where('role', $role));
                 })
                 ->orWhere(function ($sub) use ($personId, $role) {
-                    $sub->whereDoesntHave('response')
+                    // Bugfix 2026-07-22 (Prensar/Nathalia) — antes era
+                    // whereDoesntHave('response'), que só cobria surveys SEM
+                    // resposta (pendente/expirada). Um survey RESPONDIDO mas SEM
+                    // atribuição congelada (nps_score_assignments vazio — ex.:
+                    // submit sem responsável elegível no momento) caía fora de
+                    // AMBOS os ramos e sumia para TODO não-admin, mesmo o
+                    // responsável atual da empresa. Agora o fallback por serviço
+                    // vale para QUALQUER survey sem atribuição congelada,
+                    // respondido ou não — o ramo de cima (atribuição congelada)
+                    // continua sendo a fonte primária quando ela existe.
+                    $sub->whereDoesntHave('response.scoreAssignments')
                         ->whereExists(function ($ex) use ($personId, $role) {
                             $ex->selectRaw('1')
                                ->from('company_users as cu')
