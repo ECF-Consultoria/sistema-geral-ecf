@@ -17,6 +17,20 @@ Schedule::command('adman:sync')
     ->name('adman-sync-d1')
     ->withoutOverlapping();
 
+// Aquece o cache do AdmanMetricDiffService (carteira/transparência/desempenho
+// lêem daqui). O cache é DIÁRIO (auto-invalida à meia-noite), então sem este
+// warm a 1ª carga de carteira do dia dispara N chamadas Adman ao vivo → lenta.
+// 11:40 = logo após o sync D-1 (dado fresco); 06:00 = cobre a manhã cedo com o
+// dado estável de D-1. Idempotente (cache-hit não custa). Plano de otimização §9.2.
+Schedule::command('adman:warm-diff')
+    ->dailyAt('11:40')
+    ->name('warm-adman-diff-pos-sync')
+    ->withoutOverlapping();
+Schedule::command('adman:warm-diff')
+    ->dailyAt('06:00')
+    ->name('warm-adman-diff-manha')
+    ->withoutOverlapping();
+
 // Calcula resultados de metas diariamente às 11:45 BRT (depois do adman:sync D-1)
 Schedule::command('goals:calculate')
     ->dailyAt('11:45')
