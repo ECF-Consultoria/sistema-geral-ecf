@@ -4,7 +4,7 @@ import { Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Building2,
-    Briefcase, DollarSign, Coins, Calendar, Percent,
+    Briefcase, DollarSign, Coins, Calendar, Percent, Users,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
@@ -120,18 +120,47 @@ function PeriodoToggle({ segmentoAtivo, onSelect }) {
 }
 
 // ─── KPI compacto ─────────────────────────────────────────────────────────
-function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white' }) {
+function KpiCard({ label, value, sub, icon: Icon, accent = 'text-white', badge }) {
     return (
         <div className="rounded-2xl border border-white/[0.08] bg-ecf-card p-5">
             <div className="flex items-center gap-2 text-white/50 text-[11px] uppercase tracking-wider font-semibold">
                 {Icon && <Icon size={13} />}
                 {label}
             </div>
-            <div className={cn('text-3xl font-bold tabular-nums mt-2', accent)}>
-                {value}
+            <div className="flex items-center gap-2 mt-2">
+                <div className={cn('text-3xl font-bold tabular-nums', accent)}>
+                    {value}
+                </div>
+                {badge}
             </div>
             {sub && <div className="text-white/40 text-xs mt-1">{sub}</div>}
         </div>
+    );
+}
+
+// Badge de variação do nº de clientes no mês (entraram/saíram). Net do snapshot.
+function ClientesBadge({ variacao }) {
+    if (variacao === null || variacao === undefined || variacao === 0) {
+        return (
+            <span className="inline-flex items-center rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[11px] text-white/40">
+                {variacao === 0 ? 'estável' : '—'}
+            </span>
+        );
+    }
+    const positivo = variacao > 0;
+    const Icon = positivo ? TrendingUp : TrendingDown;
+    return (
+        <span
+            title={positivo ? 'Clientes que entraram na carteira vs mês anterior' : 'Clientes que saíram da carteira vs mês anterior'}
+            className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                positivo
+                    ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-300'
+                    : 'border-rose-500/25 bg-rose-500/10 text-rose-300',
+            )}
+        >
+            <Icon size={11} /> {positivo ? '+' : ''}{variacao}
+        </span>
     );
 }
 
@@ -367,28 +396,40 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                 {/* ─── KPIs principais ──────────────────────────────────── */}
                 {/* Card "Empresas conectadas ao ML" removido — badge SVG na listagem
                     já mostra por empresa; card agregado era redundante. */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <KpiCard
-                        label="Faturamento total da carteira"
+                        label="Faturamento total"
                         value={formatCurrencyCompact(resumo?.total_faturamento ?? 0)}
                         sub={`Soma de ${resumo?.total_empresas ?? 0} empresas no período`}
                         icon={DollarSign}
                         accent="text-white"
                     />
                     <KpiCard
-                        label="Variação da margem %"
+                        label="Margem média"
                         value={
-                            resumo?.variacao_margem_pct !== null && resumo?.variacao_margem_pct !== undefined
-                                ? `${resumo.variacao_margem_pct >= 0 ? '+' : ''}${resumo.variacao_margem_pct.toFixed(1)}%`
+                            resumo?.margem_media_pct !== null && resumo?.margem_media_pct !== undefined
+                                ? `${resumo.margem_media_pct.toFixed(1)}%`
                                 : '—'
                         }
-                        sub="Média das variações de margem % por empresa (mesma métrica do bônus)"
-                        icon={resumo?.variacao_margem_pct != null && resumo.variacao_margem_pct >= 0 ? TrendingUp : TrendingDown}
-                        accent={
-                            resumo?.variacao_margem_pct == null
-                                ? 'text-white/50'
-                                : resumo.variacao_margem_pct >= 0 ? 'text-emerald-300' : 'text-rose-300'
+                        sub="Média da margem % (percentageMargin) das empresas da carteira"
+                        icon={Percent}
+                        accent={resumo?.margem_media_pct == null ? 'text-white/50' : 'text-emerald-300'}
+                    />
+                    <KpiCard
+                        label="Clientes na carteira"
+                        value={resumo?.total_empresas ?? 0}
+                        sub={
+                            resumo?.clientes_variacao == null
+                                ? 'sem base do mês anterior para comparar'
+                                : (resumo.clientes_variacao === 0
+                                    ? 'sem entradas ou saídas no mês'
+                                    : (resumo.clientes_variacao > 0
+                                        ? `${resumo.clientes_variacao} cliente(s) entraram no mês`
+                                        : `${Math.abs(resumo.clientes_variacao)} cliente(s) saíram no mês`))
                         }
+                        icon={Users}
+                        accent="text-white"
+                        badge={<ClientesBadge variacao={resumo?.clientes_variacao} />}
                     />
                 </div>
 

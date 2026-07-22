@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AdmanMetric;
 use App\Models\BonusInvalidacao;
+use App\Models\DesempenhoScoreSnapshot;
 use App\Models\Goal;
 use App\Models\GoalResult;
 use App\Models\NpsSurvey;
@@ -680,6 +681,29 @@ class PortfolioController extends Controller
             ? round((float) $variacoesPorEmpresa->avg(), 2)
             : null;
 
+        // Fase 107 (cards de cima) — MARGEM MÉDIA da carteira: média SIMPLES da
+        // margem % (percentageMargin) por empresa. É o NÍVEL da margem (não a
+        // variação), o que o card "Margem média" deve mostrar.
+        $margensPct = $empresas->pluck('margem_pct')->filter(fn ($v) => $v !== null);
+        $margemMediaPct = $margensPct->isNotEmpty()
+            ? round((float) $margensPct->avg(), 2)
+            : null;
+
+        // Fase 107 — VARIAÇÃO DA QUANTIDADE DE CLIENTES no mês. company_users não
+        // rastreia saídas (linha é apagada quando o cliente sai), então o sinal
+        // vem do snapshot mensal durável (`empresas_carteira` = empresas únicas na
+        // consolidação). Net = contagem atual (viva) − contagem do mês anterior
+        // (snapshot consolidado no dia 1 deste mês). Positivo = entraram; negativo
+        // = saíram. Null quando não há snapshot do mês anterior (sem base).
+        $mesAnterior = $mesCorrente->copy()->subMonthNoOverflow();
+        $contagemAnterior = DesempenhoScoreSnapshot::mensal()
+            ->where('user_id', $user->id)
+            ->whereDate('mes_referencia', $mesAnterior->toDateString())
+            ->value('empresas_carteira');
+        $clientesVariacao = $contagemAnterior !== null
+            ? $empresas->count() - (int) $contagemAnterior
+            : null;
+
         // Contadores pra UI expor transparência sobre qualidade dos dados.
         // Fase 89 (correção do plan-checker) — conta SÓ empresas ELEGÍVEIS
         // com margem null. Empresa Shopee-only tem margem null POR DESENHO
@@ -737,6 +761,9 @@ class PortfolioController extends Controller
                 'total_margem_atual'    => round($totalMargemAtual, 2),
                 'total_margem_anterior' => round($totalMargemAnterior, 2),
                 'variacao_margem_pct'   => $variacaoMargemPct,
+                // Fase 107 (cards de cima): margem média (nível) + variação de clientes.
+                'margem_media_pct'      => $margemMediaPct,
+                'clientes_variacao'     => $clientesVariacao,
                 'total_ad_spend'        => round($totalAdSpend, 2),
                 'tacos_medio'           => $tacosMedio,
                 'vinculos_servico'              => $contadoresResumo['vinculos_servico'],
