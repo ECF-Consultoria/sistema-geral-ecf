@@ -45,9 +45,20 @@ use Illuminate\Support\Facades\Log;
  * NÃO toca `DesempenhoScoreService`/`->principal()` — as atribuições são aditivas
  * e só serão consumidas na Fase 80 (DEC-79-E).
  *
- * @see app/Services/Nps/NpsScoreCalculator.php (fonte da média por dimensão)
- * @see app/Models/Company.php:197-209 (consultorDoServico/estrategistaDoServico)
+ * Debug `nps-assignment-consolidado` (2026-07-22): o passo 3 buscava o
+ * responsável SÓ via `Company::consultorDoServico()`/`estrategistaDoServico()`
+ * (servico_id exato), que nunca casa com o responsável CONSOLIDADO
+ * (`company_users.servico_id = NULL`, a maioria das empresas hoje — sem o
+ * split por serviço da Phase 78). Agora usa
+ * `Company::responsavelDoServicoOuConsolidado()`, que cai pro NULL quando não
+ * há linha específica do serviço (mesma régua de `CarteiraContextService`
+ * CTX-05 / fallback de `NpsController::filtroPorPessoa`). `backfillAssignments()`
+ * abaixo repara retroativamente as respostas que já nasceram sem atribuição por
+ * este bug (comando `nps:backfill-assignments-consolidado`).
+ *
+ * @see app/Models/Company.php (consultorDoServico/estrategistaDoServico/responsavelDoServicoOuConsolidado)
  * @see .planning/phases/79-.../79-04-PLAN.md
+ * @see .planning/debug/nps-assignment-consolidado.md
  */
 class NpsSnapshotService
 {
@@ -166,9 +177,10 @@ class NpsSnapshotService
                     continue;
                 }
 
-                $responsaveis = $role === 'consultor'
-                    ? $company->consultorDoServico($servico->id)->get()
-                    : $company->estrategistaDoServico($servico->id)->get();
+                // Fallback consolidado (debug nps-assignment-consolidado): cai pro
+                // responsável servico_id NULL quando não há linha específica do
+                // serviço — ver docblock da classe.
+                $responsaveis = $company->responsavelDoServicoOuConsolidado($role, $servico->id);
 
                 if ($responsaveis->isEmpty()) {
                     // Responsável faltante: NÃO cria assignment vazio — registra
@@ -197,5 +209,119 @@ class NpsSnapshotService
                 }
             }
         }
+    }
+
+    /**
+     * Backfill idempotente (debug `nps-assignment-consolidado`, comando
+     * `nps:backfill-assignments-consolidado`): cria as `nps_score_assignments`
+     * que FALTAM para uma resposta já respondida cujo responsável era
+     * CONSOLIDADO (servico_id NULL) e não foi encontrado pelo bug antigo.
+     *
+     * Usa SÓ dados já CONGELADOS (`nps_response_covered_services` +
+     * `nps_response_scores`) — nunca reconsulta `template->serviceScopes()`
+     * ao vivo, que pode ter mudado desde a resposta (preserva a semântica de
+     * snapshot imutável). O contrato ATIVO e o responsável são lidos no
+     * estado ATUAL (aproximação aceitável para backfill de poucos dias —
+     * ver debug file).
+     *
+     * Idempotente por (nps_response_id, servico_id, role): pula a combinação
+     * se já existir QUALQUER assignment gravado — nunca duplica nem quando
+     * rodado várias vezes.
+     *
+     * @param  bool  $dryRun  Quando true, calcula e retorna o que SERIA criado
+     *                        sem gravar nada (usado pelo comando pra exibir o diff).
+     * @return array{criados:int, pulos_ja_existentes:int, pulos_sem_responsavel:int, detalhe:array}
+     */
+    public function backfillAssignments(NpsResponse $response, bool $dryRun = false): array
+    {
+        $stats = [
+            'criados'               => 0,
+            'pulos_ja_existentes'   => 0,
+            'pulos_sem_responsavel' => 0,
+            'detalhe'               => [],
+        ];
+
+        $survey = $response->survey;
+        if (! $survey || ! $survey->template_id) {
+            return $stats;
+        }
+
+        $company = $survey->company;
+        if (! $company) {
+            return $stats;
+        }
+
+        $ativos = $company->contratosServico()->active()->pluck('servico_id')->all();
+
+        $cobertos = $response->coveredServices()
+            ->whereIn('servico_id', $ativos)
+            ->get();
+
+        if ($cobertos->isEmpty()) {
+            return $stats;
+        }
+
+        $scoresPorDimensao = $response->scores()->get()->keyBy('dimensao');
+
+        foreach ($cobertos as $coberto) {
+            foreach (self::DIMENSAO_ROLE as $dimensao => $role) {
+                $score = $scoresPorDimensao->get($dimensao);
+                if (! $score) {
+                    continue;
+                }
+
+                $jaExiste = NpsScoreAssignment::where('nps_response_id', $response->id)
+                    ->where('servico_id', $coberto->servico_id)
+                    ->where('role', $role)
+                    ->exists();
+
+                if ($jaExiste) {
+                    $stats['pulos_ja_existentes']++;
+                    continue;
+                }
+
+                $responsaveis = $company->responsavelDoServicoOuConsolidado($role, $coberto->servico_id);
+
+                if ($responsaveis->isEmpty()) {
+                    $stats['pulos_sem_responsavel']++;
+                    Log::warning('[NPS Backfill Consolidado] responsável ainda faltante — pulado', [
+                        'nps_response_id' => $response->id,
+                        'company_id'      => $company->id,
+                        'servico_id'      => $coberto->servico_id,
+                        'role'            => $role,
+                    ]);
+                    continue;
+                }
+
+                foreach ($responsaveis as $user) {
+                    $stats['detalhe'][] = [
+                        'nps_response_id' => $response->id,
+                        'company_id'      => $company->id,
+                        'servico_id'      => $coberto->servico_id,
+                        'role'            => $role,
+                        'user_id'         => $user->id,
+                        'average_score'   => $score->average_score,
+                    ];
+
+                    if (! $dryRun) {
+                        NpsScoreAssignment::create([
+                            'nps_response_id'       => $response->id,
+                            'nps_response_score_id' => $score->id,
+                            'company_id'            => $company->id,
+                            'servico_id'            => $coberto->servico_id,
+                            'service_setor'         => $coberto->service_setor,
+                            'role'                  => $role,
+                            'user_id'               => $user->id,
+                            'average_score'         => $score->average_score,
+                            'assigned_at'           => now(),
+                        ]);
+                    }
+
+                    $stats['criados']++;
+                }
+            }
+        }
+
+        return $stats;
     }
 }

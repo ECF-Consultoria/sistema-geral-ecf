@@ -213,6 +213,49 @@ class Company extends Model
     }
 
     /**
+     * Responsável (role) de um serviço específico, incluindo o fallback
+     * CONSOLIDADO (`company_users.servico_id = NULL`, que cobre QUALQUER
+     * serviço da empresa) — debug `nps-assignment-consolidado` (2026-07-22).
+     *
+     * Diferente de `consultorDoServico()`/`estrategistaDoServico()` acima
+     * (SÓ servico_id exato, nunca NULL — mantidas intactas para os
+     * consumidores service-aware puros da aba Shopee/Phase 78): este método
+     * é para quem precisa do responsável DE FATO daquele serviço, mesmo
+     * quando ele nunca ganhou uma linha específica na pivot (empresa
+     * single-service, sem o split da Phase 78 — é a maioria hoje).
+     *
+     * Régua igual à já usada por `CarteiraContextService::vinculosLegadoNull()`
+     * (CTX-05) e pelo fallback de `NpsController::filtroPorPessoa`: linha
+     * PREENCHIDA (servico_id = $servicoId) tem prioridade; se existir, a
+     * linha NULL da mesma empresa+role é ignorada (nunca soma os dois —
+     * evita atribuição/bônus duplicado quando a empresa JÁ tem responsável
+     * específico daquele serviço, ex.: Shopee com responsável próprio +
+     * consolidado ML). Se NENHUMA linha preenchida existir, cai para a NULL.
+     *
+     * Consumidor: `NpsSnapshotService::registrar()`/`backfillAssignments()`.
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    public function responsavelDoServicoOuConsolidado(string $role, int $servicoId): \Illuminate\Support\Collection
+    {
+        $especificos = $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', $role)
+            ->wherePivot('servico_id', $servicoId)
+            ->distinct('users.id')
+            ->get();
+
+        if ($especificos->isNotEmpty()) {
+            return $especificos;
+        }
+
+        return $this->belongsToMany(User::class, 'company_users')
+            ->wherePivot('role', $role)
+            ->wherePivotNull('servico_id')
+            ->distinct('users.id')
+            ->get();
+    }
+
+    /**
      * Analista de PERFORMANCE da empresa — nunca retorna o responsável
      * Shopee. Espelha, em granularidade de EMPRESA, as duas fontes que
      * `CarteiraContextService::forUser()` já resolve por usuário (Fase 88,
