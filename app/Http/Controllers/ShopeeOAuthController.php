@@ -67,7 +67,10 @@ class ShopeeOAuthController extends Controller
      */
     public function initiate(Company $company): JsonResponse
     {
-        $url = URL::signedRoute('shopee.connect.landing', ['company' => $company->id]);
+        // Link expira DE VERDADE em 7 dias (bate com o contador do painel, com a
+        // mensagem "válido por 7 dias" e com o STATE_TTL do OAuth). Depois disso a
+        // assinatura fica inválida (403) e o admin regenera pelo botão "Regerar".
+        $url = URL::temporarySignedRoute('shopee.connect.landing', now()->addDays(7), ['company' => $company->id]);
 
         $company->update([
             'shopee_link_generated_at' => now(),
