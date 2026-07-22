@@ -473,6 +473,85 @@ class ShopeeService
         ];
     }
 
+    // ═══ Dados: anúncios (ADS) ════════════════════════════════════════════════
+
+    /**
+     * Métricas de anúncios (CPC) da loja no período, via
+     * get_all_cpc_ads_daily_performance (nível loja, diário). Só faz sentido no
+     * app 'ads' — instancie com ShopeeService::for('ads').
+     *
+     * ⚠️ A Shopee exige data em DD-MM-YYYY neste endpoint (validado no sandbox: a
+     *    resposta ecoa "date":"DD-MM-YYYY"). A `response` v2 vem como LISTA de dias.
+     *
+     * Agrega o período e deriva CTR/ROAS/ACoS (safe div). O TACoS NÃO sai daqui —
+     * ele cruza o gasto com o faturamento TOTAL da loja (app 'erp',
+     * fetchOrdersSummary); use ShopeeService::tacos($expense, $revenueTotal).
+     *
+     * @param  string $dateFrom YYYY-MM-DD (inclusive)
+     * @param  string $dateTo   YYYY-MM-DD (inclusive)
+     * @return array{
+     *   expense: float, broad_gmv: float, direct_gmv: float, impressions: int,
+     *   clicks: int, broad_orders: int, direct_orders: int, broad_conversions: int,
+     *   ctr: float, broad_roas: float|null, acos: float|null,
+     *   days: array<int, array<string, mixed>>
+     * }
+     */
+    public function fetchAdsMetrics(Company $company, string $dateFrom, string $dateTo): array
+    {
+        $data = $this->get($company, '/api/v2/ads/get_all_cpc_ads_daily_performance', [
+            'start_date' => date('d-m-Y', strtotime($dateFrom)),
+            'end_date'   => date('d-m-Y', strtotime($dateTo)),
+        ]);
+
+        // response v2 é uma LISTA de dias (cada item = um dia da janela).
+        $days = array_is_list($data) ? $data : [];
+
+        $expense    = 0.0;
+        $broadGmv   = 0.0;
+        $directGmv  = 0.0;
+        $impressions = 0;
+        $clicks     = 0;
+        $broadOrders  = 0;
+        $directOrders = 0;
+        $broadConversions = 0;
+
+        foreach ($days as $d) {
+            $expense      += (float) ($d['expense'] ?? 0);
+            $broadGmv     += (float) ($d['broad_gmv'] ?? 0);
+            $directGmv    += (float) ($d['direct_gmv'] ?? 0);
+            $impressions  += (int) ($d['impression'] ?? 0);
+            $clicks       += (int) ($d['clicks'] ?? 0);
+            $broadOrders  += (int) ($d['broad_order'] ?? 0);
+            $directOrders += (int) ($d['direct_order'] ?? 0);
+            $broadConversions += (int) ($d['broad_conversions'] ?? 0);
+        }
+
+        return [
+            'expense'           => round($expense, 2),
+            'broad_gmv'         => round($broadGmv, 2),
+            'direct_gmv'        => round($directGmv, 2),
+            'impressions'       => $impressions,
+            'clicks'            => $clicks,
+            'broad_orders'      => $broadOrders,
+            'direct_orders'     => $directOrders,
+            'broad_conversions' => $broadConversions,
+            'ctr'               => $impressions > 0 ? round($clicks / $impressions, 4) : 0.0,
+            'broad_roas'        => $expense > 0 ? round($broadGmv / $expense, 2) : null,
+            'acos'              => $broadGmv > 0 ? round($expense / $broadGmv, 4) : null,
+            'days'              => $days,
+        ];
+    }
+
+    /**
+     * TACoS (Total Advertising Cost of Sales) = gasto com ads / faturamento TOTAL.
+     * Cruza o app 'ads' (expense) com o 'erp' (faturamento bruto). Null se sem
+     * faturamento (evita divisão por zero).
+     */
+    public static function tacos(float $expense, float $revenueTotal): ?float
+    {
+        return $revenueTotal > 0 ? round($expense / $revenueTotal, 4) : null;
+    }
+
     // ═══ Sync: grava métricas diárias ═════════════════════════════════════════
 
     /**
@@ -495,6 +574,41 @@ class ShopeeService
                 'orders_count'  => $summary['orders_count'],
                 'sold_quantity' => $summary['sold_quantity'],
                 'synced_at'     => now(),
+            ]
+        );
+    }
+
+    /**
+     * Sincroniza os Ads de UM dia da empresa para shopee_metrics (colunas ad_*).
+     * Só faz sentido no app 'ads' — instancie com new ShopeeService('ads').
+     *
+     * Faz merge na MESMA linha do faturamento: updateOrCreate por
+     * (company_id, reference_date) grava SÓ as colunas ad_*, sem tocar em
+     * revenue/orders (que vêm do app 'erp'). Dia sem gasto E sem impressão não
+     * grava linha (mantém a tabela enxuta). Retorna a métrica ou null (dia vazio).
+     *
+     * ⚠️ Não chamar com datas > 6 meses atrás — a Shopee devolve
+     *    ads.performance.error_date_too_old (o comando shopee:sync-ads faz o clamp).
+     */
+    public function syncAdsDay(Company $company, string $date): ?ShopeeMetric
+    {
+        $ads = $this->fetchAdsMetrics($company, $date, $date);
+
+        // Dia totalmente zerado (sem gasto e sem impressão) não gera linha.
+        if ((float) $ads['expense'] === 0.0 && (int) $ads['impressions'] === 0) {
+            return null;
+        }
+
+        return ShopeeMetric::updateOrCreate(
+            ['company_id' => $company->id, 'reference_date' => $date],
+            [
+                'ad_expense'           => $ads['expense'],
+                'ad_impressions'       => $ads['impressions'],
+                'ad_clicks'            => $ads['clicks'],
+                'ad_broad_gmv'         => $ads['broad_gmv'],
+                'ad_broad_orders'      => $ads['broad_orders'],
+                'ad_broad_conversions' => $ads['broad_conversions'],
+                'ad_synced_at'         => now(),
             ]
         );
     }
