@@ -1333,14 +1333,6 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
 // Reativo: dado vem do estado local, então recalcula a cada tecla digitada.
 function itemTemConteudo(item, dado = {}) {
     switch (item.tipo) {
-        case 'select': { // ERP / Integrador Logístico
-            const valor  = String(dado.valor  ?? '').trim();
-            const acesso = String(dado.acesso ?? '').trim();
-            const outro  = String(dado.outro  ?? '').trim();
-            if (acesso !== '') return true;
-            if (valor === 'Outro') return outro !== '';
-            return valor !== '' && valor !== 'Em Contratação';
-        }
         case 'texto': // HUB
             return String(dado.acesso ?? '').trim() !== '';
         case 'link':  // URL digitada pelo cliente
@@ -1351,7 +1343,9 @@ function itemTemConteudo(item, dado = {}) {
             );
         case 'precificacao': // ≥ 1 produto com custo informado
             return (dado.produtos ?? []).some(p => String(p.custo ?? '').trim() !== '');
-        default: // ação pura — nada a preencher
+        default:
+            // select (ERP/Integrador — sempre tem opção válida, inclusive "Em
+            // Contratação") + ação pura (link/gmail/instruções/checkbox): nada a preencher.
             return true;
     }
 }

@@ -20,12 +20,13 @@ class MlbImplementacaoConteudoTest extends TestCase
     // Sem RefreshDatabase — itemTemConteudo() é estática e opera só em memória.
 
     /**
-     * Itens de ação pura (link, gmail, instruções, checkbox) sempre liberam o
-     * check, mesmo com dado vazio — não há o que preencher.
+     * Itens de ação pura (link, gmail, instruções, checkbox) e o select
+     * (ERP/Integrador — sempre tem opção válida) sempre liberam o check, mesmo
+     * com dado vazio — não há o que preencher.
      */
     public function test_itens_de_acao_pura_sempre_liberam(): void
     {
-        foreach (['link_fixo', 'link_admin', 'gmail', 'instrucoes', 'instrucoes_link', 'checkbox', 'select_opcoes'] as $tipo) {
+        foreach (['select', 'link_fixo', 'link_admin', 'gmail', 'instrucoes', 'instrucoes_link', 'checkbox', 'select_opcoes'] as $tipo) {
             $this->assertTrue(
                 MlbImplementacao::itemTemConteudo($tipo, []),
                 "Tipo de ação pura '{$tipo}' deveria liberar o check mesmo vazio"
@@ -35,30 +36,17 @@ class MlbImplementacaoConteudoTest extends TestCase
 
     // ─── select (ERP / Integrador) ──────────────────────────────────────────
 
-    public function test_select_no_padrao_em_contratacao_nao_libera(): void
+    /**
+     * "Em Contratação" é uma opção legítima do cliente — e é o valor padrão do
+     * select, indistinguível de "não mexeu". Logo, o select NUNCA trava: qualquer
+     * valor (inclusive "Em Contratação" ou vazio) libera o check.
+     */
+    public function test_select_sempre_libera_incluindo_em_contratacao(): void
     {
-        $this->assertFalse(MlbImplementacao::itemTemConteudo('select', ['valor' => 'Em Contratação', 'acesso' => '', 'outro' => '']));
-    }
-
-    public function test_select_vazio_nao_libera(): void
-    {
-        $this->assertFalse(MlbImplementacao::itemTemConteudo('select', []));
-    }
-
-    public function test_select_com_sistema_real_libera(): void
-    {
+        $this->assertTrue(MlbImplementacao::itemTemConteudo('select', ['valor' => 'Em Contratação']));
         $this->assertTrue(MlbImplementacao::itemTemConteudo('select', ['valor' => 'Bling']));
-    }
-
-    public function test_select_com_acesso_preenchido_libera_mesmo_em_contratacao(): void
-    {
-        $this->assertTrue(MlbImplementacao::itemTemConteudo('select', ['valor' => 'Em Contratação', 'acesso' => 'login: x / senha: y']));
-    }
-
-    public function test_select_outro_exige_especificar(): void
-    {
-        $this->assertFalse(MlbImplementacao::itemTemConteudo('select', ['valor' => 'Outro', 'outro' => '']));
-        $this->assertTrue(MlbImplementacao::itemTemConteudo('select',  ['valor' => 'Outro', 'outro' => 'Sistema X']));
+        $this->assertTrue(MlbImplementacao::itemTemConteudo('select', ['valor' => 'Outro', 'outro' => '']));
+        $this->assertTrue(MlbImplementacao::itemTemConteudo('select', []));
     }
 
     // ─── texto (HUB) / link ─────────────────────────────────────────────────
@@ -104,13 +92,13 @@ class MlbImplementacaoConteudoTest extends TestCase
 
     /**
      * Fio-terra do fluxo real: o item ERP com os dados padrão (valor "Em
-     * Contratação", acesso vazio) NÃO deve liberar o check.
+     * Contratação") LIBERA o check — "Em Contratação" é resposta válida do cliente.
      */
-    public function test_erp_padrao_nao_libera_check(): void
+    public function test_erp_padrao_libera_check(): void
     {
         $dados = MlbImplementacao::dadosPadrao();
         $tipo  = MlbImplementacao::tipoDoItem('erp');
 
-        $this->assertFalse(MlbImplementacao::itemTemConteudo($tipo, $dados['itens']['erp']));
+        $this->assertTrue(MlbImplementacao::itemTemConteudo($tipo, $dados['itens']['erp']));
     }
 }

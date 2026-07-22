@@ -422,15 +422,6 @@ class MlbImplementacao extends Model
     public static function itemTemConteudo(string $tipo, array $dado): bool
     {
         switch ($tipo) {
-            case 'select': // ERP / Integrador Logístico
-                $valor  = trim((string) ($dado['valor']  ?? ''));
-                $acesso = trim((string) ($dado['acesso'] ?? ''));
-                $outro  = trim((string) ($dado['outro']  ?? ''));
-                if ($acesso !== '') return true;              // informou acesso (ERP)
-                if ($valor === 'Outro') return $outro !== ''; // "Outro" exige especificar
-                // "fez algo" = escolheu um sistema real (≠ padrão "Em Contratação")
-                return $valor !== '' && $valor !== 'Em Contratação';
-
             case 'texto': // HUB
                 return trim((string) ($dado['acesso'] ?? '')) !== '';
 
@@ -454,8 +445,10 @@ class MlbImplementacao extends Model
                 return false;
 
             default:
+                // select (ERP/Integrador — sempre há uma opção válida selecionada,
+                // inclusive "Em Contratação", que é resposta legítima do cliente),
                 // link_fixo, link_admin, gmail, instrucoes, instrucoes_link,
-                // checkbox, select_opcoes — ação pura, nada a preencher.
+                // checkbox, select_opcoes — nada a preencher / resposta sempre presente.
                 return true;
         }
     }
