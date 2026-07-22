@@ -794,6 +794,12 @@ class MlbImplementacaoController extends Controller
             'erp'                 => ['nullable', 'string', Rule::in(MlbImplementacao::ONB_ERP_OPCOES)],
         ]);
 
+        // Trava manual do ME1 (quick 260722-nwc): ao MUDAR o me1 na mão para um valor
+        // concreto, trava para a regra do Mercado Envios não sobrescrever mais; limpar destrava.
+        if (array_key_exists('me1', $validated) && $validated['me1'] !== $impl->me1) {
+            $validated['me1_manual'] = ($validated['me1'] !== null && $validated['me1'] !== '');
+        }
+
         $impl->update($validated);
 
         activity('implementacao')
@@ -982,9 +988,13 @@ class MlbImplementacaoController extends Controller
         // lados > 300cm ou peso > 50kg), marca o ME1 da empresa como "Precisa de ME1"
         // automaticamente. Regra do usuário: só MARCA — nunca reverte se estiver dentro
         // do limite; e não sobrescreve caso já esteja em "Precisa de ME1".
+        // Trava manual (me1_manual): a partir do momento em que o consultor edita o ME1
+        // na mão (Painel Polos / ficha), o valor fica travado e a regra automática não
+        // o toca mais — o consultor controla o status (Ativo, ou outro caso específico).
         if ($id === 'planilha_produtos' && $campo === 'produtos') {
             $produtos = $dados['itens']['planilha_produtos']['produtos'] ?? [];
             if (is_array($produtos)
+                && !$impl->me1_manual
                 && $impl->me1 !== 'Precisa de ME1'
                 && MlbImplementacao::planilhaExcedeMercadoEnvios($produtos)) {
                 $impl->update(['me1' => 'Precisa de ME1']);

@@ -677,6 +677,13 @@ class PolosController extends Controller
                         }
                         $undo[$campo]    = $de;
                         $mudImpl[$campo] = $valor;
+
+                        // Trava manual do ME1 (quick 260722-nwc): mudar o me1 na mão para
+                        // um valor concreto trava a regra automática do Mercado Envios;
+                        // limpar destrava. Server-side (me1_manual não vem do cliente).
+                        if ($campo === 'me1' && $valor !== $de) {
+                            $mudImpl['me1_manual'] = ($valor !== null && $valor !== '');
+                        }
                     }
                 }
 

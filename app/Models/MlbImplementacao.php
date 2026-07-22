@@ -31,6 +31,9 @@ class MlbImplementacao extends Model
         'campanha_criada',
         'contextos_logistica',
         'me1',
+        // Trava de override manual do ME1 (quick 260722-nwc): quando o consultor
+        // edita o me1 na mão, esta flag impede que a regra do Mercado Envios o sobrescreva.
+        'me1_manual',
         'integradora',
         'places',
         'erp',
@@ -49,6 +52,7 @@ class MlbImplementacao extends Model
         'grupo_whatsapp'   => 'boolean',
         'decola'           => 'boolean',
         'campanha_criada'  => 'boolean',
+        'me1_manual'       => 'boolean',
         // Rastreio de envio do link (ONB-ENVIO-LINK)
         'link_enviado_em'  => 'datetime',
     ];
