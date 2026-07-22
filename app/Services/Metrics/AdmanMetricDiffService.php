@@ -60,6 +60,19 @@ class AdmanMetricDiffService
     /** As 3 chaves de métrica sempre presentes no shape de retorno. */
     private const METRIC_KEYS = ['revenue', 'contribution_margin_value', 'contribution_margin_pct'];
 
+    /**
+     * Memo em memória (escopo do request/instância) — guarda o resultado REAL
+     * de `compute()` por cacheKey. Necessário porque o `DesempenhoScoreService`
+     * unificado (2026-07-22) chama `compute()` DUAS vezes por empresa na mesma
+     * passada (`computeVarFaturamento` + `computeVarMargem`). Quando o HTTP da
+     * Adman falha e o resultado é 100% `calculated_fallback` (todos os `value`
+     * null → status 'missing'), a 1ª chamada grava o ERROR_SENTINEL no cache;
+     * sem este memo, a 2ª chamada leria o sentinel e descartaria o `diff_pct`
+     * válido do fallback (regressão da margem). O memo NÃO altera a política de
+     * TTL/cache persistente — só evita reler o sentinel dentro do MESMO request.
+     */
+    private array $memo = [];
+
     public function __construct(private AdmanService $admanService)
     {
     }
@@ -93,6 +106,13 @@ class AdmanMetricDiffService
         // v3 (2026-07-22): margem R$ passou de `profitMargin` para `liquidMargin`
         // (caso Utilarshop) — o valor muda, então o bump invalida o cache v2.
         $cacheKey = "adman:diff:v3:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+
+        // Memo do request: devolve o resultado real já computado nesta passada
+        // (evita reler um ERROR_SENTINEL gravado pela 1ª de duas chamadas ao
+        // mesmo (empresa, período) — ver docblock da property $memo).
+        if (isset($this->memo[$cacheKey])) {
+            return $this->memo[$cacheKey];
+        }
 
         $cached = Cache::get($cacheKey);
         if ($cached !== null) {
@@ -161,6 +181,10 @@ class AdmanMetricDiffService
         } else {
             Cache::put($cacheKey, $resultado, now()->addMinutes(1440));
         }
+
+        // Memo do request com o resultado REAL (nunca o sentinel) — protege a
+        // 2ª chamada ao mesmo (empresa, período) na mesma passada.
+        $this->memo[$cacheKey] = $resultado;
 
         return $resultado;
     }

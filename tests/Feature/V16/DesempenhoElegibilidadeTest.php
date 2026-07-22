@@ -273,6 +273,11 @@ class DesempenhoElegibilidadeTest extends TestCase
         $user = $this->criarUserComCargo('Analista Dedup', $this->cargoAnalistaId);
 
         $empresa       = $this->criarEmpresa();
+        // UNIFICADO 2026-07-22 — faturamento vem do AdmanMetricDiffService, que
+        // exige custId (`adman_account_id ?: ml_store_id`); sem ele a empresa
+        // cai em emptyMetrics() e não conta. Mês em curso (row no dia 10 = mesmo
+        // offset nas duas janelas) → single-row basta.
+        $empresa->forceFill(['adman_account_id' => 'CUST-DEDUP', 'marketplace' => 'meli'])->save();
         $servicoPerf   = $this->criarServico(Servico::SETOR_PERFORMANCE);
         $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE);
         $this->criarContrato($empresa->id, $servicoPerf, true);
@@ -281,9 +286,6 @@ class DesempenhoElegibilidadeTest extends TestCase
 
         $this->mockAdman($empresa, '2026-08', revenue: 10500);
         $this->mockAdman($empresa, '2026-07', revenue: 10000);
-        // Histórico pré-baseline (item 1 · trava de cobertura) — junho fora das
-        // janelas jul/ago, só prova que a empresa opera desde antes do baseline.
-        $this->mockAdman($empresa, '2026-06', revenue: 9500);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($user, Carbon::parse('2026-08-01'));

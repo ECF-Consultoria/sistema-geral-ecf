@@ -723,29 +723,22 @@ class DesempenhoScoreServiceTest extends TestCase
     #[Test]
     public function test_var_faturamento_media_das_variacoes_por_empresa(): void
     {
-        // DESEMP-04 — carteira com deltas -2%, +7%, +4% → média 3.00%.
+        // DESEMP-04 (UNIFICADO 2026-07-22) — carteira com deltas -2%, +7%, +4%
+        // → média 3.00%. `var_faturamento_pct` agora vem do
+        // AdmanMetricDiffService (revenue.diff_pct), MESMA fonte da carteira —
+        // então precisa de custId por empresa (custId vazio = emptyMetrics) e
+        // fixture DENSA (1 row/dia cobrindo current+baseline reais do resolver;
+        // esparso cairia na interseção vazia de dias-comuns). O ratio
+        // atual/anterior independe do comprimento da janela (valor constante/dia).
         $u = $this->criarUserAnalista('Analista var_fat');
 
-        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c3 = $this->criarEmpresaNaCarteira($u, '-3 months');
+        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-VARFAT-1');
+        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-VARFAT-2');
+        $c3 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-VARFAT-3');
 
-        // Empresa 1: 9800 / 10000 = -2%
-        $this->mockAdmanRevenueMargem($c1, '2026-07', revenue: 9800);
-        $this->mockAdmanRevenueMargem($c1, '2026-06', revenue: 10000);
-        // Empresa 2: 10700 / 10000 = +7%
-        $this->mockAdmanRevenueMargem($c2, '2026-07', revenue: 10700);
-        $this->mockAdmanRevenueMargem($c2, '2026-06', revenue: 10000);
-        // Empresa 3: 10400 / 10000 = +4%
-        $this->mockAdmanRevenueMargem($c3, '2026-07', revenue: 10400);
-        $this->mockAdmanRevenueMargem($c3, '2026-06', revenue: 10000);
-        // Histórico pré-baseline (item 1 · trava de cobertura Adman): baseline
-        // de julho fechado começa em 31/05, então o Adman precisa ter dado
-        // antes disso pra provar que a empresa opera desde antes da janela.
-        // Maio (dia 15) fica FORA da janela [31/05–30/06] → não entra na soma.
-        $this->mockAdmanRevenueMargem($c1, '2026-05', revenue: 9000);
-        $this->mockAdmanRevenueMargem($c2, '2026-05', revenue: 9000);
-        $this->mockAdmanRevenueMargem($c3, '2026-05', revenue: 9000);
+        $this->mockAdmanDiario($c1, '2026-07', revenueAtual: 9800,  revenueAnterior: 10000); // -2%
+        $this->mockAdmanDiario($c2, '2026-07', revenueAtual: 10700, revenueAnterior: 10000); // +7%
+        $this->mockAdmanDiario($c3, '2026-07', revenueAtual: 10400, revenueAnterior: 10000); // +4%
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
@@ -753,50 +746,45 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->assertEqualsWithDelta(3.00, $r['componentes']['var_faturamento_pct'], 0.001,
             'Carteira [-2%, +7%, +4%] → var_faturamento_pct = 3.00 (média exata).');
         $this->assertSame(3, $r['empresas_com_baseline'],
-            'As 3 empresas têm baseline (prev > 0) → empresas_com_baseline = 3.');
+            'As 3 empresas têm baseline (diff_pct != null) → empresas_com_baseline = 3.');
     }
 
     #[Test]
-    public function test_var_faturamento_exclui_empresa_nova_da_media(): void
+    public function test_var_faturamento_exclui_empresa_sem_baseline_da_media(): void
     {
-        // Item 1 (2026-07-21) — o antigo filtro por `created_at` foi REMOVIDO
-        // (reimportação em massa o tornava tóxico). A empresa genuinamente nova
-        // é excluída AGORA pela TRAVA DE COBERTURA Adman: ela não tem histórico
-        // antes do baseline (31/05), então seu baseline é parcial e ela sai do
-        // faturamento — que é exatamente o que o filtro tosco tentava aproximar,
-        // só que por um sinal de DADOS confiável em vez da data de cadastro.
-        $u = $this->criarUserAnalista('Analista Empresa Nova');
+        // UNIFICADO 2026-07-22 — a antiga TRAVA DE COBERTURA própria do
+        // desempenho (e antes dela, o filtro por `created_at`) foi REMOVIDA: o
+        // faturamento passou a delegar ao AdmanMetricDiffService, MESMA fonte da
+        // carteira. A exclusão de uma empresa sem baseline confiável não é mais
+        // uma regra própria — é o GUARD NATURAL do diff service: sem dado na
+        // janela de baseline, `revenue.diff_pct` volta `null` e a empresa não
+        // conta (nem no desempenho, nem na carteira — as duas telas concordam).
+        $u = $this->criarUserAnalista('Analista Empresa Sem Baseline');
 
-        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $cNova = $this->criarEmpresaNaCarteira($u, '-15 days');
+        $c1 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-SB-1');
+        $c2 = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-SB-2');
+        $cSemBaseline = $this->criarEmpresaNaCarteira($u, '-15 days', admanAccountId: 'CUST-SB-NOVA');
 
-        // C1 e C2 ficam com deltas simétricos (+2% e +8% → média 5%).
-        // Ambas com histórico pré-baseline (maio, fora da janela) → cobrem o
-        // início do baseline e QUALIFICAM.
-        $this->mockAdmanRevenueMargem($c1, '2026-07', revenue: 10200);
-        $this->mockAdmanRevenueMargem($c1, '2026-06', revenue: 10000);
-        $this->mockAdmanRevenueMargem($c1, '2026-05', revenue: 9000);
-        $this->mockAdmanRevenueMargem($c2, '2026-07', revenue: 10800);
-        $this->mockAdmanRevenueMargem($c2, '2026-06', revenue: 10000);
-        $this->mockAdmanRevenueMargem($c2, '2026-05', revenue: 9000);
+        // C1 e C2 com deltas simétricos (+2% e +8% → média 5%) e fixture densa
+        // cobrindo AMBAS as janelas (current + baseline) → qualificam.
+        $this->mockAdmanDiario($c1, '2026-07', revenueAtual: 10200, revenueAnterior: 10000); // +2%
+        $this->mockAdmanDiario($c2, '2026-07', revenueAtual: 10800, revenueAnterior: 10000); // +8%
 
-        // A empresa NOVA teria delta absurdo (+100%). Ela NÃO tem dado de maio
-        // (pré-baseline) — só jul/jun — então a trava de cobertura a descarta:
-        // seu baseline é parcial (começa DENTRO da janela). Sem esse descarte,
-        // puxaria a média pra acima de 5.00.
-        $this->mockAdmanRevenueMargem($cNova, '2026-07', revenue: 20000);
-        $this->mockAdmanRevenueMargem($cNova, '2026-06', revenue: 10000);
+        // A empresa nova só tem dado na janela ATUAL (nenhuma linha no baseline)
+        // — o guard de dias-comuns do diff service devolve diff_pct=null e ela
+        // é descartada do faturamento. Sem baseline não há variação comparável.
+        $periodo = app(MetricPeriodResolver::class)->resolve(['period_key' => '2026-07']);
+        $this->semearDiario($cSemBaseline, $periodo['current_start'], $periodo['current_end'], 20000, null);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
         $this->assertEqualsWithDelta(5.00, $r['componentes']['var_faturamento_pct'], 0.001,
-            'Empresa nova (sem histórico pré-baseline) é excluída pela trava de cobertura — só C1 e C2 contam.');
+            'Empresa sem baseline (diff_pct null) é excluída pelo guard do diff service — só C1 e C2 contam.');
         $this->assertSame(2, $r['empresas_com_baseline'],
-            'Só 2 empresas com cobertura Adml antes do baseline qualificam.');
+            'Só 2 empresas com baseline comparável (diff_pct != null) qualificam.');
         $this->assertSame(3, $r['empresas_carteira'],
-            'Carteira total continua sendo 3 empresas (a nova não some dela).');
+            'Carteira total continua sendo 3 empresas (a sem-baseline não some dela).');
     }
 
     // ─── DESEMP-05 · % var margem via Adman canônico ────────────────────────
@@ -999,65 +987,44 @@ class DesempenhoScoreServiceTest extends TestCase
         $this->assertNull($r['faixa_bonus']);
     }
 
-    // ─── DESEMP-11 · Fonte ML-first + Adman fallback + exclusão "none" ──────
+    // ─── DESEMP-11 · Fonte UNIFICADA do faturamento (diff service) ──────────
 
     #[Test]
-    public function test_provider_ml_first_com_adman_fallback(): void
+    public function test_var_faturamento_fonte_unificada_adman_exclui_sem_custid(): void
     {
-        // DESEMP-11 — 3 empresas com casos diferentes:
-        //   A: caseFor='so-ml'    → provider ML fornece revenue via stub.
-        //   B: caseFor='so-adman' → AdmanMetric fornece revenue via SUM local.
-        //   C: caseFor='none'     → EXCLUÍDA do cálculo (empresas_com_baseline não conta).
+        // DESEMP-11 (SUPERSEDED 2026-07-22 pela unificação): o antigo contrato
+        // "ML-first + Adman fallback + exclusão 'none'" do `computeVarFaturamento`
+        // foi removido. O faturamento agora delega ao AdmanMetricDiffService —
+        // MESMA fonte e MESMA resolução de custId (`adman_account_id ?: ml_store_id`)
+        // da carteira. Consequência: uma empresa conta pra baseline quando o diff
+        // service tem `revenue.diff_pct` (custId + dado nas duas janelas); sem
+        // custId → `emptyMetrics()` → fora (nem ML resgata mais). O stub de
+        // provider (MetricsProviderFactory) já NÃO participa do faturamento.
         $u = $this->criarUserAnalista('Analista Multi-Fonte');
 
-        $a = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $b = $this->criarEmpresaNaCarteira($u, '-3 months');
-        $c = $this->criarEmpresaNaCarteira($u, '-3 months');
+        $a = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-UNIF-A');
+        $b = $this->criarEmpresaNaCarteira($u, '-3 months', admanAccountId: 'CUST-UNIF-B');
+        $c = $this->criarEmpresaNaCarteira($u, '-3 months'); // sem custId → excluída
 
-        // Empresa A — só-ML. Stub retorna revenue 11.111 (jul, key='2026-07')
-        // → +11.11%. AdmanMetric intencionalmente vazio para a A.
-        //
-        // Fase 102 (BON-01, fix regressão do plan-checker): o service chama
-        // `readForCompany($company, $inicioAnter, $fimAnter)` para AMBAS as
-        // janelas (não só a atual) — o stub responde por CHAVE `Y-m` derivada
-        // de `$from`. Sob a régua nova, a baseline de mês FECHADO é a janela-
-        // de-mesmo-tamanho (`$periodo['baseline_start']`), que pode CRUZAR
-        // pro mês anterior ao calendário-anterior (Pitfall 1 do 102-RESEARCH.md)
-        // — para julho/2026 fechado, baseline_start=2026-05-31, cuja chave é
-        // '2026-05', NÃO '2026-06'. Resolve dinamicamente em vez de hardcode
-        // pra não recalcular a mão o offset de 31 dias.
-        $periodoJulho = app(MetricPeriodResolver::class)->resolve(['period_key' => '2026-07']);
-        $chaveBaselineA = Carbon::parse($periodoJulho['baseline_start'])->format('Y-m');
+        // A e B: custId + fixture densa nas duas janelas → contam.
+        $this->mockAdmanDiario($a, '2026-07', revenueAtual: 11111, revenueAnterior: 10000); // +11.11%
+        $this->mockAdmanDiario($b, '2026-07', revenueAtual: 11112, revenueAnterior: 10000); // +11.12%
 
-        $this->providerStub->configureCase($a, 'so-ml');
-        $this->providerStub->configureRevenue($a, '2026-07', 11111.0);
-        $this->providerStub->configureRevenue($a, $chaveBaselineA, 10000.0);
-
-        // Empresa B — só-Adman. AdmanMetric fornece 5.000 (jun) → 5.556 (jul)
-        // → +11.12%.
-        $this->providerStub->configureCase($b, 'so-adman');
-        $this->mockAdmanRevenueMargem($b, '2026-07', revenue: 5556);
-        $this->mockAdmanRevenueMargem($b, '2026-06', revenue: 5000);
-        // Histórico pré-baseline (item 1 · trava de cobertura): maio (fora da
-        // janela [31/05–30/06]) prova que B opera desde antes do baseline —
-        // sem isso a trava descartaria o fallback Adman por cobertura parcial.
-        $this->mockAdmanRevenueMargem($b, '2026-05', revenue: 4500);
-
-        // Empresa C — 'none'. Deve ser EXCLUÍDA logo no filtro
-        // "provider aplicável" do computeVarFaturamento (não conta como baseline).
-        $this->providerStub->configureCase($c, 'none');
-        $this->mockAdmanRevenueMargem($c, '2026-07', revenue: 99999);
-        $this->mockAdmanRevenueMargem($c, '2026-06', revenue: 1);
+        // C: sem adman_account_id nem ml_store_id → custId vazio → o diff service
+        // devolve emptyMetrics() (zero HTTP) → revenue.diff_pct null → não conta.
+        // Mesmo com AdmanMetric local presente, sem custId ela fica de fora — é o
+        // que a carteira também mostraria (empresa "sem fonte").
+        $this->mockAdmanDiario($c, '2026-07', revenueAtual: 99999, revenueAnterior: 1);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($u, Carbon::parse('2026-07-01'));
 
         $this->assertSame(2, $r['empresas_com_baseline'],
-            'Empresa "none" (C) fica FORA do cálculo; só A e B contam.');
+            'Empresa sem custId (C) fica FORA do faturamento; só A e B (com custId) contam.');
         $this->assertNotNull($r['componentes']['var_faturamento_pct']);
-        // Média de +11.11% (A ML) e +11.12% (B Adman) ≈ +11.12%.
+        // Média de +11.11% (A) e +11.12% (B) ≈ +11.115%.
         $this->assertEqualsWithDelta(11.115, $r['componentes']['var_faturamento_pct'], 0.03,
-            'var_faturamento_pct = média de A (ML) e B (Adman), C excluída.');
+            'var_faturamento_pct = média de A e B (via diff service); C excluída por não ter custId.');
     }
 
     // ─── Sanity: régua BonusFaixa via nota exata ────────────────────────────

@@ -282,7 +282,10 @@ class DesempenhoScoreService
         // v8 (2026-07-21): trava de cobertura no fallback Adman do faturamento
         // (remove inflação do baseline parcial de maio). Cada bump força
         // recomputo — senão o Redis serve a versão anterior por até 7 dias.
-        return sprintf('desempenho.compute.v8.%d.%s', $userId, $periodKey);
+        // v9 (2026-07-22): faturamento UNIFICADO com a carteira — var_faturamento
+        // agora vem do AdmanMetricDiffService (revenue.diff_pct), mesma fonte da
+        // carteira/transparência. Desempenho e carteira passam a bater.
+        return sprintf('desempenho.compute.v9.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -940,116 +943,24 @@ class DesempenhoScoreService
         // conta. Decisão do usuário "contar quem tem baseline real"
         // (2026-07-21). O teste de "2 meses" volta a fazer sentido sozinho
         // quando o histórico acumular — reavaliar então.
-        $companiesQualificadas = $companies->filter(
-            fn ($c) => $this->metricsFactory->caseFor($c) !== 'none'
-        );
+        // UNIFICADO com a carteira (2026-07-22, decisão do usuário): delega por
+        // empresa ao `AdmanMetricDiffService::compute()` e lê `revenue.diff_pct`
+        // — a MESMA fonte de faturamento da carteira/transparência. Simétrico a
+        // `computeVarMargem`. Empresa conta pra baseline quando o diff service
+        // tem variação (diff_pct != null) — mesmo critério do status da carteira,
+        // então `empresas_com_baseline` do desempenho passa a bater com o que a
+        // carteira mostra. Removeu ML-first + trava de cobertura próprios (que
+        // faziam as duas telas divergirem); o diff service (nativo Adman, já
+        // validado contra a UI) é a fonte única.
+        $vars             = collect();
+        $empresasBaseline = 0;
 
-        if ($companiesQualificadas->isEmpty()) {
-            return ['pct' => null, 'empresas_com_baseline' => 0];
-        }
-
-        $companyIds  = $companiesQualificadas->pluck('id');
-
-        // ── Janelas do MetricPeriodResolver (Fase 102 · BON-01) ───────────────
-        // Substitui o cálculo inline de `$hoje`/`$ehMesEmCurso`/`$inicioMes`/
-        // `$fimMes`/`$inicioAnter`/`$fimAnter` — `$periodo` já resolveu a
-        // janela certa (mês em curso = mesmo alinhamento por dia de antes;
-        // mês fechado = janela-de-mesmo-tamanho, não mais calendário-vs-
-        // calendário).
-        $inicioMes   = Carbon::parse($periodo['current_start'])->startOfDay();
-        $fimMes      = Carbon::parse($periodo['current_end'])->endOfDay();
-        $inicioAnter = Carbon::parse($periodo['baseline_start'])->startOfDay();
-        $fimAnter    = Carbon::parse($periodo['baseline_end'])->endOfDay();
-
-        // Adman fallback: 2 queries agregadas (mês atual + anterior).
-        // whereDate para robustez SQLite (padrão SnapshotDesempenhoScores).
-        $admanAtual = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereDate('reference_date', '>=', $inicioMes->toDateString())
-            ->whereDate('reference_date', '<=', $fimMes->toDateString())
-            ->selectRaw('company_id, SUM(revenue) as rev')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        $admanAnterior = AdmanMetric::whereIn('company_id', $companyIds)
-            ->whereDate('reference_date', '>=', $inicioAnter->toDateString())
-            ->whereDate('reference_date', '<=', $fimAnter->toDateString())
-            ->selectRaw('company_id, SUM(revenue) as rev')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        // Cobertura Adman: menor data de métrica por empresa (1 query, sem N+1).
-        // Trava do fallback Adman (2026-07-21): o histórico Adman só começa em
-        // ~21/05, mas o baseline de junho é o mês de maio inteiro (02–31/05).
-        // Somar junho-cheio ÷ maio-parcial explodia a variação (+80% a +293%,
-        // saturando a régua) — inflação isolada 100% no fallback Adman (o ML
-        // entrega o mês cheio real). Regra: só confiar no baseline Adman quando
-        // o Adman da empresa cobre o INÍCIO da janela de baseline; senão a soma
-        // é parcial e a empresa é descartada do faturamento (usa ML real quando
-        // houver, ou fica de fora). Auto-cura: quando o histórico Adman passar a
-        // anteceder o baseline, as empresas só-Adman voltam sozinhas.
-        $admanMinData = AdmanMetric::whereIn('company_id', $companyIds)
-            ->selectRaw('company_id, MIN(reference_date) as min_date')
-            ->groupBy('company_id')
-            ->get()
-            ->keyBy('company_id');
-
-        $vars              = collect();
-        $empresasBaseline  = 0;
-
-        foreach ($companiesQualificadas as $company) {
-            $case = $this->metricsFactory->caseFor($company);
-
-            // Ajuste 2026-07-09 (fix Luiz): baseline (revenue anterior) deve vir
-            // da MESMA fonte que o atual. Antes, atual vinha do ML (real, fresh)
-            // e anterior sempre do Adman local — quando Adman sincronizou pouco
-            // no mês passado pra empresa OAuth, o baseline ficava ridículo
-            // (LAURA LAR: Adman R$ 299 vs ML R$ 632.601 → +211.189% distorção).
-            //
-            // Regra nova: se a empresa é lida via ML no atual, TAMBÉM ler o
-            // baseline via ML. Se ML falhar em qualquer janela, cair para Adman
-            // em AMBAS (nunca misturar fontes = evita bug de baseline).
-            $revAtual    = null;
-            $revAnterior = null;
-            $fonteConsistente = null;
-
-            if (in_array($case, ['ambos', 'so-ml'], true)) {
-                $providers = $this->metricsFactory->forCompany($company);
-                if (! empty($providers)) {
-                    try {
-                        $dtoAtual  = $providers[0]->readForCompany($company, $inicioMes,  $fimMes);
-                        $dtoAnter  = $providers[0]->readForCompany($company, $inicioAnter, $fimAnter);
-                        if ($dtoAtual->revenue !== null && $dtoAnter->revenue !== null) {
-                            $revAtual         = (float) $dtoAtual->revenue;
-                            $revAnterior      = (float) $dtoAnter->revenue;
-                            $fonteConsistente = 'ml';
-                        }
-                    } catch (\Throwable $e) {
-                        // ML provider já loga internamente; cai pro Adman abaixo.
-                    }
-                }
+        foreach ($companies as $company) {
+            $diffPct = $this->admanDiffService->compute($company, $periodo)['metrics']['revenue']['diff_pct'] ?? null;
+            if ($diffPct !== null) {
+                $vars->push($diffPct);
+                $empresasBaseline++;
             }
-
-            // Fallback (ou fonte única para so-adman): Adman em AMBAS as janelas
-            // — SÓ se o Adman cobre o início do baseline (trava de cobertura, ver
-            // bloco $admanMinData acima). Cobertura parcial → baseline inflado →
-            // descarta a empresa do faturamento.
-            if ($fonteConsistente === null) {
-                $minAdman = $admanMinData->get($company->id)?->min_date;
-                if ($minAdman === null || Carbon::parse($minAdman)->gt($inicioAnter)) {
-                    continue; // sem baseline Adman confiável (histórico começa depois do baseline)
-                }
-                $revAtual    = (float) ($admanAtual->get($company->id)?->rev ?? 0.0);
-                $revAnterior = (float) ($admanAnterior->get($company->id)?->rev ?? 0.0);
-            }
-
-            if ($revAnterior <= 0) {
-                continue; // sem baseline — descarta (DESEMP-04)
-            }
-
-            $empresasBaseline++;
-            $vars->push((($revAtual - $revAnterior) / $revAnterior) * 100.0);
         }
 
         if ($vars->isEmpty()) {

@@ -211,34 +211,24 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
      */
     private function preencherDadosDaCarteira(User $u, Company $c, int $nota, string $mesYm = '2026-07'): void
     {
-        $anterior = Carbon::parse($mesYm . '-01')->subMonth()->format('Y-m');
+        // UNIFICADO 2026-07-22 — var_faturamento passou a vir do
+        // AdmanMetricDiffService (igual à carteira), que exige custId
+        // (`adman_account_id ?: ml_store_id`) e fixture DENSA (1 row/dia nas
+        // janelas current/baseline reais do resolver — esparso cai na
+        // interseção vazia de dias-comuns). custId único por empresa (a chave
+        // de cache do diff service não inclui company_id). Sem isso, var_fat E
+        // var_margem ficam null e, como o NPS da competência fechada é lido de
+        // M+1 (ainda em coleta), a nota_final inteira zeraria.
+        $c->timestamps = false;
+        $c->forceFill(['adman_account_id' => 'CUST-CMD-' . $c->id, 'marketplace' => 'meli'])->save();
+        $c->timestamps = true;
 
-        // Revenue e margem — deltas pequenos suficientes para nota_final
-        // caber na régua sem_bonus quando NPS < 4.00.
-        AdmanMetric::create([
-            'company_id'          => $c->id,
-            'reference_date'      => Carbon::parse($mesYm . '-15')->toDateString(),
-            'revenue'             => 10300,
-            'contribution_margin' => 10280,
-        ]);
-        AdmanMetric::create([
-            'company_id'          => $c->id,
-            'reference_date'      => Carbon::parse($anterior . '-15')->toDateString(),
-            'revenue'             => 10000,
-            'contribution_margin' => 10000,
-        ]);
-        // Histórico pré-baseline (item 1 · trava de cobertura Adman): a baseline
-        // de mês fechado começa antes do dia 1 do mês anterior (janela-de-mesmo-
-        // tamanho), então o Adman precisa cobrir esse início. 2 meses antes de
-        // $mesYm (fora das janelas somadas) prova que a empresa opera desde
-        // antes do baseline — senão a trava a descartaria e a nota ficaria null.
-        $preBaseline = Carbon::parse($mesYm . '-01')->subMonths(2)->format('Y-m');
-        AdmanMetric::create([
-            'company_id'          => $c->id,
-            'reference_date'      => Carbon::parse($preBaseline . '-15')->toDateString(),
-            'revenue'             => 9500,
-            'contribution_margin' => 9500,
-        ]);
+        $periodo = app(\App\Services\Metrics\MetricPeriodResolver::class)->resolve(['period_key' => $mesYm]);
+
+        // Revenue +3% (10300/dia vs 10000/dia); margem % ~ +1,94% (2100/10300 vs
+        // 2000/10000). Valores CONSTANTES por dia → ratio independe da janela.
+        $this->semearDiarioCmd($c, $periodo['current_start'],  $periodo['current_end'],  10300, 2100);
+        $this->semearDiarioCmd($c, $periodo['baseline_start'], $periodo['baseline_end'], 10000, 2000);
 
         // Fase 105 (v18.0 · NPSWIN-01/02) — FALLOUT ESPERADO: a competência
         // `$mesYm` (fechada) agora lê o NPS de M+1 (`computeNpsWindow()`,
@@ -252,6 +242,22 @@ class ConsolidarMesDesempenhoCommandTest extends TestCase
             'survey_id'      => $survey->id,
             'score_analista' => $nota,
         ]);
+    }
+
+    /** Popula 1 row AdmanMetric por DIA em [$inicio,$fim] (inclusive), valores constantes. */
+    private function semearDiarioCmd(Company $c, string $inicio, string $fim, float $revenue, float $margem): void
+    {
+        $cursor  = Carbon::parse($inicio);
+        $fimData = Carbon::parse($fim);
+        while ($cursor->lte($fimData)) {
+            AdmanMetric::create([
+                'company_id'          => $c->id,
+                'reference_date'      => $cursor->toDateString(),
+                'revenue'             => $revenue,
+                'contribution_margin' => $margem,
+            ]);
+            $cursor->addDay();
+        }
     }
 
     // ═══ Testes ═══════════════════════════════════════════════════════════
