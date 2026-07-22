@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Concerns\ContrataServicoNpsCoberto;
 use Tests\TestCase;
 
 /**
@@ -26,6 +27,7 @@ use Tests\TestCase;
 class NpsFiltroPorPessoaTest extends TestCase
 {
     use RefreshDatabase;
+    use ContrataServicoNpsCoberto;
 
     /**
      * Cria um survey COMPLETED no mês corrente + resposta + score congelado +
@@ -107,5 +109,66 @@ class NpsFiltroPorPessoaTest extends TestCase
             $p->where('contadores.respondidos', 1)
               ->where('surveys.data.0.id', $surveyOutro->id);
         });
+    }
+
+    /**
+     * Bugfix 2026-07-22 — escopo do NÃO-ADMIN é por SERVIÇO, não por empresa.
+     *
+     * Cenário reportado (Nathalia): a empresa é dela no ML, mas o NPS Shopee é de
+     * outra pessoa. Antes o não-admin via TODOS os NPS das empresas dele
+     * (whereIn company_id) → vazava o Shopee. Agora só vê o de que é responsável.
+     */
+    public function test_nao_admin_ve_so_o_nps_do_seu_servico_nao_de_outro_da_empresa(): void
+    {
+        $company  = Company::factory()->create();
+        $nathalia = User::factory()->create(['name' => 'Nathalia', 'role' => 'consultor', 'active' => true]);
+        $outra    = User::factory()->create(['name' => 'Outra Pessoa', 'active' => true]);
+
+        // Nathalia é responsável (estrategista) da empresa → entra na carteira dela.
+        DB::table('company_users')->insert([
+            'company_id' => $company->id, 'user_id' => $nathalia->id, 'role' => 'estrategista',
+            'servico_id' => null, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $meu   = $this->surveyRespondidoAtribuido($company, $nathalia, 'estrategista'); // NPS dela (ML)
+        $outro = $this->surveyRespondidoAtribuido($company, $outra, 'estrategista');    // NPS de outra (ex.: Shopee)
+
+        $this->actingAs($nathalia);
+        $this->get(route('nps.index', ['template_id' => '__todos__']))
+            ->assertInertia(function (Assert $p) use ($meu) {
+                $p->where('contadores.respondidos', 1)
+                  ->has('surveys.data', 1)
+                  ->where('surveys.data.0.id', $meu->id);
+            });
+    }
+
+    /**
+     * Bugfix 2026-07-22 — o modal de detalhe mostra o responsável ATUAL do
+     * serviço quando NÃO há atribuição congelada (fallback display).
+     */
+    public function test_detalhe_usa_responsavel_atual_quando_nao_ha_atribuicao(): void
+    {
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'active' => true]));
+
+        $mlId        = (int) DB::table('nps_templates')->where('is_default', true)->value('id');
+        $company     = Company::factory()->create();
+        $servicoPerf = $this->contratarServicoNpsCoberto($company, $mlId);
+
+        $estrat = User::factory()->create(['name' => 'Estrategista Atual']);
+        DB::table('company_users')->insert([
+            'company_id' => $company->id, 'user_id' => $estrat->id, 'role' => 'estrategista',
+            'servico_id' => $servicoPerf, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        // Survey respondido COM template mas SEM nps_score_assignments.
+        $survey = NpsSurvey::factory()->create([
+            'company_id' => $company->id, 'template_id' => $mlId, 'status' => 'completed',
+            'month_reference' => now()->startOfMonth(), 'completed_at' => now(),
+        ]);
+        NpsResponse::factory()->create(['survey_id' => $survey->id]);
+
+        $this->get(route('nps.index', ['template_id' => '__todos__']))
+            ->assertInertia(fn (Assert $p) =>
+                $p->where('surveys.data.0.responsaveis.estrategista.0', 'Estrategista Atual'));
     }
 }

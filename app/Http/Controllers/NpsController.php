@@ -101,10 +101,13 @@ class NpsController extends Controller
         //     atribui pelo serviço coberto pelo MODELO do survey — a pessoa é
         //     responsável (role) da empresa naquele serviço. servico_id NULL na
         //     pivot = responsável CONSOLIDADO (cobre qualquer serviço).
-        $filtroPorPessoa = function ($query, int $personId, string $role) {
+        // $role NULL = QUALQUER papel (usado no escopo do não-admin: mostra o NPS
+        // de que a pessoa é responsável, seja como estrategista ou analista).
+        $filtroPorPessoa = function ($query, int $personId, ?string $role = null) {
             $query->where(function ($outer) use ($personId, $role) {
                 $outer->whereHas('response.scoreAssignments', function ($q) use ($personId, $role) {
-                    $q->where('user_id', $personId)->where('role', $role);
+                    $q->where('user_id', $personId)
+                      ->when($role !== null, fn ($qq) => $qq->where('role', $role));
                 })
                 ->orWhere(function ($sub) use ($personId, $role) {
                     $sub->whereDoesntHave('response')
@@ -113,7 +116,7 @@ class NpsController extends Controller
                                ->from('company_users as cu')
                                ->whereColumn('cu.company_id', 'nps_surveys.company_id')
                                ->where('cu.user_id', $personId)
-                               ->where('cu.role', $role)
+                               ->when($role !== null, fn ($qq) => $qq->where('cu.role', $role))
                                ->where(function ($w) {
                                    // Consolidado (servico_id NULL) cobre qualquer
                                    // serviço; senão, o serviço da pivot precisa
@@ -165,8 +168,10 @@ class NpsController extends Controller
         // 'events' só é usado para montar `auditoria`, que é admin-only.
         $eagerLoads = [
             'company',
+            'company.users', // 2026-07-22 — fallback de responsável no modal (sem N+1)
             'generatedBy',
             'template', // 2026-07-20 — nome do modelo na coluna "Modelo" da listagem (evita N+1)
+            'template.serviceScopes', // 2026-07-22 — serviços cobertos p/ o fallback de responsável
             'response.respostasCustomizadas',
             'response.answers',
             'response.survey.template',
@@ -187,8 +192,14 @@ class NpsController extends Controller
             ->orderBy('created_at', 'desc');
 
         if (!$user->isAdmin()) {
-            $companyIds = $user->companies()->pluck('companies.id');
-            $baseQuery->whereIn('company_id', $companyIds);
+            // Bugfix 2026-07-22 — escopo do não-admin por SERVIÇO, não por empresa.
+            // Antes: whereIn('company_id', $user->companies()) → o profissional via
+            // TODOS os NPS das empresas dele, inclusive o de OUTRO serviço/pessoa
+            // (ex.: analista de ML via também o NPS Shopee da empresa, respondido
+            // por outra pessoa). Agora só aparece o NPS de que ELE é o responsável
+            // (atribuição congelada nas respondidas; serviço coberto nas pendentes),
+            // em qualquer papel.
+            $filtroPorPessoa($baseQuery, $user->id, null);
         }
 
         // Quick task 260612-flt — filtros empresa/estrategista/analista.
@@ -281,43 +292,66 @@ class NpsController extends Controller
             return $legacy->concat($v15)->values();
         };
 
-        // Quick task 260715-pu0 — nomes dos responsáveis (analista/estrategista)
-        // que receberam a nota individual daquela resposta, direto de
-        // `nps_score_assignments` (Fase 79, congelado no momento da resposta).
+        // Nomes dos responsáveis (analista/estrategista) exibidos no modal.
         //
-        // PROIBIDO ler `$company->consultor`/`$company->estrategista`/
-        // `consultorDoServico()`/`estrategistaDoServico()` aqui: essas relações
-        // do pivot VIVO estão quebradas desde a Fase 76 (empresa pode ter 2
-        // linhas do mesmo `role` com `servico_id` diferentes, e um `->first()`
-        // pega a mais antiga — bug real em prod na tela /companies). A
-        // atribuição congelada já resolveu isso por serviço no momento do
-        // submit; aqui é leitura pura, sem fallback.
+        // FONTE 1 (autoritária): `nps_score_assignments` (Fase 79, congelado no
+        // submit) — MESMA base do bônus. Dedup por user_id.
         //
-        // Sem atribuição (survey legado, pré-Fase 79) → listas vazias, nunca
-        // null — a UI não precisa de guard de tipo.
+        // FONTE 2 (fallback DISPLAY, Bugfix 2026-07-22): quando NÃO há atribuição
+        // congelada para uma dimensão (survey legado pré-Fase 79 ou "responsável
+        // faltante" no submit), o modal ficava SEM nome. Agora cai no responsável
+        // ATUAL do SERVIÇO coberto pelo modelo — resolvido dos dados JÁ
+        // eager-loaded (`company.users` com pivot servico_id ∩ `template.serviceScopes`),
+        // sem N+1. NÃO usa as relações consolidadas `consultor()`/`estrategista()`
+        // (pegam a linha errada em empresa multi-serviço). É SÓ exibição — não
+        // toca no bônus/atribuição congelada.
         $mapaDimensaoRole = [
             'consultor'    => 'analista',
             'estrategista' => 'estrategista',
         ];
-        $responsaveisDe = function ($response) use ($mapaDimensaoRole) {
+        $responsaveisDe = function ($s) use ($mapaDimensaoRole) {
             $resultado = ['analista' => [], 'estrategista' => []];
+            $response = $s->response;
             if (! $response) {
                 return $resultado;
             }
 
+            // Fonte 1 — atribuição congelada.
             $vistos = ['analista' => [], 'estrategista' => []];
             foreach ($response->scoreAssignments as $a) {
                 $chave = $mapaDimensaoRole[$a->role] ?? null;
                 if ($chave === null || ! $a->user) {
                     continue; // role fora do mapa, ou usuário deletado
                 }
-                // Dedup por user_id — um template que cobre 2 serviços com o
-                // mesmo responsável não deve repetir o nome na tela.
                 if (in_array($a->user_id, $vistos[$chave], true)) {
-                    continue;
+                    continue; // dedup por user_id
                 }
                 $vistos[$chave][] = $a->user_id;
                 $resultado[$chave][] = $a->user->name;
+            }
+
+            // Fonte 2 — fallback por serviço, SÓ nas dimensões que ficaram vazias.
+            if ($s->template_id && $s->company && $s->relationLoaded('template') && $s->template) {
+                $servicoIds = $s->template->serviceScopes->pluck('id')->all();
+                foreach ($mapaDimensaoRole as $role => $chave) {
+                    if (! empty($resultado[$chave])) {
+                        continue; // já resolvido pela atribuição congelada
+                    }
+                    foreach ($s->company->users as $u) {
+                        if ($u->pivot->role !== $role) {
+                            continue;
+                        }
+                        $sid = $u->pivot->servico_id;
+                        // Consolidado (NULL) cobre qualquer serviço; senão o
+                        // serviço da pivot precisa ser coberto pelo modelo.
+                        if ($sid !== null && ! in_array((int) $sid, $servicoIds, true)) {
+                            continue;
+                        }
+                        if (! in_array($u->name, $resultado[$chave], true)) {
+                            $resultado[$chave][] = $u->name;
+                        }
+                    }
+                }
             }
 
             return $resultado;
@@ -387,11 +421,12 @@ class NpsController extends Controller
             }
         }
 
-        // Filtro de pessoa por serviço (reaproveitado por setor).
-        $filtroPessoaFaltante = function ($q, int $personId, string $role, array $servicoIds) {
+        // Filtro de pessoa por serviço (reaproveitado por setor). $role NULL =
+        // qualquer papel (usado no escopo do não-admin).
+        $filtroPessoaFaltante = function ($q, int $personId, ?string $role, array $servicoIds) {
             $q->whereHas('users', function ($u) use ($personId, $role, $servicoIds) {
                 $u->where('users.id', $personId)
-                  ->where('company_users.role', $role)
+                  ->when($role !== null, fn ($qq) => $qq->where('company_users.role', $role))
                   ->where(function ($w) use ($servicoIds) {
                       $w->whereNull('company_users.servico_id')
                         ->orWhereIn('company_users.servico_id', $servicoIds);
@@ -409,7 +444,10 @@ class NpsController extends Controller
                 ->whereHas('contratosServico', fn ($c) => $c->active()->whereIn('servico_id', $servicoIds));
 
             if (!$user->isAdmin()) {
-                $q->whereIn('id', $user->companies()->pluck('companies.id'));
+                // Bugfix 2026-07-22 — não-admin vê faltantes só dos serviços de
+                // que ELE é responsável (não company-level). Ex.: analista de ML
+                // não vê o faltante Shopee da mesma empresa.
+                $filtroPessoaFaltante($q, $user->id, null, $servicoIds);
             }
             if ($empresaId) {
                 $q->where('id', $empresaId);
@@ -498,7 +536,7 @@ class NpsController extends Controller
                 'score_analista'     => $notaDe($s->response, 'analista'),
                 'score_empresa'      => $notaDe($s->response, 'empresa'),
                 // Quick task 260715-pu0 — nomes de quem recebeu a nota (Fase 79).
-                'responsaveis'       => $responsaveisDe($s->response),
+                'responsaveis'       => $responsaveisDe($s),
                 'respondent'         => $s->response?->respondent_name,
                 'comment'            => $s->response?->comment,
                 'link'               => route('nps.respond', $s->token),
@@ -529,7 +567,7 @@ class NpsController extends Controller
         // respostas v15 (colunas null), calculamos em PHP iterando os responses
         // e usando NpsScoreCalculator quando template_id != null.
         // Trade-off perf: ~150 responses/mês = O(150) em memória — aceitável.
-        $responsesFilter = function ($q) use ($mesInicio, $mesFim, $user, $aplicarFiltrosSurveys) {
+        $responsesFilter = function ($q) use ($mesInicio, $mesFim, $user, $aplicarFiltrosSurveys, $filtroPorPessoa) {
             $q->where(function ($qq) use ($mesInicio, $mesFim) {
                 $qq->whereBetween('month_reference', [$mesInicio->toDateString(), $mesFim->toDateString()])
                    ->orWhere(function ($qqq) use ($mesInicio, $mesFim) {
@@ -538,7 +576,8 @@ class NpsController extends Controller
                    });
             });
             if (!$user->isAdmin()) {
-                $q->whereIn('company_id', $user->companies()->pluck('companies.id'));
+                // Bugfix 2026-07-22 — escopo por serviço (ver comentário no $baseQuery).
+                $filtroPorPessoa($q, $user->id, null);
             }
             // Quick task 260612-flt — propaga filtros para os cards.
             $aplicarFiltrosSurveys($q);
@@ -581,7 +620,7 @@ class NpsController extends Controller
 
             $responsesM = NpsResponse::query()
                 ->with(['survey', 'answers'])
-                ->whereHas('survey', function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys) {
+                ->whereHas('survey', function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys, $filtroPorPessoa) {
                     $qq->where(function ($qqq) use ($m, $mFim) {
                         $qqq->whereBetween('month_reference', [$m->toDateString(), $mFim->toDateString()])
                             ->orWhere(function ($qqqq) use ($m, $mFim) {
@@ -590,7 +629,8 @@ class NpsController extends Controller
                             });
                     });
                     if (!$user->isAdmin()) {
-                        $qq->whereIn('company_id', $user->companies()->pluck('companies.id'));
+                        // Bugfix 2026-07-22 — escopo por serviço (ver $baseQuery).
+                        $filtroPorPessoa($qq, $user->id, null);
                     }
                     // Quick task 260612-flt — propaga filtros na serie 12m.
                     $aplicarFiltrosSurveys($qq);
