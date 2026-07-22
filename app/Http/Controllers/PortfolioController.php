@@ -576,13 +576,25 @@ class PortfolioController extends Controller
             $resultadoDiff = $this->admanDiffService->compute($c, $periodo);
             $margemVarPct  = $resultadoDiff['metrics']['contribution_margin_value']['diff_pct'] ?? null;
 
-            // Fase 3 (2026-07-21) — campos §8.3 extras vindos do MESMO diff
-            // service (fonte consistente): variação de faturamento + margem %
-            // (percentageMargin) + sua variação. `margem_rs`/`margem_rs_var_pct`
-            // são aliases de nome dos campos R$ já existentes acima.
+            // Fase 3 (2026-07-21) — campos §8.3 do MESMO diff service (fonte
+            // consistente). Além das variações + margem %, agora também os
+            // VALORES de faturamento e margem R$ vêm do diff service — que
+            // devolve os valores NATIVOS da Adman (faturamento bruto / margem
+            // contribuição), batendo exatamente com a tela da Adman. Antes a
+            // carteira usava soma local (`SUM(revenue)`/`SUM(contribution_margin)`)
+            // que divergia (faturamento ~10k a menos; margem R$ ~2× maior). Fix
+            // validado contra PETSHOPBRASIL (2026-07-22). Em teste (sem HTTP) o
+            // diff service cai no fallback de soma local — mesmo valor de antes.
             $fatVarPct  = $resultadoDiff['metrics']['revenue']['diff_pct'] ?? null;
+            $revValDiff = $resultadoDiff['metrics']['revenue']['value'] ?? null;
+            $margRsDiff = $resultadoDiff['metrics']['contribution_margin_value']['value'] ?? null;
             $margPctVal = $resultadoDiff['metrics']['contribution_margin_pct']['value'] ?? null;
             $margPctVar = $resultadoDiff['metrics']['contribution_margin_pct']['diff_pct'] ?? null;
+
+            // Valor final exibido: diff service (nativo Adman) com fallback pras
+            // fontes antigas se o diff vier null (empresa sem endpoint).
+            $faturamentoFinal = $revValDiff !== null ? (float) $revValDiff : $revenue;
+            $margemFinal      = $margRsDiff !== null ? (float) $margRsDiff : $margemAtual;
 
             // Motivo pt-BR para tooltip/badge quando margem é null — ajuda o
             // admin/analista a entender POR QUE algumas empresas aparecem sem
@@ -618,8 +630,8 @@ class PortfolioController extends Controller
             return [
                 'id'                          => $c->id,
                 'name'                        => $c->name,
-                'faturamento'                 => $revenue !== null ? round($revenue, 2) : null,
-                'margem_contribuicao'         => $margemAtual !== null ? round($margemAtual, 2) : null,
+                'faturamento'                 => $faturamentoFinal !== null ? round($faturamentoFinal, 2) : null,
+                'margem_contribuicao'         => $margemFinal !== null ? round($margemFinal, 2) : null,
                 'margem_contribuicao_anterior'=> $margemAnterior !== null ? round($margemAnterior, 2) : null,
                 'margem_variacao_pct'         => $margemVarPct,
                 'motivo_sem_margem'           => $motivoSemMargem,
@@ -630,13 +642,13 @@ class PortfolioController extends Controller
                 // Campos §8.3 (aditivo) — mesma tabela da transparência.
                 'fonte'                       => $fonte,
                 'faturamento_var_pct'         => $fatVarPct,
-                'margem_rs'                   => $margemAtual !== null ? round($margemAtual, 2) : null,
+                'margem_rs'                   => $margemFinal !== null ? round($margemFinal, 2) : null,
                 'margem_rs_var_pct'           => $margemVarPct,
                 'margem_pct'                  => $margPctVal !== null ? round((float) $margPctVal, 2) : null,
                 'margem_pct_var_pct'          => $margPctVar,
                 'status'                      => $invalidada
                     ? 'invalidada'
-                    : ($revenue === null
+                    : ($faturamentoFinal === null
                         ? 'sem_dados'
                         : (($fatVarPct === null && $margemVarPct === null)
                             ? 'sem_baseline'
