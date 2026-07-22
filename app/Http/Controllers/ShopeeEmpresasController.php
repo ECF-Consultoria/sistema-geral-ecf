@@ -64,6 +64,10 @@ class ShopeeEmpresasController extends Controller
                 // e a resolução do servico_id Shopee por empresa (responsáveis por-serviço).
                 'contratosServico' => fn($q) => $q->where('ativo', true)->with('servico'),
                 'grupo:id,name,color',
+                // Token OAuth ERP da Shopee — alimenta o status de conexão + botão
+                // "Gerar link" exibido direto na linha da empresa (mesma origem do
+                // painel /shopee-oauth).
+                'shopeeToken',
             ])
             // SEM ->withCount(grants), SEM 'mlToken', SEM ->whereDoesntHave('mlbEmpresa').
             ->orderBy('name')
@@ -131,6 +135,16 @@ class ShopeeEmpresasController extends Controller
                 'color' => $c->grupo->color,
             ] : null,
             'company_group_id' => $c->company_group_id,
+            // Conexão OAuth Shopee (mesma fonte do painel /shopee-oauth) — status na
+            // linha + botão "Gerar link" / "Copiar" direto na aba Empresas.
+            'shopee_token'             => $c->shopeeToken ? [
+                'status'       => $c->shopeeToken->status,
+                'shop_id'      => $c->shopeeToken->shop_id,
+                'connected_at' => $c->shopeeToken->connected_at?->toISOString(),
+            ] : null,
+            'shopee_link_generated_at' => $c->shopee_link_generated_at?->toISOString(),
+            'shopee_link_expires_at'   => $c->shopee_link_generated_at?->addDays(7)->toISOString(),
+            'shopee_link_url'          => $c->shopee_link_url,
             // Pendências mínimas pro NPS (DEC-2) — sem sem_cust_id/sem_grant_ativo
             // (não se aplicam à Shopee) nem qualquer pendência de métrica.
             'pendencias'       => array_values(array_filter([

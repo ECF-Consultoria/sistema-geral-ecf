@@ -7,8 +7,99 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, router } from '@inertiajs/react';
 import { useState } from 'react';
-import { Building2, Check, Wrench, Trash2 } from 'lucide-react';
+import { Building2, Check, Wrench, Trash2, CheckCircle2, Clock, Copy, RefreshCw, Store } from 'lucide-react';
 import { formatCurrency, formatDate, cn } from '@/lib/utils';
+
+const SHOPEE_ORANGE = '#ee4d2d'; // laranja da marca Shopee
+
+function daysLeft(expiresAt) {
+    if (!expiresAt) return null;
+    return Math.ceil((new Date(expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
+}
+
+// Célula "Conexão" da Shopee: status do OAuth + gerar/copiar o link que o cliente
+// usa para autorizar. Reusa a rota shopee.oauth.initiate — o líder do Setor Shopee
+// e o admin (únicos que enxergam esta aba) já têm sistema.shopee_oauth.
+function ShopeeConexao({ company }) {
+    const token = company.shopee_token;
+    const isConnected = token?.status === 'active';
+    const [loading, setLoading]       = useState(false);
+    const [copied, setCopied]         = useState(false);
+    const [sessionUrl, setSessionUrl] = useState(null);
+
+    const linkUrl   = sessionUrl ?? company.shopee_link_url;
+    const pendente  = !!(sessionUrl || company.shopee_link_generated_at) && !!linkUrl;
+
+    const gerarLink = async () => {
+        setLoading(true);
+        try {
+            const res = await fetch(route('shopee.oauth.initiate', company.id), {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                    'Accept': 'application/json',
+                },
+            });
+            const data = await res.json();
+            if (data.url) setSessionUrl(data.url);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const copiar = () => {
+        if (!linkUrl) return;
+        navigator.clipboard.writeText(linkUrl);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    // Conectada → notifica com selo verde direto na linha da empresa.
+    if (isConnected) {
+        return (
+            <span
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400"
+                title={token.shop_id ? `Loja #${token.shop_id} · renovação automática` : 'Conectada à Shopee'}
+            >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Conectada
+            </span>
+        );
+    }
+
+    // Link já gerado (pendente) → mostra "Aguardando" + copiar + regerar.
+    if (pendente) {
+        const days = daysLeft(company.shopee_link_expires_at);
+        const expired = days !== null && days <= 0;
+        return (
+            <div className="flex items-center gap-1.5">
+                <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold', expired ? 'text-red-400' : 'text-amber-400')}>
+                    <Clock className="h-3.5 w-3.5" />
+                    {expired ? 'Link expirado' : `Aguardando${days !== null ? ` · ${days}d` : ''}`}
+                </span>
+                <button onClick={copiar} title="Copiar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors">
+                    {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                </button>
+                <button onClick={gerarLink} disabled={loading} title="Regerar link" className="inline-flex items-center justify-center h-6 w-6 rounded-md border border-white/10 text-white/40 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40">
+                    <RefreshCw className={cn('h-3 w-3', loading && 'animate-spin')} />
+                </button>
+            </div>
+        );
+    }
+
+    // Sem link → botão "Gerar link".
+    return (
+        <button
+            onClick={gerarLink}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors disabled:opacity-40"
+            style={{ backgroundColor: `${SHOPEE_ORANGE}1a`, border: `1px solid ${SHOPEE_ORANGE}33`, color: SHOPEE_ORANGE }}
+            title="Gerar o link de conexão Shopee para enviar ao cliente"
+        >
+            {loading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Store className="h-3 w-3" />}
+            Gerar link
+        </button>
+    );
+}
 
 // ─── Página "Empresas" da Shopee (Phase 75; revisada na Phase 78 DEC-78-2/3/4) ─
 // Versão ENXUTA de Companies/Index.jsx: SEM colunas de métrica/cust_id/grant.
@@ -242,6 +333,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                             <TableHead>Analista</TableHead>
                                             <TableHead>Estrategista</TableHead>
                                             <TableHead title="Contratos de serviço ativos da empresa">Serviço</TableHead>
+                                            <TableHead title="Conexão OAuth Shopee do cliente">Conexão</TableHead>
                                             <TableHead>Contato</TableHead>
                                             <TableHead>Pendências</TableHead>
                                             <TableHead>Status</TableHead>
@@ -272,6 +364,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                                 <TableCell className="text-sm">{c.consultor?.name || <span className="text-muted-foreground">-</span>}</TableCell>
                                                 <TableCell className="text-sm">{c.estrategista?.name || <span className="text-muted-foreground">-</span>}</TableCell>
                                                 <TableCell><ServicoBadges contratos={c.contratos_servico || []} /></TableCell>
+                                                <TableCell><ShopeeConexao company={c} /></TableCell>
                                                 <TableCell className="text-xs text-white/60">{c.email_cliente || <span className="text-white/25">—</span>}</TableCell>
                                                 <TableCell><PendenciaBadges pendencias={c.pendencias} /></TableCell>
                                                 <TableCell>
@@ -286,7 +379,7 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                                         ))}
                                         {filtered.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                                                <TableCell colSpan={11} className="text-center text-muted-foreground py-8">
                                                     <Building2 className="h-8 w-8 mx-auto mb-2 opacity-40" />
                                                     Nenhuma empresa Shopee encontrada
                                                 </TableCell>
