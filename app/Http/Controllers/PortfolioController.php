@@ -690,15 +690,18 @@ class PortfolioController extends Controller
             : null;
 
         // Fase 107 — VARIAÇÃO DA QUANTIDADE DE CLIENTES no mês. company_users não
-        // rastreia saídas (linha é apagada quando o cliente sai), então o sinal
-        // vem do snapshot mensal durável (`empresas_carteira` = empresas únicas na
-        // consolidação). Net = contagem atual (viva) − contagem do mês anterior
-        // (snapshot consolidado no dia 1 deste mês). Positivo = entraram; negativo
-        // = saíram. Null quando não há snapshot do mês anterior (sem base).
-        $mesAnterior = $mesCorrente->copy()->subMonthNoOverflow();
-        $contagemAnterior = DesempenhoScoreSnapshot::mensal()
+        // rastreia saídas (a linha é apagada quando o cliente sai) e tem VÁRIAS
+        // linhas por empresa (uma por serviço), então contar `created_at` inflaria.
+        // O sinal limpo vem do snapshot DIÁRIO durável (`empresas_carteira` =
+        // empresas ÚNICAS, mesma base do CarteiraContextService): pega a última
+        // contagem ANTES do início deste mês (≈ fim do mês passado) e faz
+        // net = contagem viva − aquela. Positivo = entraram; negativo = saíram.
+        // (Snapshots MENSAIS não existem — o consolidar-mes não roda; os diários
+        // do `desempenho:snapshot-scores` sim.) Null quando não há base anterior.
+        $contagemAnterior = DesempenhoScoreSnapshot::diario()
             ->where('user_id', $user->id)
-            ->whereDate('mes_referencia', $mesAnterior->toDateString())
+            ->whereDate('ref_date', '<', $mesCorrente->toDateString())
+            ->orderByDesc('ref_date')
             ->value('empresas_carteira');
         $clientesVariacao = $contagemAnterior !== null
             ? $empresas->count() - (int) $contagemAnterior
