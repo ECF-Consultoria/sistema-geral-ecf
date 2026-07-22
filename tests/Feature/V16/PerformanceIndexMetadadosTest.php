@@ -158,6 +158,25 @@ class PerformanceIndexMetadadosTest extends TestCase
         return null;
     }
 
+    /**
+     * Pré-aquece o cache do score de todos analista/estrategista para o mês em
+     * curso — em prod o `desempenho:warm-cache` mantém isso quente. Sem o warm,
+     * o gate (estendido ao Em curso em 2026-07-22) devolveria `calculando` no
+     * lugar dos dados, e os testes de payload não teriam o que assertar.
+     */
+    private function aquecerRankingEmCurso(): void
+    {
+        $svc = app(\App\Services\DesempenhoScoreService::class);
+        $mes = Carbon::now()->startOfMonth();
+        \App\Models\User::where('active', true)
+            ->whereExists(fn ($q) => $q->from('user_setores as us')
+                ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+                ->whereColumn('us.user_id', 'users.id')
+                ->whereIn('c.slug', ['analista', 'estrategista']))
+            ->get()
+            ->each(fn ($u) => $svc->computeCached($u, $mes));
+    }
+
     // ═══ Testes ════════════════════════════════════════════════════════════
 
     #[Test]
@@ -183,6 +202,7 @@ class PerformanceIndexMetadadosTest extends TestCase
         // score_status fica 'official'. Sem isso a trava a deixaria 'partial'.
         $this->mockAdman($empresa, '2026-06', revenue: 9500, margem: 9500);
 
+        $this->aquecerRankingEmCurso();
         $response = $this->get('/performance');
         $response->assertStatus(200);
 
@@ -213,6 +233,7 @@ class PerformanceIndexMetadadosTest extends TestCase
         $this->mockAdman($empresa, '2026-08', revenue: 11000, margem: 10500);
         $this->mockAdman($empresa, '2026-07', revenue: 10000, margem: 10000);
 
+        $this->aquecerRankingEmCurso();
         $response = $this->get('/performance');
         $response->assertStatus(200);
 
@@ -244,6 +265,7 @@ class PerformanceIndexMetadadosTest extends TestCase
         $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE);
         $this->inserirPivot($empresaBlk->id, $blocked->id, 'consultor', $servicoShopee);
 
+        $this->aquecerRankingEmCurso();
         $respostas = [];
         foreach (['todos', 'performance', 'shopee', 'xpto-invalido'] as $valor) {
             $resp = $this->get('/performance?contexto=' . $valor);

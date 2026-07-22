@@ -139,6 +139,16 @@ class DesempenhoEvolucaoTest extends TestCase
                 // $periodoOverride = null` (BON-01/02) — a assinatura do
                 // override precisa ser compatível (LSP) senão é fatal error
                 // de PHP em tempo de boot, não um teste que falha.
+                // 2026-07-22: o gate do ranking (Fase 106, agora estendido ao
+                // mês em curso) devolve `calculando` quando `isCached()=false`.
+                // Como este fake produz a nota via compute() (sem passar pelo
+                // cache real), força isCached=true para o gate NÃO atuar e a
+                // nota fake alimentar os deltas testados aqui.
+                public function isCached(User $user, Carbon $mes): bool
+                {
+                    return true;
+                }
+
                 public function compute(User $user, Carbon $mesReferencia, ?array $periodoOverride = null): array
                 {
                     if (isset($this->owner->fakeScoresPublic()[$user->id])) {

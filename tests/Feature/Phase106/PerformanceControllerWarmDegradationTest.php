@@ -247,15 +247,16 @@ class PerformanceControllerWarmDegradationTest extends TestCase
         $this->assertFalse($props['aquecendo'] ?? true, 'sem nenhum frio, aquecendo deve ser false');
     }
 
-    public function test_modo_em_curso_gate_nao_atua(): void
+    public function test_modo_em_curso_gate_atua_quando_frio(): void
     {
+        // 2026-07-22: o gate passou a atuar TAMBÉM no mês em curso (antes só
+        // fechado). Profissional com cache frio → placeholder `calculando` +
+        // `aquecendo=true`, NUNCA compute ao vivo na tela (plano §9.1). Antes
+        // o Em curso caía no compute síncrono e travava a tela.
         Carbon::setTestNow('2026-07-15 10:00:00');
         $this->actingAsAdmin();
         $user = $this->criarUserAnalista();
 
-        // Http::fake determinístico — o gate não atua em modo em curso, então
-        // o compute() roda normal (mesmo que a empresa de teste não bata rede
-        // de verdade, o fake documenta o cenário do <behavior>).
         Http::fake(['*' => Http::response([], 200)]);
 
         $response = $this->get('/performance');
@@ -265,8 +266,8 @@ class PerformanceControllerWarmDegradationTest extends TestCase
         $linha = $this->linhaDoUser($props['ranking'] ?? [], $user->id);
 
         $this->assertNotNull($linha);
-        $this->assertFalse($linha['calculando'] ?? true, 'modo em curso não deve gerar linha calculando');
-        $this->assertFalse($props['aquecendo'] ?? true, 'modo em curso: gate não atua, aquecendo=false');
+        $this->assertTrue($linha['calculando'] ?? false, 'mês em curso frio: linha vem como calculando (gate atua)');
+        $this->assertTrue($props['aquecendo'] ?? false, 'mês em curso frio: aquecendo=true (warm sob-demanda disparado)');
     }
 
     // ═════════════════════════════════════════════════════════════════════════

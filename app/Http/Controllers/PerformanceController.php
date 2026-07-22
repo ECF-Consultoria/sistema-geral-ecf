@@ -140,11 +140,17 @@ class PerformanceController extends Controller
         $rankingRaw = $users->map(function ($u) use ($cargosPorUser, $snapshotsMensal, $mesReferencia, $ehMesEmCurso, $periodoResolvido, &$usuariosFrios) {
             $cargoSlug = $cargosPorUser->get($u->id)?->slug ?? ($u->isMentor() ? 'estrategista' : 'analista');
 
-            // Gate SC2/SC3 — só atua em período FECHADO. Mês em curso é
-            // sempre aquecido pelo warm agendado (106-01) e não passa por
-            // aqui (INTOCADO). Frio: NÃO computa ao vivo — devolve
-            // placeholder e coleta o ID pro dispatch do warm sob-demanda.
-            if ($periodoResolvido['is_closed'] && ! $this->scoreService->isCached($u, $mesReferencia)) {
+            // Gate SC2/SC3 — profissional sem cache pronto NÃO é computado ao
+            // vivo na tela (evita o fan-out ML/Adman de ~14s/user síncrono).
+            // Frio: devolve placeholder `calculando:true` e coleta o ID pro
+            // warm sob-demanda em background; o front faz poll e preenche.
+            //
+            // 2026-07-22: gate estendido ao MÊS EM CURSO também (antes só
+            // período fechado). A Fase 106 assumia "mês em curso está sempre
+            // aquecido pelo warm agendado" — mas quando o warm não completa
+            // (ex.: diff frio deixando o compute lento), o ranking Em curso
+            // caía no compute ao vivo e travava ~87s pra 6 users frios.
+            if (! $this->scoreService->isCached($u, $mesReferencia)) {
                 $usuariosFrios[] = $u->id;
 
                 return [
