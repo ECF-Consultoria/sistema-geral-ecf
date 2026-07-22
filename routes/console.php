@@ -126,6 +126,14 @@ Schedule::command('shopee:sync')
     ->name('sync-shopee-direct')
     ->withoutOverlapping();
 
+// Sync de Ads Shopee (D-1) — 11:30, logo após o faturamento (shopee:sync).
+// Só empresas com token ADS ativo; grava as colunas ad_* em shopee_metrics.
+// A Shopee só entrega Ads dos últimos ~6 meses (o comando faz o clamp).
+Schedule::command('shopee:sync-ads')
+    ->dailyAt('11:30')
+    ->name('sync-shopee-ads')
+    ->withoutOverlapping();
+
 // Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
 // Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
 Schedule::command('notifications:cleanup')

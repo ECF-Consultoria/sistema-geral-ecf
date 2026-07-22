@@ -67,11 +67,28 @@ return [
     // TLS interceptado (AV/proxy) ou PHP sem cacert.pem — setar SHOPEE_VERIFY_SSL=false
     // apenas no .env local.
     'shopee' => [
-        'partner_id'  => env('SHOPEE_PARTNER_ID'),                 // int (numérico) do app
-        'partner_key' => env('SHOPEE_PARTNER_KEY'),               // chave HMAC (secreta) — usar como está
         'host'        => env('SHOPEE_HOST', 'https://partner.shopeemobile.com'),
-        'redirect'    => env('SHOPEE_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/shopee/callback'),
         'verify_ssl'  => env('SHOPEE_VERIFY_SSL', true),
+
+        // DOIS apps distintos no Shopee Open Platform (categorias não coabitam):
+        //  - erp: "ERP System"  → Order/Payment/escrow (faturamento).
+        //  - ads: "Ads Service" → performance de anúncios (TACoS) — exige ISV oficial.
+        // Cada app tem partner_id/partner_key/redirect PRÓPRIOS (1 por app). O
+        // cliente autoriza os dois via consent encadeado; ambos apontam pro mesmo
+        // shop_id. Host/verify_ssl são compartilhados (mesmo ambiente sandbox/live).
+        'apps' => [
+            'erp' => [
+                // Fallback pros envs antigos (SHOPEE_PARTNER_ID/KEY/REDIRECT) — retrocompat.
+                'partner_id'  => env('SHOPEE_ERP_PARTNER_ID', env('SHOPEE_PARTNER_ID')),
+                'partner_key' => env('SHOPEE_ERP_PARTNER_KEY', env('SHOPEE_PARTNER_KEY')),
+                'redirect'    => env('SHOPEE_ERP_REDIRECT_URI', env('SHOPEE_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/shopee/callback')),
+            ],
+            'ads' => [
+                'partner_id'  => env('SHOPEE_ADS_PARTNER_ID'),
+                'partner_key' => env('SHOPEE_ADS_PARTNER_KEY'),
+                'redirect'    => env('SHOPEE_ADS_REDIRECT_URI', 'https://desafio.ecfconsultoria.com.br/oauth/shopee/ads/callback'),
+            ],
+        ],
     ],
 
     'google' => [

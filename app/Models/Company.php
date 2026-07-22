@@ -349,9 +349,23 @@ class Company extends Model
         return $this->hasOne(MlToken::class);
     }
 
+    // Token do app ERP (Order/Payment/escrow) — é o "principal" da empresa na
+    // Shopee (métrica de faturamento e pivot company_marketplaces vêm daqui).
     public function shopeeToken()
     {
-        return $this->hasOne(ShopeeToken::class);
+        return $this->hasOne(ShopeeToken::class)->where('app', 'erp');
+    }
+
+    // Token do app ADS (performance de anúncios) — mesmo shop_id, app separado.
+    public function shopeeAdsToken()
+    {
+        return $this->hasOne(ShopeeToken::class)->where('app', 'ads');
+    }
+
+    // Todos os tokens Shopee da empresa (erp + ads).
+    public function shopeeTokens()
+    {
+        return $this->hasMany(ShopeeToken::class);
     }
 
     /**

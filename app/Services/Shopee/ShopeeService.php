@@ -37,13 +37,38 @@ class ShopeeService
     private string $redirect;
     private ShopeeSigner $signer;
 
-    public function __construct()
+    /**
+     * @param string $app Qual app Shopee usar: 'erp' (Order/Payment) ou 'ads'
+     *                    (performance de anúncios). Cada um tem credenciais próprias.
+     *                    Default 'erp' — é o resolvido pela DI/container.
+     */
+    public function __construct(private string $app = 'erp')
     {
-        $this->partnerId  = (int) config('services.shopee.partner_id');
-        $this->partnerKey = (string) config('services.shopee.partner_key');
+        $cfg = (array) config("services.shopee.apps.{$this->app}", []);
+
+        $this->partnerId  = (int) ($cfg['partner_id'] ?? 0);
+        $this->partnerKey = (string) ($cfg['partner_key'] ?? '');
+        $this->redirect   = (string) ($cfg['redirect'] ?? '');
         $this->host       = rtrim((string) config('services.shopee.host'), '/');
-        $this->redirect   = (string) config('services.shopee.redirect');
         $this->signer     = new ShopeeSigner($this->partnerId, $this->partnerKey);
+    }
+
+    /** Instancia o serviço para um app específico ('erp' | 'ads'). */
+    public static function for(string $app): self
+    {
+        return new self($app);
+    }
+
+    /** Qual app este serviço representa. */
+    public function app(): string
+    {
+        return $this->app;
+    }
+
+    /** True se o app tem credenciais configuradas (usado p/ pular o passo Ads). */
+    public function isConfigured(): bool
+    {
+        return $this->partnerId > 0 && $this->partnerKey !== '';
     }
 
     /**
@@ -69,35 +94,32 @@ class ShopeeService
      * ao redirect e guardado em cache para vincular o callback à empresa — a
      * Shopee preserva o query do redirect e ainda anexa `code` e `shop_id`.
      *
-     * ⚠️ A base do redirect (config services.shopee.redirect) precisa estar
+     * ⚠️ A base do redirect (config services.shopee.apps.{app}.redirect) precisa estar
      *    cadastrada no console do app da Shopee.
      */
-    public function buildAuthUrl(Company $company): string
+    public function buildAuthUrl(Company $company, ?string $expectedShopId = null): string
     {
         $state     = Str::uuid()->toString();
         $timestamp = time();
         $sign      = $this->signer->sign(self::PATH_AUTH, $timestamp);
 
+        // O state amarra o callback à empresa, ao APP (erp/ads) e — no passo Ads —
+        // à loja já conectada no passo ERP (expected_shop_id), p/ barrar loja errada.
         Cache::put("shopee_oauth_state_{$state}", [
-            'company_id' => $company->id,
+            'company_id'       => $company->id,
+            'app'              => $this->app,
+            'expected_shop_id' => $expectedShopId,
         ], self::STATE_TTL);
 
         // redirect carrega nosso state; a Shopee anexa &code=&shop_id= depois.
         $redirect = $this->redirect . (str_contains($this->redirect, '?') ? '&' : '?') . 'state=' . $state;
 
-        $url = $this->host . self::PATH_AUTH . '?' . http_build_query([
+        return $this->host . self::PATH_AUTH . '?' . http_build_query([
             'partner_id' => $this->partnerId,
             'timestamp'  => $timestamp,
             'sign'       => $sign,
             'redirect'   => $redirect,
         ]);
-
-        $company->update([
-            'shopee_link_generated_at' => now(),
-            'shopee_link_url'          => $url,
-        ]);
-
-        return $url;
     }
 
     /**
@@ -155,7 +177,7 @@ class ShopeeService
         $expireIn = (int) ($data['expire_in'] ?? 14400);
 
         return ShopeeToken::updateOrCreate(
-            ['company_id' => $company->id],
+            ['company_id' => $company->id, 'app' => $this->app],
             [
                 'shop_id'            => (string) ($data['shop_id'] ?? $shopId),
                 'merchant_id'        => isset($data['merchant_id']) ? (string) $data['merchant_id'] : null,
@@ -182,7 +204,7 @@ class ShopeeService
         $companyId = $token->company_id;
 
         try {
-            return Cache::lock("shopee-refresh-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
+            return Cache::lock("shopee-refresh-{$this->app}-{$companyId}", 15)->block(10, function () use ($token, $companyId) {
                 // Recarrega: outro processo pode ter renovado enquanto esperávamos o lock.
                 $token = $token->fresh() ?? $token;
 
@@ -273,7 +295,9 @@ class ShopeeService
      */
     public function ensureValidToken(Company $company): ?ShopeeToken
     {
-        $token = $company->shopeeToken ?? ShopeeToken::where('company_id', $company->id)->first();
+        $token = ShopeeToken::where('company_id', $company->id)
+            ->where('app', $this->app)
+            ->first();
 
         if (! $token || $token->status === 'revoked') {
             return null;
@@ -449,6 +473,85 @@ class ShopeeService
         ];
     }
 
+    // ═══ Dados: anúncios (ADS) ════════════════════════════════════════════════
+
+    /**
+     * Métricas de anúncios (CPC) da loja no período, via
+     * get_all_cpc_ads_daily_performance (nível loja, diário). Só faz sentido no
+     * app 'ads' — instancie com ShopeeService::for('ads').
+     *
+     * ⚠️ A Shopee exige data em DD-MM-YYYY neste endpoint (validado no sandbox: a
+     *    resposta ecoa "date":"DD-MM-YYYY"). A `response` v2 vem como LISTA de dias.
+     *
+     * Agrega o período e deriva CTR/ROAS/ACoS (safe div). O TACoS NÃO sai daqui —
+     * ele cruza o gasto com o faturamento TOTAL da loja (app 'erp',
+     * fetchOrdersSummary); use ShopeeService::tacos($expense, $revenueTotal).
+     *
+     * @param  string $dateFrom YYYY-MM-DD (inclusive)
+     * @param  string $dateTo   YYYY-MM-DD (inclusive)
+     * @return array{
+     *   expense: float, broad_gmv: float, direct_gmv: float, impressions: int,
+     *   clicks: int, broad_orders: int, direct_orders: int, broad_conversions: int,
+     *   ctr: float, broad_roas: float|null, acos: float|null,
+     *   days: array<int, array<string, mixed>>
+     * }
+     */
+    public function fetchAdsMetrics(Company $company, string $dateFrom, string $dateTo): array
+    {
+        $data = $this->get($company, '/api/v2/ads/get_all_cpc_ads_daily_performance', [
+            'start_date' => date('d-m-Y', strtotime($dateFrom)),
+            'end_date'   => date('d-m-Y', strtotime($dateTo)),
+        ]);
+
+        // response v2 é uma LISTA de dias (cada item = um dia da janela).
+        $days = array_is_list($data) ? $data : [];
+
+        $expense    = 0.0;
+        $broadGmv   = 0.0;
+        $directGmv  = 0.0;
+        $impressions = 0;
+        $clicks     = 0;
+        $broadOrders  = 0;
+        $directOrders = 0;
+        $broadConversions = 0;
+
+        foreach ($days as $d) {
+            $expense      += (float) ($d['expense'] ?? 0);
+            $broadGmv     += (float) ($d['broad_gmv'] ?? 0);
+            $directGmv    += (float) ($d['direct_gmv'] ?? 0);
+            $impressions  += (int) ($d['impression'] ?? 0);
+            $clicks       += (int) ($d['clicks'] ?? 0);
+            $broadOrders  += (int) ($d['broad_order'] ?? 0);
+            $directOrders += (int) ($d['direct_order'] ?? 0);
+            $broadConversions += (int) ($d['broad_conversions'] ?? 0);
+        }
+
+        return [
+            'expense'           => round($expense, 2),
+            'broad_gmv'         => round($broadGmv, 2),
+            'direct_gmv'        => round($directGmv, 2),
+            'impressions'       => $impressions,
+            'clicks'            => $clicks,
+            'broad_orders'      => $broadOrders,
+            'direct_orders'     => $directOrders,
+            'broad_conversions' => $broadConversions,
+            'ctr'               => $impressions > 0 ? round($clicks / $impressions, 4) : 0.0,
+            'broad_roas'        => $expense > 0 ? round($broadGmv / $expense, 2) : null,
+            'acos'              => $broadGmv > 0 ? round($expense / $broadGmv, 4) : null,
+            'days'              => $days,
+        ];
+    }
+
+    /**
+     * TACoS (Total Advertising Cost of Sales) = gasto com ads / faturamento TOTAL.
+     * Cruza o app 'ads' (expense) com o 'erp' (faturamento bruto). Null se sem
+     * faturamento (evita divisão por zero).
+     */
+    public static function tacos(float $expense, float $revenueTotal): ?float
+    {
+        return $revenueTotal > 0 ? round($expense / $revenueTotal, 4) : null;
+    }
+
     // ═══ Sync: grava métricas diárias ═════════════════════════════════════════
 
     /**
@@ -471,6 +574,41 @@ class ShopeeService
                 'orders_count'  => $summary['orders_count'],
                 'sold_quantity' => $summary['sold_quantity'],
                 'synced_at'     => now(),
+            ]
+        );
+    }
+
+    /**
+     * Sincroniza os Ads de UM dia da empresa para shopee_metrics (colunas ad_*).
+     * Só faz sentido no app 'ads' — instancie com new ShopeeService('ads').
+     *
+     * Faz merge na MESMA linha do faturamento: updateOrCreate por
+     * (company_id, reference_date) grava SÓ as colunas ad_*, sem tocar em
+     * revenue/orders (que vêm do app 'erp'). Dia sem gasto E sem impressão não
+     * grava linha (mantém a tabela enxuta). Retorna a métrica ou null (dia vazio).
+     *
+     * ⚠️ Não chamar com datas > 6 meses atrás — a Shopee devolve
+     *    ads.performance.error_date_too_old (o comando shopee:sync-ads faz o clamp).
+     */
+    public function syncAdsDay(Company $company, string $date): ?ShopeeMetric
+    {
+        $ads = $this->fetchAdsMetrics($company, $date, $date);
+
+        // Dia totalmente zerado (sem gasto e sem impressão) não gera linha.
+        if ((float) $ads['expense'] === 0.0 && (int) $ads['impressions'] === 0) {
+            return null;
+        }
+
+        return ShopeeMetric::updateOrCreate(
+            ['company_id' => $company->id, 'reference_date' => $date],
+            [
+                'ad_expense'           => $ads['expense'],
+                'ad_impressions'       => $ads['impressions'],
+                'ad_clicks'            => $ads['clicks'],
+                'ad_broad_gmv'         => $ads['broad_gmv'],
+                'ad_broad_orders'      => $ads['broad_orders'],
+                'ad_broad_conversions' => $ads['broad_conversions'],
+                'ad_synced_at'         => now(),
             ]
         );
     }

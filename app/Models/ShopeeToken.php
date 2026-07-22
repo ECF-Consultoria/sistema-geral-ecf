@@ -13,6 +13,7 @@ class ShopeeToken extends Model
 {
     protected $fillable = [
         'company_id',
+        'app',
         'shop_id',
         'merchant_id',
         'access_token',

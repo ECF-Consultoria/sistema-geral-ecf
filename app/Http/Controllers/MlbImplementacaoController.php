@@ -961,6 +961,20 @@ class MlbImplementacaoController extends Controller
         abort_unless(isset($dados['itens'][$id]), 422);
 
         $dados['itens'][$id][$campo] = $valor;
+
+        // Trava anti-check-vazio: o cliente não pode marcar "feito" sem ter
+        // preenchido o mínimo do item (ERP, planilha de produtos, precificação…).
+        // Itens de ação pura (acessar link, dar acesso, declarar) passam direto.
+        if ($campo === 'feito' && $valor) {
+            $tipo = MlbImplementacao::tipoDoItem($id);
+            if ($tipo !== null && !MlbImplementacao::itemTemConteudo($tipo, $dados['itens'][$id])) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Preencha as informações deste item antes de marcar como feito.',
+                ], 422);
+            }
+        }
+
         $impl->update(['dados' => $dados]);
 
         // Log público (cliente preenchendo o checklist) — sem usuário autenticado

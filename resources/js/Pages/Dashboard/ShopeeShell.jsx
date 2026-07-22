@@ -1,13 +1,16 @@
 import { Head, router } from '@inertiajs/react';
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
-import { ShoppingBag, Package, Receipt, Store, TrendingUp } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { ShoppingBag, Package, Receipt, Store, TrendingUp, Megaphone, Percent } from 'lucide-react';
+import { ComposedChart, Area, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 const SHOPEE = '#ee4d2d';
+const ADS = '#22d3ee'; // ciano — linha de Investimento Ads (contrasta com o laranja Shopee)
 
 const fmtBRL = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtInt = (n) => (Number(n) || 0).toLocaleString('pt-BR');
+// TACoS chega como razão (0–1); null quando não há faturamento/Ads → "—".
+const fmtPct = (n) => (n == null ? '—' : (Number(n) * 100).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%');
 const isoDate = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const fmtBR = (iso) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR') : '—');
 const fmtDayShort = (iso) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '');
@@ -48,7 +51,7 @@ function KpiCard({ icon: Icon, label, value, sub, accent }) {
     );
 }
 
-export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, series = [], porLoja = [] }) {
+export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, series = [], porLoja = [], ads_disponivel = false }) {
     const presets = buildPresets();
     const activeKey = presets.find((p) => p.from === period?.from && p.to === period?.to)?.key;
     const semDadosNenhum = !bounds?.max;
@@ -126,17 +129,43 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                 ) : (
                     <>
                         {/* KPIs */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
                             <KpiCard icon={TrendingUp} label="Faturamento (GMV)" value={fmtBRL(kpis?.revenue)} accent sub="soma dos pedidos" />
                             <KpiCard icon={ShoppingBag} label="Pedidos" value={fmtInt(kpis?.orders)} />
                             <KpiCard icon={Package} label="Itens vendidos" value={fmtInt(kpis?.items)} />
                             <KpiCard icon={Receipt} label="Ticket médio" value={fmtBRL(kpis?.ticket_medio)} />
                             <KpiCard icon={Store} label="Lojas conectadas" value={fmtInt(kpis?.lojas)} />
+                            <KpiCard
+                                icon={Megaphone}
+                                label="Investimento Ads"
+                                value={ads_disponivel ? fmtBRL(kpis?.ad_spend) : '—'}
+                                sub={ads_disponivel ? 'gasto com anúncios' : 'Shopee só fornece Ads dos últimos 6 meses'}
+                            />
+                            <KpiCard
+                                icon={Percent}
+                                label="TACoS"
+                                value={ads_disponivel ? fmtPct(kpis?.tacos) : '—'}
+                                sub={ads_disponivel ? 'ads ÷ faturamento' : 'sem Ads no período'}
+                            />
                         </div>
 
                         {/* Gráfico diário */}
                         <div className="bg-ecf-card border border-white/[0.06] rounded-xl p-4">
-                            <div className="text-white/60 text-[13px] font-semibold mb-3">Faturamento por dia</div>
+                            <div className="flex items-center justify-between mb-3">
+                                <div className="text-white/60 text-[13px] font-semibold">
+                                    {ads_disponivel ? 'Faturamento e Ads por dia' : 'Faturamento por dia'}
+                                </div>
+                                {ads_disponivel && (
+                                    <div className="flex items-center gap-3 text-[11px]">
+                                        <span className="flex items-center gap-1.5 text-white/40">
+                                            <span className="w-2.5 h-1 rounded-full" style={{ backgroundColor: SHOPEE }} /> Faturamento
+                                        </span>
+                                        <span className="flex items-center gap-1.5 text-white/40">
+                                            <span className="w-2.5 h-1 rounded-full" style={{ backgroundColor: ADS }} /> Ads
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
                             {semDadosNoPeriodo ? (
                                 <div className="h-[220px] flex items-center justify-center text-white/30 text-sm">
                                     Sem vendas nesse período — experimente outro intervalo.
@@ -144,7 +173,7 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                             ) : (
                                 <div style={{ width: '100%', height: 260 }}>
                                     <ResponsiveContainer>
-                                        <AreaChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+                                        <ComposedChart data={series} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                                             <defs>
                                                 <linearGradient id="shopeeFill" x1="0" y1="0" x2="0" y2="1">
                                                     <stop offset="0%" stopColor={SHOPEE} stopOpacity={0.35} />
@@ -153,15 +182,25 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                                             </defs>
                                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                                             <XAxis dataKey="date" tickFormatter={fmtDayShort} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} minTickGap={24} />
-                                            <YAxis tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} width={44} />
+                                            <YAxis yAxisId="left" tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} width={44} />
+                                            {ads_disponivel && (
+                                                <YAxis yAxisId="right" orientation="right" tickFormatter={(v) => (v >= 1000 ? `${Math.round(v / 1000)}k` : v)} tick={{ fill: 'rgba(255,255,255,0.35)', fontSize: 11 }} axisLine={false} tickLine={false} width={44} />
+                                            )}
                                             <Tooltip
                                                 contentStyle={{ background: '#0f1116', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, fontSize: 12 }}
                                                 labelStyle={{ color: 'rgba(255,255,255,0.6)' }}
                                                 labelFormatter={(d) => fmtBR(d)}
-                                                formatter={(v, name) => (name === 'revenue' ? [fmtBRL(v), 'Faturamento'] : [fmtInt(v), 'Pedidos'])}
+                                                formatter={(v, name) => {
+                                                    if (name === 'revenue') return [fmtBRL(v), 'Faturamento'];
+                                                    if (name === 'ad_spend') return [fmtBRL(v), 'Investimento Ads'];
+                                                    return [fmtInt(v), name];
+                                                }}
                                             />
-                                            <Area type="monotone" dataKey="revenue" stroke={SHOPEE} strokeWidth={2} fill="url(#shopeeFill)" />
-                                        </AreaChart>
+                                            <Area yAxisId="left" type="monotone" dataKey="revenue" stroke={SHOPEE} strokeWidth={2} fill="url(#shopeeFill)" />
+                                            {ads_disponivel && (
+                                                <Line yAxisId="right" type="monotone" dataKey="ad_spend" stroke={ADS} strokeWidth={2} dot={false} />
+                                            )}
+                                        </ComposedChart>
                                     </ResponsiveContainer>
                                 </div>
                             )}
@@ -176,7 +215,17 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                                         <div key={l.company_id} className="flex items-center gap-3 py-1.5 border-b border-white/[0.04] last:border-0">
                                             <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: SHOPEE }} />
                                             <span className="text-white/80 text-[13px] flex-1 truncate">{l.name}</span>
-                                            <span className="text-white/40 text-[11px]">{fmtInt(l.orders)} ped.</span>
+                                            <span className="text-white/40 text-[11px] hidden sm:inline">{fmtInt(l.orders)} ped.</span>
+                                            {ads_disponivel && (
+                                                <>
+                                                    <span className="text-[11px] w-24 text-right" style={{ color: ADS }}>
+                                                        Ads {fmtBRL(l.ad_spend)}
+                                                    </span>
+                                                    <span className="text-white/50 text-[11px] w-16 text-right">
+                                                        TACoS {fmtPct(l.tacos)}
+                                                    </span>
+                                                </>
+                                            )}
                                             <span className="text-white text-[13px] font-medium w-28 text-right">{fmtBRL(l.revenue)}</span>
                                         </div>
                                     ))}
