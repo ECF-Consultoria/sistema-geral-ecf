@@ -1230,8 +1230,9 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
 
     // ERP / Integrador
     if (tipo === 'select') {
-        const opcoes = item.id === 'erp' ? ['Em Contratação','Tiny ERP','Bling','SAP','Netsuite','TOTVS','Omie','Outro'] : ['Em Contratação','Melhor Envio','Frenet','DirectLog','Jadlog','Correios','Outro'];
-        const valor = dado?.valor ?? 'Em Contratação';
+        // '---' = sentinela "não escolhido" (default) → mantém o check travado até o cliente selecionar uma opção real.
+        const opcoes = item.id === 'erp' ? ['---','Em Contratação','Tiny ERP','Bling','SAP','Netsuite','TOTVS','Omie','Outro'] : ['---','Em Contratação','Melhor Envio','Frenet','DirectLog','Jadlog','Correios','Outro'];
+        const valor = dado?.valor ?? '---';
         return (
             <div className="mt-3 space-y-3">
                 <div>
@@ -1333,6 +1334,10 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
 // Reativo: dado vem do estado local, então recalcula a cada tecla digitada.
 function itemTemConteudo(item, dado = {}) {
     switch (item.tipo) {
+        case 'select': { // ERP / Integrador — escolher qualquer opção real (≠ '---') libera
+            const valor = String(dado.valor ?? '').trim();
+            return valor !== '' && valor !== '---';
+        }
         case 'texto': // HUB
             return String(dado.acesso ?? '').trim() !== '';
         case 'link':  // URL digitada pelo cliente
@@ -1344,8 +1349,7 @@ function itemTemConteudo(item, dado = {}) {
         case 'precificacao': // ≥ 1 produto com custo informado
             return (dado.produtos ?? []).some(p => String(p.custo ?? '').trim() !== '');
         default:
-            // select (ERP/Integrador — sempre tem opção válida, inclusive "Em
-            // Contratação") + ação pura (link/gmail/instruções/checkbox): nada a preencher.
+            // ação pura (link/gmail/instruções/checkbox/select_opcoes): nada a preencher.
             return true;
     }
 }

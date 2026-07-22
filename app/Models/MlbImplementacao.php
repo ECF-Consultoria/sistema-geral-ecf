@@ -344,8 +344,8 @@ class MlbImplementacao extends Model
                 'conta_ml'             => ['feito' => false],
                 'acesso_colaborador'   => ['gmail' => '', 'feito' => false],
                 'app_ecf'              => ['feito' => false],
-                'erp'                  => ['valor' => 'Em Contratação', 'outro' => '', 'acesso' => '', 'feito' => false],
-                'integrador_logistico' => ['valor' => 'Em Contratação', 'outro' => '', 'feito' => false],
+                'erp'                  => ['valor' => '---', 'outro' => '', 'acesso' => '', 'feito' => false],
+                'integrador_logistico' => ['valor' => '---', 'outro' => '', 'feito' => false],
                 'hub'                  => ['acesso' => '', 'feito' => false],
                 'publicar_em_massa'    => ['valor' => '', 'feito' => false],
                 'planilha_produtos'    => ['produtos' => [], 'feito' => false],
@@ -422,6 +422,10 @@ class MlbImplementacao extends Model
     public static function itemTemConteudo(string $tipo, array $dado): bool
     {
         switch ($tipo) {
+            case 'select': // ERP / Integrador — escolher qualquer opção real (≠ '---') libera
+                $valor = trim((string) ($dado['valor'] ?? ''));
+                return $valor !== '' && $valor !== '---';
+
             case 'texto': // HUB
                 return trim((string) ($dado['acesso'] ?? '')) !== '';
 
@@ -445,10 +449,8 @@ class MlbImplementacao extends Model
                 return false;
 
             default:
-                // select (ERP/Integrador — sempre há uma opção válida selecionada,
-                // inclusive "Em Contratação", que é resposta legítima do cliente),
                 // link_fixo, link_admin, gmail, instrucoes, instrucoes_link,
-                // checkbox, select_opcoes — nada a preencher / resposta sempre presente.
+                // checkbox, select_opcoes — ação pura, nada a preencher.
                 return true;
         }
     }
