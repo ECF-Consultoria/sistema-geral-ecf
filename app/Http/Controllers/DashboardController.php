@@ -205,14 +205,22 @@ class DashboardController extends Controller
         $orders  = (int) $metrics->sum('orders_count');
         $items   = (int) $metrics->sum('sold_quantity');
 
+        // ─── Ads (colunas ad_*) — mesma linha do faturamento ───────────────
+        // ad_expense NULL = dia sem Ads sincronizado (fora do lookback de 6 meses
+        // da Shopee). `ads_disponivel` liga/desliga o fallback "— indisponível" na UI.
+        $adsDisponivel = $metrics->contains(fn ($m) => $m->ad_expense !== null);
+        $adSpend = round((float) $metrics->sum('ad_expense'), 2);
+        $tacos   = $revenue > 0 ? round($adSpend / $revenue, 4) : null;
+
         // Série diária (gráfico).
         $series = $metrics
             ->groupBy(fn ($m) => $m->reference_date->toDateString())
             ->sortKeys()
             ->map(fn ($g, $date) => [
-                'date'    => $date,
-                'revenue' => round((float) $g->sum('revenue'), 2),
-                'orders'  => (int) $g->sum('orders_count'),
+                'date'     => $date,
+                'revenue'  => round((float) $g->sum('revenue'), 2),
+                'orders'   => (int) $g->sum('orders_count'),
+                'ad_spend' => round((float) $g->sum('ad_expense'), 2),
             ])
             ->values();
 
@@ -220,12 +228,19 @@ class DashboardController extends Controller
         $names = Company::whereIn('id', $metrics->pluck('company_id')->unique())->pluck('name', 'id');
         $porLoja = $metrics
             ->groupBy('company_id')
-            ->map(fn ($g, $cid) => [
-                'company_id' => (int) $cid,
-                'name'       => $names[$cid] ?? ('#' . $cid),
-                'revenue'    => round((float) $g->sum('revenue'), 2),
-                'orders'     => (int) $g->sum('orders_count'),
-            ])
+            ->map(function ($g, $cid) use ($names) {
+                $rev   = round((float) $g->sum('revenue'), 2);
+                $spend = round((float) $g->sum('ad_expense'), 2);
+
+                return [
+                    'company_id' => (int) $cid,
+                    'name'       => $names[$cid] ?? ('#' . $cid),
+                    'revenue'    => $rev,
+                    'orders'     => (int) $g->sum('orders_count'),
+                    'ad_spend'   => $spend,
+                    'tacos'      => $rev > 0 ? round($spend / $rev, 4) : null,
+                ];
+            })
             ->values()
             ->sortByDesc('revenue')
             ->values();
@@ -241,9 +256,12 @@ class DashboardController extends Controller
                 'items'        => $items,
                 'ticket_medio' => $orders > 0 ? round($revenue / $orders, 2) : 0.0,
                 'lojas'        => $companyIds->count(),
+                'ad_spend'     => $adSpend,
+                'tacos'        => $tacos,
             ],
-            'series'  => $series,
-            'porLoja' => $porLoja,
+            'ads_disponivel' => $adsDisponivel,
+            'series'         => $series,
+            'porLoja'        => $porLoja,
         ]);
     }
 
