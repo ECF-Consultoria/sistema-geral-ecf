@@ -66,6 +66,8 @@ const NAV_TREE = [
             // excludeRoles (mesmo padrão da Configuração NPS): esconde de todos
             // os papéis não-admin. A rota também é protegida por role:admin.
             { label: 'Auditoria de bônus', routeName: 'desempenho.auditoria-bonus', page: 'Desempenho/Auditoria', icon: Shield, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
+            // Fase 107 — Relatório de bonificação (admin-only, mesmo gate da Auditoria).
+            { label: 'Relatório de bonificação', routeName: 'desempenho.relatorio-bonificacao', page: 'Desempenho/RelatorioBonificacao', icon: FileBarChart, excludeRoles: ['consultor', 'mentor', 'publicador', 'analista', 'gestor', 'lider'] },
         ],
     },
 

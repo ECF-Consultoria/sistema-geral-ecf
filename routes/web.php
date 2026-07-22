@@ -37,6 +37,7 @@ use App\Http\Controllers\NpsTemplateQuestionController;
 use App\Http\Controllers\PainelExecutivoController;
 use App\Http\Controllers\PolosController;
 use App\Http\Controllers\BonusAuditoriaController;
+use App\Http\Controllers\RelatorioBonificacaoController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\PortfolioController;
 use App\Http\Controllers\PpaController;
@@ -521,6 +522,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/desempenho/auditoria-bonus/toggle', [BonusAuditoriaController::class, 'toggle'])
         ->middleware('role:admin')
         ->name('desempenho.auditoria-bonus.toggle');
+
+    // Fase 107 — Relatório de bonificação (MVP · admin-only). Consolida, por
+    // competência (mês fechado), quem atingiu o bônus + nota de cada parâmetro.
+    // Página Inertia + export PDF (dompdf). Lê o snapshot mensal do fechamento
+    // (mesma fonte do ranking/auditoria). Ver RelatorioBonificacaoController.
+    Route::get('/desempenho/relatorio-bonificacao', [RelatorioBonificacaoController::class, 'index'])
+        ->middleware('role:admin')
+        ->name('desempenho.relatorio-bonificacao');
+    Route::get('/desempenho/relatorio-bonificacao/pdf', [RelatorioBonificacaoController::class, 'pdf'])
+        ->middleware('role:admin')
+        ->name('desempenho.relatorio-bonificacao.pdf');
 
     // Adman: leitura do ultimo sync (admin apenas).
     // Sync manual via POST /adman/sync REMOVIDO na Phase 16 (SC-5):
