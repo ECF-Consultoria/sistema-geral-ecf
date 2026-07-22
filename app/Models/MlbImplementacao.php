@@ -407,6 +407,68 @@ class MlbImplementacao extends Model
         return 'falta_enviar';
     }
 
+    /**
+     * Verdadeiro se o cliente já preencheu o mínimo necessário para poder marcar
+     * o item como "feito". Só itens onde o cliente DIGITA/SELECIONA/MONTA algo
+     * exigem conteúdo; itens de ação pura (acessar link, dar acesso, declarar)
+     * não têm o que preencher e permanecem sempre liberados.
+     *
+     * Regra espelhada em resources/js/Pages/Mlb/ImplementacaoPublica.jsx
+     * (função itemTemConteudo) — mantê-las em sincronia manualmente.
+     *
+     * @param string $tipo Tipo do item do CHECKLIST (erp/produtos/etc).
+     * @param array  $dado Dados salvos do item (dados.itens[<id>]).
+     */
+    public static function itemTemConteudo(string $tipo, array $dado): bool
+    {
+        switch ($tipo) {
+            case 'select': // ERP / Integrador Logístico
+                $valor  = trim((string) ($dado['valor']  ?? ''));
+                $acesso = trim((string) ($dado['acesso'] ?? ''));
+                $outro  = trim((string) ($dado['outro']  ?? ''));
+                if ($acesso !== '') return true;              // informou acesso (ERP)
+                if ($valor === 'Outro') return $outro !== ''; // "Outro" exige especificar
+                // "fez algo" = escolheu um sistema real (≠ padrão "Em Contratação")
+                return $valor !== '' && $valor !== 'Em Contratação';
+
+            case 'texto': // HUB
+                return trim((string) ($dado['acesso'] ?? '')) !== '';
+
+            case 'link': // URL digitada pelo cliente
+                return trim((string) ($dado['link'] ?? '')) !== '';
+
+            case 'produtos': // Planilha de Produtos — ao menos 1 produto com SKU ou nome
+                foreach (($dado['produtos'] ?? []) as $p) {
+                    if (trim((string) ($p['sku'] ?? '')) !== '' || trim((string) ($p['produto'] ?? '')) !== '') {
+                        return true;
+                    }
+                }
+                return false;
+
+            case 'precificacao': // ao menos 1 produto com custo informado
+                foreach (($dado['produtos'] ?? []) as $p) {
+                    if (trim((string) ($p['custo'] ?? '')) !== '') {
+                        return true;
+                    }
+                }
+                return false;
+
+            default:
+                // link_fixo, link_admin, gmail, instrucoes, instrucoes_link,
+                // checkbox, select_opcoes — ação pura, nada a preencher.
+                return true;
+        }
+    }
+
+    /** Tipo do item do CHECKLIST pelo id (null se id inexistente). */
+    public static function tipoDoItem(string $id): ?string
+    {
+        foreach (self::CHECKLIST as $item) {
+            if ($item['id'] === $id) return $item['tipo'];
+        }
+        return null;
+    }
+
     public function progresso(): array
     {
         $itens = $this->dados['itens'] ?? [];

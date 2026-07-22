@@ -1325,10 +1325,43 @@ function ItemInput({ item, dado, linksAdmin, onChange }) {
     return null;
 }
 
+// ─── Regra de conteúdo mínimo p/ liberar o check ─────────────────────────────
+
+// Espelha MlbImplementacao::itemTemConteudo (PHP). Só itens onde o cliente
+// preenche/altera algo exigem conteúdo antes de "Marcar como feito"; itens de
+// ação pura (acessar link, dar acesso, declarar) permanecem sempre liberados.
+// Reativo: dado vem do estado local, então recalcula a cada tecla digitada.
+function itemTemConteudo(item, dado = {}) {
+    switch (item.tipo) {
+        case 'select': { // ERP / Integrador Logístico
+            const valor  = String(dado.valor  ?? '').trim();
+            const acesso = String(dado.acesso ?? '').trim();
+            const outro  = String(dado.outro  ?? '').trim();
+            if (acesso !== '') return true;
+            if (valor === 'Outro') return outro !== '';
+            return valor !== '' && valor !== 'Em Contratação';
+        }
+        case 'texto': // HUB
+            return String(dado.acesso ?? '').trim() !== '';
+        case 'link':  // URL digitada pelo cliente
+            return String(dado.link ?? '').trim() !== '';
+        case 'produtos': // ≥ 1 produto com SKU ou nome
+            return (dado.produtos ?? []).some(
+                p => String(p.sku ?? '').trim() !== '' || String(p.produto ?? '').trim() !== ''
+            );
+        case 'precificacao': // ≥ 1 produto com custo informado
+            return (dado.produtos ?? []).some(p => String(p.custo ?? '').trim() !== '');
+        default: // ação pura — nada a preencher
+            return true;
+    }
+}
+
 // ─── Item do checklist ────────────────────────────────────────────────────────
 
 function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, onOpenProdutos, onOpenPrecificacao, onOpenPassoAPasso, tabelaFreteUrl, num }) {
     const feito = dado?.feito ?? false;
+    // Já feito nunca trava (permite desmarcar); senão exige o conteúdo mínimo.
+    const podeMarcar = feito || itemTemConteudo(item, dado);
 
     return (
         <div className={cn(
@@ -1405,22 +1438,31 @@ function ChecklistItem({ item, dado, tutorialUrl, linksAdmin, onChange, onPlay, 
             {/* Checkbox de feito — oculto para select_opcoes (feito se selecionou algo) */}
             {item.tipo !== 'select_opcoes' && (
                 <div className="mt-4 pt-3 border-t border-white/[0.06]">
-                    <label className="flex items-center gap-2.5 cursor-pointer group w-fit">
+                    <label className={cn('flex items-center gap-2.5 group w-fit', podeMarcar ? 'cursor-pointer' : 'cursor-not-allowed')}>
                         <div
-                            onClick={() => onChange(item.id, 'feito', !feito, true)}
+                            onClick={() => { if (podeMarcar) onChange(item.id, 'feito', !feito, true); }}
                             className={cn(
-                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all cursor-pointer',
+                                'w-5 h-5 rounded border-2 flex items-center justify-center transition-all',
+                                podeMarcar ? 'cursor-pointer' : 'cursor-not-allowed opacity-40',
                                 feito ? 'border-emerald-400 bg-emerald-400' : 'border-white/20 group-hover:border-emerald-400/50'
                             )}
                         >
                             {feito && <Check size={11} className="text-white" />}
                         </div>
-                        <span className={cn('text-[13px] font-medium transition-colors', feito ? 'text-emerald-300' : 'text-white/40 group-hover:text-white/60')}>
+                        <span className={cn('text-[13px] font-medium transition-colors',
+                            feito ? 'text-emerald-300' : podeMarcar ? 'text-white/40 group-hover:text-white/60' : 'text-white/25')}>
                             {item.id === 'certificado_a1'    ? 'Sim, possuo Certificado A1'
                              : item.id === 'publicar_em_massa' ? 'Confirmar'
                              : 'Marcar como feito'}
                         </span>
                     </label>
+                    {/* Aviso enquanto o item não tem o conteúdo mínimo preenchido */}
+                    {!podeMarcar && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-amber-400/80 text-[12px]">
+                            <AlertCircle size={12} className="shrink-0" />
+                            Preencha as informações acima para marcar como feito.
+                        </p>
+                    )}
                 </div>
             )}
         </div>
