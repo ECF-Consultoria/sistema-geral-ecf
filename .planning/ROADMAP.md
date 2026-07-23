@@ -1101,5 +1101,24 @@ Plans:
 - [x] 109-03-PLAN.md — Desempenho: dispatch por fonte + margem placeholder=1 (future-ready) + score_status tolerante + cacheKey v9->v10 + warm cache Shopee (SHOP-DES-01/02)
 - [x] 109-04-PLAN.md — Checkpoint: validacao visual carteira Shopee + confirmacao numerica do impacto de margem=1 no ranking so-Shopee (SHOP-CAR-02, SHOP-DES-02)
 
+### Phase 110: Fix margem Adman: preferir fallback local deterministico + blindar congelamento (rate-limit)
+
+**Goal:** Estabilizar a nota de MARGEM do bônus de desempenho, hoje volátil por rate-limit 429 na leitura ao vivo da Adman (root cause em `.planning/debug/margem-adman-diff-instavel.md`). (a) `AdmanMetricDiffService::resolveField()` passa a preferir o `calculated_fallback` LOCAL determinístico (cobertura de junho ~100% confirmada) sobre o `.diff` nativo ao vivo; (c) gate de cobertura mínima antes de depender do ao-vivo (null explícito em vez de fail-open); (b) `ConsolidarMesDesempenho` ganha retry/reconciliação de qualidade antes de persistir o snapshot mensal (é o snapshot que PAGA o bônus). PRAZO: fechar antes do congelamento oficial de junho em 31/07 14h BRT.
+
+**Requirements**: FIXMARG-01 (fallback local prioritário p/ margem quando cobertura suficiente), FIXMARG-02 (gate de cobertura + null explícito, sem fail-open na média), FIXMARG-03 (congelamento mensal resiliente a falha transitória: retry/reconciliação/recusa)
+
+**Depends on:** Phase 101 (AdmanMetricDiffService), Phase 102/105 (compute oficial + congelamento). Diagnóstico: /gsd:debug margem-adman-diff-instavel (root cause: rate-limit 429 concorrente, NÃO lag).
+
+**Success Criteria:**
+1. Recomputes sucessivos da margem de um profissional só-performance (ex.: Luiz) no mesmo mês fechado dão valor ESTÁVEL (determinístico do local), não swinga com rate-limit concorrente.
+2. Cobertura insuficiente + ao-vivo indisponível → margem null explícita (fora da média), nunca fail-open silencioso que polui `n_com_margem_real`.
+3. `desempenho:consolidar-mes` não persiste snapshot com componente de margem vindo de amostra com falhas; retry/reconcilia ou recusa+alerta.
+4. Números convergem pro determinístico local (que bate com a dashboard Adman); sem novo viés; regressão preservada (cacheKey bump se compute() mudar).
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 110 to break down)
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
