@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncShopeeCompanyJob;
 use App\Models\Company;
 use App\Models\Servico;
 use App\Services\Shopee\ShopeeService;
@@ -288,6 +289,54 @@ class ShopeeOAuthController extends Controller
             Log::error("[Shopee] Erro na leitura manual empresa {$company->id}: {$e->getMessage()}");
             return response()->json(['error' => $e->getMessage()], 500);
         }
+    }
+
+    // ── Sync forçado (persiste em shopee_metrics via fila) ────────────────────
+
+    /**
+     * Enfileira o backfill de faturamento + Ads de UMA empresa (botão
+     * "Sincronizar" da aba /shopee/empresas). Diferente do syncNow (leitura ao
+     * vivo que NÃO grava), aqui despachamos o SyncShopeeCompanyJob, que roda os
+     * comandos shopee:sync/shopee:sync-ads e PERSISTE em shopee_metrics.
+     *
+     * Assíncrono: o backfill de ~2 meses leva minutos numa loja movimentada —
+     * inviável na request. O usuário atualiza a página em 1–2 min para ver os
+     * números. Gated por permission:sistema.shopee_oauth (igual ao "Gerar link").
+     */
+    public function sync(Company $company)
+    {
+        if (! $company->shopeeToken || $company->shopeeToken->status !== 'active') {
+            return back()->with('error', "{$company->name} não tem conexão Shopee ativa — gere o link e conecte a loja primeiro.");
+        }
+
+        SyncShopeeCompanyJob::dispatch($company->id);
+
+        Log::info("[Shopee] Sync manual enfileirado empresa {$company->id} ({$company->name}) por " . auth()->user()?->name);
+
+        return back()->with('success', "Sincronização da {$company->name} iniciada — os números aparecem em 1–2 min (atualize a página).");
+    }
+
+    /**
+     * Enfileira o sync de TODAS as empresas com conexão Shopee ativa (botão
+     * "Sincronizar todas"). Um job por empresa — os workers processam em paralelo.
+     * Gated por permission:sistema.shopee_oauth.
+     */
+    public function syncAll()
+    {
+        $ids = Company::whereHas('shopeeToken', fn ($q) => $q->where('status', 'active'))
+            ->pluck('id');
+
+        if ($ids->isEmpty()) {
+            return back()->with('error', 'Nenhuma empresa com conexão Shopee ativa.');
+        }
+
+        foreach ($ids as $id) {
+            SyncShopeeCompanyJob::dispatch($id);
+        }
+
+        Log::info('[Shopee] Sync manual GERAL enfileirado (' . $ids->count() . ' empresa(s)) por ' . auth()->user()?->name);
+
+        return back()->with('success', "Sincronização de {$ids->count()} loja(s) iniciada — os números aparecem em alguns minutos (atualize a página).");
     }
 
     // ── Desconectar ───────────────────────────────────────────────────────────

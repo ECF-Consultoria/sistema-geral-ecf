@@ -26,6 +26,7 @@ function ShopeeConexao({ company }) {
     const [loading, setLoading]       = useState(false);
     const [copied, setCopied]         = useState(false);
     const [sessionUrl, setSessionUrl] = useState(null);
+    const [syncing, setSyncing]       = useState(false);
 
     const linkUrl   = sessionUrl ?? company.shopee_link_url;
     const pendente  = !!(sessionUrl || company.shopee_link_generated_at) && !!linkUrl;
@@ -54,15 +55,36 @@ function ShopeeConexao({ company }) {
         setTimeout(() => setCopied(false), 2000);
     };
 
-    // Conectada → notifica com selo verde direto na linha da empresa.
+    // Dispara o backfill (faturamento + Ads) da loja em segundo plano (fila).
+    // Os números aparecem em 1–2 min — a flash de sucesso avisa o usuário.
+    const sincronizar = () => {
+        setSyncing(true);
+        router.post(route('shopee.sync.run', company.id), {}, {
+            preserveScroll: true,
+            onFinish: () => setSyncing(false),
+        });
+    };
+
+    // Conectada → selo verde + botão "Sincronizar" (backfill sob demanda).
     if (isConnected) {
         return (
-            <span
-                className="inline-flex items-center gap-1.5 whitespace-nowrap text-[11px] font-semibold text-emerald-400"
-                title={token.shop_id ? `Loja #${token.shop_id} · renovação automática` : 'Conectada à Shopee'}
-            >
-                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Conectada
-            </span>
+            <div className="flex items-center gap-2 whitespace-nowrap">
+                <span
+                    className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400"
+                    title={token.shop_id ? `Loja #${token.shop_id} · renovação automática` : 'Conectada à Shopee'}
+                >
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0" /> Conectada
+                </span>
+                <button
+                    onClick={sincronizar}
+                    disabled={syncing}
+                    title="Sincronizar agora o faturamento + Ads (mês atual e anterior)"
+                    className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-white/10 text-[11px] text-white/50 hover:text-white hover:border-white/25 transition-colors disabled:opacity-40"
+                >
+                    <RefreshCw className={cn('h-3 w-3', syncing && 'animate-spin')} />
+                    {syncing ? 'Enviando…' : 'Sincronizar'}
+                </button>
+            </div>
         );
     }
 
@@ -167,6 +189,19 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
     const [search, setSearch] = useState('');
 
     const totalAtivas = companies.filter(c => c.active).length;
+
+    // ── Sync forçado GERAL (todas as lojas conectadas) ───────────────────────
+    const conectadas = companies.filter(c => c.shopee_token?.status === 'active').length;
+    const [syncingAll, setSyncingAll] = useState(false);
+    const sincronizarTodas = () => {
+        if (!conectadas) return;
+        if (!window.confirm(`Sincronizar faturamento + Ads de TODAS as ${conectadas} loja(s) conectada(s)? Roda em segundo plano; os números aparecem em alguns minutos.`)) return;
+        setSyncingAll(true);
+        router.post(route('shopee.sync.all'), {}, {
+            preserveScroll: true,
+            onFinish: () => setSyncingAll(false),
+        });
+    };
 
     // ── Pendências (empresas ativas com ≥1 pendência) ────────────────────────
     const pendentes = companies.filter(c => c.active && (c.pendencias || []).length > 0);
@@ -316,6 +351,19 @@ export default function Empresas({ companies = [], estrategistas = [], analistas
                     <>
                         <div className="flex items-center gap-2 flex-wrap">
                             <Input placeholder="Buscar empresa..." value={search} onChange={e => setSearch(e.target.value)} className="max-w-sm" />
+                            {conectadas > 0 && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="gap-1.5 text-[12px] ml-auto"
+                                    onClick={sincronizarTodas}
+                                    disabled={syncingAll}
+                                    title="Sincronizar agora o faturamento + Ads de todas as lojas conectadas"
+                                >
+                                    <RefreshCw className={cn('h-3.5 w-3.5', syncingAll && 'animate-spin')} />
+                                    {syncingAll ? 'Enviando…' : `Sincronizar todas (${conectadas})`}
+                                </Button>
+                            )}
                         </div>
 
                         <BulkBar />

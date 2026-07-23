@@ -727,6 +727,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.oauth.initiate');
         Route::delete('/companies/{company}/shopee/disconnect',[ShopeeOAuthController::class, 'disconnect'])->name('shopee.oauth.disconnect');
         Route::post('/companies/{company}/shopee/sync-now',   [ShopeeOAuthController::class, 'syncNow'])->name('shopee.sync.now');
+        // Sync forçado que PERSISTE em shopee_metrics (via fila) — por loja e geral.
+        // Gate sistema.shopee_oauth (igual ao "Gerar link"): líder Shopee + admin.
+        Route::post('/companies/{company}/shopee/sync',       [ShopeeOAuthController::class, 'sync'])
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.sync.run');
+        Route::post('/shopee/sync-all',                       [ShopeeOAuthController::class, 'syncAll'])
+            ->withoutMiddleware('role:admin')->middleware('permission:sistema.shopee_oauth')->name('shopee.sync.all');
 
         // ─── Módulo Serviços (Frente A) ──────────────────────────────────
         // Catálogo de serviços + contratos por empresa. Acesso admin-only
