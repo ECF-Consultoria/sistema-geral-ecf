@@ -29,6 +29,7 @@ class MlPublicacaoService
     public function __construct(
         private MercadoLivreService $ml,
         private MlItemPayloadValidator $validator,
+        private MlCompatibilidadeService $compat,
     ) {}
 
     /**
@@ -118,6 +119,16 @@ class MlPublicacaoService
             $descricao = $rascunho->payload['description'] ?? null;
             if (is_string($descricao) && trim($descricao) !== '') {
                 $this->ml->post($company, "/items/{$itemId}/description", ['plain_text' => $descricao]);
+            }
+
+            // Compatibilidades de autopeças — recurso separado, aplicado APÓS criar o
+            // item (POST /items/{id}/compatibilities). Best-effort: aplicar() engole a
+            // falha (o item já existe; a ausência vira tag incomplete_compatibilities no
+            // ML). NÃO aborta a publicação. Categorias que não são autopeças não têm
+            // 'compatibilidades' no payload, então isto é um no-op para elas.
+            $veiculos = $rascunho->payload['compatibilidades'] ?? null;
+            if (is_array($veiculos) && ! empty($veiculos)) {
+                $this->compat->aplicar($company, $itemId, $veiculos);
             }
 
             // DUP-04: gravar ml_item_id no campo do tier correto.

@@ -893,6 +893,135 @@ function VariacaoEditor({
 }
 
 /**
+ * CompatibilidadeEditor — picker de compatibilidade de autopeças (AUTO-01).
+ *
+ * Cascata marca → modelo → ano no domínio MLB-CARS_AND_VANS (top_values). Os
+ * veículos escolhidos vão para o payload como `compatibilidades` e são aplicados
+ * ao item DEPOIS de publicar (POST /items/{id}/compatibilities), pois o ML não
+ * aceita compatibilidade no POST /items. Best-effort: se a cascata vier vazia
+ * (conta/rota indisponível), o publicador simplesmente não adiciona veículos.
+ */
+function CompatibilidadeEditor({ veiculos, setVeiculos }) {
+    const [marcas, setMarcas]   = useState([]);
+    const [modelos, setModelos] = useState([]);
+    const [anos, setAnos]       = useState([]);
+    const [brand, setBrand]     = useState({ id: '', name: '' });
+    const [model, setModel]     = useState({ id: '', name: '' });
+    const [year, setYear]       = useState({ id: '', name: '' });
+    const [carregando, setCarregando] = useState('');
+
+    // Marcas ao montar
+    useEffect(() => {
+        setCarregando('marcas');
+        window.axios.get(route('mlb.anuncios.meta.compat.marcas'))
+            .then(r => setMarcas(Array.isArray(r.data.marcas) ? r.data.marcas : []))
+            .catch(() => {})
+            .finally(() => setCarregando(''));
+    }, []);
+
+    // Modelos ao escolher marca (reseta modelo/ano)
+    useEffect(() => {
+        setModelos([]); setModel({ id: '', name: '' }); setAnos([]); setYear({ id: '', name: '' });
+        if (!brand.id) return;
+        setCarregando('modelos');
+        window.axios.get(route('mlb.anuncios.meta.compat.modelos'), { params: { brand_id: brand.id } })
+            .then(r => setModelos(Array.isArray(r.data.modelos) ? r.data.modelos : []))
+            .catch(() => {})
+            .finally(() => setCarregando(''));
+    }, [brand.id]);
+
+    // Anos ao escolher modelo (reseta ano)
+    useEffect(() => {
+        setAnos([]); setYear({ id: '', name: '' });
+        if (!brand.id || !model.id) return;
+        setCarregando('anos');
+        window.axios.get(route('mlb.anuncios.meta.compat.anos'), { params: { brand_id: brand.id, model_id: model.id } })
+            .then(r => setAnos(Array.isArray(r.data.anos) ? r.data.anos : []))
+            .catch(() => {})
+            .finally(() => setCarregando(''));
+    }, [brand.id, model.id]);
+
+    const chave = (v) => `${v.brand_id}|${v.model_id}|${v.year_id || ''}`;
+
+    const adicionar = () => {
+        if (!brand.id || !model.id) return;
+        const novo = {
+            brand_id: brand.id, brand_name: brand.name,
+            model_id: model.id, model_name: model.name,
+            year_id: year.id, year_name: year.name,
+        };
+        if (veiculos.some(v => chave(v) === chave(novo))) return; // evita duplicata exata
+        setVeiculos(vs => [...vs, novo]);
+        // Mantém a marca; reseta modelo/ano p/ adicionar vários veículos da mesma marca rápido
+        setModel({ id: '', name: '' }); setYear({ id: '', name: '' });
+    };
+
+    const remover = (i) => setVeiculos(vs => vs.filter((_, idx) => idx !== i));
+
+    return (
+        <div className="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/[0.04] p-3">
+            <p className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-blue-300">
+                <Tag size={13} /> Compatibilidade de veículos (autopeças)
+            </p>
+            <p className="mb-3 text-[11px] text-white/40">
+                Informe os veículos compatíveis. É aplicado após publicar; sem isso, o Mercado Livre pode pausar o anúncio de autopeça.
+            </p>
+
+            <div className="grid gap-2 sm:grid-cols-3">
+                <select
+                    className={inputCls}
+                    value={brand.id}
+                    onChange={e => setBrand({ id: e.target.value, name: e.target.selectedOptions[0]?.text ?? '' })}
+                >
+                    <option value="">{carregando === 'marcas' ? 'Carregando marcas…' : 'Marca…'}</option>
+                    {marcas.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <select
+                    className={inputCls}
+                    value={model.id}
+                    disabled={!brand.id}
+                    onChange={e => setModel({ id: e.target.value, name: e.target.selectedOptions[0]?.text ?? '' })}
+                >
+                    <option value="">{carregando === 'modelos' ? 'Carregando…' : 'Modelo…'}</option>
+                    {modelos.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                </select>
+                <select
+                    className={inputCls}
+                    value={year.id}
+                    disabled={!model.id}
+                    onChange={e => setYear({ id: e.target.value, name: e.target.selectedOptions[0]?.text ?? '' })}
+                >
+                    <option value="">{carregando === 'anos' ? 'Carregando…' : 'Ano (opcional)…'}</option>
+                    {anos.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                </select>
+            </div>
+
+            <button
+                type="button"
+                onClick={adicionar}
+                disabled={!brand.id || !model.id}
+                className="mt-2 flex items-center gap-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1.5 text-xs font-medium text-blue-300 transition hover:bg-blue-500/20 disabled:opacity-40"
+            >
+                <Plus size={13} /> Adicionar veículo
+            </button>
+
+            {veiculos.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                    {veiculos.map((v, i) => (
+                        <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-ecf-bg px-2.5 py-1 text-[11px] text-white/70">
+                            {v.brand_name} {v.model_name}{v.year_name ? ` ${v.year_name}` : ''}
+                            <button type="button" onClick={() => remover(i)} className="text-red-400/70 hover:text-red-400">
+                                <Trash2 size={11} />
+                            </button>
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/**
  * Wizard de criação de anúncio — Momento 2 do módulo "Anunciar ML".
  *
  * Recebe `empresa` já fixada (passada pelo backend via rota mlb.anuncios.wizard).
@@ -969,6 +1098,13 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     // ou na criação do rascunho). Por ora o flag é falso e pode ser ligado manualmente
     // quando a conta retornar esse sinal. Documentado como UP-VAR no STATE.md.
     const [contaUserProducts, setContaUserProducts] = useState(false);
+
+    // ─── AUTO-01: compatibilidades de autopeças ───
+    // aceitaCompat: a categoria aceita compatibilidade de veículos (detectado no backend).
+    // veiculos: lista escolhida no picker; vai no payload como `compatibilidades` e é
+    // aplicada ao item DEPOIS de publicar (o ML não aceita compat no POST /items).
+    const [aceitaCompat, setAceitaCompat] = useState(false);
+    const [veiculos, setVeiculos]         = useState([]);
 
     const [candidatos, setCandidatos] = useState([]);
     const [tipos, setTipos]           = useState([]);
@@ -1063,6 +1199,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             setFreteGratis(payload.shipping.free_shipping === true);
         }
 
+        // AUTO-01: restaura compatibilidades de autopeças do payload
+        if (Array.isArray(payload.compatibilidades)) {
+            setVeiculos(payload.compatibilidades);
+        }
+
         // Popula origemCampos a partir de meta_campos gravado pelo backend
         if (payload.meta_campos && typeof payload.meta_campos === 'object') {
             setOrigemCampos({ ...payload.meta_campos });
@@ -1107,6 +1248,8 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         // Restaura categoria + atributos do catálogo (para render dinâmico da Ficha técnica/Variações)
         if (r.category_id) {
             setCategoryId(r.category_id);
+            // AUTO-01: redetecta se a categoria aceita compat (veículos já vieram do payload em hidratarDoRascunho)
+            detectarCompat(r.category_id);
             setBusy('attrs');
             try {
                 const resp = await window.axios.get(route('mlb.anuncios.meta.atributos', { categoryId: r.category_id }));
@@ -1190,6 +1333,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         setGrades([]);
         setSizeGridId('');
         setDomainId('');
+        // AUTO-01: resetar compat ao limpar
+        setAceitaCompat(false);
+        setVeiculos([]);
     };
 
     // ─── Cria rascunho pré-preenchido a partir de um produto do cliente (DRAFT-01) ───
@@ -1229,6 +1375,16 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         } finally { setBusy(''); }
     };
 
+    // ─── AUTO-01: detecta se a categoria aceita compatibilidade de autopeças ───
+    // Best-effort: em falha, aceitaCompat fica false (o picker não aparece).
+    const detectarCompat = (catId) => {
+        setAceitaCompat(false);
+        if (!catId) return;
+        window.axios.get(route('mlb.anuncios.meta.compat.categoria', { categoryId: catId }))
+            .then(cr => setAceitaCompat(cr.data?.aceita === true))
+            .catch(() => { /* categoria não-autopeça ou rota indisponível — sem picker */ });
+    };
+
     // ─── Escolher categoria → carrega atributos ───
     // WIZ-03: salva catalog_required retornado pelo backend de atributos()
     // WIZ-04/06: salva domain_id e reseta variações/grades ao trocar de categoria
@@ -1240,6 +1396,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         setCatalogRequired(false);
         // WIZ-04: resetar variações ao trocar de categoria (combinações mudam por categoria)
         setVariacoes([]);
+        // AUTO-01: resetar veículos ao trocar de categoria + detectar se aceita compat
+        setVeiculos([]);
+        detectarCompat(cat.category_id);
         // WIZ-06: salvar domain_id do candidato para buscar grades depois
         setDomainId(cat.domain_id ?? '');
         setGrades([]);
@@ -1446,7 +1605,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         titulo, preco, estoque, descricao, condicao, tipoAnuncio,
         imagemUrl, garantia, categoryId, valores, variacoes,
         pesoG, comprimentoCm, larguraCm, alturaCm,
-        shippingMode, freteGratis,
+        shippingMode, freteGratis, veiculos,
         rascunhoId,
     ]);
 
@@ -1616,6 +1775,10 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             description: descricao,
             // variations incluso apenas quando existem variações montadas
             ...(variacoesPayload !== undefined ? { variations: variacoesPayload } : {}),
+            // AUTO-01: compatibilidades de autopeças — NÃO vão no POST /items (o
+            // ItemBuilder ignora esta chave); o MlPublicacaoService as lê aqui e
+            // aplica via POST /items/{id}/compatibilities depois de publicar.
+            ...(veiculos.length > 0 ? { compatibilidades: veiculos } : {}),
         };
     };
 
@@ -2161,6 +2324,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                             </>
                                         )}
                                     </div>
+                                )}
+
+                                {/* AUTO-01: compatibilidade de autopeças — só quando a categoria aceita */}
+                                {aceitaCompat && busy !== 'attrs' && (
+                                    <CompatibilidadeEditor veiculos={veiculos} setVeiculos={setVeiculos} />
                                 )}
                             </section>
                         )}

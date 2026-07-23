@@ -98,4 +98,12 @@ Route::middleware(['auth', 'verified', 'role:admin'])
             ->where('categoryId', 'MLB[0-9]+')
             ->name('meta.atributos');
         Route::get('/meta/tipos-anuncio', [MlbAnuncioController::class, 'tiposAnuncio'])->name('meta.tipos');
+
+        // AUTO-01: compatibilidades de autopeças — detecção + cascata de veículos (app token)
+        Route::get('/meta/compat/categoria/{categoryId}', [MlbAnuncioController::class, 'compatCategoria'])
+            ->where('categoryId', 'MLB[0-9]+')
+            ->name('meta.compat.categoria');
+        Route::get('/meta/compat/marcas', [MlbAnuncioController::class, 'compatMarcas'])->name('meta.compat.marcas');
+        Route::get('/meta/compat/modelos', [MlbAnuncioController::class, 'compatModelos'])->name('meta.compat.modelos');
+        Route::get('/meta/compat/anos', [MlbAnuncioController::class, 'compatAnos'])->name('meta.compat.anos');
     });

@@ -9,6 +9,7 @@ use App\Models\MlbEmpresa;
 use App\Models\MlbImplementacao;
 use App\Models\User;
 use App\Services\Mlb\Publicacao\MlCatalogoMetaService;
+use App\Services\Mlb\Publicacao\MlCompatibilidadeService;
 use App\Services\Mlb\Publicacao\MlFreteService;
 use App\Services\Mlb\Publicacao\MlGradeService;
 use App\Services\Mlb\Publicacao\MlImagemService;
@@ -51,6 +52,8 @@ class MlbAnuncioController extends Controller
         private MlFreteService $frete,
         // BULK-02: pré-check de token 1x no lote antes de qualquer dispatch
         private MercadoLivreService $ml,
+        // AUTO-01: compatibilidades de autopeças (detecção + cascata de veículos)
+        private MlCompatibilidadeService $compat,
     ) {}
 
     /**
@@ -1197,6 +1200,39 @@ class MlbAnuncioController extends Controller
     public function tiposAnuncio()
     {
         return response()->json($this->meta->tiposDeAnuncio());
+    }
+
+    // ─── Autopeças: compatibilidades de veículos (AUTO-01) ───
+    // Metadados públicos (app token, cacheados). O picker do wizard só aparece
+    // quando `aceita` é true; a cascata degrada para lista vazia em falha.
+
+    /** A categoria aceita compatibilidade de veículos? (heurística por árvore) */
+    public function compatCategoria(string $categoryId): JsonResponse
+    {
+        return response()->json($this->compat->aceitaCompatibilidades($categoryId));
+    }
+
+    /** Marcas de veículo (top_values BRAND). */
+    public function compatMarcas(): JsonResponse
+    {
+        return response()->json(['marcas' => $this->compat->marcas()]);
+    }
+
+    /** Modelos de uma marca (top_values MODEL). */
+    public function compatModelos(Request $request): JsonResponse
+    {
+        $brandId = (string) $request->query('brand_id', '');
+
+        return response()->json(['modelos' => $this->compat->modelos($brandId)]);
+    }
+
+    /** Anos de um modelo (top_values VEHICLE_YEAR). */
+    public function compatAnos(Request $request): JsonResponse
+    {
+        $brandId = (string) $request->query('brand_id', '');
+        $modelId = (string) $request->query('model_id', '');
+
+        return response()->json(['anos' => $this->compat->anos($brandId, $modelId)]);
     }
 
     // ─── Helpers privados — Phase 79 ───
