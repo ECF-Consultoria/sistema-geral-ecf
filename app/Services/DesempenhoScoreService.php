@@ -293,7 +293,11 @@ class DesempenhoScoreService
         // não passavam pelo dispatcher (Shopee não entrava no score) — servi-los
         // do Redis por até 7 dias continuaria omitindo Shopee do bônus mesmo com
         // o código novo em prod. As chaves v9 viram órfãs e expiram por TTL.
-        return sprintf('desempenho.compute.v10.%d.%s', $userId, $periodKey);
+        // v11 (2026-07, Fase 110 · FIXMARG-01/02): margem de contribuição passa
+        // a preferir o calculated_fallback LOCAL determinístico sobre o .diff
+        // nativo ao vivo quando a cobertura local (por dias-com-linha) é
+        // suficiente — o valor da margem muda, então o bump força recomputo.
+        return sprintf('desempenho.compute.v11.%d.%s', $userId, $periodKey);
     }
 
     /**
