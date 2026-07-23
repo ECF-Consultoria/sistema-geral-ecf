@@ -181,11 +181,25 @@ class DashboardController extends Controller
         ]);
 
         // Universo isolado: empresas com Shopee conectada (token ativo).
-        $companyIds = Company::whereHas('shopeeToken', fn ($q) => $q->where('status', 'active'))
-            ->pluck('id');
+        $lojas = Company::whereHas('shopeeToken', fn ($q) => $q->where('status', 'active'))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+        $lojaIds = $lojas->pluck('id');
 
-        // Limites de dados disponíveis (para o seletor saber o alcance).
-        $bounds = ShopeeMetric::whereIn('company_id', $companyIds)
+        // Filtro por empresa (opcional). Só aceita loja dentro do universo conectado;
+        // valor inválido ou vazio cai para "todas as lojas".
+        $companyFilter = $request->filled('company_id') && $lojaIds->contains((int) $request->input('company_id'))
+            ? (int) $request->input('company_id')
+            : null;
+
+        // IDs efetivos das métricas: todas as conectadas OU só a loja selecionada.
+        $companyIds = $companyFilter ? collect([$companyFilter]) : $lojaIds;
+
+        // Limites de dados disponíveis (para o seletor saber o alcance) —
+        // sempre sobre o universo conectado, para o empty state grande só
+        // aparecer quando NADA foi sincronizado (filtro por loja sem dados
+        // cai no estado "sem vendas nesse período").
+        $bounds = ShopeeMetric::whereIn('company_id', $lojaIds)
             ->selectRaw('MIN(reference_date) as min_date, MAX(reference_date) as max_date')
             ->first();
 
@@ -255,13 +269,16 @@ class DashboardController extends Controller
                 'orders'       => $orders,
                 'items'        => $items,
                 'ticket_medio' => $orders > 0 ? round($revenue / $orders, 2) : 0.0,
-                'lojas'        => $companyIds->count(),
+                'lojas'        => $lojas->count(),
                 'ad_spend'     => $adSpend,
                 'tacos'        => $tacos,
             ],
             'ads_disponivel' => $adsDisponivel,
             'series'         => $series,
             'porLoja'        => $porLoja,
+            // Filtro por empresa: opções (lojas conectadas) + seleção atual.
+            'empresas'       => $lojas->map(fn ($c) => ['id' => (int) $c->id, 'name' => $c->name])->values(),
+            'companyId'      => $companyFilter,
         ]);
     }
 

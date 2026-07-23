@@ -34,8 +34,8 @@ function buildPresets() {
     ];
 }
 
-function go(from, to) {
-    router.get(route('shopee.dashboard'), { from, to }, { preserveState: true, preserveScroll: true, replace: true });
+function nav(params) {
+    router.get(route('shopee.dashboard'), params, { preserveState: true, preserveScroll: true, replace: true });
 }
 
 function KpiCard({ icon: Icon, label, value, sub, accent }) {
@@ -51,11 +51,17 @@ function KpiCard({ icon: Icon, label, value, sub, accent }) {
     );
 }
 
-export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, series = [], porLoja = [], ads_disponivel = false }) {
+export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, series = [], porLoja = [], ads_disponivel = false, empresas = [], companyId = null }) {
     const presets = buildPresets();
     const activeKey = presets.find((p) => p.from === period?.from && p.to === period?.to)?.key;
     const semDadosNenhum = !bounds?.max;
     const semDadosNoPeriodo = !semDadosNenhum && (!series || series.length === 0);
+
+    // Navegação preservando período + filtro de empresa entre si.
+    const cid = companyId ?? '';
+    const goPeriod = (from, to) => nav({ from, to, ...(cid ? { company_id: cid } : {}) });
+    const goCompany = (value) => nav({ from: period?.from, to: period?.to, ...(value ? { company_id: value } : {}) });
+    const empresaSelecionada = empresas.find((e) => String(e.id) === String(companyId));
 
     return (
         <AppLayout title={`Dashboard ${label}`}>
@@ -68,7 +74,11 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                     <div>
                         <h1 className="text-white text-2xl font-display font-bold leading-tight">Dashboard {label}</h1>
                         <p className="text-white/30 text-[11px]">
-                            {kpis?.lojas ?? 0} loja{(kpis?.lojas ?? 0) !== 1 ? 's' : ''} conectada{(kpis?.lojas ?? 0) !== 1 ? 's' : ''}
+                            {empresaSelecionada ? (
+                                <span style={{ color: SHOPEE }}>{empresaSelecionada.name}</span>
+                            ) : (
+                                <>{kpis?.lojas ?? 0} loja{(kpis?.lojas ?? 0) !== 1 ? 's' : ''} conectada{(kpis?.lojas ?? 0) !== 1 ? 's' : ''}</>
+                            )}
                             {' · '}dados exclusivos da Shopee
                         </p>
                     </div>
@@ -85,7 +95,7 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                     {presets.map((p) => (
                         <button
                             key={p.key}
-                            onClick={() => go(p.from, p.to)}
+                            onClick={() => goPeriod(p.from, p.to)}
                             className={cn(
                                 'px-3 py-1.5 rounded-lg text-[12px] font-medium border transition-colors',
                                 activeKey === p.key
@@ -102,7 +112,7 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                             type="date"
                             value={period?.from ?? ''}
                             max={period?.to}
-                            onChange={(e) => e.target.value && go(e.target.value, period?.to)}
+                            onChange={(e) => e.target.value && goPeriod(e.target.value, period?.to)}
                             className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-[12px] text-white/80 outline-none focus:border-white/20"
                         />
                         <span className="text-white/25 text-xs">até</span>
@@ -110,11 +120,37 @@ export default function ShopeeShell({ label = 'Shopee', period, bounds, kpis, se
                             type="date"
                             value={period?.to ?? ''}
                             min={period?.from}
-                            onChange={(e) => e.target.value && go(period?.from, e.target.value)}
+                            onChange={(e) => e.target.value && goPeriod(period?.from, e.target.value)}
                             className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-[12px] text-white/80 outline-none focus:border-white/20"
                         />
                     </div>
                 </div>
+
+                {/* Filtro por empresa — só faz sentido com mais de uma loja conectada */}
+                {empresas.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Store size={14} className="text-white/30" />
+                        <select
+                            value={companyId ?? ''}
+                            onChange={(e) => goCompany(e.target.value)}
+                            className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[12px] text-white/80 outline-none focus:border-white/20 max-w-xs"
+                            style={companyId ? { borderColor: `${SHOPEE}55`, color: SHOPEE } : undefined}
+                        >
+                            <option value="" className="bg-ecf-card text-white">Todas as lojas ({empresas.length})</option>
+                            {empresas.map((e) => (
+                                <option key={e.id} value={e.id} className="bg-ecf-card text-white">{e.name}</option>
+                            ))}
+                        </select>
+                        {empresaSelecionada && (
+                            <button
+                                onClick={() => goCompany('')}
+                                className="text-[11px] text-white/40 hover:text-white/70 underline underline-offset-2"
+                            >
+                                limpar
+                            </button>
+                        )}
+                    </div>
+                )}
 
                 {/* Estado: nenhum dado sincronizado ainda */}
                 {semDadosNenhum ? (
