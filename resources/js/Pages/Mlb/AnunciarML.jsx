@@ -914,9 +914,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     // ─── Navegação do wizard (WIZ-01) ───
     const [etapa, setEtapa] = useState(0);
 
-    // Seção "Características secundárias" (atributos opcionais) recolhida por padrão —
-    // são complementares e nunca bloqueiam a publicação.
-    const [secundariasAbertas, setSecundariasAbertas] = useState(false);
+    // Seção "Características secundárias" ABERTA por padrão — quem publica deve preencher
+    // (o ML pede e pesa na busca). Continua colapsável, mas nasce visível (não oculta).
+    const [secundariasAbertas, setSecundariasAbertas] = useState(true);
 
     // Campos do anúncio
     const [titulo, setTitulo]         = useState('');
@@ -984,10 +984,13 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     const [publicandoLote, setPublicandoLote] = useState(false);         // trava o botão pós-dispatch
     const [errosLote, setErrosLote]         = useState(null);            // erros do POST do lote
 
-    // Tipos de anúncio (uma vez)
+    // Tipos de anúncio (uma vez). O ML devolve tipos legados (Ouro, Prata, Bronze,
+    // Grátis, Diamante) que não usamos — só Clássico (gold_special) e Premium
+    // (gold_pro) existem de fato para nós. Filtra para não confundir quem publica.
     useEffect(() => {
+        const TIERS_VALIDOS = ['gold_special', 'gold_pro'];
         window.axios.get(route('mlb.anuncios.meta.tipos'))
-            .then(r => setTipos(Array.isArray(r.data) ? r.data : []))
+            .then(r => setTipos((Array.isArray(r.data) ? r.data : []).filter(t => TIERS_VALIDOS.includes(t.id))))
             .catch(() => {});
     }, []);
 
@@ -1544,9 +1547,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                     : attrsSimples;
 
                 return {
-                    // ML clássico: variações NÃO têm preço próprio — todas herdam o preço do
-                    // item (erro 357 item.variations.price.different quando divergem). O preço
-                    // fica no nível do item (campo Preço). Por isso não enviamos price aqui.
+                    // Preço por variação = preço do item (todas iguais). O ML EXIGE `price`
+                    // dentro de cada variação em várias categorias/contas (erro 369
+                    // body.required_fields quando falta). Como todas herdam o MESMO preço do
+                    // item, não dispara o erro 357 (item.variations.price.different).
+                    price:               preco ? Number(preco) : null,
                     available_quantity:  v.available_quantity !== '' ? Number(v.available_quantity) : 1,
                     attribute_combinations: combValidas,
                     attributes:          attrsVar,
@@ -2033,8 +2038,8 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                     </div>
                                 )}
 
-                                {/* ─── Características secundárias (atributos opcionais/complementares) ───
-                                    Recolhida por padrão; NÃO bloqueia a publicação. Espelha a seção
+                                {/* ─── Características secundárias ───
+                                    Aberta por padrão (quem publica deve preencher). Espelha a seção
                                     homônima do Mercado Livre. Reusa o mesmo Campo/select/input dos obrigatórios. */}
                                 {busy !== 'attrs' && opcionais.length > 0 && (
                                     <div className="mt-4 border-t border-white/[0.06] pt-4">
@@ -2045,7 +2050,6 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                         >
                                             {secundariasAbertas ? <ChevronDown size={16} className="shrink-0" /> : <ChevronRight size={16} className="shrink-0" />}
                                             <span>Características secundárias</span>
-                                            <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/50">opcional</span>
                                             {opcionaisPreenchidos > 0 && (
                                                 <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-400">
                                                     {opcionaisPreenchidos} preenchido{opcionaisPreenchidos > 1 ? 's' : ''}
@@ -2178,14 +2182,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                     <h2 className="mb-3 text-sm font-semibold text-white">5. Imagem, garantia e descrição</h2>
                                     <div className="space-y-3">
-                                        {/* Com variações, as fotos vêm da etapa de Variações (por variação).
-                                            A imagem principal aqui só aparece quando NÃO há variações. */}
-                                        {variacoes.length > 0 ? (
-                                            <div className="flex items-start gap-2 rounded-lg border border-white/[0.08] bg-ecf-bg px-3 py-2.5 text-[11px] text-white/50">
-                                                <PackageOpen size={14} className="mt-0.5 shrink-0 text-white/30" />
-                                                <span>As fotos deste anúncio vêm das <b className="text-white/70">variações</b> (uma ou mais por variação). Não é preciso imagem principal aqui.</span>
-                                            </div>
-                                        ) : (
+                                        {/* Com variações, as fotos vêm da etapa de Variações (por variação);
+                                            o campo de imagem principal só aparece quando NÃO há variações. */}
+                                        {variacoes.length === 0 && (
                                             <Campo label="URL da imagem principal" dica="Upload direto será adicionado numa próxima versão">
                                                 <input className={inputCls} value={imagemUrl} onChange={e => setImagemUrl(e.target.value)} placeholder="https://…" />
                                             </Campo>
