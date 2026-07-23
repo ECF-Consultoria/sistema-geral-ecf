@@ -1115,10 +1115,10 @@ Plans:
 3. `desempenho:consolidar-mes` não persiste snapshot com componente de margem vindo de amostra com falhas; retry/reconcilia ou recusa+alerta.
 4. Números convergem pro determinístico local (que bate com a dashboard Adman); sem novo viés; regressão preservada (cacheKey bump se compute() mudar).
 
-**Plans:** 2 plans
+**Plans:** 1/2 plans executed
 
 Plans:
-- [ ] 110-01-PLAN.md — AdmanMetricDiffService: contribution_margin_pct prefere calculated_fallback LOCAL sobre .diff nativo quando cobertura >= 80% + gate de cobertura + null explicito + cacheKey v10->v11 (FIXMARG-01/02)
+- [x] 110-01-PLAN.md — AdmanMetricDiffService: contribution_margin_pct prefere calculated_fallback LOCAL sobre .diff nativo quando cobertura >= 80% + gate de cobertura + null explicito + cacheKey v10->v11 (FIXMARG-01/02)
 - [ ] 110-02-PLAN.md — ConsolidarMesDesempenho resiliente: compute() expoe margem_amostra + gate de cobertura no congelamento (recusa+alerta, preserva snapshot anterior) (FIXMARG-03)
 
 ---

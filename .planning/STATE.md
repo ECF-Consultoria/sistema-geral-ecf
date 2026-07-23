@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
 status: executing
-stopped_at: Completado 109-03-PLAN.md
-last_updated: "2026-07-23T17:17:13.911Z"
+stopped_at: Completado 110-01-PLAN.md
+last_updated: "2026-07-23T19:27:38.615Z"
 last_activity: 2026-07-23
 progress:
   total_phases: 17
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 109 — Shopee em Carteira e Desempenho
+**Current focus:** Phase 110 — Fix margem Adman
 
 ## Current Position
 
-Phase: 109 (Shopee em Carteira e Desempenho) — EXECUTING
-Plan: 4 of 4
+Phase: 110 (Fix margem Adman) — EXECUTING
+Plan: 2 of 2
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
 Status: Ready to execute
@@ -165,6 +165,7 @@ Last activity: 2026-07-23
 | Phase 109 P01 | 50min | 2 tasks | 7 files |
 | Phase 109 P02 | ~110min | 3 tasks tasks | 6 files files |
 | Phase 109 P03 | 35min | 3 tasks | 13 files |
+| Phase 110 P01 | 35min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -669,8 +670,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-23T17:17:13.882Z
-Stopped at: Completado 109-03-PLAN.md
+Last session: 2026-07-23T19:27:38.566Z
+Stopped at: Completado 110-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
