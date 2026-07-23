@@ -5,7 +5,6 @@ namespace Tests\Unit\Metrics;
 use App\Models\Company;
 use App\Models\ShopeeMetric;
 use App\Services\Metrics\ShopeeMetricDiffService;
-use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
