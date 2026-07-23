@@ -11,10 +11,12 @@ use App\Models\NpsSurvey;
 use App\Models\Ppa;
 use App\Models\PortfolioGoal;
 use App\Models\Servico;
+use App\Models\ShopeeMetric;
 use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\Metrics\AdmanMetricDiffService;
+use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\DesempenhoScoreService;
@@ -23,6 +25,7 @@ use App\Services\Portfolio\CarteiraContextService;
 use App\Models\Company;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -35,6 +38,7 @@ class PortfolioController extends Controller
         private CarteiraContextService $carteiraContext,
         private MetricPeriodResolver $periodResolver,
         private AdmanMetricDiffService $admanDiffService,
+        private MetricDiffDispatcher $diffDispatcher,
     ) {}
 
     /**
@@ -88,6 +92,72 @@ class PortfolioController extends Controller
             'shopee'      => ['param' => 'shopee', 'setor' => Servico::SETOR_SHOPEE],
             default       => ['param' => 'todos', 'setor' => null],
         };
+    }
+
+    /**
+     * Fase 109 (SHOP-CAR-01/02) — resolve a fonte financeira VENCEDORA de
+     * cada empresa a partir dos vínculos ELEGÍVEIS do profissional (não do
+     * vínculo bruto). REGRA DE DESEMPATE TRAVADA (decisão do usuário
+     * 2026-07-23, texto idêntico ao Plano 03/Desempenho): quando a MESMA
+     * empresa tem vínculo performance elegível E vínculo shopee elegível do
+     * mesmo profissional, a fonte é SEMPRE 'adman' (performance vence) —
+     * nunca soma as duas, nunca deixa a Shopee vencer.
+     *
+     * @param  Collection  $vinculos  Vínculos já resolvidos por CarteiraContextService::forUser().
+     * @return Collection<int, string>  company_id => 'adman'|'shopee'
+     */
+    private function fontesFinanceirasPorEmpresa(Collection $vinculos): Collection
+    {
+        return $vinculos
+            ->where('financial_metrics_eligible', true)
+            ->groupBy('company_id')
+            ->map(function (Collection $vs) {
+                $fontes = $vs->pluck('financial_source');
+                return $fontes->contains('adman') ? 'adman' : $fontes->first();
+            });
+    }
+
+    /**
+     * Fase 109 — vínculos ajustados pra `CarteiraContextService::contadores()`
+     * de DISPLAY (chip "X vínculo(s) sem fonte financeira" / resumo da
+     * carteira): Shopee SEMPRE conta como "sem fonte financeira" aqui — MESMA
+     * regra de display já aplicada em `servicos[].financial_metrics_eligible`
+     * (regressão travada — `CarteirasConsolidadasContextoTest::
+     * test_resumo_individual_expoe_contadores_de_vinculos`), mesmo sendo a
+     * única fonte da empresa. `CarteiraContextService` (Plano 01) NÃO muda —
+     * só esta leitura local ajusta o que o controller repassa a `contadores()`.
+     *
+     * @param  Collection  $vinculos
+     * @return Collection
+     */
+    private function vinculosParaContadoresDisplay(Collection $vinculos): Collection
+    {
+        return $vinculos->map(function (array $v) {
+            if ($v['setor'] === Servico::SETOR_SHOPEE) {
+                $v['financial_metrics_eligible'] = false;
+            }
+            return $v;
+        });
+    }
+
+    /**
+     * Fase 109 — dentre os `$companyIds` informados, quais têm QUALQUER
+     * linha histórica em `shopee_metrics` (não só na janela do período).
+     * Necessário pra distinguir "revenue Shopee genuinamente zero na janela"
+     * de "empresa nunca sincronizou Shopee" — sem isso, `SUM(revenue)` sem
+     * NENHUMA linha devolve 0.0 (indistinguível de dado ausente na UI, que
+     * precisa mostrar "—", não "R$ 0,00").
+     *
+     * @param  Collection  $companyIds
+     * @return Collection<int, int>  company_ids com ao menos 1 linha em shopee_metrics.
+     */
+    private function companyIdsComDadosShopee(Collection $companyIds): Collection
+    {
+        if ($companyIds->isEmpty()) {
+            return collect();
+        }
+
+        return ShopeeMetric::whereIn('company_id', $companyIds)->distinct()->pluck('company_id');
     }
 
     // Carteira individual de um profissional. Acesso (quick 260623):
@@ -189,21 +259,32 @@ class PortfolioController extends Controller
         $porEmpresa     = $vinculos->groupBy('company_id');
         $invalidadas    = BonusInvalidacao::companyIdsInvalidadas($mesSelecionado);
 
+        // Fase 109 (SHOP-CAR-01/02) — fonte financeira VENCEDORA por empresa
+        // (desempate travado: adman vence quando a MESMA empresa tem vínculo
+        // performance E shopee elegíveis do mesmo profissional).
+        $fontesPorEmpresa        = $this->fontesFinanceirasPorEmpresa($vinculos);
+        $companyIdsShopee        = $fontesPorEmpresa->filter(fn ($f) => $f === 'shopee')->keys();
+        $companyIdsComDadosShopee = $this->companyIdsComDadosShopee($companyIdsShopee);
+
         $companies = Company::whereIn('id', $porEmpresa->keys())
             ->with('mlToken')
             ->orderBy('name')
             ->get();
 
-        $empresas = $companies->map(function ($c) use ($porEmpresa, $invalidadas, $periodo) {
+        $empresas = $companies->map(function ($c) use ($porEmpresa, $invalidadas, $periodo, $fontesPorEmpresa, $companyIdsComDadosShopee) {
             $vs         = $porEmpresa->get($c->id, collect());
             $ehElegivel = $vs->where('financial_metrics_eligible', true)->isNotEmpty();
             $invalidada = $invalidadas->contains($c->id);
+            $fonteFinanceiraVencedora = $fontesPorEmpresa->get($c->id);
 
+            // Fase 109 — 'elegivel' preserva o significado v17 (mesma regra
+            // de renderCarteiraProfissional): vínculo Shopee sempre false
+            // aqui, mesmo quando é a única fonte da empresa.
             $servicos = $vs->map(fn ($v) => [
                 'servico_nome' => $v['servico_nome'],
                 'setor'        => $v['setor'],
                 'role_label'   => $v['role_label'],
-                'elegivel'     => $v['financial_metrics_eligible'],
+                'elegivel'     => $v['financial_metrics_eligible'] && $v['setor'] !== Servico::SETOR_SHOPEE,
             ])->values();
 
             // Fonte de dados COMBINADA da empresa (badge §8.3) — reflete de onde
@@ -246,7 +327,43 @@ class PortfolioController extends Controller
                 ];
             }
 
-            $r    = $this->admanDiffService->compute($c, $periodo);
+            // Fase 109 — Shopee: faturamento+investimento via ShopeeMetricDiffService
+            // (roteado pelo dispatcher), margem sempre null (arquitetura future-ready).
+            // 'sem_dados' quando a empresa nunca sincronizou Shopee (distingue de
+            // "revenue zero real na janela") — nunca cai em 'sem_fonte' (isso é só
+            // pra empresa SEM vínculo elegível, gate acima).
+            if ($fonteFinanceiraVencedora === 'shopee') {
+                $temDados = $companyIdsComDadosShopee->contains($c->id);
+                if (! $temDados) {
+                    return $base + [
+                        'faturamento'         => null,
+                        'faturamento_var_pct' => null,
+                        'margem_rs'           => null,
+                        'margem_rs_var_pct'   => null,
+                        'margem_pct'          => null,
+                        'margem_pct_var_pct'  => null,
+                        'diff_source'         => null,
+                        'status'              => 'sem_dados',
+                    ];
+                }
+
+                $r      = $this->diffDispatcher->compute($c, $periodo, 'shopee');
+                $rev    = $r['metrics']['revenue'] ?? [];
+                $revVal = $rev['value'] ?? null;
+
+                return $base + [
+                    'faturamento'         => $revVal !== null ? round((float) $revVal, 2) : null,
+                    'faturamento_var_pct' => $rev['diff_pct'] ?? null,
+                    'margem_rs'           => null,
+                    'margem_rs_var_pct'   => null,
+                    'margem_pct'          => null,
+                    'margem_pct_var_pct'  => null,
+                    'diff_source'         => $rev['diff_source'] ?? null,
+                    'status'              => $invalidada ? 'invalidada' : (($rev['diff_pct'] ?? null) === null ? 'sem_baseline' : 'completo'),
+                ];
+            }
+
+            $r    = $this->diffDispatcher->compute($c, $periodo, $fonteFinanceiraVencedora ?? 'adman');
             $rev  = $r['metrics']['revenue'] ?? [];
             $mRs  = $r['metrics']['contribution_margin_value'] ?? [];
             $mPct = $r['metrics']['contribution_margin_pct'] ?? [];
@@ -422,6 +539,15 @@ class PortfolioController extends Controller
             ->unique()
             ->values();
 
+        // Fase 109 (SHOP-CAR-01/02) — fonte financeira VENCEDORA por empresa
+        // (desempate travado). Só empresas 'adman' entram nas queries
+        // AdmanMetric abaixo — empresa 'shopee' é lida à parte (dispatcher),
+        // nunca herda revenue/margem/ad_spend do Adman.
+        $fontesPorEmpresa           = $this->fontesFinanceirasPorEmpresa($vinculos);
+        $companyIdsAdminElegiveis   = $companyIdsElegiveis->filter(fn ($id) => $fontesPorEmpresa->get($id) === 'adman')->values();
+        $companyIdsShopeeElegiveis  = $companyIdsElegiveis->filter(fn ($id) => $fontesPorEmpresa->get($id) === 'shopee')->values();
+        $companyIdsComDadosShopee   = $this->companyIdsComDadosShopee($companyIdsShopeeElegiveis);
+
         // Metrics agregados por empresa nas duas janelas (Adman é canônico
         // pra margem — ML não expõe custo unitário).
         //
@@ -435,13 +561,13 @@ class PortfolioController extends Controller
         // CART-03 — SUM(ad_spend) adicionado à janela ATUAL (campo novo nesta
         // fase; a janela anterior não precisa de ad_spend, só serve pra
         // variação de margem/revenue).
-        $atualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
+        $atualPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsAdminElegiveis)
             ->whereBetween('reference_date', [$dateFrom, $dateTo])
             ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias, SUM(ad_spend) as ads')
             ->groupBy('company_id')
             ->get()
             ->keyBy('company_id');
-        $anteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsElegiveis)
+        $anteriorPorEmpresa = AdmanMetric::whereIn('company_id', $companyIdsAdminElegiveis)
             ->whereBetween('reference_date', [$dateFromPrev, $dateToPrev])
             ->selectRaw('company_id, SUM(revenue) as rev, SUM(contribution_margin) as margem, SUM(CASE WHEN contribution_margin IS NOT NULL THEN 1 ELSE 0 END) as margem_dias')
             ->groupBy('company_id')
@@ -461,7 +587,7 @@ class PortfolioController extends Controller
         // empresas com vínculo financeiro elegível), mesmo padrão de
         // renderCarteirasConsolidadas() no mesmo arquivo.
         $custIdsElegiveis = $rawCompanies
-            ->filter(fn ($c) => $companyIdsElegiveis->contains($c->id))
+            ->filter(fn ($c) => $companyIdsAdminElegiveis->contains($c->id))
             ->map(fn ($c) => $c->cust_id)
             ->filter()
             ->unique()
@@ -474,18 +600,27 @@ class PortfolioController extends Controller
         // (alimenta o status/badge da tabela, igual à transparência).
         $invalidadas = BonusInvalidacao::companyIdsInvalidadas($mesSelecionado);
 
-        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $companyIdsElegiveis, $porEmpresa, $periodo, $invalidadas) {
+        $empresas = $rawCompanies->map(function ($c) use ($atualPorEmpresa, $anteriorPorEmpresa, $grossAtual, $accountAtual, $companyIdsElegiveis, $porEmpresa, $periodo, $invalidadas, $fontesPorEmpresa, $companyIdsComDadosShopee) {
             $ehElegivel = $companyIdsElegiveis->contains($c->id);
+            $fonteFinanceiraVencedora = $fontesPorEmpresa->get($c->id);
 
             // Vínculos desta empresa — shape público CART-01/02: 1 entrada
             // por vínculo de serviço (ex.: Performance + Shopee separados).
+            // Fase 109 (regressão travada — CarteiraIndividualContextoTest/
+            // CarteiraPeriodoDiffTest) — 'financial_metrics_eligible' aqui
+            // preserva o significado v17: vínculo Shopee é SEMPRE exibido
+            // como false neste array (elegibilidade financeira "completa",
+            // com margem, nunca existiu pra Shopee) — mesmo quando é a ÚNICA
+            // fonte da empresa. O financeiro real da empresa Shopee (sem
+            // margem) é decidido por `$fonteFinanceiraVencedora` mais abaixo,
+            // não por este campo de display.
             $servicos = $porEmpresa->get($c->id, collect())->map(fn ($v) => [
                 'servico_id'                  => $v['servico_id'],
                 'servico_nome'                => $v['servico_nome'],
                 'setor'                       => $v['setor'],
                 'role'                        => $v['role'],
                 'role_label'                  => $v['role_label'],
-                'financial_metrics_eligible'  => $v['financial_metrics_eligible'],
+                'financial_metrics_eligible'  => $v['financial_metrics_eligible'] && $v['setor'] !== Servico::SETOR_SHOPEE,
             ])->values();
 
             // Fase 3 (2026-07-21) — fonte de dados COMBINADA + invalidação, os
@@ -532,6 +667,71 @@ class PortfolioController extends Controller
                 ];
             }
 
+            // Fase 109 (SHOP-CAR-01/02) — empresa cuja fonte financeira
+            // VENCEDORA é 'shopee': faturamento+investimento via
+            // ShopeeMetricDiffService (dispatcher), margem sempre null
+            // (Shopee ainda não fornece). 'sem_dados' quando a empresa nunca
+            // sincronizou Shopee (distingue de "revenue zero real na
+            // janela") — NUNCA cai em 'sem_fonte' (isso é só pra empresa sem
+            // vínculo elegível, gate acima).
+            if ($fonteFinanceiraVencedora === 'shopee') {
+                $temDadosShopee = $companyIdsComDadosShopee->contains($c->id);
+
+                if (! $temDadosShopee) {
+                    return [
+                        'id'                           => $c->id,
+                        'name'                         => $c->name,
+                        'faturamento'                  => null,
+                        'margem_contribuicao'          => null,
+                        'margem_contribuicao_anterior' => null,
+                        'margem_variacao_pct'          => null,
+                        'motivo_sem_margem'            => 'Shopee ainda não fornece margem',
+                        'ad_spend'                     => null,
+                        'tacos'                        => null,
+                        'has_ml_oauth'                 => $temMl,
+                        'servicos'                     => $servicos,
+                        'fonte'                        => $fonte,
+                        'faturamento_var_pct'          => null,
+                        'margem_rs'                    => null,
+                        'margem_rs_var_pct'            => null,
+                        'margem_pct'                   => null,
+                        'margem_pct_var_pct'           => null,
+                        'status'                       => 'sem_dados',
+                        'invalidada'                   => $invalidada,
+                    ];
+                }
+
+                $rShopee   = $this->diffDispatcher->compute($c, $periodo, 'shopee');
+                $revShopee = $rShopee['metrics']['revenue'] ?? [];
+                $invShopee = $rShopee['investment'] ?? [];
+                $revValShopee = $revShopee['value'] ?? null;
+                $adSpendShopee = $invShopee['value'] ?? null;
+
+                return [
+                    'id'                           => $c->id,
+                    'name'                         => $c->name,
+                    'faturamento'                  => $revValShopee !== null ? round((float) $revValShopee, 2) : null,
+                    'margem_contribuicao'          => null,
+                    'margem_contribuicao_anterior' => null,
+                    'margem_variacao_pct'          => null,
+                    'motivo_sem_margem'            => 'Shopee ainda não fornece margem',
+                    'ad_spend'                     => $adSpendShopee !== null ? round((float) $adSpendShopee, 2) : null,
+                    'tacos'                        => null,
+                    'has_ml_oauth'                 => $temMl,
+                    'servicos'                     => $servicos,
+                    'fonte'                        => $fonte,
+                    'faturamento_var_pct'          => $revShopee['diff_pct'] ?? null,
+                    'margem_rs'                    => null,
+                    'margem_rs_var_pct'            => null,
+                    'margem_pct'                   => null,
+                    'margem_pct_var_pct'           => null,
+                    'status'                       => $invalidada
+                        ? 'invalidada'
+                        : ((($revShopee['diff_pct'] ?? null) === null) ? 'sem_baseline' : 'completo'),
+                    'invalidada'                   => $invalidada,
+                ];
+            }
+
             $custId       = $c->cust_id;
             $rowAtual     = $atualPorEmpresa->get($c->id);
             $rowAnterior  = $anteriorPorEmpresa->get($c->id);
@@ -574,7 +774,7 @@ class PortfolioController extends Controller
             // Confundir os dois muda silenciosamente o que esta tela reporta
             // — já auditada 3× por divergência de número (Tomelin/Gabriela/
             // LOJASINVAL).
-            $resultadoDiff = $this->admanDiffService->compute($c, $periodo);
+            $resultadoDiff = $this->diffDispatcher->compute($c, $periodo, 'adman');
             $margemVarPct  = $resultadoDiff['metrics']['contribution_margin_value']['diff_pct'] ?? null;
 
             // Fase 3 (2026-07-21) — campos §8.3 do MESMO diff service (fonte
@@ -710,10 +910,12 @@ class PortfolioController extends Controller
         // Contadores pra UI expor transparência sobre qualidade dos dados.
         // Fase 89 (correção do plan-checker) — conta SÓ empresas ELEGÍVEIS
         // com margem null. Empresa Shopee-only tem margem null POR DESENHO
-        // (sem fonte financeira) — não é problema de sync, não deve inflar
-        // esse contador (que alimenta o banner rosa "sem dados de margem").
+        // (sem fonte financeira/margem) — não é problema de sync, não deve
+        // inflar esse contador (que alimenta o banner rosa "sem dados de
+        // margem"). Fase 109 — restrito a $companyIdsAdminElegiveis (fonte
+        // 'adman'); empresa cuja fonte vencedora é 'shopee' NUNCA entra aqui.
         $empresasSemMargem = (int) $empresas
-            ->filter(fn ($e) => $companyIdsElegiveis->contains($e['id']))
+            ->filter(fn ($e) => $companyIdsAdminElegiveis->contains($e['id']))
             ->whereNull('margem_contribuicao')
             ->count();
 
@@ -748,7 +950,9 @@ class PortfolioController extends Controller
         // Fase 90 (CART-07) — contadores de vinculos (empresas_unicas ja
         // coberto por total_empresas acima) via CarteiraContextService,
         // reaproveitando $vinculos ja resolvido (nao reinventar contagem).
-        $contadoresResumo = $this->carteiraContext->contadores($vinculos);
+        // Fase 109 — Shopee sempre conta "sem fonte financeira" no resumo
+        // (ver vinculosParaContadoresDisplay()).
+        $contadoresResumo = $this->carteiraContext->contadores($this->vinculosParaContadoresDisplay($vinculos));
 
         return Inertia::render('Portfolio/AdminCarteira', [
             'profissional' => [
@@ -965,7 +1169,9 @@ class PortfolioController extends Controller
             $vinculosExibidosTotal = $vinculosExibidosTotal->concat($vinculos);
 
             // Contadores prontos (Fase 88) — nao reinventar dedup aqui.
-            $contadores = $this->carteiraContext->contadores($vinculos);
+            // Fase 109 — Shopee sempre conta "sem fonte financeira" no chip
+            // (mesma regra da carteira individual, vinculosParaContadoresDisplay()).
+            $contadores = $this->carteiraContext->contadores($this->vinculosParaContadoresDisplay($vinculos));
 
             // Dedup financeiro (mesma receita CART-04/05 da Fase 89):
             // AdmanMetric e por-EMPRESA, nunca por-vinculo — ->unique() evita
@@ -978,15 +1184,25 @@ class PortfolioController extends Controller
                 ->unique()
                 ->values();
 
+            // Fase 109 (SHOP-CAR-01/02) — fonte financeira VENCEDORA por
+            // empresa (desempate travado). Calculado aqui (antes do gate de
+            // vazio) porque source_counts abaixo também precisa: empresa
+            // 'shopee' NUNCA conta como fonte ADR DATA-04 do profissional
+            // (ela não é ML/Adman — bug espelhado que este contador já
+            // guardava antes da Fase 109 abrir a elegibilidade Shopee).
+            $fontesPorEmpresaCard = $this->fontesFinanceirasPorEmpresa($vinculos);
+            $companyIdsAdmanCard  = $companyIdsElegiveis->filter(fn ($id) => $fontesPorEmpresaCard->get($id) === 'adman')->values();
+            $companyIdsShopeeCard = $companyIdsElegiveis->filter(fn ($id) => $fontesPorEmpresaCard->get($id) === 'shopee')->values();
+
             // source_counts (Phase 61, flag unified_metrics_enabled) —
-            // corrigido JUNTO, na MESMA fonte ($companyIdsElegiveis), pra nao
+            // restrito a $companyIdsAdmanCard (fonte 'adman'), pra nao
             // voltar a contar empresa Shopee-only como fonte financeira do
             // profissional (bug espelhado do bloco principal).
             $sourceCounts = null;
             if ($this->unifiedMetricsEnabled()) {
                 $sourceCounts = ['adman' => 0, 'ml' => 0, 'unified' => 0, 'none' => 0];
-                if ($companyIdsElegiveis->isNotEmpty()) {
-                    $companiesFonte = Company::whereIn('id', $companyIdsElegiveis)->with('mlToken')->get();
+                if ($companyIdsAdmanCard->isNotEmpty()) {
+                    $companiesFonte = Company::whereIn('id', $companyIdsAdmanCard)->with('mlToken')->get();
                     foreach ($companiesFonte as $c) {
                         $sourceCounts[$this->factoryToSource($c)]++;
                     }
@@ -1015,80 +1231,102 @@ class PortfolioController extends Controller
                 return $card;
             }
 
-            // O service nao expoe cust_id/adman_account_id/ml_store_id
-            // (granularidade de vinculo, nao de empresa) — carregamos os
-            // models separadamente, so pras empresas elegiveis.
-            $companies = Company::whereIn('id', $companyIdsElegiveis)
-                ->get(['id', 'adman_account_id', 'ml_store_id']);
+            // Fase 109 — $companyIdsAdmanCard/$companyIdsShopeeCard já
+            // resolvidos acima (junto de source_counts).
+            $totalRevenue    = 0.0;
+            $totalAdSpend    = 0.0;
+            $avgMargin       = null;
+            $tacosCarteira   = null;
 
-            $companyIds = $companies->pluck('id');
-            $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
+            if ($companyIdsAdmanCard->isNotEmpty()) {
+                // O service nao expoe cust_id/adman_account_id/ml_store_id
+                // (granularidade de vinculo, nao de empresa) — carregamos os
+                // models separadamente, so pras empresas elegiveis 'adman'.
+                $companies = Company::whereIn('id', $companyIdsAdmanCard)
+                    ->get(['id', 'adman_account_id', 'ml_store_id']);
 
-            // SUM DB (fallback completo) + cache Adman pra empresas com custId.
-            // Fase 103 Plan 02 (CAR-03) — janela FECHADA dos dois lados
-            // (current_start..current_end do resolver), nao mais so limite
-            // inferior (coerencia com a soma current_month/closed_period).
-            $sumDb = AdmanMetric::whereIn('company_id', $companyIds)
-                ->whereBetween('reference_date', [$dateFrom, $dateTo])
-                ->selectRaw('company_id, SUM(revenue) as rev, SUM(ad_spend) as ads, AVG(contribution_margin_pct) as margem')
-                ->groupBy('company_id')
-                ->get()
-                ->keyBy('company_id');
+                $companyIds = $companies->pluck('id');
+                $custIds    = $companies->map(fn ($c) => $c->cust_id)->filter()->unique()->values()->all();
 
-            $gross   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
-            $account = $this->adman->getCachedAccountMetricsMany($custIds, $dateFrom, $dateTo);
+                // SUM DB (fallback completo) + cache Adman pra empresas com custId.
+                // Fase 103 Plan 02 (CAR-03) — janela FECHADA dos dois lados
+                // (current_start..current_end do resolver), nao mais so limite
+                // inferior (coerencia com a soma current_month/closed_period).
+                $sumDb = AdmanMetric::whereIn('company_id', $companyIds)
+                    ->whereBetween('reference_date', [$dateFrom, $dateTo])
+                    ->selectRaw('company_id, SUM(revenue) as rev, SUM(ad_spend) as ads, AVG(contribution_margin_pct) as margem')
+                    ->groupBy('company_id')
+                    ->get()
+                    ->keyBy('company_id');
 
-            $totalRevenue = 0.0;
-            $totalAdSpend = 0.0;
-            $tacosPorEmpresa = [];
-            foreach ($companies as $c) {
-                $row = $sumDb->get($c->id);
+                $gross   = $this->adman->getCachedGrossBillingsMany($custIds, $dateFrom, $dateTo);
+                $account = $this->adman->getCachedAccountMetricsMany($custIds, $dateFrom, $dateTo);
 
-                // Revenue: cache gross com fallback DB
-                $rev = null;
-                if ($c->cust_id && isset($gross[$c->cust_id]['value']) && $gross[$c->cust_id]['value'] !== null) {
-                    $rev = (float) $gross[$c->cust_id]['value'];
+                $tacosPorEmpresa = [];
+                foreach ($companies as $c) {
+                    $row = $sumDb->get($c->id);
+
+                    // Revenue: cache gross com fallback DB
+                    $rev = null;
+                    if ($c->cust_id && isset($gross[$c->cust_id]['value']) && $gross[$c->cust_id]['value'] !== null) {
+                        $rev = (float) $gross[$c->cust_id]['value'];
+                    }
+                    if ($rev === null) {
+                        $rev = (float) ($row->rev ?? 0);
+                    }
+                    $totalRevenue += $rev;
+
+                    // Ad spend: cache investment com fallback DB
+                    $ads = null;
+                    if ($c->cust_id && isset($account[$c->cust_id]['value']['investment'])) {
+                        $ads = (float) $account[$c->cust_id]['value']['investment'];
+                    }
+                    if ($ads === null) {
+                        $ads = (float) ($row->ads ?? 0);
+                    }
+                    $totalAdSpend += $ads;
+
+                    // TACOS desta empresa: prioriza cache (mais preciso), fallback DB.
+                    $tacosEmpresa = null;
+                    if ($c->cust_id && isset($account[$c->cust_id]['value']['tacos'])) {
+                        $tacosEmpresa = (float) $account[$c->cust_id]['value']['tacos'];
+                    } elseif ($rev > 0) {
+                        $tacosEmpresa = ($ads / $rev) * 100;
+                    }
+                    if ($tacosEmpresa !== null) {
+                        $tacosPorEmpresa[] = $tacosEmpresa;
+                    }
                 }
-                if ($rev === null) {
-                    $rev = (float) ($row->rev ?? 0);
-                }
-                $totalRevenue += $rev;
 
-                // Ad spend: cache investment com fallback DB
-                $ads = null;
-                if ($c->cust_id && isset($account[$c->cust_id]['value']['investment'])) {
-                    $ads = (float) $account[$c->cust_id]['value']['investment'];
-                }
-                if ($ads === null) {
-                    $ads = (float) ($row->ads ?? 0);
-                }
-                $totalAdSpend += $ads;
+                // Margem media via DB (cache nao expoe margem por empresa de forma
+                // estavel; SUM DB ja era a fonte do campo aqui). Shopee nunca
+                // contribui pra esta media (nao tem margem).
+                $avgMargin = $sumDb->avg('margem');
 
-                // TACOS desta empresa: prioriza cache (mais preciso), fallback DB.
-                $tacosEmpresa = null;
-                if ($c->cust_id && isset($account[$c->cust_id]['value']['tacos'])) {
-                    $tacosEmpresa = (float) $account[$c->cust_id]['value']['tacos'];
-                } elseif ($rev > 0) {
-                    $tacosEmpresa = ($ads / $rev) * 100;
-                }
-                if ($tacosEmpresa !== null) {
-                    $tacosPorEmpresa[] = $tacosEmpresa;
-                }
+                // TACOS médio da carteira: média SIMPLES dos TACOS per-empresa
+                // (mesma estratégia do DashboardController::adminDashboard, pra que
+                // /portfolio e /dashboard mostrem o mesmo número pro mesmo user).
+                // Hotfix 2026-06-23 — antes usava razão dos totais (ad_spend/rev),
+                // matematicamente mais correto como "TACOS efetivo agregado" mas
+                // divergia do Dashboard. Pragmaticamente: alinhar pra evitar dúvida.
+                $tacosCarteira = !empty($tacosPorEmpresa)
+                    ? round(array_sum($tacosPorEmpresa) / count($tacosPorEmpresa), 2)
+                    : null;
             }
 
-            // Margem media via DB (cache nao expoe margem por empresa de forma
-            // estavel; SUM DB ja era a fonte do campo aqui).
-            $avgMargin = $sumDb->avg('margem');
+            // Fase 109 — caminho Shopee: SUM(shopee_metrics.revenue/ad_expense)
+            // na janela atual, somado ao total (sem HTTP, sem margem — Shopee
+            // nunca contribui pra avg_margin/avg_tacos).
+            if ($companyIdsShopeeCard->isNotEmpty()) {
+                $shopeeAgregado = ShopeeMetric::whereIn('company_id', $companyIdsShopeeCard)
+                    ->whereDate('reference_date', '>=', $dateFrom)
+                    ->whereDate('reference_date', '<=', $dateTo)
+                    ->selectRaw('SUM(revenue) as rev, SUM(CASE WHEN ad_expense IS NOT NULL THEN ad_expense ELSE 0 END) as ads')
+                    ->first();
 
-            // TACOS médio da carteira: média SIMPLES dos TACOS per-empresa
-            // (mesma estratégia do DashboardController::adminDashboard, pra que
-            // /portfolio e /dashboard mostrem o mesmo número pro mesmo user).
-            // Hotfix 2026-06-23 — antes usava razão dos totais (ad_spend/rev),
-            // matematicamente mais correto como "TACOS efetivo agregado" mas
-            // divergia do Dashboard. Pragmaticamente: alinhar pra evitar dúvida.
-            $tacosCarteira = !empty($tacosPorEmpresa)
-                ? round(array_sum($tacosPorEmpresa) / count($tacosPorEmpresa), 2)
-                : null;
+                $totalRevenue += (float) ($shopeeAgregado->rev ?? 0);
+                $totalAdSpend += (float) ($shopeeAgregado->ads ?? 0);
+            }
 
             $card = [
                 'id'              => $u->id,
@@ -1198,6 +1436,37 @@ class PortfolioController extends Controller
         // corrente E do mês anterior para calcular variação % por empresa
         // (usado na coluna "Margem" da tabela de carteira).
         $companyIdsAll = $rawCompanies->pluck('id');
+
+        // Fase 109 (SHOP-CAR-01/02) — self-view ESPELHA o tratamento
+        // financeiro de renderCarteiraProfissional: injeta faturamento+
+        // investimento Shopee no bloco financeiro por empresa, MESMA janela
+        // ($dateFrom/$dateTo), pras empresas cuja fonte VENCEDORA (desempate
+        // travado) é 'shopee'. Decisão travada 2026-07-23 — RESTRIÇÕES: (1)
+        // SÓ o bloco financeiro muda aqui, nada de sugadores/PPA/NPS/meta
+        // abaixo; (2) NÃO conserta o bug legado de `$user->companies()`
+        // (:1427) — empresas fora de qualquer vínculo CarteiraContextService
+        // (não resolvidas em $fontesPorEmpresaSelf) seguem 100% no caminho
+        // Adman/SUM antigo, sem mudança de comportamento.
+        $vinculosSelf         = $this->carteiraContext->forUser($user, ['active' => true]);
+        $fontesPorEmpresaSelf = $this->fontesFinanceirasPorEmpresa($vinculosSelf);
+        $companyIdsShopeeSelf = $companyIdsAll->filter(fn ($id) => $fontesPorEmpresaSelf->get($id) === 'shopee')->values();
+        $companyIdsComDadosShopeeSelf = $this->companyIdsComDadosShopee($companyIdsShopeeSelf);
+
+        $shopeeSumAtualSelf = ShopeeMetric::whereIn('company_id', $companyIdsShopeeSelf)
+            ->whereDate('reference_date', '>=', $dateFrom)
+            ->whereDate('reference_date', '<=', $dateTo)
+            ->selectRaw('company_id, SUM(revenue) as total, SUM(CASE WHEN ad_expense IS NOT NULL THEN ad_expense ELSE 0 END) as ads, SUM(CASE WHEN ad_expense IS NOT NULL THEN 1 ELSE 0 END) as ads_dias')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+        $shopeeSumAnteriorSelf = ShopeeMetric::whereIn('company_id', $companyIdsShopeeSelf)
+            ->whereDate('reference_date', '>=', $dateFromAnterior)
+            ->whereDate('reference_date', '<=', $dateToAnterior)
+            ->selectRaw('company_id, SUM(revenue) as total')
+            ->groupBy('company_id')
+            ->get()
+            ->keyBy('company_id');
+
         $sumDbAtual = AdmanMetric::query()
             ->whereIn('company_id', $companyIdsAll)
             ->whereBetween('reference_date', [$dateFrom, $dateTo])
@@ -1269,9 +1538,50 @@ class PortfolioController extends Controller
         }
 
         // Mapeia cada empresa pro array final
-        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa, $accountAtual, $margemAnteriorPorEmpresa, $ultimoDiaComMargemPorEmpresa, $dateFromAnterior, $dateToAnterior, $dateTo) {
+        $companies = $rawCompanies->map(function ($c) use ($isMesAtual, $sumDbAtual, $grossAtual, $grossAnterior, $sumDbAnteriorPorEmpresa, $accountAtual, $margemAnteriorPorEmpresa, $ultimoDiaComMargemPorEmpresa, $dateFromAnterior, $dateToAnterior, $dateTo, $fontesPorEmpresaSelf, $shopeeSumAtualSelf, $shopeeSumAnteriorSelf, $companyIdsComDadosShopeeSelf) {
             $activeGrant = $c->grants->where('status', 'active')->first();
             $custId      = $c->cust_id; // accessor: adman_account_id ?: ml_store_id
+
+            // Fase 109 (SHOP-CAR-01/02) — empresa cuja fonte financeira
+            // VENCEDORA (desempate travado) é 'shopee': bloco financeiro
+            // 100% via shopee_metrics (SUM local, sem HTTP), margem sempre
+            // null. 'sem_dados' fica pro caller decidir via faturamento null
+            // (mesma semântica de renderCarteiraProfissional — não confundir
+            // "revenue zero real na janela" com "nunca sincronizou Shopee").
+            if ($fontesPorEmpresaSelf->get($c->id) === 'shopee') {
+                $temDadosShopee = $companyIdsComDadosShopeeSelf->contains($c->id);
+                $rowShopeeAtual    = $temDadosShopee ? $shopeeSumAtualSelf->get($c->id) : null;
+                $rowShopeeAnterior = $temDadosShopee ? $shopeeSumAnteriorSelf->get($c->id) : null;
+
+                $revenueShopee     = $rowShopeeAtual ? (float) $rowShopeeAtual->total : null;
+                $revAnteriorShopee = $rowShopeeAnterior ? (float) $rowShopeeAnterior->total : 0.0;
+                $adSpendShopee     = ($rowShopeeAtual && (int) $rowShopeeAtual->ads_dias > 0) ? (float) $rowShopeeAtual->ads : null;
+
+                $quedaMomPctShopee = ($revenueShopee !== null && $revAnteriorShopee > 0)
+                    ? round((($revenueShopee - $revAnteriorShopee) / $revAnteriorShopee) * 100, 2)
+                    : null;
+
+                return [
+                    'id'                           => $c->id,
+                    'name'                         => $c->name,
+                    'role'                         => $c->pivot->role,
+                    'tacos'                        => null,
+                    'revenue'                      => $revenueShopee,
+                    'revenue_anterior'             => $revAnteriorShopee > 0 ? $revAnteriorShopee : null,
+                    'queda_mom_pct'                => $quedaMomPctShopee,
+                    'contribution_margin_pct'      => null,
+                    'contribution_margin_abs'      => 0.0,
+                    'contribution_margin_prev'     => null,
+                    'contribution_margin_var_pct'  => null,
+                    'has_ml_oauth'                 => false,
+                    'ad_spend'                     => $adSpendShopee,
+                    'grant_status'                 => $activeGrant?->status,
+                    'grant_expires_at'             => $activeGrant?->expires_at?->toDateString(),
+                    'grant_days_remaining'         => $activeGrant?->days_remaining,
+                    '_grant_ok'                    => $activeGrant && $activeGrant->status === 'active',
+                    '_ad_spend_num'                => $adSpendShopee ?? 0.0,
+                ];
+            }
 
             // Faturamento da empresa no período: prioriza cache Adman (mês atual),
             // fallback SUM DB. Hotfix 2026-06-19 — usa cust_id (accessor) em vez
@@ -1491,8 +1801,16 @@ class PortfolioController extends Controller
 
         // Faturamento da carteira no PERÍODO ANTERIOR (mês passado ou janela
         // 30-60d atrás). Mesma lógica de fallback. Hotfix 2026-06-19 — cust_id.
+        // Fase 109 — empresa cuja fonte VENCEDORA é 'shopee' lê o anterior de
+        // $shopeeSumAnteriorSelf (nunca do Adman, mesmo que tenha cust_id).
         $totalRevenueAnterior = 0.0;
         foreach ($rawCompanies as $c) {
+            if ($fontesPorEmpresaSelf->get($c->id) === 'shopee') {
+                $rowShopeeAnt = $shopeeSumAnteriorSelf->get($c->id);
+                $totalRevenueAnterior += $rowShopeeAnt ? (float) $rowShopeeAnt->total : 0.0;
+                continue;
+            }
+
             $rev = null;
             if ($isMesAtual && $c->cust_id) {
                 $entry = $grossAnterior[$c->cust_id] ?? null;
