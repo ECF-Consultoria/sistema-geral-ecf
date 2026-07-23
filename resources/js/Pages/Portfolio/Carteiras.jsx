@@ -1,12 +1,38 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { router } from '@inertiajs/react';
 import { Briefcase, ChevronRight } from 'lucide-react';
-import { formatCurrency, formatPercent, cn } from '@/lib/utils';
+import { formatCurrencyCompact, formatPercent, cn } from '@/lib/utils';
 import { SourceBadge } from '@/Components/ui/source-badge';
 
 // Labels da taxonomia nova (cargo no setor Performance via pivot user_setores).
 // Mesmo mapeamento usado no Dashboard Admin antes do quick 260610-lj6.
 const tipoLabel = { analista: 'Analista', estrategista: 'Estrategista' };
+
+// Glow radial por tipo de profissional (identidade da dashboard ML — brilho
+// borrado no topo do card que intensifica no hover).
+const GLOW_TIPO = {
+    analista:     'radial-gradient(circle, rgba(56,189,248,0.55), transparent 70%)',   // sky
+    estrategista: 'radial-gradient(circle, rgba(168,85,247,0.55), transparent 70%)',   // roxo
+};
+const glowDoTipo = (tipo) => GLOW_TIPO[tipo] ?? 'radial-gradient(circle, rgba(255,230,0,0.45), transparent 70%)';
+
+// Mini-KPI com brilho (usado dentro do card do profissional). O `group-hover`
+// referencia o card externo (que tem `group`) — passar o mouse no card acende
+// os três brilhos juntos.
+function MetricMini({ label, value, valueClass, glow }) {
+    return (
+        <div className="relative overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5 min-w-0">
+            <div
+                className="pointer-events-none absolute -top-7 left-1/2 -translate-x-1/2 h-16 w-[85%] rounded-full blur-2xl opacity-[0.15] group-hover:opacity-40 transition-opacity duration-300"
+                style={{ background: glow }}
+            />
+            <div className="relative z-10 min-w-0">
+                <p className="text-white/35 text-[9.5px] font-semibold uppercase tracking-wide mb-1 leading-tight">{label}</p>
+                <p className={cn('font-display font-extrabold text-[15px] tabular-nums truncate', valueClass)}>{value}</p>
+            </div>
+        </div>
+    );
+}
 
 // Fase 90 (CART-07) — rótulos pt-BR nunca slug cru (regra sistêmica do
 // projeto). Mesma constante conceitual do AdminCarteira.jsx (SETOR_LABELS),
@@ -215,11 +241,18 @@ export default function PortfolioCarteiras({
                                 <div
                                     key={`${u.tipo}-${u.id}`}
                                     className={cn(
-                                        'rounded-xl border border-white/[0.07] bg-white/[0.02] p-4',
-                                        'flex flex-col gap-3 hover:border-ecf-yellow/20 transition-colors'
+                                        'group relative overflow-hidden rounded-2xl border border-white/[0.08] p-4',
+                                        'bg-gradient-to-b from-white/[0.04] to-white/[0.01]',
+                                        'flex flex-col gap-3.5 transition-all duration-300',
+                                        'hover:border-ecf-yellow/30 hover:from-white/[0.06]',
                                     )}
                                 >
-                                    <div className="flex items-center justify-between">
+                                    {/* Brilho de canto (identidade dashboard ML) — acende no hover. */}
+                                    <div
+                                        className="pointer-events-none absolute -top-16 -right-12 h-44 w-44 rounded-full blur-3xl opacity-[0.13] group-hover:opacity-30 transition-opacity duration-500"
+                                        style={{ background: glowDoTipo(u.tipo) }}
+                                    />
+                                    <div className="relative z-10 flex items-center justify-between">
                                         <div className="min-w-0">
                                             <p className="text-white font-semibold text-[13px] truncate">{u.name}</p>
                                             <p className="text-white/30 text-[11px] mt-0.5">
@@ -253,27 +286,27 @@ export default function PortfolioCarteiras({
                                         </button>
                                     </div>
                                     {/* Só o que é relevante (2026-07-23): Faturamento total,
-                                        Margem média % e quantidade de empresas. TACOS e Gasto
-                                        Ads saíram. */}
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Faturamento total</p>
-                                            <p className="text-blue-400 font-display font-bold text-base">
-                                                {u.total_revenue > 0 ? formatCurrency(u.total_revenue) : '—'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Margem média</p>
-                                            <p className="text-emerald-400 font-display font-bold text-base">
-                                                {u.avg_margin != null ? formatPercent(u.avg_margin) : '—'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Empresas</p>
-                                            <p className="text-white font-display font-bold text-base tabular-nums">
-                                                {u.empresas_unicas ?? 0}
-                                            </p>
-                                        </div>
+                                        Margem média % e quantidade de empresas. Formato compacto
+                                        no faturamento evita estourar o card em números grandes. */}
+                                    <div className="relative z-10 grid grid-cols-3 gap-2">
+                                        <MetricMini
+                                            label="Faturamento total"
+                                            value={u.total_revenue > 0 ? formatCurrencyCompact(u.total_revenue) : '—'}
+                                            valueClass="text-blue-300"
+                                            glow="radial-gradient(circle, rgba(59,130,246,0.5), transparent 70%)"
+                                        />
+                                        <MetricMini
+                                            label="Margem média"
+                                            value={u.avg_margin != null ? formatPercent(u.avg_margin) : '—'}
+                                            valueClass="text-emerald-300"
+                                            glow="radial-gradient(circle, rgba(52,211,153,0.5), transparent 70%)"
+                                        />
+                                        <MetricMini
+                                            label="Empresas"
+                                            value={u.empresas_unicas ?? 0}
+                                            valueClass="text-ecf-yellow"
+                                            glow="radial-gradient(circle, rgba(255,230,0,0.45), transparent 70%)"
+                                        />
                                     </div>
                                 </div>
                             ))}
