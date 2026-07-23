@@ -276,6 +276,7 @@ class Company extends Model
     public function analistaPerformance()
     {
         return $this->belongsToMany(User::class, 'company_users')
+            ->withPivot('assigned_at')
             ->wherePivot('role', 'consultor')
             ->where(function ($q) {
                 $q->whereIn('company_users.servico_id', function ($sub) {
@@ -302,6 +303,7 @@ class Company extends Model
     public function estrategistaPerformance()
     {
         return $this->belongsToMany(User::class, 'company_users')
+            ->withPivot('assigned_at')
             ->wherePivot('role', 'estrategista')
             ->where(function ($q) {
                 $q->whereIn('company_users.servico_id', function ($sub) {
@@ -319,6 +321,12 @@ class Company extends Model
                 });
             })
             ->distinct('users.id');
+    }
+
+    /** Fase 108 — histórico de entrada/saída de responsáveis (analista/estrategista). */
+    public function managerHistory()
+    {
+        return $this->hasMany(CompanyManagerHistory::class)->latest();
     }
 
     public function meetings()

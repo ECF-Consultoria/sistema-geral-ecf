@@ -11,7 +11,9 @@ use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\EcfDriveService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Models\CompanyManagerHistory;
 use App\Services\Nps\NpsScoreCalculator;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -296,7 +298,8 @@ class CompanyController extends Controller
             'goals' => fn($q) => $q->where('active', true)
                 ->with(['results' => fn($rq) => $rq->orderBy('period', 'desc')->limit(12)]),
             'ppas.mentor',
-            'meetings' => fn($q) => $q->orderBy('scheduled_at', 'desc')->limit(10),
+            // Fase 108 — histórico de gerenciamento (entrada/saída de responsáveis).
+            'managerHistory' => fn($q) => $q->with(['user:id,name', 'changedBy:id,name'])->limit(30),
             // Phase 72 Plan 02 — SC#5: eager-load response.answers alem de
             // response, pra NpsScoreCalculator::compute() nao gerar N+1 quando
             // recalcula medias por dimensao (surveys v15 com template_id).
@@ -386,40 +389,28 @@ class CompanyController extends Controller
         // dando impressão de "zerado". Adman intacta nos KPIs financeiros.
         //
         // Try/catch silencioso — falha de ECF NUNCA quebra a página.
+        // Fase 108 — do ECF Drive só interessa o HISTÓRICO DE MEDALHAS ML (+ a
+        // medalha atual). O resto do bloco "Análise ECF Drive" (métricas 12m,
+        // cluster, alertas/signals) foi removido da página. Try/catch silencioso
+        // — falha do ECF NUNCA quebra a página.
         $ecfDrive = null;
         if ($custId) {
             try {
-                $sellerData = $this->ecf->seller((string) $custId);
-
-                // Endpoints sellerMetricasMensal/sellerMedalhas/sellerSignals
-                // retornam SHAPE PAGINADO `{data, total, page, limit}` — extrair
-                // .data antes do slice. Mesmo padrão do EmpresaAnaliseEcfController
-                // (linha 102). Bug do Plano 04: slice ia no top-level.
-                $metricas = [];
-                $medalhas = [];
-                $signals  = [];
-                try {
-                    $r = $this->ecf->sellerMetricasMensal((string) $custId);
-                    $metricas = array_slice($r['data'] ?? [], -12);
-                } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF metricasMensal falhou cust={$custId}: " . $e->getMessage()); }
+                $medalhas     = [];
+                $medalhaAtual = null;
                 try {
                     $r = $this->ecf->sellerMedalhas((string) $custId);
                     $medalhas = array_slice($r['data'] ?? [], -12);
                 } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF medalhas falhou cust={$custId}: " . $e->getMessage()); }
                 try {
-                    $r = $this->ecf->sellerSignals((string) $custId);
-                    $signals = array_slice($r['data'] ?? [], 0, 20);
-                } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF signals falhou cust={$custId}: " . $e->getMessage()); }
+                    $sellerData   = $this->ecf->seller((string) $custId);
+                    $medalhaAtual = $sellerData['medalhaAtual'] ?? ($sellerData['medalha'] ?? null);
+                } catch (\Throwable $e) { Log::warning("[Companies/Show] ECF seller falhou cust={$custId}: " . $e->getMessage()); }
 
-                $ecfDrive = [
-                    'seller'   => $sellerData,
-                    'metricas' => $metricas,
-                    'medalhas' => $medalhas,
-                    'signals'  => $signals,
-                ];
+                if (!empty($medalhas) || $medalhaAtual !== null) {
+                    $ecfDrive = ['medalhas' => $medalhas, 'medalha_atual' => $medalhaAtual];
+                }
             } catch (\Throwable $e) {
-                // Não encontrada (404) ou erro genérico: silencia, KPIs Adman
-                // continuam funcionando normalmente.
                 Log::warning("[Companies/Show] ECF Drive indisponível cust={$custId}: " . $e->getMessage());
                 $ecfDrive = null;
             }
@@ -438,6 +429,8 @@ class CompanyController extends Controller
                 'segment'          => $company->segment,
                 'active'           => $company->active,
                 'notes'            => $company->notes,
+                // Fase 108 — data de entrada da empresa (cadastro).
+                'data_entrada'     => optional($company->created_at)->toDateString(),
                 // Phase 31 D-04 + Quick 260611-eml — contato do cliente
                 'email_cliente'    => $company->email_cliente,
                 'telefone'         => $company->telefone,
@@ -462,14 +455,20 @@ class CompanyController extends Controller
                     'connected_at'      => $company->mlToken->connected_at?->toISOString(),
                     'last_refreshed_at' => $company->mlToken->last_refreshed_at?->toISOString(),
                 ] : null,
+                // Fase 108 — só Faturamento + Margem (Tacos/Acos saíram da página).
                 'revenue_30d'      => $revenue30d,
-                'acos_30d'         => $acos30d,
-                'tacos_30d'        => $tacos30d,
                 'margin_pct_30d'   => $margin30d,
                 'liquid_margin_30d'=> $liquidMargin30d,
                 'ad_investment_30d'=> $adInvestment30d,
-                'consultor'        => $company->analistaPerformance->map->only(['id', 'name'])->values(),
-                'estrategista'     => $company->estrategistaPerformance->map->only(['id', 'name'])->values(),
+                // Responsáveis atuais + "desde" (assigned_at do pivot performance).
+                'consultor'        => $company->analistaPerformance->map(fn ($u) => [
+                    'id' => $u->id, 'name' => $u->name,
+                    'desde' => $u->pivot->assigned_at ? Carbon::parse($u->pivot->assigned_at)->toDateString() : null,
+                ])->values(),
+                'estrategista'     => $company->estrategistaPerformance->map(fn ($u) => [
+                    'id' => $u->id, 'name' => $u->name,
+                    'desde' => $u->pivot->assigned_at ? Carbon::parse($u->pivot->assigned_at)->toDateString() : null,
+                ])->values(),
                 // Phase 62 Plan 62-05 (META-01): shape enriquecido — inclui
                 // value_type/period_type + results[] (ate 12 periodos, ASC pra
                 // chart). Alimenta <GoalProgressPanel /> na Section "Metas Ativas".
@@ -493,11 +492,14 @@ class CompanyController extends Controller
                             'achieved'       => (bool) $r->achieved,
                         ])->all(),
                 ])->values(),
-                'meetings'         => $company->meetings->map(fn($m) => [
-                    'id' => $m->id, 'scheduled_at' => $m->scheduled_at,
-                    'status' => $m->status, 'meeting_link' => $m->meeting_link,
-                    'consultant_present' => $m->consultant_present,
-                    'mentor_present' => $m->mentor_present,
+                // Fase 108 — histórico de gerenciamento (entrada/saída de responsáveis).
+                'historico_gestao' => $company->managerHistory->map(fn ($h) => [
+                    'id'         => $h->id,
+                    'user'       => $h->user?->name,
+                    'papel'      => $h->papel,   // analista | estrategista
+                    'evento'     => $h->evento,  // entrada | saida
+                    'changed_by' => $h->changedBy?->name,
+                    'data'       => optional($h->created_at)->toDateString(),
                 ])->values(),
                 // Phase 72 Plan 02 — SC#5 (dual-path NpsScoreCalculator):
                 // Surveys v15 (template_id != null) tem medias por dimensao
@@ -544,11 +546,6 @@ class CompanyController extends Controller
                     // não necessariamente o Estrategista da empresa.
                     'mentor' => $p->mentor ? ['name' => $p->mentor->name] : null,
                 ])->values(),
-                'adman_metrics'    => $company->admanMetrics->map(fn($m) => [
-                    'id' => $m->id, 'reference_date' => $m->reference_date,
-                    'revenue' => $m->revenue, 'investment' => $m->investment,
-                    'tacos' => $m->tacos, 'contribution_margin_pct' => $m->contribution_margin_pct,
-                ])->values(),
                 // Contratos de serviço (ativos + inativos) — UI filtra "Mostrar inativos"
                 'contratos_servico' => $company->contratosServico->map(fn($ct) => [
                     'id'               => $ct->id,
@@ -564,16 +561,6 @@ class CompanyController extends Controller
                         'tipo_cobranca' => $ct->servico->tipo_cobranca,
                     ] : null,
                 ])->values(),
-                // Métricas ML diárias (últimos 90 dias) — usadas para KPIs com filtro de período
-                'ml_metrics' => $company->is_ml_driven
-                    ? $company->admanMetrics->map(fn($m) => [
-                        'date'     => $m->reference_date instanceof \Carbon\Carbon
-                            ? $m->reference_date->toDateString()
-                            : (string) $m->reference_date,
-                        'revenue'  => (float) $m->revenue,
-                        'ad_spend' => (float) $m->ad_spend,
-                    ])->values()
-                    : [],
             ],
             'servicos_disponiveis' => $servicosDisponiveis,
             // Phase 25 Plano 04: bloco ECF Drive (seller + 12m métricas + medalhas + signals)
@@ -641,6 +628,11 @@ class CompanyController extends Controller
         }
 
         if (!empty($sync)) {
+            // Fase 108 — captura os responsáveis ANTES da troca, para registrar
+            // o histórico de gerenciamento (entrada/saída) logo abaixo.
+            $antigoAnalista     = $company->analistaPerformance()->value('users.id');
+            $antigoEstrategista = $company->estrategistaPerformance()->value('users.id');
+
             // Phase 76 (DEC-A3 / Pitfall 3): escrita ESCOPADA por servico_id.
             // Resolve o servico_id do contrato performance ATIVO (NULL p/ ML puro
             // sem contrato performance = slot consolidado). NUNCA detach() de TUDO
@@ -665,9 +657,55 @@ class CompanyController extends Controller
             $detach->delete();
 
             $company->users()->attach($sync);
+
+            // Fase 108 — registra as trocas de responsável no histórico.
+            $this->registrarHistoricoGestao(
+                $company,
+                $antigoAnalista !== null ? (int) $antigoAnalista : null,
+                $antigoEstrategista !== null ? (int) $antigoEstrategista : null,
+                !empty($data['consultor_id']) ? (int) $data['consultor_id'] : null,
+                !empty($data['estrategista_id']) ? (int) $data['estrategista_id'] : null,
+                (int) $request->user()->id,
+            );
         }
 
         return back()->with('success', 'Empresa atualizada com sucesso.');
+    }
+
+    /**
+     * Fase 108 — registra entrada/saída de responsáveis (analista/estrategista)
+     * comparando o estado anterior com o novo. Só grava o que MUDOU.
+     */
+    private function registrarHistoricoGestao(
+        Company $company,
+        ?int $antigoAnalista,
+        ?int $antigoEstrategista,
+        ?int $novoAnalista,
+        ?int $novoEstrategista,
+        int $changedBy,
+    ): void {
+        $papeis = [
+            ['analista',     $antigoAnalista,     $novoAnalista],
+            ['estrategista', $antigoEstrategista, $novoEstrategista],
+        ];
+
+        foreach ($papeis as [$papel, $antigo, $novo]) {
+            if ($antigo === $novo) {
+                continue; // sem troca neste papel
+            }
+            if ($antigo) {
+                CompanyManagerHistory::create([
+                    'company_id' => $company->id, 'user_id' => $antigo,
+                    'papel' => $papel, 'evento' => 'saida', 'changed_by' => $changedBy,
+                ]);
+            }
+            if ($novo) {
+                CompanyManagerHistory::create([
+                    'company_id' => $company->id, 'user_id' => $novo,
+                    'papel' => $papel, 'evento' => 'entrada', 'changed_by' => $changedBy,
+                ]);
+            }
+        }
     }
 
     public function destroy(Company $company)
