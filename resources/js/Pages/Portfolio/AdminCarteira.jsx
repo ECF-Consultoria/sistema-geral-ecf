@@ -4,7 +4,7 @@ import { Link, router } from '@inertiajs/react';
 import { useState, useMemo } from 'react';
 import {
     ArrowLeft, Search, TrendingUp, TrendingDown, Building2,
-    Briefcase, DollarSign, Coins, Calendar, Percent, Users,
+    Briefcase, DollarSign, Calendar, Percent, Users,
 } from 'lucide-react';
 import { cn, formatCurrency, formatCurrencyCompact, formatPercent } from '@/lib/utils';
 import { FonteBadge, StatusBadge, VarBadge } from '@/Pages/Portfolio/components/CarteiraBadges';
@@ -456,23 +456,10 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                     </div>
                 )}
 
-                {/* ─── Margem absoluta (contexto adicional) ─────────────── */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <KpiCard
-                        label="Margem no período"
-                        value={formatCurrencyCompact(resumo?.total_margem_atual ?? 0)}
-                        sub={`Acumulado ${periodo?.range_atual ?? ''}`}
-                        icon={Coins}
-                        accent="text-emerald-200"
-                    />
-                    <KpiCard
-                        label="Margem mesmo intervalo mês anterior"
-                        value={formatCurrencyCompact(resumo?.total_margem_anterior ?? 0)}
-                        sub={`Baseline ${periodo?.range_anterior ?? ''}`}
-                        icon={Coins}
-                        accent="text-white/60"
-                    />
-                </div>
+                {/* Cards de margem em R$ removidos (2026-07-23, decisão do usuário):
+                    a margem de contribuição em R$ não é mais exibida na carteira —
+                    o que importa é a margem % (card "Margem média" acima) e a
+                    variação dela. */}
 
                 {/* ─── Listagem de empresas ─────────────────────────────── */}
                 <Card className="bg-ecf-card border-white/[0.08]">
