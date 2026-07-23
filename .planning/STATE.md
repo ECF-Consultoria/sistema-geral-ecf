@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v17.0
 milestone_name: Carteira e Desempenho multi-servico
 status: executing
-stopped_at: Completado 97-03-PLAN.md
-last_updated: "2026-07-21T11:45:09.505Z"
-last_activity: 2026-07-21
+stopped_at: Completado 109-01-PLAN.md
+last_updated: "2026-07-23T15:14:48.032Z"
+last_activity: 2026-07-23
 progress:
-  total_phases: 15
-  completed_phases: 13
-  total_plans: 33
-  completed_plans: 30
-  percent: 87
+  total_phases: 17
+  completed_phases: 17
+  total_plans: 39
+  completed_plans: 39
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 97 — Redesign da Dashboard Mercado Livre
+**Current focus:** Phase 109 — Shopee em Carteira e Desempenho
 
 ## Current Position
 
-Phase: 97 (Redesign da Dashboard Mercado Livre) — EXECUTING
-Plan: 4 of 4
+Phase: 109 (Shopee em Carteira e Desempenho) — EXECUTING
+Plan: 2 of 4
 
 Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
 Status: Ready to execute
-Last activity: 2026-07-21
+Last activity: 2026-07-23
 
 ## Performance Metrics
 
@@ -162,6 +162,7 @@ Last activity: 2026-07-21
 | Phase 97 P01 | 55min | 2 tasks | 2 files |
 | Phase 97 P02 | 50min | 2 tasks | 3 files |
 | Phase 97 P03 | 50min | 2 tasks | 3 files |
+| Phase 109 P01 | 50min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -666,8 +667,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-21T11:45:09.472Z
-Stopped at: Completado 97-03-PLAN.md
+Last session: 2026-07-23T15:14:48.014Z
+Stopped at: Completado 109-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
