@@ -53,7 +53,8 @@ function formatRangeCurto(iso) {
 const PERIODO_SEGMENTOS = [
     { key: 'em_curso', label: 'Em curso' },
     { key: 'bonus_atual', label: 'Bônus atual' },
-    { key: 'mes_fechado', label: 'Mês fechado' },
+    // "Mês fechado" removido (2026-07-23) — era redundante com "Bônus atual"
+    // (ambos apontam para o último mês fechado / competência de bônus).
 ];
 
 function PeriodoToggle({ segmentoAtivo, onSelect }) {
@@ -94,18 +95,14 @@ export default function PortfolioCarteiras({
     // local — reflete exatamente o que o backend resolveu.
     const searchParams = new URLSearchParams(window.location.search);
     const modoUrl = searchParams.get('modo');
-    const mesUrl = searchParams.get('mes');
-    const segmentoAtivo = modoUrl === 'bonus_atual'
-        ? 'bonus_atual'
-        : (periodo?.is_current_month ? 'em_curso' : 'mes_fechado');
-    // Valor do seletor de mês específico (input type=month) — usa o ?mes= da
-    // URL quando presente, senão deriva do início da janela atual resolvida.
-    const mesInputValue = mesUrl || (periodo?.current_start ? periodo.current_start.slice(0, 7) : '');
+    // Só dois segmentos: Em curso (default) e Bônus atual (?modo=bonus_atual).
+    // "Mês fechado" foi removido (redundante com Bônus atual).
+    const segmentoAtivo = modoUrl === 'bonus_atual' ? 'bonus_atual' : 'em_curso';
 
-    // Navegação unificada — preserva ?contexto= e, quando presente, ?modo=,
-    // sobrescrevendo só o que o `overrides` pedir.
+    // Navegação unificada — preserva ?contexto= e ?modo=, sobrescrevendo só o
+    // que o `overrides` pedir. Nunca mais carrega ?mes= (seletor removido).
     const navigate = (overrides) => {
-        const base = { contexto, mes: mesUrl ?? undefined, modo: modoUrl ?? undefined };
+        const base = { contexto, modo: modoUrl ?? undefined };
         const params = new URLSearchParams();
         Object.entries({ ...base, ...overrides }).forEach(([k, v]) => {
             if (v !== undefined && v !== null && v !== '') params.set(k, v);
@@ -118,21 +115,10 @@ export default function PortfolioCarteiras({
 
     const applyContexto = (value) => navigate({ contexto: value });
 
-    // Troca de segmento do toggle. 'mes_fechado' sem seleção prévia cai no
-    // mês imediatamente anterior ao corrente (não há lista de meses
-    // disponíveis nesta tela — o backend só valida ?mes=YYYY-MM via regex).
+    // Troca de segmento do toggle: Bônus atual (?modo=bonus_atual) ou Em curso.
     const applyPeriodo = (segmento) => {
         if (segmento === 'bonus_atual') {
             navigate({ modo: 'bonus_atual', mes: undefined });
-        } else if (segmento === 'mes_fechado') {
-            if (segmentoAtivo === 'mes_fechado' && mesInputValue) {
-                navigate({ modo: undefined, mes: mesInputValue });
-            } else {
-                const hoje = new Date();
-                const anterior = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
-                const mes = `${anterior.getFullYear()}-${String(anterior.getMonth() + 1).padStart(2, '0')}`;
-                navigate({ modo: undefined, mes });
-            }
         } else {
             navigate({ modo: undefined, mes: undefined });
         }
@@ -165,19 +151,6 @@ export default function PortfolioCarteiras({
                             seletor rolante legado 1/7/30/180 (o backend já ignora essa
                             janela desde a Fase 103). */}
                         <PeriodoToggle segmentoAtivo={segmentoAtivo} onSelect={applyPeriodo} />
-
-                        {/* "Mês fechado" — sem lista de meses fechados pronta nesta tela
-                            (diferente de Performance/AdminCarteira); seletor nativo de mês
-                            cobre a mesma necessidade, o backend já valida ?mes=YYYY-MM. */}
-                        {segmentoAtivo === 'mes_fechado' && (
-                            <input
-                                type="month"
-                                value={mesInputValue}
-                                onChange={(e) => navigate({ mes: e.target.value, modo: undefined })}
-                                title="Selecionar mês fechado da carteira"
-                                className="h-9 px-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-[13px] text-white/80 focus:outline-none focus:ring-1 focus:ring-ecf-yellow/40 cursor-pointer"
-                            />
-                        )}
 
                         <select
                             value={contexto}
@@ -279,29 +252,26 @@ export default function PortfolioCarteiras({
                                             Ver <ChevronRight size={12} />
                                         </button>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    {/* Só o que é relevante (2026-07-23): Faturamento total,
+                                        Margem média % e quantidade de empresas. TACOS e Gasto
+                                        Ads saíram. */}
+                                    <div className="grid grid-cols-3 gap-2">
                                         <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">TACOS Médio</p>
-                                            <p className="text-ecf-yellow font-display font-bold text-base">
-                                                {u.avg_tacos != null ? formatPercent(u.avg_tacos) : '—'}
-                                            </p>
-                                        </div>
-                                        <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Faturamento</p>
+                                            <p className="text-white/30 text-[10px] mb-0.5">Faturamento total</p>
                                             <p className="text-blue-400 font-display font-bold text-base">
                                                 {u.total_revenue > 0 ? formatCurrency(u.total_revenue) : '—'}
                                             </p>
                                         </div>
                                         <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Margem Méd.</p>
+                                            <p className="text-white/30 text-[10px] mb-0.5">Margem média</p>
                                             <p className="text-emerald-400 font-display font-bold text-base">
                                                 {u.avg_margin != null ? formatPercent(u.avg_margin) : '—'}
                                             </p>
                                         </div>
                                         <div className="rounded-lg bg-white/[0.03] border border-white/[0.05] p-2.5">
-                                            <p className="text-white/30 text-[10px] mb-0.5">Gasto Ads</p>
-                                            <p className="text-orange-400 font-display font-bold text-base">
-                                                {u.total_ad_spend > 0 ? formatCurrency(u.total_ad_spend) : '—'}
+                                            <p className="text-white/30 text-[10px] mb-0.5">Empresas</p>
+                                            <p className="text-white font-display font-bold text-base tabular-nums">
+                                                {u.empresas_unicas ?? 0}
                                             </p>
                                         </div>
                                     </div>
