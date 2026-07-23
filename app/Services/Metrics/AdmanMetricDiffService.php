@@ -61,6 +61,15 @@ class AdmanMetricDiffService
     private const METRIC_KEYS = ['revenue', 'contribution_margin_value', 'contribution_margin_pct'];
 
     /**
+     * Fase 110 (FIXMARG-01) — cobertura mínima (80% dos dias-COM-LINHA da
+     * janela current com `contribution_margin` não-nulo) para preferir o
+     * `calculated_fallback` LOCAL determinístico sobre o `.diff` nativo ao
+     * vivo na resolução de `contribution_margin_pct`. Ver `resolveMargemPct()`
+     * e `.planning/debug/margem-adman-diff-instavel.md` (root cause).
+     */
+    private const MARGEM_COBERTURA_MINIMA = 0.8;
+
+    /**
      * Memo em memória (escopo do request/instância) — guarda o resultado REAL
      * de `compute()` por cacheKey. Necessário porque o `DesempenhoScoreService`
      * unificado (2026-07-22) chama `compute()` DUAS vezes por empresa na mesma
@@ -157,10 +166,10 @@ class AdmanMetricDiffService
                 $marginValueAdman, $isJanelaIgual,
                 fn () => $this->fallbackSomaSimples($company, $periodo, 'contribution_margin'),
             ),
-            'contribution_margin_pct'   => $this->resolveField(
-                $marginPctAdman, $isJanelaIgual,
-                fn () => $this->fallbackMargemPct($company, $periodo),
-            ),
+            // Fase 110 (FIXMARG-01/02): margem % NÃO usa mais resolveField()
+            // genérico — tem prioridade INVERTIDA (local primeiro) + gate de
+            // cobertura próprios. Ver resolveMargemPct().
+            'contribution_margin_pct'   => $this->resolveMargemPct($marginPctAdman, $isJanelaIgual, $company, $periodo),
         ];
 
         $resultado = $this->buildResult($company, $periodo, $metrics);
@@ -213,6 +222,60 @@ class AdmanMetricDiffService
         return [
             'value'       => $value,
             'diff_pct'    => $fallback(),
+            'diff_source' => 'calculated_fallback',
+        ];
+    }
+
+    /**
+     * Resolve `contribution_margin_pct` com prioridade INVERTIDA (Fase 110 ·
+     * FIXMARG-01/02) em relação a `resolveField()`: o `calculated_fallback`
+     * LOCAL determinístico é preferido sobre o `.diff` nativo ao vivo sempre
+     * que a cobertura local (dias-COM-LINHA, não dias-calendário) for
+     * suficiente — a leitura ao vivo sofre falha transitória por rate-limit
+     * 429 concorrente (root cause em `.planning/debug/margem-adman-diff-instavel.md`),
+     * enquanto o local é barato (sem HTTP) e estável entre recomputes.
+     *
+     * Ordem:
+     *  1. Cobertura local ≥ MARGEM_COBERTURA_MINIMA ⇒ local (determinístico).
+     *  2. Senão, janela-igual + `.diff` nativo presente ⇒ ao vivo (último recurso).
+     *  3. Senão ⇒ local mesmo (pode ser `null` — FIXMARG-02: sem fail-open
+     *     artificial; cobre "empresa 0/0 sem venda" e "ao-vivo indisponível
+     *     E local insuficiente").
+     *
+     * `value` preserva o `marginPctAdman['value']` quando presente (mesmo no
+     * ramo local-preferido) — evita rebaixar `quality.status` pra 'missing'
+     * indevidamente quando só o `diff_pct` veio do local.
+     *
+     * @param  ?array{value: ?float, diff: ?float, prev: ?float}  $marginPctAdman
+     * @return array{value: ?float, diff_pct: ?float, diff_source: ?string}
+     */
+    private function resolveMargemPct(?array $marginPctAdman, bool $isJanelaIgual, Company $company, array $periodo): array
+    {
+        $value = isset($marginPctAdman['value']) ? (float) $marginPctAdman['value'] : null;
+
+        $local     = $this->fallbackMargemPct($company, $periodo);
+        $cobertura = $this->coberturaMargem($company, $periodo);
+
+        if ($local !== null && $cobertura >= self::MARGEM_COBERTURA_MINIMA) {
+            return [
+                'value'       => $value,
+                'diff_pct'    => $local,
+                'diff_source' => 'calculated_fallback',
+            ];
+        }
+
+        $adminDiff = $marginPctAdman['diff'] ?? null;
+        if ($isJanelaIgual && $adminDiff !== null) {
+            return [
+                'value'       => $value,
+                'diff_pct'    => (float) $adminDiff,
+                'diff_source' => 'adman_diff',
+            ];
+        }
+
+        return [
+            'value'       => $value,
+            'diff_pct'    => $local,
             'diff_source' => 'calculated_fallback',
         ];
     }
@@ -278,6 +341,14 @@ class AdmanMetricDiffService
      */
     private function somasComGuards(Company $company, array $periodo, string $campo): array
     {
+        $offsetsComuns = $this->offsetsComunsComLinha($company, $periodo, $campo);
+
+        if (empty($offsetsComuns)) {
+            // Guard margem_dias (um lado sem NENHUM dia com dado) OU guard
+            // dias-comuns (sem dia coincidente entre as janelas) — não computa.
+            return ['atual' => null, 'anterior' => null];
+        }
+
         $currentStart  = Carbon::parse($periodo['current_start'])->startOfDay();
         $currentEnd    = Carbon::parse($periodo['current_end'])->startOfDay();
         $baselineStart = Carbon::parse($periodo['baseline_start'])->startOfDay();
@@ -295,21 +366,7 @@ class AdmanMetricDiffService
             ->whereNotNull($campo)
             ->get(['reference_date', $campo]);
 
-        // Guard margem_dias: um dos lados sem NENHUM dia com dado ⇒ não computa.
-        if ($rowsAtual->isEmpty() || $rowsAnterior->isEmpty()) {
-            return ['atual' => null, 'anterior' => null];
-        }
-
         $offset = fn ($data, Carbon $inicioJanela): int => Carbon::parse($data)->startOfDay()->diffInDays($inicioJanela);
-
-        $offsetsAtual    = $rowsAtual->pluck('reference_date')->map(fn ($d) => $offset($d, $currentStart))->unique()->values()->all();
-        $offsetsAnterior = $rowsAnterior->pluck('reference_date')->map(fn ($d) => $offset($d, $baselineStart))->unique()->values()->all();
-
-        $offsetsComuns = array_values(array_intersect($offsetsAtual, $offsetsAnterior));
-
-        if (empty($offsetsComuns)) {
-            return ['atual' => null, 'anterior' => null]; // sem dia coincidente — não comparável
-        }
 
         $somaAtual = 0.0;
         foreach ($rowsAtual as $row) {
@@ -326,6 +383,94 @@ class AdmanMetricDiffService
         }
 
         return ['atual' => $somaAtual, 'anterior' => $somaAnterior];
+    }
+
+    /**
+     * Helper compartilhado (Fase 110): devolve os offsets "dias desde o início
+     * da janela" em que `$campo` tem linha NOT NULL nas DUAS janelas
+     * (current ∩ baseline) — a mesma mecânica de guards (margem_dias +
+     * dias-comuns) usada por `somasComGuards()`, extraída pra ser reaproveitada
+     * por `coberturaMargem()` (denominador/numerador de cobertura).
+     *
+     * @return int[] offsets comparáveis (vazio se algum lado não tem NENHUMA
+     *                linha com `$campo` não-nulo, ou se não há dia coincidente).
+     */
+    private function offsetsComunsComLinha(Company $company, array $periodo, string $campo): array
+    {
+        $currentStart  = Carbon::parse($periodo['current_start'])->startOfDay();
+        $currentEnd    = Carbon::parse($periodo['current_end'])->startOfDay();
+        $baselineStart = Carbon::parse($periodo['baseline_start'])->startOfDay();
+        $baselineEnd   = Carbon::parse($periodo['baseline_end'])->startOfDay();
+
+        $rowsAtual = AdmanMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', '>=', $currentStart->toDateString())
+            ->whereDate('reference_date', '<=', $currentEnd->toDateString())
+            ->whereNotNull($campo)
+            ->get(['reference_date']);
+
+        $rowsAnterior = AdmanMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', '>=', $baselineStart->toDateString())
+            ->whereDate('reference_date', '<=', $baselineEnd->toDateString())
+            ->whereNotNull($campo)
+            ->get(['reference_date']);
+
+        // Guard margem_dias: um dos lados sem NENHUM dia com dado ⇒ vazio.
+        if ($rowsAtual->isEmpty() || $rowsAnterior->isEmpty()) {
+            return [];
+        }
+
+        $offset = fn ($data, Carbon $inicioJanela): int => Carbon::parse($data)->startOfDay()->diffInDays($inicioJanela);
+
+        $offsetsAtual    = $rowsAtual->pluck('reference_date')->map(fn ($d) => $offset($d, $currentStart))->unique()->values()->all();
+        $offsetsAnterior = $rowsAnterior->pluck('reference_date')->map(fn ($d) => $offset($d, $baselineStart))->unique()->values()->all();
+
+        return array_values(array_intersect($offsetsAtual, $offsetsAnterior));
+    }
+
+    /**
+     * Cobertura local de margem (Fase 110 · FIXMARG-01) — fração dos
+     * dias-COM-LINHA (não dias-calendário) da janela current em que
+     * `contribution_margin` está sincronizado (não-nulo).
+     *
+     * Denominador = dias-com-linha COMPARÁVEIS entre current e baseline
+     * (`offsetsComunsComLinha(..., 'revenue')` — revenue é o proxy de "a
+     * empresa teve QUALQUER sync nesse dia", já que é populado tanto pelo
+     * `adman:sync` quanto pelo `ml:sync`, enquanto `contribution_margin` pode
+     * faltar por lag específico do `adman:sync-margem`). Aplicar o mesmo
+     * raciocínio de dias-com-linha à baseline é necessário porque a
+     * comparabilidade do diff já exige a interseção.
+     *
+     * Numerador = subconjunto desses offsets em que `contribution_margin`
+     * (janela current) está não-nulo.
+     *
+     * Empresa que fecha fim de semana ou entrou no meio do mês NÃO é
+     * penalizada por isso — só a AUSÊNCIA de margem nos dias em que ela
+     * efetivamente vendeu reduz a cobertura.
+     */
+    private function coberturaMargem(Company $company, array $periodo): float
+    {
+        $offsetsComLinha = $this->offsetsComunsComLinha($company, $periodo, 'revenue');
+        $denominador      = count($offsetsComLinha);
+
+        if ($denominador === 0) {
+            return 0.0; // sem dia-com-linha comparável — cai pro ramo 0/0 → null explícito.
+        }
+
+        $currentStart = Carbon::parse($periodo['current_start'])->startOfDay();
+        $currentEnd   = Carbon::parse($periodo['current_end'])->startOfDay();
+
+        $rowsComMargem = AdmanMetric::where('company_id', $company->id)
+            ->whereDate('reference_date', '>=', $currentStart->toDateString())
+            ->whereDate('reference_date', '<=', $currentEnd->toDateString())
+            ->whereNotNull('contribution_margin')
+            ->get(['reference_date']);
+
+        $offset = fn ($data): int => Carbon::parse($data)->startOfDay()->diffInDays($currentStart);
+        $offsetsComMargem = $rowsComMargem->pluck('reference_date')->map($offset)->unique()->values()->all();
+
+        $numerador = count(array_intersect($offsetsComLinha, $offsetsComMargem));
+
+        return $numerador / $denominador;
     }
 
     /**
