@@ -10,9 +10,13 @@
 Empresas do setor Shopee (conectadas via API — ex: Ale Peças, Baraoshop) passam a aparecer nas **carteiras** de quem cuida e na aba **Desempenho**, usando a MESMA regra de período do Mercado Livre. Fonte de dados: `shopee_metrics` (diária). Shopee ainda NÃO tem margem — faturamento + investimento entram; margem fica com placeholder até haver dado.
 
 **Entra no escopo:**
-- Carteira individual (`renderCarteiraProfissional`), carteira consolidada admin (`renderCarteirasConsolidadas`) e Transparência mostram números Shopee (faturamento + investimento) por período.
+- Carteira individual admin (`renderCarteiraProfissional` → `AdminCarteira.jsx`), carteira consolidada admin (`renderCarteirasConsolidadas` → `Carteiras.jsx`), Transparência (`transparencia` → `Transparencia.jsx`) e **auto-visualização do próprio profissional** (`renderPortfolio` → `Portfolio/Show.jsx`, rota `/portfolio`) mostram números Shopee (faturamento + investimento) por período.
 - Desempenho (`DesempenhoScoreService` → ranking/nota) inclui vínculos Shopee no universo elegível e no score.
 - Ambos os modos de período: "Em curso" e "Bônus atual".
+
+**Decisão de escopo (usuário 2026-07-23, após plan-check):** a self-view `/portfolio` (`renderPortfolio` → `Portfolio/Show.jsx`) ENTRA no escopo — é a tela que o próprio Gustavo/Felipe usa pra ver a carteira dele. Injetar os MESMOS dados Shopee (via dispatcher por fonte), SEM re-rotear e SEM mexer nas features ricas de Show.jsx (sugadores/PPA/NPS/meta). O bug legado de consolidação `$user->companies()` do `renderPortfolio` (citado no docblock do CarteiraContextService — "Felipe avaliado sobre 29 empresas gerenciando 4") NÃO é objeto desta fase; só garantir que os números financeiros Shopee apareçam corretos pelo dispatcher, sem piorar o legado.
+
+**Regra de desempate de fonte (TRAVADA, mesma nos dois lados):** quando uma empresa tiver vínculo performance elegível E vínculo shopee, a fonte financeira usada é **'adman'** (performance vence). Carteira (`renderCarteiraProfissional`/`renderCarteirasConsolidadas`/`transparencia`/`renderPortfolio`) e Desempenho (`DesempenhoScoreService`) DEVEM aplicar a mesma regra — senão os números divergem entre as telas e o bônus.
 
 **Fora do escopo:**
 - Não mexer em `MetricPeriodResolver` (agnóstico de fonte, já resolve as janelas).
