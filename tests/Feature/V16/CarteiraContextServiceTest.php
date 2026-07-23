@@ -60,7 +60,13 @@ class CarteiraContextServiceTest extends TestCase
         $this->assertTrue($vinculo['financial_metrics_eligible']);
     }
 
-    public function test_cenario_2_so_shopee_retorna_vinculo_sem_fonte_financeira(): void
+    /**
+     * Fase 109 (decisão travada 2026-07-23) — Shopee passa a ser fonte
+     * financeira elegível (`financial_source='shopee'`), assim como
+     * Performance (`'adman'`). Nome do teste preservado por histórico; a
+     * asserção agora reflete a nova regra (ver 109-01-PLAN.md).
+     */
+    public function test_cenario_2_so_shopee_retorna_vinculo_com_fonte_financeira_shopee(): void
     {
         $company = Company::factory()->create();
         $gustavo = User::factory()->create();
@@ -73,9 +79,9 @@ class CarteiraContextServiceTest extends TestCase
         $vinculo = $vinculos->first();
 
         $this->assertSame(Servico::SETOR_SHOPEE, $vinculo['setor']);
-        $this->assertFalse($vinculo['has_financial_source']);
-        $this->assertNull($vinculo['financial_source']);
-        $this->assertFalse($vinculo['financial_metrics_eligible']);
+        $this->assertTrue($vinculo['has_financial_source']);
+        $this->assertSame('shopee', $vinculo['financial_source']);
+        $this->assertTrue($vinculo['financial_metrics_eligible']);
     }
 
     public function test_cenario_3_performance_e_shopee_mesma_empresa_pessoas_diferentes_nao_vaza(): void
@@ -106,6 +112,11 @@ class CarteiraContextServiceTest extends TestCase
         );
     }
 
+    /**
+     * Fase 109 — o cenário tem 2 vínculos (Performance + Shopee), e AMBOS
+     * são elegíveis agora (antes só Performance). `vinculos_sem_fonte_financeira`
+     * cai pra 0 nesse cenário específico (nenhum setor sem fonte envolvido).
+     */
     public function test_contadores_dedup_empresas_unicas_vs_vinculos_de_servico(): void
     {
         $vinculos = $this->cenarioMesmoProfissionalDoisServicos();
@@ -114,8 +125,8 @@ class CarteiraContextServiceTest extends TestCase
 
         $this->assertSame(1, $contadores['empresas_unicas']);
         $this->assertSame(2, $contadores['vinculos_servico']);
-        $this->assertSame(1, $contadores['vinculos_financeiros']);
-        $this->assertSame(1, $contadores['vinculos_sem_fonte_financeira']);
+        $this->assertSame(2, $contadores['vinculos_financeiros']);
+        $this->assertSame(0, $contadores['vinculos_sem_fonte_financeira']);
     }
 
     // ─── Ramos legado / prioridade CTX-05 ─────────────────────────────────────

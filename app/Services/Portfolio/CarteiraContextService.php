@@ -252,8 +252,21 @@ class CarteiraContextService
                 'financial_source'           => 'adman',
                 'financial_metrics_eligible' => true,
             ],
-            // Shopee e os demais setores (polos/publicacao/outros) caem
-            // aqui — sem fonte financeira até segunda ordem (decisão 4).
+            // Fase 109 (decisão travada 2026-07-23) — Shopee passa a ser
+            // fonte financeira elegível: faturamento + investimento via
+            // `shopee_metrics` (leitura pelo `ShopeeMetricDiffService`),
+            // margem fica `null` até a Shopee fornecer o dado (arquitetura
+            // future-ready). Regra de desempate quando a MESMA empresa tem
+            // vínculo performance E shopee elegíveis ('adman' vence) é
+            // responsabilidade dos CONSUMIDORES (Planos 02/03) — este
+            // método resolve por VÍNCULO/setor, não por empresa.
+            Servico::SETOR_SHOPEE => [
+                'has_financial_source'       => true,
+                'financial_source'           => 'shopee',
+                'financial_metrics_eligible' => true,
+            ],
+            // Os demais setores (polos/publicacao/outros) caem aqui — sem
+            // fonte financeira até segunda ordem (decisão 4).
             default => [
                 'has_financial_source'       => false,
                 'financial_source'           => null,
