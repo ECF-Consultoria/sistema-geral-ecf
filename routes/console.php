@@ -134,6 +134,16 @@ Schedule::command('shopee:sync-ads')
     ->name('sync-shopee-ads')
     ->withoutOverlapping();
 
+// Fase 109 (SHOP-DES-01/02) — aquece o cache do ShopeeMetricDiffService
+// (Carteira/Desempenho lêem daqui via MetricDiffDispatcher). Mesmo padrão do
+// warm-diff Adman (§9.2) — cache DIÁRIO, auto-invalida à meia-noite. 11:35 =
+// logo após o sync Shopee (shopee:sync 11:15 + shopee:sync-ads 11:30), antes
+// do warm-diff Adman (11:40). Idempotente (cache-hit não custa).
+Schedule::command('shopee:warm-diff')
+    ->dailyAt('11:35')
+    ->name('warm-shopee-diff-pos-sync')
+    ->withoutOverlapping();
+
 // Cleanup diário de notificações lidas com >30 dias (POLL-04 — Phase 12).
 // Roda às 04:00, antes do calculate-goal-results (06:00) e do sync Adman.
 Schedule::command('notifications:cleanup')

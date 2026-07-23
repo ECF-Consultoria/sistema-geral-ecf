@@ -55,8 +55,11 @@ const FAIXA_BADGE_CLS = {
 // ─── Status de elegibilidade da nota (Fase 92 · DESEMP-08) ────────────────
 // Labels TRAVADOS pelo usuário — nunca renderizar o slug cru (blocked/partial/
 // official). 'official' não ganha badge (nota já é a oficial, sem ressalva).
+// Fase 109 (SHOP-DES-01/02): Shopee virou fonte financeira elegível (margem
+// placeholder=1) — deixou de ser o cenário 'blocked' (que agora só ocorre com
+// vínculo em setor sem QUALQUER fonte financeira, ex.: Polos/Publicação).
 const SCORE_STATUS_LABEL = {
-    blocked: 'Aguarda régua Shopee',
+    blocked: 'Sem fonte financeira',
     partial: 'Parcial',
     official: 'Oficial',
 };
@@ -65,7 +68,7 @@ const SCORE_STATUS_BADGE_CLS = {
     partial: 'bg-amber-500/10 text-amber-200/70 border-amber-500/20',
 };
 const SCORE_STATUS_TOOLTIP = {
-    blocked: 'Carteira ainda sem vínculo com fonte financeira — nota não é oficial (aguarda régua de bônus da Shopee).',
+    blocked: 'Carteira sem nenhum vínculo com fonte financeira — nota não é oficial (aguarda régua de bônus).',
     partial: 'Nota parcial — parte dos componentes do cálculo ainda não está disponível para esta carteira.',
 };
 
@@ -608,7 +611,7 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                 <span className="text-right" title="Delta vs mês passado fechado.">Δ mês</span>
                 <span className="text-right" title="NPS médio das respostas do mês (escala 0-5). Sem respostas → 0.">NPS</span>
                 <span className="text-right" title="% variação faturamento vs mês anterior (média das % por empresa; empresas novas excluídas).">Var Fat</span>
-                <span className="text-right" title="% variação margem de contribuição vs mês anterior (fonte Adman canônica).">Var Margem</span>
+                <span className="text-right" title="% variação margem de contribuição vs mês anterior (fonte Adman canônica). Empresas Shopee ainda não fornecem margem — usam placeholder 1,0 pt na nota, sem % exibida aqui.">Var Margem</span>
                 <span className="text-right" title="Empresas usadas no cálculo / total na carteira. As não usadas são empresas novas (menos de 2 meses) ou sem dados do mês anterior para comparar.">Empresas</span>
                 <span />
             </div>
@@ -728,9 +731,22 @@ function RankingConsultoria({ ranking, onSelectUser }) {
                                 <PctToneCell value={calculando ? null : u.componentes?.var_faturamento_pct} />
                             </div>
 
-                            {/* Var Margem */}
+                            {/* Var Margem — Fase 109 (SHOP-DES-02): quando a % real é
+                                null mas pontos_componentes.margem não é, o placeholder=1
+                                (empresa Shopee, que ainda não fornece margem) está em
+                                jogo — mostra um indicador em vez de "—" puro, pra não
+                                parecer dado ausente quando na verdade contribui pra nota. */}
                             <div className="text-right">
-                                <PctToneCell value={calculando ? null : u.componentes?.var_margem_pct} />
+                                {!calculando && u.componentes?.var_margem_pct == null && u.pontos_componentes?.margem != null ? (
+                                    <span
+                                        className="text-amber-300/70 text-[10px] font-semibold tabular-nums"
+                                        title="Margem Shopee ainda não é fornecida pela plataforma — usa o piso da régua (1,0 pt) como placeholder até haver o dado real."
+                                    >
+                                        Shopee
+                                    </span>
+                                ) : (
+                                    <PctToneCell value={calculando ? null : u.componentes?.var_margem_pct} />
+                                )}
                             </div>
 
                             {/* Empresas — tooltip com os metadados de elegibilidade (Fase 92 · SC2):

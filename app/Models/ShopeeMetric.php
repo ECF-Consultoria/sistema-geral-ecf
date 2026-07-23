@@ -6,7 +6,13 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * Métrica diária de faturamento Shopee de uma empresa (isolada do ML).
- * Alimenta EXCLUSIVAMENTE o Dashboard Shopee.
+ *
+ * Alimenta o Dashboard Shopee (leitura direta) e, desde a Fase 109
+ * (SHOP-DES-01/02), também a Carteira (`PortfolioController`) e o Desempenho
+ * (`DesempenhoScoreService`) — via `ShopeeMetricDiffService`/
+ * `MetricDiffDispatcher`, que somam `revenue`/`ad_expense` em janelas de
+ * período (a margem de contribuição continua sempre `null`; a Shopee não
+ * fornece CMV).
  */
 class ShopeeMetric extends Model
 {
