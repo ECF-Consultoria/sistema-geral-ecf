@@ -1,11 +1,15 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, Calculator, Plus, Trash2, Upload, Image, Pencil } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, Rocket, Save, Loader2, Tag, PackageOpen, Store, Copy, Check, ChevronLeft, ChevronRight, ChevronDown, Calculator, Plus, Trash2, Upload, Image, Pencil, Truck, Info, Gauge, Lightbulb } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/Components/ui/dialog';
 import { Button } from '@/Components/ui/button';
 import { router } from '@inertiajs/react';
 import ModoAnuncioTabs from '@/Pages/Mlb/ModoAnuncioTabs';
+import {
+    analisarAnuncio, MODALIDADES_FRETE, DICAS_DESCRICAO, INFO_EXPOSICAO_TIER,
+    PRECO_FRETE_GRATIS_OBRIGATORIO, FOTOS_RECOMENDADAS_MIN, extrairSettingsCategoria,
+} from '@/lib/mlAnuncioRegras';
 
 // ─── Badges de status do rascunho ───
 const STATUS_BADGE = {
@@ -931,6 +935,11 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
     const [imagemUrl, setImagemUrl]   = useState('');
     const [garantia, setGarantia]     = useState('30 dias');
     const [descricao, setDescricao]   = useState('');
+    // SHIP: modalidade de frete (me2/me1/not_specified) + frete grátis (free_shipping).
+    // Flex e Full NÃO entram aqui — o logistic_type é derivado da habilitação da conta
+    // no Mercado Livre, não do payload de publicação.
+    const [shippingMode, setShippingMode] = useState('me2');
+    const [freteGratis, setFreteGratis]   = useState(false);
     // Peso e dimensões do pacote — necessários para o ML calcular o frete me2
     const [pesoG, setPesoG]                 = useState('');
     const [comprimentoCm, setComprimentoCm] = useState('');
@@ -1048,6 +1057,12 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             if (attr.id === 'SELLER_PACKAGE_LENGTH') setComprimentoCm(String(v));
         });
 
+        // SHIP: restaura modalidade de frete e frete grátis do payload salvo
+        if (payload.shipping && typeof payload.shipping === 'object') {
+            if (payload.shipping.mode) setShippingMode(payload.shipping.mode);
+            setFreteGratis(payload.shipping.free_shipping === true);
+        }
+
         // Popula origemCampos a partir de meta_campos gravado pelo backend
         if (payload.meta_campos && typeof payload.meta_campos === 'object') {
             setOrigemCampos({ ...payload.meta_campos });
@@ -1156,6 +1171,8 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         setImagemUrl('');
         setGarantia('30 dias');
         setDescricao('');
+        setShippingMode('me2');
+        setFreteGratis(false);
         setPesoG('');
         setComprimentoCm('');
         setLarguraCm('');
@@ -1429,6 +1446,7 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
         titulo, preco, estoque, descricao, condicao, tipoAnuncio,
         imagemUrl, garantia, categoryId, valores, variacoes,
         pesoG, comprimentoCm, larguraCm, alturaCm,
+        shippingMode, freteGratis,
         rascunhoId,
     ]);
 
@@ -1588,7 +1606,13 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
             sale_terms: garantia
                 ? [{ id: 'WARRANTY_TYPE', value_name: 'Garantia do vendedor' }, { id: 'WARRANTY_TIME', value_name: garantia }]
                 : [],
-            shipping: { mode: 'me2', local_pick_up: false, free_shipping: false },
+            // SHIP: modalidade escolhida + frete grátis. free_methods vazio deixa o ML
+            // aplicar o método padrão quando o frete grátis está ligado (só faz sentido no ME2).
+            shipping: (() => {
+                const s = { mode: shippingMode, local_pick_up: false, free_shipping: !!freteGratis };
+                if (freteGratis && shippingMode === 'me2') s.free_methods = [];
+                return s;
+            })(),
             description: descricao,
             // variations incluso apenas quando existem variações montadas
             ...(variacoesPayload !== undefined ? { variations: variacoesPayload } : {}),
@@ -1675,11 +1699,17 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                 return;
             }
         }
-        // Guarda de campos-base (evita o erro body.required_fields do ML)
+        // Guarda de campos-base + guard-rail: bloqueia o que o ML rejeitaria com
+        // certeza (foto, obrigatórios da ficha, preço fora da faixa, condição,
+        // categoria) ANTES de gastar a chamada à API. Avisos NÃO bloqueiam.
         const faltando = camposBaseFaltando();
-        if (faltando.length > 0) {
-            setErros({ valido: false, erros: faltando.map(f => ({ campo: f, mensagem: 'obrigatório para publicar' })) });
-            setFlash('Preencha ' + faltando.join(', ') + ' antes de publicar.');
+        const bloqueios = [
+            ...faltando.map(f => ({ campo: f, mensagem: 'obrigatório para publicar' })),
+            ...analise.erros,
+        ];
+        if (bloqueios.length > 0) {
+            setErros({ valido: false, erros: bloqueios });
+            setFlash('Corrija os itens obrigatórios antes de publicar (veja ao lado).');
             return;
         }
         const id = await salvar();
@@ -1718,11 +1748,17 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                 return;
             }
         }
-        // Guarda de campos-base (evita o erro body.required_fields do ML)
+        // Guarda de campos-base + guard-rail: bloqueia o que o ML rejeitaria com
+        // certeza (foto, obrigatórios da ficha, preço fora da faixa, condição,
+        // categoria) ANTES de gastar a chamada à API. Avisos NÃO bloqueiam.
         const faltando = camposBaseFaltando();
-        if (faltando.length > 0) {
-            setErros({ valido: false, erros: faltando.map(f => ({ campo: f, mensagem: 'obrigatório para publicar' })) });
-            setFlash('Preencha ' + faltando.join(', ') + ' antes de publicar.');
+        const bloqueios = [
+            ...faltando.map(f => ({ campo: f, mensagem: 'obrigatório para publicar' })),
+            ...analise.erros,
+        ];
+        if (bloqueios.length > 0) {
+            setErros({ valido: false, erros: bloqueios });
+            setFlash('Corrija os itens obrigatórios antes de publicar (veja ao lado).');
             return;
         }
         const id = await salvar();
@@ -1783,6 +1819,23 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
 
     // ─── Título: limite máximo dinâmico por categoria (WIZ-01) ───
     const maxTitulo = categoria?.settings?.max_title_length ?? 60;
+
+    // ─── Análise de saúde + guard-rail (regras puras em @/lib/mlAnuncioRegras) ───
+    // Produz { erros (bloqueiam), avisos (não bloqueiam), ficha, score }.
+    // Consumida pelo painel "Saúde do anúncio" (aside) e pela guarda de publicar().
+    const settingsCat = useMemo(() => extrairSettingsCategoria(categoria), [categoria]);
+    const analise = useMemo(() => analisarAnuncio({
+        titulo, categoria, categoryId, preco, estoque, condicao, tipoAnuncio,
+        imagemUrl, descricao, temVariacoes, variacoes,
+        obrigatorios, opcionais,
+        preenchido: (a) => !!(valores[a.id]?.value_id || valores[a.id]?.value_name),
+        pesoG, comprimentoCm, larguraCm, alturaCm,
+        shippingMode, freteGratis,
+    }), [
+        titulo, categoria, categoryId, preco, estoque, condicao, tipoAnuncio,
+        imagemUrl, descricao, temVariacoes, variacoes, obrigatorios, opcionais, valores,
+        pesoG, comprimentoCm, larguraCm, alturaCm, shippingMode, freteGratis,
+    ]);
 
     // Guarda de rota: se empresa não foi passada, o usuário acessou o wizard diretamente
     if (!empresa) {
@@ -2013,6 +2066,31 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
                                 <h2 className="mb-3 text-sm font-semibold text-white">2. Ficha técnica (obrigatórios)</h2>
 
+                                {/* Completude da ficha técnica + impacto na exposição (P1) — o ML usa a ficha
+                                    para ranquear e exibir filtros de busca; quanto mais completa, melhor. */}
+                                {categoryId && busy !== 'attrs' && (analise.ficha.obrTotal > 0 || analise.ficha.opcTotal > 0) && (
+                                    <div className="mb-3 rounded-lg border border-white/[0.06] bg-ecf-bg px-3 py-2.5">
+                                        <div className="flex items-center gap-2 text-[12px]">
+                                            <Gauge size={14} className="shrink-0 text-ecf-yellow/70" />
+                                            <span className="text-white/70">
+                                                Obrigatórios: <b className={analise.ficha.obrCompleta ? 'text-emerald-400' : 'text-amber-300'}>{analise.ficha.obrOk}/{analise.ficha.obrTotal}</b>
+                                            </span>
+                                            {analise.ficha.opcTotal > 0 && (
+                                                <span className="text-white/50">
+                                                    · Secundários: {analise.ficha.opcOk}/{analise.ficha.opcTotal} ({analise.ficha.opcPct}%)
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                                            <div className="h-full rounded-full bg-ecf-yellow transition-all"
+                                                style={{ width: `${analise.ficha.opcTotal ? analise.ficha.opcPct : (analise.ficha.obrCompleta ? 100 : 0)}%` }} />
+                                        </div>
+                                        <p className="mt-1.5 text-[11px] text-white/40">
+                                            Ficha técnica completa melhora o ranqueamento e a exibição nas buscas do Mercado Livre.
+                                        </p>
+                                    </div>
+                                )}
+
                                 {/* Catálogo desativado por decisão do negócio — publicamos sempre como anúncio normal. */}
 
                                 {busy === 'attrs' ? (
@@ -2166,6 +2244,29 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                         </Campo>
                                     </div>
 
+                                    {/* Faixa de preço da categoria (quando o ML expõe um piso) */}
+                                    {(settingsCat.precoMin > 0 || settingsCat.precoMax) && (
+                                        <p className="mt-2 text-[11px] text-white/40">
+                                            Faixa de preço desta categoria:
+                                            {settingsCat.precoMin > 0 && <> mínimo <b className="text-white/60">R$ {settingsCat.precoMin.toFixed(2)}</b></>}
+                                            {settingsCat.precoMax && <> · máximo <b className="text-white/60">R$ {settingsCat.precoMax.toFixed(2)}</b></>}
+                                        </p>
+                                    )}
+
+                                    {/* Exposição e parcelamento por tipo de anúncio (P1) */}
+                                    {INFO_EXPOSICAO_TIER[tipoAnuncio] && (
+                                        <div className="mt-3 rounded-lg border border-ecf-yellow/20 bg-ecf-yellow/[0.04] px-3 py-2.5">
+                                            <p className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-ecf-yellow/90">
+                                                <Info size={13} /> {INFO_EXPOSICAO_TIER[tipoAnuncio].nome}
+                                            </p>
+                                            <ul className="space-y-0.5 text-[11px] text-white/55">
+                                                <li>• {INFO_EXPOSICAO_TIER[tipoAnuncio].exposicao}</li>
+                                                <li>• {INFO_EXPOSICAO_TIER[tipoAnuncio].parcelamento}</li>
+                                                <li>• {INFO_EXPOSICAO_TIER[tipoAnuncio].comissao}</li>
+                                            </ul>
+                                        </div>
+                                    )}
+
                                     {/* PRICE-01: simulador de preço embutido na etapa de preço */}
                                     {/* SHIP-02: freteExterno vem da cotação automática do pai */}
                                     <SimuladorPreco setPreco={setPreco} marcarEditado={marcarEditado} freteExterno={freteExterno} />
@@ -2189,6 +2290,20 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                 <input className={inputCls} value={imagemUrl} onChange={e => setImagemUrl(e.target.value)} placeholder="https://…" />
                                             </Campo>
                                         )}
+
+                                        {/* Regras de imagem do Mercado Livre (moderação — a foto é moderada
+                                            na publicação; violações pausam/reprovam o anúncio). Advisory. */}
+                                        <div className="rounded-lg border border-amber-500/15 bg-amber-500/[0.04] px-3 py-2.5">
+                                            <p className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-amber-300/90">
+                                                <Image size={13} /> Regras de imagem do Mercado Livre
+                                            </p>
+                                            <ul className="space-y-0.5 text-[11px] text-white/50">
+                                                <li>• Mínimo 500 px no menor lado; use {FOTOS_RECOMENDADAS_MIN}+ fotos (até {settingsCat.maxFotos}).</li>
+                                                <li>• Sem logos, marca d'água, texto promocional ou dados de contato na imagem.</li>
+                                                <li>• A 1ª foto (capa) deve ter fundo branco em muitas categorias.</li>
+                                            </ul>
+                                        </div>
+
                                         <Campo label="Garantia"><input className={inputCls} value={garantia} onChange={e => setGarantia(e.target.value)} placeholder="Ex.: 30 dias" /></Campo>
                                         <Campo label="Descrição" origem={origemCampos['description']}>
                                             <textarea
@@ -2196,8 +2311,37 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                                 value={descricao}
                                                 onChange={e => { setDescricao(e.target.value); marcarEditado('description'); }}
                                                 placeholder="Descreva o produto…"
+                                                maxLength={settingsCat.maxDescricao}
                                             />
+                                            {/* Contador de caracteres + sugestão de tamanho ideal (P2) */}
+                                            <div className="mt-1 flex items-center justify-between">
+                                                <span className="text-[11px] text-white/30">Ideal: 300–800 caracteres, texto puro.</span>
+                                                <span className={cn('text-[11px] tabular-nums',
+                                                    descricao.length > settingsCat.maxDescricao - 100 ? 'text-red-400' : 'text-white/30')}>
+                                                    {descricao.length.toLocaleString('pt-BR')}/{settingsCat.maxDescricao.toLocaleString('pt-BR')}
+                                                </span>
+                                            </div>
                                         </Campo>
+
+                                        {/* Boas práticas de descrição (P2) */}
+                                        <div className="rounded-lg border border-white/[0.06] bg-ecf-bg px-3 py-2.5">
+                                            <p className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-white/70">
+                                                <Lightbulb size={13} className="text-ecf-yellow/70" /> Boas práticas para a descrição
+                                            </p>
+                                            <ul className="space-y-0.5 text-[11px] text-white/45">
+                                                {DICAS_DESCRICAO.map((d, i) => <li key={i}>• {d}</li>)}
+                                            </ul>
+                                        </div>
+
+                                        {/* Nota fiscal: informativo — NF NÃO é declarada na publicação, é
+                                            pós-venda (após a compra, atrelada ao pedido/envio). */}
+                                        <div className="flex items-start gap-2 rounded-lg border border-white/[0.06] bg-ecf-bg px-3 py-2 text-[11px] text-white/45">
+                                            <Info size={13} className="mt-0.5 shrink-0 text-white/35" />
+                                            <span>
+                                                <b className="text-white/60">Nota fiscal:</b> não é informada na publicação. A NF-e é emitida/anexada
+                                                <b> após a venda</b>, atrelada ao pedido e ao envio (fluxo de expedição do Mercado Livre).
+                                            </span>
+                                        </div>
                                     </div>
                                 </section>
 
@@ -2278,6 +2422,64 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                         </section>
                                     );
                                 })()}
+
+                                {/* SHIP: modalidade de frete + frete grátis (P1).
+                                    Flex/Full não entram aqui — o logistic_type é derivado da conta no ML. */}
+                                <section className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
+                                    <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-white">
+                                        <Truck size={15} className="text-ecf-yellow/70" /> 7. Frete
+                                    </h2>
+                                    <p className="mb-3 text-[11px] text-white/40">
+                                        Como o comprador recebe o produto. Mercado Envios é o recomendado (elegível a Flex/Full conforme a conta).
+                                    </p>
+
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <Campo label="Modalidade de envio">
+                                            <select className={inputCls} value={shippingMode} onChange={e => setShippingMode(e.target.value)}>
+                                                {MODALIDADES_FRETE.map(m => <option key={m.v} value={m.v}>{m.l}</option>)}
+                                            </select>
+                                        </Campo>
+                                        <div className="flex items-end">
+                                            {/* Frete grátis — só faz sentido no Mercado Envios (me2) */}
+                                            <label className={cn(
+                                                'flex w-full cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition',
+                                                shippingMode !== 'me2'
+                                                    ? 'cursor-not-allowed border-white/[0.08] opacity-40'
+                                                    : 'border-white/[0.08] hover:border-ecf-yellow/40',
+                                            )}>
+                                                <input
+                                                    type="checkbox"
+                                                    className="accent-ecf-yellow h-4 w-4"
+                                                    checked={freteGratis}
+                                                    disabled={shippingMode !== 'me2'}
+                                                    onChange={e => setFreteGratis(e.target.checked)}
+                                                />
+                                                <span className="text-white/80">Oferecer frete grátis</span>
+                                            </label>
+                                        </div>
+                                    </div>
+
+                                    {/* Dica da modalidade escolhida */}
+                                    <p className="mt-2 text-[11px] text-white/40">
+                                        {MODALIDADES_FRETE.find(m => m.v === shippingMode)?.dica}
+                                    </p>
+
+                                    {/* Aviso: frete grátis obrigatório acima de R$79 no ME2 */}
+                                    {shippingMode === 'me2' && preco && Number(preco) >= PRECO_FRETE_GRATIS_OBRIGATORIO && !freteGratis && (
+                                        <p className="mt-1 flex items-center gap-1 text-[11px] text-amber-400/80">
+                                            <AlertTriangle size={12} /> Acima de R$ {PRECO_FRETE_GRATIS_OBRIGATORIO} o Mercado Envios costuma exigir frete grátis — ative para evitar recusa.
+                                        </p>
+                                    )}
+
+                                    {/* Flex/Full: dependem da conta, não do payload de publicação */}
+                                    <div className="mt-2 flex items-start gap-2 rounded-lg border border-white/[0.06] bg-ecf-bg px-3 py-2 text-[11px] text-white/45">
+                                        <Info size={13} className="mt-0.5 shrink-0 text-white/35" />
+                                        <span>
+                                            <b className="text-white/60">Flex</b> (entrega no mesmo dia) e <b className="text-white/60">Full</b> (estoque no ML) não são escolhidos aqui —
+                                            dependem da habilitação da conta no Mercado Livre e são aplicados automaticamente quando disponíveis.
+                                        </span>
+                                    </div>
+                                </section>
 
                             </>
                         )}
@@ -2388,6 +2590,57 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                             </div>
                         </div>
 
+                        {/* Saúde do anúncio (P1): score + guard-rail (erros) + avisos de qualidade.
+                            Proativo — aparece com a categoria escolhida, antes mesmo de Validar/Publicar. */}
+                        {categoryId && (
+                            <div className="rounded-xl border border-white/[0.08] bg-ecf-card p-4">
+                                <div className="mb-2 flex items-center justify-between">
+                                    <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-white/40">
+                                        <Gauge size={13} /> Saúde do anúncio
+                                    </p>
+                                    <span className={cn('text-sm font-bold tabular-nums',
+                                        analise.score >= 80 ? 'text-emerald-400' : analise.score >= 50 ? 'text-amber-300' : 'text-red-400')}>
+                                        {analise.score}<span className="text-[10px] font-normal text-white/30">/100</span>
+                                    </span>
+                                </div>
+                                <div className="h-2 overflow-hidden rounded-full bg-white/[0.08]">
+                                    <div className={cn('h-full rounded-full transition-all',
+                                        analise.score >= 80 ? 'bg-emerald-400' : analise.score >= 50 ? 'bg-amber-300' : 'bg-red-400')}
+                                        style={{ width: `${analise.score}%` }} />
+                                </div>
+
+                                {/* Erros bloqueantes (guard-rail — impedem publicar) */}
+                                {analise.erros.length > 0 && (
+                                    <ul className="mt-3 space-y-1">
+                                        {analise.erros.map((e, i) => (
+                                            <li key={`e${i}`} className="flex items-start gap-1.5 text-[11px] text-red-400/90">
+                                                <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                                                <span><b className="capitalize">{e.campo}:</b> {e.mensagem}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
+                                {/* Avisos (não bloqueiam, mas pioram qualidade/exposição) */}
+                                {analise.avisos.length > 0 && (
+                                    <ul className="mt-2 space-y-1">
+                                        {analise.avisos.map((a, i) => (
+                                            <li key={`a${i}`} className="flex items-start gap-1.5 text-[11px] text-amber-300/80">
+                                                <Info size={12} className="mt-0.5 shrink-0" />
+                                                <span><b className="capitalize">{a.campo}:</b> {a.mensagem}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+
+                                {analise.erros.length === 0 && analise.avisos.length === 0 && (
+                                    <p className="mt-3 flex items-center gap-1.5 text-[11px] text-emerald-400/80">
+                                        <CheckCircle2 size={12} /> Anúncio completo — sem pendências detectadas.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
                         {/* Resultado da validação */}
                         {erros && (
                             <div className={cn('rounded-xl border p-4', erros.valido ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-red-500/30 bg-red-500/5')}>
@@ -2397,6 +2650,9 @@ export default function AnunciarML({ empresa = null, rascunhos = [], produtos = 
                                 <ul className="space-y-1">
                                     {erros.erros.map((e, i) => (
                                         <li key={i} className="text-xs text-white/70">
+                                            {e.tipo === 'warning' && (
+                                                <span className="mr-1 rounded bg-amber-500/15 px-1 py-0.5 text-[9px] font-semibold text-amber-300">aviso</span>
+                                            )}
                                             {e.campo && <span className="font-medium text-white/90">{e.campo}: </span>}{e.mensagem}
                                         </li>
                                     ))}
