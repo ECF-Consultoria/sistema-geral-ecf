@@ -44,11 +44,36 @@ use Illuminate\Support\Facades\Log;
  * Após o lote: popula `ranking_pos` do mês via ROW_NUMBER() OVER ORDER BY
  * score DESC — filtrando `mes_referencia = ?` (não `ref_date`) para isolar
  * o ranking mensal do diário coexistente na mesma tabela.
+ *
+ * Fase 110 (Plan 02 · FIXMARG-03) — gate de qualidade da amostra de margem:
+ * este comando é o que PAGA o bônus, e roda em UMA passada `compute()` sem
+ * retry. Se essa passada coincidir com rate-limit 429 concorrente na Adman
+ * (root cause documentado em `.planning/debug/margem-adman-diff-instavel.md`),
+ * o resultado pode vir com margem degradada — sem o gate, isso SOBRESCREVE
+ * o snapshot bom com um número envenenado. Antes do `updateOrCreate`, a
+ * cobertura de `compute()['margem_amostra']` é checada contra
+ * `MARGEM_COBERTURA_MINIMA_CONGELAMENTO`; abaixo do limiar, a persistência é
+ * RECUSADA (preserva o snapshot já congelado) e um `Log::error` de alerta é
+ * emitido. A recusa quando NÃO existe snapshot anterior para preservar é
+ * INTENCIONALMENTE barulhenta — deixa o mês vazio, o que zera silenciosamente
+ * a cadeia de promoção DESEMP-08 (`promoverPor2MesesConsecutivos` lê o
+ * mensal de M-1) — por isso o `Log::error` desse sub-caso é acionável,
+ * nomeando o impacto e a instrução operacional de re-rodar o comando quando
+ * o rate-limit passar. Nenhuma row placeholder/degradada é criada como
+ * contorno (reintroduziria o número envenenado que o gate existe para
+ * evitar). Ver `<design_decision>` do `110-02-PLAN.md`.
  */
 class ConsolidarMesDesempenho extends Command
 {
     protected $signature = 'desempenho:consolidar-mes
         {--mes= : YYYY-MM (default = mês anterior ao hoje)}';
+
+    /**
+     * Cobertura mínima (fração de empresas Adman elegíveis com margem real)
+     * exigida para o congelamento ACEITAR a amostra — Fase 110 · FIXMARG-03.
+     * Abaixo disso, a persistência é recusada (ver docblock da classe).
+     */
+    private const MARGEM_COBERTURA_MINIMA_CONGELAMENTO = 0.7;
 
     protected $description = 'Consolida snapshot mensal fechado do mês passado (último dia do mês, após a coleta de NPS de M+1 fechar — v18.0 D2).';
 
@@ -107,6 +132,7 @@ class ConsolidarMesDesempenho extends Command
         $ok = 0;
         $fail = 0;
         $semCarteira = 0;
+        $degradado = 0;
 
         foreach ($users as $user) {
             try {
@@ -121,6 +147,59 @@ class ConsolidarMesDesempenho extends Command
                         'motivo'         => $result['motivo'] ?? null,
                     ]);
                     $semCarteira++;
+                    continue;
+                }
+
+                // Fase 110 (Plan 02 · FIXMARG-03) — gate de qualidade da
+                // amostra de margem ANTES do updateOrCreate: rede de
+                // segurança contra rate-limit 429 no instante do cron. Só
+                // gateia quando existe empresa Adman elegível (n_elegivel>0)
+                // — ausência de margem Adman (só-Shopee/sem carteira
+                // financeira) NÃO é degradação (cobertura=1.0 nesse caso,
+                // ver `DesempenhoScoreService::compute()`).
+                $margemAmostra = $result['margem_amostra'] ?? ['n_real' => 0, 'n_elegivel' => 0, 'cobertura' => 1.0];
+                $nElegivel     = (int) ($margemAmostra['n_elegivel'] ?? 0);
+                $cobertura     = (float) ($margemAmostra['cobertura'] ?? 1.0);
+
+                if ($nElegivel > 0 && $cobertura < self::MARGEM_COBERTURA_MINIMA_CONGELAMENTO) {
+                    $temAnterior = DesempenhoScoreSnapshot::mensal()
+                        ->where('user_id', $user->id)
+                        ->whereDate('mes_referencia', $mesStr)
+                        ->exists();
+
+                    $logContext = [
+                        'user_id'               => $user->id,
+                        'user_name'             => $user->name,
+                        'mes_referencia'        => $mesStr,
+                        'cobertura'             => $cobertura,
+                        'n_real'                => (int) ($margemAmostra['n_real'] ?? 0),
+                        'n_elegivel'            => $nElegivel,
+                        'sem_snapshot_anterior' => ! $temAnterior,
+                    ];
+
+                    if ($temAnterior) {
+                        Log::error(
+                            '[Desempenho Mensal] Amostra de margem degradada — congelamento RECUSADO (snapshot anterior PRESERVADO)',
+                            $logContext
+                        );
+                    } else {
+                        // Sub-caso INTENCIONALMENTE barulhento (design_decision
+                        // do 110-02-PLAN.md) — recusar deixa o user SEM row
+                        // neste mês, o que zera silenciosamente a cadeia de
+                        // promoção DESEMP-08 (promoverPor2MesesConsecutivos lê
+                        // o mensal de M-1). Reconciliação é OPERACIONAL: re-rodar
+                        // o comando manualmente quando o rate-limit passar (foi
+                        // assim que o snapshot de 22/07 foi gerado).
+                        Log::error(
+                            '[Desempenho Mensal] Amostra de margem degradada — congelamento RECUSADO e SEM snapshot anterior para preservar: '
+                                . 'o user fica SEM row neste mês. Impacto DESEMP-08: promoverPor2MesesConsecutivos lê o mensal de M-1 e a cadeia '
+                                . 'de promoção por 2 meses consecutivos zera. Ação: re-rodar `php artisan desempenho:consolidar-mes` manualmente '
+                                . 'quando o rate-limit da Adman passar.',
+                            $logContext + ['impacto_desemp08' => true]
+                        );
+                    }
+
+                    $degradado++;
                     continue;
                 }
 
@@ -150,7 +229,7 @@ class ConsolidarMesDesempenho extends Command
         // 2º passo — popular ranking_pos do mês (apenas rows mensais).
         $this->popularRankingPosMensal($mesStr);
 
-        $this->info("[Desempenho Mensal] Mes {$mesLabel} — OK: {$ok} · Falhas: {$fail} · Sem carteira: {$semCarteira}");
+        $this->info("[Desempenho Mensal] Mes {$mesLabel} — OK: {$ok} · Falhas: {$fail} · Sem carteira: {$semCarteira} · Degradados: {$degradado}");
         return self::SUCCESS;
     }
 
