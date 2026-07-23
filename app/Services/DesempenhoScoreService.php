@@ -408,6 +408,7 @@ class DesempenhoScoreService
 
         $varMargem      = $varMargemData['pct'];
         $nComMargemReal = $varMargemData['n_com_margem_real'];
+        $nElegivelAdman = $varMargemData['n_elegivel'];
 
         // ── Margem placeholder=1 para empresas Shopee (Fase 109 · SHOP-DES-02,
         // DECISÃO TRAVADA — ver 109-03-PLAN.md <design_margem_placeholder>) ──
@@ -466,6 +467,18 @@ class DesempenhoScoreService
             // só-performance; consumidores existentes (Fase 92) não recomputam.
             'empresas_carteira'     => $contadores['empresas_unicas'],
             'empresas_com_baseline' => $empresasBaseline,
+            // ── Amostra da margem (Fase 110 · Plan 02 · FIXMARG-03) ───────────
+            // Alimenta o gate de qualidade do congelamento mensal
+            // (`ConsolidarMesDesempenho`) — cobertura < limiar RECUSA persistir
+            // o snapshot (rede de segurança contra rate-limit 429 no instante
+            // do cron). cobertura=1.0 quando não há empresa Adman elegível
+            // (só-Shopee/sem carteira financeira) — ausência legítima de
+            // expectativa de margem NÃO é degradação (110-CONTEXT.md).
+            'margem_amostra' => [
+                'n_real'     => $nComMargemReal,
+                'n_elegivel' => $nElegivelAdman,
+                'cobertura'  => $nElegivelAdman > 0 ? round($nComMargemReal / $nElegivelAdman, 4) : 1.0,
+            ],
             'componentes' => [
                 'nps_medio'           => $nps,
                 'var_faturamento_pct' => $varFat,
@@ -1075,15 +1088,31 @@ class DesempenhoScoreService
      * `n_com_margem_real` (nº de empresas cujo diff de margem REAL entrou na
      * média) é devolvido pra alimentar o denominador do blend.
      *
+     * Fase 110 (Plan 02 · FIXMARG-03): também devolve `n_elegivel` — nº de
+     * empresas com fonte financeira 'adman' (elegíveis a margem real; Shopee
+     * NUNCA retorna diff de margem, então não entra no denominador). É o
+     * numerador/denominador que alimenta `margem_amostra.cobertura` em
+     * `compute()`, consumido pelo gate de qualidade do congelamento mensal
+     * (`ConsolidarMesDesempenho`) — não confundir com `n_shopee_placeholder`
+     * (contagem feita em `compute()` sobre `$companies` já filtrado por
+     * invalidação de competência).
+     *
      * @param  EloquentCollection<int, \App\Models\Company>  $companies
      * @param  array  $periodo  shape do `MetricPeriodResolver::resolve()`
      * @param  Collection<int, string>  $fontes  company_id → financial_source vencedora
-     * @return array{pct: ?float, n_com_margem_real: int}
+     * @return array{pct: ?float, n_com_margem_real: int, n_elegivel: int}
      */
     private function computeVarMargem(User $user, Carbon $mes, EloquentCollection $companies, array $periodo, Collection $fontes): array
     {
+        // Denominador da cobertura: empresas cuja fonte financeira vencedora é
+        // 'adman' (Shopee nunca fornece diff de margem real — não é "buraco",
+        // é ausência legítima de expectativa, ver 110-CONTEXT.md).
+        $nElegivel = $companies
+            ->filter(fn ($c) => ($fontes[$c->id] ?? 'adman') !== 'shopee')
+            ->count();
+
         if ($companies->isEmpty()) {
-            return ['pct' => null, 'n_com_margem_real' => 0];
+            return ['pct' => null, 'n_com_margem_real' => 0, 'n_elegivel' => $nElegivel];
         }
 
         $vars           = collect();
@@ -1101,12 +1130,13 @@ class DesempenhoScoreService
         }
 
         if ($vars->isEmpty()) {
-            return ['pct' => null, 'n_com_margem_real' => 0];
+            return ['pct' => null, 'n_com_margem_real' => 0, 'n_elegivel' => $nElegivel];
         }
 
         return [
             'pct'               => round($vars->avg(), 2),
             'n_com_margem_real' => $nComMargemReal,
+            'n_elegivel'        => $nElegivel,
         ];
     }
 
