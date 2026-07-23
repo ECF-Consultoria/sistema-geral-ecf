@@ -1,6 +1,6 @@
 ---
 slug: margem-adman-diff-instavel
-status: diagnosed
+status: resolved
 trigger: Margem % (contribution_margin_pct.diff_pct) do .diff NATIVO da Adman no modo bônus/fechado é instável — mesmo mês fechado (junho) retorna diffs diferentes a cada recompute, com swings implausíveis por empresa (±40–77%). Afeta a nota de margem do bônus de desempenho.
 created: 2026-07-23
 updated: 2026-07-23T15:35:00-03:00
