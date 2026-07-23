@@ -1075,5 +1075,28 @@ Plans:
 
 **Cobertura:** 23/23 REQs v18.0 mapeadas ✓ — zero órfãos, zero duplicatas.
 
+### Phase 109: Shopee em Carteira e Desempenho (regra do ML, sem margem por ora)
+
+**Goal:** Empresas do setor Shopee (conectadas via API — ex: Ale Peças, Baraoshop) passam a aparecer nas carteiras de quem cuida e na aba Desempenho, usando a MESMA regra de período do Mercado Livre. "Em curso" = dia 01 do mês atual até hoje vs mesmo intervalo do mês passado; "Bônus atual" = mês fechado vs janela equivalente anterior (badge de crescimento/queda). Fonte: `shopee_metrics` (diária: `revenue`=faturamento, `ad_expense`=investimento; SEM margem/CMV). Uma fase cobre Carteira + Desempenho juntos (compartilham a mesma fonte de diff).
+
+**Requirements**: SHOP-CAR-01 (Shopee elegível financeiro na carteira), SHOP-CAR-02 (faturamento+investimento por período, mesma janela do ML), SHOP-DES-01 (Shopee entra no score/ranking de Desempenho), SHOP-DES-02 (margem placeholder=1 até haver dado, arquitetura future-ready) — a refinar no plan.
+
+**Depends on:** Phase 100 (`MetricPeriodResolver` — janelas em-curso/fechado, agnóstico de fonte), Phase 101 (`AdmanMetricDiffService` — contrato de diff a espelhar), Phase 103/104 (Carteira/UI por período)
+
+**Escopo cirúrgico** (fonte única hoje = `AdmanMetricDiffService::compute()`):
+1. `CarteiraContextService::flagsFinanceirasPorSetor()` — habilitar branch `Servico::SETOR_SHOPEE` como elegível financeiro (`financial_source='shopee'`); hoje só `performance` é elegível.
+2. Criar `ShopeeMetricDiffService` com o MESMO contrato de retorno do `AdmanMetricDiffService` (revenue + investimento com `diff_pct`; `contribution_margin_*` = null), lendo `shopee_metrics` no MESMO `$periodo`.
+3. Dispatcher por fonte (Adman vs Shopee) nas ~4 chamadas diretas a `admanDiffService->compute()`: `DesempenhoScoreService::computeVarFaturamento()`/`computeVarMargem()`, `PortfolioController::renderCarteiraProfissional()`/`transparencia()`.
+4. Régua de margem / `score_status` tolerante a margem ausente (não bloquear/`partial` indevido); bump da cacheKey do desempenho (v9→v10, atualizar strings nos testes); warm cache Shopee equivalente ao `WarmAdmanDiffCache`. `MetricPeriodResolver` NÃO muda. UI (Transparencia/AdminCarteira/filtro `shopee` do Performance) já recebe `fonte='shopee'` — passa a receber número real.
+
+**Decisão de negócio** (usuário 2026-07-23): a nota do Desempenho mantém as 3 dimensões **Faturamento + Margem + NPS**. Como Shopee ainda NÃO tem dado de margem, a **nota de margem das empresas Shopee = 1** (piso da régua 1-5) como placeholder, com arquitetura pronta para receber margem real no futuro. ⚠️ Margem=1 puxa a média/ranking pra baixo em profissional só-Shopee — a VERIFICATION deve sinalizar esse impacto com números reais para confirmação.
+
+**Ressalvas de dados:** Ads (investimento) só tem ~6 meses de histórico → comparação de investimento em janela antiga fica `null`. Dias sem venda não geram linha → tratar ausência como zero ao somar/comparar períodos. Cobertura histórica de faturamento depende de backfill já rodado (`MIN(reference_date)` por empresa).
+
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 109 to break down)
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
