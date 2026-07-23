@@ -8,6 +8,7 @@ use App\Services\AdmanService;
 use App\Services\Metrics\AdmanMetricDiffService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
 
@@ -195,6 +196,74 @@ class AdmanMetricDiffServiceTest extends TestCase
     }
 
     /**
+     * Período `previous_equal_length_window` — janela de 30 dias (calendário
+     * cheio) pra testar a distinção dias-com-linha vs dias-calendário: current
+     * 2026-07-01..30 (31 dias? não — 30), baseline 2026-06-01..30 (30 dias,
+     * junho tem exatamente 30).
+     */
+    private function periodoJanelaIgual30Dias(): array
+    {
+        return [
+            'mode'                   => 'closed_period',
+            'period_key'             => 'custom',
+            'current_start'          => '2026-07-01',
+            'current_end'            => '2026-07-30',
+            'baseline_start'         => '2026-06-01',
+            'baseline_end'           => '2026-06-30',
+            'days_count'             => 30,
+            'comparison_mode'        => 'previous_equal_length_window',
+            'timezone'               => 'America/Sao_Paulo',
+            'data_fresh_until'       => '2026-07-30',
+            'bonus_payment_month'    => null,
+            'bonus_competence_month' => null,
+            'is_current_month'       => false,
+            'is_closed'              => true,
+        ];
+    }
+
+    /**
+     * Semeia AdmanMetric em DIAS ALTERNADOS (offsets pares) dentro de um range
+     * de `$diasTotais` dias-calendário — simula empresa que só vende em PARTE
+     * do mês (fecha fim de semana, entrou no meio do mês etc.), mas 100%
+     * SINCRONIZADA nos dias em que efetivamente vendeu (linha sempre com
+     * `contribution_margin` não-nulo).
+     */
+    private function semearAdmanMetricAlternado(Company $company, string $inicio, int $diasTotais, float $revenue, float $margem): void
+    {
+        $inicioDate = Carbon::parse($inicio);
+        for ($i = 0; $i < $diasTotais; $i += 2) {
+            AdmanMetric::create([
+                'company_id'              => $company->id,
+                'reference_date'          => $inicioDate->copy()->addDays($i)->toDateString(),
+                'revenue'                 => $revenue,
+                'contribution_margin'     => $margem,
+                'contribution_margin_pct' => round(($margem / $revenue) * 100, 4),
+            ]);
+        }
+    }
+
+    /**
+     * Semeia `revenue` em TODOS os dias do range (dias-com-linha = 100% via
+     * revenue), mas `contribution_margin` só nos primeiros `$diasComMargem`
+     * dias — simula falha REAL de sincronização de margem (não ausência de
+     * venda): a empresa vendeu todo dia, mas a margem só chegou em poucos.
+     */
+    private function semearRevenueTodoDiaMargemParcial(Company $company, string $inicio, int $diasTotais, float $revenue, int $diasComMargem): void
+    {
+        $inicioDate = Carbon::parse($inicio);
+        for ($i = 0; $i < $diasTotais; $i++) {
+            $temMargem = $i < $diasComMargem;
+            AdmanMetric::create([
+                'company_id'              => $company->id,
+                'reference_date'          => $inicioDate->copy()->addDays($i)->toDateString(),
+                'revenue'                 => $revenue,
+                'contribution_margin'     => $temMargem ? 200.0 : null,
+                'contribution_margin_pct' => $temMargem ? round((200.0 / $revenue) * 100, 4) : null,
+            ]);
+        }
+    }
+
+    /**
      * CENÁRIO (a) — janela-igual (`previous_equal_length_window`) com .diff
      * presente ⇒ diff_source='adman_diff', diff_pct=14.09 (percentageMargin.diff).
      */
@@ -330,5 +399,154 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertNotNull($resultado['metrics']['revenue']['diff_pct']);
         // (19800-18000)/18000*100 = 10%
         $this->assertSame(10.0, $resultado['metrics']['revenue']['diff_pct']);
+    }
+
+    // ─────────────── Fase 110 (FIXMARG-01/02) — prioridade local + gate de cobertura ───────────────
+
+    /**
+     * CENÁRIO (g) — cobertura local suficiente (100% dos dias-com-linha nas
+     * duas janelas com contribution_margin não-nulo) PREFERE o local
+     * determinístico, mesmo com o .diff nativo presente e DIFERENTE.
+     */
+    public function test_g_cobertura_suficiente_prefere_local_mesmo_com_adman_diff_presente(): void
+    {
+        $this->fakeAdmanEndpoints(); // percentageMargin.diff = 14.09 (ao vivo)
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        // Cobertura 100% nas duas janelas (18/18 dias-com-linha, margem sempre
+        // não-nula) — local: pct(20%) vs pct(20%) => diff 0.0, DIFERENTE do
+        // .diff nativo (14.09).
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
+        $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame(0.0, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertNotEquals(14.09, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
+    }
+
+    /**
+     * CENÁRIO (h) — determinismo: 3 chamadas de compute() com o .diff AO VIVO
+     * oscilando a cada chamada (simula rate-limit 429 concorrente — valores
+     * reais do trigger do debug: +6,83/-3,25/+8,63 refletidos aqui como
+     * 69.3/-44.4/8.63) devolvem o MESMO diff_pct (vem do local). Cache
+     * EXTERNO (diff service) e INTERNO (AdmanService) limpos entre chamadas
+     * pra provar determinismo real, não cache mascarando.
+     */
+    public function test_h_recompute_repetido_com_ao_vivo_oscilando_e_deterministico(): void
+    {
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
+        $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
+
+        $periodo    = $this->periodoJanelaIgual();
+        $resultados = [];
+
+        foreach ([69.3, -44.4, 8.63] as $diffOscilante) {
+            Cache::flush();
+            $accountMetrics = $this->respostaAccountMetrics();
+            $accountMetrics['metrics']['percentageMargin']['diff'] = $diffOscilante;
+            Http::fake([
+                '*/performance/*'       => Http::response($this->respostaPerformance(), 200),
+                '*/accounts/*/metrics*' => Http::response($accountMetrics, 200),
+            ]);
+
+            $resultado    = app(AdmanMetricDiffService::class)->compute($company, $periodo);
+            $resultados[] = $resultado['metrics']['contribution_margin_pct']['diff_pct'];
+        }
+
+        $this->assertCount(1, array_unique($resultados),
+            'diff_pct deve ser IDÊNTICO nas 3 chamadas (vem do local determinístico, não do ao-vivo oscilante)');
+        $this->assertSame(0.0, $resultados[0]);
+    }
+
+    /**
+     * CENÁRIO (i) — cobertura é medida por DIAS-COM-LINHA, não dias-calendário.
+     * Empresa que só vende em dias alternados (15 de 30 dias-calendário) mas
+     * 100% sincronizada NESSES dias-com-linha usa o local. Se o denominador
+     * fosse dias-calendário (diffInDays=30), a cobertura cairia pra ~50% e
+     * recusaria o local indevidamente.
+     */
+    public function test_i_cobertura_por_dias_com_linha_nao_por_calendario(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $this->semearAdmanMetricAlternado($company, '2026-07-01', 30, 1000.0, 200.0);
+        $this->semearAdmanMetricAlternado($company, '2026-06-01', 30, 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual30Dias());
+
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertNotNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+    }
+
+    /**
+     * CENÁRIO (j) — cobertura INSUFICIENTE de verdade: empresa vendeu (tem
+     * linha/revenue) todo dia da janela current (30 dias-com-linha), mas a
+     * margem só sincronizou em 1 desses dias (falha REAL de sync de margem,
+     * não ausência de venda). Cobertura=1/30 (3,3%) < 80% => cai pro .diff
+     * nativo ao vivo (último recurso).
+     */
+    public function test_j_cobertura_insuficiente_real_cai_para_ao_vivo(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $this->semearRevenueTodoDiaMargemParcial($company, '2026-07-01', 30, 1000.0, diasComMargem: 1);
+        $this->semearAdmanMetric($company, '2026-06-01', '2026-06-30', 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual30Dias());
+
+        $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame(14.09, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
+    }
+
+    /**
+     * CENÁRIO (k) — empresa SEM nenhuma linha AdmanMetric (0/0, sem venda)
+     * E ao-vivo indisponível (percentageMargin ausente do payload) => null
+     * EXPLÍCITO (FIXMARG-02, sem fail-open artificial).
+     */
+    public function test_k_empresa_sem_linha_e_ao_vivo_indisponivel_da_null_explicito(): void
+    {
+        Http::fake([
+            '*/performance/*'       => Http::response($this->respostaPerformance(), 200),
+            '*/accounts/*/metrics*' => Http::response([
+                'metrics' => [
+                    'billing'      => ['value' => 0, 'diff' => null, 'prev' => null],
+                    'liquidMargin' => ['value' => 0, 'diff' => null, 'prev' => null],
+                    // percentageMargin AUSENTE — ao-vivo indisponível.
+                ],
+            ], 200),
+        ]);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+        // Sem NENHUMA linha AdmanMetric — empresa 0/0 (sem venda/teste).
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+    }
+
+    /**
+     * CENÁRIO (l) — REGRESSÃO: mesmo com a margem % preferindo o local
+     * (cobertura 100%), `revenue` e `contribution_margin_value` CONTINUAM
+     * resolvendo via `resolveField()` original (.diff nativo quando
+     * isJanelaIgual) — escopo estrito, sem regressão de faturamento/carteira.
+     */
+    public function test_l_revenue_continua_adman_diff_mesmo_com_margem_local_preferida(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
+        $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame('adman_diff', $resultado['metrics']['revenue']['diff_source']);
+        $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_value']['diff_source']);
     }
 }
