@@ -25,6 +25,11 @@ class MercadoLivreService
     private const STATE_TTL = 604800; // 7 dias para o cliente autorizar
     private const SITE_ID   = 'MLB'; // Brasil
 
+    // Rate limit (429): o ML limita requisições por app/usuário. Um 429 é
+    // transitório — retentamos com backoff honrando o header Retry-After.
+    private const MAX_429_RETRIES = 3;  // tentativas extras após o 1º 429
+    private const MAX_429_WAIT    = 8;  // teto por espera (s) — não travar o worker/página
+
     // ═══ OAuth: geração de URL ════════════════════════════════════════════════
 
     /**
@@ -276,9 +281,12 @@ class MercadoLivreService
             throw new \RuntimeException("[MercadoLivre] Empresa {$company->id} sem token válido.");
         }
 
-        $response = Http::withToken($token->access_token)
+        // Envio isolado em closure para reusar no retry de 429 e no re-envio pós-refresh.
+        $send = fn (MlToken $t) => Http::withToken($t->access_token)
             ->withHeaders($headers)
             ->get(self::API_BASE . $endpoint, $query);
+
+        $response = $this->comRetry429(fn () => $send($token), "GET {$endpoint}");
 
         if ($response->status() === 401) {
             Log::warning("[MercadoLivre] 401 em {$endpoint} empresa {$company->id} — tentando refresh", [
@@ -288,9 +296,7 @@ class MercadoLivreService
             // Tenta renovar o token antes de desistir
             try {
                 $token = $this->refreshToken($token);
-                $response = Http::withToken($token->access_token)
-                    ->withHeaders($headers)
-                    ->get(self::API_BASE . $endpoint, $query);
+                $response = $this->comRetry429(fn () => $send($token), "GET {$endpoint}");
             } catch (\RuntimeException) {
                 // refreshToken já marcou como revoked e logou
                 throw new \RuntimeException("[MercadoLivre] Token inválido para {$company->name}.");
@@ -364,7 +370,7 @@ class MercadoLivreService
             ->withHeaders($headers)
             ->{$method}(self::API_BASE . $endpoint, $body);
 
-        $response = $send($token);
+        $response = $this->comRetry429(fn () => $send($token), "{$method} {$endpoint}");
 
         if ($response->status() === 401) {
             Log::warning("[MercadoLivre] 401 em {$method} {$endpoint} empresa {$company->id} — tentando refresh", [
@@ -374,7 +380,7 @@ class MercadoLivreService
             // Tenta renovar o token antes de desistir (mesmo fluxo do get()).
             try {
                 $token    = $this->refreshToken($token);
-                $response = $send($token);
+                $response = $this->comRetry429(fn () => $send($token), "{$method} {$endpoint}");
             } catch (\RuntimeException) {
                 // refreshToken já marcou como revoked e logou
                 throw new \RuntimeException("[MercadoLivre] Token inválido para {$company->name}.");
@@ -388,6 +394,60 @@ class MercadoLivreService
         }
 
         return $response->json() ?? [];
+    }
+
+    // ═══ Rate limit: retry em 429 ═════════════════════════════════════════════
+
+    /**
+     * Executa uma requisição HTTP retentando em 429 (rate limit) com backoff.
+     *
+     * O 429 do ML é transitório: honramos o header Retry-After quando presente;
+     * senão aplicamos backoff exponencial (1s, 2s, 4s…), com teto de MAX_429_WAIT
+     * por espera e MAX_429_RETRIES tentativas — para não travar o worker/página.
+     * A resposta final (mesmo 429) é devolvida ao chamador, que decide o erro.
+     *
+     * NÃO retenta 5xx nem timeout aqui (o refreshToken já cobre transitórios de
+     * OAuth; erros de servidor sobem para o chamador tratar). Só 429.
+     *
+     * @param  callable():\Illuminate\Http\Client\Response  $send
+     */
+    private function comRetry429(callable $send, string $contexto): \Illuminate\Http\Client\Response
+    {
+        $tentativa = 0;
+
+        while (true) {
+            $response = $send();
+
+            if ($response->status() !== 429) {
+                return $response;
+            }
+
+            $tentativa++;
+            if ($tentativa > self::MAX_429_RETRIES) {
+                Log::warning("[MercadoLivre] 429 persistente em {$contexto} após {$tentativa} tentativas — desistindo.");
+
+                return $response; // devolve o 429 — chamador trata como erro
+            }
+
+            $espera = $this->esperaRetry429($response, $tentativa);
+            Log::info("[MercadoLivre] 429 (rate limit) em {$contexto} — aguardando {$espera}s (tentativa {$tentativa}/" . self::MAX_429_RETRIES . ')');
+            sleep($espera);
+        }
+    }
+
+    /**
+     * Segundos a esperar antes de retentar um 429. Honra Retry-After (segundos)
+     * quando numérico; senão backoff exponencial por tentativa. Sempre <= teto.
+     */
+    private function esperaRetry429(\Illuminate\Http\Client\Response $response, int $tentativa): int
+    {
+        $retryAfter = $response->header('Retry-After');
+        if (is_numeric($retryAfter)) {
+            return (int) min((int) $retryAfter, self::MAX_429_WAIT);
+        }
+
+        // Backoff exponencial: 1, 2, 4… limitado ao teto (não trava o worker).
+        return (int) min(2 ** ($tentativa - 1), self::MAX_429_WAIT);
     }
 
     // ═══ Dados: status individual do MLB (Phase 53-01) ════════════════════════
