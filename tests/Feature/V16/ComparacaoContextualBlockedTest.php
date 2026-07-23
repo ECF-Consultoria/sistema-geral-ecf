@@ -144,13 +144,22 @@ class ComparacaoContextualBlockedTest extends TestCase
         return $user;
     }
 
-    /** Profissional BLOCKED — só vínculo Shopee, sem fonte financeira elegível. */
+    /**
+     * Profissional BLOCKED — só vínculo em setor SEM fonte financeira.
+     *
+     * Fase 109 (SHOP-DES-01/02, decisão travada 2026-07-23) — Shopee DEIXOU
+     * de ser o cenário `blocked` (virou financeiramente elegível, com margem
+     * placeholder=1 — ver `DesempenhoElegibilidadeTest`). O único jeito de
+     * permanecer `blocked` hoje é um vínculo em setor sem QUALQUER fonte
+     * financeira (`polos`/`publicacao`/`outros` — branch `default` de
+     * `CarteiraContextService::flagsFinanceirasPorSetor()`).
+     */
     private function criarBlocked(string $nome): User
     {
-        $user          = $this->criarUserComCargo($nome);
-        $empresa       = $this->criarEmpresa();
-        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE);
-        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoShopee);
+        $user         = $this->criarUserComCargo($nome);
+        $empresa      = $this->criarEmpresa();
+        $servicoPolos = $this->criarServico(Servico::SETOR_POLOS);
+        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoPolos);
         // Financeiro absurdo — se vazasse pro score bloqueado, o teste detectaria.
         $this->mockAdman($empresa, '2026-08', revenue: 999999);
         $this->mockAdman($empresa, '2026-07', revenue: 1);
@@ -167,7 +176,7 @@ class ComparacaoContextualBlockedTest extends TestCase
         $self   = $this->criarOfficial('Self Official', revenueAtual: 10200, revenuePrev: 10000); // +2%
         $par1   = $this->criarOfficial('Par Official Baixo', revenueAtual: 9800,  revenuePrev: 10000); // -2%
         $par2   = $this->criarOfficial('Par Official Alto', revenueAtual: 10500, revenuePrev: 10000); // +5%
-        $blocked = $this->criarBlocked('Par Blocked Só-Shopee');
+        $blocked = $this->criarBlocked('Par Blocked Só-Polos');
 
         // Notas reais (fora da rota, mesmo mês de referência do controller)
         // usadas como oráculo — SEM depender de constantes internas da régua.

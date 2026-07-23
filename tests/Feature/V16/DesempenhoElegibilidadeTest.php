@@ -161,48 +161,76 @@ class DesempenhoElegibilidadeTest extends TestCase
         ]);
     }
 
+    /**
+     * Fase 109 (SHOP-DES-01/02) — 1 row de ShopeeMetric no dia 10 do mês
+     * informado (mesmo padrão de `mockAdman`, dia comum às duas janelas).
+     * Margem Shopee não existe (sempre null no diff service) — sem
+     * parâmetro de margem aqui de propósito.
+     */
+    private function mockShopee(Company $c, string $mesYm, float $revenue): void
+    {
+        \App\Models\ShopeeMetric::create([
+            'company_id'     => $c->id,
+            'reference_date' => Carbon::parse($mesYm . '-10')->toDateString(),
+            'revenue'        => $revenue,
+        ]);
+    }
+
     // ═══ Testes ════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_so_shopee_recebe_blocked_com_nota_null_e_permanece_no_ranking(): void
+    public function test_so_shopee_produz_score_official_com_margem_placeholder_1(): void
     {
-        // Cenário Matheus (medido em prod) — 1 empresa, só vínculo Shopee.
+        // Fase 109 (SHOP-DES-01/02, decisão travada 2026-07-23) — SUPERA o
+        // comportamento pré-Fase 109 (blocked/nota_final null, coberto pelo
+        // teste homônimo do 91-01-PLAN.md): Shopee vira fonte financeira
+        // elegível (financial_metrics_eligible=true) e a margem das empresas
+        // Shopee usa placeholder=1.0 (piso da régua). Cenário Matheus (medido
+        // em prod) — 1 empresa, só vínculo Shopee — agora PRODUZ nota.
         $user    = $this->criarUserComCargo('Matheus Só-Shopee', $this->cargoAnalistaId);
         $empresa = $this->criarEmpresa();
 
         $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE);
         $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoShopee);
 
-        // Dados financeiros da empresa Shopee — NÃO podem vazar pro score
-        // bloqueado (é exatamente o bug que esta fase corrige).
-        $this->mockAdman($empresa, '2026-08', revenue: 11000, margem: 10500);
-        $this->mockAdman($empresa, '2026-07', revenue: 10000, margem: 10000);
+        // Faturamento Shopee real via shopee_metrics — a fonte roteada pelo
+        // dispatcher (MetricDiffDispatcher) para uma empresa fonte='shopee'.
+        $this->mockShopee($empresa, '2026-08', revenue: 11000);
+        $this->mockShopee($empresa, '2026-07', revenue: 10000);
+
+        // Dados Adman ABSURDOS na MESMA empresa Shopee — se vazassem pro
+        // score (dispatcher roteando pra fonte errada), o teste detectaria
+        // (var_faturamento explodiria pra +900%, não os +10% do Shopee).
+        $this->mockAdman($empresa, '2026-08', revenue: 999999);
+        $this->mockAdman($empresa, '2026-07', revenue: 1);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($user, Carbon::parse('2026-08-01'));
 
         $this->assertFalse($r['sem_carteira'],
             'Matheus tem vínculo Shopee ativo — não é sem_carteira (DESEMP-07).');
-        $this->assertSame('blocked', $r['score_status']);
-        $this->assertNull($r['nota_final'],
-            'D-91-01: blocked força nota_final=null (sem nota oficial até a diretoria aprovar régua).');
-        $this->assertNull($r['faixa_bonus']);
-        $this->assertFalse($r['faixa_promovida']);
-        $this->assertNull($r['componentes']['var_faturamento_pct'],
-            'Financeiro da empresa Shopee NÃO pode vazar pro score bloqueado.');
-        $this->assertNull($r['componentes']['var_margem_pct']);
+        $this->assertNotSame('blocked', $r['score_status'],
+            'Fase 109: Shopee é fonte financeira elegível — só-Shopee não é mais blocked.');
+        $this->assertSame('official', $r['score_status'],
+            'faturamento com baseline (shopee_metrics) + margem placeholder → official.');
+        $this->assertNotNull($r['nota_final']);
+        $this->assertNotNull($r['faixa_bonus']);
+        $this->assertEqualsWithDelta(10.0, $r['componentes']['var_faturamento_pct'], 0.001,
+            'Faturamento Shopee real via dispatcher — NÃO vem do AdmanMetric absurdo da mesma empresa.');
+        $this->assertNull($r['componentes']['var_margem_pct'],
+            'Shopee não fornece margem real (arquitetura future-ready) — % exposta continua null.');
+        $this->assertEqualsWithDelta(1.0, $r['pontos_componentes']['margem'], 0.001,
+            'margemPontos: só-Shopee (nComMargemReal=0) → placeholder puro = 1.0.');
         // Item 2 (2026-07-21) — mês EM CURSO (setTestNow 15/08/2026) usa PISO
-        // NPS 1.0 (supera a exclusão da Fase 105): o componente entra com 1.0
-        // desde o dia 1 para não inflar a nota só com financeiro. Como o user
-        // é `blocked`, a nota_final continua null (D-91-01, linha acima) — o
-        // piso do NPS não muda o bloqueio.
+        // NPS 1.0 (supera a exclusão da Fase 105).
         $this->assertSame(1.0, $r['componentes']['nps_medio'],
-            'Mês em curso → piso NPS 1.0 (item 2), não mais null.');
+            'Mês em curso → piso NPS 1.0 (item 2).');
         $this->assertSame(1, $r['empresas_unicas']);
         $this->assertSame(1, $r['vinculos_servico']);
-        $this->assertSame(0, $r['vinculos_financeiros']);
-        $this->assertSame(1, $r['vinculos_sem_fonte_financeira']);
-        $this->assertSame(0, $r['empresas_com_baseline']);
+        $this->assertSame(1, $r['vinculos_financeiros'],
+            'Fase 109: vínculo Shopee conta em vinculos_financeiros (deixou de ser sem-fonte).');
+        $this->assertSame(0, $r['vinculos_sem_fonte_financeira']);
+        $this->assertSame(1, $r['empresas_com_baseline']);
     }
 
     #[Test]
@@ -247,20 +275,30 @@ class DesempenhoElegibilidadeTest extends TestCase
 
         $this->assertSame('official', $r['score_status']);
         $this->assertEqualsWithDelta(3.00, $r['componentes']['var_faturamento_pct'], 0.001);
-        $this->assertEqualsWithDelta(2.80, $r['componentes']['var_margem_pct'], 0.001);
+        $this->assertEqualsWithDelta(2.80, $r['componentes']['var_margem_pct'], 0.001,
+            'var_margem_pct exposto continua a % REAL (só da empresa A) — placeholder NÃO vaza aqui.');
         $this->assertSame(1, $r['empresas_com_baseline']);
         $this->assertSame(2, $r['empresas_unicas']);
         $this->assertSame(2, $r['vinculos_servico']);
-        $this->assertSame(1, $r['vinculos_financeiros']);
-        $this->assertSame(1, $r['vinculos_sem_fonte_financeira']);
-        // Item 2 (2026-07-21) — mês EM CURSO usa PISO NPS 1.0. A nota passa a
-        // ser a média dos 3 componentes: nps=1.0; régua_fat(+3.00%)=4pts;
-        // régua_margem(+2.80%)=4pts → (1.0 + 4 + 4) / 3 = 3.00.
+        // Fase 109 (SHOP-DES-01): empresaB (Shopee) agora conta em
+        // vinculos_financeiros (financial_metrics_eligible=true) — as 2
+        // empresas contam; vinculos_sem_fonte_financeira zera.
+        $this->assertSame(2, $r['vinculos_financeiros']);
+        $this->assertSame(0, $r['vinculos_sem_fonte_financeira']);
+        // Item 2 (2026-07-21) — mês EM CURSO usa PISO NPS 1.0.
         $this->assertSame(1.0, $r['componentes']['nps_medio'],
             'Mês em curso → piso NPS 1.0 (item 2).');
-        $this->assertEqualsWithDelta(3.00, $r['nota_final'], 0.001);
+        // Fase 109 (SHOP-DES-02) — margemPontos: blend ponderado entre a
+        // margem REAL da empresa A (reguaMargem(2.80%)=4.0, nComMargemReal=1)
+        // e o placeholder=1.0 da empresa B Shopee (nShopeePlaceholder=1):
+        // (4.0×1 + 1.0×1) / (1+1) = 2.50. A nota passa a ser a média dos 3
+        // componentes: nps=1.0; régua_fat(+3.00%)=4pts; margemPontos=2.50 →
+        // (1.0 + 4 + 2.50) / 3 = 2.50 (não mais 3.00 — a empresa Shopee agora
+        // participa da dimensão margem via placeholder).
+        $this->assertEqualsWithDelta(2.50, $r['pontos_componentes']['margem'], 0.001);
+        $this->assertEqualsWithDelta(2.50, $r['nota_final'], 0.001);
         $this->assertSame('sem_bonus', $r['faixa_bonus'],
-            'nota 3.00 cai na faixa sem_bonus [0.00,3.99] (seed bonus_faixas).');
+            'nota 2.50 cai na faixa sem_bonus [0.00,3.99] (seed bonus_faixas).');
         $this->assertSame(2, $r['empresas_carteira'],
             'Compat DESEMP-05: empresas_carteira reflete empresas_unicas.');
     }
@@ -292,7 +330,12 @@ class DesempenhoElegibilidadeTest extends TestCase
 
         $this->assertSame(1, $r['empresas_unicas']);
         $this->assertSame(2, $r['vinculos_servico']);
-        $this->assertSame(1, $r['vinculos_financeiros']);
+        // Fase 109 (SHOP-DES-01): os 2 vínculos (Performance + Shopee) são
+        // individualmente financial_metrics_eligible=true — vinculos_financeiros
+        // conta 2 (o dedup por EMPRESA só se aplica a empresas_unicas/
+        // companies_elegiveis, nunca a este contador de VÍNCULOS). A empresa
+        // resolve fonte='adman' (desempate travado: performance vence).
+        $this->assertSame(2, $r['vinculos_financeiros']);
         $this->assertSame(1, $r['empresas_com_baseline'],
             'Se duplicasse por vínculo, empresas_com_baseline seria 2.');
         $this->assertEqualsWithDelta(5.00, $r['componentes']['var_faturamento_pct'], 0.001,

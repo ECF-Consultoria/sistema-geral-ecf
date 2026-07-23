@@ -611,16 +611,26 @@ class DesempenhoScoreServiceTest extends TestCase
         //   (null, +3%, +2.8%) → (—, 4, 4) → média 4.00 (nulls parciais viram média dos não-null)
         //   (4.25, null, null) → 4.25 (só NPS)
         //   (null, null, null) → null
+        //
+        // Fase 109 (SHOP-DES-02) — o 3º parâmetro de computeNotaFinal deixou
+        // de ser a % BRUTA de margem (que o método aplicava reguaMargem()
+        // internamente) e passou a ser `$margemPontos` JÁ RÉGUA'D (o blend
+        // real+placeholder Shopee, calculado por `margemPontos()` em
+        // `compute()`). Os valores abaixo são os PONTOS (reguaMargem($pct)),
+        // não mais a % bruta — os resultados numéricos permanecem IDÊNTICOS
+        // (regressão zero: só-performance passa o pReal puro, que é
+        // algebricamente o mesmo valor que o método calculava internamente
+        // antes da Fase 109).
         /** @var DesempenhoScoreService $service */
         $service = app(DesempenhoScoreService::class);
         $method  = new ReflectionMethod($service, 'computeNotaFinal');
         $method->setAccessible(true);
 
-        $this->assertEqualsWithDelta(4.08, $method->invoke($service, 4.25, 3.0, 2.8), 0.001,
-            'computeNotaFinal(4.25, 3.0, 2.8) → 4.08 (NPS + régua_fat + régua_margem / 3).');
+        $this->assertEqualsWithDelta(4.08, $method->invoke($service, 4.25, 3.0, 4.0), 0.001,
+            'computeNotaFinal(4.25, 3.0, reguaMargem(2.8)=4.0) → 4.08 (NPS + régua_fat + margemPontos / 3).');
 
-        $this->assertEqualsWithDelta(4.00, $method->invoke($service, null, 3.0, 2.8), 0.001,
-            'NPS null → média dos restantes ((régua_fat 4 + régua_margem 4) / 2 = 4.00).');
+        $this->assertEqualsWithDelta(4.00, $method->invoke($service, null, 3.0, 4.0), 0.001,
+            'NPS null → média dos restantes ((régua_fat 4 + margemPontos 4) / 2 = 4.00).');
 
         $this->assertEqualsWithDelta(4.25, $method->invoke($service, 4.25, null, null), 0.001,
             'Somente NPS presente → nota_final = próprio NPS (média de 1 elemento).');
@@ -629,14 +639,14 @@ class DesempenhoScoreServiceTest extends TestCase
             'Todos componentes null → nota_final = null.');
 
         // Casos extremos que motivaram o fix (variações negativas grandes):
-        // (NPS 4 + régua_fat 1 + régua_margem 1) / 3 = 6/3 = 2.00.
-        $this->assertEqualsWithDelta(2.00, $method->invoke($service, 4.0, -15.0, -20.0), 0.001,
+        // (NPS 4 + régua_fat 1 + margemPontos 1) / 3 = 6/3 = 2.00.
+        $this->assertEqualsWithDelta(2.00, $method->invoke($service, 4.0, -15.0, 1.0), 0.001,
             'Variações negativas fortes → régua 1+1 pt; nota final = 2.00, NUNCA negativa.');
 
-        $this->assertEqualsWithDelta(1.00, $method->invoke($service, 1.0, -50.0, -50.0), 0.001,
+        $this->assertEqualsWithDelta(1.00, $method->invoke($service, 1.0, -50.0, 1.0), 0.001,
             'Cenário pior caso → nota mínima absoluta = 1.00 (nunca abaixo).');
 
-        $this->assertEqualsWithDelta(5.00, $method->invoke($service, 5.0, 100.0, 100.0), 0.001,
+        $this->assertEqualsWithDelta(5.00, $method->invoke($service, 5.0, 100.0, 5.0), 0.001,
             'Cenário melhor caso → nota máxima = 5.00 (nunca acima).');
     }
 

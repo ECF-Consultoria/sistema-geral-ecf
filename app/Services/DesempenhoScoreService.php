@@ -11,7 +11,7 @@ use App\Models\NpsResponse;
 use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
 use App\Models\User;
-use App\Services\Metrics\AdmanMetricDiffService;
+use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
 use App\Services\Nps\NpsScoreCalculator;
@@ -109,7 +109,7 @@ class DesempenhoScoreService
         private NpsScoreCalculator $npsCalculator,
         private CarteiraContextService $carteiraContext,
         private MetricPeriodResolver $periodResolver,
-        private AdmanMetricDiffService $admanDiffService,
+        private MetricDiffDispatcher $diffDispatcher,
     ) {
     }
 
@@ -285,7 +285,15 @@ class DesempenhoScoreService
         // v9 (2026-07-22): faturamento UNIFICADO com a carteira — var_faturamento
         // agora vem do AdmanMetricDiffService (revenue.diff_pct), mesma fonte da
         // carteira/transparência. Desempenho e carteira passam a bater.
-        return sprintf('desempenho.compute.v9.%d.%s', $userId, $periodKey);
+        // v10 (2026-07-23, Fase 109 · SHOP-DES-01/02): vínculos Shopee entram no
+        // universo/faturamento/score via MetricDiffDispatcher (roteamento por
+        // financial_source); a dimensão margem das empresas Shopee vira
+        // placeholder=1 (piso da régua) via helper margemPontos — profissional
+        // só-Shopee deixa de ser blocked/partial. Os valores gravados sob a v9
+        // não passavam pelo dispatcher (Shopee não entrava no score) — servi-los
+        // do Redis por até 7 dias continuaria omitindo Shopee do bônus mesmo com
+        // o código novo em prod. As chaves v9 viram órfãs e expiram por TTL.
+        return sprintf('desempenho.compute.v10.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -357,8 +365,9 @@ class DesempenhoScoreService
         }
 
         /** @var EloquentCollection<int, \App\Models\Company> $companies */
-        $companies = $universo['companies_elegiveis'];
+        $companies  = $universo['companies_elegiveis'];
         $contadores = $universo['contadores'];
+        $fontes     = $universo['fontes'];
 
         // ── Invalidação por competência (item 3/4 · 2026-07-21) ──────────────
         // Empresas que o admin tirou do bônus DESTE mês (empresa inteira:
@@ -374,28 +383,46 @@ class DesempenhoScoreService
 
         // ── 4 componentes independentes ──────────────────────────────────────
         // Faturamento/margem usam SÓ as empresas elegíveis financeiramente
-        // (`financial_metrics_eligible=true` — DESEMP-04). NPS continua
-        // somando todas as áreas do profissional, sem filtro de elegibilidade
-        // financeira (DESEMP-03/D-91-02 — computeNpsMedio INTOCADO).
+        // (`financial_metrics_eligible=true` — DESEMP-04), roteadas por fonte
+        // (`$fontes`, Fase 109 · SHOP-DES-01) via MetricDiffDispatcher. NPS
+        // continua somando todas as áreas do profissional, sem filtro de
+        // elegibilidade financeira (DESEMP-03/D-91-02 — computeNpsMedio
+        // INTOCADO).
         //
         // Fase 105 (v18.0 · NPSWIN-01/02, D1 do 105-CONTEXT.md) — a janela de
         // bônus dura 2 meses: M coleta o FINANCEIRO, M+1 coleta o NPS (o
         // cliente só avalia DEPOIS do trabalho feito). `$periodo['is_closed']`
         // já resolvido acima (linha ~314) é o sinal CANÔNICO de "mês fechado"
         // — nunca recalcular via now()/between aqui.
-        $nps = $this->computeNpsWindow($user, $mes, $periodo['is_closed'], $invalidadas);
-        $varFatData = $this->computeVarFaturamento($user, $mes, $companies, $periodo);
-        $varMargem  = $this->computeVarMargem($user, $mes, $companies, $periodo);
-        $absent     = $this->computeAbsenteismo($user, $mes);
+        $nps           = $this->computeNpsWindow($user, $mes, $periodo['is_closed'], $invalidadas);
+        $varFatData    = $this->computeVarFaturamento($user, $mes, $companies, $periodo, $fontes);
+        $varMargemData = $this->computeVarMargem($user, $mes, $companies, $periodo, $fontes);
+        $absent        = $this->computeAbsenteismo($user, $mes);
 
-        $varFat            = $varFatData['pct'];
-        $empresasBaseline  = $varFatData['empresas_com_baseline'];
+        $varFat           = $varFatData['pct'];
+        $empresasBaseline = $varFatData['empresas_com_baseline'];
+
+        $varMargem      = $varMargemData['pct'];
+        $nComMargemReal = $varMargemData['n_com_margem_real'];
+
+        // ── Margem placeholder=1 para empresas Shopee (Fase 109 · SHOP-DES-02,
+        // DECISÃO TRAVADA — ver 109-03-PLAN.md <design_margem_placeholder>) ──
+        // `n_shopee_placeholder` é recomputado a partir do `$companies` JÁ
+        // FILTRADO por `$invalidadas` (acima) + mapa `fontes` — NUNCA reaproveita
+        // o contador cru pré-filtro de `computeUniverso` (empresa Shopee
+        // invalidada na competência não pode inflar o denominador do blend,
+        // mesmo tratamento de `computeVarFaturamento`/`computeVarMargem`, que já
+        // recebem `$companies` filtrado).
+        $nShopeePlaceholder = $companies
+            ->filter(fn ($c) => ($fontes[$c->id] ?? null) === 'shopee')
+            ->count();
+        $margemPontos = $this->margemPontos($varMargem, $nComMargemReal, $nShopeePlaceholder);
 
         // ── Nota final (média direta, sem absenteísmo) ───────────────────────
-        $nota = $this->computeNotaFinal($nps, $varFat, $varMargem);
+        $nota = $this->computeNotaFinal($nps, $varFat, $margemPontos);
 
-        // ── Status de elegibilidade (Fase 91 · DESEMP-06/D-91-02) ────────────
-        $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $varMargem);
+        // ── Status de elegibilidade (Fase 91 · DESEMP-06/D-91-02; Fase 109) ──
+        $scoreStatus = $this->computeScoreStatus($contadores, $varFat, $margemPontos);
 
         // D-91-01: blocked (zero vínculos financeiros elegíveis — ex.:
         // só-Shopee) força nota_final=null/faixa_bonus=null. Decisão do
@@ -445,10 +472,14 @@ class DesempenhoScoreService
             // UI expor a conta que gerou a nota (ex: "(3+5+4)/3 = 4,00") em
             // vez do denominador fixo "/5,00". Nulls preservados — só entram
             // na média os componentes disponíveis.
+            // Fase 109 (SHOP-DES-02): 'margem' passa a ser `$margemPontos`
+            // (blend real+placeholder Shopee), não mais `reguaMargem($varMargem)`
+            // direto — `componentes.var_margem_pct` acima CONTINUA a % real,
+            // sem placeholder (não vaza pro número exibido).
             'pontos_componentes' => [
                 'nps'         => $nps !== null ? max(1.0, min(5.0, $nps)) : null,
                 'faturamento' => $this->reguaFaturamento($varFat),
-                'margem'      => $this->reguaMargem($varMargem),
+                'margem'      => $margemPontos,
             ],
             'nota_final'      => $nota,
             'faixa_bonus'     => $faixaFinal,
@@ -525,8 +556,20 @@ class DesempenhoScoreService
      * `company_id` (Pitfall 4 do 91-RESEARCH.md — evita somar a MESMA empresa
      * 2× no SUM financeiro caso ela tenha 2 vínculos elegíveis) contendo só as
      * empresas com pelo menos 1 vínculo `financial_metrics_eligible=true` —
-     * é o que alimenta `computeVarFaturamento`/`computeVarMargem` (assinaturas
-     * INTOCADAS, só o conjunto de entrada muda).
+     * é o que alimenta `computeVarFaturamento`/`computeVarMargem` (recebem
+     * também o mapa `fontes`, Fase 109).
+     *
+     * Fase 109 (SHOP-DES-01/02) — além de `companies_elegiveis`, monta o mapa
+     * `fontes` (company_id → financial_source vencedora) e o contador
+     * `n_shopee_placeholder` (empresas elegíveis com fonte 'shopee').
+     * REGRA DE DESEMPATE (TRAVADA, idêntica ao Plano 02/Carteira —
+     * `PortfolioController::fontesFinanceirasPorEmpresa()`): quando a MESMA
+     * empresa tem vínculo elegível 'adman' E 'shopee', a fonte vencedora é
+     * 'adman' (performance vence). `n_shopee_placeholder` aqui é PRÉ-filtro
+     * de invalidação por competência — `compute()` recomputa a contagem
+     * definitiva a partir do `$companies` já filtrado por `$invalidadas`
+     * antes de alimentar o blend `margemPontos` (ver bloco de invalidação em
+     * `compute()`), nunca reaproveita este valor cru.
      *
      * DESEMP-10: "Sem carteira em julho/2026" (motivo pt-BR).
      */
@@ -543,17 +586,29 @@ class DesempenhoScoreService
 
         $contadores = $this->carteiraContext->contadores($vinculos);
 
-        $companyIdsElegiveis = $vinculos
-            ->where('financial_metrics_eligible', true)
-            ->pluck('company_id')
-            ->unique();
+        $elegiveis = $vinculos->where('financial_metrics_eligible', true);
+
+        $companyIdsElegiveis = $elegiveis->pluck('company_id')->unique();
 
         $companiesElegiveis = Company::whereIn('id', $companyIdsElegiveis)->get();
 
+        // Mapa company_id → fonte financeira vencedora ('adman'|'shopee').
+        // 'adman' vence quando a MESMA empresa tem os dois vínculos elegíveis.
+        $fontes = $elegiveis
+            ->groupBy('company_id')
+            ->map(function (Collection $vs) {
+                $sources = $vs->pluck('financial_source');
+                return $sources->contains('adman') ? 'adman' : $sources->first();
+            });
+
+        $nShopeePlaceholder = $fontes->filter(fn ($f) => $f === 'shopee')->count();
+
         return [
-            'sem_carteira'        => false,
-            'contadores'          => $contadores,
-            'companies_elegiveis' => $companiesElegiveis,
+            'sem_carteira'         => false,
+            'contadores'           => $contadores,
+            'companies_elegiveis'  => $companiesElegiveis,
+            'fontes'               => $fontes,
+            'n_shopee_placeholder' => $nShopeePlaceholder,
         ];
     }
 
@@ -562,21 +617,32 @@ class DesempenhoScoreService
      * semântica D-91-02 — resolvida pelo orquestrador a partir das decisões
      * do usuário, ver `91-CONTEXT.md`):
      *
-     *  - `blocked`  — ZERO vínculos financeiros elegíveis (ex.: só-Shopee).
+     *  - `blocked`  — ZERO vínculos financeiros elegíveis. Fase 109
+     *    (SHOP-DES-01/02): Shopee agora É fonte financeira elegível
+     *    (`financial_metrics_eligible=true`, ver `CarteiraContextService`),
+     *    então `vinculos_financeiros` conta Shopee — só-Shopee NÃO fica mais
+     *    `blocked` (era o comportamento pré-Fase 109). `blocked` sobra pra
+     *    setores sem fonte financeira nenhuma (`polos`/`publicacao`/`outros`).
      *  - `partial`  — tem vínculo financeiro elegível, mas algum componente
-     *    financeiro está indisponível no período (sem baseline no mês).
+     *    financeiro está indisponível no período (sem baseline de faturamento
+     *    OU margem/margem-placeholder indisponível).
      *  - `official` — todos os componentes disponíveis. Profissional MISTO
      *    (Performance+Shopee) é OFFICIAL — o financeiro vem só do subconjunto
      *    elegível dele; isto CORRIGE a proposta original do 91-RESEARCH.md,
-     *    que sugeria `partial` para misto.
+     *    que sugeria `partial` para misto. Profissional só-Shopee com
+     *    faturamento com baseline TAMBÉM é OFFICIAL (margem placeholder=1
+     *    conta como componente disponível — Fase 109).
+     *
+     * @param  ?float  $margemPontos  já é o blend real+placeholder Shopee
+     *   (`margemPontos()`, Fase 109) — não mais a % bruta de `var_margem_pct`.
      */
-    private function computeScoreStatus(array $contadores, ?float $varFat, ?float $varMargem): string
+    private function computeScoreStatus(array $contadores, ?float $varFat, ?float $margemPontos): string
     {
         if ($contadores['vinculos_financeiros'] === 0) {
             return 'blocked';
         }
 
-        if ($varFat === null || $varMargem === null) {
+        if ($varFat === null || $margemPontos === null) {
             return 'partial';
         }
 
@@ -921,11 +987,17 @@ class DesempenhoScoreService
      * "mês calendário anterior completo" e passa a ser a janela-de-mesmo-
      * tamanho imediatamente anterior (`previous_equal_length_window`).
      *
+     * Fase 109 (SHOP-DES-01): roteia por empresa via `MetricDiffDispatcher`
+     * usando o mapa `$fontes` (company_id → 'adman'|'shopee') resolvido em
+     * `computeUniverso()` — empresa Shopee devolve `revenue.diff_pct` real
+     * (Shopee TEM faturamento, sem placeholder) e entra na média normalmente.
+     *
      * @param  EloquentCollection<int, \App\Models\Company>  $companies  carteira ativa
      * @param  array  $periodo  shape do `MetricPeriodResolver::resolve()`
+     * @param  Collection<int, string>  $fontes  company_id → financial_source vencedora
      * @return array{pct: ?float, empresas_com_baseline: int}
      */
-    private function computeVarFaturamento(User $user, Carbon $mes, EloquentCollection $companies, array $periodo): array
+    private function computeVarFaturamento(User $user, Carbon $mes, EloquentCollection $companies, array $periodo, Collection $fontes): array
     {
         // ── Filtro "provider aplicável" ──────────────────────────────────────
         // NOTA (2026-07-21): o antigo filtro "empresa nova" por
@@ -956,7 +1028,8 @@ class DesempenhoScoreService
         $empresasBaseline = 0;
 
         foreach ($companies as $company) {
-            $diffPct = $this->admanDiffService->compute($company, $periodo)['metrics']['revenue']['diff_pct'] ?? null;
+            $source  = $fontes[$company->id] ?? 'adman';
+            $diffPct = $this->diffDispatcher->compute($company, $periodo, $source)['metrics']['revenue']['diff_pct'] ?? null;
             if ($diffPct !== null) {
                 $vars->push($diffPct);
                 $empresasBaseline++;
@@ -989,31 +1062,48 @@ class DesempenhoScoreService
      * inteiramente dentro do diff service — este método só agrega o
      * `diff_pct` já resolvido, nunca recalcula guard nenhum.
      *
+     * Fase 109 (SHOP-DES-02): roteia por empresa via `MetricDiffDispatcher`
+     * usando `$fontes`. `ShopeeMetricDiffService` sempre devolve
+     * `contribution_margin_pct.diff_pct=null` (Shopee não fornece CMV —
+     * arquitetura future-ready), então empresas Shopee NUNCA contribuem pra
+     * `$vars`/`n_com_margem_real` aqui — a dimensão margem delas é resolvida
+     * como placeholder pelo helper `margemPontos()` em `compute()`, não aqui.
+     * `n_com_margem_real` (nº de empresas cujo diff de margem REAL entrou na
+     * média) é devolvido pra alimentar o denominador do blend.
+     *
      * @param  EloquentCollection<int, \App\Models\Company>  $companies
      * @param  array  $periodo  shape do `MetricPeriodResolver::resolve()`
+     * @param  Collection<int, string>  $fontes  company_id → financial_source vencedora
+     * @return array{pct: ?float, n_com_margem_real: int}
      */
-    private function computeVarMargem(User $user, Carbon $mes, EloquentCollection $companies, array $periodo): ?float
+    private function computeVarMargem(User $user, Carbon $mes, EloquentCollection $companies, array $periodo, Collection $fontes): array
     {
         if ($companies->isEmpty()) {
-            return null;
+            return ['pct' => null, 'n_com_margem_real' => 0];
         }
 
-        $vars = collect();
+        $vars           = collect();
+        $nComMargemReal = 0;
 
         foreach ($companies as $company) {
-            $resultado = $this->admanDiffService->compute($company, $periodo);
+            $source    = $fontes[$company->id] ?? 'adman';
+            $resultado = $this->diffDispatcher->compute($company, $periodo, $source);
             $diffPct   = $resultado['metrics']['contribution_margin_pct']['diff_pct'] ?? null;
 
             if ($diffPct !== null) {
                 $vars->push($diffPct);
+                $nComMargemReal++;
             }
         }
 
         if ($vars->isEmpty()) {
-            return null;
+            return ['pct' => null, 'n_com_margem_real' => 0];
         }
 
-        return round($vars->avg(), 2);
+        return [
+            'pct'               => round($vars->avg(), 2),
+            'n_com_margem_real' => $nComMargemReal,
+        ];
     }
 
     /**
@@ -1041,17 +1131,24 @@ class DesempenhoScoreService
      * passam pelas réguas 1-5 antes de entrar na média — todos os 3 componentes
      * ficam na mesma escala 1-5, e a nota final SEMPRE fica em [1.0, 5.0].
      *
+     * Fase 109 (SHOP-DES-02): o 3º parâmetro passa a ser `$margemPontos` —
+     * o valor JÁ RÉGUA'D (1-5), calculado por `margemPontos()` em `compute()`
+     * (blend real+placeholder Shopee). Este método NÃO chama mais
+     * `reguaMargem()` internamente — quem quer aplicar a régua pura sobre uma
+     * % real continua usando `reguaMargem()` direto (ex.: dentro de
+     * `margemPontos()`).
+     *
      * @return ?float 2 decimais em [1.0, 5.0]; null quando TODOS os componentes são null
      */
-    private function computeNotaFinal(?float $nps, ?float $varFat, ?float $varMargem): ?float
+    private function computeNotaFinal(?float $nps, ?float $varFat, ?float $margemPontos): ?float
     {
         // NPS já é 1-5 (escala do formulário) — clamp defensivo.
         $npsPts = $nps !== null ? max(1.0, min(5.0, $nps)) : null;
 
-        // Variações passam pelas réguas 1-5 (SPEC-04/SPEC-05) para caber na
-        // mesma escala do NPS e produzir média significativa.
+        // Faturamento passa pela régua 1-5 (SPEC-04) para caber na mesma
+        // escala do NPS. Margem já chega régua'd (`$margemPontos`, Fase 109).
         $fatPts    = $this->reguaFaturamento($varFat);
-        $margemPts = $this->reguaMargem($varMargem);
+        $margemPts = $margemPontos;
 
         $componentes = collect([$npsPts, $fatPts, $margemPts])
             ->reject(fn ($v) => $v === null);
@@ -1104,6 +1201,43 @@ class DesempenhoScoreService
         if ($pct <=  1)    return 3.0;
         if ($pct <=  4)    return 4.0;
         return 5.0;
+    }
+
+    /**
+     * Blend ponderado por contagem da dimensão MARGEM (Fase 109 · SHOP-DES-02
+     * — DECISÃO TRAVADA, implementar EXATAMENTE assim, ver `109-03-PLAN.md`
+     * `<design_margem_placeholder>`).
+     *
+     * A Shopee ainda não fornece margem de contribuição (CMV) — em vez de
+     * excluir a dimensão margem para quem tem empresas Shopee (o que geraria
+     * `blocked`/`partial` injustamente), usa-se um PLACEHOLDER = 1.0 (piso da
+     * régua 1-5) ponderado pela contagem de empresas Shopee elegíveis
+     * (`$nShopeePlaceholder`, JÁ pós-invalidação de competência — ver
+     * `compute()`) contra a contagem de empresas com margem REAL que entrou
+     * em `$varMargemReal` (`$nComMargemReal`).
+     *
+     * Invariantes (testados em `DesempenhoShopeeScoreTest`):
+     *  - Só-performance (`$nShopeePlaceholder=0`) → devolve exatamente
+     *    `reguaMargem($varMargemReal)` — IDÊNTICO ao comportamento pré-Fase
+     *    109 (regressão zero).
+     *  - Só-Shopee (`$nComMargemReal=0`, `$pReal=null`) → devolve `1.0`.
+     *  - Misto → média ponderada pelas contagens (empresas Shopee "puxam" a
+     *    média pro piso proporcionalmente ao seu peso na carteira financeira).
+     *
+     * Arquitetura *future-ready*: quando a Shopee passar a fornecer margem
+     * real, basta `ShopeeMetricDiffService` parar de devolver
+     * `contribution_margin_pct.diff_pct=null` — essas empresas passam a
+     * contar em `$nComMargemReal`/`$varMargemReal` (via `computeVarMargem`) e
+     * `$nShopeePlaceholder` cai naturalmente, sem mudar esta fórmula.
+     */
+    private function margemPontos(?float $varMargemReal, int $nComMargemReal, int $nShopeePlaceholder): ?float
+    {
+        $pReal = $this->reguaMargem($varMargemReal);
+
+        $numerador   = ($pReal !== null ? $pReal * $nComMargemReal : 0.0) + 1.0 * $nShopeePlaceholder;
+        $denominador = ($pReal !== null ? $nComMargemReal : 0) + $nShopeePlaceholder;
+
+        return $denominador > 0 ? round($numerador / $denominador, 2) : null;
     }
 
     /**

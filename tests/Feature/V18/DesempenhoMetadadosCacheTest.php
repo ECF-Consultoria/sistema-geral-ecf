@@ -229,7 +229,7 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $chaveEsperada = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v9.' . $user->id . '.2026-06', $chaveEsperada,
+        $this->assertSame('desempenho.compute.v10.' . $user->id . '.2026-06', $chaveEsperada,
             'mês fechado usa period_key=YYYY-MM na chave v6.');
 
         $resultado = $service->computeCached($user, $mes);
@@ -255,9 +255,9 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $mes     = Carbon::parse('2026-08-01');
 
         $chaveOperacional = $service->cacheKey($userId, $mes);
-        $chaveFechadaHipotetica = sprintf('desempenho.compute.v9.%d.%s', $userId, $mes->format('Y-m'));
+        $chaveFechadaHipotetica = sprintf('desempenho.compute.v10.%d.%s', $userId, $mes->format('Y-m'));
 
-        $this->assertSame('desempenho.compute.v9.999.current_month', $chaveOperacional,
+        $this->assertSame('desempenho.compute.v10.999.current_month', $chaveOperacional,
             'mês corrente usa period_key=current_month — nunca YYYY-MM.');
         $this->assertNotSame($chaveFechadaHipotetica, $chaveOperacional,
             'a chave operacional do mês corrente NUNCA é igual à chave YYYY-MM do mesmo mês (T-102-04).');
@@ -274,7 +274,7 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $chaveHelper = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v9.' . $user->id . '.current_month', $chaveHelper);
+        $this->assertSame('desempenho.compute.v10.' . $user->id . '.current_month', $chaveHelper);
 
         $service->computeCached($user, $mes);
 
@@ -287,21 +287,34 @@ class DesempenhoMetadadosCacheTest extends TestCase
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_user_so_shopee_permanece_blocked_com_nota_null(): void
+    public function test_user_so_shopee_nao_fica_mais_blocked_score_partial_com_margem_placeholder(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-20 14:00:00'));
 
         $user    = $this->criarUserAnalista('So Shopee 102-02');
         $company = Company::factory()->create();
-        // Shopee NÃO é elegível financeiramente (financial_metrics_eligible
-        // vem de CarteiraContextService a partir do setor do serviço).
+        // Fase 109 (SHOP-DES-01/02, decisão travada 2026-07-23) — Shopee
+        // PASSA a ser financeiramente elegível (financial_metrics_eligible
+        // vem de CarteiraContextService a partir do setor 'shopee') e a
+        // margem das empresas Shopee vira placeholder=1.0 (piso da régua).
+        // Este cenário SUPERA o teste anterior (v17), que esperava 'blocked'.
+        // Sem nenhuma linha de shopee_metrics no fixture, var_faturamento_pct
+        // fica sem baseline (null) → score_status vira 'partial' (não mais
+        // 'blocked') — e a margem placeholder sozinha já sustenta a nota.
         $this->vincularServico($user, $company, $this->servicoShopeeId(), false);
 
         $service = app(DesempenhoScoreService::class);
         $r = $service->compute($user, Carbon::parse('2026-06-01'));
 
-        $this->assertSame('blocked', $r['score_status']);
-        $this->assertNull($r['nota_final']);
+        $this->assertNotSame('blocked', $r['score_status'],
+            'Fase 109: Shopee é fonte financeira elegível — só-Shopee não é mais blocked.');
+        $this->assertSame('partial', $r['score_status'],
+            'sem shopee_metrics no fixture, faturamento fica sem baseline (null) → partial.');
+        $this->assertSame(1, $r['vinculos_financeiros']);
+        $this->assertEqualsWithDelta(1.0, $r['pontos_componentes']['margem'], 0.001,
+            'margemPontos: só-Shopee (nComMargemReal=0) → placeholder puro = 1.0.');
+        $this->assertNotNull($r['nota_final'],
+            'margem placeholder=1.0 sozinha sustenta a nota_final mesmo sem faturamento com baseline.');
         $this->assertArrayNotHasKey('nota_final_ml', $r, 'score único — nenhuma chave de score por marketplace.');
         $this->assertArrayNotHasKey('nota_final_shopee', $r, 'score único — nenhuma chave de score por marketplace.');
     }
@@ -318,17 +331,21 @@ class DesempenhoMetadadosCacheTest extends TestCase
         $this->vincularServico($user, $companyShopee, $this->servicoShopeeId(), false);
 
         $service = app(DesempenhoScoreService::class);
-        // Sem HTTP fixture de faturamento/margem — var_* ficam null (sem
-        // baseline), então score_status vira 'partial' (não 'blocked', pois
-        // há vínculo financeiro elegível: a empresa Performance).
+        // Sem HTTP fixture de faturamento/margem (nem shopee_metrics) — var_*
+        // ficam null (sem baseline nas duas empresas), então score_status vira
+        // 'partial' (não 'blocked', pois há 2 vínculos financeiros elegíveis:
+        // a Performance E a Shopee — Fase 109).
         $r = $service->compute($user, Carbon::parse('2026-06-01'));
 
         $this->assertContains($r['score_status'], ['official', 'partial'],
             'misto com vínculo financeiro elegível NUNCA é blocked (D-91-02).');
         $this->assertSame(2, $r['empresas_unicas']);
         $this->assertSame(2, $r['vinculos_servico']);
-        $this->assertSame(1, $r['vinculos_financeiros']);
-        $this->assertSame(1, $r['vinculos_sem_fonte_financeira']);
+        // Fase 109 (SHOP-DES-01): Shopee agora conta em vinculos_financeiros
+        // (financial_metrics_eligible=true) — antes só a empresa Performance
+        // contava (1); agora as 2 contam.
+        $this->assertSame(2, $r['vinculos_financeiros']);
+        $this->assertSame(0, $r['vinculos_sem_fonte_financeira']);
         $this->assertArrayNotHasKey('nota_final_ml', $r);
         $this->assertArrayNotHasKey('nota_final_shopee', $r);
     }

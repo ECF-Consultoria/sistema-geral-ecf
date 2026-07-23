@@ -225,13 +225,16 @@ class PerformanceIndexMetadadosTest extends TestCase
     {
         $this->actingAsAdmin();
 
-        // Cenário Matheus (91-01): 1 empresa, só vínculo Shopee → blocked.
-        $user    = $this->criarUserComCargo('Matheus Só-Shopee 92', $this->cargoAnalistaId);
+        // Fase 109 (SHOP-DES-01/02, decisão travada 2026-07-23) — Shopee
+        // DEIXA de ser o cenário "blocked" (virou financeiramente elegível
+        // com margem placeholder=1, ver DesempenhoElegibilidadeTest). O único
+        // jeito de permanecer `blocked` hoje é um vínculo em setor SEM
+        // qualquer fonte financeira (`polos`/`publicacao`/`outros` —
+        // `CarteiraContextService::flagsFinanceirasPorSetor()` branch default).
+        $user    = $this->criarUserComCargo('Analista Só-Polos 92', $this->cargoAnalistaId);
         $empresa = $this->criarEmpresa();
-        $servicoShopee = $this->criarServico(Servico::SETOR_SHOPEE);
-        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoShopee);
-        $this->mockAdman($empresa, '2026-08', revenue: 11000, margem: 10500);
-        $this->mockAdman($empresa, '2026-07', revenue: 10000, margem: 10000);
+        $servicoPolos = $this->criarServico(Servico::SETOR_POLOS);
+        $this->inserirPivot($empresa->id, $user->id, 'consultor', $servicoPolos);
 
         $this->aquecerRankingEmCurso();
         $response = $this->get('/performance');
