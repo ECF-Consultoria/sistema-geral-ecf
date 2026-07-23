@@ -154,7 +154,7 @@ export default function Transparencia() {
                                                 <div className="text-white/85 tabular-nums">{fmtBRL(e.faturamento)}</div>
                                                 <div className="flex justify-end"><VarBadge v={e.faturamento_var_pct} /></div>
                                             </td>
-                                            <td className="px-3 py-3 text-right">
+                                            <td className="px-3 py-3 text-right" title={e.fonte === 'shopee' ? 'Shopee ainda não fornece margem' : undefined}>
                                                 <div className="text-white/85 tabular-nums">{fmtPctVal(e.margem_pct)}</div>
                                                 <div className="flex justify-end"><VarBadge v={e.margem_pct_var_pct} /></div>
                                             </td>
@@ -172,8 +172,8 @@ export default function Transparencia() {
                     <div className="flex items-center gap-1.5 mb-1.5 text-white/70 font-semibold"><Info size={13} className="text-ecf-yellow/70" /> Como ler</div>
                     <strong className="text-white/70">Margem %</strong> é a margem de contribuição como percentual da receita (percentageMargin da Adman).
                     As setas mostram a variação vs a janela anterior de mesmo tamanho.
-                    Empresas <strong className="text-white/70">só-Shopee</strong> aparecem como "sem fonte financeira" (não entram no financeiro do bônus enquanto a Shopee não entregar margem).
-                    A margem vem sempre da <strong className="text-white/70">Adman</strong> (fonte canônica).
+                    Empresas <strong className="text-white/70">só-Shopee</strong> mostram faturamento e investimento reais, mas margem "—" (a Shopee ainda não fornece esse dado).
+                    Quando a empresa tem Mercado Livre/Adman E Shopee, a Adman é a fonte financeira usada (nunca soma as duas).
                 </div>
             </div>
         </AppLayout>

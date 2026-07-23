@@ -468,7 +468,7 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                             <div>
                                 <h2 className="text-white font-semibold text-lg">Empresas em carteira</h2>
                                 <p className="text-white/50 text-xs mt-0.5">
-                                    Faturamento e variação de margem por empresa · fonte Adman (canônica)
+                                    Faturamento e variação de margem por empresa · fonte Adman (margem) / Shopee (faturamento, sem margem)
                                 </p>
                             </div>
                             <div className="flex items-center gap-2 flex-1 max-w-xs">
@@ -539,7 +539,7 @@ export default function AdminCarteira({ profissional, resumo, empresas = [], per
                                                 <div className="text-white/90 tabular-nums">{c.faturamento !== null && c.faturamento !== undefined ? formatCurrencyCompact(c.faturamento) : '—'}</div>
                                                 <div className="flex justify-end"><VarBadge v={c.faturamento_var_pct} /></div>
                                             </td>
-                                            <td className="px-3 py-3 text-right">
+                                            <td className="px-3 py-3 text-right" title={c.fonte === 'shopee' ? 'Shopee ainda não fornece margem' : undefined}>
                                                 <div className="text-white/80 tabular-nums">{fmtPctVal(c.margem_pct)}</div>
                                                 <div className="flex justify-end"><VarBadge v={c.margem_pct_var_pct} /></div>
                                             </td>
