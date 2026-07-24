@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
+use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
@@ -255,6 +256,180 @@ class HubspotWebhookController extends Controller
                 'erro'      => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Fase 114 Plan 03 (HUB-REPLAY-01) — reprocessa um HubspotEvento ja
+     * recebido, para o comando `hubspot:reprocess-event`.
+     *
+     * Refaz o MESMO bloco de fetch de processar() (deal + company + contatos
+     * batch + line items) e chama criarEmpresa() — reusando 100% o dedup
+     * (HubspotCompanyMatcher) e o guard anti-duplicidade de contrato
+     * (persistirContratos por hubspot_line_item_id). Difere de processar()
+     * em 2 pontos DE PROPOSITO:
+     *  - NAO aplica o filtro de dealstage (o evento ja passou por isso, ou o
+     *    admin quer forcar o reprocessamento independente do estado atual);
+     *  - NAO aplica o early-return de idempotencia de INGESTAO (jaProcessado)
+     *    — essa guarda existe para nao reprocessar o MESMO webhook 2x, mas o
+     *    replay e sempre um reprocessamento INTENCIONAL disparado pelo admin.
+     * A idempotencia de DADOS (nao duplicar company/contrato) continua
+     * garantida pelo dedup/guard dentro de criarEmpresa/persistirContratos.
+     *
+     * @return array{
+     *     evento_id: int,
+     *     deal_id: string|null,
+     *     company_id: int|null,
+     *     contratos_criados: int,
+     *     contratos_ignorados: int,
+     *     empresas_enriquecidas: int,
+     *     warnings: array<int, string>,
+     * }
+     */
+    public function reprocessarEvento(HubspotEvento $evento, HubspotApiClient $api): array
+    {
+        $warnings = [];
+
+        Log::channel('ecf-webhooks')->info('[Hubspot] Replay: iniciando reprocessamento', [
+            'evento_id' => $evento->id,
+            'deal_id'   => $evento->object_id,
+        ]);
+
+        try {
+            $propsDeal    = config('services.hubspot.props.deal');
+            $propsCompany = config('services.hubspot.props.company');
+            $propsContact = config('services.hubspot.props.contact');
+
+            $deal       = $api->fetchDeal((string) $evento->object_id, array_merge(
+                ['dealname', 'amount', 'dealstage'],
+                array_values($propsDeal),
+            ));
+            $companyId  = $api->fetchAssociatedCompanyId((string) $evento->object_id);
+            $hubCompany = $companyId ? $api->fetchCompany($companyId, array_values($propsCompany)) : null;
+
+            // ── Fetch batch de contatos — mesmo padrao de processar() ──────────
+            $contatos = [];
+            try {
+                $contactIds = $api->fetchAssociatedContactIds((string) $evento->object_id);
+                if (!empty($contactIds)) {
+                    $mapaContatos = $api->fetchContacts($contactIds, array_values($propsContact));
+                    foreach ($mapaContatos as $contactId => $props) {
+                        $contatos[] = [
+                            'id'          => (string) $contactId,
+                            'firstname'   => $props[$propsContact['firstname'] ?? 'firstname'] ?? null,
+                            'lastname'    => $props[$propsContact['lastname'] ?? 'lastname'] ?? null,
+                            'email'       => $props[$propsContact['email'] ?? 'email'] ?? null,
+                            'phone'       => $props[$propsContact['phone'] ?? 'phone'] ?? null,
+                            'mobilephone' => $props[$propsContact['mobilephone'] ?? 'mobilephone'] ?? null,
+                            'jobtitle'    => $props[$propsContact['jobtitle'] ?? 'jobtitle'] ?? null,
+                        ];
+                    }
+                }
+            } catch (\Throwable $e) {
+                $warnings[] = 'Falha ao buscar contatos vinculados: ' . $e->getMessage();
+                Log::channel('ecf-webhooks')->warning('[Hubspot] Replay: falha ao buscar contatos vinculados', [
+                    'evento_id' => $evento->id,
+                    'msg'       => $e->getMessage(),
+                ]);
+            }
+            $contatoPrincipal = HubspotContactSelector::selecionar($contatos);
+
+            $lineItems = $api->fetchDealLineItems((string) $evento->object_id);
+
+            // ── Baseline ANTES de criarEmpresa — mede o efeito real do replay ──
+            // Se o evento ja tinha uma company associada (reprocessamento de um
+            // evento ja processado antes), conta os contratos dela; senao 0.
+            $contratosAntes = $evento->company_id_criada
+                ? ContratoServico::where('company_id', $evento->company_id_criada)->count()
+                : 0;
+
+            $company = $this->criarEmpresa($deal, $hubCompany, $contatoPrincipal, $contatos, $companyId, $lineItems, $evento);
+
+            $contratosDepois  = ContratoServico::where('company_id', $company->id)->count();
+            $contratosCriados = max(0, $contratosDepois - $contratosAntes);
+
+            // wasRecentlyCreated: true so quando Company::create() rodou nesta
+            // chamada (empresa NOVA). Quando o match forte cai em
+            // enriquecerEmpresaExistente(), o model veio de um find() — fica
+            // false mesmo apos update()/refresh() — sinaliza enriquecimento.
+            $empresaJaExistia = !$company->wasRecentlyCreated;
+
+            $tentativasContrato = $this->contarTentativasContrato($lineItems, $deal['properties'] ?? [], $propsDeal);
+            $contratosIgnorados = max(0, $tentativasContrato - $contratosCriados);
+
+            $evento->update([
+                'status'            => 'processado',
+                'company_id_criada' => $company->id,
+                'processado_em'     => now(),
+            ]);
+
+            $resumo = [
+                'evento_id'             => $evento->id,
+                'deal_id'               => $evento->object_id,
+                'company_id'            => $company->id,
+                'contratos_criados'     => $contratosCriados,
+                'contratos_ignorados'   => $contratosIgnorados,
+                'empresas_enriquecidas' => $empresaJaExistia ? 1 : 0,
+                'warnings'              => $warnings,
+            ];
+
+            Log::channel('ecf-webhooks')->info('[Hubspot] Replay: reprocessamento concluido', $resumo);
+
+            return $resumo;
+        } catch (\Throwable $e) {
+            $evento->update([
+                'status'        => 'erro',
+                'erro_msg'      => mb_substr($e->getMessage(), 0, 1000),
+                'processado_em' => now(),
+            ]);
+
+            Log::channel('ecf-webhooks')->error('[Hubspot] Replay: falha no reprocessamento', [
+                'evento_id' => $evento->id,
+                'object_id' => $evento->object_id,
+                'erro'      => $e->getMessage(),
+            ]);
+
+            return [
+                'evento_id'             => $evento->id,
+                'deal_id'               => $evento->object_id,
+                'company_id'            => null,
+                'contratos_criados'     => 0,
+                'contratos_ignorados'   => 0,
+                'empresas_enriquecidas' => 0,
+                'warnings'              => array_merge($warnings, [$e->getMessage()]),
+            ];
+        }
+    }
+
+    /**
+     * Fase 114 Plan 03 — conta quantos contratos SERIAM tentados a partir dos
+     * line items (ou do fluxo legado servico+amount), SEM persistir nada.
+     * Usado so para compor o resumo do replay (contratos_ignorados = tentativas
+     * - criados nesta execucao). Espelha a mesma resolucao de mapping de
+     * HubspotDealHandoffService::build(), mas em modo leitura.
+     */
+    private function contarTentativasContrato(array $lineItems, array $dprops, array $propsDeal): int
+    {
+        if (!empty($lineItems)) {
+            $tentativas = 0;
+            foreach ($lineItems as $item) {
+                $nome = (string) ($item['name'] ?? '');
+                if ($nome === '') {
+                    continue;
+                }
+                $mapping = HubspotLineItemMapping::paraNome($nome);
+                if ($mapping && $mapping->servico && $mapping->servico->ativo) {
+                    $tentativas++;
+                }
+            }
+            return $tentativas;
+        }
+
+        $servicoNome = $dprops[$propsDeal['servico'] ?? 'servico'] ?? null;
+        if (!$servicoNome) {
+            return 0;
+        }
+
+        return Servico::where('nome', $servicoNome)->where('ativo', true)->exists() ? 1 : 0;
     }
 
     /**
