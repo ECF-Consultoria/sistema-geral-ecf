@@ -114,7 +114,9 @@ class AdmanMetricDiffService
         // v2 (2026-07-22): descarta resultados PARCIAIS envenenados (ByMobille).
         // v3 (2026-07-22): margem R$ passou de `profitMargin` para `liquidMargin`
         // (caso Utilarshop) — o valor muda, então o bump invalida o cache v2.
-        $cacheKey = "adman:diff:v3:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        // v4 (2026-07-24): variação de margem volta ao .diff nativo da Adman
+        // (sem cálculo local) — o bump invalida os valores locais errados em cache.
+        $cacheKey = "adman:diff:v4:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
 
         // Memo do request: devolve o resultado real já computado nesta passada
         // (evita reler um ERROR_SENTINEL gravado pela 1ª de duas chamadas ao
@@ -162,14 +164,17 @@ class AdmanMetricDiffService
                 $revenueAdman, $isJanelaIgual,
                 fn () => $this->fallbackSomaSimples($company, $periodo, 'revenue'),
             ),
+            // Hotfix 2026-07-24 (decisão do usuário): a variação de MARGEM (R$ e %)
+            // usa SEMPRE o valor que a própria Adman disponibiliza (.diff nativo),
+            // NUNCA cálculo local — o fallback local comparava baseline incompleto
+            // (maio ~8 dias) vs mês cheio e divergia muito da Adman (ex.: Relojoaria
+            // Wenus: Adman +15%, local -7,5%). Sem nativo → variação null ("—").
+            // (Faturamento MANTÉM fallback local: revenue é sincronizado completo.)
             'contribution_margin_value' => $this->resolveField(
                 $marginValueAdman, $isJanelaIgual,
-                fn () => $this->fallbackSomaSimples($company, $periodo, 'contribution_margin'),
+                fn () => null,
             ),
-            // Fase 110 (FIXMARG-01/02): margem % NÃO usa mais resolveField()
-            // genérico — tem prioridade INVERTIDA (local primeiro) + gate de
-            // cobertura próprios. Ver resolveMargemPct().
-            'contribution_margin_pct'   => $this->resolveMargemPct($marginPctAdman, $isJanelaIgual, $company, $periodo),
+            'contribution_margin_pct'   => $this->resolveMargemPct($marginPctAdman, $isJanelaIgual),
         ];
 
         $resultado = $this->buildResult($company, $periodo, $metrics);
@@ -227,44 +232,31 @@ class AdmanMetricDiffService
     }
 
     /**
-     * Resolve `contribution_margin_pct` com prioridade INVERTIDA (Fase 110 ·
-     * FIXMARG-01/02) em relação a `resolveField()`: o `calculated_fallback`
-     * LOCAL determinístico é preferido sobre o `.diff` nativo ao vivo sempre
-     * que a cobertura local (dias-COM-LINHA, não dias-calendário) for
-     * suficiente — a leitura ao vivo sofre falha transitória por rate-limit
-     * 429 concorrente (root cause em `.planning/debug/margem-adman-diff-instavel.md`),
-     * enquanto o local é barato (sem HTTP) e estável entre recomputes.
+     * Resolve `contribution_margin_pct` usando SEMPRE a variação que a própria
+     * Adman disponibiliza (`.diff` nativo), NUNCA cálculo local.
+     *
+     * Hotfix 2026-07-24 (decisão do usuário) — REVERTE a prioridade invertida da
+     * Fase 110 (que preferia o `calculated_fallback` local): o fallback local
+     * `SUM(margem)/SUM(revenue)` comparava um baseline LOCAL incompleto (maio com
+     * ~8 dias de margem sincronizada) contra o mês corrente cheio, produzindo
+     * variação divergente da Adman (ex.: Relojoaria Wenus — Adman +15%, local
+     * -7,5%). A Adman é a fonte da verdade da variação; não reinventamos local.
      *
      * Ordem:
-     *  1. Cobertura local ≥ MARGEM_COBERTURA_MINIMA ⇒ local (determinístico).
-     *  2. Senão, janela-igual + `.diff` nativo presente ⇒ ao vivo (último recurso).
-     *  3. Senão ⇒ local mesmo (pode ser `null` — FIXMARG-02: sem fail-open
-     *     artificial; cobre "empresa 0/0 sem venda" e "ao-vivo indisponível
-     *     E local insuficiente").
-     *
-     * `value` preserva o `marginPctAdman['value']` quando presente (mesmo no
-     * ramo local-preferido) — evita rebaixar `quality.status` pra 'missing'
-     * indevidamente quando só o `diff_pct` veio do local.
+     *  1. Janela-igual + `.diff` nativo presente ⇒ usa o valor da Adman.
+     *  2. Senão ⇒ variação `null` ("—"): a Adman não disponibilizou o número
+     *     (janela incompatível ou indisponível/rate-limit) — melhor "—" que um
+     *     valor local errado. O `value` (margem % do mês) é preservado quando
+     *     presente, para não rebaixar `quality.status` indevidamente.
      *
      * @param  ?array{value: ?float, diff: ?float, prev: ?float}  $marginPctAdman
      * @return array{value: ?float, diff_pct: ?float, diff_source: ?string}
      */
-    private function resolveMargemPct(?array $marginPctAdman, bool $isJanelaIgual, Company $company, array $periodo): array
+    private function resolveMargemPct(?array $marginPctAdman, bool $isJanelaIgual): array
     {
-        $value = isset($marginPctAdman['value']) ? (float) $marginPctAdman['value'] : null;
-
-        $local     = $this->fallbackMargemPct($company, $periodo);
-        $cobertura = $this->coberturaMargem($company, $periodo);
-
-        if ($local !== null && $cobertura >= self::MARGEM_COBERTURA_MINIMA) {
-            return [
-                'value'       => $value,
-                'diff_pct'    => $local,
-                'diff_source' => 'calculated_fallback',
-            ];
-        }
-
+        $value     = isset($marginPctAdman['value']) ? (float) $marginPctAdman['value'] : null;
         $adminDiff = $marginPctAdman['diff'] ?? null;
+
         if ($isJanelaIgual && $adminDiff !== null) {
             return [
                 'value'       => $value,
@@ -275,8 +267,8 @@ class AdmanMetricDiffService
 
         return [
             'value'       => $value,
-            'diff_pct'    => $local,
-            'diff_source' => 'calculated_fallback',
+            'diff_pct'    => null,
+            'diff_source' => 'adman_indisponivel',
         ];
     }
 
