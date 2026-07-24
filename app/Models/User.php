@@ -44,6 +44,7 @@ class User extends Authenticatable
             'email_verified_at'              => 'datetime',
             'password'                       => 'hashed',
             'active'                         => 'boolean',
+            'is_dev'                         => 'boolean',
             'publication_permissions_legacy' => 'array',
         ];
     }
@@ -60,6 +61,18 @@ class User extends Authenticatable
     public function isAdmin(): bool    { return $this->role === 'admin'; }
     public function isConsultor(): bool { return $this->role === 'consultor'; }
     public function isMentor(): bool   { return $this->role === 'mentor'; }
+
+    /**
+     * Capability "Admin Dev" (Phase 97, DEC-1) — eixo ORTOGONAL à `role`.
+     * Deriva exclusivamente de `users.is_dev` (coluna server-side), NUNCA de
+     * `role='admin'`. Deliberadamente NÃO roteada por `hasPermission()` (que
+     * curto-circuita admin) — módulos não-produção devem sumir inclusive
+     * para admins de negócio; só o time de dev os enxerga.
+     */
+    public function isAdminDev(): bool
+    {
+        return (bool) $this->is_dev;
+    }
 
     /**
      * Slug do cargo de Desempenho (`estrategista` | `analista`) via
@@ -129,6 +142,19 @@ class User extends Authenticatable
     public function isLiderDe(int $setorId): bool
     {
         return $this->setoresLiderados()->where('setores.id', $setorId)->exists();
+    }
+
+    /**
+     * Módulos do Module Registry favoritados/pinados/beta-optin por este dev
+     * (Phase 97, Fundação — `App\Models\Module` chega no Plano 97-03/Wave 2;
+     * FQCN é seguro aqui, resolução lazy do Eloquent). Consumido a partir do
+     * board da Fase 100 — sem consumidor nesta fase.
+     */
+    public function modulesFavoritados(): BelongsToMany
+    {
+        return $this->belongsToMany(\App\Models\Module::class, 'module_user')
+            ->withPivot('favorito', 'pin_ordem', 'beta_optin')
+            ->withTimestamps();
     }
 
     // ─── Sistema de permissões ───────────────────────────────────────────────
