@@ -193,6 +193,8 @@ class ComercialController extends Controller
                 : 'recentes',
             'pendencia' => in_array($request->input('pendencia'), [
                 'sem_servico', 'sem_valor', 'servico_nao_reconhecido', 'sem_setor', 'dados_close_incompletos',
+                // Phase 114 (HUB-UI-02) — 3 pendencias novas, so origem HubSpot.
+                'sem_contato', 'valor_revisar', 'possivel_duplicidade',
             ], true) ? $request->input('pendencia') : null,
             'q'         => $request->input('q'),
         ];
@@ -247,6 +249,10 @@ class ComercialController extends Controller
             'servico_nao_reconhecido' => 0,
             'sem_setor'               => 0,
             'dados_close_incompletos' => 0,
+            // Phase 114 (HUB-UI-02) — 3 pendencias novas, aditivas.
+            'sem_contato'             => 0,
+            'valor_revisar'           => 0,
+            'possivel_duplicidade'    => 0,
         ];
         foreach ($todasEmpresas as $c) {
             foreach ($c->pendencias_comerciais as $p) {
@@ -304,6 +310,44 @@ class ComercialController extends Controller
                 $detalhes['servico_nao_reconhecido'] = array_values(array_unique($nomesPendentes));
             }
 
+            // Phase 114 (HUB-UI-02) — detalhe de valor_revisar: nomes dos
+            // servicos cujo contrato tem confidence baixa OU warning.
+            if (in_array('valor_revisar', $c->pendencias_comerciais, true)) {
+                $nomesServicosRevisar = $contratosAtivos
+                    ->filter(fn($ct) => $ct->hubspot_valor_confidence === 'low' || $ct->hubspot_valor_warning !== null)
+                    ->map(fn($ct) => optional($ct->servico)->nome)
+                    ->filter()
+                    ->values()
+                    ->all();
+                $detalhes['valor_revisar'] = array_values(array_unique($nomesServicosRevisar));
+            }
+
+            // Phase 114 (HUB-UI-02) — detalhe de possivel_duplicidade: SEMPRE
+            // array de 1 elemento com o NOME REAL de exibicao da empresa
+            // candidata (checa snapshot primeiro, payload do evento como
+            // fallback). Resolve via Company::find (lookup barato, baixo
+            // volume — mesmo racional do HubspotCompanyMatcher); se a
+            // candidata sumiu, cai para o nome_normalizado gravado no warning.
+            if (in_array('possivel_duplicidade', $c->pendencias_comerciais, true)) {
+                $warning = collect($c->hubspot_snapshot['warnings'] ?? [])
+                    ->first(fn($w) => ($w['tipo'] ?? null) === 'possivel_duplicidade');
+
+                if (!$warning) {
+                    foreach ($c->hubspotEventos as $ev) {
+                        $pd = ($ev->payload ?? [])['possivel_duplicidade'] ?? null;
+                        if ($pd) {
+                            $warning = $pd;
+                            break;
+                        }
+                    }
+                }
+
+                $candidateId   = $warning['candidate_company_id'] ?? null;
+                $nomeCandidata = $candidateId ? Company::find($candidateId)?->name : null;
+                $nomeExibicao  = $nomeCandidata ?? ($warning['nome_normalizado'] ?? 'Empresa não identificada');
+                $detalhes['possivel_duplicidade'] = [$nomeExibicao];
+            }
+
             return [
                 'id'                    => $c->id,
                 'name'                  => $c->name,
@@ -318,6 +362,15 @@ class ComercialController extends Controller
                 'faturamento_mensal'    => $c->faturamento_mensal !== null ? (float) $c->faturamento_mensal : null,
                 'email_cliente'         => $c->email_cliente,
                 'telefone'              => $c->telefone,
+                // Phase 114 (HUB-UI-01) — contato principal + observacao +
+                // IDs HubSpot capturados no handoff (Fase 113). Best-effort:
+                // colunas nullable, ficam null quando a empresa nao veio do
+                // HubSpot ou o dado nao foi resolvido.
+                'nome_contato'          => $c->nome_contato,
+                'cargo_contato'         => $c->cargo_contato,
+                'hubspot_observacao'    => $c->hubspot_observacao,
+                'hubspot_deal_id'       => $c->hubspot_deal_id,
+                'hubspot_company_id'    => $c->hubspot_company_id,
                 'created_at'            => $c->created_at?->toDateString(),
                 'consultor'             => $c->consultor->first()?->only(['id', 'name']),
                 'estrategista'          => $c->estrategista->first()?->only(['id', 'name']),
@@ -337,6 +390,19 @@ class ComercialController extends Controller
                         'nome'  => $ct->servico->nome,
                         'setor' => $ct->servico->setor,
                     ] : null,
+                    // Phase 114 (HUB-UI-01) — bloco de valor HubSpot (Fase 112),
+                    // best-effort/nullable. valor_contratado continua sendo o
+                    // valor operacional (nao mexer); estes sao os dados de
+                    // origem para o Comercial conferir a inferencia.
+                    'hubspot_valor_original'           => $ct->hubspot_valor_original !== null
+                        ? (float) $ct->hubspot_valor_original
+                        : null,
+                    'hubspot_valor_normalizado_mensal'  => $ct->hubspot_valor_normalizado_mensal !== null
+                        ? (float) $ct->hubspot_valor_normalizado_mensal
+                        : null,
+                    'hubspot_valor_confidence'          => $ct->hubspot_valor_confidence,
+                    'hubspot_valor_warning'             => $ct->hubspot_valor_warning,
+                    'hubspot_billing_frequency'         => $ct->hubspot_billing_frequency,
                 ])->values(),
                 'adman_account_id'      => $c->adman_account_id,
                 'ml_store_id'           => $c->ml_store_id,
