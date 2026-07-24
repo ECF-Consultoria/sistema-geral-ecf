@@ -23,6 +23,13 @@ use Tests\TestCase;
  * Reusa o padrão `Http::fake` de Phase35HubspotV2Test/Phase112HubspotHandoffWebhookTest
  * (POST + HMAC v3 calculado manualmente), mas com mock de MÚLTIPLOS contatos
  * (3 ids na association + 3 respostas de contacts/{id}).
+ *
+ * Rastreabilidade SC2 ROADMAP Fase 115 nº1 (enriquecimento) → método:
+ *  contato email+telefone escolhido entre 3   → test_contato_principal_escolhido_entre_3_e_campos_estruturados_gravados
+ *  mobilephone como fallback de telefone      → test_contato_principal_escolhido_entre_3_e_campos_estruturados_gravados (assert T2)
+ *  nome_contato estruturado                   → test_contato_principal_escolhido_entre_3_e_campos_estruturados_gravados (assert T1)
+ *  IDs HubSpot gravados (deal/company/domain)  → test_contato_principal_escolhido_entre_3_e_campos_estruturados_gravados (assert T4)
+ *  snapshot completo (deal/company/contact/line_items) → test_snapshot_completo_contem_todos_os_contatos_e_metadados
  */
 class Phase113HubspotEnrichmentTest extends TestCase
 {
