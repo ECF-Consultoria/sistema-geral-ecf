@@ -41,6 +41,32 @@ namespace App\Support;
  */
 class Modules
 {
+    /**
+     * Estágios canônicos de maturidade de um módulo, do mais cedo ao mais tardio.
+     * Mesma lista usada pelo enum `modules.stage` (migration da Fase 97 Plano 01)
+     * e referenciada pelo model `Module` (Plano 03) e pelo comando `modules:sync`
+     * (Plano 04) para validação de input.
+     *
+     * @var array<int, string>
+     */
+    public const STAGES = [
+        'ideia',
+        'backlog',
+        'em_desenvolvimento',
+        'homologacao',
+        'producao',
+        'arquivado',
+    ];
+
+    /**
+     * Estágio default seguro quando a moduleKey não está catalogada.
+     * Garante zero regressão: qualquer item de menu SEM moduleKey se comporta
+     * como hoje (visível). O gate real de rota (Fase 99, middleware
+     * `EnsureModuleStage`) é aplicado explicitamente por grupo de rota — não
+     * depende deste fallback para segurança.
+     */
+    private const DEFAULT_STAGE = 'producao';
+
     // ═══ Core (ECF Consultoria) ═══
     public const CORE_DASHBOARD_ECF          = 'core.dashboard_ecf';
     public const CORE_DASHBOARD              = 'core.dashboard';
@@ -121,7 +147,7 @@ class Modules
      * formato de `Permissions::catalog()`, acrescentando por item: `grupo`,
      * `route_prefix` (prefixo/nome de rota real, nullable), `permission_key`
      * (a permission correspondente de `Permissions`, nullable) e `stage`
-     * (estágio default — validado contra a lista canônica na Tarefa 2).
+     * (estágio default — validado contra `STAGES` em `stageMap()`).
      *
      * @return array<string, array<int, array{key: string, name: string, grupo: string, route_prefix: ?string, permission_key: ?string, stage: string}>>
      */
@@ -221,5 +247,46 @@ class Modules
     public static function isValid(string $key): bool
     {
         return \in_array($key, self::all(), true);
+    }
+
+    /**
+     * Mapa moduleKey → stage default, construído a partir do catálogo.
+     * Levanta exceção se algum item declarar um stage fora de `STAGES` —
+     * evita que um typo silencioso vire um estágio fantasma.
+     *
+     * @return array<string, string>
+     */
+    private static function stageMap(): array
+    {
+        $map = [];
+        foreach (self::catalog() as $itens) {
+            foreach ($itens as $item) {
+                if (! self::isStageValid($item['stage'])) {
+                    throw new \RuntimeException(sprintf(
+                        'App\\Support\\Modules: o módulo "%s" declara stage inválido "%s". Stages canônicos: %s.',
+                        $item['key'],
+                        $item['stage'],
+                        implode(', ', self::STAGES)
+                    ));
+                }
+                $map[$item['key']] = $item['stage'];
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Estágio default declarado no catálogo para a moduleKey.
+     * Se a key não estiver catalogada, retorna o default seguro (`producao`).
+     */
+    public static function defaultStageFor(string $key): string
+    {
+        return self::stageMap()[$key] ?? self::DEFAULT_STAGE;
+    }
+
+    /** True se o stage pertence à lista canônica `STAGES`. */
+    public static function isStageValid(string $stage): bool
+    {
+        return \in_array($stage, self::STAGES, true);
     }
 }
