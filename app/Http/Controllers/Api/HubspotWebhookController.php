@@ -7,10 +7,11 @@ use App\Http\Controllers\Controller;
 use App\Models\Company;
 use App\Models\ContratoServico;
 use App\Models\HubspotEvento;
-use App\Models\HubspotLineItemMapping;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
+use App\Services\Hubspot\HubspotDealHandoffService;
+use App\Services\Hubspot\HubspotHandoffData;
 use App\Services\HubspotApiClient;
 use App\Services\MlbImplementacaoFactory;
 use App\Support\AudienciaComercial;
@@ -320,14 +321,12 @@ class HubspotWebhookController extends Controller
                 $company->update(['notes' => $notes]);
             }
 
-            // ── Phase 37 Plan 37-04 (REQ-37-04) — branch entre line items e fluxo legado ──
-            // Line items HubSpot tem PRIORIDADE: quando fetchDealLineItems retorna >=1,
-            // ignoramos o servico_ecf do deal. Quando vazio, fluxo legado Phase 34/35.
-            if (!empty($lineItems)) {
-                $servicosCriados = $this->processarLineItems($company, $lineItems, $evento);
-            } else {
-                $servicosCriados = $this->processarServicoLegado($company, $dprops, $propsDeal);
-            }
+            // ── Fase 112 Plan 112-03 (HUB-VAL-05) — controller fino delega a ────
+            // montagem de valor/contratos ao HubspotDealHandoffService. Line items
+            // HubSpot tem PRIORIDADE (avaliado internamente pelo build()); quando
+            // vazio, o proprio service resolve o fluxo legado (servico_ecf + amount).
+            $handoff = app(HubspotDealHandoffService::class)->build($deal, $lineItems, $propsDeal);
+            $servicosCriados = $this->persistirContratos($company, $handoff, $evento);
 
             // ── Roteamento MlbEmpresa por CADA servico criado ───────────────────────────
             // Phase 35 D-05 + Phase 37: avalia servicoDisparaImplementacao em cada nome;
@@ -341,120 +340,94 @@ class HubspotWebhookController extends Controller
     }
 
     /**
-     * Phase 37 Plan 37-04 (REQ-37-04) — processa line items do deal HubSpot.
+     * Fase 112 Plan 112-03 (HUB-VAL-05 + HUB-VAL-03 + HUB-VAL-02) — persiste os
+     * `contracts_to_create` do `HubspotHandoffData` como `ContratoServico`, gravando
+     * o valor operacional + as 11 colunas de auditoria HubSpot (Fase 111), e trata
+     * os `warnings` do handoff (line item sem mapping → payload do evento; servico
+     * legado sem match no catalogo → notes da Company) — MESMO comportamento
+     * observavel das antigas `processarLineItems()`/`processarServicoLegado()`.
      *
-     * Para cada line item:
-     *  - Resolve via HubspotLineItemMapping::paraNome (case-insensitive, scope ativo)
-     *  - Mapping encontrado: cria ContratoServico com servico_id do mapping,
-     *    valor_contratado=item.price (fallback servico.valor_padrao quando null/invalid),
-     *    observacoes anota tipo_cobranca derivada de recurringbillingfrequency
-     *    (monthly|annually => 'mensal'; ausente|outro => 'unica').
-     *  - Mapping ausente: NAO cria contrato; acumula em $naoMapeados para warning.
+     * A linha legada `observacoes = "tipo_cobranca: {mensal|unica} (HubSpot
+     * line_item: {nome})"` (Phase 37) e preservada quando o contrato vem de um
+     * line item; no fluxo legado (sem line item) observacoes fica null, como antes.
      *
-     * Warnings sao gravados em HubspotEvento.payload['line_items_nao_mapeados']
-     * (array de {name, price, recurringbillingfrequency}) + log no canal ecf-webhooks.
-     * Status final do evento permanece 'processado' (webhook responde 200) — comercial
-     * recebe pendencia via listagem Comercial (Plan 37-05).
-     *
-     * @param  Company             $company    empresa recem-criada (mesma transaction)
-     * @param  array<int, array>   $lineItems  line items normalizados pelo Plan 37-03
-     * @param  HubspotEvento|null  $evento     necessario para gravar payload de warnings
-     * @return array<int, string>              nomes dos servicos criados (alimenta rotearImplementacao)
+     * @param  Company            $company  empresa recem-criada (mesma transaction)
+     * @param  HubspotHandoffData $handoff  DTO produzido por HubspotDealHandoffService::build()
+     * @param  HubspotEvento|null $evento   necessario para gravar payload de warnings
+     * @return array<int, string>           nomes dos servicos criados (alimenta rotearImplementacao)
      */
-    private function processarLineItems(Company $company, array $lineItems, ?HubspotEvento $evento): array
+    private function persistirContratos(Company $company, HubspotHandoffData $handoff, ?HubspotEvento $evento): array
     {
         $servicosCriados = [];
-        $naoMapeados     = [];
 
-        // Log de entrada — diagnostico rapido em prod sem precisar de tinker.
-        Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Processando line items', [
-            'evento_id'  => $evento?->id,
-            'company_id' => $company->id,
-            'total'      => count($lineItems),
-            'nomes'      => array_map(
-                fn ($i) => (string) ($i['name'] ?? '(sem nome)'),
-                $lineItems
-            ),
-        ]);
+        foreach ($handoff->contracts_to_create as $c) {
+            $temLineItem = $c['hubspot_line_item_id'] !== null;
 
-        foreach ($lineItems as $item) {
-            $nome = (string) ($item['name'] ?? '');
-            if ($nome === '') {
-                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line item sem nome — ignorado', [
-                    'evento_id'  => $evento?->id,
-                    'company_id' => $company->id,
-                    'item'       => $item,
-                ]);
-                continue;
+            // Linha legada Phase 37: so anotada quando o contrato veio de um line
+            // item (fluxo legado deal.amount nunca teve essa observacao).
+            $observacoes = null;
+            if ($temLineItem) {
+                $freq = $c['hubspot_billing_frequency'] ?? null;
+                $tipoCobranca = in_array($freq, ['monthly', 'annually'], true)
+                    ? Servico::TIPO_MENSAL
+                    : Servico::TIPO_UNICA;
+                $nomeLineItem = $c['hubspot_snapshot']['line_item']['name'] ?? $c['servico_nome'];
+                $observacoes = "tipo_cobranca: {$tipoCobranca} (HubSpot line_item: {$nomeLineItem})";
             }
-
-            $mapping = HubspotLineItemMapping::paraNome($nome);
-            // Sem mapping ativo OU mapping aponta para Servico inativo → trata como nao-mapeado.
-            if (!$mapping || !$mapping->servico || !$mapping->servico->ativo) {
-                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line item sem mapping ativo', [
-                    'evento_id'        => $evento?->id,
-                    'company_id'       => $company->id,
-                    'line_item_name'   => $nome,
-                    'mapping_existe'   => (bool) $mapping,
-                    'servico_ativo'    => (bool) ($mapping?->servico?->ativo),
-                ]);
-                $naoMapeados[] = [
-                    'name'                      => $nome,
-                    'price'                     => $item['price']                     ?? null,
-                    'recurringbillingfrequency' => $item['recurringbillingfrequency'] ?? null,
-                ];
-                continue;
-            }
-
-            // Valor: usa item.price quando valido (Plan 37-03 ja fez is_numeric);
-            // fallback para valor_padrao do Servico se ausente. Multiplica por quantity
-            // quando >1 (regra valor_do_servico = price * quantity do hotfix Phase 37).
-            $qty = isset($item['quantity']) && is_numeric($item['quantity']) && (int) $item['quantity'] > 0
-                ? (int) $item['quantity']
-                : 1;
-            $valor = isset($item['price']) && is_numeric($item['price'])
-                ? (float) $item['price'] * $qty
-                : (float) ($mapping->servico->valor_padrao ?? 0);
-
-            // tipo_cobranca derivado: monthly|annually = mensal; ausente|null = unica.
-            // ContratoServico nao tem coluna tipo_cobranca (ela vive em Servico);
-            // anotamos no campo observacoes para preservar a informacao Phase 37
-            // sem alterar schema existente.
-            $freq = $item['recurringbillingfrequency'] ?? null;
-            $tipoCobranca = in_array($freq, ['monthly', 'annually'], true)
-                ? Servico::TIPO_MENSAL
-                : Servico::TIPO_UNICA;
 
             $contrato = ContratoServico::create([
-                'company_id'       => $company->id,
-                'servico_id'       => $mapping->servico_id,
-                'valor_contratado' => $valor,
-                'data_contratacao' => now()->toDateString(),
-                'data_vencimento'  => null,
-                'ativo'            => true,
-                'observacoes'      => "tipo_cobranca: {$tipoCobranca} (HubSpot line_item: {$nome})",
+                'company_id'                       => $company->id,
+                'servico_id'                       => $c['servico_id'],
+                'valor_contratado'                 => $c['valor_contratado'],
+                'data_contratacao'                 => now()->toDateString(),
+                'data_vencimento'                  => null,
+                'ativo'                            => true,
+                'observacoes'                      => $observacoes,
+                'hubspot_line_item_id'             => $c['hubspot_line_item_id'],
+                'hubspot_product_id'               => $c['hubspot_product_id'],
+                'hubspot_billing_frequency'        => $c['hubspot_billing_frequency'],
+                'hubspot_billing_period'           => $c['hubspot_billing_period'],
+                'hubspot_currency'                 => $c['hubspot_currency'],
+                'hubspot_valor_original'           => $c['hubspot_valor_original'],
+                'hubspot_valor_original_tipo'      => $c['hubspot_valor_original_tipo'],
+                'hubspot_valor_normalizado_mensal' => $c['hubspot_valor_normalizado_mensal'],
+                'hubspot_valor_confidence'         => $c['hubspot_valor_confidence'],
+                'hubspot_valor_warning'            => $c['hubspot_valor_warning'],
+                'hubspot_snapshot'                 => $c['hubspot_snapshot'],
             ]);
 
             Log::channel('ecf-webhooks')->info('[HubSpot Webhook] ContratoServico criado', [
                 'evento_id'        => $evento?->id,
                 'company_id'       => $company->id,
                 'contrato_id'      => $contrato->id,
-                'line_item_name'   => $nome,
-                'servico_mapeado'  => $mapping->servico->nome,
-                'setor'            => $mapping->servico->setor,
-                'price_unitario'   => $item['price']    ?? null,
-                'quantity'         => $item['quantity'] ?? null,
-                'valor_final'      => $valor,
-                'tipo_cobranca'    => $tipoCobranca,
-                'match_strategy'   => mb_strtolower(trim($mapping->line_item_name)) === mb_strtolower(trim($nome))
-                    ? 'exato'
-                    : 'substring',
+                'servico_id'       => $c['servico_id'],
+                'servico_nome'     => $c['servico_nome'],
+                'valor_contratado' => $c['valor_contratado'],
+                'hubspot_confidence' => $c['hubspot_valor_confidence'],
+                'hubspot_warning'  => $c['hubspot_valor_warning'],
             ]);
 
-            $servicosCriados[] = $mapping->servico->nome;
+            $servicosCriados[] = $c['servico_nome'];
         }
 
-        // Warning: persiste line items sem mapping no payload do evento + log.
+        // ── Warnings do handoff: 2 shapes distintos (Plan 112-02) ───────────────
+        // {name, motivo:'servico_nao_encontrado'} → fluxo legado, grava em notes;
+        // {name, price, recurringbillingfrequency} → line item sem mapping, grava
+        // no payload do evento (paridade com processarLineItems Phase 37).
+        $naoMapeados = [];
+        foreach ($handoff->warnings as $w) {
+            if (($w['motivo'] ?? null) === 'servico_nao_encontrado') {
+                $servicoNome = $w['name'];
+                $notesAtuais = $company->notes ?? '';
+                $linhaNova   = "Serviço (HubSpot): {$servicoNome}";
+                $notes       = trim($notesAtuais === '' ? $linhaNova : $notesAtuais . "\n" . $linhaNova);
+                $company->update(['notes' => $notes]);
+                continue;
+            }
+
+            $naoMapeados[] = $w;
+        }
+
         if (!empty($naoMapeados) && $evento) {
             $payload = $evento->payload ?? [];
             $payload['line_items_nao_mapeados'] = $naoMapeados;
@@ -469,52 +442,6 @@ class HubspotWebhookController extends Controller
         }
 
         return $servicosCriados;
-    }
-
-    /**
-     * Phase 37 Plan 37-04 — fluxo legado Phase 34/35 (extraido de criarEmpresa).
-     *
-     * Quando o deal HubSpot NAO tem line items (fetchDealLineItems retornou []),
-     * cai aqui: tenta achar Servico pelo nome em `services.hubspot.props.deal.servico`
-     * + cria ContratoServico com valor_contratado = deal.amount.
-     *
-     * Servico nome existe mas nao bate com catalogo: grava em notes (admin completa).
-     * Sem servico_ecf no deal: nao cria contrato (sera pendencia Comercial via Plan 37-05).
-     *
-     * @return array<int, string>  Lista com o nome do servico (ou vazia)
-     */
-    private function processarServicoLegado(Company $company, array $dprops, array $propsDeal): array
-    {
-        $servicoNome = $dprops[$propsDeal['servico']] ?? null;
-        $servico     = $servicoNome
-            ? Servico::where('nome', $servicoNome)->where('ativo', true)->first()
-            : null;
-
-        // amount do HubSpot eh o valor do contrato (campo nativo, sem mapeamento).
-        $valor = isset($dprops['amount']) && is_numeric($dprops['amount'])
-            ? (float) $dprops['amount']
-            : ((float) ($servico?->valor_padrao ?? 0));
-
-        if ($servico) {
-            ContratoServico::create([
-                'company_id'       => $company->id,
-                'servico_id'       => $servico->id,
-                'valor_contratado' => $valor,
-                'data_contratacao' => now()->toDateString(),
-                'ativo'            => true,
-            ]);
-            return [$servico->nome];
-        }
-
-        if ($servicoNome) {
-            // Servico nao encontrado no catalogo — grava em notes para admin completar.
-            $notesAtuais = $company->notes ?? '';
-            $linhaNova   = "Serviço (HubSpot): {$servicoNome}";
-            $notes       = trim($notesAtuais === '' ? $linhaNova : $notesAtuais . "\n" . $linhaNova);
-            $company->update(['notes' => $notes]);
-        }
-
-        return [];
     }
 
     /**

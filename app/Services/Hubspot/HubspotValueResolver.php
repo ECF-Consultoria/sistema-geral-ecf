@@ -276,12 +276,16 @@ class HubspotValueResolver
             ]);
         }
 
-        // Indecidível: nem amount nem amount/12 batem com valor_padrao — conservador.
+        // Indecidível: nem amount nem amount/12 batem com valor_padrao — conservador
+        // MANTÉM o valor bruto observado (nunca adivinha divisão por 12 sem
+        // evidência), preservando a INVARIANTE de não-regressão do fluxo legado
+        // Phase 34/35/37 (valor sempre foi `deal.amount` cru nesses casos —
+        // T-112-03-02, bug encontrado durante o gate de regressão do plano 112-03).
         return array_merge($base, [
-            'valor_operacional'   => $mensalInferido,
+            'valor_operacional'   => $amount,
             'valor_original'      => $amount,
-            'valor_original_tipo' => 'deal_amount_annual',
-            'normalizado_mensal'  => $mensalInferido,
+            'valor_original_tipo' => 'deal_amount',
+            'normalizado_mensal'  => null,
             'confidence'          => 'low',
             'warning'             => 'valor_revisar: deal.amount não bate com valor_padrao do serviço dentro da tolerância de 5%',
         ]);
