@@ -559,9 +559,18 @@ class AdmanMetricDiffService
     {
         $comValue = collect($metrics)->filter(fn ($m) => $m['value'] !== null)->count();
 
+        // Fase gf9 (2026-07-24): sob rate-limit/falha ao vivo, o `value` fica
+        // null, MAS o `calculated_fallback` LOCAL (determinístico) pode ter
+        // preenchido `diff_pct` normalmente — contar só `value` classificava
+        // isso como 'missing' e o `compute()` gravava o ERROR_SENTINEL,
+        // jogando fora nas leituras seguintes o `diff_pct` bom do fallback
+        // (apagava o baseline de empresas com dado local). `missing` agora só
+        // quando NADA é usável (nem value ao vivo, nem diff_pct de fallback).
+        $comDiff = collect($metrics)->filter(fn ($m) => $m['diff_pct'] !== null)->count();
+
         $status = match (true) {
             $comValue === count(self::METRIC_KEYS) => 'complete',
-            $comValue === 0                        => 'missing',
+            $comValue === 0 && $comDiff === 0      => 'missing',
             default                                => 'partial',
         };
 
