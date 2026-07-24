@@ -35,6 +35,9 @@ class ModuleRegistry
     /** Chave de cache do mapa key=>stage — a mesma invalidada por `Module::booted()`. */
     public const CACHE_KEY = 'modules.stage_map';
 
+    /** Chave de cache das rotas ocultas (MVP Cargo Dev) — invalidada junto do mapa. */
+    public const CACHE_KEY_HIDDEN = 'modules.hidden_routes';
+
     /** TTL de rede de segurança (1h) — invalidação real é por evento via `flush()`. */
     private const CACHE_TTL = 3600;
 
@@ -72,9 +75,37 @@ class ModuleRegistry
         return $this->map();
     }
 
-    /** Invalida o mapa cacheado — chamado por `Module::booted()` em toda mutação. */
+    /**
+     * Rotas (route_prefix) dos módulos marcados como OCULTOS (`visivel_para_todos = false`).
+     * Consumido pelos shared props Inertia (`auth.modulos_ocultos`) para o gate de
+     * menu do MVP Cargo Dev: o Admin Dev (`isAdminDev()`) ignora esta lista e vê
+     * tudo; os demais papéis têm os itens de menu cujo `routeName` casa com um
+     * destes prefixos escondidos.
+     *
+     * Só entram módulos com `route_prefix` não-nulo (os que mapeiam para um item
+     * de menu real). Um `route_prefix` terminado em ponto (ex.: `admin.`) é tratado
+     * como PREFIXO no frontend — esconde todos os itens sob aquele namespace.
+     *
+     * @return array<int, string>
+     */
+    public function hiddenRoutes(): array
+    {
+        return Cache::remember(
+            self::CACHE_KEY_HIDDEN,
+            self::CACHE_TTL,
+            fn () => Module::query()
+                ->where('visivel_para_todos', false)
+                ->whereNotNull('route_prefix')
+                ->pluck('route_prefix')
+                ->values()
+                ->all()
+        );
+    }
+
+    /** Invalida os mapas cacheados — chamado por `Module::booted()` em toda mutação. */
     public function flush(): void
     {
         Cache::forget(self::CACHE_KEY);
+        Cache::forget(self::CACHE_KEY_HIDDEN);
     }
 }

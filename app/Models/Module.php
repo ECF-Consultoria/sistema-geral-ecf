@@ -46,6 +46,7 @@ class Module extends Model
         'name',
         'grupo',
         'stage',
+        'visivel_para_todos',
         'ordem',
         'prioridade',
         'progresso',
@@ -60,11 +61,12 @@ class Module extends Model
     ];
 
     protected $casts = [
-        'bloqueado'         => 'boolean',
-        'metadata'          => 'array',
-        'ordem'             => 'int',
-        'progresso'         => 'int',
-        'promovido_prod_em' => 'datetime',
+        'bloqueado'          => 'boolean',
+        'visivel_para_todos' => 'boolean',
+        'metadata'           => 'array',
+        'ordem'              => 'int',
+        'progresso'          => 'int',
+        'promovido_prod_em'  => 'datetime',
     ];
 
     /**
@@ -76,7 +78,7 @@ class Module extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['stage', 'prioridade', 'progresso', 'bloqueado', 'ordem', 'promovido_prod_em'])
+            ->logOnly(['stage', 'visivel_para_todos', 'prioridade', 'progresso', 'bloqueado', 'ordem', 'promovido_prod_em'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs()
             ->useLogName('module')
