@@ -1202,7 +1202,13 @@ Planos:
   4. O comando loga resumo estruturado (evento id, deal id, company id, contratos criados/atualizados/ignorados, warnings) no canal `ecf-webhooks`; nenhum token no log
   5. Regressão zero na listagem e no webhook; `Phase37ComercialListagemTest` continua verde
 
-**Plans:** a planejar (`/gsd:plan-phase 114`).
+**Plans:** 3 planos em 2 waves — Wave 1 paralela (114-01 backend payload+3 pendências + 114-03 comando de replay, arquivos disjuntos) → Wave 2 (114-02 frontend, depende do payload do 114-01).
+
+Plans:
+
+- [ ] 114-01-PLAN.md — Backend: payload enriquecido (contato/IDs + bloco de valor por contrato) + 3 pendências novas (sem_contato/valor_revisar/possivel_duplicidade) só origem HubSpot + counts/whitelist + gate Phase37 [HUB-UI-01, HUB-UI-02]
+- [ ] 114-02-PLAN.md — Frontend: EmpresasListagem.jsx estende mapas de pendência + modal de detalhes HubSpot leve (contato/observação/IDs + valor com confiança colorida) + npm run build + checkpoint visual [HUB-UI-01, HUB-UI-02]
+- [ ] 114-03-PLAN.md — Comando hubspot:reprocess-event {id} idempotente reusando handoff/dedup (reprocessarEvento público) + suite replay Http::fake (efeito prático + idempotência) [HUB-REPLAY-01]
 
 ### Phase 115: Suite E2E + documentação da regra de valor (v20.0)
 
