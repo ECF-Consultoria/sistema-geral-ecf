@@ -30,3 +30,17 @@
     (scope boundary — fora do escopo deste plano). `Phase111HubspotSchemaTest`
     e a regressão exigida pelo plano (`Phase34HubspotWebhookTest`,
     `Phase37WebhookLineItemsTest`) permanecem 100% verdes.
+
+## Fase 114 Plan 01
+
+- Reconfirmado durante `--filter=Comercial` da fase 114 (payload
+  enriquecido + pendências novas em `ComercialController::listagem` /
+  `calcularPendenciasComerciais`): 11 falhas em `Phase13ComercialTest`
+  (validação/guard duplicata/criação por setor/notificação) e
+  `Phase14ComercialTest::update_ignora_campos_legacy` — todas testam
+  `store()`/`update()` (cadastro/edição legacy), métodos NÃO tocados pelo
+  Plan 114-01 (que só altera `listagem()`/`calcularPendenciasComerciais()`).
+  Mesma família de falhas pré-existente já registrada acima; fora de escopo
+  (scope boundary). `Phase37ComercialListagemTest` (17/17) e
+  `Phase114ComercialListagemEnrichmentTest` (18/18) — as suites do
+  método realmente alterado — permanecem 100% verdes.
