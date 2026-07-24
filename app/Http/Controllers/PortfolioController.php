@@ -293,7 +293,14 @@ class PortfolioController extends Controller
             $temMl     = (bool) ($c->mlToken && $c->mlToken->status === 'active');
             $temAdman  = ! empty($c->adman_account_id);
             $temShopee = $vs->contains(fn ($v) => ($v['setor'] ?? null) === 'shopee');
-            if ($ehElegivel && ($temMl || $temAdman)) {
+            // Quick 260724-dho — o badge tem que refletir a fonte do VÍNCULO
+            // do profissional ($fonteFinanceiraVencedora), não a plataforma
+            // GLOBAL da empresa. Sem essa checagem primeiro, uma empresa com
+            // mlToken ativo (de OUTRO profissional/serviço) fazia o badge
+            // mostrar ML mesmo quando este profissional só presta Shopee.
+            if ($fonteFinanceiraVencedora === 'shopee') {
+                $fonte = 'shopee';
+            } elseif ($ehElegivel && ($temMl || $temAdman)) {
                 $fonte = ($temMl && $temAdman) ? 'ml_adman' : ($temMl ? 'ml' : 'adman');
             } elseif ($temShopee) {
                 $fonte = 'shopee';
@@ -306,7 +313,9 @@ class PortfolioController extends Controller
             $base = [
                 'id'           => $c->id,
                 'name'         => $c->name,
-                'has_ml_oauth' => $temMl,
+                // Idem — não pinta o SVG do ML quando a fonte vencedora do
+                // vínculo é Shopee, mesmo com mlToken global ativo.
+                'has_ml_oauth' => $temMl && $fonteFinanceiraVencedora !== 'shopee',
                 'servicos'     => $servicos,
                 'fonte'        => $fonte,
                 'invalidada'   => $invalidada,
@@ -629,7 +638,13 @@ class PortfolioController extends Controller
             $temMl     = (bool) ($c->mlToken && $c->mlToken->status === 'active');
             $temAdman  = ! empty($c->adman_account_id);
             $temShopee = $servicos->contains(fn ($s) => ($s['setor'] ?? null) === 'shopee');
-            if ($ehElegivel && ($temMl || $temAdman)) {
+            // Quick 260724-dho — mesma correção da transparencia(): o badge
+            // reflete a fonte do VÍNCULO ($fonteFinanceiraVencedora), não a
+            // plataforma global da empresa (evita mostrar ML quando este
+            // profissional só presta Shopee pra empresa).
+            if ($fonteFinanceiraVencedora === 'shopee') {
+                $fonte = 'shopee';
+            } elseif ($ehElegivel && ($temMl || $temAdman)) {
                 $fonte = ($temMl && $temAdman) ? 'ml_adman' : ($temMl ? 'ml' : 'adman');
             } elseif ($temShopee) {
                 $fonte = 'shopee';
@@ -637,6 +652,9 @@ class PortfolioController extends Controller
                 $fonte = 'sem_fonte';
             }
             $invalidada = $invalidadas->contains($c->id);
+            // Idem has_ml_oauth — não pinta o SVG do ML quando a fonte
+            // vencedora do vínculo deste profissional é Shopee.
+            $temMlBadge = $temMl && $fonteFinanceiraVencedora !== 'shopee';
 
             // CART-04 — empresa SEM vínculo elegível (ex.: profissional só
             // responde por Shopee nessa empresa): financeiro inteiro null.
@@ -653,7 +671,7 @@ class PortfolioController extends Controller
                     'motivo_sem_margem'            => null,
                     'ad_spend'                     => null,
                     'tacos'                        => null,
-                    'has_ml_oauth'                 => $temMl,
+                    'has_ml_oauth'                 => $temMlBadge,
                     'servicos'                     => $servicos,
                     // Campos §8.3 (aditivo)
                     'fonte'                        => $fonte,
@@ -688,7 +706,7 @@ class PortfolioController extends Controller
                         'motivo_sem_margem'            => 'Shopee ainda não fornece margem',
                         'ad_spend'                     => null,
                         'tacos'                        => null,
-                        'has_ml_oauth'                 => $temMl,
+                        'has_ml_oauth'                 => $temMlBadge,
                         'servicos'                     => $servicos,
                         'fonte'                        => $fonte,
                         'faturamento_var_pct'          => null,
@@ -717,7 +735,7 @@ class PortfolioController extends Controller
                     'motivo_sem_margem'            => 'Shopee ainda não fornece margem',
                     'ad_spend'                     => $adSpendShopee !== null ? round((float) $adSpendShopee, 2) : null,
                     'tacos'                        => null,
-                    'has_ml_oauth'                 => $temMl,
+                    'has_ml_oauth'                 => $temMlBadge,
                     'servicos'                     => $servicos,
                     'fonte'                        => $fonte,
                     'faturamento_var_pct'          => $revShopee['diff_pct'] ?? null,
@@ -838,7 +856,7 @@ class PortfolioController extends Controller
                 'motivo_sem_margem'           => $motivoSemMargem,
                 'ad_spend'                    => $adSpend !== null ? round($adSpend, 2) : null,
                 'tacos'                       => $tacos,
-                'has_ml_oauth'                => $temMl,
+                'has_ml_oauth'                => $temMlBadge,
                 'servicos'                    => $servicos,
                 // Campos §8.3 (aditivo) — mesma tabela da transparência.
                 'fonte'                       => $fonte,
