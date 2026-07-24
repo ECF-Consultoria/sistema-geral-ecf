@@ -18,6 +18,7 @@ use App\Http\Controllers\CompanyGroupController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Dev\SugadoresMlOnboardingController;
 use App\Http\Controllers\DevController;
+use App\Http\Controllers\DevModulosController;
 use App\Http\Controllers\GoalController;
 use App\Http\Controllers\LiderancaController;
 use App\Http\Controllers\MlbController;
@@ -642,6 +643,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // Dev — area interna de projetos em desenvolvimento
         Route::get('/dev/desenvolvimento', [DevController::class, 'index'])
             ->name('dev.desenvolvimento');
+
+        // MVP Cargo Dev — tela de controle de visibilidade dos módulos no menu.
+        // Gate real isAdminDev() dentro do controller (admin comum não acessa).
+        Route::get('/dev/modulos', [DevModulosController::class, 'index'])
+            ->name('dev.modulos.index');
+        Route::patch('/dev/modulos/{module}/visibilidade', [DevModulosController::class, 'updateVisibilidade'])
+            ->name('dev.modulos.visibilidade');
         // Re-sync manual de empresa Adman via diagnóstico (admin only)
         Route::post('/dev/resync', [DevController::class, 'resyncCompany'])
             ->name('dev.resync');
