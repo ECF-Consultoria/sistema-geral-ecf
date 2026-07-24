@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AdmanMetric;
 use App\Models\Company;
+use App\Models\MlToken;
 use App\Models\ShopeeMetric;
 use App\Models\User;
 use Carbon\Carbon;
@@ -54,6 +55,24 @@ class PortfolioShopeeCarteiraTest extends TestCase
     private function criarAdmin(): User
     {
         return User::factory()->create(['role' => 'admin']);
+    }
+
+    /**
+     * Quick 260724-dho — cria um mlToken ATIVO pra empresa, simulando OAuth
+     * conectado independentemente do vínculo do profissional testado (o bug
+     * era o badge usar essa flag GLOBAL da empresa em vez da fonte financeira
+     * do vínculo do profissional).
+     */
+    private function criarMlTokenAtivo(Company $company): void
+    {
+        MlToken::create([
+            'company_id'    => $company->id,
+            'ml_user_id'    => 'ml-' . $company->id,
+            'access_token'  => 'token',
+            'refresh_token' => 'refresh',
+            'expires_at'    => now()->addDay(),
+            'status'        => 'active',
+        ]);
     }
 
     /** Semeia ShopeeMetric diário (inclusive) — 1 linha por dia com o mesmo revenue/ad_expense. */
@@ -134,6 +153,33 @@ class PortfolioShopeeCarteiraTest extends TestCase
         $this->assertNotSame('sem_dados', $linha['status']);
     }
 
+    // ─── Quick 260724-dho — badge de plataforma alinhado ao vínculo ───────
+
+    #[Test]
+    public function test_transparencia_empresa_dual_mltoken_ativo_mas_vinculo_shopee_mostra_fonte_shopee(): void
+    {
+        // Empresa com mlToken ATIVO (OAuth conectado, ex.: usado por outro
+        // serviço/profissional) mas o vínculo financeiro DESTE profissional
+        // é só Shopee — o badge tem que refletir o vínculo, não a plataforma
+        // global da empresa.
+        $admin        = $this->criarAdmin();
+        $profissional = User::factory()->create();
+        $company      = Company::factory()->create();
+        $this->criarMlTokenAtivo($company);
+        $this->inserirLinhaShopee($company->id, $profissional->id, 'consultor');
+
+        $this->semearShopee($company, '2026-07-01', '2026-07-20', 100.0, 10.0);
+        $this->semearShopee($company, '2026-06-01', '2026-06-20', 50.0, 5.0);
+
+        $response = $this->actingAs($admin)->get(route('portfolio.transparencia', $profissional));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $linha = $props['empresas'][0];
+        $this->assertSame('shopee', $linha['fonte']);
+        $this->assertFalse($linha['has_ml_oauth'], 'has_ml_oauth deve ser false — o vínculo deste profissional é Shopee, mesmo com mlToken ativo.');
+    }
+
     // ─── Carteira individual — AdminCarteira (Task 1) ────────────────────
 
     #[Test]
@@ -211,6 +257,57 @@ class PortfolioShopeeCarteiraTest extends TestCase
         $this->assertTrue($servicos['performance']['financial_metrics_eligible']);
         $this->assertFalse($servicos['shopee']['financial_metrics_eligible']);
         $this->assertSame(1000.0, $props['resumo']['total_faturamento'], 'Faturamento vem SÓ do Adman (10000.0 somando Shopee seria o bug de duplicação).');
+    }
+
+    #[Test]
+    public function test_carteira_individual_empresa_dual_mltoken_ativo_mas_vinculo_shopee_mostra_fonte_shopee(): void
+    {
+        // Quick 260724-dho — regressão do bug: empresa com mlToken ATIVO
+        // (global) mas o vínculo financeiro DESTE profissional é só Shopee.
+        // Antes: badge mostrava ML (has_ml_oauth=true, fonte='ml') mesmo
+        // sendo o número exibido de origem Shopee.
+        $admin        = $this->criarAdmin();
+        $profissional = User::factory()->create();
+        $company      = Company::factory()->create();
+        $this->criarMlTokenAtivo($company);
+        $this->inserirLinhaShopee($company->id, $profissional->id, 'consultor');
+
+        $this->semearShopee($company, '2026-07-01', '2026-07-20', 100.0, 10.0);
+        $this->semearShopee($company, '2026-06-01', '2026-06-20', 50.0, 5.0);
+
+        $response = $this->actingAs($admin)->get(route('portfolio.show', $profissional));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $linha = $props['empresas'][0];
+        $this->assertSame('shopee', $linha['fonte'], 'Fonte tem que ser shopee, não ml/ml_adman, mesmo com mlToken global ativo.');
+        $this->assertFalse($linha['has_ml_oauth'], 'has_ml_oauth deve ser false — evita pintar o SVG do ML quando o vínculo é Shopee.');
+    }
+
+    #[Test]
+    public function test_carteira_individual_empresa_performance_pura_mantem_badge_ml(): void
+    {
+        // Regressão de guarda: empresa performance pura (sem Shopee) continua
+        // com badge ML/adman e has_ml_oauth=true inalterados.
+        $admin   = $this->criarAdmin();
+        $cenario = $this->criarCenarioMlComResponsaveis();
+        $this->criarMlTokenAtivo($cenario['company']);
+
+        AdmanMetric::create([
+            'company_id'          => $cenario['company']->id,
+            'reference_date'      => now()->startOfMonth()->addDays(2)->toDateString(),
+            'revenue'             => 1000.0,
+            'ad_spend'            => 100.0,
+            'contribution_margin' => 200.0,
+        ]);
+
+        $response = $this->actingAs($admin)->get(route('portfolio.show', $cenario['analista']));
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+
+        $linha = $props['empresas'][0];
+        $this->assertContains($linha['fonte'], ['ml', 'ml_adman'], 'Empresa performance pura com mlToken ativo mantém badge ML.');
+        $this->assertTrue($linha['has_ml_oauth']);
     }
 
     // ─── Carteira consolidada admin — Carteiras.jsx (Task 2) ─────────────
