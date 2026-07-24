@@ -41,6 +41,11 @@ class Company extends Model
         // v15.5 — Mapeamento Digisac (grupo WhatsApp por empresa).
         'digisac_service_id', 'digisac_group_contact_id', 'digisac_group_name_snapshot',
         'digisac_group_mapped_at', 'digisac_group_verified_at', 'digisac_group_mapping_status',
+        // Phase 111 — origem HubSpot (HUB-SCHEMA-01). Colunas nascem sem uso;
+        // base de auditoria/proveniência para o handoff comercial (milestone v20.0).
+        'hubspot_deal_id', 'hubspot_company_id', 'hubspot_contact_id',
+        'nome_contato', 'cargo_contato', 'hubspot_domain',
+        'hubspot_observacao', 'hubspot_snapshot',
     ];
 
     protected $casts = [
@@ -59,6 +64,8 @@ class Company extends Model
         // v15.5 — Timestamps do mapeamento Digisac.
         'digisac_group_mapped_at'   => 'datetime',
         'digisac_group_verified_at' => 'datetime',
+        // Phase 111 — snapshot bruto das propriedades HubSpot (HUB-SCHEMA-01).
+        'hubspot_snapshot' => 'array',
     ];
 
     /**
