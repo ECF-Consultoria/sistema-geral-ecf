@@ -300,6 +300,12 @@ export default function AppLayout({ children, title }) {
     const mainRole    = user?.role;
     const permissions = auth?.permissions ?? [];
 
+    // MVP Cargo Dev — visibilidade de módulos no menu.
+    // `isAdminDev` (users.is_dev, Fase 97): o cargo Dev vê TUDO, ignorando o gate.
+    // `modulosOcultos`: route_prefixes marcados como ocultos na tela /dev/modulos.
+    const isAdminDev     = auth?.is_admin_dev ?? false;
+    const modulosOcultos = auth?.modulos_ocultos ?? [];
+
     // Conjunto de "papeis efetivos" do user: a role legacy (admin/consultor/mentor)
     // MAIS os cargos de PUBLICAÇÃO, mapeados pro short-form usado na NAV_TREE.
     // Sem isso, excludeRoles com cargos de publicação ('publicador','gestor',
@@ -318,6 +324,15 @@ export default function AppLayout({ children, title }) {
     const effectiveRoles = new Set([mainRole, ...pubCargos].filter(Boolean));
 
     /**
+     * MVP Cargo Dev — uma rota está oculta quando casa com algum route_prefix
+     * marcado como oculto (`auth.modulos_ocultos`). Entrada terminada em '.'
+     * (ex.: 'admin.') é tratada como PREFIXO (esconde todo o namespace); as
+     * demais exigem match exato do routeName.
+     */
+    const rotaOculta = (routeName) =>
+        !!routeName && modulosOcultos.some(h => h.endsWith('.') ? routeName.startsWith(h) : routeName === h);
+
+    /**
      * Regra de visibilidade de um item de menu.
      * Retorna false se QUALQUER papel efetivo do user está em excludeRoles, ou se
      * a permission requerida não consta na lista de permissions do usuário.
@@ -327,6 +342,10 @@ export default function AppLayout({ children, title }) {
         // Introduzidos na Phase 56 v13.0 pra separar "Performance" de "Polos"
         // dentro do grupo Mercado Livre sem precisar de sub-grupos aninhados.
         if (item.divider) return true;
+        // Itens exclusivos do Dev (ex.: a própria tela de controle de visibilidade).
+        if (item.devOnly && !isAdminDev) return false;
+        // Gate de visibilidade por módulo — Dev vê tudo; demais não veem os ocultos.
+        if (!isAdminDev && rotaOculta(item.routeName)) return false;
         if (item.excludeRoles?.some(r => effectiveRoles.has(r))) return false;
         return item.permission ? permissions.includes(item.permission) : true;
     };
@@ -373,7 +392,7 @@ export default function AppLayout({ children, title }) {
             }
             return acc;
         }, []);
-    }, [mainRole, permissions, pubCargos.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [mainRole, permissions, pubCargos.join(','), isAdminDev, modulosOcultos.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
 
     /**
      * Estado de expansão dos grupos. Restaura os grupos abertos da sessão (para
