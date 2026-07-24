@@ -839,17 +839,28 @@ class HubspotWebhookController extends Controller
             $naoMapeados[] = $w;
         }
 
-        if (!empty($naoMapeados) && $evento) {
+        // Fase 115 Plano 02 (Rule 1 — bug corrigido durante auditoria SC4): o
+        // payload precisa refletir o estado ATUAL, não só acumular. Sem este
+        // else, um replay que materializa o contrato faltante (mapping
+        // cadastrado depois) nunca limpava a pendência antiga — o line item
+        // continuava aparecendo em line_items_nao_mapeados mesmo já resolvido.
+        if ($evento) {
             $payload = $evento->payload ?? [];
-            $payload['line_items_nao_mapeados'] = $naoMapeados;
-            $evento->payload = $payload;
-            $evento->save();
+            if (!empty($naoMapeados)) {
+                $payload['line_items_nao_mapeados'] = $naoMapeados;
+                $evento->payload = $payload;
+                $evento->save();
 
-            Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line items sem mapeamento', [
-                'evento_id'  => $evento->id,
-                'company_id' => $company->id,
-                'itens'      => array_column($naoMapeados, 'name'),
-            ]);
+                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Line items sem mapeamento', [
+                    'evento_id'  => $evento->id,
+                    'company_id' => $company->id,
+                    'itens'      => array_column($naoMapeados, 'name'),
+                ]);
+            } elseif (array_key_exists('line_items_nao_mapeados', $payload)) {
+                unset($payload['line_items_nao_mapeados']);
+                $evento->payload = $payload;
+                $evento->save();
+            }
         }
 
         return $servicosCriados;

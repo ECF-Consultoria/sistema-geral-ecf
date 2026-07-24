@@ -166,6 +166,9 @@ class Phase114HubspotReplayTest extends TestCase
 
     // ══════════════════════════════════════════════════════════════════
     //  Efeito prático: mapping cadastrado depois → replay cria o contrato
+    //
+    //  Rastreabilidade Fase 115 Plano 02 — SC4 (HUB-TEST-04) → método:
+    //  test_replay_cria_contrato_faltante_apos_mapping_cadastrado
     // ══════════════════════════════════════════════════════════════════
 
     public function test_replay_cria_contrato_faltante_apos_mapping_cadastrado(): void
@@ -214,6 +217,17 @@ class Phase114HubspotReplayTest extends TestCase
 
         $evento->refresh();
         $this->assertSame('processado', $evento->status);
+
+        // Reforço: a pendência foi MATERIALIZADA (não só o contrato existe) —
+        // "Serviço X" não pode mais aparecer em line_items_nao_mapeados após
+        // o replay, senão o efeito prático da pendência não sumiu de verdade.
+        $naoMapeadosApos = $evento->payload['line_items_nao_mapeados'] ?? [];
+        $nomesNaoMapeados = array_column($naoMapeadosApos, 'name');
+        $this->assertNotContains(
+            'Serviço X',
+            $nomesNaoMapeados,
+            'Apos o replay materializar o contrato, a pendencia nao pode mais constar em line_items_nao_mapeados'
+        );
     }
 
     // ══════════════════════════════════════════════════════════════════
