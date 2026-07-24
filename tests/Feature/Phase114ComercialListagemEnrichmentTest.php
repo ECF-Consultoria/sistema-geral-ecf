@@ -22,6 +22,12 @@ use Tests\TestCase;
  *
  * Helpers copiados de Phase37ComercialListagemTest (mesmo racional de setup).
  * Task 2 (payload enriquecido) adiciona mais casos a esta mesma suite.
+ *
+ * Rastreabilidade Fase 115 Plano 02 — SC5 (HUB-TEST-05, parte listagem) → método:
+ *  contato/observação por linha (nome_contato/cargo_contato/hubspot_observacao/
+ *  hubspot_deal_id/hubspot_company_id) → test_payload_expoe_campos_de_contato_e_ids_hubspot
+ *  bloco de valor confiança/warning por contrato → test_contrato_expoe_bloco_de_valor_hubspot
+ *  gate crítico valor_revisar/pendências SÓ origem HubSpot → test_empresa_legada_NAO_recebe_nenhuma_pendencia_nova
  */
 class Phase114ComercialListagemEnrichmentTest extends TestCase
 {
