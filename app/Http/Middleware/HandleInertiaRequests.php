@@ -42,6 +42,12 @@ class HandleInertiaRequests extends Middleware
                 'permissions' => $user ? $user->effectivePermissions() : [],
                 'setores'     => $user ? $this->buildSetoresPayload($user) : [],
                 'lideranca'   => $user ? $user->setoresLiderados()->get(['setores.id', 'nome', 'slug'])->all() : [],
+                // MVP Cargo Dev — visibilidade de módulos no menu.
+                // `is_admin_dev`: o cargo Dev (users.is_dev, Fase 97) vê TUDO no menu.
+                // `modulos_ocultos`: route_prefixes marcados como ocultos (só Dev vê) —
+                // consumido por AppLayout::itemVisivel(). Lista cacheada (ModuleRegistry).
+                'is_admin_dev'    => $user ? $user->isAdminDev() : false,
+                'modulos_ocultos' => $user ? app(\App\Services\ModuleRegistry::class)->hiddenRoutes() : [],
             ],
             'flash' => [
                 'success'       => $request->session()->get('success'),
