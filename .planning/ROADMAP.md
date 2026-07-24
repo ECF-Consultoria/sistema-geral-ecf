@@ -1162,12 +1162,12 @@ Plans:
   4. Cada `ContratoServico` criado grava `valor_contratado` = valor operacional + os campos `hubspot_valor_*` (original/tipo/normalizado_mensal/confidence/warning) preenchidos; multi-line-item resolve cada item e cria contratos separados por `hubspot_line_item_id` distinto
   5. Regressão zero: `Phase34HubspotWebhookTest`, `Phase35HubspotV2Test`, `Phase37*` continuam verdes; fluxo legado sem line items segue usando `deal.amount` com a nova coerção conservadora
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 112-01-PLAN.md — HubspotValueResolver (classe pura, TDD) + suite unitária dos 6 casos-âncora [HUB-VAL-01]
 - [x] 112-02-PLAN.md — HubspotDealHandoffService + DTO HubspotHandoffData consumindo o resolver (multi-line-item) [HUB-VAL-02, HUB-VAL-04]
-- [ ] 112-03-PLAN.md — Controller fino delega ao handoff + persiste colunas de auditoria + E2E 36k→3k [HUB-VAL-02, HUB-VAL-03, HUB-VAL-05]
+- [x] 112-03-PLAN.md — Controller fino delega ao handoff + persiste colunas de auditoria + E2E 36k→3k [HUB-VAL-02, HUB-VAL-03, HUB-VAL-05]
 
 ### Phase 113: Enriquecimento de contato/empresa + escolha de contato principal + dedup (v20.0)
 

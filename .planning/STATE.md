@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
-status: executing
-stopped_at: Completado 112-02-PLAN.md (2/3 planos da Fase 112 concluidos)
-last_updated: "2026-07-24T14:07:45.584Z"
+status: verifying
+stopped_at: Completado 112-03-PLAN.md (3/3 planos da Fase 112 concluidos) — controller fino delega ao HubspotDealHandoffService, 11 colunas de auditoria persistidas, criterio de aceite ancora (36k->3k) fechado. Fase 112 pronta para verificacao.
+last_updated: "2026-07-24T14:35:00.098Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 6
-  completed_plans: 5
-  percent: 20
+  completed_plans: 6
+  percent: 40
 ---
 
 # Project State
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 112 — HubspotValueResolver + extração do handoff service (NÚCLEO)
+**Current focus:** Phase 112 — HubspotValueResolver + extração do handoff service (NÚCLEO) — COMPLETA, aguardando verificação
 
 ## Current Position
 
-Phase: 112 (HubspotValueResolver + extração do handoff service (NÚCLEO)) — EXECUTING
-Plan: 3 of 3
+Phase: 112 (HubspotValueResolver + extração do handoff service (NÚCLEO)) — COMPLETA (3/3 planos)
+Plan: 3 of 3 — concluído
 
-Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Falta plano 112-03 (plugar o service no controller).
-Status: Plan 03 pendente (plugar HubspotDealHandoffService no HubspotWebhookController)
+Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes.
+Status: Fase 112 completa (3/3) — pronta para verificação
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -172,6 +172,7 @@ Last activity: 2026-07-24
 | Phase 111 P03 | ~15min | 3 tasks | 5 files |
 | Phase 112 P01 | 20min | 2 tasks | 2 files |
 | Phase 112 P02 | ~15min | 2 tasks | 3 files |
+| Phase 112 P03 | 35min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -692,8 +693,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T14:07:45.513Z
-Stopped at: Completado 112-02-PLAN.md (2/3 planos da Fase 112 concluidos)
+Last session: 2026-07-24T14:34:59.873Z
+Stopped at: Completado 112-03-PLAN.md (3/3 planos da Fase 112 concluidos) — controller fino delega ao HubspotDealHandoffService, 11 colunas de auditoria persistidas, criterio de aceite ancora (36k->3k) fechado. Fase 112 pronta para verificacao.
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
