@@ -11,7 +11,7 @@ import { useForm, Link, router, usePage } from '@inertiajs/react';
 import { useState, useRef, useEffect } from 'react';
 import {
     Building2, Search, Tag, Eye, Briefcase, ChevronLeft, ChevronRight,
-    AlertCircle, Plus, ListChecks, Webhook, Pencil, Trash2, Save,
+    AlertCircle, Plus, ListChecks, Webhook, Pencil, Trash2, Save, Info,
 } from 'lucide-react';
 import { cn, formatCurrency } from '@/lib/utils';
 import GruposManager from '@/Components/GruposManager';
@@ -36,6 +36,10 @@ const PENDENCIAS_LABELS = {
     servico_nao_reconhecido: 'Serviço não reconhecido',
     sem_setor:               'Sem setor (catálogo)',
     dados_close_incompletos: 'Close incompleto',
+    // Fase 114-02 — pendências novas, aditivas, só para origem HubSpot.
+    sem_contato:             'Sem contato',
+    valor_revisar:           'Revisar valor',
+    possivel_duplicidade:    'Possível duplicidade',
 };
 
 const PENDENCIAS_CLS = {
@@ -44,6 +48,27 @@ const PENDENCIAS_CLS = {
     servico_nao_reconhecido: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
     sem_setor:               'bg-sky-500/10 text-sky-400 border-sky-500/20',
     dados_close_incompletos: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20',
+    sem_contato:             'bg-slate-500/10 text-slate-300 border-slate-500/20',
+    valor_revisar:           'bg-yellow-500/10 text-yellow-300 border-yellow-500/20',
+    possivel_duplicidade:    'bg-rose-500/10 text-rose-400 border-rose-500/20',
+};
+
+// Confiança do valor HubSpot (bloco de valor por contrato) — cor semântica.
+const CONFIANCA_CLS = {
+    high:   'text-emerald-400',
+    medium: 'text-amber-300',
+    low:    'text-red-400',
+};
+
+const CONFIANCA_LABEL = {
+    high:   'Alta',
+    medium: 'Média',
+    low:    'Baixa',
+};
+
+const FREQUENCIA_LABEL = {
+    monthly:  'mensal',
+    annually: 'anual',
 };
 
 const SETOR_LABELS = {
@@ -362,6 +387,104 @@ function EditarEmpresaModal({ empresa, open, onClose }) {
     );
 }
 
+// ─── Modal de detalhes HubSpot (contato/observação/IDs + bloco de valor) ─────
+// Fase 114-02 — detalhe leve por linha, só para empresas de origem HubSpot.
+// Espelha o padrão do EditarEmpresaModal (Dialog reusado), mas é só leitura.
+
+function DetalheHubspotModal({ empresa, open, onClose }) {
+    if (!empresa) return null;
+
+    const contratos = empresa.contratos_servico ?? [];
+
+    return (
+        <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Detalhes HubSpot — {empresa.name}</DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4 mt-2">
+                    {/* ── Contato ────────────────────────────────────────── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-1">
+                        <h3 className="text-white/85 text-sm font-semibold mb-2">Contato</h3>
+                        <p className="text-white/85 text-[13px]">
+                            {empresa.nome_contato || <span className="text-white/30">Sem contato</span>}
+                        </p>
+                        {empresa.cargo_contato && (
+                            <p className="text-white/40 text-[12px]">{empresa.cargo_contato}</p>
+                        )}
+                    </div>
+
+                    {/* ── Observação ─────────────────────────────────────── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-1">
+                        <h3 className="text-white/85 text-sm font-semibold mb-2">Observação</h3>
+                        <p className="text-white/60 text-[12px] whitespace-pre-wrap">
+                            {empresa.hubspot_observacao || '—'}
+                        </p>
+                    </div>
+
+                    {/* ── IDs HubSpot ────────────────────────────────────── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-1">
+                        <h3 className="text-white/85 text-sm font-semibold mb-2">IDs HubSpot</h3>
+                        <p className="text-white/60 text-[12px] font-mono">
+                            Deal: {empresa.hubspot_deal_id || '—'}
+                        </p>
+                        <p className="text-white/60 text-[12px] font-mono">
+                            Company: {empresa.hubspot_company_id || '—'}
+                        </p>
+                    </div>
+
+                    {/* ── Valor por contrato ─────────────────────────────── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+                        <h3 className="text-white/85 text-sm font-semibold">Valor por contrato</h3>
+                        {contratos.length === 0 && (
+                            <p className="text-white/40 text-[12px]">Nenhum contrato ativo.</p>
+                        )}
+                        {contratos.map(ct => {
+                            const confidence = ct.hubspot_valor_confidence;
+                            const frequenciaLabel = FREQUENCIA_LABEL[ct.hubspot_billing_frequency] ?? ct.hubspot_billing_frequency ?? '—';
+                            return (
+                                <div key={ct.id} className="rounded-lg bg-white/[0.03] px-3 py-2 space-y-1">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-white/85 text-[13px]">{ct.servico?.nome ?? '—'}</span>
+                                        <span className="text-white font-semibold text-[13px]">{formatCurrency(ct.valor_contratado)}</span>
+                                    </div>
+                                    {ct.hubspot_valor_original != null && (
+                                        <p className="text-white/40 text-[11px]">
+                                            Original HubSpot: {formatCurrency(ct.hubspot_valor_original)} ({frequenciaLabel})
+                                        </p>
+                                    )}
+                                    {ct.hubspot_billing_frequency && (
+                                        <p className="text-white/40 text-[11px]">
+                                            Frequência: {frequenciaLabel}
+                                        </p>
+                                    )}
+                                    {confidence && (
+                                        <p className="text-[11px]">
+                                            Confiança: <span className={cn('font-semibold', CONFIANCA_CLS[confidence] ?? 'text-white/60')}>
+                                                {CONFIANCA_LABEL[confidence] ?? confidence}
+                                            </span>
+                                        </p>
+                                    )}
+                                    {ct.hubspot_valor_warning && (
+                                        <p className="text-amber-300 text-[11px] flex items-start gap-1">
+                                            <AlertCircle size={11} className="mt-0.5 shrink-0" /> {ct.hubspot_valor_warning}
+                                        </p>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button type="button" variant="outline" onClick={onClose}>Fechar</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 // ─── Página principal ────────────────────────────────────────────────────────
 
 export default function EmpresasListagem({
@@ -377,6 +500,11 @@ export default function EmpresasListagem({
     const [editandoEmpresa, setEditandoEmpresa] = useState(null);
     const abrirEdicao = (c) => setEditandoEmpresa(c);
     const fecharEdicao = () => setEditandoEmpresa(null);
+
+    // Estado da modal de detalhes HubSpot (Fase 114-02) — mesmo padrão da edição.
+    const [detalheEmpresa, setDetalheEmpresa] = useState(null);
+    const abrirDetalhe = (c) => setDetalheEmpresa(c);
+    const fecharDetalhe = () => setDetalheEmpresa(null);
 
     // Aba inicial via ?tab= (deep-link). Default = 'empresas'.
     const [tab, setTab] = useState(() => {
@@ -494,8 +622,8 @@ export default function EmpresasListagem({
                             </Link>
                         </div>
 
-                        {/* 5 cards de pendência comercial (clicáveis) */}
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        {/* 8 cards de pendência comercial (clicáveis) — 5 atuais + 3 novas (114-02) */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
                             {Object.entries(PENDENCIAS_LABELS).map(([key, label]) => {
                                 const active = filters.pendencia === key;
                                 const count = pendencia_counts?.[key] ?? 0;
@@ -599,6 +727,18 @@ export default function EmpresasListagem({
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <div className="inline-flex items-center gap-1">
+                                                        {/* Detalhes HubSpot só para empresas de origem HubSpot —
+                                                            empresa legada não tem esses dados (evita botão morto). */}
+                                                        {c.is_origem_hubspot && (
+                                                            <Button
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                title="Detalhes HubSpot (contato, valor, IDs)"
+                                                                onClick={() => abrirDetalhe(c)}
+                                                            >
+                                                                <Info size={13} />
+                                                            </Button>
+                                                        )}
                                                         <Button
                                                             size="sm"
                                                             variant="ghost"
@@ -654,6 +794,13 @@ export default function EmpresasListagem({
                 empresa={editandoEmpresa}
                 open={!!editandoEmpresa}
                 onClose={fecharEdicao}
+            />
+
+            {/* Modal de detalhes HubSpot (Fase 114-02) */}
+            <DetalheHubspotModal
+                empresa={detalheEmpresa}
+                open={!!detalheEmpresa}
+                onClose={fecharDetalhe}
             />
         </AppLayout>
     );
