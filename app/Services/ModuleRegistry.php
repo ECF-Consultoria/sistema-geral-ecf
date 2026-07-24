@@ -90,16 +90,23 @@ class ModuleRegistry
      */
     public function hiddenRoutes(): array
     {
-        return Cache::remember(
-            self::CACHE_KEY_HIDDEN,
-            self::CACHE_TTL,
-            fn () => Module::query()
-                ->where('visivel_para_todos', false)
-                ->whereNotNull('route_prefix')
-                ->pluck('route_prefix')
-                ->values()
-                ->all()
-        );
+        try {
+            return Cache::remember(
+                self::CACHE_KEY_HIDDEN,
+                self::CACHE_TTL,
+                fn () => Module::query()
+                    ->where('visivel_para_todos', false)
+                    ->whereNotNull('route_prefix')
+                    ->pluck('route_prefix')
+                    ->values()
+                    ->all()
+            );
+        } catch (\Throwable) {
+            // Falha silenciosa (ex.: tabela `modules` ainda inexistente durante a
+            // janela de deploy, antes do migrate) → nada oculto, menu intacto.
+            // Não cacheia o erro: o próximo request tenta de novo.
+            return [];
+        }
     }
 
     /** Invalida os mapas cacheados — chamado por `Module::booted()` em toda mutação. */
