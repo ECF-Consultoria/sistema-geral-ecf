@@ -55,11 +55,22 @@ class Phase37LineItemsFetchTest extends TestCase
             'https://api.hubapi.com/crm/v3/objects/line_items/111*' => Http::response([
                 'id' => '111',
                 'properties' => [
-                    'name'                      => 'Mapeamento',
-                    'price'                     => '500',
-                    'quantity'                  => '1',
-                    'hs_product_id'             => 'P1',
-                    'recurringbillingfrequency' => 'monthly',
+                    'name'                              => 'Mapeamento',
+                    'description'                       => 'Servico de mapeamento inicial',
+                    'price'                              => '500',
+                    'amount'                             => '500',
+                    'quantity'                           => '1',
+                    'hs_product_id'                      => 'P1',
+                    'hs_sku'                              => 'SKU-1',
+                    'recurringbillingfrequency'          => 'monthly',
+                    'hs_recurring_billing_period'        => 'P1M',
+                    'hs_recurring_billing_start_date'    => '2026-01-01',
+                    'hs_recurring_billing_end_date'      => '2026-12-31',
+                    'hs_line_item_currency_code'         => 'BRL',
+                    'hs_mrr'                              => '500',
+                    'hs_arr'                              => '6000',
+                    'hs_tcv'                              => '6000',
+                    'hs_acv'                              => '6000',
                 ],
             ], 200),
             'https://api.hubapi.com/crm/v3/objects/line_items/222*' => Http::response([
@@ -79,21 +90,57 @@ class Phase37LineItemsFetchTest extends TestCase
         $this->assertIsArray($out);
         $this->assertCount(2, $out);
         $this->assertEquals(
-            ['id', 'name', 'price', 'quantity', 'hs_product_id', 'recurringbillingfrequency'],
+            [
+                'id',
+                'name',
+                'description',
+                'price',
+                'amount',
+                'quantity',
+                'hs_product_id',
+                'hs_sku',
+                'recurringbillingfrequency',
+                'hs_recurring_billing_period',
+                'hs_recurring_billing_start_date',
+                'hs_recurring_billing_end_date',
+                'hs_line_item_currency_code',
+                'hs_mrr',
+                'hs_arr',
+                'hs_tcv',
+                'hs_acv',
+            ],
             array_keys($out[0])
         );
 
         $this->assertEquals('111', $out[0]['id']);
         $this->assertEquals('Mapeamento', $out[0]['name']);
+        $this->assertEquals('Servico de mapeamento inicial', $out[0]['description']);
         $this->assertEquals(500.0, $out[0]['price']);
+        $this->assertEquals(500.0, $out[0]['amount']);
+        $this->assertIsFloat($out[0]['amount']);
         $this->assertEquals(1, $out[0]['quantity']);
         $this->assertEquals('P1', $out[0]['hs_product_id']);
+        $this->assertEquals('SKU-1', $out[0]['hs_sku']);
         $this->assertEquals('monthly', $out[0]['recurringbillingfrequency']);
+        $this->assertEquals('P1M', $out[0]['hs_recurring_billing_period']);
+        $this->assertEquals('2026-01-01', $out[0]['hs_recurring_billing_start_date']);
+        $this->assertEquals('2026-12-31', $out[0]['hs_recurring_billing_end_date']);
+        $this->assertEquals('BRL', $out[0]['hs_line_item_currency_code']);
+        $this->assertEquals(500.0, $out[0]['hs_mrr']);
+        $this->assertIsFloat($out[0]['hs_mrr']);
+        $this->assertEquals(6000.0, $out[0]['hs_arr']);
+        $this->assertEquals(6000.0, $out[0]['hs_tcv']);
+        $this->assertEquals(6000.0, $out[0]['hs_acv']);
 
         $this->assertEquals('222', $out[1]['id']);
         $this->assertEquals('Polos', $out[1]['name']);
         $this->assertEquals(1200.0, $out[1]['price']);
         $this->assertNull($out[1]['recurringbillingfrequency']);
+        // Item sem as props novas nas properties do HubSpot -> tudo null (nao presente).
+        $this->assertNull($out[1]['description']);
+        $this->assertNull($out[1]['amount']);
+        $this->assertNull($out[1]['hs_sku']);
+        $this->assertNull($out[1]['hs_mrr']);
     }
 
     public function test_deal_sem_line_items_retorna_array_vazio(): void
