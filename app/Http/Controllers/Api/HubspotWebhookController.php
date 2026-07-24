@@ -10,6 +10,7 @@ use App\Models\HubspotEvento;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
+use App\Services\Hubspot\HubspotContactSelector;
 use App\Services\Hubspot\HubspotDealHandoffService;
 use App\Services\Hubspot\HubspotHandoffData;
 use App\Services\HubspotApiClient;
@@ -178,23 +179,39 @@ class HubspotWebhookController extends Controller
             $companyId  = $api->fetchAssociatedCompanyId((string) $evento->object_id);
             $hubCompany = $companyId ? $api->fetchCompany($companyId, array_values($propsCompany)) : null;
 
-            // Phase 35 Plan 35-02 D-04 — fetch do contato vinculado (fallback
-            // p/ email_cliente/telefone se Company veio sem). Falha do GET ou
-            // ausencia de contato: segue silencioso (warning), nao bloqueia
-            // o cadastro porque deal+company sao o minimo viavel.
-            $contactId  = $api->fetchAssociatedContactId((string) $evento->object_id);
-            $hubContact = null;
-            if ($contactId) {
-                try {
-                    $hubContact = $api->fetchContact($contactId, array_values($propsContact));
-                } catch (\Throwable $e) {
-                    Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Falha ao buscar contato vinculado', [
-                        'evento_id'  => $evento->id,
-                        'contact_id' => $contactId,
-                        'msg'        => $e->getMessage(),
-                    ]);
+            // Fase 113 Plan 113-02 (HUB-CONTATO-01) — fetch BATCH de TODOS os
+            // contatos vinculados ao deal (troca do fetch singular
+            // fetchAssociatedContactId/fetchContact da Fase 35). Falha do GET
+            // ou ausencia de contatos: segue silencioso (warning), nao bloqueia
+            // o cadastro porque deal+company sao o minimo viavel. Cada contato
+            // e normalizado com chaves LOGICAS (id/firstname/lastname/email/
+            // phone/mobilephone/jobtitle) via $propsContact, e
+            // HubspotContactSelector (Fase 113 plano 01) escolhe o principal
+            // de forma deterministica entre todos.
+            $contatos = [];
+            try {
+                $contactIds = $api->fetchAssociatedContactIds((string) $evento->object_id);
+                if (!empty($contactIds)) {
+                    $mapaContatos = $api->fetchContacts($contactIds, array_values($propsContact));
+                    foreach ($mapaContatos as $contactId => $props) {
+                        $contatos[] = [
+                            'id'          => (string) $contactId,
+                            'firstname'   => $props[$propsContact['firstname'] ?? 'firstname'] ?? null,
+                            'lastname'    => $props[$propsContact['lastname'] ?? 'lastname'] ?? null,
+                            'email'       => $props[$propsContact['email'] ?? 'email'] ?? null,
+                            'phone'       => $props[$propsContact['phone'] ?? 'phone'] ?? null,
+                            'mobilephone' => $props[$propsContact['mobilephone'] ?? 'mobilephone'] ?? null,
+                            'jobtitle'    => $props[$propsContact['jobtitle'] ?? 'jobtitle'] ?? null,
+                        ];
+                    }
                 }
+            } catch (\Throwable $e) {
+                Log::channel('ecf-webhooks')->warning('[HubSpot Webhook] Falha ao buscar contatos vinculados (batch)', [
+                    'evento_id' => $evento->id,
+                    'msg'       => $e->getMessage(),
+                ]);
             }
+            $contatoPrincipal = HubspotContactSelector::selecionar($contatos);
 
             // Phase 37 Plan 37-04 (REQ-37-04) — busca line items do deal.
             // Quando vazio, criarEmpresa cai no fluxo legado (Servico::where nome
@@ -202,7 +219,7 @@ class HubspotWebhookController extends Controller
             // tem prioridade total sobre o servico_ecf do deal.
             $lineItems = $api->fetchDealLineItems((string) $evento->object_id);
 
-            $company = $this->criarEmpresa($deal, $hubCompany, $hubContact, $lineItems, $evento);
+            $company = $this->criarEmpresa($deal, $hubCompany, $contatoPrincipal, $contatos, $companyId, $lineItems, $evento);
 
             $evento->update([
                 'status'            => 'processado',
@@ -252,27 +269,35 @@ class HubspotWebhookController extends Controller
      * servicoDisparaImplementacao eh avaliada por CADA servico identificado
      * (line items mapeados OU servico do deal no fallback).
      *
-     * @param  array              $deal        payload HubSpot do deal (chave 'properties')
-     * @param  array|null         $hubCompany  payload HubSpot do company associado
-     * @param  array|null         $hubContact  payload HubSpot do contato associado (fallback)
-     * @param  array              $lineItems   line items normalizados (Plan 37-03); array vazio cai no legado
-     * @param  HubspotEvento|null $evento      necessario para gravar warnings (line_items_nao_mapeados)
+     * Fase 113 Plan 113-02 (HUB-CONTATO-01/02) — troca `$hubContact` (payload
+     * bruto do UNICO contato) por `$contatoPrincipal` (contato ja escolhido
+     * pelo HubspotContactSelector, com chaves LOGICAS) + `$contatos` (lista
+     * completa normalizada, usada no snapshot) + `$companyId` (id HubSpot da
+     * company associada, gravado estruturado).
+     *
+     * @param  array              $deal              payload HubSpot do deal (chave 'properties')
+     * @param  array|null         $hubCompany        payload HubSpot do company associado
+     * @param  array|null         $contatoPrincipal  contato principal (chaves logicas id/firstname/lastname/email/phone/mobilephone/jobtitle) ou null
+     * @param  array              $contatos          lista completa de contatos normalizados (chaves logicas) — alimenta o snapshot
+     * @param  string|null        $companyId         id HubSpot da company associada (gravado em hubspot_company_id)
+     * @param  array              $lineItems         line items normalizados (Plan 37-03); array vazio cai no legado
+     * @param  HubspotEvento|null $evento            necessario para gravar warnings (line_items_nao_mapeados)
      */
     private function criarEmpresa(
         array $deal,
         ?array $hubCompany,
-        ?array $hubContact = null,
+        ?array $contatoPrincipal = null,
+        array $contatos = [],
+        ?string $companyId = null,
         array $lineItems = [],
         ?HubspotEvento $evento = null,
     ): Company {
         $propsDeal    = config('services.hubspot.props.deal');
         $propsCompany = config('services.hubspot.props.company');
-        $propsContact = config('services.hubspot.props.contact');
         $dprops       = $deal['properties'] ?? [];
         $cprops       = $hubCompany['properties'] ?? [];
-        $ctprops      = $hubContact['properties'] ?? [];
 
-        return DB::transaction(function () use ($deal, $dprops, $cprops, $ctprops, $propsDeal, $propsCompany, $propsContact, $lineItems, $evento) {
+        return DB::transaction(function () use ($deal, $dprops, $cprops, $propsDeal, $propsCompany, $lineItems, $evento, $contatoPrincipal, $contatos, $companyId, $hubCompany) {
             $venderMlRaw = $dprops[$propsDeal['vende_ml']] ?? null;
             $vendeMl     = $venderMlRaw === null || $venderMlRaw === ''
                 ? null
@@ -281,16 +306,30 @@ class HubspotWebhookController extends Controller
             $faturamentoRaw = $dprops[$propsDeal['faturamento_mensal']] ?? null;
             $faturamento    = is_numeric($faturamentoRaw) ? (float) $faturamentoRaw : null;
 
-            // ── Phase 35 D-04 — fallback contato p/ email/telefone ────────────
-            // Prioridade: Company > Contato. Strings vazias sao tratadas como
-            // ausencia (a Company HubSpot pode mandar "" em vez de omitir).
-            $companyEmail = $cprops[$propsCompany['email']] ?? null;
-            $companyPhone = $cprops[$propsCompany['phone']] ?? null;
-            $contactEmail = $ctprops[$propsContact['email']] ?? null;
-            $contactPhone = $ctprops[$propsContact['phone']] ?? null;
+            // ── Phase 35 D-04 / Fase 113 — fallback contato p/ email/telefone ──
+            // Prioridade: Company > Contato PRINCIPAL (Fase 113 plano 01 escolhe
+            // entre TODOS os contatos do deal, nao so o primeiro). Strings vazias
+            // sao tratadas como ausencia (a Company HubSpot pode mandar "" em vez
+            // de omitir). Fase 113 plano 02 (HUB-CONTATO-02) — adiciona coalesce
+            // p/ mobilephone quando o contato principal nao tem phone.
+            $companyEmail  = $cprops[$propsCompany['email']] ?? null;
+            $companyPhone  = $cprops[$propsCompany['phone']] ?? null;
+            $contactEmail  = $contatoPrincipal['email'] ?? null;
+            $contactPhone  = $contatoPrincipal['phone'] ?? null;
+            $contactMobile = $contatoPrincipal['mobilephone'] ?? null;
 
             $emailFinal = ($companyEmail !== null && $companyEmail !== '') ? $companyEmail : $contactEmail;
-            $foneFinal  = ($companyPhone !== null && $companyPhone !== '') ? $companyPhone : $contactPhone;
+            $foneFinal  = ($companyPhone !== null && $companyPhone !== '')
+                ? $companyPhone
+                : (($contactPhone !== null && $contactPhone !== '') ? $contactPhone : $contactMobile);
+
+            // ── Fase 113 plano 02 (HUB-CONTATO-02) — campos estruturados ────────
+            $firstname    = trim((string) ($contatoPrincipal['firstname'] ?? ''));
+            $lastname     = trim((string) ($contatoPrincipal['lastname'] ?? ''));
+            $nomeContato  = trim($firstname . ' ' . $lastname);
+            $cargoContatoRaw = trim((string) ($contatoPrincipal['jobtitle'] ?? ''));
+            $observacaoRaw   = trim((string) ($dprops[$propsDeal['observacao'] ?? 'observacao'] ?? ''));
+            $domainRaw       = trim((string) ($cprops[$propsCompany['domain'] ?? 'domain'] ?? ''));
 
             $company = Company::create([
                 'name'               => $cprops[$propsCompany['name']]
@@ -306,14 +345,21 @@ class HubspotWebhookController extends Controller
                 'empresa_nova'       => true,
                 'status'             => 'pendente',
                 'active'             => true,
+                // Fase 111 (colunas) / Fase 113 plano 02 (gravacao real) —
+                // HUB-CONTATO-02: contato principal estruturado + IDs HubSpot.
+                'nome_contato'       => $nomeContato !== '' ? $nomeContato : null,
+                'cargo_contato'      => $cargoContatoRaw !== '' ? $cargoContatoRaw : null,
+                'hubspot_deal_id'    => $evento?->object_id !== null ? (string) $evento->object_id : null,
+                'hubspot_company_id' => $companyId,
+                'hubspot_contact_id' => $contatoPrincipal['id'] ?? null,
+                'hubspot_domain'     => $domainRaw !== '' ? $domainRaw : null,
+                'hubspot_observacao' => $observacaoRaw !== '' ? $observacaoRaw : null,
             ]);
 
             // ── Phase 35 D-04 — anexa nome do contato em notes ────────────────
-            // Concatena firstname + lastname (trim). Gancho semantico p/ coluna
-            // futura `contato_nome`. Linha "Contato (HubSpot): {nome}".
-            $firstname = trim((string) ($ctprops[$propsContact['firstname']] ?? ''));
-            $lastname  = trim((string) ($ctprops[$propsContact['lastname']] ?? ''));
-            $nomeContato = trim($firstname . ' ' . $lastname);
+            // Concatena firstname + lastname (trim). Fonte LEGADA preservada —
+            // coexiste com a coluna estruturada `nome_contato` (Fase 113).
+            // Linha "Contato (HubSpot): {nome}".
             if ($nomeContato !== '') {
                 $notesAtuais = (string) ($company->notes ?? '');
                 $linhaContato = "Contato (HubSpot): {$nomeContato}";
@@ -325,7 +371,17 @@ class HubspotWebhookController extends Controller
             // montagem de valor/contratos ao HubspotDealHandoffService. Line items
             // HubSpot tem PRIORIDADE (avaliado internamente pelo build()); quando
             // vazio, o proprio service resolve o fluxo legado (servico_ecf + amount).
-            $handoff = app(HubspotDealHandoffService::class)->build($deal, $lineItems, $propsDeal);
+            // Fase 113 plano 02 — parametros extras OPCIONAIS preenchem
+            // company_data/contact_data do DTO (nao alteram valor/contratos).
+            $handoff = app(HubspotDealHandoffService::class)->build(
+                $deal,
+                $lineItems,
+                $propsDeal,
+                $hubCompany,
+                $contatos,
+                $contatoPrincipal,
+                $propsCompany,
+            );
             $servicosCriados = $this->persistirContratos($company, $handoff, $evento);
 
             // ── Roteamento MlbEmpresa por CADA servico criado ───────────────────────────
@@ -334,6 +390,21 @@ class HubspotWebhookController extends Controller
             foreach ($servicosCriados as $nomeServico) {
                 $this->rotearImplementacao($company, $nomeServico);
             }
+
+            // ── Fase 113 plano 02 (HUB-DEDUP-03) — snapshot completo p/
+            // auditoria/replay (Fase 115): deal + company + TODOS os contatos
+            // (nao so o principal) + line_items + warnings + captured_at.
+            $company->update([
+                'hubspot_snapshot' => [
+                    'deal'               => $dprops,
+                    'company'            => $hubCompany['properties'] ?? null,
+                    'contacts'           => $contatos,
+                    'primary_contact_id' => $contatoPrincipal['id'] ?? null,
+                    'line_items'         => $lineItems,
+                    'warnings'           => $handoff->warnings,
+                    'captured_at'        => now()->toIso8601String(),
+                ],
+            ]);
 
             return $company;
         });

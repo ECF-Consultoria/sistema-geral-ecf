@@ -45,8 +45,11 @@ class HubspotHandoffData
      * @param  array  $contracts_to_create    ver shape documentado acima (um item por contrato a criar)
      * @param  array  $warnings               pendências acumuladas (line item sem mapping, serviço não encontrado, etc.)
      * @param  string $confidence             confiança AGREGADA do handoff — a MENOR entre os contratos ('low' < 'medium' < 'high')
-     * @param  array|null $company_data       RESERVADO para a Fase 113 (enriquecimento de Company) — sempre null nesta fase
-     * @param  array|null $contact_data       RESERVADO para a Fase 113 (escolha de contato principal) — sempre null nesta fase
+     * @param  array|null $company_data       Fase 113 (HUB-CONTATO-02) — company normalizada (name/cnpj/email/telefone/domain);
+     *                                        null quando build() não recebeu `$hubCompany`.
+     * @param  array|null $contact_data       Fase 113 (HUB-CONTATO-01) — ['principal' => contato escolhido (chaves lógicas)
+     *                                        ou null, 'todos' => lista completa de contatos normalizados]; null quando build()
+     *                                        não recebeu contatos.
      */
     public function __construct(
         public array $deal_data = [],

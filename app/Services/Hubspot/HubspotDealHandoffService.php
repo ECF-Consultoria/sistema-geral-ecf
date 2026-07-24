@@ -31,12 +31,29 @@ class HubspotDealHandoffService
     /**
      * Monta o DTO de handoff a partir do deal + line items já buscados.
      *
-     * @param  array  $deal       payload HubSpot do deal (chave 'properties')
-     * @param  array  $lineItems  line items normalizados (shape de HubspotApiClient::fetchDealLineItems); [] cai no fluxo legado
-     * @param  array  $propsDeal  config('services.hubspot.props.deal') — mapeia nome lógico -> nome da property HubSpot
+     * Fase 113 Plan 113-02 (HUB-CONTATO-01/02) — parâmetros OPCIONAIS ao final
+     * (defaults preservam 100% o comportamento anterior de valor/contratos —
+     * chamadas com 3 args, como `Phase112HandoffServiceTest`, continuam
+     * idênticas). Quando informados, preenchem `company_data`/`contact_data`
+     * do DTO com a normalização de company/contatos já buscados pelo controller.
+     *
+     * @param  array       $deal              payload HubSpot do deal (chave 'properties')
+     * @param  array       $lineItems         line items normalizados (shape de HubspotApiClient::fetchDealLineItems); [] cai no fluxo legado
+     * @param  array       $propsDeal         config('services.hubspot.props.deal') — mapeia nome lógico -> nome da property HubSpot
+     * @param  array|null  $hubCompany        payload HubSpot da company associada (chave 'properties') ou null
+     * @param  array       $contatosLogicos   lista completa de contatos já normalizados (chaves lógicas id/firstname/lastname/email/phone/mobilephone/jobtitle)
+     * @param  array|null  $contatoPrincipal  contato principal já escolhido (HubspotContactSelector) ou null
+     * @param  array       $propsCompany      config('services.hubspot.props.company') — mapeia nome lógico -> nome da property HubSpot
      */
-    public function build(array $deal, array $lineItems, array $propsDeal): HubspotHandoffData
-    {
+    public function build(
+        array $deal,
+        array $lineItems,
+        array $propsDeal,
+        ?array $hubCompany = null,
+        array $contatosLogicos = [],
+        ?array $contatoPrincipal = null,
+        array $propsCompany = [],
+    ): HubspotHandoffData {
         $dprops = $deal['properties'] ?? [];
 
         $contracts   = [];
@@ -96,12 +113,40 @@ class HubspotDealHandoffService
             ? (empty($warnings) ? 'high' : 'low')
             : $this->menorConfianca($confidences);
 
+        // ── Fase 113 Plan 113-02 (HUB-CONTATO-02) — company_data normalizada ────
+        // null quando o controller nao passou $hubCompany (deal sem company
+        // associada) — preserva o contrato "sempre null nesta fase" pras
+        // chamadas antigas de 3 args (Phase112HandoffServiceTest).
+        $companyData = null;
+        if ($hubCompany !== null) {
+            $cprops = $hubCompany['properties'] ?? [];
+            $companyData = [
+                'name'     => $cprops[$propsCompany['name'] ?? 'name'] ?? null,
+                'cnpj'     => $cprops[$propsCompany['cnpj'] ?? 'cnpj'] ?? null,
+                'email'    => $cprops[$propsCompany['email'] ?? 'email'] ?? null,
+                'telefone' => $cprops[$propsCompany['phone'] ?? 'phone'] ?? null,
+                'domain'   => $cprops[$propsCompany['domain'] ?? 'domain'] ?? null,
+            ];
+        }
+
+        // ── Fase 113 Plan 113-02 (HUB-CONTATO-01) — contact_data: principal +
+        // lista completa (chaves lógicas, já normalizadas pelo controller).
+        $contactData = null;
+        if ($contatoPrincipal !== null || !empty($contatosLogicos)) {
+            $contactData = [
+                'principal' => $contatoPrincipal,
+                'todos'     => $contatosLogicos,
+            ];
+        }
+
         return new HubspotHandoffData(
             deal_data: $dprops,
             line_items: $lineItems,
             contracts_to_create: $contracts,
             warnings: $warnings,
             confidence: $confidence,
+            company_data: $companyData,
+            contact_data: $contactData,
         );
     }
 
