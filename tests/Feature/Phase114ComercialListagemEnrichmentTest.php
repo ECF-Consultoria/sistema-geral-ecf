@@ -298,4 +298,239 @@ class Phase114ComercialListagemEnrichmentTest extends TestCase
         $this->assertFalse($row['is_origem_hubspot']);
         $this->assertSame([], $row['pendencias_comerciais']);
     }
+
+    // ─── 5. Payload enriquecido — campos de company (HUB-UI-01, Task 2) ─────
+
+    public function test_payload_expoe_campos_de_contato_e_ids_hubspot(): void
+    {
+        $this->actingAsAdmin();
+
+        $e = $this->criarEmpresa([
+            'name'                => 'HubSpot Payload Completo',
+            'nome_contato'        => 'Ciclana Souza',
+            'cargo_contato'       => 'Gerente',
+            'hubspot_observacao'  => 'Observacao de teste',
+            'hubspot_deal_id'     => 'deal-123',
+            'hubspot_company_id'  => 'comp-456',
+        ]);
+        $this->marcarOrigemHubspot($e);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $this->assertSame('Ciclana Souza', $row['nome_contato']);
+        $this->assertSame('Gerente', $row['cargo_contato']);
+        $this->assertSame('Observacao de teste', $row['hubspot_observacao']);
+        $this->assertSame('deal-123', $row['hubspot_deal_id']);
+        $this->assertSame('comp-456', $row['hubspot_company_id']);
+    }
+
+    public function test_payload_campos_novos_sao_null_quando_ausentes(): void
+    {
+        $this->actingAsAdmin();
+
+        $e = $this->criarEmpresa(['name' => 'HubSpot Payload Vazio']);
+        $this->marcarOrigemHubspot($e);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $this->assertNull($row['nome_contato']);
+        $this->assertNull($row['cargo_contato']);
+        $this->assertNull($row['hubspot_observacao']);
+        $this->assertNull($row['hubspot_deal_id']);
+        $this->assertNull($row['hubspot_company_id']);
+    }
+
+    // ─── 6. Payload enriquecido — bloco de valor por contrato (HUB-UI-01) ───
+
+    public function test_contrato_expoe_bloco_de_valor_hubspot(): void
+    {
+        $this->actingAsAdmin();
+
+        $servico = $this->criarServico('Servico Bloco Valor', Servico::SETOR_PERFORMANCE);
+
+        $e = $this->criarEmpresa(['name' => 'HubSpot Bloco Valor']);
+        $this->marcarOrigemHubspot($e);
+        $this->criarContrato($e, $servico, [
+            'hubspot_valor_original'           => 36000,
+            'hubspot_valor_normalizado_mensal' => 3000,
+            'hubspot_valor_confidence'         => 'medium',
+            'hubspot_valor_warning'            => 'aviso teste',
+            'hubspot_billing_frequency'        => 'annually',
+        ]);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $ct = $row['contratos_servico'][0];
+        $this->assertSame(36000.0, $ct['hubspot_valor_original']);
+        $this->assertSame(3000.0, $ct['hubspot_valor_normalizado_mensal']);
+        $this->assertSame('medium', $ct['hubspot_valor_confidence']);
+        $this->assertSame('aviso teste', $ct['hubspot_valor_warning']);
+        $this->assertSame('annually', $ct['hubspot_billing_frequency']);
+    }
+
+    public function test_contrato_bloco_de_valor_null_quando_ausente(): void
+    {
+        $this->actingAsAdmin();
+
+        $servico = $this->criarServico('Servico Sem Bloco Valor', Servico::SETOR_PERFORMANCE);
+
+        $e = $this->criarEmpresa(['name' => 'HubSpot Sem Bloco Valor']);
+        $this->marcarOrigemHubspot($e);
+        $this->criarContrato($e, $servico);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $ct = $row['contratos_servico'][0];
+        $this->assertNull($ct['hubspot_valor_original']);
+        $this->assertNull($ct['hubspot_valor_normalizado_mensal']);
+        $this->assertNull($ct['hubspot_valor_confidence']);
+        $this->assertNull($ct['hubspot_valor_warning']);
+        $this->assertNull($ct['hubspot_billing_frequency']);
+    }
+
+    // ─── 7. pendencia_counts + whitelist do filtro (HUB-UI-02) ───────────────
+
+    public function test_pendencia_counts_tem_8_chaves_e_conta_valor_revisar(): void
+    {
+        $this->actingAsAdmin();
+
+        $servico = $this->criarServico('Servico Contagem', Servico::SETOR_PERFORMANCE);
+
+        $e1 = $this->criarEmpresa(['name' => 'Conta Valor Revisar 1']);
+        $this->marcarOrigemHubspot($e1);
+        $this->criarContrato($e1, $servico, ['hubspot_valor_confidence' => 'low']);
+
+        $e2 = $this->criarEmpresa(['name' => 'Conta Valor Revisar 2']);
+        $this->marcarOrigemHubspot($e2);
+        $this->criarContrato($e2, $servico, ['hubspot_valor_confidence' => 'low']);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $this->assertArrayHasKey('sem_contato', $props['pendencia_counts']);
+        $this->assertArrayHasKey('valor_revisar', $props['pendencia_counts']);
+        $this->assertArrayHasKey('possivel_duplicidade', $props['pendencia_counts']);
+        $this->assertSame(2, $props['pendencia_counts']['valor_revisar']);
+    }
+
+    public function test_filtro_pendencia_valor_revisar_filtra_lista(): void
+    {
+        $this->actingAsAdmin();
+
+        $servico = $this->criarServico('Servico Filtro', Servico::SETOR_PERFORMANCE);
+
+        $e1 = $this->criarEmpresa(['name' => 'Filtro Valor Revisar']);
+        $this->marcarOrigemHubspot($e1);
+        $this->criarContrato($e1, $servico, ['hubspot_valor_confidence' => 'low']);
+
+        $e2 = $this->criarEmpresa(['name' => 'Filtro Sem Pendencia', 'nicho' => 'X', 'dor' => 'Y', 'faturamento_mensal' => 10]);
+        $this->marcarOrigemHubspot($e2);
+        $this->criarContrato($e2, $servico, ['hubspot_valor_confidence' => 'high']);
+
+        $response = $this->get('/comercial/empresas/listagem?pendencia=valor_revisar');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $this->assertCount(1, $props['companies']['data']);
+        $this->assertSame($e1->id, $props['companies']['data'][0]['id']);
+    }
+
+    // ─── 8. pendencias_detalhes (HUB-UI-02) ──────────────────────────────────
+
+    public function test_detalhes_possivel_duplicidade_e_array_com_nome_real_da_candidata(): void
+    {
+        $this->actingAsAdmin();
+
+        $candidata = $this->criarEmpresa(['name' => 'Nome Real Da Candidata']);
+
+        $e = $this->criarEmpresa([
+            'name'             => 'HubSpot Detalhe Duplicidade',
+            'hubspot_snapshot' => [
+                'warnings' => [
+                    [
+                        'tipo'                 => 'possivel_duplicidade',
+                        'candidate_company_id' => $candidata->id,
+                        'via'                  => 'nome',
+                        'nome_normalizado'      => 'nome real da candidata',
+                    ],
+                ],
+            ],
+        ]);
+        $this->marcarOrigemHubspot($e);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $this->assertIsArray($row['pendencias_detalhes']['possivel_duplicidade']);
+        $this->assertSame(['Nome Real Da Candidata'], $row['pendencias_detalhes']['possivel_duplicidade']);
+    }
+
+    public function test_detalhes_possivel_duplicidade_fallback_nome_normalizado_quando_candidata_sumiu(): void
+    {
+        $this->actingAsAdmin();
+
+        $e = $this->criarEmpresa([
+            'name'             => 'HubSpot Candidata Sumiu',
+            'hubspot_snapshot' => [
+                'warnings' => [
+                    [
+                        'tipo'                 => 'possivel_duplicidade',
+                        'candidate_company_id' => 999999,
+                        'via'                  => 'nome',
+                        'nome_normalizado'      => 'empresa que nao existe mais',
+                    ],
+                ],
+            ],
+        ]);
+        $this->marcarOrigemHubspot($e);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $this->assertIsArray($row['pendencias_detalhes']['possivel_duplicidade']);
+        $this->assertSame(['empresa que nao existe mais'], $row['pendencias_detalhes']['possivel_duplicidade']);
+    }
+
+    public function test_detalhes_valor_revisar_e_array_de_nomes_de_servico(): void
+    {
+        $this->actingAsAdmin();
+
+        $servico = $this->criarServico('Servico Nome No Detalhe', Servico::SETOR_PERFORMANCE);
+
+        $e = $this->criarEmpresa(['name' => 'HubSpot Detalhe Valor']);
+        $this->marcarOrigemHubspot($e);
+        $this->criarContrato($e, $servico, ['hubspot_valor_confidence' => 'low']);
+
+        $response = $this->get('/comercial/empresas/listagem');
+
+        $response->assertOk();
+        $props = $response->viewData('page')['props'];
+        $row = $this->linhaDaEmpresa($props, $e->id);
+        $this->assertNotNull($row);
+        $this->assertIsArray($row['pendencias_detalhes']['valor_revisar']);
+        $this->assertContains('Servico Nome No Detalhe', $row['pendencias_detalhes']['valor_revisar']);
+    }
 }
