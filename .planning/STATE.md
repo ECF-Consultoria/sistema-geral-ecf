@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
-status: planned
-stopped_at: Phase 111 planejada (3 planos) — plan-checker PASS
-last_updated: "2026-07-24T01:00:00.000Z"
+status: executing
+stopped_at: Completado 111-01-PLAN.md
+last_updated: "2026-07-24T12:34:45.408Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 111 — Fundação (descoberta de props + API client + campos estruturados)
+**Current focus:** Phase 111 — Fundação — descoberta de propriedades, API client ampliado e campos estruturados
 
 ## Current Position
 
-Phase: 111 (Fundação HubSpot) — PLANEJADA (pronta p/ executar)
-Plan: 0 of 3
+Phase: 111 (Fundação — descoberta de propriedades, API client ampliado e campos estruturados) — EXECUTING
+Plan: 2 of 3
 
 Milestone v20.0 aberta a partir do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md` (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 (Carteira/Desempenho multi-servico) preservadas. Ordem: 111 fundação → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111: 3 planos Wave 1 paralela (01 config+comando / 02 API client / 03 migrations+models), plan-checker PASS (1 rodada de revisão: TDD RED→GREEN em 03, resiliência de rede em 01).
-Status: Phase 111 planejada — pronto para `/gsd:execute-phase 111`
+Status: Ready to execute
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -167,6 +167,7 @@ Last activity: 2026-07-24
 | Phase 109 P03 | 35min | 3 tasks | 13 files |
 | Phase 110 P01 | 35min | 2 tasks | 6 files |
 | Phase 110 P02 | ~40min | 2 tasks | 3 files |
+| Phase 111 P01 | 35min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -584,6 +585,13 @@ Last activity: 2026-07-24
 - **Mockery sobre Http::fake** — provider delega ao AdmanService que já tem cobertura HTTP completa (Phase 16/18.5/30). Testar provider com Mockery foca o test no contrato de adaptação, não na camada de rede.
 - **Zero modificação confirmada via `git diff --name-only HEAD~2 HEAD app/Services/AdmanService.php app/Services/SugadorAnalysisService.php`** (vazio) antes do commit GREEN.
 
+### Decisões do Plan 111-01 (registradas)
+
+- **`config('services.hubspot.props')` ampliado só por ADIÇÃO** — 10 chaves novas em `deal` (observacao/description/closed_won_reason/closedate/pipeline/hs_mrr/hs_arr/hs_tcv/hs_acv/hs_currency), 6 em `company` (domain/industry/annualrevenue/city/state/country) e 3 em `contact` (mobilephone/jobtitle/additional_emails), todas via `env()` com default = nome interno padrão HubSpot. Nenhuma chave antiga removida/renomeada — consumidor legado (`HubspotWebhookController`) intacto.
+- **Comando `hubspot:inspect-properties {--objects=deals,companies,contacts,line_items}`** — GET `/crm/v3/properties/{objectType}` por objeto, isolado em try/catch: falha de status (403/404/500) e `ConnectionException` (timeout/DNS/TLS) nunca abortam, sempre `self::SUCCESS`. Mensagem de erro só cita objeto + status/classe da exceção — nunca a mensagem crua (pode conter URL) nem o token.
+- **Padrão de teste de comando Artisan corrigido**: usar `Artisan::call()` + `Artisan::output()` (não `$this->artisan()->run()`, cujo mock de `OutputStyle` não expõe `fetch()` e sempre devolve saída vazia) — alinhado ao padrão já usado em `tests/Feature/Phase18/DiagnoseCustIdTest.php`.
+- Regressão HubSpot ampla verde: 35/35 testes (`Phase111*`, `Phase34HubspotWebhookTest`, `Phase35Hubspot*`, `Phase37*Hubspot*`).
+
 ### Pending Todos
 
 None.
@@ -671,8 +679,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-23T19:51:13.008Z
-Stopped at: Completado 110-02-PLAN.md
+Last session: 2026-07-24T12:34:45.371Z
+Stopped at: Completado 111-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
