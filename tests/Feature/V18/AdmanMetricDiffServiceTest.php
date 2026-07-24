@@ -549,4 +549,78 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertSame('adman_diff', $resultado['metrics']['revenue']['diff_source']);
         $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_value']['diff_source']);
     }
+
+    // ─────────────── Quick 260724-gf9 — rate-limit não apaga baseline local ───────────────
+
+    /**
+     * CENÁRIO (m) — falha TOTAL do ao-vivo (os 2 endpoints Adman indisponíveis,
+     * simulando rate-limit 429 sustentado) MAS a empresa TEM dado local denso
+     * nas duas janelas (current e baseline) — o `calculated_fallback` consegue
+     * preencher `diff_pct` nos 3 metrics mesmo com todos os `value` null.
+     *
+     * ANTES do fix: `value=null` em tudo ⇒ `comValue===0` ⇒ `quality.status
+     * ='missing'` ⇒ `compute()` gravava o ERROR_SENTINEL ⇒ a 2ª leitura
+     * devolvia `emptyMetrics()` (tudo null), jogando fora o `diff_pct` bom do
+     * fallback (raiz do bug de oscilação de `empresas_com_baseline`).
+     *
+     * DEPOIS do fix: `comDiff=3` (os 3 diff_pct vieram do fallback) ⇒ status
+     * ='partial' ⇒ NÃO grava sentinela — `Cache::put()` grava o resultado
+     * REAL (TTL curto) ⇒ a 2ª leitura (nova instância do service, sem o memo
+     * em memória — só o cache persistente) continua devolvendo o diff_pct.
+     */
+    public function test_m_falha_total_ao_vivo_com_dado_local_preserva_diff_pct_via_fallback(): void
+    {
+        // 500 nos 2 endpoints — simula indisponibilidade sustentada da Adman.
+        // Usamos 500 (não 429) pra não acionar o retry com sleep(2s+4s) de
+        // fetchPerformance(); o catch em compute() é o mesmo pra qualquer
+        // \Throwable, então o efeito no service sob teste é idêntico ao 429.
+        Http::fake([
+            '*/performance/*'       => Http::response([], 500),
+            '*/accounts/*/metrics*' => Http::response([], 500),
+        ]);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        // Dado local denso (cobertura 100%) nas duas janelas — o fallback
+        // consegue calcular os 3 diffs sem depender do ao-vivo.
+        $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
+        $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertNull($resultado['metrics']['revenue']['value']);
+        $this->assertNotNull($resultado['metrics']['revenue']['diff_pct']);
+        $this->assertSame('calculated_fallback', $resultado['metrics']['revenue']['diff_source']);
+        // (18000-9000)/9000*100 = 100%
+        $this->assertSame(100.0, $resultado['metrics']['revenue']['diff_pct']);
+        $this->assertSame('partial', $resultado['quality']['status']);
+
+        // 2ª leitura — instância NOVA do service (sem o memo em memória),
+        // dentro do TTL curto de 'partial'. Se tivesse gravado ERROR_SENTINEL
+        // (comportamento pré-fix), viria tudo null aqui.
+        $resultado2 = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+        $this->assertNotNull($resultado2['metrics']['revenue']['diff_pct']);
+        $this->assertSame($resultado['metrics']['revenue']['diff_pct'], $resultado2['metrics']['revenue']['diff_pct']);
+        $this->assertSame('partial', $resultado2['quality']['status']);
+    }
+
+    /**
+     * CENÁRIO (n) — GUARDA: empresa genuinamente SEM dado nenhum (nem local,
+     * nem ao-vivo) continua `'missing'` — comportamento preservado pelo fix
+     * (o `missing` só deixa de disparar quando HÁ diff_pct usável).
+     */
+    public function test_n_empresa_sem_dado_nenhum_continua_missing(): void
+    {
+        Http::fake([
+            '*/performance/*'       => Http::response([], 500),
+            '*/accounts/*/metrics*' => Http::response([], 500),
+        ]);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+        // Sem NENHUMA linha AdmanMetric — sem fallback possível (0/0).
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame('missing', $resultado['quality']['status']);
+        $this->assertNull($resultado['metrics']['revenue']['diff_pct']);
+        $this->assertNull($resultado['metrics']['revenue']['value']);
+    }
 }
