@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: executing
-stopped_at: Completado 112-01-PLAN.md (2/3 planos da Fase 112)
-last_updated: "2026-07-24T13:50:23.018Z"
+stopped_at: Completado 112-02-PLAN.md (2/3 planos da Fase 112 concluidos)
+last_updated: "2026-07-24T14:07:45.584Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 6
-  completed_plans: 4
+  completed_plans: 5
   percent: 20
 ---
 
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 112 (HubspotValueResolver + extração do handoff service (NÚCLEO)) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
-Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md.
-Status: Ready to execute
+Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Falta plano 112-03 (plugar o service no controller).
+Status: Plan 03 pendente (plugar HubspotDealHandoffService no HubspotWebhookController)
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -171,6 +171,7 @@ Last activity: 2026-07-24
 | Phase 111 P02 | 12min | 2 tasks (TDD RED+GREEN) tasks | 3 files files |
 | Phase 111 P03 | ~15min | 3 tasks | 5 files |
 | Phase 112 P01 | 20min | 2 tasks | 2 files |
+| Phase 112 P02 | ~15min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -595,6 +596,15 @@ Last activity: 2026-07-24
 - **Padrão de teste de comando Artisan corrigido**: usar `Artisan::call()` + `Artisan::output()` (não `$this->artisan()->run()`, cujo mock de `OutputStyle` não expõe `fetch()` e sempre devolve saída vazia) — alinhado ao padrão já usado em `tests/Feature/Phase18/DiagnoseCustIdTest.php`.
 - Regressão HubSpot ampla verde: 35/35 testes (`Phase111*`, `Phase34HubspotWebhookTest`, `Phase35Hubspot*`, `Phase37*Hubspot*`).
 
+### Decisões do Plan 112-02 (registradas)
+
+- **`HubspotHandoffData` (DTO) nasce extensível** — `company_data`/`contact_data` já existem no construtor como `?array` nullable, documentados em PHPDoc como reservados para a Fase 113 (enriquecimento/dedup); nesta fase permanecem sempre `null`, sem uso.
+- **`HubspotDealHandoffService::build(deal, lineItems, propsDeal)` extrai fielmente `processarLineItems()`/`processarServicoLegado()`** do `HubspotWebhookController` — SÓ a parte de valor/contrato. Criação de Company/MlbEmpresa/notes permanece no controller (escopo do plano 112-03).
+- **Confidence agregada do DTO = a MENOR entre os contratos** (`low < medium < high`) — testado com 2 line items de confidence distinta (monthly=high + annually sem P1Y=medium) → `DTO->confidence == 'medium'`, preservando o `hubspot_valor_confidence` individual de cada contrato.
+- **Warning do fluxo legado usa shape distinto** do warning de line item não-mapeado: `{name, motivo: 'servico_nao_encontrado'}` vs `{name, price, recurringbillingfrequency}` — reflete os dados disponíveis em cada origem; ambos expõem `name` para consumo uniforme.
+- **Sem contratos**: confidence agregada cai para `'low'` se há warning pendente, `'high'` quando não há nada a reportar (ex.: line item sem nome, ignorado silenciosamente — paridade com o controller atual).
+- Gate de não-regressão intacto: `Phase37WebhookLineItemsTest` 10/10 verde (controller ainda não tocado).
+
 ### Pending Todos
 
 None.
@@ -682,8 +692,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T13:50:22.987Z
-Stopped at: Completado 112-01-PLAN.md (2/3 planos da Fase 112)
+Last session: 2026-07-24T14:07:45.513Z
+Stopped at: Completado 112-02-PLAN.md (2/3 planos da Fase 112 concluidos)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
