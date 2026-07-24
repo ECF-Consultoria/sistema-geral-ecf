@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
-status: verified
-stopped_at: Fase 112 VERIFICATION passed (5/5 SC) — núcleo 36k→3k comprovado por E2E; pronto para Fase 113
-last_updated: "2026-07-24T15:10:00.000Z"
+status: executing
+stopped_at: Completado 113-01-PLAN.md (1/3 planos da Fase 113) — HubspotContactSelector + HubspotNameNormalizer, unidades puras TDD, prontas para 113-02
+last_updated: "2026-07-24T16:45:52.508Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 2
-  total_plans: 6
-  completed_plans: 6
+  total_plans: 9
+  completed_plans: 7
   percent: 40
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 113 — Enriquecimento de contato/empresa + escolha de contato principal + dedup
+**Current focus:** Phase 113 — Enriquecimento de contato/empresa + contato principal + dedup
 
 ## Current Position
 
-Phase: 112 (HubspotValueResolver — NÚCLEO) — COMPLETA + VERIFICATION passed (5/5 SC)
-Plan: 3 of 3 — concluído e verificado
+Phase: 113 (Enriquecimento de contato/empresa + contato principal + dedup) — EXECUTING
+Plan: 2 of 3
 
 Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes.
-Status: Fase 112 completa (3/3) — pronta para verificação
+Status: Ready to execute
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -173,6 +173,7 @@ Last activity: 2026-07-24
 | Phase 112 P01 | 20min | 2 tasks | 2 files |
 | Phase 112 P02 | ~15min | 2 tasks | 3 files |
 | Phase 112 P03 | 35min | 2 tasks | 3 files |
+| Phase 113 P01 | ~5min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -597,6 +598,13 @@ Last activity: 2026-07-24
 - **Padrão de teste de comando Artisan corrigido**: usar `Artisan::call()` + `Artisan::output()` (não `$this->artisan()->run()`, cujo mock de `OutputStyle` não expõe `fetch()` e sempre devolve saída vazia) — alinhado ao padrão já usado em `tests/Feature/Phase18/DiagnoseCustIdTest.php`.
 - Regressão HubSpot ampla verde: 35/35 testes (`Phase111*`, `Phase34HubspotWebhookTest`, `Phase35Hubspot*`, `Phase37*Hubspot*`).
 
+### Decisões do Plan 113-01 (registradas)
+
+- **Desempate SEMPRE por menor id (não só no fallback)** — refina a decisão (5) do `113-CONTEXT.md` ("fallback: primeiro contato retornado"): a API HubSpot não garante ordem estável de retorno entre chamadas, então "primeiro retornado" não é determinístico na prática. `HubspotContactSelector` usa "menor id" como desempate em TODOS os tiers, cumprindo o `must_haves.truths` do plano ("escolhe SEMPRE o mesmo contato principal"). Refinamento consciente, não divergência de intenção.
+- **Remoção de acento via tabela manual (`strtr`), não `iconv` TRANSLIT** — evita dependência de locale do servidor entre ambientes dev (Windows/XAMPP) e VPS (Linux).
+- **Normalização de nome NÃO remove tokens** (ltda/me/sa preservados) — é o mecanismo que impede falso positivo no match fraco de dedup da Fase 113-03 (ex.: "Silva Ltda" ≠ "Silva Ltda ME").
+- Duas unidades puras (`HubspotContactSelector`, `HubspotNameNormalizer`) sem I/O, verificadas por grep negativo (`config(`, `Http::`, `DB::`, `Company`) — prontas para consumo em 113-02 (controller/handoff) e 113-03 (dedup).
+
 ### Decisões do Plan 112-02 (registradas)
 
 - **`HubspotHandoffData` (DTO) nasce extensível** — `company_data`/`contact_data` já existem no construtor como `?array` nullable, documentados em PHPDoc como reservados para a Fase 113 (enriquecimento/dedup); nesta fase permanecem sempre `null`, sem uso.
@@ -693,8 +701,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T14:34:59.873Z
-Stopped at: Completado 112-03-PLAN.md (3/3 planos da Fase 112 concluidos) — controller fino delega ao HubspotDealHandoffService, 11 colunas de auditoria persistidas, criterio de aceite ancora (36k->3k) fechado. Fase 112 pronta para verificacao.
+Last session: 2026-07-24T16:45:52.210Z
+Stopped at: Completado 113-01-PLAN.md (1/3 planos da Fase 113) — HubspotContactSelector + HubspotNameNormalizer, unidades puras TDD, prontas para 113-02
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
