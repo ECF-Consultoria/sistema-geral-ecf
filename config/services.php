@@ -120,18 +120,39 @@ return [
         'access_token'           => env('HUBSPOT_ACCESS_TOKEN'),
         'stage_fechado_ganho_id' => env('HUBSPOT_STAGE_FECHADO_GANHO_ID', 'closedwon'),
         'props' => [
+            // Phase 111 Plan 111-01 (HUB-API-01) — deal/company/contact ganham
+            // props ampliadas do handoff Comercial v20.0 (só ADICIONA chaves;
+            // as antigas permanecem intactas para o consumidor legado do
+            // webhook, que acessa por chave nomeada). Regra: propriedade
+            // ausente na conta HubSpot = null no payload, nunca quebra o fluxo.
             'deal' => [
                 'nicho'              => env('HUBSPOT_PROP_DEAL_NICHO', 'nicho'),
                 'dor'                => env('HUBSPOT_PROP_DEAL_DOR', 'dor'),
                 'vende_ml'           => env('HUBSPOT_PROP_DEAL_VENDE_ML', 'vende_ml'),
                 'faturamento_mensal' => env('HUBSPOT_PROP_DEAL_FATURAMENTO', 'faturamento_mensal'),
                 'servico'            => env('HUBSPOT_PROP_DEAL_SERVICO', 'servico_ecf'),
+                'observacao'         => env('HUBSPOT_PROP_DEAL_OBSERVACAO', 'observacao'),
+                'description'        => env('HUBSPOT_PROP_DEAL_DESCRIPTION', 'description'),
+                'closed_won_reason'  => env('HUBSPOT_PROP_DEAL_CLOSED_WON_REASON', 'closed_won_reason'),
+                'closedate'          => env('HUBSPOT_PROP_DEAL_CLOSEDATE', 'closedate'),
+                'pipeline'           => env('HUBSPOT_PROP_DEAL_PIPELINE', 'pipeline'),
+                'hs_mrr'             => env('HUBSPOT_PROP_DEAL_MRR', 'hs_mrr'),
+                'hs_arr'             => env('HUBSPOT_PROP_DEAL_ARR', 'hs_arr'),
+                'hs_tcv'             => env('HUBSPOT_PROP_DEAL_TCV', 'hs_tcv'),
+                'hs_acv'             => env('HUBSPOT_PROP_DEAL_ACV', 'hs_acv'),
+                'hs_currency'        => env('HUBSPOT_PROP_DEAL_CURRENCY', 'hs_currency'),
             ],
             'company' => [
-                'name'  => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
-                'cnpj'  => env('HUBSPOT_PROP_COMPANY_CNPJ', 'cnpj'),
-                'email' => env('HUBSPOT_PROP_COMPANY_EMAIL', 'email'),
-                'phone' => env('HUBSPOT_PROP_COMPANY_PHONE', 'phone'),
+                'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),
+                'cnpj'          => env('HUBSPOT_PROP_COMPANY_CNPJ', 'cnpj'),
+                'email'         => env('HUBSPOT_PROP_COMPANY_EMAIL', 'email'),
+                'phone'         => env('HUBSPOT_PROP_COMPANY_PHONE', 'phone'),
+                'domain'        => env('HUBSPOT_PROP_COMPANY_DOMAIN', 'domain'),
+                'industry'      => env('HUBSPOT_PROP_COMPANY_INDUSTRY', 'industry'),
+                'annualrevenue' => env('HUBSPOT_PROP_COMPANY_ANNUAL_REVENUE', 'annualrevenue'),
+                'city'          => env('HUBSPOT_PROP_COMPANY_CITY', 'city'),
+                'state'         => env('HUBSPOT_PROP_COMPANY_STATE', 'state'),
+                'country'       => env('HUBSPOT_PROP_COMPANY_COUNTRY', 'country'),
             ],
             // Phase 35 Plan 35-02 — contato vinculado ao deal (D-04).
             // Usado pra preencher email_cliente/telefone da Company quando
@@ -139,10 +160,13 @@ return [
             // lastname concatenados viram linha "Contato (HubSpot): ..." em
             // notes da Company.
             'contact' => [
-                'firstname' => env('HUBSPOT_PROP_CONTACT_FIRSTNAME', 'firstname'),
-                'lastname'  => env('HUBSPOT_PROP_CONTACT_LASTNAME', 'lastname'),
-                'email'     => env('HUBSPOT_PROP_CONTACT_EMAIL', 'email'),
-                'phone'     => env('HUBSPOT_PROP_CONTACT_PHONE', 'phone'),
+                'firstname'         => env('HUBSPOT_PROP_CONTACT_FIRSTNAME', 'firstname'),
+                'lastname'          => env('HUBSPOT_PROP_CONTACT_LASTNAME', 'lastname'),
+                'email'             => env('HUBSPOT_PROP_CONTACT_EMAIL', 'email'),
+                'phone'             => env('HUBSPOT_PROP_CONTACT_PHONE', 'phone'),
+                'mobilephone'       => env('HUBSPOT_PROP_CONTACT_MOBILEPHONE', 'mobilephone'),
+                'jobtitle'          => env('HUBSPOT_PROP_CONTACT_JOBTITLE', 'jobtitle'),
+                'additional_emails' => env('HUBSPOT_PROP_CONTACT_ADDITIONAL_EMAILS', 'hs_additional_emails'),
             ],
         ],
     ],
