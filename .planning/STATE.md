@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: executing
-stopped_at: Completado 113-01-PLAN.md (1/3 planos da Fase 113) — HubspotContactSelector + HubspotNameNormalizer, unidades puras TDD, prontas para 113-02
-last_updated: "2026-07-24T16:45:52.508Z"
+stopped_at: Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
+last_updated: "2026-07-24T17:07:31.071Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 9
-  completed_plans: 7
+  completed_plans: 8
   percent: 40
 ---
 
@@ -26,10 +26,10 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 113 (Enriquecimento de contato/empresa + contato principal + dedup) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
-Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes.
-Status: Ready to execute
+Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes. Plan 113-01 entregou `HubspotContactSelector` (regra determinística de contato principal por tiers email/telefone) + `HubspotNameNormalizer` (dedup fraco anti-falso-positivo) — unidades puras TDD. Plan 113-02 (esta entrega): `HubspotWebhookController::processar` troca fetch singular de contato por batch (`fetchAssociatedContactIds`+`fetchContacts`) e usa `HubspotContactSelector` para escolher o principal entre TODOS os contatos do deal; `criarEmpresa` grava 7 campos estruturados (`nome_contato`/`cargo_contato`/`hubspot_deal_id`/`hubspot_company_id`/`hubspot_contact_id`/`hubspot_domain`/`hubspot_observacao`) com fallback de telefone estendido até `mobilephone`; `companies.hubspot_snapshot` grava payload completo (deal+company+todos os contatos+line_items+warnings+captured_at) para auditoria/replay da Fase 115; `HubspotDealHandoffService::build()` ganhou 4 parâmetros opcionais que preenchem `company_data`/`contact_data` do DTO sem alterar a lógica de valor/contratos. Linha legada `notes` preservada. Gate de regressão 70/70 testes Hubspot verdes (67 pré-existentes + 3 novos), zero asserção alterada.
+Status: Ready to execute (113-03 — dedup de empresa existente)
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -174,6 +174,7 @@ Last activity: 2026-07-24
 | Phase 112 P02 | ~15min | 2 tasks | 3 files |
 | Phase 112 P03 | 35min | 2 tasks | 3 files |
 | Phase 113 P01 | ~5min | 2 tasks | 4 files |
+| Phase 113 P02 | ~25min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -701,8 +702,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T16:45:52.210Z
-Stopped at: Completado 113-01-PLAN.md (1/3 planos da Fase 113) — HubspotContactSelector + HubspotNameNormalizer, unidades puras TDD, prontas para 113-02
+Last session: 2026-07-24T17:07:30.985Z
+Stopped at: Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
