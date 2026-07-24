@@ -4,13 +4,13 @@ milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: executing
 stopped_at: Completado 111-01-PLAN.md
-last_updated: "2026-07-24T12:34:45.408Z"
+last_updated: "2026-07-24T12:45:49.711Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 ## Current Position
 
 Phase: 111 (Fundação — descoberta de propriedades, API client ampliado e campos estruturados) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 
 Milestone v20.0 aberta a partir do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md` (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 (Carteira/Desempenho multi-servico) preservadas. Ordem: 111 fundação → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111: 3 planos Wave 1 paralela (01 config+comando / 02 API client / 03 migrations+models), plan-checker PASS (1 rodada de revisão: TDD RED→GREEN em 03, resiliência de rede em 01).
 Status: Ready to execute
@@ -168,6 +168,7 @@ Last activity: 2026-07-24
 | Phase 110 P01 | 35min | 2 tasks | 6 files |
 | Phase 110 P02 | ~40min | 2 tasks | 3 files |
 | Phase 111 P01 | 35min | 2 tasks | 4 files |
+| Phase 111 P02 | 12min | 2 tasks (TDD RED+GREEN) tasks | 3 files files |
 
 ## Accumulated Context
 
@@ -679,7 +680,7 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T12:34:45.371Z
+Last session: 2026-07-24T12:42:41.118Z
 Stopped at: Completado 111-01-PLAN.md
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
