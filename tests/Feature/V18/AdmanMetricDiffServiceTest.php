@@ -282,15 +282,19 @@ class AdmanMetricDiffServiceTest extends TestCase
 
     /**
      * CENÁRIO (b) — modo operacional (`same_interval_previous_month`) força
-     * calculated_fallback MESMO com a Adman tendo mandado .diff.
+     * calculated_fallback para `revenue` MESMO com a Adman tendo mandado
+     * .diff. Margem (R$ e %) NÃO usa mais fallback local (hotfix 2026-07-24):
+     * fora da janela-igual o `.diff` nativo é ignorado (gate falha) e a
+     * variação de margem fica `null` (`adman_indisponivel`), nunca calculada
+     * localmente.
      */
-    public function test_b_modo_operacional_forca_calculated_fallback_mesmo_com_diff_adman(): void
+    public function test_b_modo_operacional_forca_calculated_fallback_no_revenue_e_null_na_margem(): void
     {
         $this->fakeAdmanEndpoints();
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
 
         // Dados locais consistentes nas duas janelas (07-01..18 vs 06-01..18) —
-        // prova que o fallback de fato CALCULA, não só rotula.
+        // prova que o fallback de revenue de fato CALCULA, não só rotula.
         $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
         $this->semearAdmanMetric($company, '2026-06-01', '2026-06-18', 500.0, 100.0);
 
@@ -298,16 +302,19 @@ class AdmanMetricDiffServiceTest extends TestCase
 
         $this->assertSame('calculated_fallback', $resultado['metrics']['revenue']['diff_source']);
         $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_value']['diff_source']);
-        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertNull($resultado['metrics']['contribution_margin_value']['diff_pct']);
+        $this->assertSame('adman_indisponivel', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
         // revenue: (18000-9000)/9000*100 = 100%
         $this->assertSame(100.0, $resultado['metrics']['revenue']['diff_pct']);
     }
 
     /**
      * CENÁRIO (c) — janela-igual mas Adman NÃO devolveu .diff (payload só
-     * value) ⇒ calculated_fallback (mesmo em previous_equal_length_window).
+     * value) ⇒ `null` explícito (hotfix 2026-07-24: sem `.diff` nativo não há
+     * mais fallback local pra margem — mesmo com dado local denso disponível).
      */
-    public function test_c_janela_igual_sem_diff_da_adman_usa_fallback(): void
+    public function test_c_janela_igual_sem_diff_da_adman_da_null_explicito(): void
     {
         $this->fakeAdmanEndpoints(percentageMarginDiff: null);
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
@@ -317,8 +324,8 @@ class AdmanMetricDiffServiceTest extends TestCase
 
         $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
 
-        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
-        $this->assertNotNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertSame('adman_indisponivel', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
     }
 
     /**
@@ -401,85 +408,110 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertSame(10.0, $resultado['metrics']['revenue']['diff_pct']);
     }
 
-    // ─────────────── Fase 110 (FIXMARG-01/02) — prioridade local + gate de cobertura ───────────────
+    // ─────────────── Fase 110 (REVERTIDA pelo hotfix 2026-07-24) — native-first para margem ───────────────
 
     /**
-     * CENÁRIO (g) — cobertura local suficiente (100% dos dias-com-linha nas
-     * duas janelas com contribution_margin não-nulo) PREFERE o local
-     * determinístico, mesmo com o .diff nativo presente e DIFERENTE.
+     * CENÁRIO (g) — REGRESSÃO do hotfix: cobertura local 100% (dias-com-linha
+     * nas duas janelas com contribution_margin não-nulo, que produziria um
+     * pct local DIFERENTE do nativo) NÃO influencia mais a resolução — o
+     * `.diff` nativo da Adman sempre vence quando presente em janela-igual,
+     * mesmo com dado local denso disponível (reverte a preferência local da
+     * Fase 110).
      */
-    public function test_g_cobertura_suficiente_prefere_local_mesmo_com_adman_diff_presente(): void
+    public function test_g_cobertura_local_densa_nao_muda_resultado_native_sempre_vence(): void
     {
         $this->fakeAdmanEndpoints(); // percentageMargin.diff = 14.09 (ao vivo)
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
 
         // Cobertura 100% nas duas janelas (18/18 dias-com-linha, margem sempre
-        // não-nula) — local: pct(20%) vs pct(20%) => diff 0.0, DIFERENTE do
-        // .diff nativo (14.09).
+        // não-nula) — local produziria pct(20%) vs pct(20%) => diff 0.0,
+        // DIFERENTE do .diff nativo (14.09). O resultado deve ser o nativo.
         $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
         $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
 
         $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
 
-        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
-        $this->assertSame(0.0, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
-        $this->assertNotEquals(14.09, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame(14.09, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertNotEquals(0.0, $resultado['metrics']['contribution_margin_pct']['diff_pct']);
     }
 
     /**
-     * CENÁRIO (h) — determinismo: 3 chamadas de compute() com o .diff AO VIVO
-     * oscilando a cada chamada (simula rate-limit 429 concorrente — valores
-     * reais do trigger do debug: +6,83/-3,25/+8,63 refletidos aqui como
-     * 69.3/-44.4/8.63) devolvem o MESMO diff_pct (vem do local). Cache
-     * EXTERNO (diff service) e INTERNO (AdmanService) limpos entre chamadas
-     * pra provar determinismo real, não cache mascarando.
+     * CENÁRIO (h) — REGRESSÃO do hotfix: com margem 100% native-first, 3
+     * chamadas de compute() com o .diff AO VIVO oscilando a cada chamada
+     * (simula rate-limit 429 concorrente — valores reais do trigger do debug:
+     * +6,83/-3,25/+8,63 refletidos aqui como 69.3/-44.4/8.63) devolvem CADA
+     * UMA o valor nativo da vez — não há mais determinismo via local (essa
+     * proteção foi intencionalmente removida: a Adman é a fonte da verdade,
+     * mesmo quando ruidosa). Usa `Http::sequence()` (não chamadas repetidas de
+     * `Http::fake()`, que EMPILHAM callbacks pro mesmo padrão de URL — o
+     * primeiro registrado sempre venceria, mascarando o teste) pra simular as
+     * 3 respostas em sequência. Cache EXTERNO (diff service) e INTERNO
+     * (AdmanService) limpos entre chamadas pra provar que não há cache
+     * mascarando a leitura ao vivo.
      */
-    public function test_h_recompute_repetido_com_ao_vivo_oscilando_e_deterministico(): void
+    public function test_h_recompute_repetido_reflete_ao_vivo_oscilante_sem_mascarar(): void
     {
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
         $this->semearAdmanMetric($company, '2026-07-01', '2026-07-18', 1000.0, 200.0);
         $this->semearAdmanMetric($company, '2026-06-13', '2026-06-30', 500.0, 100.0);
 
+        $diffsOscilantes = [69.3, -44.4, 8.63];
+
+        $sequence = Http::sequence();
+        foreach ($diffsOscilantes as $diffOscilante) {
+            $accountMetrics = $this->respostaAccountMetrics();
+            $accountMetrics['metrics']['percentageMargin']['diff'] = $diffOscilante;
+            $sequence->push($accountMetrics, 200);
+        }
+
+        Http::fake([
+            '*/performance/*'       => Http::response($this->respostaPerformance(), 200),
+            '*/accounts/*/metrics*' => $sequence,
+        ]);
+
         $periodo    = $this->periodoJanelaIgual();
         $resultados = [];
 
-        foreach ([69.3, -44.4, 8.63] as $diffOscilante) {
+        foreach ($diffsOscilantes as $diffOscilante) {
             Cache::flush();
-            $accountMetrics = $this->respostaAccountMetrics();
-            $accountMetrics['metrics']['percentageMargin']['diff'] = $diffOscilante;
-            Http::fake([
-                '*/performance/*'       => Http::response($this->respostaPerformance(), 200),
-                '*/accounts/*/metrics*' => Http::response($accountMetrics, 200),
-            ]);
-
             $resultado    = app(AdmanMetricDiffService::class)->compute($company, $periodo);
             $resultados[] = $resultado['metrics']['contribution_margin_pct']['diff_pct'];
         }
 
-        $this->assertCount(1, array_unique($resultados),
-            'diff_pct deve ser IDÊNTICO nas 3 chamadas (vem do local determinístico, não do ao-vivo oscilante)');
-        $this->assertSame(0.0, $resultados[0]);
+        $this->assertSame($diffsOscilantes, $resultados,
+            'diff_pct deve refletir o .diff nativo DE CADA chamada (native-first, sem cache/local mascarando)');
     }
 
     /**
-     * CENÁRIO (i) — cobertura é medida por DIAS-COM-LINHA, não dias-calendário.
-     * Empresa que só vende em dias alternados (15 de 30 dias-calendário) mas
-     * 100% sincronizada NESSES dias-com-linha usa o local. Se o denominador
-     * fosse dias-calendário (diffInDays=30), a cobertura cairia pra ~50% e
-     * recusaria o local indevidamente.
+     * CENÁRIO (i) — REESCRITO pelo hotfix: a lógica de cobertura local por
+     * dias-com-linha deixou de existir para `contribution_margin_pct`
+     * (`coberturaMargem()`/`fallbackMargemPct()` ficaram órfãos — margem
+     * agora é sempre native-first). O guard de dias-com-linha (não
+     * dias-calendário) continua VIVO para o fallback de `revenue`
+     * (`somasComGuards()`), então este cenário passa a cobrir ELE: empresa
+     * que só vende em dias alternados (9 de 18 dias-calendário) em modo
+     * operacional (sem `.diff` nativo aplicável) ainda calcula o fallback de
+     * revenue corretamente via interseção de offsets-com-linha.
      */
-    public function test_i_cobertura_por_dias_com_linha_nao_por_calendario(): void
+    public function test_i_revenue_fallback_usa_dias_com_linha_nao_calendario(): void
     {
         $this->fakeAdmanEndpoints();
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
 
-        $this->semearAdmanMetricAlternado($company, '2026-07-01', 30, 1000.0, 200.0);
-        $this->semearAdmanMetricAlternado($company, '2026-06-01', 30, 500.0, 100.0);
+        $this->semearAdmanMetricAlternado($company, '2026-07-01', 18, 1000.0, 200.0);
+        $this->semearAdmanMetricAlternado($company, '2026-06-01', 18, 500.0, 100.0);
 
-        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual30Dias());
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoOperacional());
 
-        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
-        $this->assertNotNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
+        $this->assertSame('calculated_fallback', $resultado['metrics']['revenue']['diff_source']);
+        // 9 dias-com-linha em cada janela: (9000-4500)/4500*100 = 100%
+        $this->assertSame(100.0, $resultado['metrics']['revenue']['diff_pct']);
+
+        // Margem % não usa mais fallback local — sem .diff nativo aplicável
+        // (modo operacional), fica null explícito.
+        $this->assertSame('adman_indisponivel', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
     }
 
     /**
@@ -506,7 +538,11 @@ class AdmanMetricDiffServiceTest extends TestCase
     /**
      * CENÁRIO (k) — empresa SEM nenhuma linha AdmanMetric (0/0, sem venda)
      * E ao-vivo indisponível (percentageMargin ausente do payload) => null
-     * EXPLÍCITO (FIXMARG-02, sem fail-open artificial).
+     * EXPLÍCITO. Com o hotfix native-first, o motivo mudou (não é mais
+     * `coberturaMargem()`=0 caindo pro fallback local que também dá null —
+     * é simplesmente o gate de `resolveMargemPct()` sem `.diff` nativo
+     * disponível), mas o resultado observável continua o mesmo: sem
+     * fail-open artificial.
      */
     public function test_k_empresa_sem_linha_e_ao_vivo_indisponivel_da_null_explicito(): void
     {
@@ -526,16 +562,18 @@ class AdmanMetricDiffServiceTest extends TestCase
         $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
 
         $this->assertNull($resultado['metrics']['contribution_margin_pct']['diff_pct']);
-        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame('adman_indisponivel', $resultado['metrics']['contribution_margin_pct']['diff_source']);
     }
 
     /**
-     * CENÁRIO (l) — REGRESSÃO: mesmo com a margem % preferindo o local
-     * (cobertura 100%), `revenue` e `contribution_margin_value` CONTINUAM
-     * resolvendo via `resolveField()` original (.diff nativo quando
-     * isJanelaIgual) — escopo estrito, sem regressão de faturamento/carteira.
+     * CENÁRIO (l) — REGRESSÃO do hotfix: com margem % agora TAMBÉM
+     * native-first, os 3 metrics (`revenue`, `contribution_margin_value`,
+     * `contribution_margin_pct`) resolvem igualmente via `.diff` nativo em
+     * janela-igual — mesmo com dado local denso disponível nas duas janelas
+     * (que antes fazia a margem % preferir o local). Escopo estrito: nenhum
+     * metric cai indevidamente pro fallback quando o nativo está disponível.
      */
-    public function test_l_revenue_continua_adman_diff_mesmo_com_margem_local_preferida(): void
+    public function test_l_todos_os_metrics_usam_adman_diff_em_janela_igual_mesmo_com_dado_local_denso(): void
     {
         $this->fakeAdmanEndpoints();
         $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
@@ -545,7 +583,7 @@ class AdmanMetricDiffServiceTest extends TestCase
 
         $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
 
-        $this->assertSame('calculated_fallback', $resultado['metrics']['contribution_margin_pct']['diff_source']);
+        $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_pct']['diff_source']);
         $this->assertSame('adman_diff', $resultado['metrics']['revenue']['diff_source']);
         $this->assertSame('adman_diff', $resultado['metrics']['contribution_margin_value']['diff_source']);
     }
