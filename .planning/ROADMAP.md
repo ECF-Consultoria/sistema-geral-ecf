@@ -1122,4 +1122,91 @@ Plans:
 - [x] 110-02-PLAN.md — ConsolidarMesDesempenho resiliente: compute() expoe margem_amostra + gate de cobertura no congelamento (recusa+alerta, preserva snapshot anterior) (FIXMARG-03)
 
 ---
+
+## Milestone v20.0 — Handoff Comercial HubSpot (enriquecimento + valor mensal×anual)
+
+**Spec de referência:** `prompt-claude-otimizacao-comercial-hubspot.md` (raiz do repo, 2026-07-23). Transforma a integração HubSpot→Comercial num "handoff operacional": empresa/contrato chegam com dados máximos e confiáveis, valor operacional correto (mensal quando o serviço é mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. **Aditivo — preserva 100% do fluxo legado (Fases 34–37) e todos os testes atuais.**
+
+**Numeração:** continuidade após Phase 110 (v19). Fases 111–115. Fundação (111) → núcleo do valor (112) → enriquecimento/dedup (113) → UI/replay (114) → E2E/docs (115).
+
+**Constraint dura (critério de aceite âncora):** deal fechado ganho com line item mensal R$ 3.000 + deal amount/ARR R$ 36.000 → `contratos_servico.valor_contratado = 3.000`; os R$ 36.000 ficam só em campo de auditoria. Nenhum teste chama o HubSpot real (`Http::fake` sempre); tokens nunca em log; propriedade HubSpot ausente = null no snapshot, nunca falha o webhook.
+
+### Phase 111: Fundação — descoberta de propriedades, API client ampliado e campos estruturados (v20.0)
+
+**Goal:** A base do handoff existe sem mudar comportamento: `config/services.php` aceita as novas props HubSpot por env (deal/company/contact/line_item) com fallback seguro; comando `hubspot:inspect-properties` valida nomes internos reais da conta via Properties API (sem vazar token); `HubspotApiClient` busca line items e associações com o conjunto ampliado de propriedades; migrations defensivas adicionam os campos estruturados de origem HubSpot em `companies` e `contratos_servico`. Fluxo legado e testes atuais intactos.
+**Requirements**: HUB-API-01 (config props por env), HUB-API-02 (inspect-properties command), HUB-API-03 (fetchDealLineItems + associações ampliadas), HUB-SCHEMA-01 (colunas companies), HUB-SCHEMA-02 (colunas contratos_servico)
+**Depends on:** Nada (fundação). Fases 34–37 já em prod.
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `config('services.hubspot.props')` expõe deal (observacao/description/closed_won_reason/closedate/pipeline/hs_mrr/hs_arr/hs_tcv/hs_acv/hs_currency), company (domain/industry/annualrevenue/city/state/country) e contact (mobilephone/jobtitle/hs_additional_emails), cada um via `env()` com default; ausência não quebra nada
+  2. `php artisan hubspot:inspect-properties --objects=deals,line_items,companies,contacts` imprime nome interno + label + type + fieldType por objeto; nenhum token aparece na saída/log
+  3. `HubspotApiClient::fetchDealLineItems` retorna as props mínimas do prompt (name/description/price/amount/quantity/hs_product_id/hs_sku/recurringbillingfrequency/hs_recurring_billing_period/hs_recurring_billing_start_date/hs_recurring_billing_end_date/hs_line_item_currency_code/hs_mrr/hs_arr/hs_tcv/hs_acv); métodos novos `fetchAssociated*Ids`/`fetchCompanies`/`fetchContacts` coexistem com os atuais sem quebrá-los
+  4. Migration defensiva (`Schema::hasColumn`) adiciona em `companies`: `hubspot_deal_id`/`hubspot_company_id`/`hubspot_contact_id` (index), `nome_contato`, `cargo_contato`, `hubspot_domain`, `hubspot_observacao`, `hubspot_snapshot` (json) — com rollback
+  5. Migration defensiva adiciona em `contratos_servico`: `hubspot_line_item_id` (index), `hubspot_product_id`, `hubspot_billing_frequency`, `hubspot_billing_period`, `hubspot_currency`, `hubspot_valor_original` (decimal 12,2), `hubspot_valor_original_tipo`, `hubspot_valor_normalizado_mensal` (decimal 12,2), `hubspot_valor_confidence`, `hubspot_valor_warning`, `hubspot_snapshot` (json) — com rollback
+
+**Plans:** a planejar (`/gsd:plan-phase 111`).
+
+### Phase 112: HubspotValueResolver + extração do handoff service (v20.0) — NÚCLEO
+
+**Goal:** A regra de valor mensal×anual vira uma classe testável isolada (`HubspotValueResolver`, TDD-first) e a normalização do webhook é extraída para um `HubspotDealHandoffService` fino, deixando o controller como orquestrador. `valor_contratado` passa a receber o valor **operacional** correto (mensal quando o serviço é mensal), com o valor bruto/anual e a proveniência gravados nos campos de auditoria da Fase 111.
+**Requirements**: HUB-VAL-01 (resolver mensal×anual), HUB-VAL-02 (multi-line-item), HUB-VAL-03 (proveniência+confidence+warning gravados), HUB-VAL-04 (handoff service extraído), HUB-VAL-05 (controller fino, comportamento preservado)
+**Depends on:** Phase 111 (colunas de auditoria + props ampliadas)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `HubspotValueResolver::resolve(Servico, lineItem, dealProps)` retorna `[valor_operacional, valor_original, valor_original_tipo, normalizado_mensal, billing_frequency, billing_period, confidence, warning]` conforme spec §Fase 6 do prompt
+  2. Casos-âncora passam: monthly price 3000 + deal amount 36000 → operacional 3000 (high); annually price 36000 + P1Y → operacional 3000; `hs_mrr=3000`/`hs_arr=36000` → usa MRR; serviço único amount 36000 → **não** divide por 12; sem line item, deal.amount 36000 + `valor_padrao` 3000 (tolerância 5%) → 3000 com warning de inferência; sem line item, deal.amount 35000 sem `valor_padrao` compatível → marca `valor_revisar`
+  3. `HubspotDealHandoffService` recebe `dealId` e devolve DTO único (`company_data`/`contact_data`/`deal_data`/`line_items`/`contracts_to_create`/`warnings`/`confidence`); controller passa a: validar → idempotência → chamar handoff → persistir (DB::transaction) → atualizar `hubspot_eventos` → notificar Comercial
+  4. Cada `ContratoServico` criado grava `valor_contratado` = valor operacional + os campos `hubspot_valor_*` (original/tipo/normalizado_mensal/confidence/warning) preenchidos; multi-line-item resolve cada item e cria contratos separados por `hubspot_line_item_id` distinto
+  5. Regressão zero: `Phase34HubspotWebhookTest`, `Phase35HubspotV2Test`, `Phase37*` continuam verdes; fluxo legado sem line items segue usando `deal.amount` com a nova coerção conservadora
+
+**Plans:** a planejar (`/gsd:plan-phase 112`).
+
+### Phase 113: Enriquecimento de contato/empresa + escolha de contato principal + dedup (v20.0)
+
+**Goal:** O webhook deixa de pegar só o primeiro contato: busca todos os contatos associados, escolhe o principal de forma determinística e grava nome/cargo/telefone/email estruturados (não só em `notes`). Antes de criar `Company`, procura empresa existente (hubspot_company_id → cnpj → email → domain → nome normalizado) e enriquece em vez de duplicar; match fraco vira warning/pendência, não merge agressivo. Snapshot guarda todos os contatos.
+**Requirements**: HUB-CONTATO-01 (todos os contatos + principal determinístico), HUB-CONTATO-02 (campos estruturados), HUB-DEDUP-01 (match forte enriquece), HUB-DEDUP-02 (match fraco = warning/pendência), HUB-DEDUP-03 (snapshot completo)
+**Depends on:** Phase 112 (handoff service é o ponto de extensão)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Deal com vários contatos escolhe o principal por prioridade (label útil futuro → email+telefone → email → telefone/mobilephone → primeiro); regra isolada e testada
+  2. `companies.nome_contato` (firstname+lastname) e `companies.cargo_contato` (jobtitle) gravados estruturados; `email_cliente`/`telefone` seguem company e caem pro contato principal (incl. `mobilephone`) quando a company não tem; `notes` deixa de ser fonte única
+  3. Match forte (`hubspot_company_id` ou `cnpj`) enriquece campos **vazios** sem sobrescrever preenchidos manualmente; adiciona contrato novo só se não existir `hubspot_line_item_id` igual — sem duplicar empresa/contrato
+  4. Match fraco só por nome normalizado não faz merge automático de campos críticos; gera warning `possivel_duplicidade` (pendência na listagem se a UI suportar, senão no `hubspot_eventos.payload`)
+  5. `companies.hubspot_snapshot` (ou tabela auxiliar) guarda deal/company/**todos os contatos**/line_items normalizados; regressão zero na suite
+
+**Plans:** a planejar (`/gsd:plan-phase 113`).
+
+### Phase 114: UI Comercial (campos+pendências novas) + comando de replay (v20.0)
+
+**Goal:** A listagem Comercial expõe os dados enriquecidos (contato, cargo, observação, IDs HubSpot, valor operacional×original+frequência+confiança+warning) sem lotar a tela, com pendências novas (`sem_contato`/`valor_revisar`/`possivel_duplicidade`). Existe `hubspot:reprocess-event {id}` para recriar contratos faltantes depois que o admin cadastra um mapping ausente — sem duplicar company/contrato.
+**Requirements**: HUB-UI-01 (novos campos na listagem), HUB-UI-02 (pendências novas origem-HubSpot), HUB-REPLAY-01 (comando de replay idempotente)
+**Depends on:** Phase 113 (dados estruturados + snapshot para replay)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `ComercialController::listagem()` + `Comercial/EmpresasListagem.jsx` exibem `nome_contato`/`cargo_contato`/`hubspot_observacao`/`hubspot_deal_id`/`hubspot_company_id` e o bloco de valor (operacional/original/frequência/confiança/warning) — detalhes em tooltip/drawer, não poluindo a grade
+  2. Novas pendências `sem_contato`, `valor_revisar` e `possivel_duplicidade` aparecem **apenas** para empresas de origem HubSpot, coerentes com as já existentes
+  3. `php artisan hubspot:reprocess-event {hubspot_evento_id}` reprocessa evento que ficou sem serviço por mapping ausente e cria/atualiza o contrato faltante; roda idempotente (não duplica company/contrato)
+  4. O comando loga resumo estruturado (evento id, deal id, company id, contratos criados/atualizados/ignorados, warnings) no canal `ecf-webhooks`; nenhum token no log
+  5. Regressão zero na listagem e no webhook; `Phase37ComercialListagemTest` continua verde
+
+**Plans:** a planejar (`/gsd:plan-phase 114`).
+
+### Phase 115: Suite E2E + documentação da regra de valor (v20.0)
+
+**Goal:** Cobertura de teste dos fluxos novos (valor, enriquecimento, dedup, replay, listagem) com `Http::fake` sempre, e doc curta explicando a regra mensal×anual em `CLAUDE.md` ou novo doc técnico. Fecha os critérios de aceite do prompt.
+**Requirements**: HUB-TEST-01 (resolver), HUB-TEST-02 (enriquecimento), HUB-TEST-03 (dedup), HUB-TEST-04 (replay), HUB-TEST-05 (listagem), HUB-DOC-01 (doc da regra)
+**Depends on:** Phases 111–114
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `HubspotValueResolverTest` cobre os 6 casos do prompt (monthly, annually P1Y, MRR vs ARR, serviço único, inferência por tolerância, `valor_revisar`)
+  2. `PhaseHubspotEnrichmentTest` prova: contato email+telefone escolhido, `mobilephone` como fallback, `nome_contato` estruturado, IDs HubSpot gravados, snapshot com deal/company/contact/line_items
+  3. `PhaseHubspotDedupTest` prova: enriquece por CNPJ sem duplicar, novo contrato por `hubspot_company_id` sem duplicar, match fraco por nome → warning/pendência (sem merge agressivo)
+  4. `PhaseHubspotReplayTest` prova: line item sem mapping não cria contrato → admin cadastra mapping → replay cria o contrato e zera o efeito prático da pendência
+  5. `PhaseHubspotComercialListagemEnrichmentTest` prova contato/observação/confiança/warning na listagem e `valor_revisar` só para origem HubSpot; doc da regra de valor escrita; nenhum teste chama HubSpot real; tokens nunca em log
+
+**Plans:** a planejar (`/gsd:plan-phase 115`).
+
+---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
+
+*Roadmap atualizado: 2026-07-24 — Milestone v20.0 (Handoff Comercial HubSpot) anexada: 5 fases (111-115) derivadas do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md`, preservando a estrutura de 10 estágios do prompt. Fundação (111) → HubspotValueResolver + handoff service (112, núcleo do valor mensal×anual) → enriquecimento contato/empresa + dedup (113) → UI Comercial + replay (114) → E2E + doc (115). Trabalho ADITIVO: fluxo legado (Fases 34-37) e testes atuais preservados; nenhum teste chama HubSpot real. Conflict-detection do import: só INFO (sem locked-decisions HubSpot pré-CONTEXT); 1 WARNING = mudança semântica de como `valor_contratado` é populado em closes futuros (histórico intacto). Fases 100-110 (v18/v19) preservadas.*

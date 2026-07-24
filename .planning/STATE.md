@@ -1,17 +1,17 @@
 ---
 gsd_state_version: 1.0
-milestone: v17.0
-milestone_name: Carteira e Desempenho multi-servico
-status: verifying
-stopped_at: Completado 110-02-PLAN.md
-last_updated: "2026-07-23T19:51:13.081Z"
-last_activity: 2026-07-23
+milestone: v20.0
+milestone_name: Handoff Comercial HubSpot
+status: planning
+stopped_at: Milestone v20.0 aberta — 5 fases (111-115) no ROADMAP
+last_updated: "2026-07-24T00:00:00.000Z"
+last_activity: 2026-07-24
 progress:
-  total_phases: 17
-  completed_phases: 17
-  total_plans: 39
-  completed_plans: 39
-  percent: 100
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -20,17 +20,17 @@ progress:
 
 See: .planning/PROJECT.md (updated 2026-07-07)
 
-**Core value:** Reescrever o módulo NPS baseado em modelos configuráveis de formulário — templates por tipo de serviço, perguntas com opções e pesos ajustáveis, cálculo por dimensão, dedup mensal, dashboards de pendência e UX limpa. Zero uso de Promotor/Neutro/Detrator — escala 1-5 sempre. Seed "NPS Padrão" preserva 100% do histórico legado — v15.0 NPS Templates.
-**Current focus:** Phase 110 — Fix margem Adman
+**Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
+**Current focus:** Phase 111 — Fundação (descoberta de props + API client + campos estruturados)
 
 ## Current Position
 
-Phase: 110 (Fix margem Adman) — EXECUTING
-Plan: 2 of 2
+Phase: 111 (Fundação HubSpot) — PLANEJAR
+Plan: 0 of ?
 
-Contexto herdado: v16.0 (Fases 76-81) esta COMPLETA no codigo — falta apenas o deploy do pacote NPS (79+81) ja validado e os checkpoints visuais humanos pendentes (78/81/80-03). v17.0 abre em paralelo: fundacao em `CarteiraContextService` (Fase 88, CONCLUIDA), consumida por Carteira individual/consolidada (89->90) e Desempenho (91->92); Menu (93) e independente e pode ir por ultimo.
-Status: Phase complete — ready for verification
-Last activity: 2026-07-23
+Milestone v20.0 recém-aberta a partir do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md` (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 (Carteira/Desempenho multi-servico) preservadas. Ordem: 111 fundação → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc.
+Status: Milestone aberta — pronto para `/gsd:plan-phase 111`
+Last activity: 2026-07-24
 
 ## Performance Metrics
 
