@@ -650,6 +650,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
             ->name('dev.modulos.index');
         Route::patch('/dev/modulos/{module}/visibilidade', [DevModulosController::class, 'updateVisibilidade'])
             ->name('dev.modulos.visibilidade');
+        // Cargo Dev — promover/rebaixar usuários (self-service, gate isAdminDev no controller).
+        Route::patch('/dev/usuarios/{user}/dev', [DevModulosController::class, 'updateUsuarioDev'])
+            ->name('dev.modulos.usuario-dev');
         // Re-sync manual de empresa Adman via diagnóstico (admin only)
         Route::post('/dev/resync', [DevController::class, 'resyncCompany'])
             ->name('dev.resync');

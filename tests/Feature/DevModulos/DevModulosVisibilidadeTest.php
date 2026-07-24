@@ -89,4 +89,37 @@ class DevModulosVisibilidadeTest extends TestCase
 
         $this->assertSame([], app(ModuleRegistry::class)->hiddenRoutes());
     }
+
+    public function test_dev_promove_outro_usuario_a_dev(): void
+    {
+        $alvo = $this->adminComum();
+
+        $this->actingAs($this->devUser())
+            ->patch("/dev/usuarios/{$alvo->id}/dev", ['is_dev' => true])
+            ->assertRedirect();
+
+        $this->assertTrue($alvo->fresh()->isAdminDev());
+    }
+
+    public function test_admin_comum_nao_pode_promover_ninguem_a_dev(): void
+    {
+        $alvo = $this->adminComum();
+
+        $this->actingAs($this->adminComum())
+            ->patch("/dev/usuarios/{$alvo->id}/dev", ['is_dev' => true])
+            ->assertForbidden();
+
+        $this->assertFalse($alvo->fresh()->isAdminDev());
+    }
+
+    public function test_dev_nao_pode_remover_o_proprio_cargo_dev(): void
+    {
+        $dev = $this->devUser();
+
+        $this->actingAs($dev)
+            ->patch("/dev/usuarios/{$dev->id}/dev", ['is_dev' => false])
+            ->assertSessionHas('error');
+
+        $this->assertTrue($dev->fresh()->isAdminDev(), 'O Dev não pode se auto-rebaixar (anti-lockout).');
+    }
 }

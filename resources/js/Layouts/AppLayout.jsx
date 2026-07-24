@@ -193,8 +193,8 @@ const NAV_TREE = [
             // Rota /dev/sugadores-ml-onboarding permanece acessivel via URL direta (role:admin) como ferramenta tecnica.
             { label: 'ML OAuth',       routeName: 'ml.oauth.index',      page: 'MlOAuth/Index',       icon: Link2,     permission: 'sistema.ml_oauth' },
             { label: 'Shopee OAuth',   routeName: 'shopee.oauth.index',  page: 'ShopeeOAuth/Index',   icon: Store,     permission: 'sistema.shopee_oauth' },
-            // MVP Cargo Dev — controle de visibilidade dos módulos no menu (só o Dev vê este item).
-            { label: 'Módulos (visibilidade)', routeName: 'dev.modulos.index', page: 'Dev/Modulos', icon: EyeOff, devOnly: true },
+            // MVP Cargo Dev — painel de controle do Dev: cargo Dev + visibilidade de módulos (só o Dev vê).
+            { label: 'Controle Dev', routeName: 'dev.modulos.index', page: 'Dev/Modulos', icon: EyeOff, devOnly: true },
         ],
     },
 
