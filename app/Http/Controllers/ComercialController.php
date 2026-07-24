@@ -480,6 +480,38 @@ class ComercialController extends Controller
             $pendencias[] = 'dados_close_incompletos';
         }
 
+        // ── Phase 114 (HUB-UI-02) — 3 pendencias novas, aditivas, SO para
+        // origem HubSpot (guarda no topo do metodo ja cobre o isolamento).
+
+        // sem_contato: contato principal nao foi resolvido no handoff (Fase 113).
+        if ($c->nome_contato === null || $c->nome_contato === '') {
+            $pendencias[] = 'sem_contato';
+        }
+
+        // valor_revisar: algum contrato ativo tem inferencia de valor insegura
+        // (confidence 'low') OU um warning explicito (ex.: amount indecidivel).
+        $temValorParaRevisar = $contratosAtivos->contains(
+            fn($ct) => $ct->hubspot_valor_confidence === 'low' || $ct->hubspot_valor_warning !== null
+        );
+        if ($temValorParaRevisar) {
+            $pendencias[] = 'valor_revisar';
+        }
+
+        // possivel_duplicidade: o dedup fraco (Fase 113) marcou candidata por
+        // nome — checa primeiro o snapshot da empresa (sempre reescrito no
+        // ultimo evento), com fallback no payload do(s) HubspotEvento eager-loaded
+        // (sem query nova — mesma colecao usada em servico_nao_reconhecido).
+        $warningsSnapshot = $c->hubspot_snapshot['warnings'] ?? [];
+        $temDuplicidadeSnapshot = collect($warningsSnapshot)->contains(
+            fn($w) => ($w['tipo'] ?? null) === 'possivel_duplicidade'
+        );
+        $temDuplicidadeEvento = $c->hubspotEventos->contains(
+            fn($ev) => isset(($ev->payload ?? [])['possivel_duplicidade'])
+        );
+        if ($temDuplicidadeSnapshot || $temDuplicidadeEvento) {
+            $pendencias[] = 'possivel_duplicidade';
+        }
+
         return $pendencias;
     }
 
