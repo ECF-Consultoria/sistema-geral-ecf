@@ -57,6 +57,9 @@ class Phase113NameNormalizerTest extends TestCase
 
     public function test_pontuacao_e_e_comercial_viram_espaco_e_colapsam(): void
     {
-        $this->assertSame('acai e cia ltda', HubspotNameNormalizer::normalizar('Açaí & Cia. Ltda'));
+        // "&" e "." não são letras/dígitos, viram espaço e colapsam —
+        // o "&" NÃO é traduzido para a palavra "e" (símbolo é descartado
+        // como separador, não como token semântico).
+        $this->assertSame('acai cia ltda', HubspotNameNormalizer::normalizar('Açaí & Cia. Ltda'));
     }
 }
