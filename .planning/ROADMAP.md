@@ -1182,12 +1182,12 @@ Plans:
   4. Match fraco só por nome normalizado não faz merge automático de campos críticos; gera warning `possivel_duplicidade` (pendência na listagem se a UI suportar, senão no `hubspot_eventos.payload`)
   5. `companies.hubspot_snapshot` (ou tabela auxiliar) guarda deal/company/**todos os contatos**/line_items normalizados; regressão zero na suite
 
-**Plans:** 2/3 plans executed
+**Plans:** 3/3 plans executed — Phase 113 COMPLETA
 
 Planos:
 - [x] 113-01-PLAN.md — Unidades puras (TDD): HubspotContactSelector (contato principal determinístico) + HubspotNameNormalizer (dedup anti-falso-positivo)
 - [x] 113-02-PLAN.md — Fetch batch de contatos + campos estruturados da Company + hubspot_snapshot completo + DTO company_data/contact_data
-- [ ] 113-03-PLAN.md — Dedup: HubspotCompanyMatcher + match forte enriquece (guard hubspot_line_item_id) + match fraco = warning possivel_duplicidade
+- [x] 113-03-PLAN.md — Dedup: HubspotCompanyMatcher + match forte enriquece (guard hubspot_line_item_id) + match fraco = warning possivel_duplicidade
 
 ### Phase 114: UI Comercial (campos+pendências novas) + comando de replay (v20.0)
 

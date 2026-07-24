@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: executing
-stopped_at: Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
-last_updated: "2026-07-24T17:07:31.071Z"
+stopped_at: Completado 113-03-PLAN.md (3/3 planos da Fase 113 — FASE COMPLETA) — HubspotCompanyMatcher (hubspot_company_id>cnpj>email>domain>nome) + match forte enriquece campos vazios sem duplicar (guard hubspot_line_item_id) + match fraco grava warning possivel_duplicidade e segue criando; 84/84 testes HubSpot verdes; pronto para 114 (UI+replay)
+last_updated: "2026-07-24T17:45:00.000Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 8
-  percent: 40
+  completed_plans: 9
+  percent: 60
 ---
 
 # Project State
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 113 — Enriquecimento de contato/empresa + contato principal + dedup
+**Current focus:** Phase 113 COMPLETA — próxima: Phase 114 (UI Comercial + comando de replay)
 
 ## Current Position
 
-Phase: 113 (Enriquecimento de contato/empresa + contato principal + dedup) — EXECUTING
-Plan: 3 of 3
+Phase: 113 (Enriquecimento de contato/empresa + contato principal + dedup) — COMPLETA (3/3)
+Plan: Fase 113 concluída — próxima: 114 (UI Comercial + comando de replay)
 
-Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes. Plan 113-01 entregou `HubspotContactSelector` (regra determinística de contato principal por tiers email/telefone) + `HubspotNameNormalizer` (dedup fraco anti-falso-positivo) — unidades puras TDD. Plan 113-02 (esta entrega): `HubspotWebhookController::processar` troca fetch singular de contato por batch (`fetchAssociatedContactIds`+`fetchContacts`) e usa `HubspotContactSelector` para escolher o principal entre TODOS os contatos do deal; `criarEmpresa` grava 7 campos estruturados (`nome_contato`/`cargo_contato`/`hubspot_deal_id`/`hubspot_company_id`/`hubspot_contact_id`/`hubspot_domain`/`hubspot_observacao`) com fallback de telefone estendido até `mobilephone`; `companies.hubspot_snapshot` grava payload completo (deal+company+todos os contatos+line_items+warnings+captured_at) para auditoria/replay da Fase 115; `HubspotDealHandoffService::build()` ganhou 4 parâmetros opcionais que preenchem `company_data`/`contact_data` do DTO sem alterar a lógica de valor/contratos. Linha legada `notes` preservada. Gate de regressão 70/70 testes Hubspot verdes (67 pré-existentes + 3 novos), zero asserção alterada.
-Status: Ready to execute (113-03 — dedup de empresa existente)
+Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) ✓ → 113 enriquecimento+dedup ✓ → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md. Phase 112 Plan 01 entregou `HubspotValueResolver` (resolve valor operacional mensal×anual). Plan 02 entregou `HubspotDealHandoffService` + DTO `HubspotHandoffData` — multi-line-item resolvido individualmente, confidence agregada = a menor entre os contratos, 8/8 testes verdes + 10/10 Phase37WebhookLineItemsTest intacto (controller ainda não tocado). Plan 03 (esta entrega): `HubspotWebhookController::criarEmpresa` delega ao handoff service via `persistirContratos()` — as 11 colunas hubspot_* passam a ser gravadas de verdade, linha legada em observacoes preservada, critério de aceite âncora da milestone (line item mensal 3000 + amount/ARR 36000 → valor_contratado=3000) fechado e comprovado por E2E real via webhook (6/6 testes). Deviation: bug corrigido no ramo "indecidível" de `HubspotValueResolver::resolverSemLineItem()` (adivinhava amount/12 sem evidência, quebrando a invariante Phase34/37 — agora mantém o valor bruto). Gate de regressão 67/67 testes Hubspot verdes. Plan 113-01 entregou `HubspotContactSelector` (regra determinística de contato principal por tiers email/telefone) + `HubspotNameNormalizer` (dedup fraco anti-falso-positivo) — unidades puras TDD. Plan 113-02: `HubspotWebhookController::processar` troca fetch singular de contato por batch (`fetchAssociatedContactIds`+`fetchContacts`) e usa `HubspotContactSelector` para escolher o principal entre TODOS os contatos do deal; `criarEmpresa` grava 7 campos estruturados (`nome_contato`/`cargo_contato`/`hubspot_deal_id`/`hubspot_company_id`/`hubspot_contact_id`/`hubspot_domain`/`hubspot_observacao`) com fallback de telefone estendido até `mobilephone`; `companies.hubspot_snapshot` grava payload completo (deal+company+todos os contatos+line_items+warnings+captured_at) para auditoria/replay da Fase 115; `HubspotDealHandoffService::build()` ganhou 4 parâmetros opcionais que preenchem `company_data`/`contact_data` do DTO sem alterar a lógica de valor/contratos. Linha legada `notes` preservada. Gate de regressão 70/70 testes Hubspot verdes. Plan 113-03 (esta entrega, FECHA a Fase 113): `HubspotCompanyMatcher::encontrar()` resolve empresa existente ANTES de criar (hubspot_company_id > cnpj > email > domain > nome normalizado via `HubspotNameNormalizer`), comparação de cnpj/nome em PHP (discrição, volume baixo de companies). `criarEmpresa` bifurca: match FORTE (hubspot_company_id/cnpj) → `enriquecerEmpresaExistente()` grava só campos vazios (dado manual do Comercial é soberano), não remarca `empresa_nova`, não mexe em `notes`; SEM match forte (null ou fraco) → cria empresa nova igual à 113-02. Guard anti-duplicidade de contrato em `persistirContratos()` (por `hubspot_line_item_id`, ou `servico_id` ativo no fluxo legado sem line item) — zero impacto em empresa nova. Match FRACO (só nome) grava warning `possivel_duplicidade` em `hubspot_eventos.payload` + no `hubspot_snapshot` da empresa nova, sem merge de campos críticos na candidata — humano decide na Fase 114. `hubspot_snapshot` sempre reescrito (sem deep-merge) com o payload do evento novo, mesmo no caminho de match forte. Gate de regressão 84/84 testes `--filter=Hubspot` verdes (14 novos + 70 pré-existentes).
+Status: Fase 113 completa — pronta para /gsd:plan-phase 114 (UI Comercial + comando hubspot:reprocess-event)
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -175,6 +175,7 @@ Last activity: 2026-07-24
 | Phase 112 P03 | 35min | 2 tasks | 3 files |
 | Phase 113 P01 | ~5min | 2 tasks | 4 files |
 | Phase 113 P02 | ~25min | 3 tasks | 4 files |
+| Phase 113 P03 | ~35min | 3 tasks (TDD RED+GREEN) | 3 files |
 
 ## Accumulated Context
 
@@ -702,8 +703,10 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T17:07:30.985Z
-Stopped at: Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
+Last session: 2026-07-24T17:45:00.000Z
+Stopped at: Completado 113-03-PLAN.md (3/3 planos da Fase 113 — FASE COMPLETA) — HubspotCompanyMatcher (hubspot_company_id>cnpj>email>domain>nome) + match forte enriquece campos vazios sem duplicar (guard hubspot_line_item_id) + match fraco grava warning possivel_duplicidade e segue criando; 84/84 testes HubSpot verdes; pronto para /gsd:plan-phase 114 (UI Comercial + hubspot:reprocess-event)
+
+Legado desta seção (Phase 113 Plan 113-02): Completado 113-02-PLAN.md (2/3 planos da Fase 113) — fetch batch de contatos + campos estruturados (nome_contato/cargo_contato/IDs HubSpot/domain/observacao) + hubspot_snapshot completo + handoff service com company_data/contact_data; 70/70 testes HubSpot verdes; pronto para 113-03 (dedup)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
