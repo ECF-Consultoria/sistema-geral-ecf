@@ -813,39 +813,62 @@ class AdmanService
             }
         }
 
-        try {
-            $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo, $marketplace);
+        // Retry com backoff (2026-07-24): este endpoint detalhado é a fonte EXATA
+        // da margem (liquidMargin/percentageMargin) que bate com a Adman UI, mas
+        // rate-limita (429) sob carga → muitas empresas caíam pra null ("—"). Ele
+        // tenta até 3x antes de desistir; só grava ERROR_SENTINEL se as 3 falharem.
+        // Recupera o rate-limit TRANSITÓRIO mantendo o valor exato (sem aproximar
+        // nem calcular local). Só falhas PERSISTENTES (ex.: DROSSI) ficam null.
+        $metrics    = null;
+        $lastError  = null;
+        $tentativas = 4;
+        for ($tentativa = 1; $tentativa <= $tentativas; $tentativa++) {
+            try {
+                $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo, $marketplace);
 
-            // Preserva {value,diff,prev} por campo — nunca assume chave presente.
-            $detalhado = fn(string $key): ?array => isset($data['metrics'][$key])
-                ? [
-                    'value' => $data['metrics'][$key]['value'] ?? null,
-                    'diff'  => $data['metrics'][$key]['diff']  ?? null,
-                    'prev'  => $data['metrics'][$key]['prev']  ?? null,
-                ]
-                : null;
+                // Preserva {value,diff,prev} por campo — nunca assume chave presente.
+                $detalhado = fn(string $key): ?array => isset($data['metrics'][$key])
+                    ? [
+                        'value' => $data['metrics'][$key]['value'] ?? null,
+                        'diff'  => $data['metrics'][$key]['diff']  ?? null,
+                        'prev'  => $data['metrics'][$key]['prev']  ?? null,
+                    ]
+                    : null;
 
-            $metrics = [];
-            foreach (array_keys($data['metrics'] ?? []) as $key) {
-                $metrics[$key] = $detalhado($key);
+                $parciais = [];
+                foreach (array_keys($data['metrics'] ?? []) as $key) {
+                    $parciais[$key] = $detalhado($key);
+                }
+                unset($data);
+                gc_collect_cycles();
+
+                if (! empty($parciais)) {
+                    $metrics = $parciais;
+                    break; // sucesso — valor EXATO da Adman
+                }
+                // Resposta OK mas sem NENHUMA métrica — trata como falha e tenta de novo.
+            } catch (\Throwable $e) {
+                $lastError = $e;
             }
 
-            unset($data);
-            gc_collect_cycles();
-
-            // Resposta OK mas sem NENHUMA métrica — trata como erro (resposta inválida).
-            if (empty($metrics)) {
-                Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
-                return null;
+            if ($tentativa < $tentativas) {
+                // Backoff crescente 0,8s / 1,6s / 2,4s — dá espaço pro rate-limit
+                // 429 se dissipar. Empresas lentas (ex.: DROSSI ~3,7s) recuperam
+                // o valor EXATO em vez de cair pra null ("—").
+                usleep(800000 * $tentativa);
             }
+        }
 
-            Cache::put($cacheKey, $metrics, now()->addMinutes($cacheMinutes));
-            return $metrics;
-        } catch (\Throwable $e) {
-            Log::warning("[Adman/AccountMetricsDetailed] custId={$custId} range={$dateFrom}..{$dateTo}: " . $e->getMessage());
+        if ($metrics === null) {
+            if ($lastError !== null) {
+                Log::warning("[Adman/AccountMetricsDetailed] custId={$custId} range={$dateFrom}..{$dateTo} apos 3 tentativas: " . $lastError->getMessage());
+            }
             Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
             return null;
         }
+
+        Cache::put($cacheKey, $metrics, now()->addMinutes($cacheMinutes));
+        return $metrics;
     }
 
     /**
