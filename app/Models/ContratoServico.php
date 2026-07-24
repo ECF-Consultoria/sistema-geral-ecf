@@ -28,6 +28,20 @@ class ContratoServico extends Model
         'data_vencimento',
         'ativo',
         'observacoes',
+        // Phase 111 — origem/valor HubSpot (HUB-SCHEMA-02). Colunas de
+        // proveniência, sem uso ainda; valor_contratado segue como o valor
+        // operacional (não mexer).
+        'hubspot_line_item_id',
+        'hubspot_product_id',
+        'hubspot_billing_frequency',
+        'hubspot_billing_period',
+        'hubspot_currency',
+        'hubspot_valor_original',
+        'hubspot_valor_original_tipo',
+        'hubspot_valor_normalizado_mensal',
+        'hubspot_valor_confidence',
+        'hubspot_valor_warning',
+        'hubspot_snapshot',
     ];
 
     protected $casts = [
@@ -35,6 +49,10 @@ class ContratoServico extends Model
         'data_contratacao' => 'date:Y-m-d',
         'data_vencimento'  => 'date:Y-m-d',
         'ativo'            => 'boolean',
+        // Phase 111 — casts decimal/json das novas colunas HubSpot (HUB-SCHEMA-02).
+        'hubspot_valor_original'           => 'decimal:2',
+        'hubspot_valor_normalizado_mensal' => 'decimal:2',
+        'hubspot_snapshot'                 => 'array',
     ];
 
     public function getActivitylogOptions(): LogOptions
