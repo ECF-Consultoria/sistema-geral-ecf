@@ -10,9 +10,11 @@ use App\Models\HubspotEvento;
 use App\Models\MlbEmpresa;
 use App\Models\Servico;
 use App\Notifications\EmpresaHubspotPendenteNotification;
+use App\Services\Hubspot\HubspotCompanyMatcher;
 use App\Services\Hubspot\HubspotContactSelector;
 use App\Services\Hubspot\HubspotDealHandoffService;
 use App\Services\Hubspot\HubspotHandoffData;
+use App\Services\Hubspot\HubspotNameNormalizer;
 use App\Services\HubspotApiClient;
 use App\Services\MlbImplementacaoFactory;
 use App\Support\AudienciaComercial;
@@ -330,41 +332,80 @@ class HubspotWebhookController extends Controller
             $cargoContatoRaw = trim((string) ($contatoPrincipal['jobtitle'] ?? ''));
             $observacaoRaw   = trim((string) ($dprops[$propsDeal['observacao'] ?? 'observacao'] ?? ''));
             $domainRaw       = trim((string) ($cprops[$propsCompany['domain'] ?? 'domain'] ?? ''));
+            $cnpjRaw         = $cprops[$propsCompany['cnpj']] ?? null;
+            $nameRaw         = $cprops[$propsCompany['name']] ?? ($deal['properties']['dealname'] ?? null);
+            $dealIdStr       = $evento?->object_id !== null ? (string) $evento->object_id : null;
 
-            $company = Company::create([
-                'name'               => $cprops[$propsCompany['name']]
-                    ?? $deal['properties']['dealname']
-                    ?? 'Empresa HubSpot',
-                'cnpj'               => $cprops[$propsCompany['cnpj']] ?? null,
-                'email_cliente'      => ($emailFinal !== null && $emailFinal !== '') ? $emailFinal : null,
-                'telefone'           => ($foneFinal !== null && $foneFinal !== '') ? $foneFinal : null,
-                'nicho'              => $dprops[$propsDeal['nicho']] ?? null,
-                'dor'                => $dprops[$propsDeal['dor']] ?? null,
-                'vende_ml'           => $vendeMl,
-                'faturamento_mensal' => $faturamento,
-                'empresa_nova'       => true,
-                'status'             => 'pendente',
-                'active'             => true,
-                // Fase 111 (colunas) / Fase 113 plano 02 (gravacao real) —
-                // HUB-CONTATO-02: contato principal estruturado + IDs HubSpot.
-                'nome_contato'       => $nomeContato !== '' ? $nomeContato : null,
-                'cargo_contato'      => $cargoContatoRaw !== '' ? $cargoContatoRaw : null,
-                'hubspot_deal_id'    => $evento?->object_id !== null ? (string) $evento->object_id : null,
+            // ── Fase 113 plano 03 (HUB-DEDUP-01/02) — resolve empresa existente
+            // ANTES de decidir criar/enriquecer. Ordem de precedencia dentro do
+            // Matcher: hubspot_company_id > cnpj > email > domain > nome normalizado.
+            $resultadoMatch = app(HubspotCompanyMatcher::class)->encontrar([
                 'hubspot_company_id' => $companyId,
-                'hubspot_contact_id' => $contatoPrincipal['id'] ?? null,
-                'hubspot_domain'     => $domainRaw !== '' ? $domainRaw : null,
-                'hubspot_observacao' => $observacaoRaw !== '' ? $observacaoRaw : null,
+                'cnpj'               => $cnpjRaw,
+                'email'              => $emailFinal,
+                'domain'             => $domainRaw !== '' ? $domainRaw : null,
+                'name'               => $nameRaw,
             ]);
 
-            // ── Phase 35 D-04 — anexa nome do contato em notes ────────────────
-            // Concatena firstname + lastname (trim). Fonte LEGADA preservada —
-            // coexiste com a coluna estruturada `nome_contato` (Fase 113).
-            // Linha "Contato (HubSpot): {nome}".
-            if ($nomeContato !== '') {
-                $notesAtuais = (string) ($company->notes ?? '');
-                $linhaContato = "Contato (HubSpot): {$nomeContato}";
-                $notes = trim($notesAtuais === '' ? $linhaContato : $notesAtuais . "\n" . $linhaContato);
-                $company->update(['notes' => $notes]);
+            if ($resultadoMatch['match'] === 'forte') {
+                // ── Match FORTE (hubspot_company_id ou cnpj) — NAO duplica. ─────
+                // Enriquece SOMENTE colunas vazias da empresa ja existente; dado
+                // manual do Comercial e soberano (T-113-03-02). Nao remarca
+                // empresa_nova (a empresa ja existia) nem mexe em notes (a linha
+                // legada so e anexada no fluxo de CRIACAO abaixo).
+                $company = $this->enriquecerEmpresaExistente(
+                    company: $resultadoMatch['company'],
+                    dprops: $dprops,
+                    propsDeal: $propsDeal,
+                    cnpjRaw: $cnpjRaw,
+                    emailFinal: $emailFinal,
+                    foneFinal: $foneFinal,
+                    nomeContato: $nomeContato,
+                    cargoContatoRaw: $cargoContatoRaw,
+                    observacaoRaw: $observacaoRaw,
+                    domainRaw: $domainRaw,
+                    faturamento: $faturamento,
+                    vendeMl: $vendeMl,
+                    companyId: $companyId,
+                    contactId: $contatoPrincipal['id'] ?? null,
+                    dealIdStr: $dealIdStr,
+                );
+            } else {
+                // ── SEM match forte (null ou fraco) — cria empresa nova. ────────
+                // Caminho identico ao fluxo 113-02 (regressao zero DB fresco).
+                $company = Company::create([
+                    'name'               => $nameRaw ?? 'Empresa HubSpot',
+                    'cnpj'               => $cnpjRaw,
+                    'email_cliente'      => ($emailFinal !== null && $emailFinal !== '') ? $emailFinal : null,
+                    'telefone'           => ($foneFinal !== null && $foneFinal !== '') ? $foneFinal : null,
+                    'nicho'              => $dprops[$propsDeal['nicho']] ?? null,
+                    'dor'                => $dprops[$propsDeal['dor']] ?? null,
+                    'vende_ml'           => $vendeMl,
+                    'faturamento_mensal' => $faturamento,
+                    'empresa_nova'       => true,
+                    'status'             => 'pendente',
+                    'active'             => true,
+                    // Fase 111 (colunas) / Fase 113 plano 02 (gravacao real) —
+                    // HUB-CONTATO-02: contato principal estruturado + IDs HubSpot.
+                    'nome_contato'       => $nomeContato !== '' ? $nomeContato : null,
+                    'cargo_contato'      => $cargoContatoRaw !== '' ? $cargoContatoRaw : null,
+                    'hubspot_deal_id'    => $dealIdStr,
+                    'hubspot_company_id' => $companyId,
+                    'hubspot_contact_id' => $contatoPrincipal['id'] ?? null,
+                    'hubspot_domain'     => $domainRaw !== '' ? $domainRaw : null,
+                    'hubspot_observacao' => $observacaoRaw !== '' ? $observacaoRaw : null,
+                ]);
+
+                // ── Phase 35 D-04 — anexa nome do contato em notes ────────────
+                // Concatena firstname + lastname (trim). Fonte LEGADA preservada —
+                // coexiste com a coluna estruturada `nome_contato` (Fase 113).
+                // Linha "Contato (HubSpot): {nome}".
+                if ($nomeContato !== '') {
+                    $notesAtuais = (string) ($company->notes ?? '');
+                    $linhaContato = "Contato (HubSpot): {$nomeContato}";
+                    $notes = trim($notesAtuais === '' ? $linhaContato : $notesAtuais . "\n" . $linhaContato);
+                    $company->update(['notes' => $notes]);
+                }
             }
 
             // ── Fase 112 Plan 112-03 (HUB-VAL-05) — controller fino delega a ────
@@ -391,9 +432,46 @@ class HubspotWebhookController extends Controller
                 $this->rotearImplementacao($company, $nomeServico);
             }
 
-            // ── Fase 113 plano 02 (HUB-DEDUP-03) — snapshot completo p/
-            // auditoria/replay (Fase 115): deal + company + TODOS os contatos
-            // (nao so o principal) + line_items + warnings + captured_at.
+            $warnings = $handoff->warnings;
+
+            // ── Fase 113 plano 03 (HUB-DEDUP-02) — match FRACO: nao mescla
+            // campos criticos na candidata, so grava um warning de possivel
+            // duplicidade (payload do evento + snapshot da empresa NOVA
+            // recem-criada). O humano decide o merge depois (Fase 114).
+            if ($resultadoMatch['match'] === 'fraco') {
+                $candidata = $resultadoMatch['company'];
+                $possivelDuplicidade = [
+                    'candidate_company_id' => $candidata->id,
+                    'via'                  => $resultadoMatch['via'],
+                    'nome_normalizado'     => HubspotNameNormalizer::normalizar($nameRaw),
+                ];
+
+                if ($evento) {
+                    $payload = $evento->payload ?? [];
+                    $payload['possivel_duplicidade'] = $possivelDuplicidade;
+                    $evento->payload = $payload;
+                    $evento->save();
+                }
+
+                Log::channel('ecf-webhooks')->warning(
+                    '[HubSpot Webhook] Possivel duplicidade — match fraco via ' . $resultadoMatch['via'],
+                    [
+                        'evento_id'            => $evento?->id,
+                        'company_id_nova'      => $company->id,
+                        'candidate_company_id' => $candidata->id,
+                        'via'                  => $resultadoMatch['via'],
+                    ]
+                );
+
+                $warnings[] = array_merge(['tipo' => 'possivel_duplicidade'], $possivelDuplicidade);
+            }
+
+            // ── Fase 113 plano 02/03 (HUB-DEDUP-03) — snapshot SEMPRE reescrito
+            // com o payload do evento novo (deal + company + TODOS os contatos +
+            // line_items + warnings + captured_at). Regra desta fase: mesmo no
+            // caminho de match forte, o snapshot NAO faz deep-merge do antigo —
+            // e sempre o retrato do ULTIMO evento processado; o historico do
+            // evento anterior fica preservado em hubspot_eventos.payload.
             $company->update([
                 'hubspot_snapshot' => [
                     'deal'               => $dprops,
@@ -401,13 +479,74 @@ class HubspotWebhookController extends Controller
                     'contacts'           => $contatos,
                     'primary_contact_id' => $contatoPrincipal['id'] ?? null,
                     'line_items'         => $lineItems,
-                    'warnings'           => $handoff->warnings,
+                    'warnings'           => $warnings,
                     'captured_at'        => now()->toIso8601String(),
                 ],
             ]);
 
             return $company;
         });
+    }
+
+    /**
+     * Fase 113 plano 03 (HUB-DEDUP-01) — enriquece SOMENTE colunas vazias
+     * (null/'') de uma Company ja existente (match FORTE por hubspot_company_id
+     * ou cnpj). Dado ja preenchido manualmente pelo Comercial e soberano —
+     * NUNCA sobrescrito (T-113-03-02). Nao remarca `empresa_nova` (a empresa
+     * ja existia) nem mexe em `notes` (linha legada so e anexada no fluxo de
+     * CRIACAO de empresa nova).
+     */
+    private function enriquecerEmpresaExistente(
+        Company $company,
+        array $dprops,
+        array $propsDeal,
+        ?string $cnpjRaw,
+        ?string $emailFinal,
+        ?string $foneFinal,
+        string $nomeContato,
+        string $cargoContatoRaw,
+        string $observacaoRaw,
+        string $domainRaw,
+        ?float $faturamento,
+        ?bool $vendeMl,
+        ?string $companyId,
+        ?string $contactId,
+        ?string $dealIdStr,
+    ): Company {
+        $candidatos = [
+            'cnpj'               => $cnpjRaw,
+            'email_cliente'      => ($emailFinal !== null && $emailFinal !== '') ? $emailFinal : null,
+            'telefone'           => ($foneFinal !== null && $foneFinal !== '') ? $foneFinal : null,
+            'nome_contato'       => $nomeContato !== '' ? $nomeContato : null,
+            'cargo_contato'      => $cargoContatoRaw !== '' ? $cargoContatoRaw : null,
+            'nicho'              => $dprops[$propsDeal['nicho']] ?? null,
+            'dor'                => $dprops[$propsDeal['dor']] ?? null,
+            'faturamento_mensal' => $faturamento,
+            'vende_ml'           => $vendeMl,
+            'hubspot_deal_id'    => $dealIdStr,
+            'hubspot_company_id' => $companyId,
+            'hubspot_contact_id' => $contactId,
+            'hubspot_domain'     => $domainRaw !== '' ? $domainRaw : null,
+            'hubspot_observacao' => $observacaoRaw !== '' ? $observacaoRaw : null,
+        ];
+
+        $updates = [];
+        foreach ($candidatos as $campo => $valorNovo) {
+            if ($valorNovo === null) {
+                continue;
+            }
+            $valorAtual = $company->{$campo};
+            $vazio      = $valorAtual === null || $valorAtual === '';
+            if ($vazio) {
+                $updates[$campo] = $valorNovo;
+            }
+        }
+
+        if (!empty($updates)) {
+            $company->update($updates);
+        }
+
+        return $company->refresh();
     }
 
     /**
@@ -433,6 +572,32 @@ class HubspotWebhookController extends Controller
 
         foreach ($handoff->contracts_to_create as $c) {
             $temLineItem = $c['hubspot_line_item_id'] !== null;
+
+            // ── Fase 113 plano 03 (HUB-DEDUP-01) — guard anti-duplicidade de
+            // contrato quando a empresa JA EXISTIA (match forte reprocessando
+            // ou recebendo um novo deal). Com line item: nunca duplica o mesmo
+            // hubspot_line_item_id. Sem line item (fluxo legado): nao duplica
+            // um contrato ATIVO do mesmo servico_id. Em empresa recem-criada
+            // nesta transaction isto nunca dispara (sem contrato previo) —
+            // zero impacto no fluxo de criacao (113-02, regressao zero).
+            $duplicado = $temLineItem
+                ? ContratoServico::where('company_id', $company->id)
+                    ->where('hubspot_line_item_id', $c['hubspot_line_item_id'])
+                    ->exists()
+                : ContratoServico::where('company_id', $company->id)
+                    ->where('servico_id', $c['servico_id'])
+                    ->where('ativo', true)
+                    ->exists();
+
+            if ($duplicado) {
+                Log::channel('ecf-webhooks')->info('[HubSpot Webhook] Contrato duplicado ignorado (guard dedup)', [
+                    'evento_id'            => $evento?->id,
+                    'company_id'           => $company->id,
+                    'servico_id'           => $c['servico_id'],
+                    'hubspot_line_item_id' => $c['hubspot_line_item_id'],
+                ]);
+                continue;
+            }
 
             // Linha legada Phase 37: so anotada quando o contrato veio de um line
             // item (fluxo legado deal.amount nunca teve essa observacao).
