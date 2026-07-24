@@ -98,3 +98,11 @@ None - nenhuma configuração de serviço externo necessária.
 ---
 *Phase: 115-suite-e2e-documenta-o-da-regra-de-valor-v20-0*
 *Completed: 2026-07-24*
+
+## Self-Check: PASSED
+
+- FOUND: `.planning/phases/115-suite-e2e-documenta-o-da-regra-de-valor-v20-0/115-01-SUMMARY.md`
+- FOUND: `c62fc989` (Tarefa 1 commit)
+- FOUND: `cfc010e3` (Tarefa 2 commit)
+- FOUND: `ebbecc5c` (Tarefa 3 commit)
+- FOUND: `34f9f37b` (SUMMARY.md commit)
