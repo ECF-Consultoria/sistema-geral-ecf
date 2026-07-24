@@ -24,6 +24,15 @@ use Tests\TestCase;
  *  6.  Sem line item, deal.amount 35000 + valor_padrao 5000 incompatível → low, warning 'valor_revisar'.
  *  5b. Tolerância DENTRO de 5% (valor_padrao 3100, diff 3,2%) → aceita 3000, medium.
  *  5c. Tolerância FORA de 5% (valor_padrao 3200, diff 6,25%) → NÃO aceita, low, 'valor_revisar'.
+ *
+ * Rastreabilidade SC ROADMAP Fase 115 nº1 (6 casos-âncora) → método:
+ *  SC1 monthly                    → test_line_item_mensal_monthly_usa_price_vezes_quantity_high
+ *  SC2 annually P1Y                → test_line_item_mensal_annually_36000_p1y_vira_3000
+ *  SC3 MRR×ARR                     → test_line_item_mensal_hs_mrr_prevalece_sobre_arr
+ *  SC4 serviço único               → test_servico_unica_amount_36000_nao_divide_por_12
+ *  SC5 inferência por tolerância   → test_tolerancia_dentro_de_5pct_aceita_com_medium
+ *                                     + test_tolerancia_fora_de_5pct_cai_conservador_low
+ *  SC6 valor_revisar               → test_sem_line_item_valor_padrao_incompativel_marca_valor_revisar
  */
 class HubspotValueResolverTest extends TestCase
 {
