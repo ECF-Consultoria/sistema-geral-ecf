@@ -290,4 +290,148 @@ class HubspotApiClient
 
         return $out;
     }
+
+    /**
+     * Phase 111 Plan 111-02 (HUB-API-03) — GET generico de associacoes v3.
+     *
+     * GET /crm/v3/objects/{fromObject}/{fromId}/associations/{toObject}
+     *
+     * Base para fetchAssociatedCompanyIds/fetchAssociatedContactIds e para
+     * qualquer par objeto→objeto futuro. Resiliente: 4xx/5xx retorna []
+     * (mesmo padrao dos metodos singulares de associacao ja existentes).
+     *
+     * @return array<int, array{toObjectId: int|string, type?: string}>
+     */
+    public function fetchAssociations(string $fromObject, string $fromId, string $toObject): array
+    {
+        $res = Http::withToken($this->token)
+            ->get(self::BASE . "/crm/v3/objects/{$fromObject}/{$fromId}/associations/{$toObject}");
+
+        if (!$res->ok()) {
+            return [];
+        }
+
+        return $res->json('results') ?? [];
+    }
+
+    /**
+     * Phase 111 Plan 111-02 (HUB-API-03) — todos os company IDs associados a um deal.
+     *
+     * Diferente de fetchAssociatedCompanyId (singular, so o primeiro), retorna
+     * a lista completa de toObjectId como strings. 404/500 => [] (deal pode
+     * nao ter nenhuma company associada — cenario valido).
+     *
+     * @return array<int, string>
+     */
+    public function fetchAssociatedCompanyIds(string $dealId): array
+    {
+        $results = $this->fetchAssociations('deals', $dealId, 'companies');
+
+        return array_values(array_map(
+            static fn ($r) => (string) $r['toObjectId'],
+            array_filter($results, static fn ($r) => isset($r['toObjectId']))
+        ));
+    }
+
+    /**
+     * Phase 111 Plan 111-02 (HUB-API-03) — todos os contact IDs associados a um deal.
+     *
+     * Diferente de fetchAssociatedContactId (singular, so o primeiro), retorna
+     * a lista completa de toObjectId como strings. 404/500 => [].
+     *
+     * @return array<int, string>
+     */
+    public function fetchAssociatedContactIds(string $dealId): array
+    {
+        $results = $this->fetchAssociations('deals', $dealId, 'contacts');
+
+        return array_values(array_map(
+            static fn ($r) => (string) $r['toObjectId'],
+            array_filter($results, static fn ($r) => isset($r['toObjectId']))
+        ));
+    }
+
+    /**
+     * Phase 111 Plan 111-02 (HUB-API-03) — busca multiplas companies por ID.
+     *
+     * Segue o padrao de N GETs ja usado no client (mesmo estilo de
+     * fetchDealLineItems para line items individuais), reusando fetchCompany
+     * por id. Falha individual loga warning + pula o id — segue com os
+     * demais (nao propaga excecao). $ids vazio => [] sem chamada HTTP.
+     *
+     * @param  array<string>  $ids
+     * @param  array<string>  $properties
+     * @return array<string, array<string, mixed>>  mapa id => properties
+     */
+    public function fetchCompanies(array $ids, array $properties): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($ids as $id) {
+            $res = Http::withToken($this->token)
+                ->get(self::BASE . "/crm/v3/objects/companies/{$id}", [
+                    'properties' => implode(',', $properties),
+                ]);
+
+            if (!$res->ok()) {
+                // NUNCA logar o token aqui (T-111-03): apenas ID + status HTTP.
+                Log::channel('ecf-webhooks')->warning(
+                    '[HubSpot] Falha ao buscar company em fetchCompanies',
+                    [
+                        'company_id' => $id,
+                        'status'     => $res->status(),
+                    ]
+                );
+                continue;
+            }
+
+            $out[(string) $id] = $res->json('properties') ?? [];
+        }
+
+        return $out;
+    }
+
+    /**
+     * Phase 111 Plan 111-02 (HUB-API-03) — busca multiplos contacts por ID.
+     *
+     * Mesmo padrao de fetchCompanies (N GETs reusando fetchContact). Falha
+     * individual loga warning + pula o id. $ids vazio => [] sem chamada HTTP.
+     *
+     * @param  array<string>  $ids
+     * @param  array<string>  $properties
+     * @return array<string, array<string, mixed>>  mapa id => properties
+     */
+    public function fetchContacts(array $ids, array $properties): array
+    {
+        if (empty($ids)) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($ids as $id) {
+            $res = Http::withToken($this->token)
+                ->get(self::BASE . "/crm/v3/objects/contacts/{$id}", [
+                    'properties' => implode(',', $properties),
+                ]);
+
+            if (!$res->ok()) {
+                // NUNCA logar o token aqui (T-111-03): apenas ID + status HTTP.
+                Log::channel('ecf-webhooks')->warning(
+                    '[HubSpot] Falha ao buscar contact em fetchContacts',
+                    [
+                        'contact_id' => $id,
+                        'status'     => $res->status(),
+                    ]
+                );
+                continue;
+            }
+
+            $out[(string) $id] = $res->json('properties') ?? [];
+        }
+
+        return $out;
+    }
 }
