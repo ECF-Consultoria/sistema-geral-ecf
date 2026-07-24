@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
-status: verified
-stopped_at: Fase 111 VERIFICATION passed (5/5 SC) — pronto para Fase 112
-last_updated: "2026-07-24T14:00:00.000Z"
+status: executing
+stopped_at: Completado 112-01-PLAN.md (2/3 planos da Fase 112)
+last_updated: "2026-07-24T13:50:23.018Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
+  total_plans: 6
+  completed_plans: 4
   percent: 20
 ---
 
@@ -21,15 +21,15 @@ progress:
 See: .planning/PROJECT.md (updated 2026-07-07)
 
 **Core value:** Handoff Comercial HubSpot — transformar a integração HubSpot→Comercial num handoff operacional: empresa/contrato chegam com dados máximos e confiáveis, `valor_contratado` operacional correto (mensal quando o serviço é mensal, R$ 36.000 anual vira R$ 3.000 mensal), origem HubSpot persistida estruturada para auditoria/replay, dedup básica e pendências claras quando a inferência não é segura. Aditivo — preserva o fluxo legado (Fases 34-37) e todos os testes atuais.
-**Current focus:** Phase 112 — HubspotValueResolver + handoff service (núcleo do valor mensal×anual)
+**Current focus:** Phase 112 — HubspotValueResolver + extração do handoff service (NÚCLEO)
 
 ## Current Position
 
-Phase: 111 (Fundação HubSpot) — COMPLETA + VERIFICATION passed (5/5 SC)
-Plan: 3 of 3 (todos com SUMMARY)
+Phase: 112 (HubspotValueResolver + extração do handoff service (NÚCLEO)) — EXECUTING
+Plan: 2 of 3
 
 Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. Ordem: 111 fundação ✓ → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111 entregou: config `services.hubspot.props` ampliada + comando `hubspot:inspect-properties` + `HubspotApiClient` (17 props line item + 5 métodos assoc/batch, base v3) + migrations defensivas companies (8 cols) / contratos_servico (11 cols) + $fillable — colunas nullable NÃO usadas ainda; webhook legado intocado. 58/58 testes HubSpot verdes. Falhas pré-existentes NÃO relacionadas (Phase14* Carbon/timezone, Phase37ServicoSetorTest) documentadas em deferred-items.md.
-Status: Fase 111 verificada — pronto para `/gsd:plan-phase 112`
+Status: Ready to execute
 Last activity: 2026-07-24
 
 ## Performance Metrics
@@ -170,6 +170,7 @@ Last activity: 2026-07-24
 | Phase 111 P01 | 35min | 2 tasks | 4 files |
 | Phase 111 P02 | 12min | 2 tasks (TDD RED+GREEN) tasks | 3 files files |
 | Phase 111 P03 | ~15min | 3 tasks | 5 files |
+| Phase 112 P01 | 20min | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -681,8 +682,8 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-07-24T13:11:16.376Z
-Stopped at: Fase 111 completa (3/3 planos) — Completado 111-03-PLAN.md
+Last session: 2026-07-24T13:50:22.987Z
+Stopped at: Completado 112-01-PLAN.md (2/3 planos da Fase 112)
 
 **Phase 74 fechada** — módulo Desempenho engine v2 (4 parâmetros média direta em escalas naturais + faixas editáveis por admin + fixture Carlos como âncora contra regressão silenciosa).
 
