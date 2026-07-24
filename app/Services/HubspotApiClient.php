@@ -153,7 +153,31 @@ class HubspotApiClient
      * IMPORTANTE: nunca loga o Bearer token no contexto do warning — somente
      * deal_id / line_item_id / status (T-37-05 do threat model).
      *
-     * @return array<int, array{id: string, name: ?string, price: ?float, quantity: ?int, hs_product_id: ?string, recurringbillingfrequency: ?string}>
+     * Phase 111 Plan 111-02 (HUB-API-03) — ampliado com o conjunto completo de
+     * propriedades do handoff comercial (MRR/ARR/TCV/ACV, periodo/datas de
+     * recorrencia, moeda, description, amount, hs_sku). Campos atuais
+     * (id/name/price/quantity/hs_product_id/recurringbillingfrequency)
+     * preservados com o mesmo comportamento/cast de antes.
+     *
+     * @return array<int, array{
+     *     id: string,
+     *     name: ?string,
+     *     description: ?string,
+     *     price: ?float,
+     *     amount: ?float,
+     *     quantity: ?int,
+     *     hs_product_id: ?string,
+     *     hs_sku: ?string,
+     *     recurringbillingfrequency: ?string,
+     *     hs_recurring_billing_period: ?string,
+     *     hs_recurring_billing_start_date: ?string,
+     *     hs_recurring_billing_end_date: ?string,
+     *     hs_line_item_currency_code: ?string,
+     *     hs_mrr: ?float,
+     *     hs_arr: ?float,
+     *     hs_tcv: ?float,
+     *     hs_acv: ?float
+     * }>
      */
     public function fetchDealLineItems(string $dealId): array
     {
@@ -196,7 +220,13 @@ class HubspotApiClient
         }
 
         // ─── Chamada 2..N: detalhes de cada line item ───
-        $properties = 'name,price,quantity,hs_product_id,recurringbillingfrequency';
+        // Phase 111 Plan 111-02 (HUB-API-03) — conjunto completo de props do
+        // handoff comercial (§Fase 3 do prompt canonico). Ordem espelha o
+        // shape de saida abaixo.
+        $properties = 'name,description,price,amount,quantity,hs_product_id,hs_sku,'
+            . 'recurringbillingfrequency,hs_recurring_billing_period,'
+            . 'hs_recurring_billing_start_date,hs_recurring_billing_end_date,'
+            . 'hs_line_item_currency_code,hs_mrr,hs_arr,hs_tcv,hs_acv';
         $out = [];
 
         foreach ($ids as $id) {
@@ -222,18 +252,39 @@ class HubspotApiClient
             $props = $res->json('properties') ?? [];
 
             $out[] = [
-                'id'                        => $id,
-                'name'                      => $props['name'] ?? null,
-                'price'                     => isset($props['price']) && is_numeric($props['price'])
+                'id'                               => $id,
+                'name'                             => $props['name'] ?? null,
+                'description'                      => $props['description'] ?? null,
+                'price'                            => isset($props['price']) && is_numeric($props['price'])
                     ? (float) $props['price']
                     : null,
-                'quantity'                  => isset($props['quantity']) && is_numeric($props['quantity'])
+                'amount'                           => isset($props['amount']) && is_numeric($props['amount'])
+                    ? (float) $props['amount']
+                    : null,
+                'quantity'                         => isset($props['quantity']) && is_numeric($props['quantity'])
                     ? (int) $props['quantity']
                     : null,
-                'hs_product_id'             => isset($props['hs_product_id'])
+                'hs_product_id'                    => isset($props['hs_product_id'])
                     ? (string) $props['hs_product_id']
                     : null,
-                'recurringbillingfrequency' => $props['recurringbillingfrequency'] ?? null,
+                'hs_sku'                           => $props['hs_sku'] ?? null,
+                'recurringbillingfrequency'        => $props['recurringbillingfrequency'] ?? null,
+                'hs_recurring_billing_period'      => $props['hs_recurring_billing_period'] ?? null,
+                'hs_recurring_billing_start_date'  => $props['hs_recurring_billing_start_date'] ?? null,
+                'hs_recurring_billing_end_date'    => $props['hs_recurring_billing_end_date'] ?? null,
+                'hs_line_item_currency_code'       => $props['hs_line_item_currency_code'] ?? null,
+                'hs_mrr'                           => isset($props['hs_mrr']) && is_numeric($props['hs_mrr'])
+                    ? (float) $props['hs_mrr']
+                    : null,
+                'hs_arr'                           => isset($props['hs_arr']) && is_numeric($props['hs_arr'])
+                    ? (float) $props['hs_arr']
+                    : null,
+                'hs_tcv'                           => isset($props['hs_tcv']) && is_numeric($props['hs_tcv'])
+                    ? (float) $props['hs_tcv']
+                    : null,
+                'hs_acv'                           => isset($props['hs_acv']) && is_numeric($props['hs_acv'])
+                    ? (float) $props['hs_acv']
+                    : null,
             ];
         }
 
