@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
-status: planning
-stopped_at: Milestone v20.0 aberta — 5 fases (111-115) no ROADMAP
-last_updated: "2026-07-24T00:00:00.000Z"
+status: planned
+stopped_at: Phase 111 planejada (3 planos) — plan-checker PASS
+last_updated: "2026-07-24T01:00:00.000Z"
 last_activity: 2026-07-24
 progress:
   total_phases: 5
   completed_phases: 0
-  total_plans: 0
+  total_plans: 3
   completed_plans: 0
   percent: 0
 ---
@@ -25,11 +25,11 @@ See: .planning/PROJECT.md (updated 2026-07-07)
 
 ## Current Position
 
-Phase: 111 (Fundação HubSpot) — PLANEJAR
-Plan: 0 of ?
+Phase: 111 (Fundação HubSpot) — PLANEJADA (pronta p/ executar)
+Plan: 0 of 3
 
-Milestone v20.0 recém-aberta a partir do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md` (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 (Carteira/Desempenho multi-servico) preservadas. Ordem: 111 fundação → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc.
-Status: Milestone aberta — pronto para `/gsd:plan-phase 111`
+Milestone v20.0 aberta a partir do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md` (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 (Carteira/Desempenho multi-servico) preservadas. Ordem: 111 fundação → 112 HubspotValueResolver (núcleo mensal×anual) → 113 enriquecimento+dedup → 114 UI+replay → 115 E2E+doc. Phase 111: 3 planos Wave 1 paralela (01 config+comando / 02 API client / 03 migrations+models), plan-checker PASS (1 rodada de revisão: TDD RED→GREEN em 03, resiliência de rede em 01).
+Status: Phase 111 planejada — pronto para `/gsd:execute-phase 111`
 Last activity: 2026-07-24
 
 ## Performance Metrics
