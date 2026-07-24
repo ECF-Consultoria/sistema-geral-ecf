@@ -23,6 +23,11 @@ use Tests\TestCase;
  * `HubspotWebhookController` — match forte (cnpj/hubspot_company_id) enriquece
  * sem duplicar; match fraco (nome) cria empresa nova + grava warning
  * `possivel_duplicidade` no payload do evento.
+ *
+ * Rastreabilidade SC3 ROADMAP Fase 115 nº1 (dedup) → método:
+ *  match forte por CNPJ enriquece sem duplicar        → test_match_forte_por_cnpj_enriquece_sem_duplicar
+ *  contrato novo por hubspot_company_id sem duplicar  → test_match_forte_por_hubspot_company_id_guard_contrato_line_item_inedito
+ *  match fraco por nome gera warning sem merge         → test_match_fraco_por_nome_cria_empresa_nova_e_grava_warning
  */
 class Phase113HubspotDedupTest extends TestCase
 {
