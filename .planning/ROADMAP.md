@@ -1223,11 +1223,11 @@ Plans:
   4. `PhaseHubspotReplayTest` prova: line item sem mapping não cria contrato → admin cadastra mapping → replay cria o contrato e zera o efeito prático da pendência
   5. `PhaseHubspotComercialListagemEnrichmentTest` prova contato/observação/confiança/warning na listagem e `valor_revisar` só para origem HubSpot; doc da regra de valor escrita; nenhum teste chama HubSpot real; tokens nunca em log
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 115-01-PLAN.md — Auditoria + gate das suítes nucleares: resolver (6 casos), enriquecimento e dedup [HUB-TEST-01, HUB-TEST-02, HUB-TEST-03]
-- [ ] 115-02-PLAN.md — Auditoria replay + listagem + suíte nova de invariantes transversais (guarda anti-rede-real + tokens fora do log) [HUB-TEST-04, HUB-TEST-05]
+- [x] 115-02-PLAN.md — Auditoria replay + listagem + suíte nova de invariantes transversais (guarda anti-rede-real + tokens fora do log) [HUB-TEST-04, HUB-TEST-05]
 - [ ] 115-03-PLAN.md — Doc técnico da regra de valor mensal×anual em docs/hubspot-regra-de-valor.md [HUB-DOC-01]
 
 ---
