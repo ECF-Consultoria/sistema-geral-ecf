@@ -63,11 +63,16 @@ class NpsFloorCarteiraTest extends TestCase
         return User::factory()->create(['role' => 'consultor', 'active' => true]);
     }
 
-    private function criarTemplateEscopado(array $dimensoes, array $servicoIds): NpsTemplate
+    private function criarTemplateEscopado(array $dimensoes, array $servicoIds, bool $principal = false): NpsTemplate
     {
+        if ($principal) {
+            NpsTemplate::query()->update(['is_default' => false]);
+        }
+
         $template = NpsTemplate::factory()->create([
-            'nome'   => 'Template 116-04 ' . uniqid(),
-            'active' => true,
+            'nome'       => 'Template 116-04 ' . uniqid(),
+            'active'     => true,
+            'is_default' => $principal,
         ]);
 
         $ordem = 1;
@@ -331,7 +336,10 @@ class NpsFloorCarteiraTest extends TestCase
         $this->criarContrato($empresa->id, $servicoPerf, true);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
 
-        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
+        // principal: true — o histórico NPS mensal do Portfolio só enxerga
+        // respostas do template ->principal(); precisamos que a resposta
+        // REAL apareça pra provar que ela prevalece sem imputação extra.
+        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf], principal: true);
         $this->responder($empresa, $template, 4);
         // Materializa DEPOIS da resposta chegar — não deve criar nem deixar
         // linha imputada (survey já está completed).
