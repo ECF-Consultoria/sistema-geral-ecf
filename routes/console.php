@@ -179,6 +179,29 @@ Schedule::command('nps:disparar-mensal')
     ->name('nps-disparar-mensal')
     ->withoutOverlapping();
 
+// Fase 116 (Plan 06 · NPSFLOOR) — materializa diariamente o NPS não respondido
+// como nota mínima (1). Roda 30min depois do `nps-disparar-mensal` (09:00) e
+// bem antes do `desempenho-consolidar-mes` (último dia do mês, 14:00), de
+// forma que o snapshot mensal do bônus sempre enxergue os não respondidos da
+// competência antes de congelar. `--force` porque é execução não interativa
+// (sem humano no loop para confirmar); o comando é idempotente por
+// construção (a idempotência vive no `NpsImputationService`, não aqui) — é
+// ele que promove as linhas provisórias para `definitivo` quando a
+// competência vira o mês. A reconsolidação disparada por esta execução
+// diária é inócua no regime permanente: `desempenho:consolidar-mes` é
+// idempotente e a competência corrente ainda não tem snapshot mensal
+// (mês aberto) — o schedule diário existe para o BACKFILL retroativo (D1),
+// não para reconsolidar o mesmo mês fechado repetidamente. Por consequência,
+// a conferência nominal do comando (`conferirSnapshotsReconsolidados`)
+// também não tem o que cobrar no regime permanente — competência aberta não
+// entra no relatório de impacto (sem snapshot esperado).
+Schedule::command('nps:materializar-nao-respondidos --force')
+    ->dailyAt('09:30')
+    ->timezone('America/Sao_Paulo')
+    ->name('nps-materializar-nao-respondidos')
+    ->onOneServer()
+    ->withoutOverlapping();
+
 // Envio automático mensal do relatório de fechamento.
 // Roda a cada minuto para respeitar o dia e hora configurados dinamicamente pelo admin.
 // Só dispara quando ativo=1, hoje == dia configurado, hora:minuto == hora configurada.

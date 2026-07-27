@@ -20,6 +20,7 @@ use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -1037,6 +1038,21 @@ class NpsController extends Controller
             'user_id'    => $user->id,
             'metadata'   => ['origem' => 'manual'],
         ]);
+
+        // Fase 116 (D2/D6) — materializa a nota 1 (provisória) desde o
+        // disparo manual, sem esperar o cron diário. Surveys manuais nascem
+        // com `month_reference=NULL` — o serviço já cobre esse caso via
+        // fallback `created_at` (D6). Falha aqui NUNCA pode abortar o
+        // disparo do NPS: o cron diário (`nps:materializar-nao-respondidos`)
+        // corrige depois.
+        try {
+            $this->imputationService->materializar($survey);
+        } catch (\Throwable $e) {
+            Log::warning('[NPS Imputação] falha ao materializar no disparo manual', [
+                'survey_id' => $survey->id,
+                'erro'      => $e->getMessage(),
+            ]);
+        }
 
         return back()->with([
             'success'  => 'Link NPS gerado com sucesso.',

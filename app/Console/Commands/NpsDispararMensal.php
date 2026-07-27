@@ -276,6 +276,16 @@ class NpsDispararMensal extends Command
                                 'metadata'   => ['origem' => 'disparo_mensal'],
                             ]);
 
+                            // Fase 116 (D2) — materializa a nota 1 (provisória) desde o
+                            // disparo automático mensal, sem esperar o cron diário
+                            // (`nps:materializar-nao-respondidos`). Falha aqui NUNCA pode
+                            // abortar o disparo do NPS/e-mail — o cron corrige depois.
+                            try {
+                                app(\App\Services\Nps\NpsImputationService::class)->materializar($survey);
+                            } catch (\Throwable $imputacaoErr) {
+                                Log::warning("[NPS Imputação] falha ao materializar no disparo mensal empresa {$empresa->id} survey_id={$survey->id}: " . $imputacaoErr->getMessage());
+                            }
+
                             // Phase 32 D-03 — monta vars com placeholders. `bloco_analista` é um trecho
                             // gerado dinamicamente: " e o analista é **Nome**" quando há analista, ou
                             // string vazia em mentoria pura. É renderizado SOZINHO como texto puro pra
