@@ -1244,12 +1244,12 @@ Plans:
 **Requirements**: NPSFLOOR-01, NPSFLOOR-02, NPSFLOOR-03, NPSFLOOR-04, NPSFLOOR-05, NPSFLOOR-06, NPSFLOOR-07, NPSFLOOR-08, NPSFLOOR-08b, NPSFLOOR-08c, NPSFLOOR-09, NPSFLOOR-10, NPSFLOOR-11, NPSFLOOR-12
 **Depends on:** Nada bloqueante — base NPS multi-modelo (v16.0) e auditoria de bônus por competência (v19) já em produção
 **UI hint:** Sim — a tela de NPS precisa explicitar a regra "não respondido = 1" em linguagem simples
-**Plans:** 8 plans em 4 waves
+**Plans:** 1/8 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 116-01-PLAN.md — Fundação: tabela `nps_imputed_assignments` + model + `NpsImputationService` (materialização idempotente, provisório/definitivo, API de leitura) [NPSFLOOR-03, NPSFLOOR-05, NPSFLOOR-06, NPSFLOOR-07, NPSFLOOR-11, NPSFLOOR-12]
+- [x] 116-01-PLAN.md — Fundação: tabela `nps_imputed_assignments` + model + `NpsImputationService` (materialização idempotente, provisório/definitivo, API de leitura) [NPSFLOOR-03, NPSFLOOR-05, NPSFLOOR-06, NPSFLOOR-07, NPSFLOOR-11, NPSFLOOR-12]
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
