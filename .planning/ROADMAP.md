@@ -1230,6 +1230,17 @@ Plans:
 - [x] 115-02-PLAN.md — Auditoria replay + listagem + suíte nova de invariantes transversais (guarda anti-rede-real + tokens fora do log) [HUB-TEST-04, HUB-TEST-05]
 - [x] 115-03-PLAN.md — Doc técnico da regra de valor mensal×anual em docs/hubspot-regra-de-valor.md [HUB-DOC-01]
 
+### Phase 116: NPS não respondido conta como nota mínima (1)
+
+**Goal:** Todo NPS efetivamente disparado e não respondido passa a valer nota 1 (mínima) em **todos** os consumidores da média de NPS — área NPS, Desempenho/bonificação e demais telas —, criando senso de dever no envio. A nota 1 vale desde o disparo (competência aberta) e vira definitiva quando o mês fecha sem resposta. Inclui backfill retroativo das competências já fechadas, com relatório de impacto antes/depois por pessoa e competência.
+**Requirements**: TBD (a definir no plan-phase)
+**Depends on:** Nada bloqueante — base NPS multi-modelo (v16.0) e auditoria de bônus por competência (v19) já em produção
+**UI hint:** Sim — a tela de NPS precisa explicitar a regra "não respondido = 1" em linguagem simples
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 116 to break down)
+
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
