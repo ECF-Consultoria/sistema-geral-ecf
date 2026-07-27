@@ -11,7 +11,9 @@ use App\Models\NpsTemplateOption;
 use App\Models\NpsTemplateQuestion;
 use App\Models\Servico;
 use App\Models\User;
+use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsSnapshotService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -46,6 +48,14 @@ class AtribuicaoConsolidadoNpsTest extends TestCase
     {
         parent::setUp();
         DB::statement('PRAGMA foreign_keys = ON');
+    }
+
+    protected function tearDown(): void
+    {
+        // Fase 116: os 2 testes novos usam Carbon::setTestNow — limpa para
+        // não vazar "agora" congelado para outros arquivos da suíte.
+        Carbon::setTestNow();
+        parent::tearDown();
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -413,5 +423,83 @@ class AtribuicaoConsolidadoNpsTest extends TestCase
             'role'            => 'consultor',
             'user_id'         => $gustavo->id,
         ]);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Fase 116 (NPSFLOOR) — 2 cenários novos: a imputação do "não respondido
+    // = nota 1" também usa responsavelDoServicoOuConsolidado(), e o gap do
+    // consolidado numa resposta REAL não vira nota 1 indevida.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_fase_116_consolidado_sem_resposta_gera_linha_imputada_para_responsavel_consolidado(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
+        // Mesmo cenário do Test 1 (Prensar): responsável CONSOLIDADO
+        // (servico_id NULL), mas agora o survey NUNCA é respondido.
+        $company     = Company::factory()->create();
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($company->id, $servicoPerf, true);
+
+        $gustavo = User::factory()->create(); // consultor (analista), consolidado
+        $this->inserirPivot($company->id, $gustavo->id, 'consultor', null);
+
+        $template = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [$servicoPerf]
+        );
+        $survey = $this->criarSurveyPendente($company, $template);
+        // NUNCA respondido — nenhum POST /nps/{token}.
+
+        app(NpsImputationService::class)->materializar($survey);
+
+        // Fase 116: a imputação usa a MESMA régua responsavelDoServicoOuConsolidado
+        // do NpsSnapshotService — o fallback consolidado também vale aqui.
+        $this->assertDatabaseHas('nps_imputed_assignments', [
+            'survey_id'  => $survey->id,
+            'dimensao'   => 'analista',
+            'role'       => 'consultor',
+            'user_id'    => $gustavo->id,
+            'servico_id' => $servicoPerf,
+        ]);
+    }
+
+    #[Test]
+    public function test_fase_116_gap_do_consolidado_em_resposta_real_nao_gera_nota_1(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
+        // Espelho do Test anterior: survey RESPONDIDO cuja resposta não tem
+        // nps_score_assignments (o gap do bug do consolidado, simulado
+        // apagando o assignment depois do submit) — a imputação NÃO pode
+        // inventar nota 1 para uma resposta que já chegou (NPSFLOOR-05).
+        $company     = Company::factory()->create();
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($company->id, $servicoPerf, true);
+
+        $gustavo = User::factory()->create();
+        $this->inserirPivot($company->id, $gustavo->id, 'consultor', null);
+
+        $template = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [$servicoPerf]
+        );
+        $survey = $this->criarSurveyPendente($company, $template);
+
+        $this->post("/nps/{$survey->token}", [
+            'respondent_name' => 'Cliente Fase 116 Gap',
+            'answers'         => $this->payloadComPeso($template, 4),
+        ])->assertOk();
+
+        $npsResponse = NpsResponse::first();
+        // Simula o gap: apaga o assignment que o snapshot acabou de criar.
+        NpsScoreAssignment::where('nps_response_id', $npsResponse->id)->delete();
+
+        $stats = app(NpsImputationService::class)->materializar($survey->fresh());
+
+        $this->assertSame(0, $stats['criados'],
+            'Fase 116: survey já respondido nunca gera linha imputada, mesmo com gap de assignment.');
+        $this->assertSame(0, DB::table('nps_imputed_assignments')->where('survey_id', $survey->id)->count());
     }
 }

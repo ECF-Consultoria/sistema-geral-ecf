@@ -8,8 +8,12 @@ use App\Models\NpsResponse;
 use App\Models\NpsResponseScore;
 use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
+use App\Models\NpsTemplateOption;
+use App\Models\NpsTemplateQuestion;
 use App\Models\User;
 use App\Services\DesempenhoScoreService;
+use App\Services\Nps\NpsImputationService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -218,5 +222,70 @@ class BonusInvalidacaoEmpresaTest extends TestCase
         $depois = $this->service()->computeOficial($analista);
         $this->assertSame(5.0, $depois['componentes']['nps_medio'],
             'invalidar a empresa X não pode remover o NPS da empresa Y.');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Fase 116 (D5/NPSFLOOR-04) — empresa invalidada + survey da janela de
+    // NPS sem resposta: o componente de NPS do bônus NÃO recebe a nota 1
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_fase_116_empresa_invalidada_com_survey_nao_respondido_nao_puxa_nota_1(): void
+    {
+        $cenario  = $this->criarCenarioMlComResponsaveis();
+        $company  = $cenario['company'];
+        $analista = $cenario['analista'];
+        $servico  = $cenario['servicoPerf'];
+
+        $template = NpsTemplate::factory()->create(['nome' => 'Template Fase 116 Invalidação', 'active' => true]);
+        $question = NpsTemplateQuestion::create([
+            'template_id' => $template->id,
+            'texto'       => 'Pergunta analista Fase 116?',
+            'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+            'dimensao'    => NpsTemplateQuestion::DIMENSAO_ANALISTA,
+            'obrigatoria' => true,
+            'ordem'       => 1,
+        ]);
+        for ($peso = 1; $peso <= 5; $peso++) {
+            NpsTemplateOption::create([
+                'question_id' => $question->id,
+                'label'       => (string) $peso,
+                'peso'        => $peso,
+                'ordem'       => $peso,
+            ]);
+        }
+        $template->serviceScopes()->attach($servico);
+
+        // Survey da janela de NPS de junho (coletado em julho) NUNCA respondido.
+        $survey = NpsSurvey::create([
+            'token'           => Str::uuid()->toString(),
+            'company_id'      => $company->id,
+            'generated_by'    => null,
+            'expires_at'      => Carbon::parse('2026-07-31 23:59:59'),
+            'status'          => 'pending',
+            'template_id'     => $template->id,
+            'month_reference' => '2026-07-01',
+            'auto_generated'  => true,
+        ]);
+
+        app(NpsImputationService::class)->materializar($survey);
+
+        // Antes de invalidar: Fase 116 — o não respondido já entra como 1.0.
+        $antes = $this->service()->computeOficial($analista);
+        $this->assertSame(1.0, $antes['componentes']['nps_medio'],
+            'Fase 116: survey não respondido conta nota 1 na média do bônus antes da invalidação.');
+
+        // Invalida a empresa para a competência JUNHO (mesma chave financeira
+        // usada pelo NPS coletado em julho).
+        BonusInvalidacao::create([
+            'company_id' => $company->id, 'competencia' => '2026-06-01', 'invalidated_by' => null,
+        ]);
+
+        // Depois: sem outra fonte de NPS, a nota imputada da empresa
+        // invalidada não pode compor a média (D5/NPSFLOOR-04) — cai na mesma
+        // sentinela de exclusão dos outros dois ramos.
+        $depois = $this->service()->computeOficial($analista);
+        $this->assertNull($depois['componentes']['nps_medio'],
+            'Fase 116: empresa invalidada na competência não pode puxar nota 1 (D5/NPSFLOOR-04).');
     }
 }
