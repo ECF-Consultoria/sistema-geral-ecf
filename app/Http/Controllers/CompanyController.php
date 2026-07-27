@@ -456,6 +456,15 @@ class CompanyController extends Controller
         // armadilha documentada nos Plans 116-03/116-04.
         $notasEmpresaCard = collect($notasReaisEmpresa->all())->merge($notasImputadasEmpresa);
         $npsAvg = $notasEmpresaCard->isNotEmpty() ? round((float) $notasEmpresaCard->avg(), 1) : null;
+        // Fase 116 Plan 07 (tarefa adicional) — quantidade de notas reais vs.
+        // notas de não respondido que compõem `nps_avg` acima, para a página
+        // da empresa explicar a queda da média sem jargão (mesmo espírito da
+        // área NPS: "respondida(s)" · "sem resposta (contam 1)"). Nota:
+        // $notasReaisEmpresa reflete só os 10 surveys respondidos mais
+        // recentes (mesma limitação já existente do `nps_surveys` eager-load
+        // usada pelo `nps_avg` desde o Plan 116-05).
+        $npsRespondidos     = $notasReaisEmpresa->count();
+        $npsNaoRespondidos  = $notasImputadasEmpresa->count();
 
         return Inertia::render('Companies/Show', [
             'company' => [
@@ -552,7 +561,12 @@ class CompanyController extends Controller
                 // dashboards estiverem 100% convertidos.
                 // Fase 116 Plan 05 — média oficial (com o piso do não
                 // respondido); `nps_surveys` abaixo permanece intocado.
-                'nps_avg'          => $npsAvg,
+                'nps_avg'             => $npsAvg,
+                // Fase 116 Plan 07 (tarefa adicional) — composição da média
+                // acima: quantas notas são de resposta real vs. quantas
+                // vieram de NPS enviado e não respondido (contam nota 1).
+                'nps_respondidos'     => $npsRespondidos,
+                'nps_nao_respondidos' => $npsNaoRespondidos,
                 'nps_surveys'      => (function () use ($company) {
                     $calculator = app(NpsScoreCalculator::class);
                     return $company->npsSurveys->map(function ($s) use ($calculator) {

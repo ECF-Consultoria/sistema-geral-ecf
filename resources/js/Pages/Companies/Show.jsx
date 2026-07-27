@@ -299,9 +299,17 @@ export default function CompanyShow({
     const historico = company.historico_gestao || [];
 
     const completedNps = (company.nps_surveys || []).filter(s => s.status === 'completed' && s.response);
-    const avgNps = completedNps.length > 0
-        ? (completedNps.reduce((acc, s) => acc + (s.response?.score_empresa ?? 0), 0) / completedNps.length).toFixed(1)
+    // Fase 116 Plan 07 (tarefa adicional) — a média já vem PRONTA do backend
+    // em `company.nps_avg` (conta NPS enviado e não respondido como nota 1,
+    // Plan 116-05). Antes esta página recalculava no navegador só com as
+    // respostas reais de `nps_surveys` — número diferente de todas as outras
+    // telas da fase. `nps_avg` é null quando a empresa nunca teve NENHUM NPS
+    // disparado (nem resposta, nem não respondido).
+    const avgNps = company.nps_avg !== null && company.nps_avg !== undefined
+        ? Number(company.nps_avg).toFixed(1)
         : null;
+    const npsRespondidos    = company.nps_respondidos ?? completedNps.length;
+    const npsNaoRespondidos = company.nps_nao_respondidos ?? 0;
 
     // ─── Contratos de serviço ──────────────────────────────────────────────
     const todosContratos = company.contratos_servico || [];
@@ -512,6 +520,19 @@ export default function CompanyShow({
                             média <strong className="text-ecf-yellow font-display text-base">{avgNps}</strong>/5
                         </span>
                     )}>
+                    {/* Fase 116 Plan 07 (tarefa adicional) — mesma explicação da
+                        área NPS: sem jargão, deixa claro que não responder tem
+                        custo na média. Só aparece quando existe pelo menos 1
+                        NPS que caiu na regra. */}
+                    {npsNaoRespondidos > 0 && (
+                        <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                            <Info className="h-3.5 w-3.5 text-white/35 shrink-0" />
+                            <p className="text-white/45 text-[11.5px]">
+                                {npsRespondidos} respondida{npsRespondidos === 1 ? '' : 's'} · {npsNaoRespondidos} sem resposta (conta{npsNaoRespondidos === 1 ? '' : 'm'} 1) —
+                                NPS enviado e não respondido conta nota 1 na média.
+                            </p>
+                        </div>
+                    )}
                     {completedNps.length === 0 ? (
                         <p className="text-white/25 text-sm text-center py-6">Nenhuma avaliação respondida</p>
                     ) : (
