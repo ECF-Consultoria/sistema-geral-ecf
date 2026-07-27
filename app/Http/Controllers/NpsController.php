@@ -2,15 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BonusInvalidacao;
 use App\Models\Company;
 use App\Models\Configuracao;
 use App\Models\NpsEmailEnvio;
+use App\Models\NpsImputedAssignment;
 use App\Models\NpsPerguntaCustomizada;
 use App\Models\NpsRespostaCustomizada;
 use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
+use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
@@ -37,6 +40,14 @@ use Inertia\Inertia;
  */
 class NpsController extends Controller
 {
+    // Fase 116 · injeta o serviço único de leitura da regra "NPS não
+    // respondido conta como nota mínima (1)" (Plan 01). Nenhuma lógica de
+    // resolução de responsável/competência/invalidação é reimplementada
+    // aqui — só consumida via surveyIdsComNotaDefinitiva()/vigentes().
+    public function __construct(private NpsImputationService $imputationService)
+    {
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -603,19 +614,49 @@ class NpsController extends Controller
             ->whereNull('invalidated_at')
             ->get();
 
-        $agregarMedia = function ($responses, string $dimensao) use ($notaDe) {
-            $notas = $responses->map(fn($r) => $notaDe($r, $dimensao))
+        // Fase 116 D2 — a nota DEFINITIVA ganha da resposta tardia: se o
+        // survey já tem linha `definitivo` nesta janela (competência já
+        // fechada), a resposta real que chegou depois não pode reescrever a
+        // nota daquela competência. Blindagem de invariante — na prática
+        // quase nunca dispara, pois o link expira em expires_at=endOfMonth.
+        $surveyIdsDefinitivosMes = $this->imputationService->surveyIdsComNotaDefinitiva($mesInicio, $mesFim);
+        if ($surveyIdsDefinitivosMes->isNotEmpty()) {
+            $responsesMes = $responsesMes->reject(fn($r) => $surveyIdsDefinitivosMes->contains($r->survey_id));
+        }
+
+        // Fase 116 — notas imputadas (não respondido = 1) do mês filtrado,
+        // por dimensão, reusando o MESMO $responsesFilter das respostas reais.
+        $notasImputadasMes = $this->notasImputadasPorDimensao($mesInicio, $mesFim, $responsesFilter);
+
+        $agregarMedia = function ($responses, string $dimensao, ?\Illuminate\Support\Collection $notasImputadas = null) use ($notaDe) {
+            // Fase 116 — `collect()` explícito: $responses é uma Eloquent
+            // Collection e o `->map()` dela preserva o tipo Eloquent mesmo
+            // depois de virar uma lista de floats/null. O `merge()` da
+            // Eloquent Collection assume itens com `getKey()` (modelos) —
+            // sem este cast, mesclar as notas sintéticas (floats puros)
+            // quebra com "Call to a member function getKey() on float".
+            $notas = collect($responses->map(fn($r) => $notaDe($r, $dimensao))->all())
                 ->filter(fn($n) => $n !== null);
+
+            // Cada linha imputada vale nota 1.0 (D4, piso da escala real
+            // 1-5). `nao_respondidos` é a contagem exposta ao payload para a
+            // UI (Plan 05) explicar a regra sem jargão.
+            $totalImputadas = $notasImputadas ? $notasImputadas->count() : 0;
+            if ($totalImputadas > 0) {
+                $notas = $notas->merge(array_fill(0, $totalImputadas, 1.0));
+            }
+
             return [
-                'media' => $notas->isEmpty() ? 0 : round((float) $notas->avg(), 2),
-                'total' => $notas->count(),
+                'media'           => $notas->isEmpty() ? 0 : round((float) $notas->avg(), 2),
+                'total'           => $notas->count(),
+                'nao_respondidos' => $totalImputadas,
             ];
         };
 
         $cards = [
-            'estrategista' => $agregarMedia($responsesMes, 'estrategista'),
-            'analista'     => $agregarMedia($responsesMes, 'analista'),
-            'empresa'      => $agregarMedia($responsesMes, 'empresa'),
+            'estrategista' => $agregarMedia($responsesMes, 'estrategista', $notasImputadasMes['estrategista']),
+            'analista'     => $agregarMedia($responsesMes, 'analista', $notasImputadasMes['analista']),
+            'empresa'      => $agregarMedia($responsesMes, 'empresa', $notasImputadasMes['empresa']),
         ];
 
         // ─── Série 12 meses para o LineChart ─────────────────────────────────
@@ -628,33 +669,47 @@ class NpsController extends Controller
             $m    = $inicio12m->copy()->addMonths($i);
             $mFim = $m->copy()->endOfMonth();
 
+            // Fase 116 — mesma closure de filtro do mês corrente ($responsesFilter),
+            // reaproveitada para as respostas reais E para as notas imputadas
+            // desta iteração, garantindo que a série honre a MESMA composição
+            // dos cards (mesmo escopo de carteira/pessoa/modelo).
+            $responsesFilterMes = function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys, $filtroPorPessoa) {
+                $qq->where(function ($qqq) use ($m, $mFim) {
+                    $qqq->whereBetween('month_reference', [$m->toDateString(), $mFim->toDateString()])
+                        ->orWhere(function ($qqqq) use ($m, $mFim) {
+                            $qqqq->whereNull('month_reference')
+                                 ->whereBetween('created_at', [$m, $mFim]);
+                        });
+                });
+                if (!$user->isAdmin()) {
+                    // Bugfix 2026-07-22 — escopo por serviço (ver $baseQuery).
+                    $filtroPorPessoa($qq, $user->id, null);
+                }
+                // Quick task 260612-flt — propaga filtros na serie 12m.
+                $aplicarFiltrosSurveys($qq);
+            };
+
             $responsesM = NpsResponse::query()
                 ->with(['survey', 'answers'])
-                ->whereHas('survey', function ($qq) use ($m, $mFim, $user, $aplicarFiltrosSurveys, $filtroPorPessoa) {
-                    $qq->where(function ($qqq) use ($m, $mFim) {
-                        $qqq->whereBetween('month_reference', [$m->toDateString(), $mFim->toDateString()])
-                            ->orWhere(function ($qqqq) use ($m, $mFim) {
-                                $qqqq->whereNull('month_reference')
-                                     ->whereBetween('created_at', [$m, $mFim]);
-                            });
-                    });
-                    if (!$user->isAdmin()) {
-                        // Bugfix 2026-07-22 — escopo por serviço (ver $baseQuery).
-                        $filtroPorPessoa($qq, $user->id, null);
-                    }
-                    // Quick task 260612-flt — propaga filtros na serie 12m.
-                    $aplicarFiltrosSurveys($qq);
-                })
+                ->whereHas('survey', $responsesFilterMes)
                 // Phase 96 (AB-96-3) — mesmo filtro dos cards acima.
                 ->whereNull('invalidated_at')
                 ->get();
 
+            // Fase 116 D2 — mesma blindagem dos cards, mês a mês.
+            $surveyIdsDefinitivosM = $this->imputationService->surveyIdsComNotaDefinitiva($m, $mFim);
+            if ($surveyIdsDefinitivosM->isNotEmpty()) {
+                $responsesM = $responsesM->reject(fn($r) => $surveyIdsDefinitivosM->contains($r->survey_id));
+            }
+
+            $notasImputadasM = $this->notasImputadasPorDimensao($m, $mFim, $responsesFilterMes);
+
             $serieMeses[] = [
                 'mes'          => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'jun./26'
                 'mes_iso'      => $m->format('Y-m'),
-                'estrategista' => $agregarMedia($responsesM, 'estrategista')['media'],
-                'analista'     => $agregarMedia($responsesM, 'analista')['media'],
-                'empresa'      => $agregarMedia($responsesM, 'empresa')['media'],
+                'estrategista' => $agregarMedia($responsesM, 'estrategista', $notasImputadasM['estrategista'])['media'],
+                'analista'     => $agregarMedia($responsesM, 'analista', $notasImputadasM['analista'])['media'],
+                'empresa'      => $agregarMedia($responsesM, 'empresa', $notasImputadasM['empresa'])['media'],
             ];
         }
 
@@ -700,6 +755,10 @@ class NpsController extends Controller
             'faltantes'      => $faltantes,
             'serie_12m'      => $serieMeses,
             'mes_filtro'     => $mesFiltro,
+            // Fase 116 — sinaliza para a UI (Plan 05) que a regra "não
+            // respondido conta como nota 1" está ativa nesta tela. Cada card
+            // já expõe `nao_respondidos` (ver $agregarMedia acima).
+            'regra_nao_respondido' => true,
             'filtros'        => [
                 'empresa_id'      => $empresaId,
                 'estrategista_id' => $estrategistaId,
@@ -723,6 +782,52 @@ class NpsController extends Controller
         }
 
         return Inertia::render('Nps/Index', $props);
+    }
+
+    /**
+     * Fase 116 · notas imputadas (NPS não respondido = nota 1, Plan 01) da
+     * janela [$mesInicio, $mesFim], por dimensão (estrategista/analista/
+     * empresa — D7 inclui a dimensão empresa). Reusa LITERALMENTE a mesma
+     * closure `$responsesFilter` aplicada às respostas REAIS (T-116-03-01) —
+     * carteira/pessoa/modelo/empresa nunca podem divergir entre imputadas e
+     * respondidas nesta tela.
+     *
+     * Dedupe por survey_id (regra DESTA tela — diferente do bônus, que
+     * dedupe por survey+role/pessoa): um survey multi-serviço pode gerar 2
+     * linhas na MESMA dimensão (2 responsáveis de serviços diferentes), mas
+     * aqui cada survey vale 1 nota por dimensão — senão um survey de empresa
+     * com 2 serviços pesaria o dobro de um survey de 1 serviço só.
+     *
+     * @return array<string, \Illuminate\Support\Collection> chave = dimensão
+     */
+    private function notasImputadasPorDimensao(Carbon $mesInicio, Carbon $mesFim, callable $responsesFilter): array
+    {
+        // Fase 116 D5 — a área NPS passa a respeitar bonus_invalidacoes
+        // (capacidade NOVA: hoje esta tela só respeita a invalidação manual
+        // de RESPOSTA, NpsResponse::invalidated_at, que é outro conceito).
+        // Competência da invalidação = mês do survey MENOS 1 mês (NPSWIN-03,
+        // mesma régua já usada em bustarCacheDoBonus/DesempenhoScoreService):
+        // bonus_invalidacoes.competencia é a competência financeira M, e o
+        // NPS de M é coletado em M+1.
+        $invalidadas = BonusInvalidacao::companyIdsInvalidadas(
+            $mesInicio->copy()->subMonthNoOverflow()->startOfMonth()
+        );
+
+        $porDimensao = [];
+        foreach (['estrategista', 'analista', 'empresa'] as $dimensao) {
+            $query = NpsImputedAssignment::vigentes()
+                ->where('dimensao', $dimensao)
+                ->whereBetween('competencia_nps', [$mesInicio->toDateString(), $mesFim->toDateString()])
+                ->whereHas('survey', $responsesFilter);
+
+            if ($invalidadas->isNotEmpty()) {
+                $query->whereNotIn('company_id', $invalidadas->all());
+            }
+
+            $porDimensao[$dimensao] = $query->get()->unique('survey_id')->values();
+        }
+
+        return $porDimensao;
     }
 
     /**

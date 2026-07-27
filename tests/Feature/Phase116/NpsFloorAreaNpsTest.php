@@ -360,7 +360,9 @@ class NpsFloorAreaNpsTest extends TestCase
             'motivo'      => 'teste Fase 116-03',
         ]);
 
-        $props = $this->propsDoIndex($admin, ['template_id' => $template->id, 'mes' => '2026-07']);
+        // Sem filtro de template_id (a resposta legada não tem template_id) —
+        // mesmo padrão do teste 1.
+        $props = $this->propsDoIndex($admin, ['mes' => '2026-07']);
 
         // Só a resposta real conta — a nota 1 imputada NÃO entra.
         $this->assertEquals(4.0, $props['cards']['empresa']['media']);
