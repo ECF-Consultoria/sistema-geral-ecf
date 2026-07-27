@@ -421,6 +421,42 @@ class CompanyController extends Controller
             ->orderBy('nome')
             ->get(['id', 'nome', 'valor_padrao', 'tipo_cobranca']);
 
+        // Fase 116 Plan 05 · card de média de NPS da empresa conta o NPS
+        // efetivamente disparado e não respondido como nota 1 (D7). A LISTA
+        // "NPS Respondidos" (`nps_surveys` abaixo) NÃO muda — continua
+        // eager-loaded com `status = 'completed'`, só respostas reais. Aqui
+        // calculamos a média OFICIAL (com o piso) e expomos em `nps_avg`
+        // separadamente. Sem janela de data nova — mesma janela "irrestrita"
+        // que a lista de respostas já usa hoje (limit 10 mais recentes, sem
+        // corte por período); mesmo racional do Plan 116-04 (PortfolioController)
+        // pra `notasDaEmpresa()` sem filtro de data.
+        $calculatorEmpresa = app(\App\Services\Nps\NpsScoreCalculator::class);
+        $notasReaisEmpresa = $company->npsSurveys
+            ->map(function ($s) use ($calculatorEmpresa) {
+                $response = $s->response;
+                if (!$response) {
+                    return null;
+                }
+                return $s->template_id !== null
+                    ? $calculatorEmpresa->compute($response, 'empresa')
+                    : $response->score_empresa;
+            })
+            ->filter(fn ($n) => $n !== null);
+
+        $notasImputadasEmpresa = app(\App\Services\Nps\NpsImputationService::class)->notasDaEmpresa(
+            collect([$company->id]),
+            'empresa',
+            Carbon::createFromDate(1970, 1, 1),
+            now(),
+        )->pluck('nota');
+
+        // Cast explícito pra Collection base antes do merge(): $notasReaisEmpresa
+        // é Eloquent\Collection (herda o tipo de $company->npsSurveys via
+        // ->map()/->filter()) e o merge() dela assume Model::getKey() —
+        // armadilha documentada nos Plans 116-03/116-04.
+        $notasEmpresaCard = collect($notasReaisEmpresa->all())->merge($notasImputadasEmpresa);
+        $npsAvg = $notasEmpresaCard->isNotEmpty() ? round((float) $notasEmpresaCard->avg(), 1) : null;
+
         return Inertia::render('Companies/Show', [
             'company' => [
                 'id'               => $company->id,
@@ -514,6 +550,9 @@ class CompanyController extends Controller
                 // bit-a-bit — JSX Companies/Show.jsx nao muda; muda apenas o
                 // valor para surveys v15. Phase 73 remove o path legacy quando
                 // dashboards estiverem 100% convertidos.
+                // Fase 116 Plan 05 — média oficial (com o piso do não
+                // respondido); `nps_surveys` abaixo permanece intocado.
+                'nps_avg'          => $npsAvg,
                 'nps_surveys'      => (function () use ($company) {
                     $calculator = app(NpsScoreCalculator::class);
                     return $company->npsSurveys->map(function ($s) use ($calculator) {

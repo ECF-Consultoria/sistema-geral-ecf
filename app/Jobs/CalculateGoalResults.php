@@ -7,9 +7,12 @@ use App\Models\AdmanMetric;
 use App\Models\Goal;
 use App\Models\GoalResult;
 use App\Models\NpsResponse;
+use App\Models\NpsTemplate;
 use App\Models\User;
 use App\Notifications\MetaAtingidaNotification;
+use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsScoreCalculator;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -221,10 +224,6 @@ class CalculateGoalResults implements ShouldQueue
             ->with('survey')
             ->get();
 
-        if ($responses->isEmpty()) {
-            return null;
-        }
-
         $calculator = app(NpsScoreCalculator::class);
 
         $notas = $responses->map(function (NpsResponse $r) use ($calculator) {
@@ -239,6 +238,28 @@ class CalculateGoalResults implements ShouldQueue
             return $r->score_empresa !== null ? (float) $r->score_empresa : null;
         })->filter(fn ($n) => $n !== null);
 
+        // Fase 116 Plan 05 · NPS efetivamente disparado e não respondido
+        // conta nota 1 na meta (D2/D3). As respostas REAIS acima só contam o
+        // modelo PRINCIPAL (->principal() na query de $responses) — as notas
+        // imputadas seguem o MESMO recorte de modelo (templateIds =
+        // [principalId()]) pra não misturar modelos na mesma meta. Cast
+        // explícito pra Collection base antes do merge(): $notas é
+        // Eloquent\Collection (herda o tipo de $responses via ->map()/
+        // ->filter()) e o merge() dela assume Model::getKey() — armadilha
+        // documentada nos Plans 116-03/116-04.
+        $notasImputadas = app(NpsImputationService::class)->notasDaEmpresa(
+            collect([$companyId]),
+            'empresa',
+            Carbon::createFromDate($year, $month, 1)->startOfMonth(),
+            Carbon::createFromDate($year, $month, 1)->endOfMonth(),
+            null,
+            collect([NpsTemplate::principalId()]),
+        )->pluck('nota');
+        $notas = collect($notas->all())->merge($notasImputadas);
+
+        // Semântica de retorno preservada (invariante D3): null quando NÃO
+        // há NENHUMA nota (nem real, nem imputada) — meta sem dado nenhum
+        // continua sem resultado, nunca vira 1.
         if ($notas->isEmpty()) {
             return null;
         }
