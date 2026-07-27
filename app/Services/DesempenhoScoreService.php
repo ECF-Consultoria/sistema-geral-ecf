@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsScoreCalculator;
 use App\Services\Portfolio\CarteiraContextService;
 use Carbon\Carbon;
@@ -104,13 +105,40 @@ class DesempenhoScoreService
      */
     private ?EloquentCollection $faixasCache = null;
 
+    /**
+     * Toggle EXCLUSIVO do comando de backfill/relatório de impacto (Fase 116
+     * · Plan 06, D1) — produz a coluna "antes" (sem a regra nova) do
+     * antes/depois. Default `true`: nenhum consumidor existente (controller,
+     * dashboard, cron) muda de comportamento. NENHUMA tela/controller pode
+     * chamar `setIncluirImputadas(false)` — é exclusivamente para o relatório
+     * de impacto do backfill enxergar o valor pré-regra.
+     */
+    private bool $incluirImputadas = true;
+
     public function __construct(
         private MetricsProviderFactory $metricsFactory,
         private NpsScoreCalculator $npsCalculator,
         private CarteiraContextService $carteiraContext,
         private MetricPeriodResolver $periodResolver,
         private MetricDiffDispatcher $diffDispatcher,
+        private NpsImputationService $imputationService,
     ) {
+    }
+
+    /**
+     * Liga/desliga o 3º ramo (`notasImputadas`) de `computeNpsMedio` —
+     * EXCLUSIVO do comando `nps:materializar-nao-respondidos` (Fase 116 ·
+     * Plan 06) para montar a coluna "antes" (sem a regra) do relatório de
+     * impacto antes/depois. Nenhum controller, dashboard ou job de
+     * consolidação/snapshot pode chamar isto com `false` — o comportamento
+     * público (`compute()`/`computeCached()`) tem que refletir SEMPRE a regra
+     * ativa. Retorna `static` para permitir encadeamento fluente no comando.
+     */
+    public function setIncluirImputadas(bool $incluir): static
+    {
+        $this->incluirImputadas = $incluir;
+
+        return $this;
     }
 
     /**
@@ -297,7 +325,14 @@ class DesempenhoScoreService
         // a preferir o calculated_fallback LOCAL determinístico sobre o .diff
         // nativo ao vivo quando a cobertura local (por dias-com-linha) é
         // suficiente — o valor da margem muda, então o bump força recomputo.
-        return sprintf('desempenho.compute.v11.%d.%s', $userId, $periodKey);
+        // v12 (2026-07-27, Fase 116 · NPSFLOOR): NPS disparado e não respondido
+        // passa a contar nota 1 na média do bônus (3º ramo `notasImputadas`).
+        // O valor muda para quem tem surveys sem resposta na competência. Sem
+        // este bump o Redis serviria o bônus antigo por até 7 dias (mês
+        // fechado) mesmo com o código novo em prod. As chaves v11 viram
+        // órfãs e expiram sozinhas por TTL — não precisa (nem deve) rodar
+        // `cache:clear`.
+        return sprintf('desempenho.compute.v12.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -737,20 +772,31 @@ class DesempenhoScoreService
     }
 
     /**
-     * NPS médio do user no mês — UNIÃO DISJUNTA de dois caminhos POR RESPOSTA
-     * (Phase 80 v16.0 · DEC-80-A / DEC-80-B0 / DEC-80-B1 / DEC-80-B / DEC-80-D).
+     * NPS médio do user no mês — UNIÃO DISJUNTA de TRÊS caminhos POR RESPOSTA
+     * (Phase 80 v16.0 · DEC-80-A / DEC-80-B0 / DEC-80-B1 / DEC-80-B / DEC-80-D;
+     * Fase 116 · NPSFLOOR acrescenta o 3º ramo).
      *
      * ┌─ (A) ATRIBUIÇÕES (Fase 79) ── `nps_score_assignments`, a lista congelada
      * │      de quem era responsável por qual serviço no dia da resposta. Soma
      * │      TODAS as áreas da pessoa (performance/ML **e** shopee) — Ajuste 3 do
-     * │      usuário (DEC-80-A). Deduped 1× por (resposta, papel).
-     * └─ (B) LEGADO ── o cruzamento read-time histórico (carteira × dimensão do
-     *        cargo × modelo principal), preservado INTACTO para as respostas que
-     *        o snapshot da Fase 79 não cobriu.
+     * │      usuário (DEC-80-A). Deduped 1× por (resposta, papel). Mês vem de
+     * │      `nps_surveys.completed_at` (survey `status = 'completed'`).
+     * ├─ (B) LEGADO ── o cruzamento read-time histórico (carteira × dimensão do
+     * │      cargo × modelo principal), preservado INTACTO para as respostas que
+     * │      o snapshot da Fase 79 não cobriu. Também exige `status = 'completed'`.
+     * └─ (C) IMPUTADAS (Fase 116 · NPSFLOOR) ── `nps_imputed_assignments`, a
+     *        nota 1 (piso da escala) de todo NPS efetivamente disparado e NÃO
+     *        respondido. Mês vem de `competencia_nps` (mês do DISPARO), não de
+     *        `completed_at` — só existe linha aqui quando o survey NÃO é
+     *        `completed` (`NpsImputedAssignment::scopeVigentes()`).
      *
-     * As duas metades são DISJUNTAS: nenhuma resposta contribui pelos dois ramos.
-     * A média é `$notas->avg()` — uma resposta contada 2× infla o bônus em
-     * silêncio (sem exception, sem log). Ver `notasLegado()` para o predicado.
+     * Os TRÊS ramos são DISJUNTOS por construção: (A)/(B) só enxergam survey
+     * `completed`; (C) só enxerga survey que NUNCA chegou a `completed`
+     * (`NpsImputationService::materializar()` limpa/nunca cria linha de survey
+     * respondido). Nenhuma resposta contribui por dois ramos ao mesmo tempo. A
+     * média é `$notas->avg()` — uma resposta contada 2× infla o bônus em
+     * silêncio (sem exception, sem log). Ver `notasLegado()` para o predicado
+     * de (A)/(B); `notasImputadas()` para o predicado de (C).
      *
      * ⚠ O ramo legado é FALLBACK PERMANENTE, **não** ponte temporária: empresas
      * sem contrato performance ativo ficaram com `company_users.servico_id = NULL`
@@ -760,7 +806,9 @@ class DesempenhoScoreService
      * essas pendências no dado.
      *
      * Regras preservadas (DESEMP-03): média aritmética das notas coletadas; sem
-     * respostas → `0.0` (PENALIZA por decisão da diretoria — nunca `null`).
+     * respostas → `0.0` (PENALIZA por decisão da diretoria — nunca `null`). Com
+     * a Fase 116, "sem respostas" passa a incluir zero notas imputadas também —
+     * uma empresa sem NENHUM survey disparado no mês continua caindo aqui (D3).
      *
      * Assinatura `(User, Carbon): float` é contrato de fato — testes a invocam
      * por reflection com `assertSame`, que recusa `int`.
@@ -785,6 +833,14 @@ class DesempenhoScoreService
 
         // ── (B) Caminho legado — só as respostas que o snapshot não cobriu ───
         $notas = $notas->merge($this->notasLegado($user, $inicio, $fim, $invalidadas));
+
+        // ── (C) Imputadas (Fase 116 · NPSFLOOR) — não respondido = nota 1 ────
+        // Toggle exclusivo do relatório de impacto do backfill (D1) — nenhum
+        // consumidor público desliga isto.
+        $notasImputadas = $this->incluirImputadas
+            ? $this->notasImputadas($user, $inicio, $fim, $invalidadas)
+            : collect();
+        $notas = $notas->merge($notasImputadas);
 
         if ($notas->isEmpty()) {
             // DESEMP-03 · Sem respostas no mês FORÇA nps = 0 (penaliza) por
@@ -978,6 +1034,31 @@ class DesempenhoScoreService
         }
 
         return $notas;
+    }
+
+    /**
+     * (C) Notas IMPUTADAS (Fase 116 · NPSFLOOR) — NPS efetivamente disparado e
+     * NÃO respondido conta como nota 1 (piso da escala real 1..5, D4).
+     *
+     * Delega 100% para `NpsImputationService::notasDoUsuario()` — a ÚNICA
+     * fonte de verdade de quem entra na regra (contrato ativo, responsável
+     * correto com fallback consolidado, competência do survey, transição
+     * provisório→definitivo). Este método NUNCA reimplementa essa lógica,
+     * apenas adapta o shape (`->pluck('nota')`) pro formato que
+     * `computeNpsMedio` já mescla dos outros dois ramos.
+     *
+     * `$invalidadas` é OBRIGATÓRIO e repassado exatamente como em
+     * `notasPorAtribuicao()`/`notasLegado()` (Pitfall 5 · T-116-02-02) — sem
+     * isso, uma empresa invalidada na competência voltaria a puxar nota 1
+     * pelo ramo novo mesmo excluída dos outros dois.
+     *
+     * @return Collection<int, float>
+     */
+    private function notasImputadas(User $user, Carbon $inicio, Carbon $fim, ?Collection $invalidadas = null): Collection
+    {
+        return $this->imputationService
+            ->notasDoUsuario($user, $inicio, $fim, $invalidadas)
+            ->pluck('nota');
     }
 
     /**
