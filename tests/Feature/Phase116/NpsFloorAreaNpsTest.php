@@ -480,4 +480,28 @@ class NpsFloorAreaNpsTest extends TestCase
         $this->assertEquals(1, $props['cards']['empresa']['nao_respondidos']);
         $this->assertTrue($props['regra_nao_respondido']);
     }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 9 — não-regressão (Tarefa 3): mês SEM NENHUM survey preserva a
+    //     sentinela de vazio (media=0, total=0) — o piso de NPS não
+    //     inventa nota nenhuma onde não há disparo algum
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_mes_sem_nenhum_survey_preserva_sentinela_de_vazio(): void
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+        $admin = $this->admin();
+
+        // Nenhuma empresa, nenhum survey, nenhum template criado neste teste
+        // — só o mês filtrado, sem qualquer disparo no período.
+        $props = $this->propsDoIndex($admin, ['mes' => '2026-07']);
+
+        foreach (['estrategista', 'analista', 'empresa'] as $dimensao) {
+            $this->assertEquals(0, $props['cards'][$dimensao]['media'],
+                "sem survey algum no mês, cards.{$dimensao}.media deve continuar 0 (sentinela de vazio).");
+            $this->assertEquals(0, $props['cards'][$dimensao]['total']);
+            $this->assertEquals(0, $props['cards'][$dimensao]['nao_respondidos']);
+        }
+    }
 }
