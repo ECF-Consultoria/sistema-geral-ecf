@@ -1244,7 +1244,7 @@ Plans:
 **Requirements**: NPSFLOOR-01, NPSFLOOR-02, NPSFLOOR-03, NPSFLOOR-04, NPSFLOOR-05, NPSFLOOR-06, NPSFLOOR-07, NPSFLOOR-08, NPSFLOOR-08b, NPSFLOOR-08c, NPSFLOOR-09, NPSFLOOR-10, NPSFLOOR-11, NPSFLOOR-12
 **Depends on:** Nada bloqueante — base NPS multi-modelo (v16.0) e auditoria de bônus por competência (v19) já em produção
 **UI hint:** Sim — a tela de NPS precisa explicitar a regra "não respondido = 1" em linguagem simples
-**Plans:** 4/8 plans executed
+**Plans:** 5/8 plans executed
 
 Plans:
 **Wave 1**
@@ -1256,7 +1256,7 @@ Plans:
 - [x] 116-02-PLAN.md — Desempenho/bônus: 3º ramo `notasImputadas()` + bump de cacheKey v11→v12 + reconciliação das suítes de bônus e das fixtures pendentes [NPSFLOOR-02, NPSFLOOR-04, NPSFLOOR-05, NPSFLOOR-07, NPSFLOOR-10]
 - [x] 116-03-PLAN.md — Área NPS: cards das 3 dimensões, série de 12 meses, invalidação por competência (capacidade nova) e "definitivo ganha da resposta tardia" [NPSFLOOR-01, NPSFLOOR-03, NPSFLOOR-04, NPSFLOOR-06, NPSFLOOR-11, NPSFLOOR-12]
 - [x] 116-04-PLAN.md — Carteira do profissional: `PerformanceController` + `PortfolioController` [NPSFLOOR-01, NPSFLOOR-02, NPSFLOOR-10]
-- [ ] 116-05-PLAN.md — Dashboards, página da empresa e meta de NPS: `DashboardController` + `CompanyController` + `CalculateGoalResults` [NPSFLOOR-01, NPSFLOOR-03, NPSFLOOR-10, NPSFLOOR-12]
+- [x] 116-05-PLAN.md — Dashboards, página da empresa e meta de NPS: `DashboardController` + `CompanyController` + `CalculateGoalResults` [NPSFLOOR-01, NPSFLOOR-03, NPSFLOOR-10, NPSFLOOR-12]
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
