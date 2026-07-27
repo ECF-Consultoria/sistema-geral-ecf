@@ -2244,19 +2244,48 @@ class PortfolioController extends Controller
         $npsCalculator = app(\App\Services\Nps\NpsScoreCalculator::class);
         // Phase 96 Plan 04 (AB-96-3 · call-site #8) — resposta invalidada pelo
         // admin some do histórico NPS mensal do profissional.
-        $npsHistory = NpsSurvey::with(['response' => fn ($q) => $q->valida()->with(['answers', 'survey'])])
+        $rowsPorMes = NpsSurvey::with(['response' => fn ($q) => $q->valida()->with(['answers', 'survey'])])
             ->principal()
             ->whereIn('company_id', $companyIdsAll)
             ->where('status', 'completed')
             ->whereNotNull('completed_at')
             ->orderBy('month_reference')
             ->get()
-            ->groupBy(fn ($s) => $s->month_reference?->format('Y-m') ?? $s->completed_at?->format('Y-m'))
-            ->map(function ($rows, $month) use ($npsDim, $npsCalculator) {
-                $scores = $rows
+            ->groupBy(fn ($s) => $s->month_reference?->format('Y-m') ?? $s->completed_at?->format('Y-m'));
+
+        // Fase 116 · NPS não respondido conta como nota mínima (1) — histórico
+        // mensal da carteira do profissional. Implementação PRÓPRIA deste
+        // controller (não compartilha código com PerformanceController) — a
+        // leitura sai INTEIRA do NpsImputationService (nenhuma resolução de
+        // responsável/competência/invalidação é reimplementada aqui). O mês
+        // de cada linha imputada vem do DISPARO (`competencia_nps`), não de
+        // uma resposta — por isso um mês pode aparecer aqui mesmo sem
+        // NENHUM survey completed (a query acima nunca traria esse mês, já
+        // que só busca status=completed). Sem filtro de data — a query real
+        // acima também não filtra por período, varre o histórico inteiro.
+        $notasImputadasPorMes = app(\App\Services\Nps\NpsImputationService::class)
+            ->notasDoUsuario($user, Carbon::createFromDate(1970, 1, 1), now())
+            ->groupBy(fn ($nota) => $nota->competencia_nps->format('Y-m'));
+
+        $mesesHistorico = $rowsPorMes->keys()->merge($notasImputadasPorMes->keys())->unique()->sort()->values();
+
+        $npsHistory = $mesesHistorico
+            ->map(function ($month) use ($rowsPorMes, $notasImputadasPorMes, $npsDim, $npsCalculator) {
+                $rows = $rowsPorMes->get($month, collect());
+                $scoresReais = $rows
                     ->map(fn ($s) => $s->response ? $npsCalculator->compute($s->response, $npsDim) : null)
                     ->filter(fn ($v) => $v !== null)
                     ->values();
+
+                $scoresImputados = $notasImputadasPorMes->get($month, collect())
+                    ->map(fn ($nota) => (float) $nota->nota);
+
+                // Cast explícito pra Collection base ANTES do merge — Eloquent
+                // Collection::merge() assume itens com getKey() (Models) e
+                // quebra ao receber floats/nulls (armadilha corrigida no
+                // Plan 116-03, NpsController::index()).
+                $scores = collect($scoresReais->all())->merge($scoresImputados->all());
+
                 return [
                     'month'       => $month,
                     'avg'         => $scores->isNotEmpty() ? round((float) $scores->avg(), 2) : null,

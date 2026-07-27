@@ -55,10 +55,40 @@ Já documentado no `116-01-SUMMARY.md` como pré-existente (congelamento de
 snapshot mensal via `desempenho:consolidar-mes`). Confirmado novamente aqui
 — `git diff --stat` vazio para o arquivo.
 
+## 5. `--filter=Portfolio` / `--filter=Carteira` — 3+2 falhas descobertas no Plan 04, PRÉ-EXISTENTES
+
+Descoberto ao rodar o gate de regressão do Plan 04 (`PortfolioController::renderPortfolio` —
+histórico NPS mensal). Nenhuma tem relação com NPS.
+
+- **`Phase61/PortfolioMultiFonteE2ETest`** (2 falhas) + **`Phase61/PortfolioSourceEnrichmentTest`**
+  (1 falha) — `user_portfolios` vem com tamanho 0 (esperado 1) em
+  `Portfolio/Carteiras` (rota `portfolio.own` como admin →
+  `renderCarteirasConsolidadas()`, método DIFERENTE do editado por este plano).
+  **Confirmado pré-existente:** substituí temporariamente
+  `app/Http/Controllers/PortfolioController.php` pela versão do commit anterior
+  ao Plan 04 (`git show HEAD:...`), rodei os 2 arquivos de teste isoladamente —
+  as mesmas 3 falhas se reproduziram identicamente sem nenhuma linha do Plan 04
+  presente. Restaurada a versão editada em seguida (confirmado via
+  `git diff --stat`).
+- **`V18/CarteiraPeriodoDiffTest`** (2 falhas) — `margem_variacao_pct` vem
+  `null`/divergente do esperado. Mesma família de instabilidade de
+  `AdmanMetricDiffService` (item 1/2 acima). As rotas exercitadas neste teste
+  (`portfolio.show` como ADMIN vendo OUTRO profissional) chamam
+  `renderCarteiraProfissional()` — método que o Plan 04 **não tocou** (o Plan 04
+  editou só `renderPortfolio()`, usado exclusivamente na self-view).
+
+**Ação:** não corrigido — fora do escopo do Plan 04 (`AdmanMetricDiffService` e
+`renderCarteirasConsolidadas`/`renderCarteiraProfissional` não fazem parte dos
+`files_modified` do plano). Recomenda-se abrir debug dedicado se persistir
+quando a Fase 116 fechar.
+
 ---
 
-**Resumo para o verificador:** nenhum destes 4 itens foi causado pelas
+**Resumo para o verificador:** nenhum destes 5 itens foi causado pelas
 mudanças do Plan 02 (`app/Services/DesempenhoScoreService.php`,
 `NpsImputationService` consumido via `notasImputadas()`, ou os testes novos/
-modificados listados no `116-02-SUMMARY.md`). Todos confirmados por
-`git diff` vazio no arquivo afetado e/ou reprodução isolada.
+modificados listados no `116-02-SUMMARY.md`) nem do Plan 04
+(`app/Http/Controllers/PerformanceController.php::notasNpsDoUsuarioPorResposta`,
+`app/Http/Controllers/PortfolioController.php::renderPortfolio`). Todos
+confirmados por `git diff` vazio no arquivo afetado e/ou reprodução isolada
+(incluindo, no caso do item 5, reversão temporária do arquivo editado).
