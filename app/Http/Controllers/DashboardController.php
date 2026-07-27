@@ -23,6 +23,24 @@ use Inertia\Inertia;
 
 class DashboardController extends Controller
 {
+    /**
+     * Colunas de `adman_metrics` carregadas pelos dashboards — TODAS menos
+     * `raw_data` (longtext com o payload cru da Adman, ~71 KB/linha, cast
+     * `array`). O `raw_data` NÃO é lido em nenhum ponto do dashboard, mas o
+     * `->get()` sem projeção hidratava ~222 MB só desse campo por janela de
+     * 30d (~3k linhas) e, somado à janela anterior + overhead do Eloquent,
+     * estourava o `memory_limit` de 512 MB do PHP-FPM (500 Server Error).
+     * Projetar as colunas escalares mantém o comportamento idêntico com uma
+     * fração da memória. Hotfix 2026-07-27.
+     */
+    private const ADMAN_METRIC_COLS = [
+        'id', 'company_id', 'reference_date', 'tacos', 'revenue', 'net_billing',
+        'sales_fee', 'taxes', 'shipping_cost', 'product_cost', 'return_cost',
+        'profit_share', 'sold_quantity', 'ad_spend', 'contribution_margin',
+        'contribution_margin_pct', 'products_total', 'products_without_cost',
+        'revenue_prev_period', 'synced_at', 'created_at', 'updated_at',
+    ];
+
     public function __construct(
         private AdmanService $adman,
         private MetricsProviderFactory $metricsFactory,
@@ -416,6 +434,7 @@ class DashboardController extends Controller
         $companies = $companiesQuery->get();
 
         $metrics = AdmanMetric::whereIn('company_id', $companies->pluck('id'))
+            ->select(self::ADMAN_METRIC_COLS) // exclui raw_data (ver const) — evita OOM
             ->where('reference_date', '>=', $since->toDateString())
             ->orderBy('reference_date')
             ->get();
@@ -461,6 +480,7 @@ class DashboardController extends Controller
         // último dia da janela anterior. `<` contra o dia seguinte evita a
         // ambiguidade independente do sufixo de horário armazenado.
         $prevMetrics = AdmanMetric::whereIn('company_id', $companies->pluck('id'))
+            ->select(self::ADMAN_METRIC_COLS) // exclui raw_data (ver const) — evita OOM
             ->where('reference_date', '>=', $prevFromN)
             ->where('reference_date', '<', $currentFromN)
             ->get();
@@ -1348,6 +1368,7 @@ class DashboardController extends Controller
             ->count();
 
         $metrics = AdmanMetric::whereIn('company_id', $companies->pluck('id'))
+            ->select(self::ADMAN_METRIC_COLS) // exclui raw_data (ver const) — evita OOM
             ->where('reference_date', '>=', $since->toDateString())
             ->get();
 
