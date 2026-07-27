@@ -212,12 +212,9 @@ const NAV_TREE = [
             // HubSpot, REQ-37-10) + aba de Grupos integrada. Adicionado como PRIMEIRO
             // sub-item por ser a porta de entrada operacional do Comercial.
             { label: 'Empresas (todos os setores)', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: Building2, permission: 'comercial.cadastrar_empresa' },
-            // Phase 36 Plan 36-01 — apontamos direto pra /comercial/empresas/novo (cadastro).
-            // A listagem antiga (/comercial/empresas) foi descontinuada; a rota nomeada
-            // 'comercial.empresas' agora redireciona pra cá. Trocamos label pra
-            // 'Cadastrar empresa' (clareza) e routeName pra 'comercial.empresas.novo'
-            // pra evitar o hop do redirect 302.
-            { label: 'Cadastrar empresa', routeName: 'comercial.empresas.novo', page: 'Comercial/NovaEmpresa', icon: Building2, permission: 'comercial.cadastrar_empresa' },
+            // 'Cadastrar empresa' removido do dropdown: o cadastro já é acessível pelo
+            // botão dentro da aba 'Empresas (todos os setores)'. A rota
+            // 'comercial.empresas.novo' segue ativa (usada pelo botão da listagem).
             // Phase 37 Plan 37-07 — Grupos aponta para a mesma listagem unificada
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
             // Ziggy; segments fora do path viram query string automaticamente).
