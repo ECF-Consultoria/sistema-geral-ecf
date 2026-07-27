@@ -7,6 +7,7 @@ use App\Models\AdmanSyncLog;
 use App\Models\Company;
 use App\Models\Meeting;
 use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
 use App\Models\Ppa;
 use App\Models\Servico;
 use App\Models\ShopeeMetric;
@@ -14,9 +15,11 @@ use App\Models\Sugador;
 use App\Models\User;
 use App\Services\AdmanService;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsPendingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -47,6 +50,10 @@ class DashboardController extends Controller
         // Phase 72 Plan 02 — SC#3: fonte unica de "empresas pendentes de NPS"
         // reusada por adminDashboard + userDashboard (widget Plan 72-03).
         private NpsPendingService $npsPending,
+        // Fase 116 Plan 05 — NPS efetivamente disparado e não respondido conta
+        // nota 1 (D2/D3/D7). Única fonte de leitura para os 3 widgets de NPS
+        // deste controller (adminDashboard, buildRanking, userDashboard).
+        private NpsImputationService $npsImputation,
     ) {}
 
     /**
@@ -781,6 +788,25 @@ class DashboardController extends Controller
             return $s->response?->score_empresa;
         };
         $notasEmpresa = $npsResponses->map($notaDe)->filter(fn($n) => $n !== null);
+
+        // Fase 116 Plan 05 · NPS não respondido conta nota 1 (D7 — dimensão
+        // empresa) — mescla as notas imputadas ao mesmo recorte do widget
+        // ($companies + janela $since), restrito ao modelo PRINCIPAL
+        // (templateIds = [principalId()]) porque $npsResponses acima também
+        // só olha ->principal(). Cast explícito pra Collection base ANTES do
+        // merge(): $notasEmpresa é Eloquent\Collection (herda o tipo de
+        // $npsResponses via ->map()/->filter()) e o merge() dela assume
+        // Model::getKey() — armadilha documentada nos Plans 116-03/116-04.
+        $notasImputadasEmpresa = $this->npsImputation->notasDaEmpresa(
+            $companies->pluck('id'),
+            'empresa',
+            $since,
+            now(),
+            null,
+            collect([NpsTemplate::principalId()]),
+        )->pluck('nota');
+        $notasEmpresa = collect($notasEmpresa->all())->merge($notasImputadasEmpresa);
+
         $avgNps = $notasEmpresa->isNotEmpty()
             ? round((float) $notasEmpresa->avg(), 2)
             : 0;
@@ -1329,8 +1355,16 @@ class DashboardController extends Controller
             // 2026-07-13 — dimensão por CARGO canônico (não isMentor()).
             $dimensao   = $u->dimensaoNpsDesempenho();
             $scoreField = $dimensao === 'estrategista' ? 'score_estrategista' : 'score_analista';  // fallback legacy
-            $avgNps = $surveys->count() > 0
-                ? $this->avgNotaDimensao($surveys, $dimensao, $scoreField)
+
+            // Fase 116 Plan 05 · notas imputadas (não respondido = nota 1) da
+            // MESMA carteira ($companyIds) já usada acima — ranking não
+            // filtra por modelo (templateIds=null), diferente do widget admin.
+            $notasImputadas = $this->npsImputation->notasDaEmpresa($companyIds, $dimensao, $since, now())->pluck('nota');
+
+            // Guard ajustado: pessoa só com notas imputadas (sem nenhuma
+            // resposta real) não pode mais cair no sentinela null antigo.
+            $avgNps = ($surveys->count() > 0 || $notasImputadas->isNotEmpty())
+                ? $this->avgNotaDimensao($surveys, $dimensao, $scoreField, $notasImputadas)
                 : null;
 
             $meetingsTotal = Meeting::whereIn('company_id', $companyIds)
@@ -1473,6 +1507,20 @@ class DashboardController extends Controller
         $dimensao   = $user->dimensaoNpsDesempenho();
         $scoreField = $dimensao === 'estrategista' ? 'score_estrategista' : 'score_analista';  // fallback legacy
 
+        // Fase 116 Plan 05 · notas imputadas (não respondido = nota 1) da
+        // MESMA carteira ($companies) e dimensão já usadas em stats.avg_nps
+        // abaixo. $npsResponses acima só olha o modelo PRINCIPAL
+        // (->principal()) — repassar o mesmo templateIds pra não misturar
+        // modelos (mesmo racional do widget adminDashboard).
+        $notasImputadasUsuario = $this->npsImputation->notasDaEmpresa(
+            $companies->pluck('id'),
+            $dimensao,
+            $since,
+            now(),
+            null,
+            collect([NpsTemplate::principalId()]),
+        )->pluck('nota');
+
         // Phase 72 Plan 02 — SC#3: empresas pendentes de NPS restritas a
         // carteira do proprio usuario (forCarteira filtra por
         // $user->companies() quando nao e admin).
@@ -1482,7 +1530,7 @@ class DashboardController extends Controller
             'stats' => [
                 'total_companies' => $companies->count(),
                 'avg_tacos' => round($metrics->avg('tacos') ?? 0, 2),
-                'avg_nps' => $this->avgNotaDimensao($npsResponses, $dimensao, $scoreField),
+                'avg_nps' => $this->avgNotaDimensao($npsResponses, $dimensao, $scoreField, $notasImputadasUsuario),
                 'absenteeism_rate' => round($absenteeismRate, 2),
                 'total_revenue' => $metrics->sum('revenue'),
             ],
@@ -1513,12 +1561,19 @@ class DashboardController extends Controller
      * Escala 1-5 uniforme; round(1) preserva a precisao historica dos widgets
      * "Desempenho da equipe" (buildRanking) e "avg_nps" do userDashboard.
      *
+     * Fase 116 Plan 05 — ganhou o 4º parâmetro opcional `$notasImputadas`:
+     * quando informado, as notas do NPS efetivamente disparado e NÃO
+     * respondido (nota 1 — `NpsImputationService`) são mescladas às notas
+     * reais ANTES do `avg()`, preservando o `round(..., 1)` e a sentinela
+     * `0.0` de coleção vazia.
+     *
      * @param  iterable<int, \App\Models\NpsSurvey>  $surveys
      * @param  string  $dimensao          Uma das constantes NpsTemplateQuestion::DIMENSOES
      * @param  string  $scoreFieldLegacy  Coluna legacy correspondente em nps_responses (fallback pre-v15)
+     * @param  \Illuminate\Support\Collection|null  $notasImputadas  Notas (float) do não respondido — Fase 116
      * @return float  Media 1-5 com 1 decimal; 0.0 quando colecao vazia ou todas notas null.
      */
-    private function avgNotaDimensao(iterable $surveys, string $dimensao, string $scoreFieldLegacy): float
+    private function avgNotaDimensao(iterable $surveys, string $dimensao, string $scoreFieldLegacy, ?Collection $notasImputadas = null): float
     {
         $calculator = app(\App\Services\Nps\NpsScoreCalculator::class);
         $notas = collect($surveys)->map(function ($s) use ($calculator, $dimensao, $scoreFieldLegacy) {
@@ -1527,6 +1582,13 @@ class DashboardController extends Controller
             }
             return $s->response?->$scoreFieldLegacy;
         })->filter(fn($n) => $n !== null);
+
+        // Fase 116 Plan 05 — $notas já é Collection base (collect() global
+        // sempre retorna Illuminate\Support\Collection, mesmo partindo de
+        // Eloquent\Collection), então o merge() aqui é seguro sem cast extra.
+        if ($notasImputadas !== null && $notasImputadas->isNotEmpty()) {
+            $notas = $notas->merge($notasImputadas);
+        }
 
         return $notas->isNotEmpty()
             ? round((float) $notas->avg(), 1)
