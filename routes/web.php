@@ -644,15 +644,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/dev/desenvolvimento', [DevController::class, 'index'])
             ->name('dev.desenvolvimento');
 
-        // MVP Cargo Dev — tela de controle de visibilidade dos módulos no menu.
+        // Tela de controle de visibilidade dos módulos no menu.
         // Gate real isAdminDev() dentro do controller (admin comum não acessa).
+        // Conceder o cargo Dev é feito em /users (quick 260727-mx3).
         Route::get('/dev/modulos', [DevModulosController::class, 'index'])
             ->name('dev.modulos.index');
         Route::patch('/dev/modulos/{module}/visibilidade', [DevModulosController::class, 'updateVisibilidade'])
             ->name('dev.modulos.visibilidade');
-        // Cargo Dev — promover/rebaixar usuários (self-service, gate isAdminDev no controller).
-        Route::patch('/dev/usuarios/{user}/dev', [DevModulosController::class, 'updateUsuarioDev'])
-            ->name('dev.modulos.usuario-dev');
         // Re-sync manual de empresa Adman via diagnóstico (admin only)
         Route::post('/dev/resync', [DevController::class, 'resyncCompany'])
             ->name('dev.resync');
