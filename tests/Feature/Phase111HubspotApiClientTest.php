@@ -202,6 +202,48 @@ class Phase111HubspotApiClientTest extends TestCase
         $this->assertSame('111', $this->client()->fetchAssociatedCompanyId(self::DEAL_ID));
     }
 
+    // ─── Shape REAL da API v3 /associations: {id, type} (bug 2026-07-27) ───
+    // A API v3 devolve a chave `id` (não `toObjectId`, que é v4). Ler toObjectId
+    // no v3 devolvia sempre null → empresa nascia sem company/contato. Estes
+    // testes travam o shape REAL; os testes acima (toObjectId) provam o fallback.
+
+    public function test_fetch_associated_company_ids_le_chave_id_do_shape_v3_real(): void
+    {
+        Http::fake([
+            'https://api.hubapi.com/crm/v3/objects/deals/' . self::DEAL_ID . '/associations/companies' => Http::response([
+                'results' => [
+                    ['id' => '56986195877', 'type' => 'deal_to_company'],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertSame(['56986195877'], $this->client()->fetchAssociatedCompanyIds(self::DEAL_ID));
+    }
+
+    public function test_fetch_associated_contact_ids_le_chave_id_do_shape_v3_real(): void
+    {
+        Http::fake([
+            'https://api.hubapi.com/crm/v3/objects/deals/' . self::DEAL_ID . '/associations/contacts' => Http::response([
+                'results' => [
+                    ['id' => '237977565608', 'type' => 'deal_to_contact'],
+                ],
+            ], 200),
+        ]);
+
+        $this->assertSame(['237977565608'], $this->client()->fetchAssociatedContactIds(self::DEAL_ID));
+    }
+
+    public function test_fetch_associated_company_id_singular_le_chave_id_do_shape_v3_real(): void
+    {
+        Http::fake([
+            'https://api.hubapi.com/crm/v3/objects/deals/' . self::DEAL_ID . '/associations/companies' => Http::response([
+                'results' => [['id' => '56986195877', 'type' => 'deal_to_company']],
+            ], 200),
+        ]);
+
+        $this->assertSame('56986195877', $this->client()->fetchAssociatedCompanyId(self::DEAL_ID));
+    }
+
     // ─── Nenhum token vaza em log (T-111-03) ───
 
     public function test_nenhum_metodo_novo_vaza_token_em_log_de_falha(): void

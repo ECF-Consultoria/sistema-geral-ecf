@@ -9,8 +9,16 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Debug session hubspot-handoff-sem-contatos (2026-07-27) — fix sistêmico
- * pro race condition/eventual consistency do HubSpot.
+ * Debug session hubspot-handoff-sem-contatos (2026-07-27).
+ *
+ * NOTA (correção de diagnóstico): a causa raiz REAL foi um bug de field-name no
+ * HubspotApiClient (lia `toObjectId` num endpoint v3 que retorna `id`) — não uma
+ * race condition. O core fix está no HubspotApiClient. Esta varredura é a REDE DE
+ * SEGURANÇA / BACKFILL: reprocessa handoffs que ficaram incompletos (os já
+ * quebrados pelo bug + qualquer miss futuro), reusando o replay idempotente.
+ *
+ * (Texto histórico abaixo, mantido por contexto — a hipótese de race foi superada.)
+ * Fix sistêmico pro race condition/eventual consistency do HubSpot.
  *
  * Causa raiz: o webhook `deal.propertyChange` (dealstage=closedwon) chega e
  * é processado de forma SÍNCRONA quase instantaneamente após o fechamento

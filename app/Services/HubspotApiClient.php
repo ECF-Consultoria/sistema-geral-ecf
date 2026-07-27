@@ -73,7 +73,12 @@ class HubspotApiClient
             return null;
         }
 
-        $id = $res->json('results.0.toObjectId');
+        // O endpoint v3 /associations/{tipo} retorna cada item como {id, type} —
+        // a chave é `id`, NÃO `toObjectId` (esse é o shape da API v4). Fallback
+        // p/ toObjectId por robustez caso o shape mude. (Bug corrigido 2026-07-27:
+        // ler toObjectId no v3 devolvia sempre null → empresa sem company/contato.)
+        $assoc = $res->json('results.0') ?? [];
+        $id    = $assoc['id'] ?? $assoc['toObjectId'] ?? null;
         return $id !== null ? (string) $id : null;
     }
 
@@ -113,7 +118,10 @@ class HubspotApiClient
             return null;
         }
 
-        $id = $res->json('results.0.toObjectId');
+        // v3 /associations/{tipo} => {id, type}; a chave é `id`, não `toObjectId`
+        // (fallback por robustez). Ver fetchAssociatedCompanyId (bug 2026-07-27).
+        $assoc = $res->json('results.0') ?? [];
+        $id    = $assoc['id'] ?? $assoc['toObjectId'] ?? null;
         return $id !== null ? (string) $id : null;
     }
 
@@ -327,9 +335,10 @@ class HubspotApiClient
     {
         $results = $this->fetchAssociations('deals', $dealId, 'companies');
 
+        // v3 /associations retorna {id, type}; chave é `id` (fallback toObjectId).
         return array_values(array_map(
-            static fn ($r) => (string) $r['toObjectId'],
-            array_filter($results, static fn ($r) => isset($r['toObjectId']))
+            static fn ($r) => (string) ($r['id'] ?? $r['toObjectId']),
+            array_filter($results, static fn ($r) => isset($r['id']) || isset($r['toObjectId']))
         ));
     }
 
@@ -345,9 +354,10 @@ class HubspotApiClient
     {
         $results = $this->fetchAssociations('deals', $dealId, 'contacts');
 
+        // v3 /associations retorna {id, type}; chave é `id` (fallback toObjectId).
         return array_values(array_map(
-            static fn ($r) => (string) $r['toObjectId'],
-            array_filter($results, static fn ($r) => isset($r['toObjectId']))
+            static fn ($r) => (string) ($r['id'] ?? $r['toObjectId']),
+            array_filter($results, static fn ($r) => isset($r['id']) || isset($r['toObjectId']))
         ));
     }
 

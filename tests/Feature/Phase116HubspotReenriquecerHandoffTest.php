@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Company;
 use App\Models\HubspotEvento;
-use App\Services\HubspotApiClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -133,12 +132,13 @@ class Phase116HubspotReenriquecerHandoffTest extends TestCase
     private function mockHubspotRaceEntaoPronto(): void
     {
         Http::fake([
+            // Shape REAL da API v3 /associations: {id, type} (NÃO toObjectId).
             'api.hubapi.com/crm/v3/objects/deals/63087274361/associations/companies' => Http::sequence()
                 ->push(['results' => []])
-                ->push(['results' => [['toObjectId' => 56986195877]]]),
+                ->push(['results' => [['id' => '56986195877', 'type' => 'deal_to_company']]]),
             'api.hubapi.com/crm/v3/objects/deals/63087274361/associations/contacts' => Http::sequence()
                 ->push(['results' => []])
-                ->push(['results' => [['toObjectId' => 237977565608]]]),
+                ->push(['results' => [['id' => '237977565608', 'type' => 'deal_to_contact']]]),
             'api.hubapi.com/crm/v3/objects/deals/63087274361/associations/line_items' => Http::response([
                 'results' => [],
             ]),

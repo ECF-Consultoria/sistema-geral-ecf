@@ -4,9 +4,9 @@ trigger: Empresa "Hollyfield LTDA - Novo(a) Deal" marcada como ganho no HubSpot 
 created: 2026-07-27
 updated: 2026-07-27T14:00:00-03:00
 milestone: v20.0 (Handoff Comercial HubSpot)
-root_cause: Race condition / eventual consistency do HubSpot — o webhook closedwon é processado ~1s após o deal fechar, mas as associações deal→company/contact só ficam consultáveis via API 7s–32s depois; a Company nasce sem hubspot_company_id/contact_id.
-fix: Varredura agendada (hubspot:reenriquecer-handoff, a cada 3min) que reprocessa via reprocessarEvento; anti-duplicata via novo critério existing_company_id (precedência máxima) no HubspotCompanyMatcher; enriquecimento só preenche colunas vazias (edição manual soberana).
-verification: 118 testes Hubspot verdes (inclui Phase116HubspotReenriquecerHandoffTest — 4 cenários: re-enriquece sem duplicar, não sobrescreve manual, janela mínima 2min, dry-run).
+root_cause: BUG DE FIELD-NAME no HubspotApiClient — a API v3 /crm/v3/objects/deals/{id}/associations/{tipo} retorna cada item como {id, type}, mas fetchAssociatedCompanyId/ContactId(s) liam `toObjectId` (chave da API v4) → SEMPRE null em produção. Empresa nascia sem company/contato desde o deploy da milestone (line items funcionavam porque fetchDealLineItems já lia `id`). NÃO era race condition — a hipótese de race foi um erro do debugger, que leu o raw de fetchAssociations (que retorna {id}) e interpretou como "associação disponível", sem notar que o método consumidor lia toObjectId.
+fix: (1) CORE — HubspotApiClient passa a ler `id` (fallback toObjectId) nos 4 métodos de associação. (2) Rede de segurança — varredura agendada hubspot:reenriquecer-handoff (3min) reprocessa handoffs incompletos via reprocessarEvento (backfill dos registros já quebrados + qualquer miss futuro); anti-duplicata via critério existing_company_id no HubspotCompanyMatcher; enriquece só colunas vazias (edição manual soberana).
+verification: suíte Hubspot verde; Phase111 ganhou testes travando o shape REAL {id,type}; Phase116 usa o shape real end-to-end; testes antigos (mocks toObjectId) seguem verdes pelo fallback. Confirmado em produção via tinker: fetchAssociations retornava {id:56986195877} enquanto fetchAssociatedCompanyId retornava null.
 ---
 
 # Debug: HubSpot handoff cria empresa sem contatos
