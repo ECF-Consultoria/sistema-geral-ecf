@@ -265,3 +265,18 @@ Schedule::command('desempenho:warm-cache')
     ->onOneServer()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Debug hubspot-handoff-sem-contatos (2026-07-27) — fix sistêmico do race
+// condition/eventual consistency do HubSpot: o webhook processa o deal
+// fechado quase instantaneamente, mas as associações deal→company/contacts
+// só ficam consultáveis via API segundos depois (7s–32s observado). Varre
+// companies de origem HubSpot com hubspot_company_id/contact_id vazios e
+// reprocessa via o mesmo mecanismo de replay do hubspot:reprocess-event.
+// A cada 3min: tempo suficiente pro HubSpot assentar (janela mínima de 2min
+// já embutida no comando) sem acumular atraso perceptível pro Comercial.
+Schedule::command('hubspot:reenriquecer-handoff')
+    ->everyThreeMinutes()
+    ->timezone('America/Sao_Paulo')
+    ->name('hubspot-reenriquecer-handoff')
+    ->onOneServer()
+    ->withoutOverlapping();

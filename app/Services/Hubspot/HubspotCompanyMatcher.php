@@ -10,6 +10,7 @@ use App\Models\Company;
  * plano 03 — HUB-DEDUP-01/02).
  *
  * Ordem de precedência (para no primeiro hit):
+ *   0. existing_company_id (replay de evento já vinculado) → match FORTE
  *   1. hubspot_company_id → match FORTE
  *   2. cnpj (comparado só por dígitos)  → match FORTE
  *   3. email_cliente                    → match FRACO
@@ -18,6 +19,20 @@ use App\Models\Company;
  *
  * Critérios vazios (null/'') NUNCA geram match — evita casar empresas sem
  * cnpj/email preenchido entre si (T-113-03-01/02 do threat register).
+ *
+ * Debug session hubspot-handoff-sem-contatos (2026-07-27) — o critério
+ * `existing_company_id` foi adicionado para resolver um gap descoberto na
+ * investigação: quando o webhook original processa ANTES das associações
+ * do HubSpot ficarem consultáveis (race condition/eventual consistency),
+ * a Company nasce com hubspot_company_id/cnpj/email/domain TODOS vazios —
+ * exatamente os critérios usados pelos passos 1-5. Um replay posterior
+ * (`reprocessarEvento`), já com as associações populadas, NÃO conseguia
+ * mais casar com a company original (nenhum critério bate: hubspot_company_id
+ * do banco continua null, nome pode divergir do nome oficial da company no
+ * HubSpot) e criava uma Company DUPLICADA. Como o replay sempre conhece o
+ * `HubspotEvento.company_id_criada` (a company que ELE MESMO criou/apontou
+ * originalmente), esse vínculo é a fonte de verdade mais forte possível —
+ * tem prioridade sobre todos os demais critérios.
  *
  * Decisão de implementação (discrição do plano): a comparação por CNPJ
  * (dígitos) e por NOME normalizado é feita em PHP, não via SQL — o volume de
@@ -29,16 +44,29 @@ use App\Models\Company;
 class HubspotCompanyMatcher
 {
     /**
-     * @param  array{hubspot_company_id?: ?string, cnpj?: ?string, email?: ?string, domain?: ?string, name?: ?string}  $criterios
+     * @param  array{existing_company_id?: ?int, hubspot_company_id?: ?string, cnpj?: ?string, email?: ?string, domain?: ?string, name?: ?string}  $criterios
      * @return array{company: ?Company, match: 'forte'|'fraco'|null, via: ?string}
      */
     public function encontrar(array $criterios): array
     {
-        $hubspotCompanyId = trim((string) ($criterios['hubspot_company_id'] ?? ''));
-        $cnpj             = trim((string) ($criterios['cnpj'] ?? ''));
-        $email            = trim((string) ($criterios['email'] ?? ''));
-        $domain           = trim((string) ($criterios['domain'] ?? ''));
-        $name             = trim((string) ($criterios['name'] ?? ''));
+        $existingCompanyId = $criterios['existing_company_id'] ?? null;
+        $hubspotCompanyId  = trim((string) ($criterios['hubspot_company_id'] ?? ''));
+        $cnpj              = trim((string) ($criterios['cnpj'] ?? ''));
+        $email             = trim((string) ($criterios['email'] ?? ''));
+        $domain            = trim((string) ($criterios['domain'] ?? ''));
+        $name              = trim((string) ($criterios['name'] ?? ''));
+
+        // ── 0. existing_company_id (replay de evento já vinculado) → forte ──
+        // Prioridade máxima: se o HubspotEvento sendo reprocessado JÁ aponta
+        // para uma Company (company_id_criada), essa é a fonte de verdade —
+        // independe de hubspot_company_id/cnpj/email/domain/nome estarem
+        // vazios ou terem mudado desde a criação original.
+        if ($existingCompanyId !== null) {
+            $company = Company::find($existingCompanyId);
+            if ($company) {
+                return ['company' => $company, 'match' => 'forte', 'via' => 'existing_company_id'];
+            }
+        }
 
         // ── 1. hubspot_company_id → forte ───────────────────────────────────
         if ($hubspotCompanyId !== '') {

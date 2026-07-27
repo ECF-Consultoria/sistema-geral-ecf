@@ -515,11 +515,19 @@ class HubspotWebhookController extends Controller
             // ANTES de decidir criar/enriquecer. Ordem de precedencia dentro do
             // Matcher: hubspot_company_id > cnpj > email > domain > nome normalizado.
             $resultadoMatch = app(HubspotCompanyMatcher::class)->encontrar([
-                'hubspot_company_id' => $companyId,
-                'cnpj'               => $cnpjRaw,
-                'email'              => $emailFinal,
-                'domain'             => $domainRaw !== '' ? $domainRaw : null,
-                'name'               => $nameRaw,
+                // Debug hubspot-handoff-sem-contatos (2026-07-27) — replay de
+                // um evento JA vinculado a uma Company sempre volta pra ela
+                // mesma, mesmo que hubspot_company_id/cnpj/email/domain/nome
+                // ainda estejam vazios ou tenham mudado (ver docblock do
+                // HubspotCompanyMatcher). Em processar() (webhook original)
+                // $evento->company_id_criada ainda e null, entao este criterio
+                // fica inerte — zero mudanca de comportamento no fluxo normal.
+                'existing_company_id' => $evento?->company_id_criada,
+                'hubspot_company_id'  => $companyId,
+                'cnpj'                => $cnpjRaw,
+                'email'               => $emailFinal,
+                'domain'              => $domainRaw !== '' ? $domainRaw : null,
+                'name'                => $nameRaw,
             ]);
 
             if ($resultadoMatch['match'] === 'forte') {
