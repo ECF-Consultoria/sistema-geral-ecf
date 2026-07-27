@@ -47,7 +47,16 @@ Definida em 2026-07-27 a partir do plano canônico `plano-implementacao-desempen
 
 **Decisão ainda em aberto:** tratamento de empresa sem baseline (o plano §3.4 propõe propagar `partial` ao profissional, o que contradiz `DESEMP-06` e a trava da Fase 109). Resolver no discuss-phase da Fase 120.
 
-**Progresso da v21.0:** Fase 117 com contexto capturado em 2026-07-27 (`117-CONTEXT.md`, 12 decisões: D-01..D-08 do usuário, D-09..D-12 por discrição do Claude). Pronta para `/gsd:plan-phase 117`. Nenhuma outra fase da v21.0 iniciada.
+**Progresso da v21.0:** Fase 117 **PLANEJADA** em 2026-07-27 — pronta para `/gsd:execute-phase 117`. Nenhuma outra fase da v21.0 iniciada.
+
+Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-09..D-12 por discrição, D-11b vinda da pesquisa), `117-RESEARCH.md`, `117-PATTERNS.md`, `117-VALIDATION.md` (approved, nyquist_compliant), `117-01-PLAN.md` (shape aditivo, MPP-01/02/03/05/06) e `117-02-PLAN.md` (probe, MPP-04). Pipeline completo rodado: researcher → pattern-mapper → planner → plan-checker.
+
+**Três correções de premissa que o pipeline produziu e que valem lembrar:**
+1. **D-02 estava errada.** Mirava em `[MLB SyncTodasVendas]`/`[MLB SyncPub]` como janela de concorrência, mas esses dois **não são agendados por cron** — são disparados manualmente. Janela determinística real: **11:00-12:00 BRT**.
+2. **D-11b nasceu da pesquisa e é o risco nº 1 da fase.** Se o probe chamar `AdmanMetricDiffService::compute()`, ele mede o **cache** (TTL até 1440 min + memo por request) e o gate vira teatro. Usa `AdmanService::fetchAccountMetricsDetailedCached(..., forceRefresh: true)`.
+3. **`decimal(14,6)` na tabela do probe é proposital.** 2 casas achatariam variação sub-0,01 e **fabricariam** identidade bit-a-bit, quebrando por construção a checagem anti-cache. Identidade bit-a-bit ⇒ veredito `instrumentacao_suspeita`, com precedência sobre `aprovado`.
+
+**GATE MPP-04 pendente por natureza:** o probe roda 24-48h na VPS e não cabe numa sessão de execução. A Fase 117 **não pode ser marcada como completa**, e a Fase 119 **não pode consumir `diff_pp`**, antes do veredito aprovado — o `Depends on` da Fase 119 no ROADMAP foi atualizado para dizer isso explicitamente, e a task `117-02-04` é um `checkpoint:human-action` que força reconhecimento do gate.
 
 **Prazo externo NÃO coberto:** esta milestone é a opção (A) da pendência `.planning/todos/pending/metrica-margem-bonus-fragil.md`, cujo prazo é **31/07 14h BRT** (freeze oficial de junho via `desempenho:consolidar-mes`). A v21.0 não fica pronta a tempo — o que fazer com o freeze de junho é decisão separada e imediata.
 
