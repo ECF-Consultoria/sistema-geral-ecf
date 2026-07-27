@@ -211,9 +211,9 @@ const NAV_TREE = [
             // com filtros snake_case empilháveis + 5 cards de pendência (apenas origem
             // HubSpot, REQ-37-10) + aba de Grupos integrada. Adicionado como PRIMEIRO
             // sub-item por ser a porta de entrada operacional do Comercial.
-            { label: 'Empresas (todos os setores)', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: Building2, permission: 'comercial.cadastrar_empresa' },
+            { label: 'Cadastro de Empresas', routeName: 'comercial.empresas.listagem', page: 'Comercial/EmpresasListagem', icon: Building2, permission: 'comercial.cadastrar_empresa' },
             // 'Cadastrar empresa' removido do dropdown: o cadastro já é acessível pelo
-            // botão dentro da aba 'Empresas (todos os setores)'. A rota
+            // botão dentro da aba 'Cadastro de Empresas'. A rota
             // 'comercial.empresas.novo' segue ativa (usada pelo botão da listagem).
             // Phase 37 Plan 37-07 — Grupos aponta para a mesma listagem unificada
             // com `?tab=grupos` (o helper de menu acima usa routeParams pra alimentar
