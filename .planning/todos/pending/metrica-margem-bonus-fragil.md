@@ -4,6 +4,11 @@
 **Criticidade:** alta — afeta pagamento de bônus
 **PRAZO:** decidir/agir antes de **31/07 14h BRT** (congelamento oficial de junho via `desempenho:consolidar-mes`)
 
+> **ATUALIZAÇÃO 2026-07-27 — decisão de métrica TOMADA, prazo AINDA ABERTO.**
+> O usuário escolheu a **opção (A) pontos percentuais**, formalizada na milestone **v21.0** (fases 117-123, ver `.planning/REQUIREMENTS-v21.md`). Decidiu também **reusar a régua atual** (−5/−2/+1/+4) lida como pp, sem recalibrar.
+> **Este todo NÃO está resolvido:** a v21.0 tem 7 fases e não fica pronta antes de 31/07. O item 2 da "Ação recomendada" abaixo continua valendo na íntegra — o que fazer com o **freeze de junho** (congelar com a métrica relativa atual, ou adiar o freeze) é decisão separada e imediata.
+> Resolvido pelas fases: 117 (fonte em pp + probe de estabilidade de `prev`) e 121 (distribuição real de pp + gate do delta).
+
 ## O achado
 
 A métrica `var_margem_pct` do bônus de desempenho é: **média, entre as empresas do profissional, da VARIAÇÃO RELATIVA da margem% ponderada por receita** (`fallbackMargemPct` → `diffPctGuardado = (atual−anterior)/anterior*100`, com margem% = `SUM(contribution_margin)/SUM(revenue)*100` por janela).

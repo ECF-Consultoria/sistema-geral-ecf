@@ -1268,6 +1268,112 @@ Plans:
 - [ ] 116-08-PLAN.md — Fechamento: teste de coerência entre call-sites, suíte completa, doc operacional e gate humano do backfill retroativo [NPSFLOOR-08, NPSFLOOR-08b, NPSFLOOR-08c, NPSFLOOR-10]
 
 ---
+
+## Milestone v21.0 — Desempenho por nota individual de empresa (Fases 117-123)
+
+**Plano canônico:** `plano-implementacao-desempenho-por-empresa.md` (raiz) · **Requirements:** `.planning/REQUIREMENTS-v21.md`
+
+Troca de granularidade do motor de bonificação: sair de componentes agregados por profissional e calcular a nota de **cada empresa** primeiro. `nota_empresa = (NPS + faturamento + margem_pp) / 3`; `nota_profissional = média(nota_empresa)`. A régua deixa de ser aplicada depois da média e passa a ser aplicada empresa por empresa. Margem migra de variação relativa para **pontos percentuais**.
+
+**Decisões travadas (2026-07-27):** (D1) margem usa `percentageMargin.value − prev`, reabrindo deliberadamente o hotfix `a413e823` de 24/07 porque pp não é expressável pelo `.diff` nativo; (D2) a régua atual (−5/−2/+1/+4) é reusada lida como pp, sem recalibrar, com o usuário ciente da compressão na faixa 3-4; (D3) empresa primeiro, profissional depois; (D4) baseline `previous_equal_length_window` intocada; (D5) placeholder de margem Shopee 1.0 preservado.
+
+**Decisão em aberto:** tratamento de empresa sem baseline — resolver no discuss-phase da Fase 120 (ver REQUIREMENTS-v21.md).
+
+### Phase 117: Margem em pontos percentuais + probe de estabilidade de `prev` (v21.0)
+
+**Goal:** `AdmanMetricDiffService` passa a expor `prev_value` e `diff_pp` sem alterar nada que os consumidores atuais leem, e a estabilidade de `percentageMargin.prev` é medida e apresentada **antes** de qualquer fase amarrar pagamento de bônus nesse campo.
+**Requirements**: MPP-01, MPP-02, MPP-03, MPP-04, MPP-05, MPP-06
+**Depends on:** Nada — aditivo e independente
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Cada métrica expõe `prev_value` e `diff_pp` ao lado de `value`/`diff_pct`/`diff_source`; nenhum consumidor existente muda de comportamento e `diff_pct` continua idêntico
+  2. `contribution_margin_pct.diff_pp = value − prev_value` só quando `comparison_mode === 'previous_equal_length_window'` e ambos numéricos; `null` em todo outro caso (inclusive `same_interval_previous_month`)
+  3. Fixture conhecida comprova: `value=27,47` + `prev=24,08` → `diff_pp=3,39`, com `diff_pct` ainda em `14,09`; sem `prev`, `diff_pp=null`
+  4. Cache `adman:diff:v5` → `v6`; shape velho não é servido para o shape novo
+  5. **GATE:** o probe de estabilidade de `prev` (N leituras da mesma empresa, competência fechada) é rodado e o relatório de variância apresentado ao usuário. Se `prev` oscilar, a milestone para aqui — não se paga bônus com fonte instável
+
+### Phase 118: NPS por empresa (v21.0)
+
+**Goal:** Existe um serviço que devolve a nota de NPS agrupada por empresa, preservando exatamente os três ramos, a janela M+1, a dedupe e as invalidações que já existem — sem inventar origem de dados nova.
+**Requirements**: NPSE-01, NPSE-02, NPSE-03, NPSE-04, NPSE-05, NPSE-06
+**Depends on:** **Fase 116 fechada** (116-06 backfill retroativo, 116-07, 116-08 teste de coerência) — esta fase adiciona um 4º call-site da regra de piso de NPS
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `NpsPorEmpresaService::notasNpsPorEmpresa()` devolve nota por `company_id` com contagem e origem por ramo (`assignments` / `legacy` / `imputadas`)
+  2. Os três ramos e as dedupes por `(response_id, role)` e `(survey_id, role)` produzem exatamente os mesmos números que o cálculo agregado atual, quando somados de volta
+  3. Competência M lê NPS de M+1; mês em curso usa piso `1.0`; M+1 encerrado sem resposta usa `0.0` → `1.0` pelo clamp
+  4. Empresa invalidada na competência não entra; empresa com Performance **e** Shopee não duplica NPS
+  5. O teste de coerência entre call-sites da 116-08 conhece este call-site e continua verde
+
+### Phase 119: Score por empresa (v21.0)
+
+**Goal:** Existe um fato por empresa com os três componentes já pontuados e a `nota_empresa` calculada, com a régua de faturamento aplicada por empresa e a de margem aplicada sobre pontos percentuais.
+**Requirements**: EMPS-01, EMPS-02, EMPS-03, EMPS-04, EMPS-05, EMPS-06, EMPS-07
+**Depends on:** Fases 117 e 118
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `CompanyScoreService` produz uma linha por empresa no contrato do plano §3.1, com `status` e `quality` explicando por que uma empresa ficou incompleta
+  2. A régua de faturamento é aplicada por empresa antes de qualquer média; a de margem lê `margem_var_pp` e **nunca** `diff_pct`
+  3. `nota_empresa = round((nps + faturamento + margem) / 3, 2)`; o caso âncora do plano fecha: NPS 4,6 + faturamento +8% (5) + margem +3,2 pp (4) → `4,53`
+  4. `MetricDiffDispatcher::compute()` é chamado uma única vez por empresa (hoje são duas chamadas indiretas)
+  5. Adman vence Shopee na fonte financeira; empresa Shopee usa `margem_pontos = 1.0` marcado como `quality.margin_source = placeholder_shopee`
+
+### Phase 120: Agregação do profissional + feature flag (v21.0)
+
+**Goal:** A nota do profissional passa a ser a média das notas das empresas, atrás de feature flag, com `empresas_score` calculado em shadow nos dois modos e todas as chaves legadas do payload preservadas.
+**Requirements**: AGRE-01, AGRE-02, AGRE-03, AGRE-04, AGRE-05, AGRE-06
+**Depends on:** Fase 119
+**UI hint:** Não — só payload; telas ficam na Fase 123
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. Com a flag ligada, `nota_final` é exatamente a média das `nota_empresa`; com a flag desligada, o número não muda em relação a hoje
+  2. `empresas_score` é anexado ao payload nos **dois** modos, para auditoria antes da virada
+  3. `cacheKey()` sobe de `v12` para `v13` e as 4 suítes com a string hardcoded são atualizadas junto — `DesempenhoShopeeScoreTest`, `Phase116/NpsFloorDesempenhoTest`, `Phase96/NpsInvalidacaoRespostaTest`, `V18/DesempenhoMetadadosCacheTest`
+  4. As chaves legadas continuam presentes (`empresas_carteira`, `empresas_com_baseline`, `margem_amostra`, `componentes_disponiveis`, `score_status`, `faixa_bonus`, `faixa_promovida`, `componentes.var_margem_pct`)
+  5. Empresa sem baseline segue a decisão do discuss-phase, sem contradizer `DESEMP-06` nem a trava da Fase 109 — profissional só-Shopee continua produzindo `nota_final`
+
+### Phase 121: Comparação antigo × novo e validação da régua em pp (v21.0)
+
+**Goal:** Antes de ligar a flag em produção, existe evidência numérica de quanto a nota de cada profissional muda e de como a régua reusada se comporta sobre a distribuição real de pontos percentuais da carteira.
+**Requirements**: ROLL-01, ROLL-02, ROLL-03
+**Depends on:** Fase 120
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `php artisan desempenho:comparar-score-empresa --mes=YYYY-MM` reporta por profissional: `nota_antiga`, `nota_nova`, `delta`, empresas total/complete/partial e a maior causa do delta
+  2. A comparação roda sobre a última competência fechada e as 7 amostras de risco do plano §6 são conferidas manualmente
+  3. A distribuição real de `margem_var_pp` da carteira inteira é medida e apresentada — confirmando ou refutando que a régua reusada (D2) produz dispersão aceitável
+  4. **GATE:** o usuário aprova explicitamente o delta antes de qualquer ativação de flag em produção
+
+### Phase 122: Persistência por empresa e comandos (v21.0)
+
+**Goal:** O detalhe por empresa vira fato auditável e persistido, e o fechamento mensal passa a gravá-lo — com o caminho de reconsolidação de competências fechadas incluído no rollout.
+**Requirements**: SNAP-01, SNAP-02, SNAP-03, SNAP-04, SNAP-05, SNAP-06
+**Depends on:** Fase 121 (gate aprovado)
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. `empresas_score` é persistido em `desempenho_score_snapshots.breakdown_json`
+  2. Tabela `desempenho_company_score_snapshots` com `unique(user_id, company_id, mes_referencia)` explica o resumo empresa por empresa
+  3. `ConsolidarMesDesempenho`, `SnapshotDesempenhoScores` e `WarmDesempenhoCache` gravam as linhas por empresa; invalidar empresa remove as linhas daquela competência
+  4. `margem_amostra` conta cobertura de `margem_var_pp`
+  5. O rollout inclui `desempenho:consolidar-mes --mes=` para competências fechadas, e o gate `FIXMARG-03` (cobertura < 0,7) é conferido por reconsulta ao snapshot, nunca por stdout
+
+### Phase 123: Telas e relatórios (v21.0)
+
+**Goal:** As telas explicam a regra nova em linguagem simples e mostram a nota de cada empresa, sem quebrar snapshots antigos.
+**Requirements**: UIEM-01, UIEM-02, UIEM-03, UIEM-04
+**Depends on:** Fase 122
+**UI hint:** Sim — a dimensão de margem muda de unidade e precisa ser explicada sem jargão
+**Success Criteria** (o que deve ser VERDADE):
+
+  1. A margem é rotulada e explicada em linguagem simples ("quantos pontos percentuais a margem subiu ou caiu"), sem termo não auto-explicativo
+  2. O detalhe do profissional lista as empresas da carteira com a nota de cada uma e seus três componentes
+  3. Snapshot antigo sem `empresas_score` renderiza no visual anterior; sem `var_margem_pp`, exibe `var_margem_pct` com rótulo legado
+  4. Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` lendo a mesma fonte que o ranking
+  5. `npm run build` rodado e checkpoint visual aprovado
+
+---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
 
 *Roadmap atualizado: 2026-07-24 — Milestone v20.0 (Handoff Comercial HubSpot) anexada: 5 fases (111-115) derivadas do plano canônico `prompt-claude-otimizacao-comercial-hubspot.md`, preservando a estrutura de 10 estágios do prompt. Fundação (111) → HubspotValueResolver + handoff service (112, núcleo do valor mensal×anual) → enriquecimento contato/empresa + dedup (113) → UI Comercial + replay (114) → E2E + doc (115). Trabalho ADITIVO: fluxo legado (Fases 34-37) e testes atuais preservados; nenhum teste chama HubSpot real. Conflict-detection do import: só INFO (sem locked-decisions HubSpot pré-CONTEXT); 1 WARNING = mudança semântica de como `valor_contratado` é populado em closes futuros (histórico intacto). Fases 100-110 (v18/v19) preservadas.*
+
+*Roadmap atualizado: 2026-07-27 — Milestone v21.0 (Desempenho por nota individual de empresa) anexada: 7 fases (117-123) cobrindo as 38 REQs (MPP/NPSE/EMPS/AGRE/ROLL/SNAP/UIEM) do REQUIREMENTS-v21.md, derivadas do plano canônico `plano-implementacao-desempenho-por-empresa.md`. Conflict-detection do import: 3 BLOCKERS, todos resolvidos por decisão do usuário em 2026-07-27 — (1) fonte de margem em pp reabre o hotfix a413e823 de 24/07, (2) régua atual reusada como pp sem recalibrar, (3) empresa sem baseline segue como decisão em aberto para o discuss-phase da Fase 120. Correções ao plano verificadas contra o código: `cacheKey` já está em `v12` (alvo real `v13`, com 4 suítes hardcoded), `adman:diff` em `v5` (→`v6` ok). **Fase 118 bloqueada até a Fase 116 fechar** (116-06/07/08) — adiciona um 4º call-site da regra de piso de NPS. Fases 117 e 121 são gates humanos explícitos (estabilidade de `prev`; delta antigo×novo). Esta milestone é a opção (A) da pendência `.planning/todos/pending/metrica-margem-bonus-fragil.md`, mas NÃO fica pronta antes do freeze de junho em 31/07 14h BRT — o freeze é decisão separada. `phases.clear` NÃO foi executado: Fases 1-116 preservadas, incluindo a 116 em execução, seguindo a convenção de anexar milestones deste roadmap.*

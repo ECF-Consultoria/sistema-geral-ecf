@@ -32,6 +32,22 @@ Milestone v20.0 (5 fases 111-115). Fases 100-110 (v18/v19) e v17.0 preservadas. 
 Status: Ready to execute
 Last activity: 2026-07-27
 
+## Próxima Milestone — v21.0 Desempenho por nota individual de empresa (DEFINIDA, não iniciada)
+
+Definida em 2026-07-27 a partir do plano canônico `plano-implementacao-desempenho-por-empresa.md`, via `/gsd:import` → `/gsd:new-milestone`. **7 fases (117-123), 38 requirements** em `.planning/REQUIREMENTS-v21.md`; fases anexadas ao fim do `ROADMAP.md`.
+
+**O frontmatter deste STATE.md continua apontando para v20.0/Phase 116 de propósito** — a Fase 116 segue em execução e a v21.0 ainda não começou. `phases.clear` e `state.milestone-switch` NÃO foram executados: as 51 pastas de `.planning/phases/` estão preservadas (incluindo `116-06/07/08` planejados e não executados), seguindo a convenção de **anexar** milestones que este roadmap já usou em v18/v19/v20.
+
+**Bloqueio de sequência:** a Fase 118 (NPS por empresa) não pode executar antes da Fase 116 fechar — ela adiciona um 4º call-site da regra de piso de NPS, que o teste de coerência da 116-08 precisa conhecer, e o backfill retroativo da 116-06 rodaria contra um payload cuja forma mudou no meio. As Fases 117 e 119-123 não têm essa dependência.
+
+**Dois gates humanos explícitos:**
+1. **Fase 117** — probe de estabilidade de `percentageMargin.prev`. A decisão de usar pp reabre o hotfix `a413e823` de 24/07, e `prev` nunca foi validado. Se oscilar, a milestone para aí.
+2. **Fase 121** — comparação nota antiga × nota nova por competência fechada + distribuição real de pp na carteira. Nada de flag em produção sem aprovação explícita do delta.
+
+**Decisão ainda em aberto:** tratamento de empresa sem baseline (o plano §3.4 propõe propagar `partial` ao profissional, o que contradiz `DESEMP-06` e a trava da Fase 109). Resolver no discuss-phase da Fase 120.
+
+**Prazo externo NÃO coberto:** esta milestone é a opção (A) da pendência `.planning/todos/pending/metrica-margem-bonus-fragil.md`, cujo prazo é **31/07 14h BRT** (freeze oficial de junho via `desempenho:consolidar-mes`). A v21.0 não fica pronta a tempo — o que fazer com o freeze de junho é decisão separada e imediata.
+
 ## Performance Metrics
 
 **Velocity:**

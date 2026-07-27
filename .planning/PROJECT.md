@@ -15,7 +15,30 @@ Dar ao admin visibilidade total sobre operações internas: o sync Adman, o fech
 financeiro de cada empresa e a comunicação interna (notificações de metas e mensagens
 manuais) — sem precisar de acesso direto ao servidor.
 
-## Current Milestone: v18.0 Períodos, competência de bônus e variação via Adman
+## Current Milestone: v21.0 Desempenho por nota individual de empresa
+
+**Goal:** Trocar a granularidade do motor de bonificação: em vez de agregar os componentes da carteira e só então aplicar a régua, calcular primeiro a nota de **cada empresa** (`nota_empresa = (NPS + faturamento + margem_pp) / 3`) e derivar a nota do profissional como a média das notas das empresas. Junto disso, a dimensão de margem migra de variação relativa para **pontos percentuais** — o que também resolve, como opção (A), a pendência de fragilidade estrutural da métrica de margem do bônus.
+
+**Target features (7 fases, 117-123):**
+- **F117. Margem em pontos percentuais + probe:** `AdmanMetricDiffService` expõe `prev_value` e `diff_pp` sem mexer no que os consumidores atuais leem; gate humano de estabilidade de `percentageMargin.prev` antes de amarrar pagamento nele.
+- **F118. NPS por empresa:** serviço que agrupa a nota de NPS por `company_id` preservando os três ramos, a janela M+1, as dedupes e as invalidações. **Bloqueada até a Fase 116 fechar.**
+- **F119. Score por empresa:** `CompanyScoreService` produz o fato por empresa com os três componentes pontuados; régua de faturamento por empresa, régua de margem sobre pp.
+- **F120. Agregação + feature flag:** `nota_final` vira a média das notas das empresas atrás de `metrics.performance_company_first_score`, com `empresas_score` em shadow nos dois modos.
+- **F121. Comparação antigo × novo:** comando de comparação por competência e medição da distribuição real de pp na carteira; gate humano antes de ligar a flag.
+- **F122. Persistência por empresa:** `desempenho_company_score_snapshots` + comandos de fechamento + reconsolidação de competências fechadas.
+- **F123. Telas e relatórios:** margem explicada sem jargão, lista de empresas com nota no detalhe do profissional, fallback para snapshots antigos.
+
+**Key context:**
+- Plano canônico: `plano-implementacao-desempenho-por-empresa.md` (raiz) · Requirements: `.planning/REQUIREMENTS-v21.md`
+- **Decisão do usuário 2026-07-27 (margem):** pp derivado de `percentageMargin.value − prev`. Reabre deliberadamente o hotfix `a413e823` de 24/07 — pp não é expressável pelo `.diff` nativo. `prev` nunca foi validado: probe é gate da Fase 117.
+- **Decisão do usuário 2026-07-27 (régua):** a régua atual (−5/−2/+1/+4) é reusada lida como pp, sem recalibrar. Usuário ciente da compressão na faixa 3-4 (leitura do Luiz `~−0,59 pp → nota 3`).
+- **Decisão em aberto:** empresa sem baseline — resolver no discuss-phase da Fase 120; a proposta do plano (§3.4) contradiz `DESEMP-06` e a trava da Fase 109.
+- **Prazo externo não coberto:** o freeze de junho/2026 (31/07 14h BRT) é decisão separada — esta milestone não fica pronta a tempo.
+- Alto risco: muda o número que paga bônus. Nada vai a produção sem o gate de comparação da Fase 121.
+- Fases 1-116 preservadas (convenção de anexar milestones deste roadmap); a Fase 116 segue em execução em paralelo.
+- pt-BR em tudo
+
+## Milestone anterior: v18.0 Períodos, competência de bônus e variação via Adman
 
 **Goal:** Padronizar a regra de período em todas as telas críticas (carteira, desempenho, bônus) via um resolvedor único `MetricPeriodResolver`, separando leitura **operacional** (mês em curso vs. mesmo intervalo do mês anterior) de leitura **oficial de bônus** (mês fechado com competência: julho paga junho fechado, baseline de janela de mesmo tamanho). E passar a usar a **variação pronta da Adman** (`percentageMargin.diff` / `profitMargin.diff`) em vez de recalcular margem na mão, com fallback marcado quando a Adman não trouxer o diff. Continuação direta da v17.0: aquela acertou *quem* entra na conta; esta acerta *qual período* e *de onde vem a variação*.
 
