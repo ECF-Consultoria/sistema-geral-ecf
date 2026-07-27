@@ -141,6 +141,13 @@ return [
                 'hs_tcv'             => env('HUBSPOT_PROP_DEAL_TCV', 'hs_tcv'),
                 'hs_acv'             => env('HUBSPOT_PROP_DEAL_ACV', 'hs_acv'),
                 'hs_currency'        => env('HUBSPOT_PROP_DEAL_CURRENCY', 'hs_currency'),
+                // Campos SPIN (Situação/Problema/Implicação/Necessidade) — props
+                // textarea do deal. Adicionados ao fetch → caem no hubspot_snapshot.deal
+                // e são exibidos no modal Detalhes HubSpot + página da empresa.
+                'spin_situacao'      => env('HUBSPOT_PROP_DEAL_SPIN_SITUACAO', 'situacao_atual_do_cliente'),
+                'spin_problema'      => env('HUBSPOT_PROP_DEAL_SPIN_PROBLEMA', 'problema_principal_identificado'),
+                'spin_implicacao'    => env('HUBSPOT_PROP_DEAL_SPIN_IMPLICACAO', 'implicacao_do_problema'),
+                'spin_necessidade'   => env('HUBSPOT_PROP_DEAL_SPIN_NECESSIDADE', 'necessidade_de_solucao'),
             ],
             'company' => [
                 'name'          => env('HUBSPOT_PROP_COMPANY_NAME', 'name'),

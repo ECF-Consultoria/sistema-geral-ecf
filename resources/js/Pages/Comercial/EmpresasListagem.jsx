@@ -423,6 +423,22 @@ function DetalheHubspotModal({ empresa, open, onClose }) {
                         </p>
                     </div>
 
+                    {/* ── SPIN (Situação/Problema/Implicação/Necessidade) ── */}
+                    <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-3">
+                        <h3 className="text-white/85 text-sm font-semibold">SPIN</h3>
+                        {[
+                            ['Situação atual do cliente', empresa.spin?.situacao],
+                            ['Problema Principal Identificado', empresa.spin?.problema],
+                            ['Implicação do Problema', empresa.spin?.implicacao],
+                            ['Necessidade de Solução', empresa.spin?.necessidade],
+                        ].map(([label, valor]) => (
+                            <div key={label}>
+                                <p className="text-white/40 text-[11px] uppercase tracking-wide mb-0.5">{label}</p>
+                                <p className="text-white/70 text-[12px] whitespace-pre-wrap">{valor || '—'}</p>
+                            </div>
+                        ))}
+                    </div>
+
                     {/* ── IDs HubSpot ────────────────────────────────────── */}
                     <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-4 space-y-1">
                         <h3 className="text-white/85 text-sm font-semibold mb-2">IDs HubSpot</h3>

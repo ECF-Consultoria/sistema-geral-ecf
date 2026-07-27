@@ -102,6 +102,54 @@ class Phase114ComercialListagemEnrichmentTest extends TestCase
         return collect($props['companies']['data'])->firstWhere('id', $companyId);
     }
 
+    // ─── SPIN (Quick 260727-ijc) — campos do deal fluem do snapshot p/ payload ──
+
+    public function test_campos_spin_do_snapshot_fluem_para_o_payload_da_listagem(): void
+    {
+        $this->actingAsAdmin();
+
+        $e = $this->criarEmpresa([
+            'name'             => 'HubSpot SPIN',
+            'hubspot_snapshot' => [
+                'deal' => [
+                    'situacao_atual_do_cliente'       => 'Empresa com múltiplas contas em marketplaces',
+                    'problema_principal_identificado' => 'Campanhas com desperdício de verba',
+                    'implicacao_do_problema'          => 'Redução da lucratividade',
+                    'necessidade_de_solucao'          => 'Reestruturar a publicidade',
+                ],
+            ],
+        ]);
+        $this->marcarOrigemHubspot($e);
+
+        $response = $this->get('/comercial/empresas/listagem');
+        $response->assertOk();
+
+        $row = $this->linhaDaEmpresa($response->viewData('page')['props'], $e->id);
+        $this->assertNotNull($row);
+        $this->assertSame('Empresa com múltiplas contas em marketplaces', $row['spin']['situacao']);
+        $this->assertSame('Campanhas com desperdício de verba', $row['spin']['problema']);
+        $this->assertSame('Redução da lucratividade', $row['spin']['implicacao']);
+        $this->assertSame('Reestruturar a publicidade', $row['spin']['necessidade']);
+    }
+
+    public function test_spin_vem_com_4_chaves_null_quando_snapshot_sem_deal(): void
+    {
+        $this->actingAsAdmin();
+
+        $e = $this->criarEmpresa(['name' => 'HubSpot sem SPIN']);
+        $this->marcarOrigemHubspot($e);
+
+        $row = $this->linhaDaEmpresa(
+            $this->get('/comercial/empresas/listagem')->viewData('page')['props'],
+            $e->id
+        );
+        $this->assertNotNull($row);
+        $this->assertSame(
+            ['situacao' => null, 'problema' => null, 'implicacao' => null, 'necessidade' => null],
+            $row['spin']
+        );
+    }
+
     // ─── 1. Pendência sem_contato (HUB-UI-02) ────────────────────────────────
 
     public function test_pendencia_sem_contato_quando_nome_contato_null(): void

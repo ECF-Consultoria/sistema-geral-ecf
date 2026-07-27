@@ -434,6 +434,8 @@ class CompanyController extends Controller
                 // Phase 31 D-04 + Quick 260611-eml — contato do cliente
                 'email_cliente'    => $company->email_cliente,
                 'telefone'         => $company->telefone,
+                // Campos SPIN do deal HubSpot (do snapshot) — seção SPIN na página da empresa.
+                'spin'             => $company->hubspot_spin,
                 // Phase 34 Plan 34-03 — info do close comercial (alimenta secao "Informacoes do Close" no Show.jsx).
                 'nicho'               => $company->nicho,
                 'dor'                 => $company->dor,

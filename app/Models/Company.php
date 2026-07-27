@@ -489,6 +489,31 @@ class Company extends Model
         return $this->hasMany(HubspotEvento::class, 'company_id_criada');
     }
 
+    /**
+     * Campos SPIN do deal HubSpot (Situação/Problema/Implicação/Necessidade),
+     * lidos do hubspot_snapshot.deal pelos nomes internos mapeados em
+     * config('services.hubspot.props.deal'). Retorna sempre as 4 chaves
+     * (null quando ausente/vazio) — a UI exibe '—' nos vazios.
+     */
+    public function getHubspotSpinAttribute(): array
+    {
+        $deal  = $this->hubspot_snapshot['deal'] ?? [];
+        $props = config('services.hubspot.props.deal', []);
+
+        $ler = function (string $chaveLogica, string $fallback) use ($deal, $props) {
+            $interno = $props[$chaveLogica] ?? $fallback;
+            $valor   = $deal[$interno] ?? null;
+            return ($valor === null || $valor === '') ? null : (string) $valor;
+        };
+
+        return [
+            'situacao'    => $ler('spin_situacao', 'situacao_atual_do_cliente'),
+            'problema'    => $ler('spin_problema', 'problema_principal_identificado'),
+            'implicacao'  => $ler('spin_implicacao', 'implicacao_do_problema'),
+            'necessidade' => $ler('spin_necessidade', 'necessidade_de_solucao'),
+        ];
+    }
+
     public function getActiveGrantAttribute(): ?CompanyGrant
     {
         return $this->grants()->where('status', 'active')->first();

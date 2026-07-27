@@ -369,6 +369,8 @@ class ComercialController extends Controller
                 'nome_contato'          => $c->nome_contato,
                 'cargo_contato'         => $c->cargo_contato,
                 'hubspot_observacao'    => $c->hubspot_observacao,
+                // Campos SPIN do deal HubSpot (do snapshot) — exibidos no modal Detalhes HubSpot.
+                'spin'                  => $c->hubspot_spin,
                 'hubspot_deal_id'       => $c->hubspot_deal_id,
                 'hubspot_company_id'    => $c->hubspot_company_id,
                 'created_at'            => $c->created_at?->toDateString(),

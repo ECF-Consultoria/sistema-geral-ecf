@@ -648,6 +648,21 @@ export default function CompanyShow({
                             <p className="text-white/70 text-[13px] whitespace-pre-line leading-relaxed">{company.notes}</p>
                         </div>
                     )}
+                    {/* SPIN (HubSpot) — sempre os 4 campos, '—' nos vazios */}
+                    <div className="mt-4 pt-3 border-t border-white/[0.06] space-y-3">
+                        <p className="text-white/40 text-[11px] uppercase tracking-wide">SPIN (HubSpot)</p>
+                        {[
+                            ['Situação atual do cliente', company.spin?.situacao],
+                            ['Problema Principal Identificado', company.spin?.problema],
+                            ['Implicação do Problema', company.spin?.implicacao],
+                            ['Necessidade de Solução', company.spin?.necessidade],
+                        ].map(([label, valor]) => (
+                            <div key={label}>
+                                <p className="text-white/35 text-[10px] uppercase tracking-wide mb-0.5">{label}</p>
+                                <p className="text-white/70 text-[13px] whitespace-pre-line leading-relaxed">{valor || '—'}</p>
+                            </div>
+                        ))}
+                    </div>
                 </Section>
 
                 {/* ─── Modal Criar meta ──────────────────────── */}
