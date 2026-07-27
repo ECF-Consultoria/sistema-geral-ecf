@@ -9,7 +9,7 @@ import {
     Briefcase, Users as UsersIcon, Building2, Eye,
     Link2, Search, ChevronDown, ArrowUp, ArrowDown,
     ArrowUpRight, ArrowDownRight, Clock, User,
-    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle,
+    Calendar, Star, Trash2, ShieldCheck, X, AlertCircle, Info,
 } from 'lucide-react';
 import {
     ResponsiveContainer, LineChart, Line, XAxis, YAxis,
@@ -442,7 +442,7 @@ function SearchableGlassSelect({ icon: Icon, active, value, onValueChange, place
 // Ícone + label + "NPS MÉDIO"; pill de delta (↗/↘ +0.00) com "vs. mês anterior";
 // nota grande branca /5; barra de progresso colorida pela dimensão (0..5, SEM
 // meta); rodapé "X respondidas · Y pendentes" com ícones. Sem ranking.
-function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta }) {
+function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta, naoRespondidos = 0 }) {
     const val = formatNota(valor);
     const temNota = total > 0 && valor != null && Number(valor) > 0;
     const pct = temNota ? Math.max(3, Math.min(100, (Number(valor) / 5) * 100)) : 0;
@@ -450,6 +450,12 @@ function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta })
     const subiu = delta > 0, desceu = delta < 0;
     const deltaColor = subiu ? '#19e06a' : desceu ? '#ff8a3c' : 'rgba(255,255,255,0.45)';
     const deltaSinal = delta > 0 ? '+' : '';   // negativo já vem com '-'
+
+    // Fase 116 · desde o Plan 116-03 `total` soma respostas reais + notas de
+    // NPS não respondido (que contam 1 na média). O rodapé "respondidas"
+    // mentia ao mostrar o `total` cheio — o número de respondidas de verdade
+    // é total menos as que vieram do não respondido.
+    const respondidas = Math.max(0, (total ?? 0) - (naoRespondidos ?? 0));
 
     return (
         <div style={{
@@ -518,12 +524,20 @@ function StatCard({ kicker, icon: Icon, color, valor, total, pendentes, delta })
                 }} />
             </div>
 
-            {/* Rodapé: respondidas · pendentes (com ícones) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginTop: 13, position: 'relative' }}>
+            {/* Rodapé: respondidas · sem resposta (contam 1) · pendentes (com ícones) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18, rowGap: 6, marginTop: 13, position: 'relative', flexWrap: 'wrap' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
                     <User size={13} style={{ color: 'rgba(255,255,255,0.35)' }} />
-                    {total} respondida{total === 1 ? '' : 's'}
+                    {respondidas} respondida{respondidas === 1 ? '' : 's'}
                 </span>
+                {/* Fase 116 · só aparece quando existe pelo menos 1 nota vinda de
+                    não respondido — nunca mostra "0 sem resposta". */}
+                {naoRespondidos > 0 && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: COL_ATENCAO, fontSize: 12 }}>
+                        <AlertCircle size={13} style={{ color: COL_ATENCAO }} />
+                        {naoRespondidos} sem resposta (conta{naoRespondidos === 1 ? '' : 'm'} 1)
+                    </span>
+                )}
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'rgba(255,255,255,0.55)', fontSize: 12 }}>
                     <Clock size={13} style={{ color: COL_ATENCAO }} />
                     <span style={{ color: pendentes > 0 ? COL_ATENCAO : 'rgba(255,255,255,0.55)' }}>{pendentes} pendente{pendentes === 1 ? '' : 's'}</span>
@@ -1269,6 +1283,7 @@ export default function NpsIndex({
     mes_filtro = '',
     filtros = {},
     principal_template_id = null,
+    regra_nao_respondido = false,
 }) {
     const { flash, auth } = usePage().props;
     const isAdmin = auth?.user?.role === 'admin';
@@ -1581,6 +1596,7 @@ export default function NpsIndex({
                                             total={cards.estrategista?.total ?? 0}
                                             pendentes={pendentesTotal}
                                             delta={deltaEst}
+                                            naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
                                         />
                                     )}
                                     {soAnalista && (
@@ -1592,6 +1608,7 @@ export default function NpsIndex({
                                             total={cards.analista?.total ?? 0}
                                             pendentes={pendentesTotal}
                                             delta={deltaAna}
+                                            naoRespondidos={cards.analista?.nao_respondidos ?? 0}
                                         />
                                     )}
                                     {ambosPessoa && (
@@ -1603,6 +1620,7 @@ export default function NpsIndex({
                                             total={cardMedia.total}
                                             pendentes={pendentesTotal}
                                             delta={deltaMedia}
+                                            naoRespondidos={(cards.estrategista?.nao_respondidos ?? 0) + (cards.analista?.nao_respondidos ?? 0)}
                                         />
                                     )}
                                 </div>
@@ -1617,6 +1635,7 @@ export default function NpsIndex({
                                     total={cards.estrategista?.total ?? 0}
                                     pendentes={pendentesTotal}
                                     delta={deltaEst}
+                                    naoRespondidos={cards.estrategista?.nao_respondidos ?? 0}
                                 />
                                 <StatCard
                                     kicker="ANALISTA"
@@ -1626,6 +1645,7 @@ export default function NpsIndex({
                                     total={cards.analista?.total ?? 0}
                                     pendentes={pendentesTotal}
                                     delta={deltaAna}
+                                    naoRespondidos={cards.analista?.nao_respondidos ?? 0}
                                 />
                                 <StatCard
                                     kicker="EMPRESA"
@@ -1635,7 +1655,18 @@ export default function NpsIndex({
                                     total={cards.empresa?.total ?? 0}
                                     pendentes={pendentesTotal}
                                     delta={deltaEmp}
+                                    naoRespondidos={cards.empresa?.nao_respondidos ?? 0}
                                 />
+                            </div>
+                        )}
+
+                        {/* ─── Fase 116 · explica a regra do não respondido ─────── */}
+                        {regra_nao_respondido && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 2px' }}>
+                                <Info size={13} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
+                                <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12 }}>
+                                    NPS enviado e não respondido conta nota 1 na média.
+                                </p>
                             </div>
                         )}
 
