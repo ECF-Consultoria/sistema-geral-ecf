@@ -1316,7 +1316,7 @@ Plans:
 
 **Goal:** Existe um fato por empresa com os três componentes já pontuados e a `nota_empresa` calculada, com a régua de faturamento aplicada por empresa e a de margem aplicada sobre pontos percentuais.
 **Requirements**: EMPS-01, EMPS-02, EMPS-03, EMPS-04, EMPS-05, EMPS-06, EMPS-07
-**Depends on:** Fases 117 e 118
+**Depends on:** Fases 117 e 118 — **e, especificamente, o GATE MPP-04 APROVADO pelo usuário**. Não basta a Fase 117 estar executada: enquanto o probe de estabilidade de `percentageMargin.prev` não tiver sido rodado na VPS e o veredito aprovado, esta fase **não pode consumir `diff_pp` para calcular nota** (D-12 da Fase 117). Se o veredito vier `reprovado` ou `instrumentacao_suspeita`, esta fase fica bloqueada até o usuário decidir o plano B.
 **Success Criteria** (o que deve ser VERDADE):
 
   1. `CompanyScoreService` produz uma linha por empresa no contrato do plano §3.1, com `status` e `quality` explicando por que uma empresa ficou incompleta

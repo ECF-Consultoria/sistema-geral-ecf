@@ -523,7 +523,13 @@ Todos os outros 15 cenários (a, b, c, d, f, g, h, i, j, k, l, m, n, o) usam ass
 
 **Nenhuma claim de shape do payload Adman (`.prev` presente e populado) é `[ASSUMED]`** — todas foram `[VERIFIED: leitura direta do código-fonte + fixture de teste real]` (ver Sources).
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **Ambas resolvidas em 2026-07-27 durante o planejamento.** Ver `117-01-PLAN.md` § `<decisoes_registradas_neste_plano>` item 5 e `117-02-PLAN.md` Task 3.
+>
+> - **Q1 (arredondamento):** RESOLVIDO conforme a recomendação — `prev_value` cru (sem round adicional, igual a `value`); `diff_pp` com `round(..., 2)` explícito para bater com o caso âncora MPP-06 (`27,47 − 24,08 = 3,39`).
+>   ⚠️ **Ressalva importante que surgiu depois:** isso vale para o **contrato de métricas**. Na **tabela de leituras do probe** o plano usa `decimal(14,6)`, deliberadamente **não** 2 casas — arredondar ali achataria variações sub-0,01 e **fabricaria** identidade bit-a-bit, quebrando por construção a verificação de sanidade anti-cache (D-11b). São dois requisitos de precisão diferentes, de propósito.
+> - **Q2 (relatório: comando separado ou flag):** RESOLVIDO como **flag `--relatorio` do mesmo comando**, que agrega as leituras já persistidas sem tocar a Adman.
 
 1. **`prev_value` deve ser arredondado com quantas casas decimais?**
    - O que sabemos: `value`/`diff_pct` não são arredondados no `resolveField()`/`resolveMargemPct()` atuais (só no `fallbackSomaSimples`/`diffPctGuardado`, que arredondam para 2 casas). `diff_pp` (novo) deveria seguir o mesmo padrão de `diffPctGuardado` (2 casas) para bater com o exemplo âncora `27.47 - 24.08 = 3.39` (exatamente 2 casas).
