@@ -41,7 +41,22 @@ Vale **desde o disparo**, enquanto a competência ainda está aberta (a média j
 Só vira nota 1 o NPS **efetivamente disparado** (existe survey/envio para aquela empresa+responsável+competência). Empresa sem disparo **nunca** entra como 1 — senão pune quem não tinha o que enviar. Este é o invariante mais importante da fase.
 
 ### D4 — Escala e valor
-Nota mínima = **1** (não 0). Confirmar no plano qual é o piso real da escala usada em `nps_score_assignments` / `NpsResponseScore` e usar o mínimo dessa escala.
+Nota mínima = **1** (não 0). **CONFIRMADO pela pesquisa (Q7):** a escala real do produto é **1 a 5** (`NpsTemplateOption.peso` é 1..5, `average_score` é `decimal(5,2)` dentro de `[1.00, 5.00]`). Logo "nota mínima(1)" mapeia direto ao piso da escala, sem ambiguidade. `DesempenhoScoreService` não reescala — a nota entra no bônus na mesma escala 1-5.
+
+### D5 — Empresa invalidada na competência NÃO entra em lugar nenhum
+Decisão do usuário (2026-07-27, respondendo à Open Question 1 do RESEARCH): empresa invalidada na competência (`bonus_invalidacoes`, tela `/desempenho/auditoria-bonus`) **não puxa nota 1 nem no bônus, nem na área NPS**. Invalidou, saiu da regra inteira naquela competência.
+
+**Consequência de escopo (importante):** hoje a área NPS (`NpsController`) **não conhece** `bonus_invalidacoes` — ela só respeita a invalidação manual de resposta (`NpsResponse.invalidated_at`), que é outro conceito. Esta decisão **adiciona** o filtro de invalidação por competência à área NPS. Não é correção de bug, é capacidade nova — planejar explicitamente e testar.
+
+### D6 — Disparo manual segue a mesma regra
+Decisão do usuário (2026-07-27, Open Question 2 do RESEARCH): NPS disparado manualmente (`NpsController::generate()`, `auto_generated=false`) **também vira 1** se não for respondido. Regra única, sem brecha de "escolher o canal que não conta".
+
+**Consequência técnica:** surveys manuais podem não ter `month_reference` — o agrupamento por mês usa `created_at` como fallback. A imputação precisa cobrir esse fallback. O plano deve ler `NpsController::generate()` (não lido em profundidade na pesquisa) antes de fechar o grão da tabela.
+
+### D7 — A dimensão EMPRESA também recebe o 1
+Decisão do usuário (2026-07-27, Open Question 3 do RESEARCH): além das notas de pessoa (estrategista/analista), a média da própria **empresa** também recebe a nota 1 do não respondido. A área NPS mostra 3 médias na mesma tela — deixar a da empresa de fora faria os números da mesma tela discordarem entre si.
+
+**Consequência técnica:** `NpsSnapshotService::DIMENSAO_ROLE` hoje só gera assignment de pessoa para analista/estrategista; a dimensão `empresa` só existe em `nps_response_scores` e alimenta os `$cards['empresa']`. A imputação precisa de linha própria para a dimensão empresa (sem `role`/`user_id`), ou mecanismo equivalente.
 
 </decisions>
 

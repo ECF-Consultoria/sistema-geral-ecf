@@ -1233,7 +1233,7 @@ Plans:
 ### Phase 116: NPS não respondido conta como nota mínima (1)
 
 **Goal:** Todo NPS efetivamente disparado e não respondido passa a valer nota 1 (mínima) em **todos** os consumidores da média de NPS — área NPS, Desempenho/bonificação e demais telas —, criando senso de dever no envio. A nota 1 vale desde o disparo (competência aberta) e vira definitiva quando o mês fecha sem resposta. Inclui backfill retroativo das competências já fechadas, com relatório de impacto antes/depois por pessoa e competência.
-**Requirements**: TBD (a definir no plan-phase)
+**Requirements**: NPSFLOOR-01, NPSFLOOR-02, NPSFLOOR-03, NPSFLOOR-04, NPSFLOOR-05, NPSFLOOR-06, NPSFLOOR-07, NPSFLOOR-08, NPSFLOOR-09, NPSFLOOR-10, NPSFLOOR-11, NPSFLOOR-12
 **Depends on:** Nada bloqueante — base NPS multi-modelo (v16.0) e auditoria de bônus por competência (v19) já em produção
 **UI hint:** Sim — a tela de NPS precisa explicitar a regra "não respondido = 1" em linguagem simples
 **Plans:** 0 plans
