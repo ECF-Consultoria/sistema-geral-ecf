@@ -124,7 +124,8 @@ Esta é a armadilha central da fase: `AdmanMetricDiffService::compute()` cacheia
 
 ### Correções aplicadas depois do plan-check
 
-1. **BLOCKER — greps contraditórios na Task 2 do 117-02.** A `<action>` obriga o docblock a explicar "por que NÃO `AdmanMetricDiffService::compute()`" e "por que NÃO `Cache::flush()`", mas o `<verify>` exigia **zero ocorrências literais** dessas strings. Seguir o plano reprovaria o plano. Trocado por checagem de **uso real**: `use`/`::compute(` para o serviço, e grep ignorando linhas de comentário para `Cache::flush(`.
+1. **BLOCKER — greps contraditórios na Task 2 do 117-02.** A `<action>` obriga o docblock a explicar "por que NÃO `AdmanMetricDiffService::compute()`" e "por que NÃO `Cache::flush()`", mas o `<verify>` exigia **zero ocorrências literais** dessas strings. Seguir o plano reprovaria o plano.
+   **Correção final (após teste real):** os **dois** greps descartam linhas de comentário (`grep -v -E '^\s*(//|\*|/\*)'`) antes de procurar uso real. A primeira tentativa de correção ainda reprovava um arquivo conforme, porque a alternativa `AdmanMetricDiffService::compute(` casava dentro do próprio comentário obrigatório — o mesmo bug, uma camada abaixo. Os dois comandos foram **executados contra um arquivo conforme e um violador** e discriminam corretamente. Lição: `<automated>` que ninguém rodou é hipótese, não verificação.
 2. **Gate automatizado de `DesempenhoScoreService`** adicionado ao `<verify>` da Task 2 (`git diff --name-only` vazio) — antes a proibição existia só em prosa.
 3. **Task `117-02-04` (`checkpoint:human-action`)** adicionada — força reconhecimento explícito de que o gate MPP-04 segue pendente, sem travar a sessão por 48h.
 4. **`Depends on` da Fase 119 no ROADMAP** passou a citar "GATE MPP-04 APROVADO" explicitamente, não só "Fases 117 e 118".
