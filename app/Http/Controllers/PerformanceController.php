@@ -710,12 +710,18 @@ class PerformanceController extends Controller
      * daqui. Não promover este método a fonte de verdade nem alimentar bônus,
      * snapshot ou consolidação mensal com ele.
      *
-     * Espelha o dual-path do service (união DISJUNTA por resposta):
+     * Espelha o dual-path do service, agora ampliado pra união DISJUNTA de TRÊS
+     * ramos (Fase 116):
      *  - (A) atribuições congeladas da Fase 79 (`nps_score_assignments`) do user,
      *        deduped 1× por (`nps_response_id`, `role`) — qualquer modelo conta;
      *  - (B) legado: surveys `->principal()` da carteira, PULANDO as respostas que
      *        já têm atribuição no papel correspondente à dimensão do cargo do user
-     *        (DEC-80-B1 — o snapshot é autoritativo por papel).
+     *        (DEC-80-B1 — o snapshot é autoritativo por papel);
+     *  - (C) Fase 116 (NPSFLOOR) — notas imputadas: NPS efetivamente disparado e
+     *        NUNCA respondido conta nota 1 (leitura via `NpsImputationService`).
+     * Disjunção por construção: (A)/(B) só existem para survey `status=completed`;
+     * (C) só existe para survey que nunca chegou a completed — nenhum survey pode
+     * contar duas vezes.
      *
      * DIFERENÇA DELIBERADA vs o service (e por que ela não vira divergência de
      * número): aqui o ramo (A) TAMBÉM é filtrado por `$companyIds` (a carteira ativa
@@ -725,14 +731,18 @@ class PerformanceController extends Controller
      * conta no bônus e não aparece aqui. Na prática `User::companies()` não filtra
      * por `servico_id`, então toda empresa com atribuição do user está na carteira;
      * o recorte só morde empresa INATIVA. É exatamente o tipo de assimetria que
-     * proíbe usar este helper como régua (T-80-11).
+     * proíbe usar este helper como régua (T-80-11). O ramo (C) segue a mesma regra
+     * — filtrado por `$companyIds`.
      *
      * Mês/data vem SEMPRE de `nps_surveys.completed_at` (DEC-80-B0) — nunca de
      * `assigned_at` (data da gravação: um backfill migraria a resposta de mês).
+     * Exceção: o ramo (C) não tem `completed_at` (nunca houve resposta) — usa a
+     * data SINTÉTICA `competencia_nps->copy()->endOfMonth()` (fim do mês do
+     * disparo), documentado no próprio bloco do ramo.
      *
      * @param  \Illuminate\Support\Collection<int, int>  $companyIds  carteira ativa exibida
      * @param  Carbon  $desde  início da janela mais larga (heatmap: 6 meses)
-     * @return \Illuminate\Support\Collection<int, array{company_id:int, completed_at:Carbon, nota:float, area:?string}>
+     * @return \Illuminate\Support\Collection<int, array{company_id:int, completed_at:Carbon, nota:float, area:?string, imputada:bool}>
      */
     private function notasNpsDoUsuarioPorResposta(User $user, \Illuminate\Support\Collection $companyIds, Carbon $desde): \Illuminate\Support\Collection
     {
@@ -776,6 +786,8 @@ class PerformanceController extends Controller
             'completed_at' => Carbon::parse($row->completed_at),
             'nota'         => round((float) $row->average_score, 2),
             'area'         => (string) $row->service_setor,
+            // Fase 116 — uniformiza o shape com o ramo (C) (nota imputada).
+            'imputada'     => false,
         ]);
 
         // ── (B) Legado — só as respostas que o snapshot não cobriu ───────────
@@ -841,6 +853,34 @@ class PerformanceController extends Controller
                 // Legado não tem serviço → sem rótulo de área (o front omite o badge).
                 'nota'         => round((float) $nota, 2),
                 'area'         => null,
+                // Fase 116 — uniformiza o shape com o ramo (C) (nota imputada).
+                'imputada'     => false,
+            ]);
+        }
+
+        // ── (C) Fase 116 (NPSFLOOR) — notas imputadas: NPS efetivamente ──────
+        // disparado e NUNCA respondido conta nota 1 (D4, piso da escala 1-5).
+        // Delega 100% para NpsImputationService — nenhuma lógica de resolução
+        // de responsável/competência/invalidação é reimplementada aqui (mesmo
+        // ponto de extensão já usado por DesempenhoScoreService::notasImputadas,
+        // Plan 116-02). Disjunção por construção: (A)/(B) exigem
+        // `s.status = 'completed'`; este ramo só existe para survey que NUNCA
+        // chegou a completed — nenhum survey conta duas vezes.
+        $imputadas = app(\App\Services\Nps\NpsImputationService::class)
+            ->notasDoUsuario($user, $desde, now(), null)
+            ->filter(fn ($nota) => $companyIds->contains((int) $nota->company_id));
+
+        foreach ($imputadas as $nota) {
+            $linhas->push([
+                'company_id'   => (int) $nota->company_id,
+                // Linha imputada não tem completed_at (nunca houve resposta) —
+                // usa a data SINTÉTICA `competencia_nps->endOfMonth()` (fim do
+                // mês do disparo) para ordenação/janela de 60d/heatmap, igual
+                // às demais notas.
+                'completed_at' => $nota->competencia_nps->copy()->endOfMonth(),
+                'nota'         => (float) $nota->nota,
+                'area'         => $nota->service_setor,
+                'imputada'     => true,
             ]);
         }
 
