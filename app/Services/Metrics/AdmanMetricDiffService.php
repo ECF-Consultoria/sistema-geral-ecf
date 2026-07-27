@@ -116,7 +116,10 @@ class AdmanMetricDiffService
         // (caso Utilarshop) — o valor muda, então o bump invalida o cache v2.
         // v4 (2026-07-24): variação de margem volta ao .diff nativo da Adman
         // (sem cálculo local) — o bump invalida os valores locais errados em cache.
-        $cacheKey = "adman:diff:v4:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        // v5 (2026-07-27): faturamento cai pro `billing` do endpoint detalhado
+        // quando o /performance dá 500 (caso Jf Auto) — o bump invalida as entradas
+        // "sem fonte" antigas dessas empresas.
+        $cacheKey = "adman:diff:v5:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
 
         // Memo do request: devolve o resultado real já computado nesta passada
         // (evita reler um ERROR_SENTINEL gravado pela 1ª de duas chamadas ao
@@ -149,6 +152,20 @@ class AdmanMetricDiffService
         $accountMetrics = $this->admanService->fetchAccountMetricsDetailedCached(
             $custId, $periodo['current_start'], $periodo['current_end'], 1440, false, $marketplace
         );
+
+        // Fallback NATIVO de faturamento (2026-07-27): a Adman devolve HTTP 500 no
+        // endpoint /performance/{custId} de algumas empresas (ex.: Jf Auto Câmbio),
+        // zerando o revenue → "sem fonte" na carteira MESMO com o dado existindo na
+        // Adman. O endpoint detalhado /accounts/{custId}/metrics RESPONDE nesses
+        // casos e traz `billing` = o MESMO {value,diff} do grossBilling do
+        // /performance (confirmado idêntico em SINVAL 127.593,78/+0,3% e Relojoaria
+        // Wenus 3.242.727,12/+13,86%). Usa `billing` como fonte quando o /performance
+        // não veio — segue sendo valor NATIVO da Adman (sem cálculo local). Só cai
+        // pro fallback local (SUM adman_metrics) se AMBOS os endpoints falharem.
+        if ($revenueAdman === null && isset($accountMetrics['billing'])) {
+            $revenueAdman = $accountMetrics['billing'];
+        }
+
         $marginPctAdman = $accountMetrics['percentageMargin'] ?? null;
         // MARGEM DE CONTRIBUIÇÃO R$ = `liquidMargin` do endpoint detalhado — o
         // MESMO campo/valor da UI da Adman (fix 2026-07-22, caso Utilarshop:

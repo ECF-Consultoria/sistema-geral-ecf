@@ -661,4 +661,36 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertNull($resultado['metrics']['revenue']['diff_pct']);
         $this->assertNull($resultado['metrics']['revenue']['value']);
     }
+
+    // ─────────────── 2026-07-27 — fallback de faturamento via billing (caso Jf Auto) ───────────────
+
+    /**
+     * CENÁRIO (o) — FALLBACK NATIVO DE FATURAMENTO via `billing` do endpoint
+     * detalhado (fix 2026-07-27, caso Jf Auto Câmbio): a Adman devolve HTTP 500
+     * no /performance/{custId} de algumas empresas, o que zerava o `revenue`
+     * (→ "sem fonte" na carteira) MESMO com o dado existindo na Adman. O
+     * endpoint detalhado /accounts/{id}/metrics RESPONDE nesses casos e traz
+     * `billing` = o MESMO {value,diff} do grossBilling. O revenue deve vir de
+     * `billing` (nativo, sem cálculo local) — em janela-igual usa o `.diff`
+     * nativo (`adman_diff`), NUNCA fica null.
+     */
+    public function test_o_faturamento_cai_para_billing_quando_performance_da_500(): void
+    {
+        // /performance 500 (caso Jf Auto); detalhado OK com billing nativo.
+        // 500 (não 429) não aciona o retry-com-sleep do fetchPerformance.
+        Http::fake([
+            '*/performance/*'       => Http::response([], 500),
+            '*/accounts/*/metrics*' => Http::response($this->respostaAccountMetrics(), 200),
+        ]);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        // revenue veio do `billing` do detalhado (mesmo value+diff do grossBilling).
+        $this->assertSame(530797.73, $resultado['metrics']['revenue']['value']);
+        $this->assertSame(101.24, $resultado['metrics']['revenue']['diff_pct']);
+        $this->assertSame('adman_diff', $resultado['metrics']['revenue']['diff_source']);
+        // NÃO é 'missing' — a empresa tem fonte de faturamento nativa.
+        $this->assertNotSame('missing', $resultado['quality']['status']);
+    }
 }
