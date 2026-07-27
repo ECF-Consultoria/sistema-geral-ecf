@@ -46,6 +46,8 @@ Definida em 2026-07-27 a partir do plano canônico `plano-implementacao-desempen
 
 **Decisão ainda em aberto:** tratamento de empresa sem baseline (o plano §3.4 propõe propagar `partial` ao profissional, o que contradiz `DESEMP-06` e a trava da Fase 109). Resolver no discuss-phase da Fase 120.
 
+**Progresso da v21.0:** Fase 117 com contexto capturado em 2026-07-27 (`117-CONTEXT.md`, 12 decisões: D-01..D-08 do usuário, D-09..D-12 por discrição do Claude). Pronta para `/gsd:plan-phase 117`. Nenhuma outra fase da v21.0 iniciada.
+
 **Prazo externo NÃO coberto:** esta milestone é a opção (A) da pendência `.planning/todos/pending/metrica-margem-bonus-fragil.md`, cujo prazo é **31/07 14h BRT** (freeze oficial de junho via `desempenho:consolidar-mes`). A v21.0 não fica pronta a tempo — o que fazer com o freeze de junho é decisão separada e imediata.
 
 ## Performance Metrics
