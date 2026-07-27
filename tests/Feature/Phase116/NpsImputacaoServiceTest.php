@@ -14,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\Test;
 use Tests\Feature\V16\CriaCenarioResponsaveis;
@@ -527,6 +528,32 @@ class NpsImputacaoServiceTest extends TestCase
         );
 
         $this->assertCount(1, $notas, 'notasDoUsuario deve deduplicar por (survey_id, role)');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Schema — tabela nps_imputed_assignments tem as 13 colunas do contrato
+    // (Tarefa 2 do 116-01-PLAN.md)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_schema_da_tabela_imputada(): void
+    {
+        $this->assertTrue(Schema::hasTable('nps_imputed_assignments'));
+        $this->assertTrue(Schema::hasColumns('nps_imputed_assignments', [
+            'id',
+            'survey_id',
+            'company_id',
+            'servico_id',
+            'service_setor',
+            'dimensao',
+            'role',
+            'user_id',
+            'competencia_nps',
+            'nota',
+            'status',
+            'locked_at',
+            'created_at',
+        ]));
     }
 
     // ═══════════════════════════════════════════════════════════════════
