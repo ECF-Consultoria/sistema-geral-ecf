@@ -373,22 +373,29 @@ $janelaFechada = now()->startOfDay()->gte($mesReferencia->copy()->endOfMonth()->
 
 **Nenhuma outra claim deste documento foi tagueada `[ASSUMED]`** — todo o resto (schema das migrations, comportamento dos services/controllers, testes existentes, cache key versão v11) foi confirmado lendo o código-fonte diretamente nesta sessão.
 
-## Open Questions
+## Open Questions (RESOLVIDAS)
+
+> As 3 perguntas abaixo foram levadas ao usuário e **resolvidas** em `116-CONTEXT.md`
+> (decisões D5, D6 e D7, tomadas em 2026-07-27). Ficam registradas aqui com a resolução
+> anexada, para rastreabilidade — nenhuma delas está em aberto.
 
 1. **A área NPS (não-bônus) deve respeitar `bonus_invalidacoes` também?**
    - What we know: hoje só o Desempenho respeita; a área NPS tem seu PRÓPRIO mecanismo de invalidação manual (`NpsResponse.invalidated_at`), conceitualmente diferente.
    - What's unclear: o CONTEXT fala de "empresa invalidada" (C2) no contexto do bônus, mas a entrega 3 do CONTEXT diz "mesma regra em qualquer outro consumidor" — não fica claro se isso inclui respeitar `bonus_invalidacoes` na área NPS também, ou só a invalidação manual de resposta (que já é respeitada lá).
-   - Recommendation: perguntar ao usuário no discuss-phase, ou o plano assume "não" (área NPS mostra a nota 1 mesmo para empresa bonus-invalidada, pois ela reflete a realidade operacional do envio, não a elegibilidade financeira) e documenta a decisão explicitamente.
+   - **RESOLVIDA — D5 (`116-CONTEXT.md`):** o usuário decidiu o OPOSTO da recomendação abaixo: empresa invalidada na competência (`bonus_invalidacoes`) **não puxa nota 1 nem no bônus nem na área NPS**. Isso adiciona o filtro de invalidação por competência à área NPS — capacidade NOVA, planejada e testada no plano 116-03.
+   - Recommendation (histórica): perguntar ao usuário no discuss-phase, ou o plano assume "não" (área NPS mostra a nota 1 mesmo para empresa bonus-invalidada, pois ela reflete a realidade operacional do envio, não a elegibilidade financeira) e documenta a decisão explicitamente.
 
 2. **Surveys manuais (sem `month_reference`, criados via `NpsController::generate()`) entram na regra?**
    - What we know: `NpsDispararMensal` sempre popula `month_reference`; `NpsController::generate()` (disparo manual, `auto_generated=false`) pode ou não popular — não confirmado nesta sessão com leitura direta do método `generate()`.
    - What's unclear: se um survey manual nunca é respondido, ele deveria virar nota 1 também? A resposta lógica é "sim" (D3 fala em "efetivamente disparado", sem distinguir manual/automático), mas o agrupamento por mês desses surveys usa `created_at` como fallback — o plano precisa confirmar que a lógica de imputação também cobre esse fallback.
-   - Recommendation: o plano deve ler `NpsController::generate()` (não lido em profundidade nesta sessão) antes de finalizar o grão da tabela de imputação.
+   - **RESOLVIDA — D6 (`116-CONTEXT.md`):** sim, disparo manual segue a mesma regra (regra única, sem brecha de "escolher o canal que não conta"). O fallback `created_at` para surveys sem `month_reference` é coberto pela imputação (plano 116-01, `competencia_nps`) e pelo gancho em `NpsController::generate()` (plano 116-06).
+   - Recommendation (histórica): o plano deve ler `NpsController::generate()` (não lido em profundidade nesta sessão) antes de finalizar o grão da tabela de imputação.
 
 3. **A dimensão "empresa" (que não gera `NpsScoreAssignment` de pessoa hoje) deve gerar imputação?**
    - What we know: `NpsSnapshotService::DIMENSAO_ROLE` explicitamente NÃO inclui a dimensão `empresa` (só analista/estrategista viram assignment de pessoa); a dimensão empresa só existe em `nps_response_scores` e é consumida pelos `$cards['empresa']` da área NPS.
    - What's unclear: se um survey não respondido deve gerar uma "nota empresa = 1" para os cards da área NPS mesmo sem gerar assignment de pessoa nenhuma.
-   - Recommendation: sim, provavelmente — os `$cards` da área NPS mostram 3 médias (estrategista/analista/empresa) e a regra do usuário fala em "área NPS" de forma ampla; a tabela de imputação deve ter uma linha para a dimensão empresa também (sem `role`/`user_id`, só para fins de card agregado), ou um mecanismo equivalente.
+   - **RESOLVIDA — D7 (`116-CONTEXT.md`):** sim. A dimensão `empresa` também recebe a nota 1, com linha própria na tabela de imputação (sem `role`/`user_id`) — plano 116-01 (grão) + plano 116-03 (cards).
+   - Recommendation (histórica): sim, provavelmente — os `$cards` da área NPS mostram 3 médias (estrategista/analista/empresa) e a regra do usuário fala em "área NPS" de forma ampla; a tabela de imputação deve ter uma linha para a dimensão empresa também (sem `role`/`user_id`, só para fins de card agregado), ou um mecanismo equivalente.
 
 ## Environment Availability
 
