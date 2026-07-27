@@ -23,7 +23,10 @@ Esta fase entrega **duas coisas, e nada além disso**:
 
 - **D-01 · A métrica de aprovação é "zero flip de nota", não tolerância em pp.** O probe reprova se **qualquer empresa da amostra mudar de faixa da régua** entre duas leituras. Justificativa: variação de 0,03 pp longe de uma fronteira é irrelevante; 0,03 pp em cima da fronteira `+1` muda a nota de 3 para 4 e muda quanto se paga. Fronteiras da régua (em pp): `−5`, `−2`, `+1`, `+4`.
 
-- **D-02 · Mínimo de 5 leituras espalhadas em 24-48h, com pelo menos uma proposital durante sync concorrente.** O modo de falha conhecido é rate-limit 429 por concorrência com `[MLB SyncTodasVendas]` / `[MLB SyncPub]` na mesma API-key — **não** aparece em chamadas seguidas na mesma janela. Cronograma alvo: madrugada (API ociosa), manhã durante o sync Adman, ~11:20 BRT (`adman:sync-margem`), tarde em pico, e uma repetição +24h.
+- **D-02 · Mínimo de 5 leituras espalhadas em 24-48h, com pelo menos uma proposital durante a janela de contenção real.**
+  **⚠️ CORRIGIDO em 2026-07-27 após a pesquisa (a premissa original estava errada).** A formulação inicial mandava mirar em `[MLB SyncTodasVendas]` / `[MLB SyncPub]`, mas a leitura de `routes/console.php` provou que **esses dois NÃO são agendados por cron — são disparados manualmente por humano**. Mirar neles tornaria a janela não-determinística e o probe irreprodutível.
+  **Janela determinística real: 11:00-12:00 BRT**, onde se acumulam `adman:sync` (11:00), `ml:sync` (11:05), `shopee:sync` (11:15), `shopee:sync-ads` (11:30), `shopee:warm-diff` (11:35), `adman:warm-diff` (11:40), `calculate-goal-results` (11:45) e `adman:sync-faturamento` — todos batendo na mesma API-key.
+  **Cronograma alvo:** madrugada (API ociosa) · **uma leitura dentro de 11:00-12:00 BRT (obrigatória)** · tarde em pico de uso · e uma repetição +24h cobrindo de novo a janela das 11h.
   **Este desenho existe especificamente para não repetir o erro de 23/07**, quando "3 chamadas deram valores idênticos" concluiu *"o dado não flutua"* e 4 dias depois virou revert.
 
 - **D-03 · Cobertura mínima de `prev` não-nulo: 80%.** Reusa `AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA = 0.8` (linha 70) em vez de inventar patamar novo — evita dois conceitos concorrentes de "cobertura suficiente" dentro do mesmo serviço. Abaixo disso o gate reprova, mesmo que os valores presentes sejam estáveis.
@@ -50,6 +53,9 @@ Esta fase entrega **duas coisas, e nada além disso**:
   ⚠️ Nota de coerência com a memória do projeto: o resultado do gate deve ser conferido **por reconsulta ao dado persistido**, nunca por leitura de stdout — mesmo padrão que o gate `FIXMARG-03` já exige.
 
 - **D-11 · O probe roda na VPS, contra a Adman real.** Medir estabilidade contra fixture ou ambiente local não significa nada — o que se quer medir é o comportamento da API sob contenção real.
+
+- **D-11b · O probe DEVE contornar o cache, senão mede o cache e o gate vira teatro.** (Adicionado em 2026-07-27 a partir da pesquisa — era o risco nº 1 da fase.) `AdmanMetricDiffService::compute()` cacheia por dia BRT com TTL de até 1440 min e ainda tem memo por request: chamá-lo 5 vezes devolveria **a mesma resposta cacheada** nas 5 leituras, reproduzindo exatamente o erro metodológico de 23/07 com aparência de rigor.
+  **Solução, já existente no código:** chamar `AdmanService::fetchAccountMetricsDetailedCached(..., forceRefresh: true)` (assinatura em `app/Services/AdmanService.php:805`), que ignora a leitura do cache mas reaquece com o valor fresco. **Não** usar `Cache::flush()` nem desativar o cache globalmente — seria destrutivo em produção e afetaria o resto do sistema.
 
 - **D-12 · Se o gate REPROVAR, a fase ainda entrega o shape.** `prev_value`/`diff_pp` são aditivos e não quebram ninguém, então ficam. O que fica **bloqueado** é a Fase 119 consumir `diff_pp` para nota. Deliberadamente **não** embutir aqui nem o congelamento de `prev` em snapshot nem a volta ao cálculo local: são fases próprias, e a escolha entre elas depende de *como* o `prev` falhou. Reprovando, o relatório volta ao usuário para decisão.
 
