@@ -295,12 +295,16 @@ class NpsFloorDashboardsTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
 
-        $analista = User::factory()->create(['role' => 'consultor', 'active' => true]);
-        $empresa  = Company::factory()->create(['active' => true]);
+        $analista    = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $empresa     = Company::factory()->create(['active' => true]);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', null);
 
-        // Ranking não filtra por modelo — não precisa ser principal.
-        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], []);
+        // Ranking não filtra por modelo — não precisa ser principal. A
+        // imputação de dimensão analista/estrategista exige serviço coberto
+        // com contrato ATIVO (mesma régua de responsavelDoServicoOuConsolidado).
+        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
 
         $this->criarSurveyNaoRespondido($empresa, $template, [
             'month_reference' => now()->copy()->startOfMonth()->toDateString(),
@@ -324,11 +328,19 @@ class NpsFloorDashboardsTest extends TestCase
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
 
-        $analista = User::factory()->create(['role' => 'consultor', 'active' => true]);
-        $empresa  = Company::factory()->create(['active' => true]);
+        $analista    = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $empresa     = Company::factory()->create(['active' => true]);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', null);
 
-        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], []);
+        // Widget do dashboard do usuário só olha o modelo PRINCIPAL (mesma
+        // restrição do widget admin) — template precisa ser is_default=true.
+        $template = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ANALISTA],
+            [$servicoPerf],
+            principal: true,
+        );
 
         $this->responder($empresa, $template, 5);
         $this->criarSurveyNaoRespondido($empresa, $template, [
