@@ -279,6 +279,11 @@ class NpsImputationService
             ->map(fn (NpsImputedAssignment $linha) => (object) [
                 'survey_id'       => $linha->survey_id,
                 'company_id'      => $linha->company_id,
+                // Fase 118 (D-03) — precisa saber de qual SERVIÇO é a nota
+                // para resolver "survey do serviço do vínculo". A coluna já
+                // é nativa da tabela (C-03 do 118-CONTEXT.md); o map só não
+                // a expunha. Aditivo — nenhum consumidor existente quebra.
+                'servico_id'      => $linha->servico_id,
                 'role'            => $linha->role,
                 'service_setor'   => $linha->service_setor,
                 'competencia_nps' => $linha->competencia_nps,
