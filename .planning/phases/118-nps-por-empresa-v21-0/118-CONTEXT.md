@@ -43,6 +43,32 @@ Esta fase entrega **um serviço de leitura**: a nota de NPS de um profissional a
 
   **Onde a regra vive:** o "1" de empresa sem disparo **não** é materializado em `nps_imputed_assignments`. É um fallback de leitura, calculado neste serviço novo quando a empresa está na carteira e não tem nota por nenhum dos três ramos. O planner deve resistir à tentação de materializar isso na tabela — materializar contradiria a D3 da Fase 116 no nível do dado, e a reversão é de leitura para o bônus, não de semântica de imputação.
 
+  ✅ **CORREÇÃO APÓS A PESQUISA (2026-07-28) — a D-04 é MUITO menos disruptiva do que a formulação original sugeria.** Apurado lendo `tests/Feature/Phase116/NpsFloorRegressaoTest.php:465-468`:
+
+  > ```php
+  > // 2) Bônus — sentinela 0.0 (DESEMP-03, "sem resposta força nps=0").
+  > $this->assertSame(0.0, $this->invocarComputeNpsMedio(...));
+  > ```
+
+  `computeNpsMedio()` devolve `0.0` quando não há nota alguma, e o score **clampa `0.0` para `1.0` ponto**. Ou seja: **no bônus, "nenhum NPS" já vale 1 hoje**, no nível do profissional. A D3 da Fase 116 proibia *materializar* imputação sem disparo e travava as *telas* no sentinela — nunca tocou nessa semântica do bônus.
+
+  Portanto a D-04 **estende ao nível da empresa uma regra que o bônus já pratica no nível do profissional**. Não materializa linha, não muda tela, não contradiz a asserção 2 do teste 7. O que ela decide de fato é: empresa sem NPS **permanece no denominador** com nota 1, em vez de sair dele — que é a alternativa que o `null` teria produzido.
+
+  **Consequência para o planner:** o alarme de "reversão de decisão travada" está rebaixado. O que continua valendo é o `<risks>` abaixo — a divergência com as **telas** (área NPS, carteira, ranking, página da empresa, meta), que o teste 7 trava em `null`/`0` e que esta fase **não deve** alterar.
+
+### Correções à pesquisa (verificadas no código — PREVALECEM sobre o `118-RESEARCH.md`)
+
+- **C-01 · NÃO extrair helper compartilhado para a checagem "M+1 já fechou?".** O `118-RESEARCH.md` recomenda unificar `computeNpsWindow()` (`gte`) e `NpsImputationService::materializar()` (`gt`). **A divergência é DELIBERADA e está documentada no código** (`app/Services/Nps/NpsImputationService.php:121-127`):
+  > *"Divergência DELIBERADA do padrão irmão `DesempenhoScoreService::computeNpsWindow` (que usa `gte`): aqui o link do NPS vale até 23:59:59 do último dia do mês (`expires_at = endOfMonth`), então usar `gte` marcaria definitivo às 00:00 do último dia enquanto o cliente ainda tem 24h de prazo."*
+
+  Unificar reintroduziria o bug de congelar a nota 1 com o cliente ainda dentro do prazo. **O serviço novo deve reusar `computeNpsWindow()` (a régua de LEITURA, `gte`), nunca a de materialização.**
+
+- **C-02 · O teste de coerência já tem 7 métodos, não 6.** O 7º é `test_cenario_espelho_sem_survey_preserva_sentinela_em_todos_consumidores` (`tests/Feature/Phase116/NpsFloorRegressaoTest.php:455`), e é exatamente o que trava a D3 nas telas. Ele **não quebra** nesta fase (aditiva), e a asserção 2 dele continua válida (ver correção na D-04). O plano deve **acrescentar** cobertura para o call-site novo sem tocar nas 7 asserções existentes.
+
+- **C-03 · `company_id` e `servico_id` são colunas nativas** de `nps_score_assignments` e `nps_imputed_assignments` (migration `2026_07_14_200001_create_nps_snapshot_tables.php`, linhas 59, 113, 160, 166). A resolução serviço→survey da D-03 **não precisa de JOIN com `nps_templates`** — o dado está na própria linha. Isso simplifica bastante a D-03.
+
+- **C-04 · Cuidado com `MAX()` no `groupBy` do ramo 1.** O `selectRaw` atual agrupa por `(nps_response_id, role)` e usa `MAX(average_score)`. Acrescentar `servico_id` via `MAX(servico_id)` escolheria um serviço arbitrário e descartaria em silêncio o dado que a D-03 precisa. A pesquisa recomenda mover a dedupe para PHP (`Collection::groupBy()`) no serviço novo — recomendação aceita, **desde que a dedupe original em `notasPorAtribuicao()` fique intocada** (NPSE-02, e a fase é aditiva).
+
 ### Claude's Discretion
 
 - **D-05 · Assinatura e local do serviço.** `NpsPorEmpresaService::notasNpsPorEmpresa()` conforme NPSE-01, em `app/Services/Desempenho/` ou `app/Services/Nps/` — o planner escolhe pelo que for coerente com os vizinhos. O retorno deve permitir auditar a origem (quantas notas, de qual ramo, qual dimensão, qual survey) — sem isso a Fase 121 não consegue explicar deltas.
