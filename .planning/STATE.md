@@ -47,7 +47,7 @@ Definida em 2026-07-27 a partir do plano canônico `plano-implementacao-desempen
 
 **Decisão ainda em aberto:** tratamento de empresa sem baseline (o plano §3.4 propõe propagar `partial` ao profissional, o que contradiz `DESEMP-06` e a trava da Fase 109). Resolver no discuss-phase da Fase 120.
 
-**Progresso da v21.0:** Fase 117 **PLANEJADA** em 2026-07-27 — pronta para `/gsd:execute-phase 117`. Nenhuma outra fase da v21.0 iniciada.
+**Progresso da v21.0:** Fase 117 **PLANEJADA** em 2026-07-27 — pronta para `/gsd:execute-phase 117`. **Plano 117-01 EXECUTADO em 2026-07-28** (commits `3137814a`/`00dcfdf9`): `AdmanMetricDiffService`/`ShopeeMetricDiffService` expõem `prev_value`/`diff_pp` (MPP-01/02/03/05/06 completos), cache `v6`/`v2`, zero regressão em consumidores (19 falhas pré-existentes auditadas e documentadas em `deferred-items.md`, não causadas por esta fase). **MPP-04 (probe, Plano 117-02) segue pendente** — gate humano de 24-48h, não executável nesta sessão. Nenhuma outra fase da v21.0 iniciada.
 
 Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-09..D-12 por discrição, D-11b vinda da pesquisa), `117-RESEARCH.md`, `117-PATTERNS.md`, `117-VALIDATION.md` (approved, nyquist_compliant), `117-01-PLAN.md` (shape aditivo, MPP-01/02/03/05/06) e `117-02-PLAN.md` (probe, MPP-04). Pipeline completo rodado: researcher → pattern-mapper → planner → plan-checker.
 

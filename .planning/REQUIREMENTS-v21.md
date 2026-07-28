@@ -39,12 +39,12 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### MPP — Margem em pontos percentuais (Fase 117)
 
-- [ ] **MPP-01**: `AdmanMetricDiffService` expõe `prev_value` e `diff_pp` no shape de cada métrica, preservando `value`, `diff_pct` e `diff_source` inalterados para consumidores existentes
-- [ ] **MPP-02**: `contribution_margin_pct.diff_pp = value − prev_value`, calculado **apenas** quando `comparison_mode === 'previous_equal_length_window'` e ambos são numéricos; `null` em qualquer outro caso
-- [ ] **MPP-03**: Cache key `adman:diff:v5` → `v6` (o shape mudou); resultado velho não é servido para o shape novo
+- [x] **MPP-01**: `AdmanMetricDiffService` expõe `prev_value` e `diff_pp` no shape de cada métrica, preservando `value`, `diff_pct` e `diff_source` inalterados para consumidores existentes
+- [x] **MPP-02**: `contribution_margin_pct.diff_pp = value − prev_value`, calculado **apenas** quando `comparison_mode === 'previous_equal_length_window'` e ambos são numéricos; `null` em qualquer outro caso
+- [x] **MPP-03**: Cache key `adman:diff:v5` → `v6` (o shape mudou); resultado velho não é servido para o shape novo
 - [ ] **MPP-04**: Existe um probe de estabilidade de `percentageMargin.prev` — N leituras da mesma empresa em competência fechada, com relatório de variância — e o resultado é apresentado ao usuário antes de qualquer fase amarrar pagamento em `diff_pp`
-- [ ] **MPP-05**: `ShopeeMetricDiffService` retorna `diff_pp = null` (Shopee não tem margem), sem quebrar o placeholder 1.0 da Fase 109
-- [ ] **MPP-06**: Fixture conhecida comprova o cálculo: `value=27,47` e `prev=24,08` produzem `diff_pp=3,39`, e `diff_pct` continua `14,09`
+- [x] **MPP-05**: `ShopeeMetricDiffService` retorna `diff_pp = null` (Shopee não tem margem), sem quebrar o placeholder 1.0 da Fase 109
+- [x] **MPP-06**: Fixture conhecida comprova o cálculo: `value=27,47` e `prev=24,08` produzem `diff_pp=3,39`, e `diff_pct` continua `14,09`
 
 ### NPSE — NPS por empresa (Fase 118)
 
@@ -126,12 +126,12 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 | REQ-ID | Phase | Status |
 |--------|-------|--------|
-| MPP-01 | Fase 117 | Pending |
-| MPP-02 | Fase 117 | Pending |
-| MPP-03 | Fase 117 | Pending |
+| MPP-01 | Fase 117 | Complete |
+| MPP-02 | Fase 117 | Complete |
+| MPP-03 | Fase 117 | Complete |
 | MPP-04 | Fase 117 | Pending |
-| MPP-05 | Fase 117 | Pending |
-| MPP-06 | Fase 117 | Pending |
+| MPP-05 | Fase 117 | Complete |
+| MPP-06 | Fase 117 | Complete |
 | NPSE-01 | Fase 118 | Pending |
 | NPSE-02 | Fase 118 | Pending |
 | NPSE-03 | Fase 118 | Pending |
