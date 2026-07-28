@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/Components/ui/table';
 import { useForm, router, usePage } from '@inertiajs/react';
 import { useState, useRef, useCallback } from 'react';
-import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star, Camera, ZoomIn } from 'lucide-react';
+import { Plus, Pencil, Trash2, Users, Briefcase, Shield, AlertTriangle, RotateCcw, X, Star, Camera, ZoomIn, Code2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import FormErrorBanner from '@/Components/FormErrorBanner';
 
@@ -147,11 +147,14 @@ function AvatarCropper({ src, onConfirm, onCancel }) {
 const initialForm = () => ({
     name: '', email: '', password: '', password_confirmation: '',
     is_admin: false,
+    is_dev: false,  // cargo Dev — vínculo com o setor Desenvolvimento (ver toggle abaixo)
     phone: '', active: true,
     vinculos: [],   // [{ setor_id, cargo_id, is_principal }]
 });
 
 export default function UsersIndex({ users, deletedUsers = [], setoresDisponiveis = [] }) {
+    const { auth } = usePage().props;
+    const meuId = auth?.user?.id ?? null;
     const [search, setSearch] = useState('');
     const [open, setOpen] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -228,6 +231,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
             password: '',
             password_confirmation: '',
             is_admin: !!u.is_admin,
+            is_dev:   !!u.is_dev,
             phone:    u.phone || '',
             active:   u.active,
             vinculos: (u.setores || []).map(s => ({
@@ -273,6 +277,7 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
             name:     data.name,
             email:    data.email,
             is_admin: data.is_admin,
+            is_dev:   data.is_dev,
             phone:    data.phone,
             active:   data.active,
             vinculos: data.is_admin ? [] : data.vinculos,
@@ -345,6 +350,13 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                         </TableCell>
                                         <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                                         <TableCell>
+                                            <div className="flex flex-wrap items-center gap-1">
+                                            {/* O cargo Dev é ortogonal ao resto — sai como selo próprio. */}
+                                            {u.is_dev && (
+                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-ecf-yellow/15 text-ecf-yellow border border-ecf-yellow/30">
+                                                    <Code2 size={11} /> Dev
+                                                </span>
+                                            )}
                                             {u.is_admin ? (
                                                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
                                                     <Shield size={11} /> Admin
@@ -361,9 +373,10 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                                         </span>
                                                     ))}
                                                 </div>
-                                            ) : (
+                                            ) : !u.is_dev && (
                                                 <span className="text-white/30 italic text-sm">—</span>
                                             )}
+                                            </div>
                                         </TableCell>
                                         <TableCell className="text-sm">{u.companies_count}</TableCell>
                                         <TableCell>
@@ -466,6 +479,50 @@ export default function UsersIndex({ users, deletedUsers = [], setoresDisponivei
                                 <Shield size={13} className="inline mr-1.5" /> Admin
                             </button>
                         </div>
+
+                        {/*
+                          Cargo Dev. Fica aqui (e não no bloco "Setores e cargos") porque marcar
+                          Admin esconde aquele bloco e força um vínculo único — um cargo escolhido
+                          no dropdown não sobreviveria ao salvar. Por baixo grava o vínculo real
+                          com o setor Desenvolvimento; o servidor mantém users.is_dev em sincronia.
+                        */}
+                        {(() => {
+                            const souEu = editing?.id === meuId;
+                            const travado = souEu && data.is_dev;   // anti-lockout: não removo o meu próprio Dev
+                            return (
+                                <button
+                                    type="button"
+                                    onClick={() => !travado && setData('is_dev', !data.is_dev)}
+                                    disabled={travado}
+                                    title={travado ? 'Você não pode remover o seu próprio cargo Dev' : undefined}
+                                    className={cn(
+                                        'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg border text-left transition-colors',
+                                        data.is_dev
+                                            ? 'bg-ecf-yellow/10 border-ecf-yellow/40'
+                                            : 'bg-white/[0.02] border-white/[0.08] hover:border-white/20',
+                                        travado ? 'cursor-not-allowed' : '',
+                                    )}
+                                >
+                                    <span className={cn(
+                                        'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+                                        data.is_dev ? 'bg-ecf-yellow/70' : 'bg-white/15',
+                                    )}>
+                                        <span className={cn(
+                                            'inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform',
+                                            data.is_dev ? 'translate-x-[19px]' : 'translate-x-[3px]',
+                                        )} />
+                                    </span>
+                                    <span className="min-w-0">
+                                        <span className={cn('block text-sm font-semibold', data.is_dev ? 'text-ecf-yellow' : 'text-white/70')}>
+                                            Dev
+                                        </span>
+                                        <span className="block text-[11px] text-white/40">
+                                            Vê todos os módulos do menu, inclusive os ocultos, e acessa o Controle Dev.
+                                        </span>
+                                    </span>
+                                </button>
+                            );
+                        })()}
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="col-span-2 space-y-1.5">

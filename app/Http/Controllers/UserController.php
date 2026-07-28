@@ -44,6 +44,8 @@ class UserController extends Controller
                 'avatar'          => $u->avatar_url,
                 'role'            => $u->role,
                 'is_admin'        => $u->role === 'admin',
+                // Cargo Dev (quick 260727-mx3) — alimenta o toggle "Dev" do form.
+                'is_dev'          => (bool) $u->is_dev,
                 'active'          => $u->active,
                 'phone'           => $u->phone,
                 'setores'         => $setores,
@@ -68,8 +70,13 @@ class UserController extends Controller
             ->get()
             ->map($mapUser);
 
-        // Catálogo de setores + cargos pra dropdowns do form
+        // Catálogo de setores + cargos pra dropdowns do form.
+        // O setor Desenvolvimento fica FORA: quem governa aquele vínculo é o
+        // toggle "Dev" (que escreve vínculo + espelho users.is_dev juntos).
+        // Deixá-lo no dropdown criaria um segundo caminho, capaz de gravar o
+        // vínculo sem o espelho — e o Dev não veria os módulos ocultos.
         $setoresDisponiveis = Setor::where('active', true)
+            ->where('slug', '!=', User::SETOR_DEV_SLUG)
             ->with(['cargos' => fn($q) => $q->where('active', true)->orderBy('ordem')->orderBy('nome')])
             ->orderBy('nome')
             ->get()
@@ -105,6 +112,7 @@ class UserController extends Controller
         ]);
 
         $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
+        $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
 
         return back()->with('success', "Usuário {$user->name} criado.");
     }
@@ -129,6 +137,11 @@ class UserController extends Controller
         $user->update($update);
 
         $this->syncVinculos($user, $isAdmin, $data['vinculos'] ?? []);
+        $devMudou = $this->syncCargoDev($request, $user, (bool) ($data['is_dev'] ?? false));
+
+        if ($devMudou === 'auto_lockout_bloqueado') {
+            return back()->with('error', 'Você não pode remover o seu próprio cargo Dev.');
+        }
 
         return back()->with('success', 'Usuário atualizado.');
     }
@@ -256,6 +269,7 @@ class UserController extends Controller
             ],
             'phone'                   => ['nullable', 'string', 'max:20'],
             'is_admin'                => ['boolean'],
+            'is_dev'                  => ['boolean'],
             'active'                  => ['boolean'],
             'vinculos'                => ['array'],
             'vinculos.*.setor_id'     => ['required', 'integer', 'exists:setores,id'],
@@ -340,9 +354,17 @@ class UserController extends Controller
             $vinculos[0]['is_principal'] = true;
         }
 
-        DB::transaction(function () use ($user, $vinculos) {
+        // O vínculo do cargo Dev não trafega neste array (o setor é filtrado do
+        // dropdown — quem o governa é o toggle "Dev"), então precisa ficar fora
+        // da remoção abaixo, senão todo save comum derrubaria o cargo Dev.
+        $setorDevId = Setor::where('slug', User::SETOR_DEV_SLUG)->value('id');
+
+        DB::transaction(function () use ($user, $vinculos, $setorDevId) {
             $setorIdsAtuais = DB::table('user_setores')->where('user_id', $user->id)->pluck('setor_id')->all();
             $setorIdsNovos  = array_column($vinculos, 'setor_id');
+            if ($setorDevId) {
+                $setorIdsNovos[] = $setorDevId;
+            }
 
             // Remove os que sumiram
             $aRemover = array_diff($setorIdsAtuais, $setorIdsNovos);
@@ -367,6 +389,74 @@ class UserController extends Controller
                 );
             }
         });
+    }
+
+    /**
+     * Aplica/remove o cargo Dev (quick 260727-mx3) — vínculo real em
+     * `user_setores` (setor 'desenvolvimento' + cargo 'dev') MAIS o espelho
+     * `users.is_dev`, escritos na mesma transação.
+     *
+     * Roda DEPOIS de `syncVinculos()` de propósito: quando `is_admin`, aquele
+     * método descarta os vínculos enviados e força um único (Administração +
+     * Admin) — o cargo Dev precisa sobreviver a isso. Do outro lado,
+     * `syncVinculos()` já exclui o setor Dev da sua etapa de remoção, porque
+     * esse vínculo não trafega no array `vinculos`.
+     *
+     * Anti-lockout: ninguém remove o próprio cargo Dev, senão perderia o acesso
+     * ao painel /dev/modulos. Qualquer admin pode reconceder aqui pelo /users.
+     *
+     * `is_dev` é guarded (fora de $fillable, Fase 97) → gravado via forceFill.
+     *
+     * Idempotente por desenho (reaplica o estado desejado mesmo quando ele não
+     * mudou): assim um "salvar" comum reconstrói o vínculo caso ele tenha se
+     * perdido, e vínculo e espelho voltam a bater sozinhos.
+     *
+     * @return string|null 'auto_lockout_bloqueado' quando a trava impediu a remoção.
+     */
+    private function syncCargoDev(Request $request, User $user, bool $querDev): ?string
+    {
+        $eraDev = (bool) $user->is_dev;
+
+        if (! $querDev && $eraDev && $user->id === $request->user()?->id) {
+            return 'auto_lockout_bloqueado';
+        }
+
+        $setor = Setor::where('slug', User::SETOR_DEV_SLUG)->first();
+        $cargo = $setor
+            ? Cargo::where('setor_id', $setor->id)->where('slug', User::CARGO_DEV_SLUG)->first()
+            : null;
+
+        // Sem o setor/cargo semeados não há como materializar o vínculo — não
+        // adianta gravar só o espelho, ele deixaria de ser derivado de nada.
+        if (! $setor || ! $cargo) {
+            return null;
+        }
+
+        DB::transaction(function () use ($user, $setor, $cargo, $querDev) {
+            if ($querDev) {
+                DB::table('user_setores')->updateOrInsert(
+                    ['user_id' => $user->id, 'setor_id' => $setor->id],
+                    [
+                        'cargo_id'     => $cargo->id,
+                        // Nunca principal: o setor principal do dev continua
+                        // sendo o setor de negócio dele.
+                        'is_principal' => false,
+                        'assigned_at'  => now(),
+                        'updated_at'   => now(),
+                        'created_at'   => now(),
+                    ],
+                );
+            } else {
+                DB::table('user_setores')
+                    ->where('user_id', $user->id)
+                    ->where('setor_id', $setor->id)
+                    ->delete();
+            }
+
+            $user->forceFill(['is_dev' => $querDev])->save();
+        });
+
+        return null;
     }
 
     public function destroy(Request $request, User $user)

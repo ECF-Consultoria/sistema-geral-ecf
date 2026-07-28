@@ -1,7 +1,7 @@
 import AppLayout from '@/Layouts/AppLayout';
 import { cn } from '@/lib/utils';
-import { router } from '@inertiajs/react';
-import { Eye, EyeOff, Info, Loader2, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { Link, router } from '@inertiajs/react';
+import { Eye, EyeOff, Info, Loader2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 // Rótulos pt-BR dos estágios (espelha App\Support\Modules::STAGES).
@@ -14,17 +14,16 @@ const STAGE_LABEL = {
     arquivado:          'Arquivado',
 };
 
-const ROLE_LABEL = { admin: 'Admin', consultor: 'Consultor', mentor: 'Mentor' };
-
 /**
  * Painel de Controle Dev. Só o Dev (users.is_dev) chega aqui.
- *   1. Cargo Dev  — promove/rebaixa quem é Dev (vê tudo) na hora.
- *   2. Módulos    — oculta/mostra itens do menu para Admin e demais papéis.
- * Ambos refletem no menu de todos no próximo carregamento, sem deploy.
+ * Oculta/mostra itens do menu para Admin e demais papéis — reflete no menu de
+ * todos no próximo carregamento, sem deploy.
+ *
+ * Conceder o cargo Dev saiu daqui (quick 260727-mx3): virou cargo de verdade,
+ * atribuído no cadastro do usuário em Administração → Usuários.
  */
-export default function Modulos({ modulos = [], totalOcultos = 0, usuarios = [], meuId = null }) {
+export default function Modulos({ modulos = [], totalOcultos = 0 }) {
     const [savingId, setSavingId] = useState(null);
-    const [savingUserId, setSavingUserId] = useState(null);
 
     // Agrupa módulos por `grupo` preservando a ordem já ordenada pelo controller.
     const grupos = useMemo(() => {
@@ -45,70 +44,9 @@ export default function Modulos({ modulos = [], totalOcultos = 0, usuarios = [],
         );
     }
 
-    function toggleDev(u) {
-        setSavingUserId(u.id);
-        router.patch(
-            route('dev.modulos.usuario-dev', u.id),
-            { is_dev: !u.is_dev },
-            { preserveScroll: true, onFinish: () => setSavingUserId(null) },
-        );
-    }
-
     return (
         <AppLayout title="Controle Dev">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-10">
-
-                {/* ═══ Cargo Dev ═══ */}
-                <section className="space-y-4">
-                    <div>
-                        <div className="flex items-center gap-2.5">
-                            <ShieldCheck size={22} className="text-ecf-yellow" />
-                            <h1 className="text-xl font-semibold text-white">Cargo Dev</h1>
-                        </div>
-                        <p className="mt-1.5 text-[13px] text-white/50">
-                            Quem é <span className="text-white/70">Dev</span> vê tudo no menu — inclusive o que está oculto — e
-                            acessa este painel. Marque/desmarque na hora.
-                        </p>
-                    </div>
-
-                    <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-ecf-card divide-y divide-white/[0.06]">
-                        {usuarios.map((u) => {
-                            const saving = savingUserId === u.id;
-                            const ehEu = u.id === meuId;
-                            return (
-                                <div key={u.id} className="flex items-center gap-3 px-4 py-3">
-                                    <UserIcon size={16} className={cn('shrink-0', u.is_dev ? 'text-ecf-yellow' : 'text-white/30')} />
-                                    <div className="min-w-0 flex-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="truncate text-[14px] text-white/90">{u.name}</span>
-                                            <span className="rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-white/40">
-                                                {ROLE_LABEL[u.role] ?? u.role}
-                                            </span>
-                                            {ehEu && <span className="text-[10px] text-white/30">(você)</span>}
-                                        </div>
-                                        <div className="mt-0.5 truncate text-[11px] text-white/30">{u.email}</div>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => toggleDev(u)}
-                                        disabled={saving || (u.is_dev && ehEu)}
-                                        className={cn(
-                                            'inline-flex w-[96px] shrink-0 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-                                            u.is_dev
-                                                ? 'bg-ecf-yellow/15 text-ecf-yellow hover:bg-ecf-yellow/25'
-                                                : 'bg-white/[0.05] text-white/50 hover:bg-white/[0.1]',
-                                        )}
-                                        title={u.is_dev && ehEu ? 'Você não pode remover o seu próprio cargo Dev' : (u.is_dev ? 'Clique para remover o cargo Dev' : 'Clique para tornar Dev')}
-                                    >
-                                        {saving ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
-                                        {saving ? '...' : u.is_dev ? 'Dev' : 'Tornar Dev'}
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </section>
 
                 {/* ═══ Visibilidade dos Módulos ═══ */}
                 <section className="space-y-4">
@@ -125,11 +63,19 @@ export default function Modulos({ modulos = [], totalOcultos = 0, usuarios = [],
 
                     <div className="flex items-start gap-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-3">
                         <Info size={16} className="mt-0.5 shrink-0 text-white/40" />
-                        <p className="text-[12.5px] leading-relaxed text-white/55">
-                            Ocultar aqui remove o item <strong className="text-white/75">do menu</strong>. A rota ainda
-                            responde por URL direta (a trava no servidor virá numa próxima etapa). A mudança vale para
-                            todos no próximo carregamento, sem deploy.
-                        </p>
+                        <div className="space-y-1.5">
+                            <p className="text-[12.5px] leading-relaxed text-white/55">
+                                Ocultar aqui remove o item <strong className="text-white/75">do menu</strong>. A rota ainda
+                                responde por URL direta (a trava no servidor virá numa próxima etapa). A mudança vale para
+                                todos no próximo carregamento, sem deploy.
+                            </p>
+                            <p className="text-[12.5px] leading-relaxed text-white/40">
+                                O <strong className="text-white/60">cargo Dev</strong> é concedido em{' '}
+                                <Link href={route('users.index')} className="text-ecf-yellow/80 underline underline-offset-2 hover:text-ecf-yellow">
+                                    Administração → Usuários
+                                </Link>, no cadastro de cada pessoa.
+                            </p>
+                        </div>
                     </div>
 
                     <div className="text-[12px] text-white/45">

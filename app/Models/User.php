@@ -62,16 +62,43 @@ class User extends Authenticatable
     public function isConsultor(): bool { return $this->role === 'consultor'; }
     public function isMentor(): bool   { return $this->role === 'mentor'; }
 
+    /** Setor/cargo que materializam o cargo Dev (quick 260727-mx3). */
+    public const SETOR_DEV_SLUG = 'desenvolvimento';
+    public const CARGO_DEV_SLUG = 'dev';
+
     /**
      * Capability "Admin Dev" (Phase 97, DEC-1) — eixo ORTOGONAL à `role`.
-     * Deriva exclusivamente de `users.is_dev` (coluna server-side), NUNCA de
-     * `role='admin'`. Deliberadamente NÃO roteada por `hasPermission()` (que
-     * curto-circuita admin) — módulos não-produção devem sumir inclusive
-     * para admins de negócio; só o time de dev os enxerga.
+     * NUNCA deriva de `role='admin'`, e deliberadamente NÃO é roteada por
+     * `hasPermission()` (que curto-circuita admin) — módulos não-produção devem
+     * sumir inclusive para admins de negócio; só o time de dev os enxerga.
+     *
+     * Quem CONCEDE o cargo é o vínculo `user_setores` (setor 'desenvolvimento'
+     * + cargo 'dev'), atribuído no cadastro do usuário (/users). `users.is_dev`
+     * é o ESPELHO desse vínculo, escrito na mesma transação por
+     * `UserController::syncVinculos()` — lemos a coluna aqui porque este método
+     * roda em toda request (menu) e uma coluna custa zero query.
      */
     public function isAdminDev(): bool
     {
         return (bool) $this->is_dev;
+    }
+
+    /**
+     * True se o user tem o vínculo do cargo Dev — a fonte que alimenta o espelho acima.
+     *
+     * Faz join direto em `user_setores → cargos` (mesmo padrão de
+     * `cargoDesempenhoSlug()`) de propósito: `whereHas('cargos')` na relação
+     * `setores()` testaria o CATÁLOGO de cargos do setor (sempre verdadeiro,
+     * pois o setor Desenvolvimento tem o cargo Dev), não o `cargo_id` gravado
+     * no pivot deste usuário.
+     */
+    public function temCargoDev(): bool
+    {
+        return \Illuminate\Support\Facades\DB::table('user_setores as us')
+            ->join('cargos as c', 'c.id', '=', 'us.cargo_id')
+            ->where('us.user_id', $this->id)
+            ->where('c.slug', self::CARGO_DEV_SLUG)
+            ->exists();
     }
 
     /**
