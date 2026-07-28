@@ -91,6 +91,21 @@ divergência, releia esta seção.
 
 ## 4. Operação — sequência completa do backfill retroativo
 
+> **STATUS DO BACKFILL RETROATIVO (atualizar esta linha a cada mudança de estado):**
+> **AINDA NÃO EXECUTADO em produção** (registrado no fechamento da Fase 116,
+> 2026-07-28 — checkpoint da 116-08). O código, o comando e o procedimento
+> abaixo foram revisados e aprovados pelo usuário; a decisão foi **adiar a
+> aplicação** para rodar o `--dry-run` e aplicar depois, no tempo dele. Até
+> este comando rodar de fato contra as competências fechadas, **a regra do
+> piso de NPS só vale para o histórico dali para frente** (surveys disparados
+> a partir da Fase 116 em produção) — competências fechadas ANTES do deploy
+> desta fase continuam com a média antiga (sem o piso) em todas as telas, nas
+> quatro contas de mês fechado (`/nps`, ranking, Relatório de Bonificação,
+> auditoria) e no snapshot congelado do bônus, até o backfill rodar. Quando o
+> backfill for aplicado, atualizar esta linha com a data e as competências
+> cobertas (ex.: "Aplicado em AAAA-MM-DD, competências X a Y — conferência
+> OK").
+
 O comando é `php artisan nps:materializar-nao-respondidos` — idempotente,
 roda diariamente às 09:30 BRT via `routes/console.php` para manter o mês
 corrente em dia, e também serve para o backfill retroativo manual das
