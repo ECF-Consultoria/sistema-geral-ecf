@@ -159,4 +159,219 @@ class ProbeMargemPrevStabilityCommandTest extends TestCase
             true
         ));
     }
+
+    // ─────────────────────── Task 2 — modo leitura ───────────────────────
+
+    /** Fixture do endpoint /accounts/{custId}/metrics — só percentageMargin (único campo usado pelo probe). */
+    private function respostaPercentageMargin(float $value, float $diff, float $prev): array
+    {
+        return [
+            'metrics' => [
+                'percentageMargin' => ['value' => $value, 'diff' => $diff, 'prev' => $prev],
+            ],
+        ];
+    }
+
+    /** Vincula um user (com id explícito, ex.: 3 ou 15) a uma empresa Adman elegível (setor performance). */
+    private function vincularUserAEmpresaAdman(int $userId, string $custId): Company
+    {
+        $company = Company::factory()->create(['adman_account_id' => $custId, 'marketplace' => 'meli']);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($company->id, $servicoPerf, true);
+
+        if (User::find($userId) === null) {
+            User::factory()->create(['id' => $userId]);
+        }
+
+        $this->inserirPivot($company->id, $userId, 'consultor', $servicoPerf);
+
+        return $company;
+    }
+
+    /** Réplica de AdmanService::cacheDay() (privado) — mesma fórmula, pra pré-popular a chave de cache no teste anti-cache. */
+    private function cacheDayDeHoje(): string
+    {
+        return now()->setTimezone(config('app.timezone'))->toDateString();
+    }
+
+    public function test_leitura_persiste_uma_linha_por_empresa_da_amostra(): void
+    {
+        Http::fake([
+            '*/accounts/*/metrics*' => Http::response($this->respostaPercentageMargin(27.47, 14.09, 24.08), 200),
+        ]);
+
+        $luiz   = $this->vincularUserAEmpresaAdman(3, 'CUST-LUIZ');
+        $danilo = $this->vincularUserAEmpresaAdman(15, 'CUST-DANILO');
+        // Empresa de controle, fora das duas carteiras — não deve aparecer na amostra.
+        Company::factory()->create(['adman_account_id' => 'CUST-FORA', 'marketplace' => 'meli']);
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06'])->assertExitCode(0);
+
+        $this->assertDatabaseCount('adman_probe_margem_prev_leituras', 2);
+
+        $leituraLuiz = AdmanProbeMargemPrevLeitura::where('company_id', $luiz->id)->firstOrFail();
+        $this->assertSame(27.47, $leituraLuiz->value);
+        $this->assertSame(24.08, $leituraLuiz->prev);
+        $this->assertSame(14.09, $leituraLuiz->diff_nativo);
+        $this->assertEqualsWithDelta(3.39, $leituraLuiz->margem_var_pp, 0.0001);
+        $this->assertSame(4, $leituraLuiz->nota_regua);
+        $this->assertFalse($leituraLuiz->http_falhou);
+        $this->assertSame('2026-06', $leituraLuiz->periodo_key);
+        $this->assertNotEmpty($leituraLuiz->leitura_hash);
+
+        $this->assertDatabaseHas('adman_probe_margem_prev_leituras', ['company_id' => $danilo->id]);
+        $this->assertDatabaseMissing('adman_probe_margem_prev_leituras', ['company_id' => Company::where('adman_account_id', 'CUST-FORA')->value('id')]);
+    }
+
+    public function test_empresa_sem_fonte_adman_fica_fora_da_amostra(): void
+    {
+        Http::fake([
+            '*/accounts/*/metrics*' => Http::response($this->respostaPercentageMargin(27.47, 14.09, 24.08), 200),
+        ]);
+
+        $company = Company::factory()->create(['adman_account_id' => 'CUST-SHOPEE']);
+        User::factory()->create(['id' => 3]);
+        // financial_source='shopee' (setor Shopee) — não conta como financial_source='adman'.
+        $this->inserirLinhaShopee($company->id, 3, 'consultor');
+
+        // Companheira elegível (setor performance) do outro user da amostra —
+        // sem isso a amostra inteira ficaria vazia e o comando abortaria por
+        // "amostra vazia" (comportamento intencional do <action> item 4), o
+        // que mascararia o que este teste quer provar: que o vínculo Shopee
+        // especificamente fica de fora, não que a amostra toda está vazia.
+        $elegivel = $this->vincularUserAEmpresaAdman(15, 'CUST-ELEGIVEL');
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06'])->assertExitCode(0);
+
+        $this->assertDatabaseCount('adman_probe_margem_prev_leituras', 1);
+        $this->assertDatabaseHas('adman_probe_margem_prev_leituras', ['company_id' => $elegivel->id]);
+        $this->assertDatabaseMissing('adman_probe_margem_prev_leituras', ['company_id' => $company->id]);
+    }
+
+    public function test_falha_http_persiste_http_falhou_sem_abortar_as_demais(): void
+    {
+        Http::fake([
+            '*/accounts/CUST-FALHA/metrics*' => Http::response([], 429),
+            '*/accounts/CUST-OK/metrics*'    => Http::response($this->respostaPercentageMargin(27.47, 14.09, 24.08), 200),
+        ]);
+
+        $empresaFalha = $this->vincularUserAEmpresaAdman(3, 'CUST-FALHA');
+        $empresaOk    = $this->vincularUserAEmpresaAdman(15, 'CUST-OK');
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06'])->assertExitCode(0);
+
+        $this->assertDatabaseCount('adman_probe_margem_prev_leituras', 2);
+
+        $leituraFalha = AdmanProbeMargemPrevLeitura::where('company_id', $empresaFalha->id)->firstOrFail();
+        $this->assertTrue($leituraFalha->http_falhou);
+        $this->assertNull($leituraFalha->value);
+        $this->assertNull($leituraFalha->prev);
+        $this->assertNull($leituraFalha->nota_regua);
+
+        $leituraOk = AdmanProbeMargemPrevLeitura::where('company_id', $empresaOk->id)->firstOrFail();
+        $this->assertFalse($leituraOk->http_falhou);
+        $this->assertSame(27.47, $leituraOk->value);
+    }
+
+    public function test_leitura_nao_passa_pelo_cache_do_diff_service(): void
+    {
+        Http::fake([
+            '*/accounts/*/metrics*' => Http::response($this->respostaPercentageMargin(27.47, 14.09, 24.08), 200),
+        ]);
+
+        $company = $this->vincularUserAEmpresaAdman(3, 'CUST-CACHE');
+
+        // Pré-popula a chave de cache do AdmanService com um payload DIFERENTE
+        // do que o HTTP fake devolveria — se o comando lesse do cache
+        // (violação da invariante 1/D-11b), a linha gravada traria 99.99.
+        $cacheKey = "adman:account_metrics_detailed:meli:CUST-CACHE:2026-06-01:2026-06-30:" . $this->cacheDayDeHoje();
+        Cache::put($cacheKey, ['percentageMargin' => ['value' => 99.99, 'diff' => 1.0, 'prev' => 90.0]], 1440);
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06'])->assertExitCode(0);
+
+        $leitura = AdmanProbeMargemPrevLeitura::where('company_id', $company->id)->firstOrFail();
+        $this->assertSame(27.47, $leitura->value);
+        $this->assertNotEquals(99.99, $leitura->value);
+    }
+
+    public function test_mes_obrigatorio_e_validado(): void
+    {
+        Http::fake();
+
+        $this->artisan('adman:probe-margem-prev')->assertExitCode(1);
+        $this->assertDatabaseCount('adman_probe_margem_prev_leituras', 0);
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-6'])->assertExitCode(1);
+        $this->assertDatabaseCount('adman_probe_margem_prev_leituras', 0);
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => 'junho'])->assertExitCode(1);
+        $this->assertDatabaseCount('adman_probe_margem_prev_leituras', 0);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_janela_esperada_e_persistida_quando_informada(): void
+    {
+        Http::fake([
+            '*/accounts/*/metrics*' => Http::response($this->respostaPercentageMargin(27.47, 14.09, 24.08), 200),
+        ]);
+
+        $comJanela = $this->vincularUserAEmpresaAdman(3, 'CUST-JANELA');
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--janela' => 'contencao_11h'])->assertExitCode(0);
+
+        $this->assertSame(
+            'contencao_11h',
+            AdmanProbeMargemPrevLeitura::where('company_id', $comJanela->id)->value('janela_esperada')
+        );
+    }
+
+    public function test_sem_janela_grava_null(): void
+    {
+        Http::fake([
+            '*/accounts/*/metrics*' => Http::response($this->respostaPercentageMargin(27.47, 14.09, 24.08), 200),
+        ]);
+
+        $semJanela = $this->vincularUserAEmpresaAdman(15, 'CUST-SEM-JANELA');
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06'])->assertExitCode(0);
+
+        $this->assertNull(
+            AdmanProbeMargemPrevLeitura::where('company_id', $semJanela->id)->value('janela_esperada')
+        );
+    }
+
+    public function test_regua_de_margem_nas_fronteiras(): void
+    {
+        // 6 empresas, cada uma com um payload que produz margem_var_pp numa
+        // fronteira exata da régua (-5, -2, +1, +4) — inclusive um ponto
+        // logo abaixo e logo acima de -5 e +4, provando que a cópia da
+        // régua é fiel exatamente onde D-01 diz que o flip importa.
+        $casos = [
+            'CUST-B1' => ['prev' => 105.01, 'esperado' => 1], // margem = -5.01
+            'CUST-B2' => ['prev' => 105.00, 'esperado' => 1], // margem = -5.00
+            'CUST-B3' => ['prev' => 102.00, 'esperado' => 2], // margem = -2.00
+            'CUST-B4' => ['prev' => 99.00,  'esperado' => 3], // margem = +1.00
+            'CUST-B5' => ['prev' => 96.00,  'esperado' => 4], // margem = +4.00
+            'CUST-B6' => ['prev' => 95.99,  'esperado' => 5], // margem = +4.01
+        ];
+
+        $fakes = [];
+        $empresas = [];
+        foreach ($casos as $custId => $caso) {
+            $fakes["*/accounts/{$custId}/metrics*"] = Http::response(
+                $this->respostaPercentageMargin(100.0, 0.0, $caso['prev']),
+                200
+            );
+            $empresas[$custId] = $this->vincularUserAEmpresaAdman(3, $custId);
+        }
+        Http::fake($fakes);
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06'])->assertExitCode(0);
+
+        foreach ($casos as $custId => $caso) {
+            $notaRegua = AdmanProbeMargemPrevLeitura::where('company_id', $empresas[$custId]->id)->value('nota_regua');
+            $this->assertSame($caso['esperado'], $notaRegua, "custId={$custId} esperava nota {$caso['esperado']}, recebeu {$notaRegua}");
+        }
+    }
 }
