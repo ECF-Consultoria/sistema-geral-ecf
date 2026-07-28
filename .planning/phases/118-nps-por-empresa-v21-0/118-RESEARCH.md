@@ -703,7 +703,14 @@ plano:
 | A3 | Colisão de vínculo (mesmo role, servicos diferentes, mesma empresa) deve ser resolvida com a MESMA régua de D-02 (média) | Pitfall 1 | Não há exemplo do CONTEXT que cubra esse caso — pode ser que o produto queira o vínculo mais recente, ou soma ponderada, não média simples |
 | A4 | O local do arquivo é `app/Services/Desempenho/NpsPorEmpresaService.php` (não `app/Services/Nps/`) | Architecture Patterns | D-05 deixa a decisão a critério do planner — esta é só uma recomendação, não um fato verificado |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> **Ambas resolvidas em 2026-07-28 durante o planejamento.**
+>
+> - **Q1 (parâmetro `$mesFechado`): SIM.** Resolvida pela **Decisão 2 do `118-01-PLAN.md`** — a assinatura espelha `computeNpsWindow()`, incluindo `$mesFechado`, para não criar uma segunda régua de janela.
+> - **Q2 (colisão de vínculo por serviço — mesmo `role`, `servicos` diferentes, mesma empresa): usar a mesma régua da D-02.** Resolvida pela **Decisão 6 do `118-01-PLAN.md`** — média, coerente com o tratamento de papéis acumulados.
+>
+> ⚠️ Uma terceira correção, vinda do plan-check e **não** originada aqui: a asserção sugerida na §Q7 desta pesquisa (`assertEquals(1.0, ...)` reusando `montarCenarioVazio()`) **falharia** — o cenário fixa `now = 2026-07-15`, quando a janela M+1 ainda está em coleta, e o serviço devolve `null`/`janela_aberta`, não `1.0`. A Task 3 do `118-02-PLAN.md` corrige avançando o tempo e alinhando os argumentos das duas chamadas.
 
 1. **A assinatura de `notasNpsPorEmpresa()` precisa de um parâmetro `$mesFechado`/`is_closed`
    para cobrir o caso 1 da janela M+1 (mês em curso → 1.0 flat)?**

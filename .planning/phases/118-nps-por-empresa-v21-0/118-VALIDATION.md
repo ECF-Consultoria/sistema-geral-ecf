@@ -93,6 +93,14 @@ Nenhuma. Esta fase é um serviço de leitura puro, sem integração externa e se
 
 ---
 
+## Débito técnico aceito (plan-check 2026-07-28, warning não-bloqueante)
+
+**A proteção contra divergência `gte`/`gt` é um teste, não uma extração.** A C-01 proíbe unificar as duas réguas, e o plano cria `NpsJanelaResolver` com `gte` **sem** refatorar `DesempenhoScoreService` para chamá-lo — o gate de aditividade da fase é mais forte que o ganho. A duplicação fica vigiada por `test_resolver_concorda_com_computeNpsWindow_nos_tres_casos`, que invoca o método original por reflection e compara com a implementação nova nos 3 casos de boundary.
+
+O plan-checker confirmou que **o teste não é tautológico** — são duas implementações fisicamente separadas sendo comparadas, e uma divergência futura quebra o teste. Mas a proteção depende de esse teste continuar rodando sempre que qualquer um dos dois arquivos mudar.
+
+**Follow-up para a Fase 119 ou 120:** quando o gate de aditividade não estiver mais em vigor, fazer `computeNpsWindow()` passar a chamar `NpsJanelaResolver` (a Opção B completa do `118-PATTERNS.md` §4), eliminando a duplicação. Registrado aqui porque o SUMMARY sozinho não é rastreável entre fases.
+
 ## Validation Sign-Off
 
 - [x] Todas as tasks têm verify `<automated>` ou dependência de Wave 0
