@@ -1244,7 +1244,7 @@ Plans:
 **Requirements**: NPSFLOOR-01, NPSFLOOR-02, NPSFLOOR-03, NPSFLOOR-04, NPSFLOOR-05, NPSFLOOR-06, NPSFLOOR-07, NPSFLOOR-08, NPSFLOOR-08b, NPSFLOOR-08c, NPSFLOOR-09, NPSFLOOR-10, NPSFLOOR-11, NPSFLOOR-12
 **Depends on:** Nada bloqueante — base NPS multi-modelo (v16.0) e auditoria de bônus por competência (v19) já em produção
 **UI hint:** Sim — a tela de NPS precisa explicitar a regra "não respondido = 1" em linguagem simples
-**Plans:** 6/8 plans executed
+**Plans:** 7/8 plans executed
 
 Plans:
 **Wave 1**
@@ -1261,7 +1261,7 @@ Plans:
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [x] 116-06-PLAN.md — Comando `nps:materializar-nao-respondidos` (dry-run com relatório antes/depois por pessoa e competência, reconsolidação verificada do snapshot mensal, rollback), ganchos no disparo e agendamento diário [NPSFLOOR-08, NPSFLOOR-08b, NPSFLOOR-08c, NPSFLOOR-07, NPSFLOOR-11]
-- [ ] 116-07-PLAN.md — UI da área NPS: rodapé separando respondidas × sem resposta + frase explicativa sem jargão + `npm run build` [NPSFLOOR-09]
+- [x] 116-07-PLAN.md — UI da área NPS: rodapé separando respondidas × sem resposta + frase explicativa sem jargão + `npm run build` [NPSFLOOR-09]
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
