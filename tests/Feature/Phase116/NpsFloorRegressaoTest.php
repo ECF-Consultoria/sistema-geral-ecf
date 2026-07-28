@@ -1,0 +1,490 @@
+<?php
+
+namespace Tests\Feature\Phase116;
+
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PerformanceController;
+use App\Jobs\CalculateGoalResults;
+use App\Models\Company;
+use App\Models\NpsResponse;
+use App\Models\NpsSurvey;
+use App\Models\NpsTemplate;
+use App\Models\NpsTemplateOption;
+use App\Models\NpsTemplateQuestion;
+use App\Models\Servico;
+use App\Models\User;
+use App\Services\DesempenhoScoreService;
+use App\Services\Nps\NpsImputationService;
+use Carbon\Carbon;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Inertia\Testing\AssertableInertia as Assert;
+use PHPUnit\Framework\Attributes\Test;
+use ReflectionMethod;
+use Tests\Feature\V16\CriaCenarioResponsaveis;
+use Tests\TestCase;
+
+/**
+ * Fase 116 Plan 08 (FECHAMENTO) — checklist executável de COERÊNCIA ENTRE
+ * TODOS OS CALL-SITES da regra "NPS não respondido conta como nota mínima
+ * (1)". Molde de `tests/Feature/Phase96/NpsInvalidacaoCallSitesTest.php`
+ * (Pitfall 4 da Fase 96): 1 cenário-base montado UMA vez e verificado em
+ * cada consumidor — se algum call-site futuro esquecer a regra (ou
+ * reimplementar a resolução por conta própria e divergir), este arquivo
+ * fica vermelho.
+ *
+ * Cenário-base (`montarCenarioBase()`): 1 empresa, 1 responsável de cada
+ * papel (analista=consultor, estrategista=estrategista), 1 resposta REAL
+ * nota 5 (fluxo real `POST /nps/{token}`) e 1 survey NÃO respondido no
+ * MESMO mês (materializado via `NpsImputationService::materializarLote()`,
+ * nunca criado na mão). Consumidores verificados:
+ *
+ *  1. Card da área NPS (`NpsController::index()`)
+ *  2. Componente de NPS do bônus (`DesempenhoScoreService::computeNpsMedio()`)
+ *  3. Coluna NPS da carteira (`PerformanceController::dashboardCarteira()`)
+ *  4. Ranking "Desempenho da equipe" (`DashboardController::buildRanking()`)
+ *  5. Média da página da empresa (`CompanyController::show()` → nps_avg)
+ *  6. Meta de NPS (`CalculateGoalResults::computeNps()`)
+ *
+ * IMPORTANTE — duas réguas de dedupe DIFERENTES e DELIBERADAS coexistem no
+ * sistema (documentadas em `docs/nps-nao-respondido-nota-1.md`): a área NPS
+ * dedupe por (survey, dimensão); o bônus/carteira/ranking dedupe por
+ * (survey, role) por pessoa. Isso NÃO é bug — são consumidores diferentes
+ * com granularidades diferentes. Este teste NÃO exige o MESMO número em
+ * TODOS os consumidores (a coluna NPS da carteira, por exemplo, mostra a
+ * nota da resposta MAIS RECENTE por empresa, não uma média) — exige que
+ * NENHUM consumidor IGNORE o não respondido.
+ *
+ * Cenário-espelho (`montarCenarioVazio()`): mesma empresa/pessoas, ZERO
+ * surveys — prova que o invariante D3 (empresa sem disparo nunca vira nota
+ * 1) se mantém intacto em TODOS os consumidores, de ponta a ponta.
+ *
+ * @see .planning/phases/116-.../116-08-PLAN.md
+ * @see .planning/phases/116-.../116-CONTEXT.md
+ * @see tests/Feature/Phase96/NpsInvalidacaoCallSitesTest.php (molde)
+ */
+class NpsFloorRegressaoTest extends TestCase
+{
+    use RefreshDatabase;
+    use CriaCenarioResponsaveis;
+
+    protected function tearDown(): void
+    {
+        Carbon::setTestNow();
+        parent::tearDown();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Helpers de fixture (molde de NpsInvalidacaoCallSitesTest / NpsFloorAreaNpsTest)
+    // ═══════════════════════════════════════════════════════════════════
+
+    private function admin(): User
+    {
+        return User::factory()->create(['role' => 'admin', 'active' => true]);
+    }
+
+    private function imputationService(): NpsImputationService
+    {
+        return app(NpsImputationService::class);
+    }
+
+    private function criarTemplateEscopado(array $dimensoes, array $servicoIds, bool $principal = false): NpsTemplate
+    {
+        if ($principal) {
+            NpsTemplate::query()->update(['is_default' => false]);
+        }
+
+        $template = NpsTemplate::factory()->create([
+            'nome'       => 'Template 116-08 ' . uniqid(),
+            'active'     => true,
+            'is_default' => $principal,
+        ]);
+
+        $ordem = 1;
+        foreach ($dimensoes as $dim) {
+            $question = NpsTemplateQuestion::create([
+                'template_id' => $template->id,
+                'texto'       => 'Pergunta ' . $dim . ' ' . uniqid() . '?',
+                'tipo'        => NpsTemplateQuestion::TIPO_ESCALA,
+                'dimensao'    => $dim,
+                'obrigatoria' => true,
+                'ordem'       => $ordem++,
+            ]);
+
+            for ($peso = 1; $peso <= 5; $peso++) {
+                NpsTemplateOption::create([
+                    'question_id' => $question->id,
+                    'label'       => (string) $peso,
+                    'peso'        => $peso,
+                    'ordem'       => $peso,
+                ]);
+            }
+        }
+
+        foreach ($servicoIds as $sid) {
+            $template->serviceScopes()->attach($sid);
+        }
+
+        if ($principal) {
+            NpsTemplate::resetPrincipalCache();
+        }
+
+        return $template->fresh(['questions.options']);
+    }
+
+    private function payloadComPeso(NpsTemplate $template, int $peso): array
+    {
+        $answers = [];
+        foreach ($template->questions as $q) {
+            $answers[(string) $q->id] = $q->options->firstWhere('peso', $peso)->id;
+        }
+
+        return $answers;
+    }
+
+    /** Responde o survey pelo FLUXO REAL (`POST /nps/{token}`) — gera as atribuições da Fase 79. */
+    private function responder(Company $empresa, NpsTemplate $template, int $peso): NpsResponse
+    {
+        $survey = NpsSurvey::create([
+            'token'        => Str::uuid()->toString(),
+            'company_id'   => $empresa->id,
+            'generated_by' => null,
+            'expires_at'   => now()->addDays(30),
+            'status'       => 'pending',
+            'template_id'  => $template->id,
+        ]);
+
+        $this->post("/nps/{$survey->token}", [
+            'respondent_name' => 'Cliente 116-08',
+            'answers'         => $this->payloadComPeso($template, $peso),
+        ])->assertOk();
+
+        return NpsResponse::where('survey_id', $survey->id)->firstOrFail();
+    }
+
+    /** Survey NÃO respondido — candidato à imputação. */
+    private function criarSurveyNaoRespondido(Company $empresa, NpsTemplate $template, array $overrides = []): NpsSurvey
+    {
+        return NpsSurvey::create(array_merge([
+            'token'           => Str::uuid()->toString(),
+            'company_id'      => $empresa->id,
+            'generated_by'    => null,
+            'expires_at'      => now()->endOfMonth(),
+            'status'          => 'pending',
+            'template_id'     => $template->id,
+            'month_reference' => now()->copy()->startOfMonth()->toDateString(),
+            'auto_generated'  => true,
+        ], $overrides));
+    }
+
+    /**
+     * Monta o cenário-base único: 1 empresa, 1 analista (role consultor) e 1
+     * estrategista (role mentor — isMentor() determina a carteira/dimensão
+     * de `buildRanking()` sem precisar de scaffolding extra de cargo), 1
+     * resposta REAL nota 5 (fluxo real) e 1 survey não respondido no MESMO
+     * mês (2026-07), materializado via `materializarLote()`.
+     *
+     * @return array{empresa: Company, analista: User, estrategista: User, template: NpsTemplate, respostaReal: NpsResponse}
+     */
+    private function montarCenarioBase(): array
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
+        $empresa     = Company::factory()->create(['active' => true, 'name' => 'Empresa Coerência 116-08']);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+
+        // isMentor() (role='mentor') resolve companyIds via estrategistaCompanies()
+        // em buildRanking() sem precisar de user_setores/cargos — mesmo padrão
+        // já usado em NpsFloorDashboardsTest/NpsFloorCarteiraTest.
+        $analista     = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $estrategista = User::factory()->create(['role' => 'mentor', 'active' => true]);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        $template = $this->criarTemplateEscopado(
+            [
+                NpsTemplateQuestion::DIMENSAO_ESTRATEGISTA,
+                NpsTemplateQuestion::DIMENSAO_ANALISTA,
+                NpsTemplateQuestion::DIMENSAO_EMPRESA,
+            ],
+            [$servicoPerf],
+            principal: true, // meta de NPS (CalculateGoalResults) só conta o modelo principal
+        );
+
+        // Resposta REAL nota 5 — gera atribuições (Fase 79) para analista E
+        // estrategista, mais o score da dimensão empresa.
+        $respostaReal = $this->responder($empresa, $template, 5);
+
+        // Survey NÃO respondido no MESMO mês — materializado como nota 1 em
+        // TODAS as dimensões aplicáveis (estrategista/analista/empresa, D7).
+        $this->criarSurveyNaoRespondido($empresa, $template, ['month_reference' => '2026-07-01']);
+        $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
+
+        return compact('empresa', 'analista', 'estrategista', 'template', 'respostaReal');
+    }
+
+    /**
+     * Cenário-espelho: mesma empresa/pessoas, ZERO surveys — para provar D3
+     * (empresa sem disparo nunca vira nota 1) em todos os consumidores.
+     *
+     * @return array{empresa: Company, analista: User, estrategista: User}
+     */
+    private function montarCenarioVazio(): array
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
+        $empresa     = Company::factory()->create(['active' => true, 'name' => 'Empresa Sem Disparo 116-08']);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+
+        $analista     = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $estrategista = User::factory()->create(['role' => 'mentor', 'active' => true]);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        // Nenhum survey criado — nem respondido, nem não respondido.
+
+        return compact('empresa', 'analista', 'estrategista');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Invocadores (reflection em métodos privados — mesmo molde de
+    // NpsInvalidacaoCallSitesTest / NpsFloorDashboardsTest)
+    // ═══════════════════════════════════════════════════════════════════
+
+    private function invocarComputeNpsMedio(User $user, Carbon $mes): float
+    {
+        $service = app(DesempenhoScoreService::class);
+        $metodo  = new ReflectionMethod($service, 'computeNpsMedio');
+        $metodo->setAccessible(true);
+
+        return $metodo->invoke($service, $user, $mes);
+    }
+
+    private function invocarBuildRanking(\Illuminate\Support\Collection $users, Carbon $since): \Illuminate\Support\Collection
+    {
+        $controller = app(DashboardController::class);
+        $metodo     = new ReflectionMethod($controller, 'buildRanking');
+        $metodo->setAccessible(true);
+
+        return $metodo->invoke($controller, $users, $since);
+    }
+
+    private function invocarComputeNpsDaMeta(int $companyId, int $year, int $month): ?float
+    {
+        $job    = new CalculateGoalResults(period: sprintf('%04d-%02d', $year, $month));
+        $metodo = new ReflectionMethod($job, 'computeNps');
+        $metodo->setAccessible(true);
+
+        return $metodo->invoke($job, $companyId, $year, $month);
+    }
+
+    private function propsDoIndex(User $user, array $query = []): array
+    {
+        $props = null;
+        $this->actingAs($user)
+            ->get(route('nps.index', $query))
+            ->assertOk()
+            ->assertInertia(function (Assert $page) use (&$props) {
+                $page->component('Nps/Index');
+                $props = $page->toArray()['props'];
+            });
+
+        return $props;
+    }
+
+    private function propsDashboardCarteira(User $user): array
+    {
+        $props = null;
+        $this->actingAs($user)
+            ->get(route('dashboard'))
+            ->assertOk()
+            ->assertInertia(function (Assert $page) use (&$props) {
+                $page->component('Performance/Dashboard');
+                $props = $page->toArray()['props'];
+            });
+
+        return $props;
+    }
+
+    private function propsDaEmpresa(User $user, Company $empresa): array
+    {
+        $props = null;
+        $this->actingAs($user)
+            ->get("/companies/{$empresa->id}")
+            ->assertOk()
+            ->assertInertia(function (Assert $page) use (&$props) {
+                $page->component('Companies/Show');
+                $props = $page->toArray()['props'];
+            });
+
+        return $props;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 1 — Card da área NPS (NpsController::index) — dedupe por (survey, dimensão)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_area_nps_card_reflete_cenario_base(): void
+    {
+        $cenario = $this->montarCenarioBase();
+        $admin   = $this->admin();
+
+        $props = $this->propsDoIndex($admin, ['mes' => '2026-07']);
+
+        // (5 real + 1 imputada) / 2 = 3.0 nas 3 dimensões (D7 inclui empresa).
+        $this->assertEquals(3.0, $props['cards']['estrategista']['media']);
+        $this->assertEquals(3.0, $props['cards']['analista']['media']);
+        $this->assertEquals(3.0, $props['cards']['empresa']['media']);
+        $this->assertEquals(1, $props['cards']['empresa']['nao_respondidos'],
+            'o card precisa contabilizar explicitamente 1 não respondido — não pode ignorá-lo');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 2 — Componente de NPS do bônus (DesempenhoScoreService::computeNpsMedio)
+    //     — dedupe por (survey, role) POR PESSOA
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_bonus_reflete_cenario_base_para_analista_e_estrategista(): void
+    {
+        $cenario = $this->montarCenarioBase();
+
+        $npsAnalista     = $this->invocarComputeNpsMedio($cenario['analista'], Carbon::parse('2026-07-01'));
+        $npsEstrategista = $this->invocarComputeNpsMedio($cenario['estrategista'], Carbon::parse('2026-07-01'));
+
+        // (5 real + 1 imputada) / 2 = 3.0 para CADA responsável — nenhum dos
+        // dois "meio-conta" o não respondido do outro papel.
+        $this->assertSame(3.0, $npsAnalista,
+            'bônus do analista deve contar a nota real (5) + a nota imputada (1) = média 3.0');
+        $this->assertSame(3.0, $npsEstrategista,
+            'bônus do estrategista deve contar a nota real (5) + a nota imputada (1) = média 3.0');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 3 — Coluna NPS da carteira (PerformanceController::dashboardCarteira)
+    //     — MOSTRA A NOTA DA RESPOSTA MAIS RECENTE por empresa, NÃO uma
+    //     média. A nota imputada usa data SINTÉTICA (fim do mês do disparo),
+    //     que é mais recente que a resposta real (dia 15) — então a coluna
+    //     mostra 1.0. Isso NÃO é um bug: prova que o não respondido está
+    //     sendo CONSIDERADO (não ignorado, não mascarado pela nota antiga).
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_coluna_nps_carteira_reflete_cenario_base(): void
+    {
+        $cenario = $this->montarCenarioBase();
+
+        $props = $this->propsDashboardCarteira($cenario['analista']);
+
+        $linha = collect($props['empresas'])->firstWhere('id', $cenario['empresa']->id);
+
+        $this->assertNotNull($linha, 'a empresa precisa aparecer na tabela de carteira');
+        $this->assertEquals(1.0, $linha['nps'],
+            'coluna NPS da carteira usa a nota MAIS RECENTE (data sintética do não respondido = fim do mês, '
+            . 'mais recente que a resposta real do dia 15) — prova que o não respondido NÃO é ignorado nem '
+            . 'mascarado pela resposta real mais antiga');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 4 — Ranking "Desempenho da equipe" (DashboardController::buildRanking)
+    //     — média via avgNotaDimensao (mesma régua de dedupe do bônus)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_ranking_dashboard_reflete_cenario_base_para_analista_e_estrategista(): void
+    {
+        $cenario = $this->montarCenarioBase();
+
+        $ranking = $this->invocarBuildRanking(collect([$cenario['analista'], $cenario['estrategista']]), now()->subDays(30));
+
+        $linhaAnalista     = $ranking->firstWhere('id', $cenario['analista']->id);
+        $linhaEstrategista = $ranking->firstWhere('id', $cenario['estrategista']->id);
+
+        $this->assertNotNull($linhaAnalista);
+        $this->assertNotNull($linhaEstrategista);
+        $this->assertSame(3.0, $linhaAnalista['avg_nps'],
+            'ranking do analista deve contar a nota real (5) + a imputada (1) = média 3.0');
+        $this->assertSame(3.0, $linhaEstrategista['avg_nps'],
+            'ranking do estrategista deve contar a nota real (5) + a imputada (1) = média 3.0');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 5 — Média da página da empresa (CompanyController::show → nps_avg)
+    //     — dimensão empresa, sem filtro de modelo
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_pagina_da_empresa_reflete_cenario_base(): void
+    {
+        $cenario = $this->montarCenarioBase();
+        $admin   = $this->admin();
+
+        $props = $this->propsDaEmpresa($admin, $cenario['empresa']);
+
+        $this->assertEquals(3.0, $props['company']['nps_avg'],
+            'nps_avg da página da empresa deve contar a nota real (5) + a imputada (1) = média 3.0');
+        $this->assertCount(1, $props['company']['nps_surveys'],
+            'a lista "NPS Respondidos" continua mostrando SÓ a resposta real — o não respondido não é completed');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 6 — Meta de NPS (CalculateGoalResults::computeNps) — só modelo principal
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_meta_de_nps_reflete_cenario_base(): void
+    {
+        $cenario = $this->montarCenarioBase();
+
+        $media = $this->invocarComputeNpsDaMeta($cenario['empresa']->id, 2026, 7);
+
+        $this->assertEquals(3.0, $media,
+            'meta de NPS deve contar a nota real (5) + a imputada (1) = média 3.0 (modelo principal)');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 7 — Cenário-espelho SEM NENHUM survey: D3 preservado em TODOS os
+    //     consumidores (nenhum "inventa" nota 1 onde não houve disparo)
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_cenario_espelho_sem_survey_preserva_sentinela_em_todos_consumidores(): void
+    {
+        $cenario = $this->montarCenarioVazio();
+        $admin   = $this->admin();
+
+        // 1) Área NPS — sentinela de vazio (media=0, total=0).
+        $propsNps = $this->propsDoIndex($admin, ['mes' => '2026-07']);
+        $this->assertEquals(0, $propsNps['cards']['estrategista']['media']);
+        $this->assertEquals(0, $propsNps['cards']['analista']['media']);
+        $this->assertEquals(0, $propsNps['cards']['empresa']['media']);
+
+        // 2) Bônus — sentinela 0.0 (DESEMP-03, "sem resposta força nps=0").
+        $this->assertSame(0.0, $this->invocarComputeNpsMedio($cenario['analista'], Carbon::parse('2026-07-01')));
+        $this->assertSame(0.0, $this->invocarComputeNpsMedio($cenario['estrategista'], Carbon::parse('2026-07-01')));
+
+        // 3) Carteira — coluna NPS null (sem disparo, sem resposta).
+        $propsCarteira = $this->propsDashboardCarteira($cenario['analista']);
+        $linhaCarteira = collect($propsCarteira['empresas'])->firstWhere('id', $cenario['empresa']->id);
+        $this->assertNotNull($linhaCarteira);
+        $this->assertNull($linhaCarteira['nps']);
+
+        // 4) Ranking — sentinela null preservada.
+        $ranking       = $this->invocarBuildRanking(collect([$cenario['analista']]), now()->subDays(30));
+        $linhaRanking  = $ranking->firstWhere('id', $cenario['analista']->id);
+        $this->assertNull($linhaRanking['avg_nps']);
+
+        // 5) Página da empresa — nps_avg null, lista de respondidos vazia.
+        $propsEmpresa = $this->propsDaEmpresa($admin, $cenario['empresa']);
+        $this->assertNull($propsEmpresa['company']['nps_avg']);
+        $this->assertCount(0, $propsEmpresa['company']['nps_surveys']);
+
+        // 6) Meta de NPS — continua null (nunca vira 1 sem dado nenhum).
+        $media = $this->invocarComputeNpsDaMeta($cenario['empresa']->id, 2026, 7);
+        $this->assertNull($media);
+    }
+}
