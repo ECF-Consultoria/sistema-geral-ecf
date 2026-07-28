@@ -1292,12 +1292,18 @@ Troca de granularidade do motor de bonificação: sair de componentes agregados 
   4. Cache `adman:diff:v5` → `v6`; shape velho não é servido para o shape novo
   5. **GATE:** o probe de estabilidade de `prev` (N leituras da mesma empresa, competência fechada) é rodado e o relatório de variância apresentado ao usuário. Se `prev` oscilar, a milestone para aqui — não se paga bônus com fonte instável
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans executed — **FASE NÃO COMPLETA: GATE MPP-04 PENDENTE**
 
 Plans:
 
 - [x] 117-01-PLAN.md — Shape aditivo: `prev_value` nas 3 métricas, `diff_pp` só em `contribution_margin_pct`, indicador de cobertura no `quality`, cache `adman:diff:v6` + `shopee:diff:v2`, e gate de não-regressão dos consumidores [MPP-01, MPP-02, MPP-03, MPP-05, MPP-06]
-- [ ] 117-02-PLAN.md — Probe `adman:probe-margem-prev`: leitura sem cache (`forceRefresh`), persistência das leituras + veredito reconsultável, agregação com detecção de flip de nota e sanidade anti-cache [MPP-04]
+- [x] 117-02-PLAN.md — Probe `adman:probe-margem-prev`: leitura sem cache (`forceRefresh`), persistência das leituras + veredito reconsultável, agregação com detecção de flip de nota e sanidade anti-cache [MPP-04] — **código entregue e testado (24 testes); o PROBE NÃO FOI EXECUTADO**
+
+> ⚠️ **GATE MPP-04 PENDENTE — a Fase 117 NÃO pode ser marcada como completa.**
+> Todo o código está entregue e verificado (61 testes verdes: 25 Adman + 12 Shopee + 24 probe), mas o probe exige deploy na VPS e 24-48h de coleta contra a Adman real, com pelo menos uma leitura dentro de 11:00-12:00 BRT. **Nada foi deployado** (2026-07-28).
+> Enquanto o veredito não for aprovado pelo usuário, a **Fase 119 não pode consumir `diff_pp`** para calcular nota.
+> Runbook de execução: `117-02-SUMMARY.md` § `<gate_de_fase>`.
+> Bloqueio de deploy em 2026-07-28: ver `117-deferred-items.md` § "Bloqueio de publicação".
 
 ### Phase 118: NPS por empresa (v21.0)
 
