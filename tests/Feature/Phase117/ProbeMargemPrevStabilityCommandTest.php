@@ -374,4 +374,251 @@ class ProbeMargemPrevStabilityCommandTest extends TestCase
             $this->assertSame($caso['esperado'], $notaRegua, "custId={$custId} esperava nota {$caso['esperado']}, recebeu {$notaRegua}");
         }
     }
+
+    // ─────────────────────── Task 3 — modo --relatorio ───────────────────────
+
+    /**
+     * Grava uma leitura direto no banco (sem HTTP) — usado por todos os
+     * cenários de --relatorio, que montam o histórico manualmente e
+     * conferem o veredito por reconsulta ao banco (D-10).
+     */
+    private function gravarLeitura(
+        int $companyId,
+        string $periodoKey,
+        \DateTimeInterface|string $lidaEm,
+        ?float $value = 27.47,
+        ?float $prev = 24.08,
+        ?int $notaRegua = 4,
+        ?string $janela = null,
+        ?string $leituraHash = 'hash-padrao',
+        bool $httpFalhou = false,
+    ): AdmanProbeMargemPrevLeitura {
+        return AdmanProbeMargemPrevLeitura::create([
+            'company_id'      => $companyId,
+            'periodo_key'     => $periodoKey,
+            'lida_em'         => $lidaEm,
+            'janela_esperada' => $janela,
+            'value'           => $value,
+            'prev'            => $prev,
+            'diff_nativo'     => 14.09,
+            'margem_var_pp'   => ($value !== null && $prev !== null) ? round($value - $prev, 6) : null,
+            'nota_regua'      => $notaRegua,
+            'leitura_hash'    => $leituraHash,
+            'http_falhou'     => $httpFalhou,
+        ]);
+    }
+
+    /** 5 rodadas + 1 na janela de contenção — desenho amostral D-02 completo. */
+    private function cincoRodadasComContencao(): array
+    {
+        return [
+            ['lida_em' => '2026-07-20 03:00:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-20 11:15:00', 'janela' => 'contencao_11h'],
+            ['lida_em' => '2026-07-20 16:00:00', 'janela' => 'pico_tarde'],
+            ['lida_em' => '2026-07-21 11:20:00', 'janela' => 'repeticao_24h'],
+            ['lida_em' => '2026-07-21 11:35:00', 'janela' => 'contencao_11h'],
+        ];
+    }
+
+    public function test_relatorio_reprova_com_flip_de_nota_entre_leituras(): void
+    {
+        $company = Company::factory()->create();
+        $rodadas = $this->cincoRodadasComContencao();
+
+        // Notas: 3, 4, 3, 4, 4 — flip entre leituras NÃO-consecutivas (1ª e
+        // 2ª) e entre a 1ª e a 3ª também — D-01 exige zero flip entre
+        // DUAS LEITURAS QUAISQUER, não só pares consecutivos.
+        $notas = [3, 4, 3, 4, 4];
+        foreach ($rodadas as $i => $r) {
+            $this->gravarLeitura(
+                $company->id, '2026-06', $r['lida_em'],
+                value: 100.0, prev: 100.0 - $notas[$i], // valor irrelevante aqui, só precisa existir
+                notaRegua: $notas[$i], janela: $r['janela'],
+                leituraHash: 'hash-' . $i, // hashes distintos — não é o cenário anti-cache
+            );
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO, $veredito->veredito);
+        $this->assertSame(1, $veredito->empresas_com_flip_count);
+        $this->assertSame($company->id, $veredito->empresas_com_flip[0]['company_id']);
+        $this->assertEqualsCanonicalizing([3, 4], $veredito->empresas_com_flip[0]['notas']);
+    }
+
+    public function test_relatorio_aprova_com_notas_estaveis_e_valores_variando(): void
+    {
+        $company = Company::factory()->create();
+        $rodadas = $this->cincoRodadasComContencao();
+
+        // Mesma nota (4) em todas as 5 leituras, mas value/prev/hash
+        // DIFERENTES entre si — prova que "aprovado" não exige payloads
+        // idênticos, só notas estáveis. Cobertura de prev 100%.
+        foreach ($rodadas as $i => $r) {
+            $this->gravarLeitura(
+                $company->id, '2026-06', $r['lida_em'],
+                value: 100.0 + $i, prev: 96.5 + $i, // margem_var_pp varia mas sempre cai na faixa "nota 4"
+                notaRegua: 4, janela: $r['janela'],
+                leituraHash: 'hash-' . $i,
+            );
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $veredito->veredito);
+        $this->assertSame(0, $veredito->empresas_com_flip_count);
+        $this->assertSame(1.0, $veredito->cobertura_prev);
+    }
+
+    public function test_relatorio_reprova_com_cobertura_de_prev_abaixo_de_80_por_cento(): void
+    {
+        $company = Company::factory()->create();
+
+        // 7 leituras com prev presente (nota 4 estável, incluindo a rodada
+        // obrigatória de contenção — D-02) + 3 leituras SEM prev
+        // (nota_regua null, já que margem_var_pp não existiria sem prev) —
+        // cobertura = 7/10 = 70% < 80% (MARGEM_COBERTURA_MINIMA).
+        $rodadasComPrev = [
+            ['lida_em' => '2026-07-20 03:00:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-20 11:15:00', 'janela' => 'contencao_11h'],
+            ['lida_em' => '2026-07-20 16:00:00', 'janela' => 'pico_tarde'],
+            ['lida_em' => '2026-07-21 03:00:00', 'janela' => null],
+            ['lida_em' => '2026-07-21 11:20:00', 'janela' => 'contencao_11h'],
+            ['lida_em' => '2026-07-21 16:00:00', 'janela' => null],
+            ['lida_em' => '2026-07-22 03:00:00', 'janela' => 'repeticao_24h'],
+        ];
+        foreach ($rodadasComPrev as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0, prev: 96.0, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-' . $i);
+        }
+        foreach (range(1, 3) as $j) {
+            $this->gravarLeitura($company->id, '2026-06', "2026-07-22 1{$j}:00:00", value: null, prev: null, notaRegua: null, janela: null, leituraHash: null, httpFalhou: true);
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO, $veredito->veredito);
+        $this->assertEqualsWithDelta(0.7, $veredito->cobertura_prev, 0.0001);
+
+        // Prova que o patamar reusado é 0.8 (AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA),
+        // não um número inventado no comando.
+        $motivoCobertura = collect($veredito->motivos)->first(fn ($m) => str_contains($m, 'cobertura de prev'));
+        $this->assertNotNull($motivoCobertura);
+        $this->assertStringContainsString('80%', $motivoCobertura);
+    }
+
+    public function test_relatorio_sinaliza_instrumentacao_suspeita_quando_tudo_identico(): void
+    {
+        $company = Company::factory()->create();
+        $rodadas = $this->cincoRodadasComContencao();
+
+        // As 5 leituras têm o MESMO leitura_hash — sintoma de cache, não de
+        // estabilidade real. Precisa vir ANTES de "aprovado" mesmo com
+        // desenho amostral e cobertura perfeitos.
+        foreach ($rodadas as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0, prev: 96.0, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-identico');
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_INSTRUMENTACAO_SUSPEITA, $veredito->veredito);
+        $this->assertNotSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $veredito->veredito);
+    }
+
+    public function test_relatorio_reprova_quando_nao_ha_leitura_na_janela_de_contencao(): void
+    {
+        $company = Company::factory()->create();
+
+        // 5 rodadas, nenhuma delas na janela de contenção (D-02).
+        $rodadas = [
+            ['lida_em' => '2026-07-20 03:00:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-20 16:00:00', 'janela' => 'pico_tarde'],
+            ['lida_em' => '2026-07-21 03:00:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-21 16:00:00', 'janela' => 'pico_tarde'],
+            ['lida_em' => '2026-07-22 03:00:00', 'janela' => 'repeticao_24h'],
+        ];
+        foreach ($rodadas as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0 + $i, prev: 96.0 + $i, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-' . $i);
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertNotSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $veredito->veredito);
+        $motivoDesenho = collect($veredito->motivos)->first(fn ($m) => str_contains($m, 'D-02'));
+        $this->assertNotNull($motivoDesenho);
+    }
+
+    public function test_relatorio_exige_minimo_de_5_rodadas(): void
+    {
+        $company = Company::factory()->create();
+
+        // Só 3 rodadas distintas, uma delas na janela de contenção — ainda
+        // assim não pode aprovar (D-02 exige >= 5).
+        $rodadas = [
+            ['lida_em' => '2026-07-20 03:00:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-20 11:15:00', 'janela' => 'contencao_11h'],
+            ['lida_em' => '2026-07-20 16:00:00', 'janela' => 'pico_tarde'],
+        ];
+        foreach ($rodadas as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0 + $i, prev: 96.0 + $i, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-' . $i);
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertNotSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $veredito->veredito);
+        $motivoDesenho = collect($veredito->motivos)->first(fn ($m) => str_contains($m, 'D-02'));
+        $this->assertNotNull($motivoDesenho);
+    }
+
+    public function test_relatorio_nao_toca_a_adman(): void
+    {
+        Http::fake(); // sem NENHUMA resposta registrada
+
+        $company = Company::factory()->create();
+        foreach ($this->cincoRodadasComContencao() as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0, prev: 96.0, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-' . $i);
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        Http::assertNothingSent();
+    }
+
+    public function test_relatorio_persiste_veredito_reconsultavel(): void
+    {
+        $company = Company::factory()->create();
+        foreach ($this->cincoRodadasComContencao() as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0, prev: 96.0, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-' . $i);
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $this->assertSame(2, AdmanProbeMargemPrevVeredito::where('periodo_key', '2026-06')->count());
+        $maisRecente = AdmanProbeMargemPrevVeredito::where('periodo_key', '2026-06')->latest('gerado_em')->firstOrFail();
+        $this->assertNotNull($maisRecente);
+    }
+
+    public function test_relatorio_ignora_competencia_diferente(): void
+    {
+        $company = Company::factory()->create();
+
+        // Leituras de maio NÃO devem contaminar o veredito de --mes=2026-06.
+        $this->gravarLeitura($company->id, '2026-05', '2026-06-30 11:00:00', value: 999.0, prev: 1.0, notaRegua: 1, janela: 'contencao_11h', leituraHash: 'maio-hash');
+
+        foreach ($this->cincoRodadasComContencao() as $i => $r) {
+            $this->gravarLeitura($company->id, '2026-06', $r['lida_em'], value: 100.0, prev: 96.0, notaRegua: 4, janela: $r['janela'], leituraHash: 'hash-' . $i);
+        }
+
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+        $this->assertSame(5, $veredito->total_leituras);
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $veredito->veredito);
+    }
 }

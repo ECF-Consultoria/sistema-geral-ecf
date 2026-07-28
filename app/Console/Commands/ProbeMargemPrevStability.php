@@ -293,11 +293,260 @@ class ProbeMargemPrevStability extends Command
     }
 
     /**
-     * Modo --relatorio: agrega as leituras persistidas de uma competência
-     * num veredito reconsultável. Implementado na Task 3 do plano 117-02.
+     * Modo --relatorio: agrega as leituras já persistidas de UMA competência
+     * (`periodo_key`) num veredito reconsultável, sem tocar a Adman (D-10).
+     *
+     * Ordem de precedência do veredito, EXPLÍCITA e nesta ordem:
+     *   instrumentacao_suspeita  →  reprovado  →  aprovado
+     * "Estabilidade perfeita" (payload idêntico bit-a-bit) é o SINTOMA
+     * esperado de um probe medindo cache, não um sucesso — por isso vem
+     * ANTES até de `reprovado`: uma leitura mal instrumentada não decide
+     * nada, nem pra aprovar nem pra reprovar de verdade (invariante 2).
      */
     private function emitirRelatorio(): int
     {
+        $mes = $this->option('mes');
+
+        // Mesma validação do modo de leitura — --relatorio também exige a
+        // competência fixa, pra agregar só as leituras daquele periodo_key.
+        if (! is_string($mes) || preg_match('/^\d{4}-\d{2}$/', $mes) !== 1) {
+            $this->error('[AdmanProbeMargemPrev] --relatorio também exige --mes no formato YYYY-MM (a mesma competência fixa usada nas leituras a agregar).');
+
+            return self::FAILURE;
+        }
+
+        $leituras = AdmanProbeMargemPrevLeitura::with('company:id,name')
+            ->where('periodo_key', $mes)
+            ->orderBy('company_id')
+            ->orderBy('lida_em')
+            ->get();
+
+        if ($leituras->isEmpty()) {
+            $this->error("[AdmanProbeMargemPrev] nenhuma leitura encontrada para periodo_key={$mes} — rode o modo de leitura antes de agregar. Nenhum veredito foi gravado.");
+
+            return self::FAILURE;
+        }
+
+        $porEmpresa = $leituras->groupBy('company_id');
+
+        $motivos         = [];
+        $empresasComFlip = [];
+
+        // ── D-01: flip de nota entre DUAS LEITURAS QUAISQUER da mesma
+        //    empresa (não só consecutivas — comparamos o CONJUNTO de notas
+        //    distintas, então um par não-adjacente que difira também conta). ──
+        foreach ($porEmpresa as $companyId => $grupo) {
+            $notasDistintas = $grupo->pluck('nota_regua')
+                ->filter(fn ($n) => $n !== null)
+                ->unique()
+                ->sort()
+                ->values();
+
+            if ($notasDistintas->count() > 1) {
+                $empresasComFlip[] = [
+                    'company_id'   => $companyId,
+                    'company_name' => optional($grupo->first()->company)->name,
+                    'notas'        => $notasDistintas->all(),
+                ];
+            }
+        }
+
+        $empresasComFlipCount = count($empresasComFlip);
+        if ($empresasComFlipCount > 0) {
+            $motivos[] = sprintf(
+                '%d empresa(s) com nota_regua diferente entre leituras (flip de faixa da régua) — D-01 exige zero flip para aprovar, mesmo que as notas isoladamente pareçam plausíveis.',
+                $empresasComFlipCount
+            );
+        }
+
+        // ── D-03: cobertura mínima de prev não-nulo — reusa o patamar de
+        //    AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA (ver
+        //    coberturaMinima() abaixo), nunca hardcodeado aqui, pra não criar
+        //    dois conceitos concorrentes de "cobertura suficiente" no mesmo
+        //    domínio. ──
+        $totalLeituras   = $leituras->count();
+        $comPrev         = $leituras->whereNotNull('prev')->count();
+        $coberturaPrev   = $totalLeituras > 0 ? round($comPrev / $totalLeituras, 4) : 0.0;
+        $coberturaMinima = $this->coberturaMinima();
+
+        if ($coberturaPrev < $coberturaMinima) {
+            $motivos[] = sprintf(
+                'cobertura de prev não-nulo (%.2f%%) abaixo do mínimo exigido (%.0f%%) — D-03, patamar de AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA.',
+                $coberturaPrev * 100,
+                $coberturaMinima * 100
+            );
+        }
+
+        // ── Invariante 2 (obrigatória) — sanidade anti-cache. Por empresa
+        //    com 2+ leituras BEM-SUCEDIDAS (http_falhou=false, leitura_hash
+        //    presente), conta hashes distintos. Se TODA empresa comparável
+        //    tiver exatamente 1 hash distinto, o veredito vira
+        //    instrumentacao_suspeita — precedência sobre aprovado. ──
+        $todasIdenticas    = true;
+        $algumaComparavel  = false;
+
+        foreach ($porEmpresa as $grupo) {
+            $bemSucedidas = $grupo->where('http_falhou', false)->whereNotNull('leitura_hash');
+
+            if ($bemSucedidas->count() < 2) {
+                continue; // nada a comparar nesta empresa
+            }
+
+            $algumaComparavel = true;
+
+            if ($bemSucedidas->pluck('leitura_hash')->unique()->count() > 1) {
+                $todasIdenticas = false;
+            }
+        }
+
+        $instrumentacaoSuspeita = $algumaComparavel && $todasIdenticas;
+
+        if ($instrumentacaoSuspeita) {
+            $motivos[] = 'todas as leituras comparáveis devolveram payload idêntico bit-a-bit (mesmo leitura_hash) — possível problema de instrumentação (probe lendo cache), NÃO conclua estabilidade a partir disto; conferir se forceRefresh: true está mesmo sendo propagado antes de qualquer conclusão. É este exato padrão que, em 23/07, foi lido como "o dado não flutua" e virou revert 4 dias depois.';
+        }
+
+        // ── D-02: desenho amostral — >=5 rodadas (lida_em distintos) E ao
+        //    menos 1 leitura na janela de contenção real (11:00-12:00 BRT).
+        //    Faltando qualquer um dos dois, nunca aprovado. ──
+        $totalRodadas       = $leituras->pluck('lida_em')->map(fn ($d) => $d->toDateTimeString())->unique()->count();
+        $temJanelaContencao = $leituras->contains('janela_esperada', 'contencao_11h');
+        $desenhoIncompleto  = $totalRodadas < 5 || ! $temJanelaContencao;
+
+        if ($desenhoIncompleto) {
+            $motivos[] = sprintf(
+                'desenho amostral incompleto (D-02): %d rodada(s) distinta(s) registradas (mínimo 5) e %s leitura na janela de contenção real (janela_esperada=contencao_11h, 11:00-12:00 BRT — [MLB SyncTodasVendas]/[MLB SyncPub] NÃO são agendados por cron, então essa janela precisa ser garantida manualmente).',
+                $totalRodadas,
+                $temJanelaContencao ? 'há' : 'não há'
+            );
+        }
+
+        // ── Veredito final — ordem de precedência explícita ──
+        $veredito = match (true) {
+            $instrumentacaoSuspeita => AdmanProbeMargemPrevVeredito::VEREDITO_INSTRUMENTACAO_SUSPEITA,
+            $empresasComFlipCount > 0 || $coberturaPrev < $coberturaMinima || $desenhoIncompleto
+                => AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO,
+            default => AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO,
+        };
+
+        // Insert-only — cada execução de --relatorio grava uma linha NOVA
+        // (nunca updateOrCreate). O histórico de vereditos é parte da
+        // auditoria do gate (D-10).
+        $registro = AdmanProbeMargemPrevVeredito::create([
+            'periodo_key'             => $mes,
+            'gerado_em'               => now(),
+            'total_leituras'          => $totalLeituras,
+            'total_empresas'          => $porEmpresa->count(),
+            'total_rodadas'           => $totalRodadas,
+            'cobertura_prev'          => $coberturaPrev,
+            'empresas_com_flip_count' => $empresasComFlipCount,
+            'empresas_com_flip'       => $empresasComFlip,
+            'veredito'                => $veredito,
+            'motivos'                 => $motivos,
+        ]);
+
+        $this->imprimirRelatorioConsole($registro, $leituras, $porEmpresa);
+
+        // Relatório final via log — SÓ contadores agregados (T-117-06),
+        // nunca valores de margem por empresa nem credencial. Os valores
+        // individuais existem na tabela impressa acima e no banco.
+        $msg = sprintf(
+            '[AdmanProbeMargemPrev] relatorio gerado — mes=%s veredito=%s empresas=%d leituras=%d rodadas=%d cobertura_prev=%.2f flips=%d',
+            $mes, $veredito, $porEmpresa->count(), $totalLeituras, $totalRodadas, $coberturaPrev, $empresasComFlipCount
+        );
+        Log::info($msg);
+        $this->info($msg);
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Lê `AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA` via Reflection —
+     * DELIBERADAMENTE sem `use App\Services\Metrics\AdmanMetricDiffService;`
+     * e sem chamar `::compute()` (nenhum dos dois pode aparecer neste
+     * arquivo — invariante 1/D-11b, gate automatizado da Task 2 deste
+     * plano). Necessário porque, na implementação REAL (verificada em
+     * `app/Services/Metrics/AdmanMetricDiffService.php:70`), a constante é
+     * `private const` — o `<interfaces>` deste plano a descrevia como
+     * `public const`, uma divergência entre plano e realidade documentada
+     * no SUMMARY. A verificação 6 deste mesmo plano PROÍBE editar
+     * `app/Services/Metrics/*` (independência do Plano 117-01), então subir
+     * a visibilidade da constante está fora de escopo. Reflection lê o
+     * valor real sem tocar o arquivo-fonte e sem hardcodear `0.8` aqui —
+     * cumpre a letra do `<action>` ("ler a constante, nunca escrever 0.8")
+     * pelo único caminho compatível com as duas restrições.
+     */
+    private function coberturaMinima(): float
+    {
+        return (float) (new \ReflectionClass(\App\Services\Metrics\AdmanMetricDiffService::class))
+            ->getConstant('MARGEM_COBERTURA_MINIMA');
+    }
+
+    /**
+     * Relatório legível impresso no console — NUNCA vai para Log::info
+     * (T-117-06: só contadores agregados são logados). Inclui a comparação
+     * de referência exigida pelo CONTEXT `<specifics>` e o aviso de que a
+     * conferência oficial é por reconsulta ao banco (D-10, mesma disciplina
+     * do gate FIXMARG-03).
+     *
+     * @param  \Illuminate\Support\Collection<int, AdmanProbeMargemPrevLeitura>  $leituras
+     * @param  \Illuminate\Support\Collection<int|string, \Illuminate\Support\Collection<int, AdmanProbeMargemPrevLeitura>>  $porEmpresa
+     */
+    private function imprimirRelatorioConsole(
+        AdmanProbeMargemPrevVeredito $registro,
+        \Illuminate\Support\Collection $leituras,
+        \Illuminate\Support\Collection $porEmpresa
+    ): void {
+        $this->info(sprintf(
+            '[AdmanProbeMargemPrev] periodo=%s rodadas=%d empresas=%d leituras=%d http_falhou=%d cobertura_prev=%.2f%%',
+            $registro->periodo_key,
+            $registro->total_rodadas,
+            $registro->total_empresas,
+            $registro->total_leituras,
+            $leituras->where('http_falhou', true)->count(),
+            $registro->cobertura_prev * 100
+        ));
+
+        $linhas = [];
+        foreach ($porEmpresa as $companyId => $grupo) {
+            $notas   = $grupo->pluck('nota_regua')->filter(fn ($n) => $n !== null)->unique()->sort()->values()->implode(',');
+            $margens = $grupo->pluck('margem_var_pp')->filter(fn ($v) => $v !== null);
+            $hashes  = $grupo->where('http_falhou', false)->pluck('leitura_hash')->filter()->unique()->count();
+
+            $linhas[] = [
+                optional($grupo->first()->company)->name ?? "empresa #{$companyId}",
+                $grupo->count(),
+                $notas !== '' ? $notas : '—',
+                $margens->isNotEmpty() ? number_format($margens->min(), 2) : '—',
+                $margens->isNotEmpty() ? number_format($margens->max(), 2) : '—',
+                $hashes,
+            ];
+        }
+
+        $this->table(['Empresa', 'Leituras', 'Notas distintas', 'pp mín', 'pp máx', 'Hashes distintos'], $linhas);
+
+        // Comparação de referência exigida pelo CONTEXT <specifics>: a
+        // média de margem_var_pp de TODA a amostra, a nota que ela produz
+        // na régua reusada, e o contraste com os 3 números do incidente de
+        // 23/07 (carteira do Luiz) — é essa comparação que torna o gate
+        // discutível pelo usuário em vez de um aprovado/reprovado opaco.
+        $margensGerais = $leituras->pluck('margem_var_pp')->filter(fn ($v) => $v !== null);
+
+        if ($margensGerais->isNotEmpty()) {
+            $media     = round($margensGerais->avg(), 4);
+            $notaMedia = $this->reguaMargem($media);
+
+            $this->info(sprintf(
+                '[AdmanProbeMargemPrev] media da amostra: %.2f pp -> nota %s na regua reusada. Referencia do incidente (carteira do Luiz, 23/07): ~-0,59 pp -> nota 3 no calculo pp, contra nota 5 no snapshot congelado atual e nota 1 no calculo local ja revertido.',
+                $media,
+                $notaMedia !== null ? (string) (int) $notaMedia : 'null'
+            ));
+        }
+
+        $this->info(sprintf('[AdmanProbeMargemPrev] VEREDITO: %s', $registro->veredito));
+        foreach (($registro->motivos ?? []) as $motivo) {
+            $this->line("  - {$motivo}");
+        }
+
+        $this->warn('[AdmanProbeMargemPrev] AVISO: este relatorio impresso no console e um espelho. A conferencia OFICIAL do gate MPP-04 e por reconsulta ao banco (adman_probe_margem_prev_vereditos / adman_probe_margem_prev_leituras) — nunca por este stdout (mesma disciplina que o gate FIXMARG-03 ja exige neste projeto).');
     }
 }
