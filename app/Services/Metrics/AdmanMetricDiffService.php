@@ -97,8 +97,12 @@ class AdmanMetricDiffService
      * @return array{
      *     company_id: int,
      *     period: array,
-     *     metrics: array<string, array{value: ?float, diff_pct: ?float, diff_source: ?string}>,
-     *     quality: array{status: string, source: string, computed_at: string},
+     *     metrics: array{
+     *         revenue: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_source: ?string},
+     *         contribution_margin_value: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_source: ?string},
+     *         contribution_margin_pct: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_pp: ?float, diff_source: ?string},
+     *     },
+     *     quality: array{status: string, source: string, computed_at: string, diff_pp_disponivel: bool},
      * }
      */
     public function compute(Company $company, array $periodo): array
@@ -119,7 +123,9 @@ class AdmanMetricDiffService
         // v5 (2026-07-27): faturamento cai pro `billing` do endpoint detalhado
         // quando o /performance dá 500 (caso Jf Auto) — o bump invalida as entradas
         // "sem fonte" antigas dessas empresas.
-        $cacheKey = "adman:diff:v5:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        // v6 (2026-07-27): shape ganha prev_value/diff_pp (Fase 117, MPP-01/02/03) —
+        // o bump invalida as entradas com shape antigo.
+        $cacheKey = "adman:diff:v6:{$marketplace}:{$custId}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
 
         // Memo do request: devolve o resultado real já computado nesta passada
         // (evita reler um ERROR_SENTINEL gravado pela 1ª de duas chamadas ao
@@ -226,16 +232,21 @@ class AdmanMetricDiffService
      *
      * @param  ?array{value: ?float, diff: ?float, prev: ?float}  $adman
      * @param  callable(): ?float  $fallback
-     * @return array{value: ?float, diff_pct: ?float, diff_source: ?string}
+     * @return array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_source: ?string}
      */
     private function resolveField(?array $adman, bool $isJanelaIgual, callable $fallback): array
     {
-        $value = isset($adman['value']) ? (float) $adman['value'] : null;
+        $value     = isset($adman['value']) ? (float) $adman['value'] : null;
+        // Fase 117 (MPP-01, D-05): prev_value é exposto sempre que a Adman
+        // mandou `.prev`, INDEPENDENTE do comparison_mode — não é gateado
+        // como diff_pp (que só existe em contribution_margin_pct).
+        $prevValue = isset($adman['prev']) ? (float) $adman['prev'] : null;
         $adminDiff = $adman['diff'] ?? null;
 
         if ($isJanelaIgual && $adminDiff !== null) {
             return [
                 'value'       => $value,
+                'prev_value'  => $prevValue,
                 'diff_pct'    => (float) $adminDiff,
                 'diff_source' => 'adman_diff',
             ];
@@ -243,6 +254,7 @@ class AdmanMetricDiffService
 
         return [
             'value'       => $value,
+            'prev_value'  => $prevValue,
             'diff_pct'    => $fallback(),
             'diff_source' => 'calculated_fallback',
         ];
@@ -266,25 +278,48 @@ class AdmanMetricDiffService
      *     valor local errado. O `value` (margem % do mês) é preservado quando
      *     presente, para não rebaixar `quality.status` indevidamente.
      *
+     * ### Fase 117 (v21.0, 2026-07-27) — reabertura DELIBERADA do hotfix acima
+     * `diff_pct` **continua** sendo sempre o `.diff` nativo da Adman — o
+     * hotfix `a413e823` de 24/07 permanece válido e NÃO é revertido. Esta
+     * fase acrescenta `diff_pp = value − prev_value`, um campo NOVO e
+     * aditivo, porque **pontos percentuais não são expressáveis** pelo
+     * `.diff` nativo (que é variação RELATIVA, não diferença em pp). Esta é
+     * a decisão D1 travada da milestone v21.0. `diff_pp` ainda não é
+     * consumido por ninguém nesta fase — quem consome é a Fase 119, e só
+     * depois do gate do probe de estabilidade do Plano 117-02 aprovar.
+     *
      * @param  ?array{value: ?float, diff: ?float, prev: ?float}  $marginPctAdman
-     * @return array{value: ?float, diff_pct: ?float, diff_source: ?string}
+     * @return array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_pp: ?float, diff_source: ?string}
      */
     private function resolveMargemPct(?array $marginPctAdman, bool $isJanelaIgual): array
     {
         $value     = isset($marginPctAdman['value']) ? (float) $marginPctAdman['value'] : null;
+        $prevValue = isset($marginPctAdman['prev']) ? (float) $marginPctAdman['prev'] : null;
         $adminDiff = $marginPctAdman['diff'] ?? null;
+
+        // Fase 117 (D-07/MPP-02): diff_pp só nasce em janela-igual, com
+        // value e prev_value AMBOS numéricos — gate independente da
+        // presença de `.diff` (diff_pct pode ser null e diff_pp ainda
+        // assim ser calculado, ver cenário p do teste).
+        $diffPp = ($isJanelaIgual && $value !== null && $prevValue !== null)
+            ? round($value - $prevValue, 2)
+            : null;
 
         if ($isJanelaIgual && $adminDiff !== null) {
             return [
                 'value'       => $value,
+                'prev_value'  => $prevValue,
                 'diff_pct'    => (float) $adminDiff,
+                'diff_pp'     => $diffPp,
                 'diff_source' => 'adman_diff',
             ];
         }
 
         return [
             'value'       => $value,
+            'prev_value'  => $prevValue,
             'diff_pct'    => null,
+            'diff_pp'     => $diffPp,
             'diff_source' => 'adman_indisponivel',
         ];
     }
@@ -547,11 +582,28 @@ class AdmanMetricDiffService
 
     // ─────────────────────── Shape / quality / cache ───────────────────────
 
+    /**
+     * Fase 117 (D-06): o shape deixou de ser uniforme entre métricas — só
+     * `contribution_margin_pct` expõe `diff_pp` (pontos percentuais só
+     * fazem sentido pra uma métrica que já é percentual). Por isso não dá
+     * mais pra usar `array_fill_keys()` com um único array vazio: cada
+     * métrica é construída explicitamente com o shape que lhe cabe.
+     */
     private function emptyMetrics(): array
     {
-        $vazio = ['value' => null, 'diff_pct' => null, 'diff_source' => null];
+        $vazioComum = ['value' => null, 'prev_value' => null, 'diff_pct' => null, 'diff_source' => null];
 
-        return array_fill_keys(self::METRIC_KEYS, $vazio);
+        return [
+            'revenue'                   => $vazioComum,
+            'contribution_margin_value' => $vazioComum,
+            'contribution_margin_pct'   => [
+                'value'       => null,
+                'prev_value'  => null,
+                'diff_pct'    => null,
+                'diff_pp'     => null,
+                'diff_source' => null,
+            ],
+        ];
     }
 
     private function buildResult(Company $company, array $periodo, array $metrics): array
@@ -584,9 +636,16 @@ class AdmanMetricDiffService
         };
 
         return [
-            'status'      => $status,
-            'source'      => 'adman',
-            'computed_at' => now()->toIso8601String(),
+            'status'             => $status,
+            'source'             => 'adman',
+            'computed_at'        => now()->toIso8601String(),
+            // Fase 117 (D-08): indicador INFORMATIVO de cobertura de diff_pp —
+            // NÃO influencia `$status` nem a política de TTL de compute() (isso
+            // prenderia empresa sem `prev` em TTL curto permanentemente,
+            // martelando a Adman). A Fase 121 agrega este campo pra medir
+            // cobertura de carteira sem refazer as chamadas. `?? null` blinda
+            // contra qualquer caminho que não passe pelas construções acima.
+            'diff_pp_disponivel' => ($metrics['contribution_margin_pct']['diff_pp'] ?? null) !== null,
         ];
     }
 

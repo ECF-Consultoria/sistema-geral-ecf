@@ -365,9 +365,12 @@ class AdmanMetricDiffServiceTest extends TestCase
             ['revenue', 'contribution_margin_value', 'contribution_margin_pct'],
             array_keys($resultado['metrics'])
         );
-        foreach ($resultado['metrics'] as $metric) {
-            $this->assertSame(['value', 'diff_pct', 'diff_source'], array_keys($metric));
-        }
+        // Fase 117 (MPP-01/02, D-06): shape deixou de ser uniforme — só
+        // contribution_margin_pct ganha diff_pp (pp só faz sentido pra uma
+        // métrica que já é percentual).
+        $this->assertSame(['value', 'prev_value', 'diff_pct', 'diff_source'], array_keys($resultado['metrics']['revenue']));
+        $this->assertSame(['value', 'prev_value', 'diff_pct', 'diff_source'], array_keys($resultado['metrics']['contribution_margin_value']));
+        $this->assertSame(['value', 'prev_value', 'diff_pct', 'diff_pp', 'diff_source'], array_keys($resultado['metrics']['contribution_margin_pct']));
         $this->assertSame('complete', $resultado['quality']['status']);
         $this->assertSame('adman', $resultado['quality']['source']);
         $this->assertArrayHasKey('computed_at', $resultado['quality']);
@@ -692,5 +695,184 @@ class AdmanMetricDiffServiceTest extends TestCase
         $this->assertSame('adman_diff', $resultado['metrics']['revenue']['diff_source']);
         // NÃO é 'missing' — a empresa tem fonte de faturamento nativa.
         $this->assertNotSame('missing', $resultado['quality']['status']);
+    }
+
+    // ─────────────── Fase 117 (v21.0) — prev_value/diff_pp aditivos (MPP-01/02/03/06) ───────────────
+
+    /**
+     * CENÁRIO (p) — caso âncora MPP-06: `value=27.47` + `prev=24.08` produz
+     * `diff_pp=3.39`, e `diff_pct` continua exatamente `14.09`. O teste prova
+     * que `diff_pp` NÃO deriva de `diff_pct` (são fontes diferentes: diff_pp
+     * é `value - prev_value` calculado aqui; diff_pct é o `.diff` nativo).
+     */
+    public function test_r_fixture_ancora_diff_pp_3_39_nao_deriva_de_diff_pct(): void
+    {
+        $this->fakeAdmanEndpoints(); // percentageMargin: value=27.47, diff=14.09, prev=24.08 (fixture já existente)
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $margem = $resultado['metrics']['contribution_margin_pct'];
+        $this->assertSame(27.47, $margem['value']);
+        $this->assertSame(24.08, $margem['prev_value']);
+        $this->assertSame(3.39, $margem['diff_pp']);       // 27.47 - 24.08, NÃO deriva de diff_pct
+        $this->assertSame(14.09, $margem['diff_pct']);     // inalterado — continua sendo a variação relativa nativa
+    }
+
+    /**
+     * CENÁRIO (q) — gate D-07/MPP-02: diff_pp só é calculado em janela-igual
+     * com value+prev_value ambos numéricos. Primeiro caso: MESMA fixture
+     * (prev=24.08 presente), mas modo operacional ⇒ diff_pp=null E
+     * prev_value=24.08 (prova que o gate é sobre comparison_mode, não sobre
+     * ausência de prev). Segundo caso: sem `.diff` nativo (percentageMargin
+     * sem chave `diff`) + janela-igual ⇒ diff_pct=null, diff_source=
+     * 'adman_indisponivel', mas diff_pp=3.39 (o gate de diff_pp depende de
+     * value+prev_value, NÃO da presença de `.diff`).
+     */
+    public function test_p_diff_pp_null_fora_de_janela_igual_mesmo_com_prev_presente(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultadoOperacional = app(AdmanMetricDiffService::class)->compute($company, $this->periodoOperacional());
+        $margemOperacional    = $resultadoOperacional['metrics']['contribution_margin_pct'];
+        $this->assertNull($margemOperacional['diff_pp']);
+        $this->assertSame(24.08, $margemOperacional['prev_value']);
+    }
+
+    /**
+     * Segundo caso do gate D-07/MPP-02, em teste isolado (cada teste precisa
+     * de `Http::fake()` próprio — chamar `fakeAdmanEndpoints()` duas vezes no
+     * MESMO teste não substitui o fake anterior, os stubs se ACUMULAM e o
+     * primeiro registrado ainda casa primeiro): sem `.diff` nativo
+     * (percentageMargin sem chave `diff`) + janela-igual ⇒ diff_pct=null,
+     * diff_source='adman_indisponivel', mas diff_pp=3.39 (o gate de diff_pp
+     * depende de value+prev_value, NÃO da presença de `.diff`).
+     */
+    public function test_p2_diff_pp_calculado_mesmo_sem_diff_nativo_quando_value_e_prev_presentes(): void
+    {
+        $this->fakeAdmanEndpoints(percentageMarginDiff: null);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultadoSemDiff = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+        $margemSemDiff     = $resultadoSemDiff['metrics']['contribution_margin_pct'];
+        $this->assertNull($margemSemDiff['diff_pct']);
+        $this->assertSame('adman_indisponivel', $margemSemDiff['diff_source']);
+        $this->assertSame(3.39, $margemSemDiff['diff_pp']);
+    }
+
+    /**
+     * CENÁRIO (prev_value nas 3 métricas) — MPP-01: as 3 métricas expõem
+     * prev_value; só contribution_margin_pct expõe diff_pp (D-06 — a chave
+     * é AUSENTE, não presente com null, em revenue/contribution_margin_value).
+     */
+    public function test_prev_value_presente_nas_tres_metricas_e_diff_pp_ausente_fora_da_margem_pct(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $this->assertSame(263768.55, $resultado['metrics']['revenue']['prev_value']);
+        $this->assertSame(57036.05, $resultado['metrics']['contribution_margin_value']['prev_value']);
+        $this->assertSame(24.08, $resultado['metrics']['contribution_margin_pct']['prev_value']);
+
+        $this->assertArrayNotHasKey('diff_pp', $resultado['metrics']['revenue']);
+        $this->assertArrayNotHasKey('diff_pp', $resultado['metrics']['contribution_margin_value']);
+    }
+
+    /**
+     * CENÁRIO (bump de cache MPP-03) — uma entrada `adman:diff:v5:` gravada
+     * ANTES do deploy (shape antigo) não é servida pós-deploy: compute()
+     * devolve o shape NOVO (com prev_value/diff_pp), lido da chave `v6`, e o
+     * value da fixture real (27.47) — não o valor plantado no cache velho.
+     */
+    public function test_q_cache_v6_nao_reaproveita_shape_v5(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+        $periodo = $this->periodoJanelaIgual();
+
+        // Simula shape v5 (sem prev_value/diff_pp) já cacheado na chave ANTIGA.
+        $cacheKeyV5 = "adman:diff:v5:meli:CUST1:{$periodo['current_start']}:{$periodo['current_end']}:" . now()->setTimezone(config('app.timezone'))->toDateString();
+        Cache::put($cacheKeyV5, [
+            'metrics' => [
+                'contribution_margin_pct' => ['value' => 1.0, 'diff_pct' => 1.0, 'diff_source' => 'adman_diff'],
+            ],
+        ], 1440);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $periodo);
+
+        $margem = $resultado['metrics']['contribution_margin_pct'];
+        $this->assertArrayHasKey('prev_value', $margem);
+        $this->assertArrayHasKey('diff_pp', $margem);
+        $this->assertSame(27.47, $margem['value']);
+    }
+
+    /**
+     * CENÁRIO (quality.diff_pp_disponivel, D-08) — indicador informativo:
+     * true com fixture completa em janela-igual; false quando percentageMargin
+     * está ausente do payload (ou modo operacional). quality.status NÃO
+     * rebaixa por falta de diff_pp (senão prenderia empresa sem prev em TTL
+     * curto permanentemente).
+     */
+    public function test_quality_diff_pp_disponivel_true_com_fixture_completa(): void
+    {
+        $this->fakeAdmanEndpoints();
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultadoCompleto = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+        $this->assertTrue($resultadoCompleto['quality']['diff_pp_disponivel']);
+        $this->assertSame('complete', $resultadoCompleto['quality']['status']);
+    }
+
+    /**
+     * Segundo caso do indicador D-08, em teste isolado (mesma razão do
+     * `test_p2` acima — `Http::fake()` não substitui um fake anterior no
+     * mesmo teste): percentageMargin AUSENTE do payload ⇒
+     * `diff_pp_disponivel=false`, e `quality.status` cai pra 'partial' pela
+     * AUSÊNCIA de `percentageMargin.value` (revenue + margem R$ presentes) —
+     * não é rebaixado ADICIONALMENTE por falta de diff_pp; a razão do
+     * 'partial' é a mesma de antes desta fase (D-08 não altera o critério).
+     */
+    public function test_quality_diff_pp_disponivel_false_quando_percentage_margin_ausente(): void
+    {
+        Http::fake([
+            '*/performance/*'       => Http::response($this->respostaPerformance(), 200),
+            '*/accounts/*/metrics*' => Http::response([
+                'metrics' => [
+                    'billing'      => ['value' => 530797.73, 'diff' => 101.24, 'prev' => 263768.55],
+                    'liquidMargin' => ['value' => 141428.81, 'diff' => 147.96, 'prev' => 57036.05],
+                    // percentageMargin AUSENTE — sem diff_pp possível.
+                ],
+            ], 200),
+        ]);
+        $company = Company::factory()->create(['adman_account_id' => 'CUST1', 'marketplace' => 'meli']);
+
+        $resultadoSemMargem = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+        $this->assertFalse($resultadoSemMargem['quality']['diff_pp_disponivel']);
+        $this->assertSame('partial', $resultadoSemMargem['quality']['status']);
+    }
+
+    /**
+     * CENÁRIO (emptyMetrics) — empresa sem adman_account_id nem ml_store_id:
+     * contribution_margin_pct tem diff_pp=>null e prev_value=>null;
+     * revenue/contribution_margin_value têm prev_value=>null e NÃO têm a
+     * chave diff_pp.
+     */
+    public function test_empty_metrics_empresa_sem_custid_tem_shape_novo_todo_null(): void
+    {
+        $company = Company::factory()->create(['adman_account_id' => null, 'ml_store_id' => null]);
+
+        $resultado = app(AdmanMetricDiffService::class)->compute($company, $this->periodoJanelaIgual());
+
+        $margem = $resultado['metrics']['contribution_margin_pct'];
+        $this->assertNull($margem['diff_pp']);
+        $this->assertNull($margem['prev_value']);
+
+        $this->assertNull($resultado['metrics']['revenue']['prev_value']);
+        $this->assertArrayNotHasKey('diff_pp', $resultado['metrics']['revenue']);
+        $this->assertNull($resultado['metrics']['contribution_margin_value']['prev_value']);
+        $this->assertArrayNotHasKey('diff_pp', $resultado['metrics']['contribution_margin_value']);
     }
 }
