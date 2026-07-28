@@ -185,17 +185,30 @@ Schedule::command('nps:disparar-mensal')
 // forma que o snapshot mensal do bônus sempre enxergue os não respondidos da
 // competência antes de congelar. `--force` porque é execução não interativa
 // (sem humano no loop para confirmar); o comando é idempotente por
-// construção (a idempotência vive no `NpsImputationService`, não aqui) — é
-// ele que promove as linhas provisórias para `definitivo` quando a
-// competência vira o mês. A reconsolidação disparada por esta execução
-// diária é inócua no regime permanente: `desempenho:consolidar-mes` é
-// idempotente e a competência corrente ainda não tem snapshot mensal
-// (mês aberto) — o schedule diário existe para o BACKFILL retroativo (D1),
-// não para reconsolidar o mesmo mês fechado repetidamente. Por consequência,
-// a conferência nominal do comando (`conferirSnapshotsReconsolidados`)
-// também não tem o que cobrar no regime permanente — competência aberta não
-// entra no relatório de impacto (sem snapshot esperado).
-Schedule::command('nps:materializar-nao-respondidos --force')
+// construção (a idempotência vive no `NpsImputationService`, não aqui).
+//
+// ─── JANELA RESTRITA: mês anterior + mês corrente (correção 2026-07-28) ───
+// A versão original desta rotina rodava SEM `--mes`, o que varre o histórico
+// INTEIRO. Combinado com `--force`, isso executaria sozinho o backfill
+// retroativo de todas as competências fechadas — reescrevendo os
+// `DesempenhoScoreSnapshot` congelados e mudando quem bateu o bônus — sem o
+// relatório antes/depois que o usuário exige aprovar (D1). O backfill
+// retroativo é operação MANUAL e ÚNICA, com gate humano; nunca rotina.
+//
+// A janela é de DOIS meses, não um: a promoção de `provisorio` para
+// `definitivo` acontece dentro da varredura (`NpsImputationService::
+// materializar`, gate `$competenciaFechada`). Se a rotina só olhasse o mês
+// corrente, as linhas do mês recém-fechado jamais seriam promovidas e a
+// regra "quando o mês passa, a nota fica valendo 1" (D2) nunca se
+// concretizaria. Varrer o mês anterior também é barato e idempotente.
+Schedule::call(function () {
+    foreach ([now()->subMonthNoOverflow(), now()] as $mes) {
+        Artisan::call('nps:materializar-nao-respondidos', [
+            '--force' => true,
+            '--mes'   => $mes->format('Y-m'),
+        ]);
+    }
+})
     ->dailyAt('09:30')
     ->timezone('America/Sao_Paulo')
     ->name('nps-materializar-nao-respondidos')
