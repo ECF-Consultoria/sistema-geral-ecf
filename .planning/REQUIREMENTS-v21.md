@@ -27,6 +27,15 @@ Decisão do usuário (2026-07-27). Cortes mantidos: `≤ −5 → 1`, `≤ −2 
 ### D5 — Placeholder de margem Shopee preservado
 Empresa Shopee mantém `margem_pontos = 1.0` (trava da Fase 109). Quando a Shopee fornecer margem, vira `margem_var_pp` real sem mudar a fórmula.
 
+### D6 — Empresa sem disparo de NPS vale 1 (REVERTE a D3 da Fase 116)
+Decisão do usuário (2026-07-28, no discuss-phase da Fase 118). Empresa da carteira **sem nenhum NPS na competência entra com nota 1**, inclusive quando **nunca houve disparo**.
+
+**Isto reverte a D3 da Fase 116**, que era decisão travada e estava marcada como *"o invariante mais importante da fase"*: `"Empresa sem disparo nunca entra como 1 — senão pune quem não tinha o que enviar."` A contradição foi apresentada ao usuário com o texto original e o impacto, e ele **reafirmou a reversão**. O incentivo passa de "envie o NPS" para "tenha NPS configurado e disparando em toda empresa da carteira".
+
+**Escopo preciso:** as 245 imputações aplicadas em produção em 2026-07-28 cobrem *disparado e não respondido* — regra distinta e **inalterada**. A reversão atinge apenas *nunca disparado*, caso que `nps_imputed_assignments` não modela. O "1" é **fallback de leitura** no serviço da Fase 118, não linha materializada na tabela.
+
+⚠️ **Consequência a resolver no plano da Fase 118:** bônus e área de NPS passam a divergir para essas empresas, e a Fase 116 entregou um teste de coerência entre call-sites (116-08). Ver `118-CONTEXT.md` § `<risks>`.
+
 ## DECISÃO EM ABERTO (resolver no discuss-phase da Fase 120)
 
 **Tratamento de empresa sem baseline.** O plano (§3.4) propõe marcar o profissional como `partial` quando qualquer empresa esperada estiver sem baseline. Isso **contradiz** `DESEMP-06` e a trava da Fase 109 (*"profissional só-Shopee NÃO deve cair em `blocked`/`partial` por ausência de margem"*), e o histórico local torna o caso comum, não excepcional (`adman_metrics` começa ~21/05; Shopee sem baseline antes de 01/06 — ver memória `project_created_at_reimport_e_historico_metricas`).
