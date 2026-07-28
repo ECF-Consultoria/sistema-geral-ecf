@@ -1318,6 +1318,13 @@ Plans:
   4. Empresa invalidada na competência não entra; empresa com Performance **e** Shopee não duplica NPS
   5. O teste de coerência entre call-sites da 116-08 conhece este call-site e continua verde
 
+**Plans:** 2 plans em 2 waves
+
+Plans:
+
+- [ ] 118-01-PLAN.md — `NpsJanelaResolver` (régua de LEITURA da janela M+1) + `NpsPorEmpresaService`: os 3 ramos agrupados por `company_id` com shape auditável, reconciliação contra os ramos originais e os 3 casos da janela [NPSE-01, NPSE-02, NPSE-03]
+- [ ] 118-02-PLAN.md — D-03 (survey do serviço do vínculo + fallback consolidado), invalidação por competência antes do piso da D-04, log do gap de atribuição e o 8º método do teste de coerência entre call-sites [NPSE-04, NPSE-05, NPSE-06]
+
 ### Phase 119: Score por empresa (v21.0)
 
 **Goal:** Existe um fato por empresa com os três componentes já pontuados e a `nota_empresa` calculada, com a régua de faturamento aplicada por empresa e a de margem aplicada sobre pontos percentuais.
