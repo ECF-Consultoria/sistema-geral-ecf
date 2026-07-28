@@ -21,9 +21,11 @@ use Illuminate\Support\Facades\Cache;
  *
  * ### Margem sempre null (decisão travada 2026-07-23)
  * `contribution_margin_value`/`contribution_margin_pct` retornam
- * `value`/`diff_pct`/`diff_source` sempre `null` — a Shopee não fornece CMV.
- * Arquitetura *future-ready*: quando a Shopee passar a fornecer margem,
- * basta trocar `margemNula()` por um cálculo real, sem mudar o shape.
+ * `value`/`prev_value`/`diff_pct`/`diff_source` sempre `null` (e
+ * `contribution_margin_pct` também `diff_pp` sempre `null` — Fase 117,
+ * MPP-05) — a Shopee não fornece CMV. Arquitetura *future-ready*: quando a
+ * Shopee passar a fornecer margem, basta trocar `margemValorNula()`/
+ * `margemPctNula()` por um cálculo real, sem mudar o shape.
  *
  * ### Guard de soma DIFERENTE do Adman (dias ausentes = zero, não "sem dado")
  * `shopee_metrics` só tem linha nos dias em que HOUVE venda — um dia sem
@@ -60,8 +62,12 @@ class ShopeeMetricDiffService
      * @return array{
      *     company_id: int,
      *     period: array,
-     *     metrics: array<string, array{value: ?float, diff_pct: ?float, diff_source: ?string}>,
-     *     investment: array{value: ?float, diff_pct: ?float, diff_source: ?string},
+     *     metrics: array{
+     *         revenue: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_source: ?string},
+     *         contribution_margin_value: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_pp: ?float, diff_source: ?string},
+     *         contribution_margin_pct: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_pp: ?float, diff_source: ?string},
+     *     },
+     *     investment: array{value: ?float, prev_value: ?float, diff_pct: ?float, diff_source: ?string},
      *     quality: array{status: string, source: string, computed_at: string},
      * }
      */
@@ -70,7 +76,9 @@ class ShopeeMetricDiffService
         // Cache por (company_id, janela current, DIA BRT) — mesmo padrão de
         // chave do Adman. Leitura é local/determinística (sem HTTP), então
         // TTL do dia inteiro é seguro (nada a "auto-curar" via retry curto).
-        $cacheKey = "shopee:diff:v1:{$company->id}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
+        // v2 (2026-07-27): shape ganha prev_value/diff_pp (Fase 117, MPP-05) —
+        // o bump invalida as entradas com shape antigo.
+        $cacheKey = "shopee:diff:v2:{$company->id}:{$periodo['current_start']}:{$periodo['current_end']}:" . $this->cacheDay();
 
         $cached = Cache::get($cacheKey);
         if ($cached !== null) {
@@ -79,8 +87,8 @@ class ShopeeMetricDiffService
 
         $metrics = [
             'revenue'                   => $this->calcularRevenue($company, $periodo),
-            'contribution_margin_value' => $this->margemNula(),
-            'contribution_margin_pct'   => $this->margemNula(),
+            'contribution_margin_value' => $this->margemValorNula(),
+            'contribution_margin_pct'   => $this->margemPctNula(),
         ];
 
         $investment = $this->calcularInvestimento($company, $periodo);
@@ -109,6 +117,7 @@ class ShopeeMetricDiffService
 
         return [
             'value'       => $atual,
+            'prev_value'  => $anterior, // Fase 117: simetria de shape com o Adman, custo zero (já calculado para o diff_pct).
             'diff_pct'    => $this->diffPctGuardado($atual, $anterior),
             'diff_source' => 'calculated_fallback',
         ];
@@ -131,6 +140,11 @@ class ShopeeMetricDiffService
 
         return [
             'value'       => $atual,
+            // Fase 117: simetria de shape com o Adman. Atenção — $anterior
+            // pode ser legitimamente null (semântica null-aware de
+            // somaAdExpenseNullAware(), janela fora do lookback de Ads);
+            // NÃO coagir para 0.0.
+            'prev_value'  => $anterior,
             'diff_pct'    => $this->diffPctGuardado($atual, $anterior),
             'diff_source' => 'calculated_fallback',
         ];
@@ -183,10 +197,28 @@ class ShopeeMetricDiffService
 
     // ─────────────────────── Shape / quality / cache ───────────────────────
 
-    /** Bloco de margem — sempre null nos 3 campos (Shopee não tem CMV). */
-    private function margemNula(): array
+    /**
+     * Bloco de margem R$ — sempre null (Shopee não tem CMV). Fase 117
+     * (MPP-05): ganha `prev_value`, mas NUNCA `diff_pp` — pontos percentuais
+     * só existem pra métrica que já é percentual (D-06, mesmo gate do
+     * Adman); `contribution_margin_value` é reais, não pp.
+     */
+    private function margemValorNula(): array
     {
-        return ['value' => null, 'diff_pct' => null, 'diff_source' => null];
+        return ['value' => null, 'prev_value' => null, 'diff_pct' => null, 'diff_source' => null];
+    }
+
+    /**
+     * Bloco de margem % — sempre null (Shopee não tem CMV, logo não tem
+     * margem % nem `prev` de margem). Fase 117 (MPP-05): `diff_pp` é `null`
+     * POR DEFINIÇÃO aqui — não por gate de comparison_mode como no Adman,
+     * mas porque a métrica de origem nunca existe — e isso mantém o shape
+     * simétrico ao `AdmanMetricDiffService::resolveMargemPct()` (mesmas 5
+     * chaves, na mesma ordem).
+     */
+    private function margemPctNula(): array
+    {
+        return ['value' => null, 'prev_value' => null, 'diff_pct' => null, 'diff_pp' => null, 'diff_source' => null];
     }
 
     private function buildResult(Company $company, array $periodo, array $metrics, array $investment): array
