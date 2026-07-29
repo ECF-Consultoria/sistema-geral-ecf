@@ -15,14 +15,19 @@ Esta fase produz **o fato por empresa**: uma linha por `(user_id, company_id)` c
 </domain>
 
 <blocking_dependency>
-## ⚠️ Bloqueio de execução — GATE MPP-04
+## GATE MPP-04 — REPOSICIONADO para a Fase 120 (2026-07-29)
 
-O `Depends on` desta fase no ROADMAP exige, além das Fases 117 e 118 executadas, o **GATE MPP-04 APROVADO pelo usuário**.
+**Esta fase NÃO está mais bloqueada pelo gate.** Decisão do usuário em 2026-07-29.
 
-Esta fase é a primeira a **consumir `diff_pp` para calcular nota**. Enquanto o probe de estabilidade de `percentageMargin.prev` não tiver rodado na VPS e o veredito não tiver sido aprovado, **a execução fica bloqueada** — planejar é permitido, executar não.
+O gate agora barra a **ativação da flag na Fase 120**, não a escrita do código aqui.
 
-Estado em 2026-07-28: apenas a leitura L1 (`pico_tarde`) registrada; faltam ≥4, incluindo a obrigatória na janela 11:00-12:00 BRT. Se o veredito vier `reprovado` ou `instrumentacao_suspeita`, esta fase muda de forma — não assuma aprovação.
+**Razão:** o risco que o gate protege é o número **passar a pagar bônus** — e isso não acontece na Fase 119. Ela é aditiva, sem consumidor de produção, e seus testes usam `Http::fake()` sem tocar a Adman. O `CompanyScoreService` fica correto independentemente de `percentageMargin.prev` ser estável em produção. O gate estava barrando escrever código quando o que ele protege é ativar o cálculo.
 
+**Risco residual aceito:** se o veredito vier `reprovado`, esta fase já estará escrita. O custo é código parado, não bônus errado.
+
+**O gate continua existindo, na Fase 120** — ver o `Depends on` dela no ROADMAP, com o desenho amostral exigido e o runbook.
+
+**Estado da coleta em 2026-07-29 07:13 BRT:** 4 rodadas, 212 leituras, **zero flips de nota**, zero falhas de HTTP — mas **todas em condição folgada**. Falta a leitura sob contenção (`contencao_11h`).
 </blocking_dependency>
 
 <decisions>

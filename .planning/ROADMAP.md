@@ -555,7 +555,7 @@ Plans:
 
 **Fora do escopo:** editar/pausar/encerrar anúncio publicado direto pelo histórico (é gestão de anúncio, não criação); sincronizar status/estoque do ML de volta.
 
-**Plans:** 4 plans
+**Plans:** 3 plans em 3 waves
 
 Plans:
 
@@ -1329,7 +1329,11 @@ Plans:
 
 **Goal:** Existe um fato por empresa com os três componentes já pontuados e a `nota_empresa` calculada, com a régua de faturamento aplicada por empresa e a de margem aplicada sobre pontos percentuais.
 **Requirements**: EMPS-01, EMPS-02, EMPS-03, EMPS-04, EMPS-05, EMPS-06, EMPS-07
-**Depends on:** Fases 117 e 118 — **e, especificamente, o GATE MPP-04 APROVADO pelo usuário**. Não basta a Fase 117 estar executada: enquanto o probe de estabilidade de `percentageMargin.prev` não tiver sido rodado na VPS e o veredito aprovado, esta fase **não pode consumir `diff_pp` para calcular nota** (D-12 da Fase 117). Se o veredito vier `reprovado` ou `instrumentacao_suspeita`, esta fase fica bloqueada até o usuário decidir o plano B.
+**Depends on:** Fases 117 e 118.
+
+> 🔁 **GATE MPP-04 REPOSICIONADO em 2026-07-29 (decisão do usuário).** Antes o gate bloqueava esta fase. Agora ele bloqueia a **Fase 120**, antes de ligar a flag.
+> **Razão:** o risco que o gate protege é o número **passar a pagar bônus**, e isso não acontece aqui — a Fase 119 é aditiva, sem consumidor, e seus testes usam `Http::fake()`, sem tocar a Adman. O código fica correto independentemente de `percentageMargin.prev` ser estável em produção. O gate estava posicionado cedo demais: barrava escrever código quando o que ele protege é ativar o cálculo.
+> **Risco residual aceito:** se o veredito vier `reprovado`, a Fase 119 já estará escrita — mas o custo é código parado, não bônus errado.
 **Success Criteria** (o que deve ser VERDADE):
 
   1. `CompanyScoreService` produz uma linha por empresa no contrato do plano §3.1, com `status` e `quality` explicando por que uma empresa ficou incompleta
@@ -1338,11 +1342,10 @@ Plans:
   4. `MetricDiffDispatcher::compute()` é chamado uma única vez por empresa (hoje são duas chamadas indiretas)
   5. Adman vence Shopee na fonte financeira; empresa Shopee usa `margem_pontos = 1.0` marcado como `quality.margin_source = placeholder_shopee`
 
-**Plans:** 4 plans
+**Plans:** 3 plans em 3 waves
 
 Plans:
 
-- [ ] 119-01-PLAN.md — GATE MPP-04: veredito do probe de estabilidade de `percentageMargin.prev` apresentado ao usuário; checkpoint bloqueante, nenhuma linha de código antes dele [EMPS-03]
 - [ ] 119-02-PLAN.md — `CompanyScoreService` aditivo: réguas duplicadas byte a byte com teste de equivalência (C-03), `computeEmpresasScore()` completo (universo, invalidação, fonte vencedora, NPS 1×, dispatcher 1×, nota estrita + parcial, status/quality) e os casos âncora 4,53 e régua-por-empresa × régua-da-média [EMPS-01, EMPS-02, EMPS-04]
 - [ ] 119-03-PLAN.md — Provas duras: margem pontuada sobre `diff_pp` com a fixture divergente MPP-06 (4 pontos, não 5) e contagem de 1 chamada do dispatcher por empresa com guard de fonte nula [EMPS-03, EMPS-05]
 - [ ] 119-04-PLAN.md — Fonte vencedora Adman×Shopee com placeholder `1.0` marcado, taxonomia completa de `status`/`quality.motivos`, reconciliação old×new e registro do risco régua-da-média para a Fase 120 [EMPS-06, EMPS-07]
@@ -1351,7 +1354,15 @@ Plans:
 
 **Goal:** A nota do profissional passa a ser a média das notas das empresas, atrás de feature flag, com `empresas_score` calculado em shadow nos dois modos e todas as chaves legadas do payload preservadas.
 **Requirements**: AGRE-01, AGRE-02, AGRE-03, AGRE-04, AGRE-05, AGRE-06
-**Depends on:** Fase 119
+**Depends on:** Fase 119 — **e o GATE MPP-04 APROVADO pelo usuário antes de ligar a flag** (reposicionado da Fase 119 em 2026-07-29).
+
+> 🚦 **GATE MPP-04 — bloqueia a ATIVAÇÃO, não a escrita.**
+> A flag `metrics.performance_company_first_score` **não pode ser ligada** enquanto o probe de estabilidade de `percentageMargin.prev` (Fase 117) não tiver rodado na VPS com o desenho amostral completo e o veredito não tiver sido aprovado pelo usuário.
+> **Desenho amostral exigido (D-01..D-04 da Fase 117):** ≥5 rodadas em 24-48h · zero flip de faixa da régua entre leituras · cobertura de `prev` não-nulo ≥ 80% · **≥1 leitura sob contenção real** (`--janela=contencao_11h`, entre 11:00 e 12:00 BRT, quando 8 jobs agendados disputam a mesma API-key da Adman) · payloads **não** idênticos bit-a-bit (identidade bit-a-bit ⇒ `instrumentacao_suspeita`, que nunca é sucesso).
+> **Como fechar:** `php artisan adman:probe-margem-prev --relatorio --mes=<competência>`, conferindo o veredito por **reconsulta a `adman_probe_margem_prev_vereditos`**, nunca por stdout. Runbook completo em `117-02-SUMMARY.md`.
+> **Estado em 2026-07-29 07:13 BRT:** 4 rodadas registradas (212 leituras, zero flips, zero falhas de HTTP), **todas em condição folgada**. Falta exatamente uma: a de contenção.
+> **Se reprovar:** a flag não liga e a decisão de plano B (congelar `prev` em snapshot × voltar ao cálculo local) volta ao usuário — o `117-CONTEXT.md` deliberadamente não pré-decidiu.
+
 **UI hint:** Não — só payload; telas ficam na Fase 123
 **Success Criteria** (o que deve ser VERDADE):
 
