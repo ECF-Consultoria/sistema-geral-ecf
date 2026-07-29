@@ -4,7 +4,7 @@ milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: verifying
 stopped_at: Completado 116-07-PLAN.md (UI da área NPS + Companies/Show.jsx explicam a regra do não respondido sem jargão) - falta 116-08
-last_updated: "2026-07-29T11:55:43.725Z"
+last_updated: "2026-07-29T13:18:05.372Z"
 last_activity: 2026-07-28
 progress:
   total_phases: 6
@@ -328,6 +328,7 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 - 2026-06-10 — **Milestone v10.0 — Pesquisa de Satisfação 2.0** criada. **Phase 31: NPS Mensal Automatizado** adicionada. Substitui o fluxo manual "por reunião" do NPS atual por uma cadência mensal automática: email dispara no `DAY(companies.created_at)` de cada mês até o fim do contrato. Notas separadas (Estrategista, Analista quando houver, Empresa) em escala 1-5 + feedback livre. Admin acompanha por mês com cards de média + gráfico de variação 12 meses + lista de respostas. Geração manual de link preservada. Decisões fechadas: dia do mês = aniversário do cadastro (`companies.created_at`); fonte do email = nova coluna `companies.email_cliente`; histórico antigo (escala 0-10) = apagado (são testes). Dependências: Phase 28 (SMTP Gmail). Próximo: `/gsd-plan-phase 31`.
 - Phase 58 added: Plan 58-02 COMPLETO — shells JSX ShopeeShell.jsx e AmazonShell.jsx entregues (mockup KPI cards + CTA para ecf.dashboard). Build Vite verde. Decisao: duplicacao intencional dos 2 shells (CONTEXT §3), sem extracao de componente comum. Plan 58-03 (NAV_TREE) liberado.
 - 2026-07-03 — **Phase 58 Plan 58-03 COMPLETO — PHASE 58 INTEIRA FECHADA (3/3 plans)**. NAV_TREE de `AppLayout.jsx` costurado com as rotas do Plan 58-01: item novo "ECF Consolidado" (route `ecf.dashboard`, icone `PieChart` ja importado) adicionado no TOPO do grupo Mercado Livre; item existente "Dashboard" renomeado para "Mercado Livre" (route `mercadolivre.dashboard`). Item canonical `dashboard` sai do sidebar mas rota permanece registrada em `routes/web.php` para deep links/bookmarks (CONTEXT §5) — decisao consciente, sem migracao das chamadas `route('dashboard')` existentes no codebase. `tests/Feature/Phase58/DashboardNavigationSmokeTest.php` criado com 5 tests via `AssertableInertia` validando os 4 caminhos completos route→controller→componente (ecf/mercadolivre renderizam `Dashboard/Admin`; shopee/amazon renderizam os shells com props `marketplace`/`label` corretas) + rota legacy `/dashboard` ainda navegavel. **Gate final de zero regressao**: Phase 57 20/20 verdes, Phase 58 16/16 verdes (11 do Plan 58-01 + 5 deste plan) — **36/36 total**. `php artisan route:list --path=dashboard` confirma as 5 rotas nomeadas ativas. Itens estaticos Shopee/Amazon do sidebar (badge "Em breve" → `/em-desenvolvimento`) **NAO tocados** — decisao consciente, item de sidebar dedicado para os shells reais fica para proximo touchpoint UAT. Zero deviations. Commits `48890bd` (feat NAV_TREE) + `a45c838` (test smoke E2E). **REQ DASH-01/02/03 fechados. Phase 58 pronta para UAT em prod** (4 URLs documentadas na SUMMARY: `/dashboard/ecf`, `/dashboard/mercadolivre`, `/dashboard/shopee`, `/dashboard/amazon` + `/dashboard` legacy).
+- Phase 119.1 inserted after Phase 119: NPS manual, sem duplicidade e por grupo de empresas (URGENT)
 
 ### Decisões herdadas do v1.0
 

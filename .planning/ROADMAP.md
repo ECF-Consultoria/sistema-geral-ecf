@@ -1350,6 +1350,18 @@ Plans:
 - [x] 119-03-PLAN.md — Provas duras: margem pontuada sobre `diff_pp` com a fixture divergente MPP-06 (4 pontos, não 5) e contagem de 1 chamada do dispatcher por empresa com guard de fonte nula [EMPS-03, EMPS-05]
 - [x] 119-04-PLAN.md — Fonte vencedora Adman×Shopee com placeholder `1.0` marcado, taxonomia completa de `status`/`quality.motivos`, reconciliação old×new e registro do risco régua-da-média para a Fase 120 [EMPS-06, EMPS-07]
 
+### Phase 119.1: NPS manual, sem duplicidade e por grupo de empresas (INSERTED)
+
+**Goal:** O NPS deixa de sair sozinho e passa a ser um ato deliberado do responsável. (a) O agendamento diário do disparo automático é desligado — o comando continua existindo para uso manual em massa. (b) Fica impedido gerar um segundo link para a mesma empresa + mesmo modelo + mesma competência, fechando a brecha do disparo manual (onde `month_reference` nasce NULL e o índice único da Fase 68 não pega). (c) Passa a existir NPS de GRUPO: um único link cuja nota replica para todas as empresas do grupo que tenham os mesmos responsáveis no serviço coberto; as demais não recebem nota e seguem valendo 1 até alguém gerar link individual. (d) Como contrapartida ao desligamento do automático, empresa ELEGÍVEL que passou a competência sem nenhum link gerado também conta nota 1 — o que **inverte deliberadamente o invariante D3 da Fase 116**.
+**Requirements**: TBD (a definir no plan-phase)
+**Depends on:** Fase 116 (regra "não respondido = 1", tabela de imputação e os ~9 consumidores já ligados). Independente das Fases 117-123 (v21.0).
+**UI hint:** Sim — tela de geração de link (bloqueio de duplicidade + prévia de quais empresas do grupo serão cobertas) e a área NPS refletindo notas de grupo
+**Por que INSERTED:** trabalho urgente pedido em 2026-07-29, adiantado porque as Fases 120-123 estão bloqueadas até a atualização da Adman das 11h.
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 119.1 to break down)
+
 ### Phase 120: Agregação do profissional + feature flag (v21.0)
 
 **Goal:** A nota do profissional passa a ser a média das notas das empresas, atrás de feature flag, com `empresas_score` calculado em shadow nos dois modos e todas as chaves legadas do payload preservadas.
@@ -1410,6 +1422,7 @@ Plans:
   3. Snapshot antigo sem `empresas_score` renderiza no visual anterior; sem `var_margem_pp`, exibe `var_margem_pct` com rótulo legado
   4. Relatório de Bonificação e Auditoria de Bônus exibem `nota_empresa` lendo a mesma fonte que o ranking
   5. `npm run build` rodado e checkpoint visual aprovado
+
 
 ---
 *Roadmap atualizado: 2026-07-20 — Milestone v18.0 (Períodos, competência de bônus e variação via Adman) anexada: 5 fases (100-104) cobrindo as 23 REQs (PER/ADM/BON/CAR/UIP) do REQUIREMENTS-v18.md, estrutura vinda do plano canônico do usuário (plano-carteira-desempenho-multi-servico.md, seções "Regra de período/fechamento/pagamento" e "Regra de variação de margem via Adman"). Numeração com buffer 97-99 reservado para a milestone NPS Anti-Burlamento do dev paralelo (Fases 94-96, ainda em aberto). Fundação em 100 (`MetricPeriodResolver`) e 101 (`AdmanMetricDiffService`), independentes entre si; 102 e 103 dependem de ambas; 104 depende de 102+103. Baseline oficial de bônus usa janela de mesmo tamanho (N dias imediatamente anteriores), não mês calendário — decisão do usuário 2026-07-17. Fases 60-96 preservadas intactas.*
