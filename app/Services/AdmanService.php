@@ -356,6 +356,34 @@ class AdmanService
     private const ERROR_CACHE_MINUTES = 10;
 
     /**
+     * Segundos pedidos pelo header `Retry-After` da última resposta 429.
+     *
+     * Preenchido por `fetchAccountMetrics()` e consumido pelo loop de retry de
+     * `fetchAccountMetricsDetailedCached()`. `null` quando a Adman não mandou o
+     * header ou a última chamada não foi 429.
+     */
+    private ?int $ultimoRetryAfter = null;
+
+    /**
+     * Retry do endpoint detalhado (fonte da margem) — quick
+     * 20260729-adman-retry-resiliente.
+     *
+     * O desenho anterior (4 tentativas, backoff 0,8/1,6/2,4s) somava ~4,8s de
+     * espera e desistia enquanto a janela de rate-limit ainda durava minutos.
+     * O GATE MPP-04 reprovou por causa disso: sob a rajada de syncs das 11h a
+     * cobertura de `percentageMargin.prev` caiu de 92,5% para 64,2%, com 15 de
+     * 53 empresas perdidas.
+     *
+     * Agora: 6 tentativas, backoff exponencial `2^n` com teto de 30s por
+     * espera — janela total de ~60s. O JITTER é a parte não-negociável: sem
+     * ele, os processos concorrentes que causaram o 429 retentam em lockstep e
+     * reforçam a própria congestão.
+     */
+    private const DETALHADO_TENTATIVAS       = 6;
+    private const DETALHADO_BACKOFF_TETO_SEG = 30;
+    private const DETALHADO_JITTER           = 0.4; // ±40%
+
+    /**
      * Data atual em BRT no formato YYYY-MM-DD — usada como sufixo das chaves
      * de cache (gross_billing / account_metrics) para auto-invalidar ao virar
      * o dia. A API Adman é D-1 (publica 10h BRT, 1× ao dia), portanto faz
@@ -821,7 +849,7 @@ class AdmanService
         // nem calcular local). Só falhas PERSISTENTES (ex.: DROSSI) ficam null.
         $metrics    = null;
         $lastError  = null;
-        $tentativas = 4;
+        $tentativas = self::DETALHADO_TENTATIVAS;
         for ($tentativa = 1; $tentativa <= $tentativas; $tentativa++) {
             try {
                 $data = $this->fetchAccountMetrics($custId, $dateFrom, $dateTo, $marketplace);
@@ -852,16 +880,13 @@ class AdmanService
             }
 
             if ($tentativa < $tentativas) {
-                // Backoff crescente 0,8s / 1,6s / 2,4s — dá espaço pro rate-limit
-                // 429 se dissipar. Empresas lentas (ex.: DROSSI ~3,7s) recuperam
-                // o valor EXATO em vez de cair pra null ("—").
-                usleep(800000 * $tentativa);
+                $this->dormirEntreTentativas($this->esperaDoRetry($tentativa));
             }
         }
 
         if ($metrics === null) {
             if ($lastError !== null) {
-                Log::warning("[Adman/AccountMetricsDetailed] custId={$custId} range={$dateFrom}..{$dateTo} apos 3 tentativas: " . $lastError->getMessage());
+                Log::warning("[Adman/AccountMetricsDetailed] custId={$custId} range={$dateFrom}..{$dateTo} apos {$tentativas} tentativas: " . $lastError->getMessage());
             }
             Cache::put($cacheKey, self::ERROR_SENTINEL, now()->addMinutes(self::ERROR_CACHE_MINUTES));
             return null;
@@ -1048,8 +1073,101 @@ class AdmanService
                 'dateTo'   => $dateTo,
             ]);
 
-        if ($response->failed()) throw new \RuntimeException("Adman account metrics erro {$response->status()}");
+        if ($response->failed()) {
+            // Captura o `Retry-After` do 429 antes de descartar a resposta —
+            // sem isto, `fetchAccountMetricsDetailedCached()` só teria a
+            // mensagem da exceção e precisaria adivinhar quanto esperar.
+            // (Acrescentado em 2026-07-29, quick 20260729-adman-retry-resiliente.)
+            $this->ultimoRetryAfter = $response->status() === 429
+                ? $this->segundosDoRetryAfter($response->header('Retry-After'))
+                : null;
+
+            throw new \RuntimeException("Adman account metrics erro {$response->status()}");
+        }
+
+        $this->ultimoRetryAfter = null;
+
         return $response->json() ?? [];
+    }
+
+    /**
+     * Dorme entre tentativas — no-op durante os testes.
+     *
+     * A janela de retry passou a ser de ~60s, o que é o ponto do fix mas
+     * tornaria a suíte insuportável: os dois testes que exercitam a contagem
+     * de tentativas somavam 128s de sono real.
+     *
+     * Pular o sono em teste não esconde nada, porque a lógica de TEMPO é
+     * verificada à parte, direto em `esperaDoRetry()` (backoff, teto e jitter),
+     * em milissegundos. Os testes que passam por aqui verificam a CONTAGEM de
+     * tentativas, não a duração.
+     */
+    private function dormirEntreTentativas(float $segundos): void
+    {
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        usleep((int) round($segundos * 1_000_000));
+    }
+
+    /**
+     * Quantos segundos esperar antes da próxima tentativa do endpoint
+     * detalhado.
+     *
+     * Precedência:
+     *  1. `Retry-After` da resposta 429 — se a Adman diz quanto esperar, essa
+     *     é a informação boa; adivinhar é pior. Limitado ao teto para não
+     *     travar a leitura por minutos com um header exagerado.
+     *  2. Backoff exponencial `2^n` com o mesmo teto.
+     *
+     * Em ambos os casos aplica-se JITTER de ±40%. Sem jitter, os processos
+     * concorrentes que causaram o 429 acordam juntos e recriam a congestão —
+     * aumentar o backoff sem dessincronizar só adia o problema.
+     */
+    private function esperaDoRetry(int $tentativa): float
+    {
+        $base = $this->ultimoRetryAfter !== null
+            ? (float) $this->ultimoRetryAfter
+            : (float) (2 ** $tentativa);
+
+        $base = min($base, (float) self::DETALHADO_BACKOFF_TETO_SEG);
+
+        $fator = 1.0 + (mt_rand(-1000, 1000) / 1000) * self::DETALHADO_JITTER;
+
+        return max(0.1, $base * $fator);
+    }
+
+    /**
+     * Converte o header `Retry-After` em segundos.
+     *
+     * O HTTP admite dois formatos: número de segundos ("120") ou data
+     * absoluta ("Wed, 29 Jul 2026 11:05:00 GMT"). Aceita os dois.
+     *
+     * Devolve `null` quando o header não veio ou não é interpretável — o
+     * chamador então cai no backoff exponencial calculado.
+     */
+    private function segundosDoRetryAfter(?string $header): ?int
+    {
+        if ($header === null || trim($header) === '') {
+            return null;
+        }
+
+        $header = trim($header);
+
+        if (ctype_digit($header)) {
+            return max(0, (int) $header);
+        }
+
+        try {
+            $quando = \Carbon\Carbon::parse($header);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $segundos = (int) ceil(now()->diffInSeconds($quando, absolute: false));
+
+        return $segundos > 0 ? $segundos : null;
     }
 
     public function listAccounts(?string $filter = null, int $page = 1, string $marketplace = 'meli'): array
