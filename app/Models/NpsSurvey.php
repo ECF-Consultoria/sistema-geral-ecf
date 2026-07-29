@@ -46,6 +46,10 @@ class NpsSurvey extends Model
         'template_id',
         // Phase 94 AB-94-1 — rastro de abertura
         'first_opened_at', 'last_opened_at', 'open_count', 'open_ip_address', 'open_user_agent',
+        // Fase 119.1 Plan 05 — vínculo de auditoria com o link de grupo de
+        // origem (NULL para a esmagadora maioria dos surveys, que não vêm
+        // de grupo). SÓ auditoria/UI — nenhuma agregação deve filtrar por ela.
+        'group_survey_id',
     ];
 
     protected $casts = [
@@ -89,6 +93,18 @@ class NpsSurvey extends Model
     public function isExpired(): bool
     {
         return $this->expires_at && $this->expires_at->isPast() && $this->status === 'pending';
+    }
+
+    /**
+     * Link de NPS de GRUPO que originou este survey-espelho (Fase 119.1
+     * Plan 05). NULL para a esmagadora maioria dos surveys (que não vêm de
+     * grupo). Vínculo SÓ de auditoria/UI — nenhuma agregação (área NPS,
+     * Desempenho/bônus) deve filtrar por ele: um espelho de grupo é um
+     * survey normal do ponto de vista de quem calcula média.
+     */
+    public function grupoOrigem(): BelongsTo
+    {
+        return $this->belongsTo(NpsGroupSurvey::class, 'group_survey_id');
     }
 
     /**

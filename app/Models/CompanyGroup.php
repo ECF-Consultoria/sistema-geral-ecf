@@ -19,4 +19,12 @@ class CompanyGroup extends Model
     {
         return $this->hasMany(Company::class);
     }
+
+    /**
+     * Links de NPS de GRUPO gerados para este grupo (Fase 119.1 Plan 05).
+     */
+    public function npsGroupSurveys(): HasMany
+    {
+        return $this->hasMany(NpsGroupSurvey::class);
+    }
 }
