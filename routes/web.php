@@ -32,6 +32,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NotificacaoController;
 use App\Http\Controllers\NpsController;
 use App\Http\Controllers\NpsEnvioAutomaticoController;
+use App\Http\Controllers\NpsGrupoController;
 use App\Http\Controllers\NpsTemplateController;
 use App\Http\Controllers\NpsTemplateOptionController;
 use App\Http\Controllers\NpsTemplateQuestionController;
@@ -114,6 +115,19 @@ Route::get('/google/callback', [GoogleCalendarController::class, 'callback'])->n
 Route::post('/nps/generate', [NpsController::class, 'generate'])
     ->middleware(['auth', 'verified'])
     ->name('nps.generate');
+
+// ─── Fase 119.1 Plan 06 — NPS de GRUPO ───────────────────────────────────────
+// Mesmo grupo autenticado de nps.generate (auth+verified, SEM role:admin —
+// quem gera link individual da própria carteira também gera de grupo).
+// Prévia de cobertura consultável ANTES de enviar (D4/NPSMAN-08). DEVEM
+// ficar antes das rotas públicas /nps/grupo/{token} para não colidir.
+Route::post('/nps/grupo/generate', [NpsGrupoController::class, 'generate'])
+    ->middleware(['auth', 'verified'])
+    ->name('nps.grupo.generate');
+
+Route::get('/nps/grupo/{grupo}/modelo/{template}/cobertura', [NpsGrupoController::class, 'previewCobertura'])
+    ->middleware(['auth', 'verified'])
+    ->name('nps.grupo.cobertura');
 
 // ─── Phase 81 Plan 02 — Empresas elegíveis por modelo (DEC-81-3) ─────────────
 // Endpoint JSON que alimenta o modal "Gerar link" modelo-first (Plan 81-04):
@@ -359,6 +373,14 @@ Route::middleware(['auth', 'verified', 'role:admin'])->group(function () {
         [\App\Http\Controllers\DesempenhoConfigController::class, 'toggleActive'])
         ->name('desempenho.configuracao.faixas.toggle');
 });
+
+// NPS de GRUPO público (sem autenticação) — Fase 119.1 Plan 06. DEVE vir
+// ANTES de /nps/{token}: `/nps/grupo/{token}` tem 2 segmentos e por si só já
+// não colide com `/nps/{token}` (1 segmento), mas declarar antes remove
+// qualquer ambiguidade de casamento entre as duas rotas públicas de token.
+// Os handlers (respond/submitResponse) chegam na Task 2 do Plan 06.
+Route::get('/nps/grupo/{token}', [NpsGrupoController::class, 'respond'])->name('nps.grupo.respond');
+Route::post('/nps/grupo/{token}', [NpsGrupoController::class, 'submitResponse'])->name('nps.grupo.submit');
 
 // NPS público (sem autenticação) — token vem DEPOIS do /generate
 Route::get('/nps/{token}', [NpsController::class, 'respond'])->name('nps.respond');
