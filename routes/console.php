@@ -168,20 +168,40 @@ Schedule::command('sugadores:sync-adgroup-mlbs --all')
     ->name('sync-adgroup-mlbs')
     ->withoutOverlapping();
 
-// Phase 31 Plan 02 — Disparo mensal de pesquisa NPS no aniversário do
-// cadastro da empresa (D-01/D-03). 09:00 BRT — fora dos horários de pico:
-// adman:sync 11:00, sync-faturamento 11:30, calculate-goal-results 11:45,
-// sugadores 12:00, gross billing 12:45. Idempotência via
-// where(company_id, month_reference) — re-runs no mesmo dia são seguros.
-Schedule::command('nps:disparar-mensal')
-    ->dailyAt('09:00')
-    ->timezone('America/Sao_Paulo')
-    ->name('nps-disparar-mensal')
-    ->withoutOverlapping();
+// Fase 119.1 Plan 01 (D2) — DESLIGADO 2026-07-29 o agendamento diário às
+// 09:00 BRT do disparo automático de NPS (era `Schedule::command('nps:disparar-mensal')`,
+// desde a Phase 31 Plan 02). "Descontinuar o automático" = desligar SÓ este
+// agendamento — o comando `nps:disparar-mensal` continua existindo e 100%
+// funcional para uso manual em massa (`php artisan nps:disparar-mensal`).
+//
+// O que passa a NÃO acontecer mais sozinho, todo dia, sem humano no loop:
+//  - nenhum link mensal nasce sozinho — gerar o link vira ato deliberado do
+//    responsável (estrategista/analista/admin), nunca mais automático;
+//  - o e-mail `NpsMonthlyMail` e o envio Digisac só saem quando alguém
+//    invoca `nps:disparar-mensal` à mão;
+//  - o gancho de materialização da nota 1 (`NpsImputationService::materializar()`)
+//    que rodava DENTRO deste comando, por survey criado, também para. Coberto
+//    pela rede de segurança que já existe: `NpsController::generate()` já
+//    materializa no disparo manual, e a rotina diária logo abaixo (Fase 116,
+//    09:30, materializa não respondidos) varre `nps_surveys`
+//    independentemente de quem os criou — NÃO precisa do disparo automático
+//    para fazer seu trabalho.
+//
+// Efeito de tela ESPERADO e ACEITO (não é bug): `NpsPendingService` passará a
+// marcar praticamente toda a carteira como pendente depois do dia de
+// cobrança, porque nenhum link nasce sozinho. É consequência direta do
+// desligamento — a Fase 119.1 fecha o buraco financeiro correspondente via D1
+// (empresa elegível sem nenhum link no mês também conta nota 1).
+//
+// @see app/Console/Commands/NpsDispararMensal.php
+// @see app/Services/Nps/NpsElegibilidadeService.php
+// @see .planning/phases/119.1-.../119.1-CONTEXT.md (D2)
 
 // Fase 116 (Plan 06 · NPSFLOOR) — materializa diariamente o NPS não respondido
-// como nota mínima (1). Roda 30min depois do `nps-disparar-mensal` (09:00) e
-// bem antes do `desempenho-consolidar-mes` (último dia do mês, 14:00), de
+// como nota mínima (1). Continua às 09:30 BRT mesmo após o desligamento do
+// `nps-disparar-mensal` (Fase 119.1 Plan 01, D2) — esta rotina NÃO depende
+// dele, varre `nps_surveys` de qualquer origem (manual ou automática antiga).
+// Roda bem antes do `desempenho-consolidar-mes` (último dia do mês, 14:00), de
 // forma que o snapshot mensal do bônus sempre enxergue os não respondidos da
 // competência antes de congelar. `--force` porque é execução não interativa
 // (sem humano no loop para confirmar); o comando é idempotente por
