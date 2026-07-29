@@ -395,7 +395,7 @@ class ProbeMargemPrevStability extends Command
         $totalLeituras   = $leituras->count();
         $coberturaMinima = $this->coberturaMinima();
 
-        $porRodada = $leituras->groupBy(fn ($l) => $this->chaveDaRodada($l));
+        $porRodada = $this->agruparEmRodadas($leituras);
 
         $coberturaPorRodada = $porRodada->map(function ($grupo) {
             $n = $grupo->count();
@@ -561,28 +561,86 @@ class ProbeMargemPrevStability extends Command
     }
 
     /**
-     * Chave que identifica UMA rodada do probe.
+     * Intervalo máximo entre duas leituras CONSECUTIVAS da mesma execução.
      *
-     * Uma rodada é uma execução do comando: ~53 empresas lidas em sequência,
-     * cada uma com o seu próprio `lida_em`, tudo dentro de poucos minutos.
-     * Agrupar por `lida_em` distinto — como o cálculo fazia até 2026-07-29 —
-     * contava CADA EMPRESA como uma rodada.
+     * Dentro de uma rodada as leituras saem a cada poucos SEGUNDOS (coleta real
+     * de 2026-07-29: ~5s entre empresas, ~6 min do início ao fim da rodada).
+     * Entre rodadas o intervalo é de dezenas de minutos.
      *
-     * A chave é `janela_esperada` + hora de `lida_em`, o que separa
-     * corretamente as execuções observadas (duas rodadas `madrugada` em dias
-     * e horas diferentes viram duas chaves, como deve ser).
-     *
-     * Limitação conhecida: uma rodada que atravesse a virada da hora seria
-     * contada como duas. Como uma rodada leva ~6 min e as janelas são
-     * disparadas manualmente, isso não ocorreu na coleta real — e contar
-     * rodadas a MAIS é conservador aqui (só torna o gate mais exigente no
-     * mínimo de 5, nunca menos).
+     * 5 minutos separa os dois casos com folga dos dois lados. Um limiar largo
+     * (30 min, tentado antes) FUNDE rodadas legítimas: o desenho amostral prevê
+     * duas leituras dentro da mesma janela de contenção — por exemplo 11:02 e
+     * 11:29 — que estão a 27 min uma da outra e são rodadas distintas.
      */
-    private function chaveDaRodada(object $leitura): string
-    {
-        $janela = $leitura->janela_esperada ?? 'sem_janela';
+    private const GAP_ENTRE_RODADAS_MINUTOS = 5;
 
-        return $janela . '@' . $leitura->lida_em->format('Y-m-d H');
+    /**
+     * Agrupa as leituras em RODADAS (execuções do comando).
+     *
+     * ⚠️ Segunda correção do mesmo ponto, em 2026-07-29 — a primeira tentativa
+     *    estava errada e o gate produziu um falso positivo em produção.
+     *
+     *    v1 (original): agrupava por `lida_em` distinto. Cada empresa tem o seu
+     *    próprio timestamp, então 5 rodadas viravam "262 rodadas" e a guarda de
+     *    "mínimo 5" nunca era exercida de verdade.
+     *
+     *    v2 (primeira correção): agrupava por `janela_esperada` + HORA. Melhor,
+     *    mas a rodada `pico_tarde` real rodou de 14:56 a 15:00 e foi **partida
+     *    em duas** — a fatia das 15h ficou com poucas leituras e cobertura não
+     *    representativa (71,4%), reprovando por artefato. Eu havia anotado essa
+     *    limitação como "conservadora"; ela não é — inventa reprovação.
+     *
+     *    v3 (esta): agrupa por PROXIMIDADE TEMPORAL. Ordena por `lida_em` e
+     *    abre rodada nova quando o intervalo para a leitura anterior passa de
+     *    GAP_ENTRE_RODADAS_MINUTOS. Não depende de fronteira de hora nem do
+     *    rótulo de janela, então não parte execução nenhuma.
+     *
+     * A chave devolvida é `janela@primeiro_lida_em`, legível nos motivos do
+     * veredito.
+     *
+     * @param  \Illuminate\Support\Collection  $leituras
+     * @return \Illuminate\Support\Collection<string, \Illuminate\Support\Collection>
+     */
+    private function agruparEmRodadas($leituras)
+    {
+        $ordenadas = $leituras->sortBy(fn ($l) => $l->lida_em->getTimestamp())->values();
+
+        $rodadas   = collect();
+        $atual     = collect();
+        $anterior  = null;
+        $inicio    = null;
+
+        foreach ($ordenadas as $leitura) {
+            // `abs()` é obrigatório: no Carbon 3 os métodos `diffIn*` são
+            // ASSINADOS por padrão, e como `$anterior` é sempre a leitura mais
+            // antiga o resultado vem negativo — sem o `abs()` a comparação
+            // nunca dispara e TODAS as leituras viram uma rodada só.
+            $abreNova = $anterior !== null
+                && abs($leitura->lida_em->diffInMinutes($anterior->lida_em)) > self::GAP_ENTRE_RODADAS_MINUTOS;
+
+            if ($abreNova && $atual->isNotEmpty()) {
+                $rodadas->put($this->rotuloDaRodada($inicio), $atual);
+                $atual  = collect();
+                $inicio = null;
+            }
+
+            $inicio ??= $leitura;
+            $atual->push($leitura);
+            $anterior = $leitura;
+        }
+
+        if ($atual->isNotEmpty()) {
+            $rodadas->put($this->rotuloDaRodada($inicio), $atual);
+        }
+
+        return $rodadas;
+    }
+
+    /** Rótulo humano de uma rodada, a partir da sua primeira leitura. */
+    private function rotuloDaRodada(object $primeira): string
+    {
+        return ($primeira->janela_esperada ?? 'sem_janela')
+            . '@' . $primeira->lida_em->format('Y-m-d H:i');
     }
 
     /**
