@@ -1381,7 +1381,20 @@ Plans:
 > A flag `metrics.performance_company_first_score` **não pode ser ligada** enquanto o probe de estabilidade de `percentageMargin.prev` (Fase 117) não tiver rodado na VPS com o desenho amostral completo e o veredito não tiver sido aprovado pelo usuário.
 > **Desenho amostral exigido (D-01..D-04 da Fase 117):** ≥5 rodadas em 24-48h · zero flip de faixa da régua entre leituras · cobertura de `prev` não-nulo ≥ 80% · **≥1 leitura sob contenção real** (`--janela=contencao_11h`, entre 11:00 e 12:00 BRT, quando 8 jobs agendados disputam a mesma API-key da Adman) · payloads **não** idênticos bit-a-bit (identidade bit-a-bit ⇒ `instrumentacao_suspeita`, que nunca é sucesso).
 > **Como fechar:** `php artisan adman:probe-margem-prev --relatorio --mes=<competência>`, conferindo o veredito por **reconsulta a `adman_probe_margem_prev_vereditos`**, nunca por stdout. Runbook completo em `117-02-SUMMARY.md`.
-> **Estado em 2026-07-29 07:13 BRT:** 4 rodadas registradas (212 leituras, zero flips, zero falhas de HTTP), **todas em condição folgada**. Falta exatamente uma: a de contenção.
+> 🔴 **VEREDITO: `reprovado`** — apurado em 2026-07-29 11:56 BRT, conferido por reconsulta a `adman_probe_margem_prev_vereditos` (`cobertura_prev = 0.6415`, `total_rodadas = 5`).
+>
+> **A flag NÃO pode ser ligada.** O `percentageMargin.prev` é estável quando a API Adman está livre, mas **desaparece para um terço da carteira sob contenção real**:
+>
+> | Condição | Rodadas | Cobertura de `prev` | Falhas de HTTP |
+> |---|---|---|---|
+> | Folgada (madrugada ×2, tarde, manual) | 4 | **92,5%** | **0 em 212** |
+> | **Contenção real (11:02)** | 1 | **64,2%** | **15 de 53 (28,3%)** |
+>
+> As empresas 1, 2, 3, 4 e 6 passaram nas quatro rodadas folgadas e **falharam** na de contenção — mesmo conjunto, comportamento mudando junto com a condição. É a causa-raiz da Fase 110 reproduzida ao vivo: *"empresa que falha sai da média"*. E ela **não aparece como flip de nota**, porque empresa que falha não produz nota nenhuma — some.
+>
+> ⚠️ **O gate errou antes de acertar.** A primeira execução devolveu `aprovado` por três defeitos no próprio cálculo, corrigidos em `48aa1b30` e `fe0f6e91`: (1) cobertura agregada — 4 rodadas boas diluíam a ruim de 64,2% até 86,8%, acima do piso; (2) contagem de rodadas contava leituras (5 viravam 262), então a guarda de "mínimo 5" nunca era exercida; (3) falha de HTTP não entrava no veredito — o ponto cego central. Teste de regressão em `test_rodadas_boas_nao_diluem_rodada_ruim_de_cobertura`.
+>
+> **Decisão de plano B pendente do usuário** — o `117-CONTEXT.md` deliberadamente não pré-decidiu: congelar `prev` em snapshot diário · voltar ao cálculo local determinístico · tirar margem em pp do bônus · ou tornar a leitura resiliente (retry/backoff) antes de reavaliar.
 > **Se reprovar:** a flag não liga e a decisão de plano B (congelar `prev` em snapshot × voltar ao cálculo local) volta ao usuário — o `117-CONTEXT.md` deliberadamente não pré-decidiu.
 
 **UI hint:** Não — só payload; telas ficam na Fase 123
