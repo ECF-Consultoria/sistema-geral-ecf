@@ -71,6 +71,24 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 > **A decisão é de vocês, não da Fase 117 — nada foi alterado no código da 116.** Evidência completa, com arquivo:linha e três caminhos possíveis, em `.planning/phases/117-.../deferred-items.md` § "Bloqueio de publicação".
 > Consequência aceita pelo usuário: o probe da 117 **não alcança o freeze de 31/07**; junho congela com a métrica de margem relativa atual.
 
+**Progresso em 2026-07-29:** Fases 117 e 118 **executadas**; Fase 119 **planejada** (4 planos em 4 waves) e **bloqueada na wave 1** pelo gate. 11 de 38 requirements da v21.0.
+
+- **117** — executada, `GATE MPP-04 PENDENTE`. Deployada em 28/07.
+- **118** — **completa** (NPSE-01..06). `NpsJanelaResolver` + `NpsPorEmpresaService`. 36/36 testes verdes, teste de coerência com 8 métodos e zero linhas removidas das 7 originais, `DesempenhoScoreService` byte-a-byte intocado. Aditiva: nenhum número de produção mudou; o serviço ainda não tem consumidor.
+- **119** — planejada. O plano `119-01` é um `checkpoint:decision` bloqueante do GATE MPP-04. **Correção importante do plan-check:** o tipo original era `checkpoint:human-verify`, que sob o modo `end-of-phase` (default, porque `workflow.human_verify_mode` está ausente do config) **seria suprimido** — o gate viraria teatro e a wave 2 rodaria sem veredito. `checkpoint:decision` é imune ao modo.
+
+**Coleta do probe (gate MPP-04), competência 2026-06:**
+
+| Leitura | Janela | Estado |
+|---|---|---|
+| L1 | `pico_tarde` | 53 linhas, 4 sem `prev` |
+| L2 | `madrugada` | 53 linhas, 5 sem `prev` |
+| L3 | `madrugada` | em curso em 29/07 06:50 BRT |
+| L4 | **`contencao_11h`** | **obrigatória** — 11:00-12:00 BRT |
+| L5 | `repeticao_24h` | pendente |
+
+⚠️ **Lição operacional:** rodar o probe via `plink` em foreground **trava a sessão local**, mas o comando **completa na VPS**. Conferir sempre por reconsulta a `adman_probe_margem_prev_leituras`, nunca pelo stdout — exatamente o que a D-10 da Fase 117 prescreveu ao exigir persistência antes da agregação.
+
 **GATE MPP-04 pendente por natureza:** o probe roda 24-48h na VPS e não cabe numa sessão de execução. A Fase 117 **não pode ser marcada como completa**, e a Fase 119 **não pode consumir `diff_pp`**, antes do veredito aprovado — o `Depends on` da Fase 119 no ROADMAP foi atualizado para dizer isso explicitamente, e a task `117-02-04` é um `checkpoint:human-action` que força reconhecimento do gate.
 
 **Prazo externo NÃO coberto:** esta milestone é a opção (A) da pendência `.planning/todos/pending/metrica-margem-bonus-fragil.md`, cujo prazo é **31/07 14h BRT** (freeze oficial de junho via `desempenho:consolidar-mes`). A v21.0 não fica pronta a tempo — o que fazer com o freeze de junho é decisão separada e imediata.
