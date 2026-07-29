@@ -633,7 +633,7 @@ Plans:
 **Goal:** A visão admin de carteiras consolidadas mostra cards por profissional com contagem correta, sem puxar faturamento ML para quem só cuida da empresa em Shopee, com filtro de contexto e contadores de auditoria.
 **Requirements**: CART-06, CART-07
 **Depends on:** Phase 89 (individual antes de consolidada)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -676,7 +676,7 @@ Plans:
 **Goal:** A UI de Desempenho mantém o ranking único e exibe os metadados por profissional (empresas únicas, vínculos de serviço, vínculos sem fonte, status da nota); filtros de auditoria por setor não criam segundo score oficial.
 **Requirements**: DESEMP-08
 **Depends on:** Phase 91
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -751,7 +751,7 @@ Plans:
 **Goal:** Admin enxerga a camada de confiança (badge na listagem, filtros, seção de auditoria técnica no detalhe); qualquer outro papel não recebe nem sinal de que ela existe — inclusive no payload.
 **Requirements**: AB-95-1, AB-95-2, AB-95-3, AB-95-4
 **Depends on:** Phase 94
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 **Wave 1**
@@ -922,7 +922,7 @@ Plans:
 **Goal:** Existe uma camada dedicada (`AdmanMetricDiffService`) que lê a variação pronta da Adman (`.diff`) em vez de recalcular margem/faturamento na mão — hoje o `AdmanService` descarta o `.diff` e lê só `['value']` — com fallback marcado quando a Adman não trouxer o diff para a janela.
 **Requirements**: ADM-01, ADM-02, ADM-03, ADM-04, ADM-05
 **Depends on:** Nada (independente do resolver — pode ser planejada/executada em paralelo à Fase 100)
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 **Success Criteria** (o que deve ser VERDADE):
 
@@ -1318,12 +1318,12 @@ Plans:
   4. Empresa invalidada na competência não entra; empresa com Performance **e** Shopee não duplica NPS
   5. O teste de coerência entre call-sites da 116-08 conhece este call-site e continua verde
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 
 - [x] 118-01-PLAN.md — `NpsJanelaResolver` (régua de LEITURA da janela M+1) + `NpsPorEmpresaService`: os 3 ramos agrupados por `company_id` com shape auditável, reconciliação contra os ramos originais e os 3 casos da janela [NPSE-01, NPSE-02, NPSE-03]
-- [ ] 118-02-PLAN.md — D-03 (survey do serviço do vínculo + fallback consolidado), invalidação por competência antes do piso da D-04, log do gap de atribuição e o 8º método do teste de coerência entre call-sites [NPSE-04, NPSE-05, NPSE-06]
+- [x] 118-02-PLAN.md — D-03 (survey do serviço do vínculo + fallback consolidado), invalidação por competência antes do piso da D-04, log do gap de atribuição e o 8º método do teste de coerência entre call-sites [NPSE-04, NPSE-05, NPSE-06]
 
 ### Phase 119: Score por empresa (v21.0)
 

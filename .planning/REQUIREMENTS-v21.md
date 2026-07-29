@@ -57,12 +57,12 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 ### NPSE — NPS por empresa (Fase 118)
 
-- [ ] **NPSE-01**: `NpsPorEmpresaService::notasNpsPorEmpresa($user, $mesNps, $invalidadas)` retorna nota de NPS agrupada por `company_id`, com contagem e origem por ramo
-- [ ] **NPSE-02**: Os três ramos atuais são preservados sem mudança semântica — `nps_score_assignments`, caminho legado (`nps_surveys`/`nps_responses`, `->principal()`) e `nps_imputed_assignments` — mantendo a dedupe por `(response_id, role)` e por `(survey_id, role)`
-- [ ] **NPSE-03**: A janela M+1 é preservada: competência financeira M lê NPS coletado em M+1; mês em curso usa piso `1.0`; M+1 encerrado sem resposta usa `0.0` que vira `1.0` pelo clamp
-- [ ] **NPSE-04**: Empresa invalidada na competência (`bonus_invalidacoes`) não entra no NPS por empresa (coerente com D5 da Fase 116)
-- [ ] **NPSE-05**: Empresa com Performance **e** Shopee não duplica NPS por serviço
-- [ ] **NPSE-06**: O teste de coerência entre call-sites da Fase 116 (116-08) conhece este novo call-site e continua verde
+- [x] **NPSE-01**: `NpsPorEmpresaService::notasNpsPorEmpresa($user, $mesNps, $invalidadas)` retorna nota de NPS agrupada por `company_id`, com contagem e origem por ramo
+- [x] **NPSE-02**: Os três ramos atuais são preservados sem mudança semântica — `nps_score_assignments`, caminho legado (`nps_surveys`/`nps_responses`, `->principal()`) e `nps_imputed_assignments` — mantendo a dedupe por `(response_id, role)` e por `(survey_id, role)`
+- [x] **NPSE-03**: A janela M+1 é preservada: competência financeira M lê NPS coletado em M+1; mês em curso usa piso `1.0`; M+1 encerrado sem resposta usa `0.0` que vira `1.0` pelo clamp
+- [x] **NPSE-04**: Empresa invalidada na competência (`bonus_invalidacoes`) não entra no NPS por empresa (coerente com D5 da Fase 116)
+- [x] **NPSE-05**: Empresa com Performance **e** Shopee não duplica NPS por serviço
+- [x] **NPSE-06**: O teste de coerência entre call-sites da Fase 116 (116-08) conhece este novo call-site e continua verde
 
 ### EMPS — Score por empresa (Fase 119)
 
