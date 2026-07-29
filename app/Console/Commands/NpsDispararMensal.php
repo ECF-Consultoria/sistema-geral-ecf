@@ -9,6 +9,7 @@ use App\Models\NpsEmailEnvio;
 use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
 use App\Services\Digisac\NpsDigisacDispatchService;
+use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
@@ -42,11 +43,17 @@ use RuntimeException;
  * `expires_at=fim do mês corrente` (2026-07-20: o link vale só dentro do mês
  * do disparo; ao virar o mês expira, sem ser apagado), `generated_by=NULL`.
  *
- * Schedule registrado em routes/console.php às 09:00 BRT.
+ * Fase 119.1 Plan 01 (D2) — o agendamento diário às 09:00 BRT foi DESLIGADO
+ * (`routes/console.php` não tem mais `Schedule::command('nps:disparar-mensal')`).
+ * Este comando continua existindo e funcionando 100% igual, mas só roda
+ * quando alguém o invoca manualmente. Elegibilidade (estrategista + modelo
+ * aplicável) e o guard de duplicidade agora vêm de `NpsElegibilidadeService`
+ * (fonte única, reusada também pelo disparo manual da tela e pelo bônus).
  *
  * @see app/Mail/NpsMonthlyMail.php
  * @see app/Models/NpsEmailEnvio.php
  * @see app/Support/NpsTextRenderer.php
+ * @see app/Services/Nps/NpsElegibilidadeService.php
  * @see routes/console.php
  */
 class NpsDispararMensal extends Command
@@ -71,9 +78,18 @@ class NpsDispararMensal extends Command
      * dispatcher é injetado sempre; a decisão de chamá-lo por empresa acontece
      * dentro do loop após checar as flags.
      */
+    /**
+     * Fase 119.1 Plan 01 — DI do NpsElegibilidadeService.
+     *
+     * O comando delega a resolução de estrategista/modelos aplicáveis/guard
+     * de duplicidade ao serviço (fonte única, sem reimplementar a regra);
+     * contadores, logs e filtros de DISPARO (canal, aniversário) continuam
+     * aqui, porque são efeito colateral do comando, não de elegibilidade.
+     */
     public function __construct(
         private NpsTemplateService $templateService,
         private NpsDigisacDispatchService $digisacDispatch,
+        private NpsElegibilidadeService $elegibilidade,
     ) {
         parent::__construct();
     }
@@ -136,9 +152,9 @@ class NpsDispararMensal extends Command
         // Phase 79 Plan 03 (DEC-79-A) — DISPARO ESTRITO por serviços cobertos.
         // Substitui o comportamento "força o principal (is_default) para TODAS as
         // empresas" (2026-07-13): agora resolvemos, DENTRO do loop, a coleção de
-        // modelos aplicáveis a cada empresa (1 envio por modelo com
-        // `envio_automatico_mensal=true` cujos serviços cobertos intersectam um
-        // contrato ATIVO da empresa). Empresa sem cobertura → NENHUM NPS + warning.
+        // modelos aplicáveis a cada empresa via NpsElegibilidadeService::modelosAplicaveis()
+        // (1 envio por modelo cujos serviços cobertos intersectam um contrato
+        // ATIVO da empresa). Empresa sem cobertura → NENHUM NPS + warning.
         $query = Company::where('active', true);
         if ($canalEmailAtivo && ! $canalDigisacAtivo) {
             $query->whereNotNull('email_cliente')->where('email_cliente', '!=', '');
@@ -182,7 +198,10 @@ class NpsDispararMensal extends Command
 
                         // D-07 Phase 31 — Estrategista é obrigatório. Loga warning e pula em vez de
                         // tentar enviar email genérico.
-                        $estrategista = $empresa->estrategista()->first();
+                        // Fase 119.1 Plan 01 — resolução via NpsElegibilidadeService (fonte
+                        // única); o Log::warning e o contador continuam aqui (efeito colateral
+                        // do comando, não da regra de elegibilidade em si).
+                        $estrategista = $this->elegibilidade->estrategistaDaEmpresa($empresa);
                         if (! $estrategista) {
                             Log::warning("[NPS Mensal] empresa {$empresa->id} ({$empresa->name}) sem estrategista atribuido, pulando disparo");
                             $puladosSemEstrategista++;
@@ -198,13 +217,9 @@ class NpsDispararMensal extends Command
                         // nps_template_service_scopes) intersectam esses serviços. Ex.: empresa
                         // com contrato de Performance → NPS Padrão; com Shopee → NPS Shopee;
                         // com ambos → os dois modelos (2 surveys).
-                        $servicoIds = $empresa->contratosServico()->active()->pluck('servico_id');
-
-                        $modelosAplicaveis = \App\Models\NpsTemplate::query()
-                            ->where('active', true)
-                            ->where('envio_automatico_mensal', true)
-                            ->whereHas('serviceScopes', fn ($q) => $q->whereIn('nps_template_service_scopes.servico_id', $servicoIds))
-                            ->get();
+                        // Fase 119.1 Plan 01 — resolução via NpsElegibilidadeService::modelosAplicaveis()
+                        // (reproduz LITERALMENTE a mesma query; nenhuma mudança de comportamento).
+                        $modelosAplicaveis = $this->elegibilidade->modelosAplicaveis($empresa);
 
                         // DEC-79-A é ESTRITO: sem serviço coberto por nenhum modelo → NENHUM NPS
                         // (sem fallback is_default). Loga a empresa que ficaria sem NPS (blindagem
@@ -220,10 +235,9 @@ class NpsDispararMensal extends Command
                             // D-12 Phase 31 + Pitfall 2 (Phase 79) — DEDUP por (company, mês,
                             // template). Incluir `template_id` é o que permite N modelos por
                             // empresa/mês: o guard antigo (só company+mês) bloquearia o 2º modelo.
-                            $jaExiste = NpsSurvey::where('company_id', $empresa->id)
-                                ->whereDate('month_reference', $mesAtual)
-                                ->where('template_id', $modelo->id)
-                                ->exists();
+                            // Fase 119.1 Plan 01 — guard via NpsElegibilidadeService::surveyExistenteNaCompetencia()
+                            // (mesmo molde; cobre também month_reference NULL do disparo manual).
+                            $jaExiste = $this->elegibilidade->surveyExistenteNaCompetencia($empresa->id, $modelo->id, $hoje) !== null;
 
                             if ($jaExiste) {
                                 $puladosIdempotencia++;
