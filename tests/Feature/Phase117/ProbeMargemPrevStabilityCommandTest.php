@@ -500,13 +500,95 @@ class ProbeMargemPrevStabilityCommandTest extends TestCase
 
         $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
         $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO, $veredito->veredito);
-        $this->assertEqualsWithDelta(0.7, $veredito->cobertura_prev, 0.0001);
+
+        // CONTRATO ALTERADO em 2026-07-29: `cobertura_prev` deixou de ser a
+        // média agregada de todas as leituras e passou a ser a da PIOR rodada.
+        // Nesta fixture cada leitura está numa rodada própria (janela+hora
+        // distintas), então as 3 leituras sem `prev` formam rodadas de 0% e a
+        // pior é 0.0 — antes o número reportado era a média, 0.7.
+        // O veredito REPROVADO, que é o que de fato importa aqui, não mudou.
+        $this->assertEqualsWithDelta(0.0, $veredito->cobertura_prev, 0.0001);
 
         // Prova que o patamar reusado é 0.8 (AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA),
         // não um número inventado no comando.
         $motivoCobertura = collect($veredito->motivos)->first(fn ($m) => str_contains($m, 'cobertura de prev'));
         $this->assertNotNull($motivoCobertura);
         $this->assertStringContainsString('80%', $motivoCobertura);
+    }
+
+    /**
+     * REGRESSÃO DE BUG REAL — coleta de 2026-07-29.
+     *
+     * O cálculo original avaliava cobertura de `prev` de forma AGREGADA sobre
+     * todas as leituras. Na coleta real isso devolveu `aprovado` indevidamente:
+     * quatro rodadas em condição folgada (92,5% cada) diluíram a rodada sob
+     * contenção (64,2%) até um agregado de 86,8%, acima do piso de 80%.
+     *
+     * As condições boas escondiam exatamente a condição ruim que este gate
+     * existe para detectar — o gate aprovava o que deveria reprovar.
+     *
+     * Este teste reproduz a proporção real e exige REPROVADO.
+     */
+    public function test_rodadas_boas_nao_diluem_rodada_ruim_de_cobertura(): void
+    {
+        $empresas = Company::factory()->count(10)->create();
+
+        // 4 rodadas folgadas: 9 de 10 empresas com `prev` = 90% (acima do piso)
+        $rodadasBoas = [
+            ['lida_em' => '2026-07-20 03:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-20 16:00', 'janela' => 'pico_tarde'],
+            ['lida_em' => '2026-07-21 03:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-21 16:00', 'janela' => 'repeticao_24h'],
+        ];
+
+        foreach ($rodadasBoas as $r => $rodada) {
+            foreach ($empresas as $i => $empresa) {
+                $temPrev = $i < 9; // 9 de 10
+                $this->gravarLeitura(
+                    $empresa->id,
+                    '2026-06',
+                    $rodada['lida_em'] . ':0' . $i,
+                    value: $temPrev ? 100.0 : null,
+                    prev: $temPrev ? 96.0 : null,
+                    notaRegua: $temPrev ? 4 : null,
+                    janela: $rodada['janela'],
+                    leituraHash: $temPrev ? "boa-{$r}-{$i}" : null,
+                    httpFalhou: ! $temPrev,
+                );
+            }
+        }
+
+        // 1 rodada sob contenção: só 6 de 10 com `prev` = 60% (abaixo do piso)
+        foreach ($empresas as $i => $empresa) {
+            $temPrev = $i < 6;
+            $this->gravarLeitura(
+                $empresa->id,
+                '2026-06',
+                '2026-07-22 11:10:0' . $i,
+                value: $temPrev ? 100.0 : null,
+                prev: $temPrev ? 96.0 : null,
+                notaRegua: $temPrev ? 4 : null,
+                janela: 'contencao_11h',
+                leituraHash: $temPrev ? "cont-{$i}" : null,
+                httpFalhou: ! $temPrev,
+            );
+        }
+
+        // Agregado seria (36+6)/50 = 84% — PASSARIA no piso de 80%.
+        // Por rodada, a pior é 60% — tem de REPROVAR.
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+
+        $veredito = AdmanProbeMargemPrevVeredito::latest('gerado_em')->firstOrFail();
+
+        $this->assertSame(
+            AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO,
+            $veredito->veredito,
+            'Quatro rodadas boas não podem diluir uma rodada ruim — foi assim que o gate aprovou indevidamente em 2026-07-29.'
+        );
+        $this->assertEqualsWithDelta(0.6, $veredito->cobertura_prev, 0.0001);
+
+        // A contagem de rodadas tem de ser 5 (execuções), não 50 (leituras).
+        $this->assertSame(5, $veredito->total_rodadas);
     }
 
     public function test_relatorio_sinaliza_instrumentacao_suspeita_quando_tudo_identico(): void

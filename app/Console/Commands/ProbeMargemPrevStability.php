@@ -63,6 +63,21 @@ class ProbeMargemPrevStability extends Command
      */
     private const USER_IDS_AMOSTRA = [3, 15]; // Luiz, Danilo
 
+    /**
+     * Taxa máxima tolerada de falha de HTTP dentro de UMA rodada.
+     *
+     * Acrescentado em 2026-07-29 depois que a primeira coleta real expôs o
+     * ponto cego: `http_falhou` não entrava no veredito em lugar nenhum.
+     * Empresa cuja chamada falha não produz `nota_regua` e portanto NUNCA
+     * aparece como "flip de faixa" — a falha se manifesta como
+     * DESAPARECIMENTO. É exatamente a causa-raiz apurada na Fase 110
+     * ("empresa que falha sai da média"), e o gate era cego para ela.
+     *
+     * Patamar de 10%: as quatro rodadas em condição folgada deram 0% de falha
+     * em 212 leituras; a rodada sob contenção real deu 28,3% (15 de 53).
+     */
+    private const FALHA_HTTP_MAXIMA = 0.10;
+
     protected $signature = 'adman:probe-margem-prev
         {--mes= : competência fechada FIXA no formato YYYY-MM (OBRIGATÓRIO — nunca last_closed_month, ver docblock da classe)}
         {--janela= : rótulo humano da janela desta leitura (madrugada|contencao_11h|pico_tarde|repeticao_24h|manual)}
@@ -364,16 +379,70 @@ class ProbeMargemPrevStability extends Command
         //    coberturaMinima() abaixo), nunca hardcodeado aqui, pra não criar
         //    dois conceitos concorrentes de "cobertura suficiente" no mesmo
         //    domínio. ──
+        // ⚠️ CORRIGIDO em 2026-07-29 — o cálculo anterior era AGREGADO e
+        //    invertia o propósito do gate.
+        //
+        //    Antes: cobertura = comPrev / totalLeituras sobre TODAS as
+        //    leituras. Na coleta real de 2026-07-29 isso produziu `aprovado`
+        //    indevidamente: quatro rodadas em condição folgada (92,5% cada)
+        //    DILUÍRAM a rodada sob contenção (64,2%) até um agregado de 86,8%,
+        //    acima do piso de 80%. Ou seja: as condições boas escondiam
+        //    exatamente a condição ruim que este gate existe para detectar.
+        //
+        //    Agora: cobertura é avaliada POR RODADA e o veredito usa a PIOR.
+        //    Uma única rodada abaixo do piso reprova, independentemente de
+        //    quantas rodadas boas existam.
         $totalLeituras   = $leituras->count();
-        $comPrev         = $leituras->whereNotNull('prev')->count();
-        $coberturaPrev   = $totalLeituras > 0 ? round($comPrev / $totalLeituras, 4) : 0.0;
         $coberturaMinima = $this->coberturaMinima();
+
+        $porRodada = $leituras->groupBy(fn ($l) => $this->chaveDaRodada($l));
+
+        $coberturaPorRodada = $porRodada->map(function ($grupo) {
+            $n = $grupo->count();
+
+            return $n > 0 ? round($grupo->whereNotNull('prev')->count() / $n, 4) : 0.0;
+        });
+
+        // A cobertura REPORTADA e persistida passa a ser a da pior rodada —
+        // é ela que decide o veredito.
+        $coberturaPrev = $coberturaPorRodada->isEmpty() ? 0.0 : $coberturaPorRodada->min();
+
+        $rodadasAbaixoDoPiso = $coberturaPorRodada->filter(fn ($c) => $c < $coberturaMinima);
 
         if ($coberturaPrev < $coberturaMinima) {
             $motivos[] = sprintf(
-                'cobertura de prev não-nulo (%.2f%%) abaixo do mínimo exigido (%.0f%%) — D-03, patamar de AdmanMetricDiffService::MARGEM_COBERTURA_MINIMA.',
+                'cobertura de prev não-nulo abaixo do mínimo em %d de %d rodada(s) — PIOR rodada: %.2f%%, mínimo exigido %.0f%% (D-03). Rodadas abaixo do piso: %s. A cobertura é avaliada POR RODADA: uma rodada ruim reprova mesmo que a média de todas passe.',
+                $rodadasAbaixoDoPiso->count(),
+                $coberturaPorRodada->count(),
                 $coberturaPrev * 100,
-                $coberturaMinima * 100
+                $coberturaMinima * 100,
+                $rodadasAbaixoDoPiso->map(fn ($c, $k) => sprintf('%s (%.1f%%)', $k, $c * 100))->implode(', ')
+            );
+        }
+
+        // ── Falha de HTTP como sinal PRÓPRIO (acrescentado em 2026-07-29) ──
+        //    Antes, `http_falhou` não entrava no veredito em lugar nenhum, e
+        //    isso era um ponto cego grave: empresa cuja chamada FALHA não
+        //    produz `nota_regua`, logo não pode "flipar" de faixa. A falha se
+        //    manifesta como DESAPARECIMENTO, não como número errado — que é
+        //    exatamente a causa-raiz apurada na Fase 110 ("empresa que falha
+        //    sai da média"). Um gate que só olha flips é cego para ela.
+        $falhaPorRodada = $porRodada->map(function ($grupo) {
+            $n = $grupo->count();
+
+            return $n > 0 ? round($grupo->where('http_falhou', true)->count() / $n, 4) : 0.0;
+        });
+
+        $piorFalha           = $falhaPorRodada->isEmpty() ? 0.0 : $falhaPorRodada->max();
+        $rodadasComFalhaAlta = $falhaPorRodada->filter(fn ($f) => $f > self::FALHA_HTTP_MAXIMA);
+
+        if ($rodadasComFalhaAlta->isNotEmpty()) {
+            $motivos[] = sprintf(
+                'taxa de falha de HTTP acima do tolerado em %d rodada(s) — PIOR: %.1f%%, máximo tolerado %.0f%%. Rodadas: %s. Chamada que falha remove a empresa da conta, e isso NÃO aparece como flip de nota.',
+                $rodadasComFalhaAlta->count(),
+                $piorFalha * 100,
+                self::FALHA_HTTP_MAXIMA * 100,
+                $rodadasComFalhaAlta->map(fn ($f, $k) => sprintf('%s (%.1f%%)', $k, $f * 100))->implode(', ')
             );
         }
 
@@ -408,7 +477,14 @@ class ProbeMargemPrevStability extends Command
         // ── D-02: desenho amostral — >=5 rodadas (lida_em distintos) E ao
         //    menos 1 leitura na janela de contenção real (11:00-12:00 BRT).
         //    Faltando qualquer um dos dois, nunca aprovado. ──
-        $totalRodadas       = $leituras->pluck('lida_em')->map(fn ($d) => $d->toDateTimeString())->unique()->count();
+        // ⚠️ CORRIGIDO em 2026-07-29 — a contagem anterior usava `lida_em`
+        //    DISTINTO, mas cada empresa é gravada com o seu próprio timestamp
+        //    dentro da MESMA execução. Com 53 empresas por rodada, 5 rodadas
+        //    reais viravam "262 rodadas" no relatório, e a guarda de "mínimo 5"
+        //    passava trivialmente sem nunca ter sido exercida.
+        //    Agora conta rodadas de verdade, pela mesma chave usada na
+        //    cobertura (ver `chaveDaRodada()`).
+        $totalRodadas       = $porRodada->count();
         $temJanelaContencao = $leituras->contains('janela_esperada', 'contencao_11h');
         $desenhoIncompleto  = $totalRodadas < 5 || ! $temJanelaContencao;
 
@@ -423,7 +499,10 @@ class ProbeMargemPrevStability extends Command
         // ── Veredito final — ordem de precedência explícita ──
         $veredito = match (true) {
             $instrumentacaoSuspeita => AdmanProbeMargemPrevVeredito::VEREDITO_INSTRUMENTACAO_SUSPEITA,
-            $empresasComFlipCount > 0 || $coberturaPrev < $coberturaMinima || $desenhoIncompleto
+            $empresasComFlipCount > 0
+            || $coberturaPrev < $coberturaMinima
+            || $rodadasComFalhaAlta->isNotEmpty()
+            || $desenhoIncompleto
                 => AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO,
             default => AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO,
         };
@@ -479,6 +558,31 @@ class ProbeMargemPrevStability extends Command
     {
         return (float) (new \ReflectionClass(\App\Services\Metrics\AdmanMetricDiffService::class))
             ->getConstant('MARGEM_COBERTURA_MINIMA');
+    }
+
+    /**
+     * Chave que identifica UMA rodada do probe.
+     *
+     * Uma rodada é uma execução do comando: ~53 empresas lidas em sequência,
+     * cada uma com o seu próprio `lida_em`, tudo dentro de poucos minutos.
+     * Agrupar por `lida_em` distinto — como o cálculo fazia até 2026-07-29 —
+     * contava CADA EMPRESA como uma rodada.
+     *
+     * A chave é `janela_esperada` + hora de `lida_em`, o que separa
+     * corretamente as execuções observadas (duas rodadas `madrugada` em dias
+     * e horas diferentes viram duas chaves, como deve ser).
+     *
+     * Limitação conhecida: uma rodada que atravesse a virada da hora seria
+     * contada como duas. Como uma rodada leva ~6 min e as janelas são
+     * disparadas manualmente, isso não ocorreu na coleta real — e contar
+     * rodadas a MAIS é conservador aqui (só torna o gate mais exigente no
+     * mínimo de 5, nunca menos).
+     */
+    private function chaveDaRodada(object $leitura): string
+    {
+        $janela = $leitura->janela_esperada ?? 'sem_janela';
+
+        return $janela . '@' . $leitura->lida_em->format('Y-m-d H');
     }
 
     /**
