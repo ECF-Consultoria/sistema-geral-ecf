@@ -13,8 +13,10 @@ use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
+use App\Services\Desempenho\NpsSemLinkService;
 use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsImputationService;
+use App\Services\Nps\NpsJanelaResolver;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
 use Carbon\Carbon;
@@ -49,9 +51,15 @@ class NpsController extends Controller
     // Fase 119.1 Plan 02 · guard de duplicidade do disparo manual — reusa a
     // mesma fonte de competência/duplicidade que o disparo mensal já usa,
     // sem reimplementar a regra aqui (NpsElegibilidadeService, Plan 01).
+    // Fase 119.1 Plan 04 · D1 na área NPS — empresa elegível sem link conta
+    // nota 1 nos cards/série (NpsSemLinkService, mesma régua do bônus) e o
+    // "mês fechou?" da janela de coleta é lido de NpsJanelaResolver (Fase
+    // 118), nunca reimplementado inline.
     public function __construct(
         private NpsImputationService $imputationService,
         private NpsElegibilidadeService $elegibilidadeService,
+        private NpsSemLinkService $npsSemLinkService,
+        private NpsJanelaResolver $npsJanelaResolver,
     ) {
     }
 
@@ -502,13 +510,21 @@ class NpsController extends Controller
 
             $q->whereNotIn('id', $comSurvey);
 
-            foreach ($q->get(['id', 'name']) as $c) {
+            foreach ($q->get(['id', 'name', 'email_cliente', 'digisac_group_contact_id']) as $c) {
                 $faltantes[] = [
                     'company_id'  => $c->id,
                     'name'        => $c->name,
                     'modelo'      => $info['modeloNome'],
                     'template_id' => $info['templateId'],
                     'setor'       => $setor,
+                    // Fase 119.1 (D5/NPSMAN-12) — motivo do "sem link": falta
+                    // cadastrar contato (nem email nem Digisac) vs. o contato
+                    // existe e só falta gerar/enviar o link. D5 trava que a
+                    // AUSÊNCIA de contato NÃO tira a empresa da regra — isto é
+                    // só o motivo que a tela mostra pra explicar o que fazer.
+                    'motivo'      => (empty($c->email_cliente) && empty($c->digisac_group_contact_id))
+                        ? 'sem_contato'
+                        : 'sem_link',
                 ];
             }
         }
@@ -516,7 +532,39 @@ class NpsController extends Controller
         // Ordena por empresa e depois modelo (leitura da lista).
         usort($faltantes, fn ($a, $b) => [$a['name'], $a['modelo']] <=> [$b['name'], $b['modelo']]);
 
+        // Fase 119.1 (D1) — cada faltante diz se está PESANDO na média (mês
+        // de coleta já fechado + par empresa/modelo elegível + não invalidada
+        // na competência), na MESMA régua que os cards somam logo abaixo via
+        // NpsSemLinkService — os dois nunca podem divergir (T-119.1-15).
+        $mesFechadoAtual = $this->npsJanelaResolver->fechada($mesInicio);
+        $invalidadasCompetenciaAtual = BonusInvalidacao::companyIdsInvalidadas(
+            $mesInicio->copy()->subMonthNoOverflow()->startOfMonth()
+        );
+        // Fase 119.1 (D1) — checagem por EMPRESA (não por par empresa/modelo):
+        // o `template_id` de cada faltante é só o representante do SETOR
+        // (is_default vence — Bugfix 2026-07-21 v2, comentário acima), que
+        // pode divergir do modelo específico que `NpsElegibilidadeService`
+        // resolve para a empresa quando o setor tem mais de 1 modelo
+        // automático. Como `$faltantes` já garante "nenhum survey de NENHUM
+        // modelo do setor este mês" (o `comSurvey` acima varre todos os
+        // `$templateIds`), basta saber se a empresa é elegível para ALGUM
+        // modelo aplicável — a mesma pergunta que `NpsSemLinkService`
+        // responde por (empresa, modelo) somada abaixo.
+        $elegiveisPorEmpresa = [];
+        foreach ($this->elegibilidadeService->empresasElegiveis($mesInicio) as $item) {
+            $elegiveisPorEmpresa[$item->company_id] = true;
+        }
+        foreach ($faltantes as &$faltante) {
+            $faltante['conta_nota_1'] = $mesFechadoAtual
+                && isset($elegiveisPorEmpresa[$faltante['company_id']])
+                && !$invalidadasCompetenciaAtual->contains($faltante['company_id']);
+        }
+        unset($faltante);
+
         $contadores['faltantes'] = count($faltantes);
+        // Fase 119.1 (D1) — quantos faltantes estão pesando na média (o
+        // plano 07/UI consome esta chave, ver 119.1-04-PLAN.md).
+        $contadores['contam_nota_1'] = count(array_filter($faltantes, fn ($f) => $f['conta_nota_1']));
 
         // "Todos" = TODAS as empresas da carteira filtrada (2026-07-21):
         // respondidas + pendentes + expiradas (os surveys do mês) + faltantes
@@ -635,6 +683,47 @@ class NpsController extends Controller
         // por dimensão, reusando o MESMO $responsesFilter das respostas reais.
         $notasImputadasMes = $this->notasImputadasPorDimensao($mesInicio, $mesFim, $responsesFilter);
 
+        // Fase 119.1 (D1) — universo de empresas em escopo desta tela, para a
+        // leitura "elegível sem link conta 1" (NpsSemLinkService). Espelha o
+        // mesmo escopo de carteira do <select> de empresas (abaixo) e dos
+        // filtros de faltantes acima — coarse por carteira (não por serviço);
+        // o próprio NpsSemLinkService resolve elegibilidade por
+        // (empresa, modelo) internamente via NpsElegibilidadeService.
+        $companyIdsEscopoQuery = Company::query()->where('active', true);
+        if (!$user->isAdmin()) {
+            $companyIdsEscopoQuery->whereHas('users', fn ($u) => $u->where('users.id', $user->id));
+        }
+        if ($empresaId) {
+            $companyIdsEscopoQuery->where('id', $empresaId);
+        }
+        if ($estrategistaId) {
+            $companyIdsEscopoQuery->whereHas('users', fn ($u) => $u->where('users.id', $estrategistaId)->where('company_users.role', 'estrategista'));
+        }
+        if ($analistaId) {
+            $companyIdsEscopoQuery->whereHas('users', fn ($u) => $u->where('users.id', $analistaId)->where('company_users.role', 'consultor'));
+        }
+        $companyIdsEscopo = $companyIdsEscopoQuery->pluck('id');
+        $templateIdsFiltro = $templateId ? collect([$templateId]) : null;
+
+        // Fase 119.1 (D1) — empresa ELEGÍVEL sem NENHUM link no mês também
+        // conta nota 1, na MESMA régua do bônus (NpsSemLinkService). Ramo
+        // ADITIVO e DISJUNTO dos ramos acima: `notasDaEmpresaSemLink()`
+        // rejeita internamente qualquer empresa que já tenha survey na
+        // competência (mesmo pendente) — nunca duplica com as respondidas
+        // reais nem com as imputadas ($notasImputadasMes).
+        foreach (['estrategista', 'analista', 'empresa'] as $dimensao) {
+            $notasImputadasMes[$dimensao] = $notasImputadasMes[$dimensao]->concat(
+                $this->npsSemLinkService->notasDaEmpresaSemLink(
+                    $companyIdsEscopo,
+                    $dimensao,
+                    $mesInicio,
+                    $mesFim,
+                    $invalidadasCompetenciaAtual,
+                    $templateIdsFiltro,
+                )
+            );
+        }
+
         $agregarMedia = function ($responses, string $dimensao, ?\Illuminate\Support\Collection $notasImputadas = null) use ($notaDe) {
             // Fase 116 — `collect()` explícito: $responses é uma Eloquent
             // Collection e o `->map()` dela preserva o tipo Eloquent mesmo
@@ -710,6 +799,24 @@ class NpsController extends Controller
             }
 
             $notasImputadasM = $this->notasImputadasPorDimensao($m, $mFim, $responsesFilterMes);
+
+            // Fase 119.1 (D1) — mesmo ramo aditivo/disjunto dos cards do mês
+            // filtrado, mês a mês na série de 12 meses (competência de
+            // invalidação também desloca junto: mês de coleta M+1 → mês
+            // financeiro M, mesma régua de $invalidadasCompetenciaAtual acima).
+            $invalidadasM = BonusInvalidacao::companyIdsInvalidadas($m->copy()->subMonthNoOverflow()->startOfMonth());
+            foreach (['estrategista', 'analista', 'empresa'] as $dimensao) {
+                $notasImputadasM[$dimensao] = $notasImputadasM[$dimensao]->concat(
+                    $this->npsSemLinkService->notasDaEmpresaSemLink(
+                        $companyIdsEscopo,
+                        $dimensao,
+                        $m,
+                        $mFim,
+                        $invalidadasM,
+                        $templateIdsFiltro,
+                    )
+                );
+            }
 
             $serieMeses[] = [
                 'mes'          => $m->locale('pt_BR')->isoFormat('MMM/YY'), // ex: 'jun./26'

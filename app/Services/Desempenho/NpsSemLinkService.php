@@ -5,6 +5,7 @@ namespace App\Services\Desempenho;
 use App\Models\User;
 use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsJanelaResolver;
+use App\Services\Nps\NpsScoreCalculator;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -41,6 +42,10 @@ use Illuminate\Support\Collection;
  *     bônus discordarem sobre quem é elegível (gate de coerência no plano
  *     08, teste local em `NpsPorEmpresaElegibilidadeTest`).
  *
+ * (e) `notasDaEmpresaSemLink()` (Fase 119.1 Plan 04) é a MESMA regra, só que
+ *     agregada por dimensão para a ÁREA NPS (`NpsController::index()`), em
+ *     vez de por pessoa como `notasDoUsuario()`.
+ *
  * @see .planning/phases/119.1-nps-manual-sem-duplicidade-e-por-grupo-de-empresas/119.1-CONTEXT.md D1, D5
  * @see .planning/phases/119.1-nps-manual-sem-duplicidade-e-por-grupo-de-empresas/119.1-03-PLAN.md
  * @see app/Services/Nps/NpsElegibilidadeService.php (fonte única de "quem é elegível")
@@ -51,6 +56,7 @@ class NpsSemLinkService
     public function __construct(
         private NpsElegibilidadeService $elegibilidade,
         private NpsJanelaResolver $janela,
+        private NpsScoreCalculator $calculator,
     ) {
     }
 
@@ -146,6 +152,112 @@ class NpsSemLinkService
                     'origem'          => 'sem_link',
                 ]);
             }
+        }
+
+        return $notas;
+    }
+
+    /**
+     * Notas 1.0 (D1) por EMPRESA/dimensão — Fase 119.1 Plan 04. Consumido
+     * pela ÁREA NPS (`NpsController::index()`), que agrega por dimensão
+     * (estrategista/analista/empresa — D7), não por pessoa como
+     * `notasDoUsuario()` acima. Espelha DELIBERADAMENTE a assinatura de
+     * `NpsImputationService::notasDaEmpresa()` (mesma janela [$de, $ate],
+     * mesmo `$templateIds` opcional) — mas é leitura pura, nunca
+     * materializa nada (mesmo contrato de `notasDoUsuario()`).
+     *
+     * `$companyIds` já reflete o escopo de carteira/filtros da tela — quem
+     * chama decide o universo; este método só aplica elegibilidade
+     * (`NpsElegibilidadeService`), dimensão aplicável ao template
+     * (`NpsScoreCalculator::contarPerguntasComPeso()`, MESMA régua de
+     * `NpsImputationService::materializar()`) e a disjunção com surveys já
+     * existentes na competência.
+     *
+     * Dedupe por (company_id, template_id) — chave substituta do
+     * `survey_id` do ramo (C)/`notasDaEmpresa()`, já que aqui não existe
+     * survey algum.
+     *
+     * @return Collection<int, object{
+     *   survey_id: null, company_id: int, role: null, service_setor: null,
+     *   competencia_nps: Carbon, nota: float, origem: string,
+     * }>
+     */
+    public function notasDaEmpresaSemLink(
+        Collection $companyIds,
+        string $dimensao,
+        Carbon $de,
+        Carbon $ate,
+        ?Collection $invalidadas = null,
+        ?Collection $templateIds = null,
+    ): Collection {
+        if ($companyIds->isEmpty()) {
+            return collect();
+        }
+
+        $invalidadas = $invalidadas ?? collect();
+        $notas       = collect();
+
+        // Itera mês a mês a janela [$de, $ate] — na prática a área NPS
+        // sempre chama com 1 único mês (card do mês filtrado, ou 1 mês por
+        // iteração da série de 12 meses), mas a assinatura aceita janela
+        // igual à de `notasDaEmpresa()`.
+        $mesAtual  = $de->copy()->startOfMonth();
+        $fimJanela = $ate->copy()->endOfMonth();
+
+        while ($mesAtual->lte($fimJanela)) {
+            // 1. Mês de coleta AINDA ABERTO ⇒ ninguém pesa (mesma régua de
+            //    `notasDoUsuario()` acima).
+            if (! $this->janela->fechada($mesAtual)) {
+                $mesAtual = $mesAtual->copy()->addMonthNoOverflow()->startOfMonth();
+
+                continue;
+            }
+
+            $elegiveis = $this->elegibilidade->empresasElegiveis($mesAtual)
+                // 2. Só as empresas do universo que a tela decidiu mostrar.
+                ->filter(fn ($item) => $companyIds->contains($item->company_id))
+                // 3. Empresa invalidada para bônus na competência sai (NPSMAN-07).
+                ->reject(fn ($item) => $invalidadas->contains($item->company_id))
+                // 4. Só entra se o TEMPLATE realmente mede esta dimensão —
+                //    mesma régua de `NpsImputationService::materializar()`
+                //    (linha 152), nunca reinventada aqui.
+                ->filter(fn ($item) => $this->calculator->contarPerguntasComPeso($item->template_id, $dimensao) > 0)
+                // 5. Disjunção com os ramos (A)/(B)/(C): já existe survey da
+                //    competência (mesmo pendente, mesmo month_reference NULL)
+                //    ⇒ quem cobre é o ramo (C), nunca duplicar aqui.
+                ->reject(fn ($item) => $this->elegibilidade->surveyExistenteNaCompetencia(
+                    $item->company_id,
+                    $item->template_id,
+                    $mesAtual,
+                ) !== null);
+
+            if ($templateIds && $templateIds->isNotEmpty()) {
+                $elegiveis = $elegiveis->filter(fn ($item) => $templateIds->contains($item->template_id));
+            }
+
+            // 6. Dedupe por (empresa, modelo) — chave substituta do
+            //    `survey_id` do ramo (C).
+            $vistos = [];
+            foreach ($elegiveis as $item) {
+                $chave = $item->company_id . '|' . $item->template_id;
+
+                if (isset($vistos[$chave])) {
+                    continue;
+                }
+                $vistos[$chave] = true;
+
+                $notas->push((object) [
+                    'survey_id'       => null,
+                    'company_id'      => $item->company_id,
+                    'role'            => null,
+                    'service_setor'   => null,
+                    'competencia_nps' => $mesAtual->copy(),
+                    'nota'            => 1.0,
+                    'origem'          => 'sem_link',
+                ]);
+            }
+
+            $mesAtual = $mesAtual->copy()->addMonthNoOverflow()->startOfMonth();
         }
 
         return $notas;
