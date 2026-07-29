@@ -350,14 +350,19 @@ class NpsFloorDesempenhoTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 6 — empresa da carteira SEM survey no mês: nada muda (D3, sentinela
-    //     de vazio preservada)
+    // 6 — empresa da carteira SEM survey no mês — Fase 119.1 (D1) INVERTEU
+    //     deliberadamente o invariante D3 original para empresa ELEGÍVEL
+    //     (ver teste "empresa_elegivel" abaixo). D3 continua valendo tal e
+    //     qual para empresa NÃO elegível — o contrapeso que impede punir
+    //     quem não tinha o que enviar (NPSMAN-07).
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_empresa_sem_survey_no_mes_preserva_sentinela_vazia(): void
+    public function test_empresa_nao_elegivel_sem_survey_continua_zero(): void
     {
-        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+        // Mês (julho) já fechado — prova que o zero aqui é por NÃO
+        // elegibilidade, não porque a janela ainda está aberta.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
 
         $empresa     = Company::factory()->create();
         $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
@@ -365,12 +370,46 @@ class NpsFloorDesempenhoTest extends TestCase
 
         $analista = User::factory()->create();
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        // SEM ESTRATEGISTA atribuído — empresa NÃO é elegível (NPSMAN-07),
+        // o motivo explícito deste cenário permanecer em zero.
+
+        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
+        NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
         // NENHUM survey criado para esta empresa neste mês.
 
         $nps = $this->invocarComputeNpsMedio($analista, Carbon::parse('2026-07-01'));
 
         $this->assertSame(0.0, $nps,
-            'sem survey nenhum disparado no mês, o invariante D3 é preservado: sentinela de vazio (0.0), nunca 1.0.');
+            'empresa NÃO elegível (sem estrategista) continua com a sentinela de vazio (0.0) mesmo com o mês fechado — D3 preservado (NPSMAN-07).');
+    }
+
+    #[Test]
+    public function test_empresa_elegivel_sem_survey_conta_nota_1_no_bonus(): void
+    {
+        // Fase 119.1 (D1) — empresa ELEGÍVEL (contrato ativo + modelo
+        // automático aplicável + estrategista) sem NENHUM survey no mês
+        // conta nota 1 no bônus, depois que o mês fecha. Inversão
+        // deliberada do D3 original (NPSMAN-06) — o contrapeso é o teste
+        // acima (empresa não elegível continua em zero).
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
+
+        $empresa     = Company::factory()->create();
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+
+        $analista     = User::factory()->create();
+        $estrategista = User::factory()->create();
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
+        NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
+        // NENHUM survey criado — a empresa é ELEGÍVEL e o mês já fechou.
+
+        $nps = $this->invocarComputeNpsMedio($analista, Carbon::parse('2026-07-01'));
+
+        $this->assertSame(1.0, $nps,
+            'empresa ELEGÍVEL sem NENHUM link no mês conta nota 1 no bônus (D1/NPSMAN-06) — inversão deliberada de D3.');
     }
 
     // ═══════════════════════════════════════════════════════════════════

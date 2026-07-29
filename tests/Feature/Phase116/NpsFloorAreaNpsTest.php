@@ -291,12 +291,12 @@ class NpsFloorAreaNpsTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 3 — empresa SEM survey no mês não altera médias e continua em
-    //     faltantes (D3)
+    // 3 — empresa NÃO elegível SEM survey no mês não altera médias e
+    //     continua em faltantes (D3, contrapeso de D1/Fase 119.1)
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_empresa_sem_survey_no_mes_nao_altera_medias_e_aparece_em_faltantes(): void
+    public function test_empresa_nao_elegivel_sem_survey_no_mes_nao_altera_medias_e_aparece_em_faltantes(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
         $admin = $this->admin();
@@ -313,19 +313,66 @@ class NpsFloorAreaNpsTest extends TestCase
         $this->criarSurveyNaoRespondido($empresaComSurvey, $template, ['month_reference' => '2026-07-01']);
         $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
 
-        // Empresa ATIVA com contrato do MESMO serviço, mas SEM NENHUM survey no mês.
+        // Empresa ATIVA com contrato do MESMO serviço, mas SEM NENHUM survey
+        // no mês E SEM ESTRATEGISTA atribuído — NÃO é elegível (NPSMAN-07).
         $empresaSemSurvey = Company::factory()->create(['active' => true, 'name' => 'Empresa Sem Survey 116-03']);
         $this->criarContrato($empresaSemSurvey->id, $servicoPerf, true);
 
         $props = $this->propsDoIndex($admin, ['template_id' => $template->id, 'mes' => '2026-07']);
 
         // Média idêntica ao cenário só com a empresa que disparou (1.0/1) — a
-        // empresa sem disparo NUNCA entra como nota 1 (invariante D3).
+        // empresa NÃO elegível sem disparo NUNCA entra como nota 1 (D3).
         $this->assertEquals(1.0, $props['cards']['empresa']['media']);
         $this->assertEquals(1, $props['cards']['empresa']['total']);
 
         $faltante = collect($props['faltantes'])->firstWhere('company_id', $empresaSemSurvey->id);
         $this->assertNotNull($faltante, 'empresa sem NENHUM survey no mês deve continuar aparecendo em faltantes (D3).');
+        $this->assertFalse($faltante['conta_nota_1'], 'empresa NÃO elegível nunca conta nota 1 (NPSMAN-07).');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 3b — empresa ELEGÍVEL (D1/Fase 119.1) sem survey no mês: passa a
+    //     CONTAR nota 1 na média, e continua aparecendo em faltantes ao
+    //     mesmo tempo — as duas informações convivem, não é contradição
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_empresa_elegivel_sem_survey_no_mes_conta_nota_1_e_aparece_em_faltantes(): void
+    {
+        // Mês (julho) já fechado — condição obrigatória de D1.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
+        $admin = $this->admin();
+
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+
+        $empresaComSurvey = Company::factory()->create(['active' => true]);
+        $this->criarContrato($empresaComSurvey->id, $servicoPerf, true);
+
+        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_EMPRESA], [$servicoPerf]);
+        NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
+
+        $this->criarSurveyNaoRespondido($empresaComSurvey, $template, ['month_reference' => '2026-07-01']);
+        $this->imputationService()->materializarLote(Carbon::parse('2026-07-01'));
+
+        // Empresa ATIVA com contrato do MESMO serviço, SEM NENHUM survey no
+        // mês, mas COM estrategista — GENUINAMENTE elegível (D1/NPSMAN-06).
+        $empresaSemLink = Company::factory()->create(['active' => true, 'name' => 'Empresa Elegivel Sem Link 119.1-04']);
+        $this->criarContrato($empresaSemLink->id, $servicoPerf, true);
+        $estrategista = User::factory()->create();
+        $this->inserirPivot($empresaSemLink->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        $props = $this->propsDoIndex($admin, ['template_id' => $template->id, 'mes' => '2026-07']);
+
+        // (1 imputada de empresaComSurvey + 1 sem-link de empresaSemLink) / 2
+        // = 1.0 — a média continua 1.0, mas o TOTAL de notas cresce para 2.
+        $this->assertEquals(1.0, $props['cards']['empresa']['media']);
+        $this->assertEquals(2, $props['cards']['empresa']['total'],
+            'D1 — empresa elegível sem link soma no total de notas da dimensão empresa.');
+
+        $faltante = collect($props['faltantes'])->firstWhere('company_id', $empresaSemLink->id);
+        $this->assertNotNull($faltante, 'empresa elegível sem link continua aparecendo em faltantes.');
+        $this->assertTrue($faltante['conta_nota_1'],
+            'e TAMBÉM conta nota 1 na média — as duas informações convivem, não é contradição.');
     }
 
     // ═══════════════════════════════════════════════════════════════════

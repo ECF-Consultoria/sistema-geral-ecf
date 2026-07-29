@@ -243,11 +243,12 @@ class NpsFloorCarteiraTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 3 — empresa da carteira SEM survey nenhum continua com NPS null (D3)
+    // 3 — empresa da carteira NÃO elegível, SEM survey nenhum, continua
+    //     com NPS null (D3 preservado — contrapeso de D1/Fase 119.1)
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_coluna_nps_performance_empresa_sem_survey_continua_null(): void
+    public function test_coluna_nps_performance_empresa_nao_elegivel_sem_survey_continua_null(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
 
@@ -256,6 +257,7 @@ class NpsFloorCarteiraTest extends TestCase
         $empresa     = Company::factory()->create(['active' => true]);
         $this->criarContrato($empresa->id, $servicoPerf, true);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        // SEM ESTRATEGISTA atribuído — empresa NÃO é elegível (NPSMAN-07).
         // Nenhum survey criado para esta empresa — invariante D3.
 
         $props = $this->propsDashboard($analista);
@@ -264,7 +266,48 @@ class NpsFloorCarteiraTest extends TestCase
 
         $this->assertNotNull($linha);
         $this->assertNull($linha['nps'],
-            'invariante D3: empresa sem disparo nunca entra como nota 1');
+            'invariante D3 preservado para empresa NÃO elegível: sem disparo nunca entra como nota 1');
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 3b — empresa ELEGÍVEL (D1/Fase 119.1) sem survey: este call-site
+    //     AINDA mantém NPS null — GAP CONHECIDO, não é regressão
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_coluna_nps_performance_empresa_elegivel_sem_survey_ainda_continua_null_gap_conhecido(): void
+    {
+        // Fase 119.1 (D1) inverteu D3 DE PROPÓSITO para o BÔNUS e para a
+        // ÁREA NPS (`NpsController::index()`), mas
+        // `PerformanceController::dashboardCarteira()` ainda NÃO consome
+        // `NpsSemLinkService`. Mesmo com uma empresa GENUINAMENTE elegível
+        // (estrategista + contrato ativo + modelo automático aplicável), a
+        // coluna NPS da carteira continua null — divergência CONHECIDA,
+        // registrada no SUMMARY do 119.1-04 para o plano 08 fechar a
+        // coerência entre telas. NÃO é regressão: este call-site não foi
+        // tocado nesta fase.
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
+        $analista     = $this->criarAnalista();
+        $estrategista = User::factory()->create();
+        $servicoPerf  = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $empresa      = Company::factory()->create(['active' => true]);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
+        NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
+        // Nenhum survey criado — a empresa é ELEGÍVEL, mas este consumidor
+        // ainda não conta D1.
+
+        $props = $this->propsDashboard($analista);
+
+        $linha = collect($props['empresas'])->firstWhere('id', $empresa->id);
+
+        $this->assertNotNull($linha);
+        $this->assertNull($linha['nps'],
+            'GAP CONHECIDO (119.1): dashboardCarteira ainda não consome D1 — pendente para o plano 08.');
     }
 
     // ═══════════════════════════════════════════════════════════════════

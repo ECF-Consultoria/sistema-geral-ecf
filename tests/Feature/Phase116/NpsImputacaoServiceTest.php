@@ -167,6 +167,18 @@ class NpsImputacaoServiceTest extends TestCase
 
     // ═══════════════════════════════════════════════════════════════════
     // 2 — empresa SEM survey nunca gera linha (D3)
+    //
+    // Fase 119.1 (D1) — este bloco continua passando SEM alteração de
+    // asserção: `NpsImputationService` é escrita/materialização, e D1 é
+    // puramente LEITURA (não materializa nada em `nps_imputed_assignments`
+    // — ver `NpsSemLinkService`). A partir desta fase, a AUSÊNCIA de linha
+    // nesta tabela não significa mais "não conta nota 1" — a nota da
+    // empresa ELEGÍVEL sem link é calculada em leitura por
+    // `NpsSemLinkService::notasDoUsuario()`/`notasDaEmpresaSemLink()`, sem
+    // tocar nesta tabela. Se este bloco falhar, é sinal de que alguém
+    // materializou o ramo (D) e escolheu o caminho ERRADO (escrita em vez
+    // de leitura) — D3 continua sendo a regra de MATERIALIZAÇÃO, D1 é uma
+    // regra de LEITURA que convive por cima.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]

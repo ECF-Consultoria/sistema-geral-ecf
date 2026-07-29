@@ -56,10 +56,10 @@ use Tests\TestCase;
  *     empresa GENUINAMENTE elegível a NPS, o novo 4º ramo (D) de
  *     `computeNpsMedio()` (`NpsSemLinkService`) TAMBÉM passa a valer 1.0 —
  *     bônus e D-04 CONCORDAM; (b) para empresa da carteira SEM
- *     elegibilidade real (o cenário exato de `montarCenarioVazio()` abaixo
- *     — sem modelo automático aplicável ao serviço contratado), o D-04
- *     passou a filtrar por `NpsElegibilidadeService` e NÃO vale mais 1.0
- *     sozinho — os DOIS ficam de fora, novamente CONCORDANDO. Ver
+ *     elegibilidade real (o cenário exato de `montarCenarioVazioNaoElegivel()`
+ *     abaixo — sem modelo automático aplicável ao serviço contratado), o
+ *     D-04 passou a filtrar por `NpsElegibilidadeService` e NÃO vale mais
+ *     1.0 sozinho — os DOIS ficam de fora, novamente CONCORDANDO. Ver
  *     `test_nps_por_empresa_do_bonus_concorda_com_d3_apos_fase_119_1_quando_nao_elegivel()`
  *     no fim desta classe.
  *
@@ -72,9 +72,17 @@ use Tests\TestCase;
  * nota da resposta MAIS RECENTE por empresa, não uma média) — exige que
  * NENHUM consumidor IGNORE o não respondido.
  *
- * Cenário-espelho (`montarCenarioVazio()`): mesma empresa/pessoas, ZERO
- * surveys — prova que o invariante D3 (empresa sem disparo nunca vira nota
- * 1) se mantém intacto em TODOS os consumidores, de ponta a ponta.
+ * Cenário-espelho NÃO ELEGÍVEL (`montarCenarioVazioNaoElegivel()`): mesma
+ * empresa/pessoas, ZERO surveys — prova que o invariante D3 (empresa sem
+ * disparo nunca vira nota 1) se mantém intacto em TODOS os consumidores, de
+ * ponta a ponta, para quem NÃO é elegível a NPS.
+ *
+ * Cenário-espelho ELEGÍVEL (`montarCenarioVazioElegivel()`, Fase 119.1 ·
+ * D1): MESMA empresa/pessoas, ZERO surveys, mas COM modelo automático
+ * aplicável — prova que D3 foi INVERTIDO de propósito nos 2 consumidores já
+ * plugados (área NPS, bônus), e que os 4 restantes (carteira, ranking,
+ * página da empresa, meta de NPS) ainda mantêm a sentinela antiga — GAP
+ * CONHECIDO, registrado para o plano 08 fechar a coerência entre telas.
  *
  * @see .planning/phases/116-.../116-08-PLAN.md
  * @see .planning/phases/116-.../116-CONTEXT.md
@@ -242,12 +250,16 @@ class NpsFloorRegressaoTest extends TestCase
     }
 
     /**
-     * Cenário-espelho: mesma empresa/pessoas, ZERO surveys — para provar D3
-     * (empresa sem disparo nunca vira nota 1) em todos os consumidores.
+     * Cenário-espelho NÃO ELEGÍVEL: mesma empresa/pessoas, ZERO surveys e
+     * NENHUM modelo automático aplicável ao serviço contratado (NPSMAN-07)
+     * — para provar D3 (empresa sem disparo nunca vira nota 1) em todos os
+     * consumidores. Fase 119.1 (D1) inverteu D3 para empresa ELEGÍVEL (ver
+     * `montarCenarioVazioElegivel()` abaixo) — este cenário prova o
+     * CONTRAPESO: D3 continua intacto para quem não tinha o que enviar.
      *
      * @return array{empresa: Company, analista: User, estrategista: User}
      */
-    private function montarCenarioVazio(): array
+    private function montarCenarioVazioNaoElegivel(): array
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
 
@@ -260,9 +272,53 @@ class NpsFloorRegressaoTest extends TestCase
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
         $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
 
-        // Nenhum survey criado — nem respondido, nem não respondido.
+        // Nenhum survey criado — nem respondido, nem não respondido. NENHUM
+        // modelo NPS automático aplicável ao serviço contratado — a empresa
+        // é GENUINAMENTE não elegível (NPSMAN-07), não só "sem link".
 
         return compact('empresa', 'analista', 'estrategista');
+    }
+
+    /**
+     * Cenário-espelho ELEGÍVEL (Fase 119.1 · D1): MESMA empresa/pessoas de
+     * `montarCenarioVazioNaoElegivel()`, ZERO surveys, mas COM um modelo
+     * automático aplicável ao serviço contratado (`envio_automatico_mensal
+     * = true`, escopado ao mesmo serviço, e is_default=true — cobre também
+     * a meta de NPS/CalculateGoalResults, que só olha o modelo principal).
+     * Prova a inversão deliberada de D3: empresa ELEGÍVEL sem NENHUM link
+     * conta nota 1, depois que o mês fecha.
+     *
+     * @return array{empresa: Company, analista: User, estrategista: User, template: NpsTemplate}
+     */
+    private function montarCenarioVazioElegivel(): array
+    {
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+
+        $empresa     = Company::factory()->create(['active' => true, 'name' => 'Empresa Elegivel Sem Link 119.1-04']);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+
+        $analista     = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $estrategista = User::factory()->create(['role' => 'mentor', 'active' => true]);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        $template = $this->criarTemplateEscopado(
+            [
+                NpsTemplateQuestion::DIMENSAO_ESTRATEGISTA,
+                NpsTemplateQuestion::DIMENSAO_ANALISTA,
+                NpsTemplateQuestion::DIMENSAO_EMPRESA,
+            ],
+            [$servicoPerf],
+            principal: true,
+        );
+        NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
+
+        // Nenhum survey criado — nem respondido, nem não respondido. A
+        // empresa é GENUINAMENTE elegível (contrato ativo + modelo
+        // automático aplicável + estrategista) — D1/NPSMAN-06.
+
+        return compact('empresa', 'analista', 'estrategista', 'template');
     }
 
     // ═══════════════════════════════════════════════════════════════════
@@ -463,14 +519,16 @@ class NpsFloorRegressaoTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 7 — Cenário-espelho SEM NENHUM survey: D3 preservado em TODOS os
-    //     consumidores (nenhum "inventa" nota 1 onde não houve disparo)
+    // 7 — Cenário-espelho NÃO ELEGÍVEL, SEM NENHUM survey: D3 preservado em
+    //     TODOS os consumidores (nenhum "inventa" nota 1 onde não houve
+    //     disparo E a empresa não tinha o que enviar — NPSMAN-07, o
+    //     contrapeso de D1/Fase 119.1)
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_cenario_espelho_sem_survey_preserva_sentinela_em_todos_consumidores(): void
+    public function test_cenario_espelho_nao_elegivel_sem_survey_preserva_sentinela_em_todos_consumidores(): void
     {
-        $cenario = $this->montarCenarioVazio();
+        $cenario = $this->montarCenarioVazioNaoElegivel();
         $admin   = $this->admin();
 
         // 1) Área NPS — sentinela de vazio (media=0, total=0).
@@ -520,15 +578,15 @@ class NpsFloorRegressaoTest extends TestCase
         // notasNpsPorEmpresa()` (D-04) passou a filtrar por
         // `NpsElegibilidadeService` — a MESMA régua que o novo 4º ramo (D)
         // de `computeNpsMedio()` usa (`NpsSemLinkService`). O cenário deste
-        // teste (`montarCenarioVazio()`) tem estrategista + analista, mas
+        // teste (`montarCenarioVazioNaoElegivel()`) tem estrategista + analista, mas
         // NENHUM modelo NPS automático aplicável ao serviço contratado —
         // portanto é uma empresa GENUINAMENTE NÃO ELEGÍVEL (NPSMAN-07), e
         // os dois caminhos (bônus e D-04) agora concordam em "nada" para
         // ela, em vez de divergir.
-        $cenario = $this->montarCenarioVazio();
+        $cenario = $this->montarCenarioVazioNaoElegivel();
         $service = app(\App\Services\Desempenho\NpsPorEmpresaService::class);
 
-        // 1) Janela ainda em COLETA (2026-07-15, a data que `montarCenarioVazio()`
+        // 1) Janela ainda em COLETA (2026-07-15, a data que `montarCenarioVazioNaoElegivel()`
         //    já fixa): a empresa é EXCLUÍDA (nota null) — janela vence sobre
         //    elegibilidade (ordem fixa), exatamente como nos 6 consumidores
         //    acima.
@@ -566,5 +624,63 @@ class NpsFloorRegressaoTest extends TestCase
         //    argumentos DIFERENTES (decisão 4 do Plano 118-02).
         $this->assertSame(0.0, $this->invocarComputeNpsMedio($cenario['analista'], Carbon::parse('2026-07-01')));
         $this->assertSame(0.0, $this->invocarComputeNpsMedio($cenario['estrategista'], Carbon::parse('2026-07-01')));
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 8 — Cenário-espelho ELEGÍVEL (Fase 119.1 · D1), SEM NENHUM survey: os
+    //     2 consumidores já plugados (área NPS, bônus) passam a contar
+    //     nota 1 quando o mês fecha; os 4 restantes (carteira, ranking,
+    //     página da empresa, meta) AINDA mantêm a sentinela — GAP
+    //     CONHECIDO, registrado no SUMMARY do 119.1-04 para o plano 08
+    //     fechar a coerência entre telas. NÃO é regressão desta fase.
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_cenario_espelho_elegivel_sem_survey_conta_1_onde_d1_foi_plugado_e_mantem_sentinela_nos_demais(): void
+    {
+        $cenario = $this->montarCenarioVazioElegivel();
+        $admin   = $this->admin();
+
+        // Mês (julho) já fechado — condição obrigatória de D1.
+        Carbon::setTestNow(Carbon::parse('2026-08-01 00:00:01'));
+
+        // 1) Área NPS — CONTA nota 1 (D1, Plan 04 desta fase).
+        $propsNps = $this->propsDoIndex($admin, ['mes' => '2026-07']);
+        $this->assertEquals(1.0, $propsNps['cards']['estrategista']['media'],
+            'D1 — empresa elegível sem link conta nota 1 na área NPS (estrategista).');
+        $this->assertEquals(1.0, $propsNps['cards']['analista']['media'],
+            'D1 — empresa elegível sem link conta nota 1 na área NPS (analista).');
+        $this->assertEquals(1.0, $propsNps['cards']['empresa']['media'],
+            'D1 — empresa elegível sem link conta nota 1 na área NPS (empresa, D7).');
+
+        // 2) Bônus — CONTA nota 1 (D1, Plan 03 desta fase, ramo D).
+        $this->assertSame(1.0, $this->invocarComputeNpsMedio($cenario['analista'], Carbon::parse('2026-07-01')),
+            'D1 — empresa elegível sem link conta nota 1 no bônus do analista.');
+        $this->assertSame(1.0, $this->invocarComputeNpsMedio($cenario['estrategista'], Carbon::parse('2026-07-01')),
+            'D1 — empresa elegível sem link conta nota 1 no bônus do estrategista.');
+
+        // 3) Carteira — GAP CONHECIDO: ainda não consome D1, sentinela null.
+        $propsCarteira = $this->propsDashboardCarteira($cenario['analista']);
+        $linhaCarteira = collect($propsCarteira['empresas'])->firstWhere('id', $cenario['empresa']->id);
+        $this->assertNotNull($linhaCarteira);
+        $this->assertNull($linhaCarteira['nps'],
+            'GAP CONHECIDO (119.1): dashboardCarteira ainda não consome D1 — pendente para o plano 08.');
+
+        // 4) Ranking — GAP CONHECIDO: sentinela null preservada.
+        $ranking      = $this->invocarBuildRanking(collect([$cenario['analista']]), now()->subDays(30));
+        $linhaRanking = $ranking->firstWhere('id', $cenario['analista']->id);
+        $this->assertNull($linhaRanking['avg_nps'],
+            'GAP CONHECIDO (119.1): ranking "Desempenho da equipe" ainda não consome D1 — pendente para o plano 08.');
+
+        // 5) Página da empresa — GAP CONHECIDO: nps_avg null, lista vazia.
+        $propsEmpresa = $this->propsDaEmpresa($admin, $cenario['empresa']);
+        $this->assertNull($propsEmpresa['company']['nps_avg'],
+            'GAP CONHECIDO (119.1): página da empresa ainda não consome D1 — pendente para o plano 08.');
+        $this->assertCount(0, $propsEmpresa['company']['nps_surveys']);
+
+        // 6) Meta de NPS — GAP CONHECIDO: continua null.
+        $media = $this->invocarComputeNpsDaMeta($cenario['empresa']->id, 2026, 7);
+        $this->assertNull($media,
+            'GAP CONHECIDO (119.1): meta de NPS ainda não consome D1 — pendente para o plano 08.');
     }
 }

@@ -407,12 +407,12 @@ class NpsFloorDashboardsTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 6 — Invariante D3: empresa SEM NENHUM survey no período mantém o
-    //     comportamento ATUAL em todos os call-sites (nunca vira 1)
+    // 6 — Invariante D3, empresa NÃO elegível: SEM NENHUM survey no período
+    //     mantém o comportamento ATUAL em todos os call-sites (nunca vira 1)
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_empresa_sem_survey_no_periodo_mantem_comportamento_atual_em_todos_call_sites(): void
+    public function test_empresa_nao_elegivel_sem_survey_no_periodo_mantem_comportamento_atual_em_todos_call_sites(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
         $admin    = $this->admin();
@@ -422,6 +422,8 @@ class NpsFloorDashboardsTest extends TestCase
         $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
         $this->criarContrato($empresa->id, $servicoPerf, true);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', null);
+        // SEM ESTRATEGISTA atribuído — empresa NÃO é elegível (NPSMAN-07),
+        // o contrapeso de D1/Fase 119.1.
 
         // Nenhum survey criado — nem respondido, nem não respondido.
 
@@ -446,5 +448,74 @@ class NpsFloorDashboardsTest extends TestCase
         // 5) Meta NPS — continua retornando null (sem dado, nunca vira 1).
         $media = $this->invocarComputeNpsDaMeta($empresa->id, 2026, 7);
         $this->assertNull($media);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 7 — Empresa ELEGÍVEL (D1/Fase 119.1) sem survey: estes 5 call-sites
+    //     AINDA mantêm a sentinela D3 — GAP CONHECIDO, não é regressão
+    // ═══════════════════════════════════════════════════════════════════
+
+    #[Test]
+    public function test_empresa_elegivel_sem_survey_ainda_mantem_sentinela_nestes_call_sites_gap_conhecido(): void
+    {
+        // Fase 119.1 (D1) inverteu D3 DE PROPÓSITO para o BÔNUS
+        // (`DesempenhoScoreService::computeNpsMedio()`, Plan 03) e para a
+        // ÁREA NPS (`NpsController::index()`, Plan 04) — mas estes 5
+        // call-sites (dashboard admin, ranking "Desempenho da equipe",
+        // dashboard do usuário, página da empresa, meta de NPS) ainda NÃO
+        // consomem `NpsSemLinkService`. Mesmo com uma empresa GENUINAMENTE
+        // elegível (estrategista + contrato ativo + modelo automático
+        // aplicável), o comportamento aqui continua sendo o D3 original —
+        // divergência CONHECIDA, registrada no SUMMARY do 119.1-04 para o
+        // plano 08 fechar a coerência entre telas. NÃO é regressão desta
+        // fase: nenhum destes 5 call-sites foi tocado.
+        Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
+        $admin        = $this->admin();
+        $analista     = User::factory()->create(['role' => 'consultor', 'active' => true]);
+        $estrategista = User::factory()->create();
+
+        $empresa     = Company::factory()->create(['active' => true]);
+        $servicoPerf = $this->criarServico(Servico::SETOR_PERFORMANCE, true);
+        $this->criarContrato($empresa->id, $servicoPerf, true);
+        $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', $servicoPerf);
+
+        // Template PRINCIPAL (dashboards admin/usuário só olham o modelo
+        // principal) + envio_automatico_mensal=true — empresa ELEGÍVEL.
+        $template = $this->criarTemplateEscopado(
+            [NpsTemplateQuestion::DIMENSAO_ESTRATEGISTA, NpsTemplateQuestion::DIMENSAO_ANALISTA, NpsTemplateQuestion::DIMENSAO_EMPRESA],
+            [$servicoPerf],
+            principal: true,
+        );
+        NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
+
+        // Nenhum survey criado — nem respondido, nem não respondido.
+
+        // 1) Dashboard admin — sentinela 0, GAP CONHECIDO (119.1).
+        $propsAdmin = $this->propsDoDashboardAdmin($admin);
+        $this->assertEquals(0, $propsAdmin['stats']['avg_nps'],
+            'GAP CONHECIDO (119.1): dashboard admin ainda não consome D1 — pendente para o plano 08.');
+
+        // 2) Ranking — sentinela null, GAP CONHECIDO (119.1).
+        $ranking = $this->invocarBuildRanking(collect([$analista]), now()->subDays(30));
+        $linha   = $ranking->firstWhere('id', $analista->id);
+        $this->assertNull($linha['avg_nps'],
+            'GAP CONHECIDO (119.1): ranking "Desempenho da equipe" ainda não consome D1 — pendente para o plano 08.');
+
+        // 3) Dashboard do usuário — sentinela 0.0, GAP CONHECIDO (119.1).
+        $propsUser = $this->invocarUserDashboard($analista, now()->subDays(30));
+        $this->assertEquals(0, $propsUser['stats']['avg_nps'],
+            'GAP CONHECIDO (119.1): dashboard do usuário ainda não consome D1 — pendente para o plano 08.');
+
+        // 4) Página da empresa — sem dado nenhum, GAP CONHECIDO (119.1).
+        $propsCompany = $this->propsDaEmpresa($admin, $empresa);
+        $this->assertNull($propsCompany['company']['nps_avg'],
+            'GAP CONHECIDO (119.1): página da empresa ainda não consome D1 — pendente para o plano 08.');
+        $this->assertCount(0, $propsCompany['company']['nps_surveys']);
+
+        // 5) Meta NPS — continua null, GAP CONHECIDO (119.1).
+        $media = $this->invocarComputeNpsDaMeta($empresa->id, 2026, 7);
+        $this->assertNull($media,
+            'GAP CONHECIDO (119.1): meta de NPS ainda não consome D1 — pendente para o plano 08.');
     }
 }
