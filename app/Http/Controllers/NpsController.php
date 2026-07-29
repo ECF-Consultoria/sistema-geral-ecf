@@ -13,6 +13,7 @@ use App\Models\NpsResponse;
 use App\Models\NpsResponseAnswer;
 use App\Models\NpsSurvey;
 use App\Models\NpsSurveyEvent;
+use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsTemplateService;
 use App\Support\NpsTextRenderer;
@@ -45,8 +46,13 @@ class NpsController extends Controller
     // respondido conta como nota mínima (1)" (Plan 01). Nenhuma lógica de
     // resolução de responsável/competência/invalidação é reimplementada
     // aqui — só consumida via surveyIdsComNotaDefinitiva()/vigentes().
-    public function __construct(private NpsImputationService $imputationService)
-    {
+    // Fase 119.1 Plan 02 · guard de duplicidade do disparo manual — reusa a
+    // mesma fonte de competência/duplicidade que o disparo mensal já usa,
+    // sem reimplementar a regra aqui (NpsElegibilidadeService, Plan 01).
+    public function __construct(
+        private NpsImputationService $imputationService,
+        private NpsElegibilidadeService $elegibilidadeService,
+    ) {
     }
 
     public function index(Request $request)
@@ -1010,6 +1016,35 @@ class NpsController extends Controller
             // Sem template_id (ex.: consumidor antigo/API) → auto-resolve
             // por empresa, comportamento original preservado.
             $template = $templateService->resolveForCompany($company);
+        }
+
+        // Fase 119.1 Plan 02 — guard de duplicidade: impede gerar um SEGUNDO
+        // link para (mesma empresa, mesmo modelo, mesmo mês).
+        //
+        // Por que o índice único do banco (Fase 68 Plan 04) NÃO resolve isto:
+        // ele só trava DUAS respostas `completed` — links `pending` coexistem
+        // de propósito (o operador pode reabrir/reenviar o mesmo link várias
+        // vezes antes do cliente responder). Nada ali impede um SEGUNDO
+        // survey pendente de nascer.
+        //
+        // Por que a competência é resolvida com o fallback
+        // `month_reference ?? created_at` (via `competenciaDoSurvey()` /
+        // `surveyExistenteNaCompetencia()`): surveys manuais SEMPRE nascem
+        // com `month_reference = NULL` (D-12, comentário abaixo) — comparar
+        // a coluna crua não pegaria nenhum link manual, e é exatamente essa
+        // brecha que o usuário reportou.
+        $jaExiste = $this->elegibilidadeService->surveyExistenteNaCompetencia(
+            (int) $data['company_id'],
+            (int) $template->id,
+            now()->startOfMonth(),
+        );
+
+        if ($jaExiste !== null) {
+            return back()->with([
+                'nps_link_existente' => route('nps.respond', $jaExiste->token),
+                'error'              => 'Esta empresa já tem um link deste modelo de pesquisa neste mês. '
+                    .'Enviar um segundo link pode fazer o cliente responder duas vezes. Use o link que já existe.',
+            ]);
         }
 
         $survey = NpsSurvey::create([
