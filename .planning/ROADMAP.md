@@ -1402,9 +1402,18 @@ Plans:
 
   1. Com a flag ligada, `nota_final` é exatamente a média das `nota_empresa`; com a flag desligada, o número não muda em relação a hoje
   2. `empresas_score` é anexado ao payload nos **dois** modos, para auditoria antes da virada
-  3. `cacheKey()` sobe de `v12` para `v13` e as 4 suítes com a string hardcoded são atualizadas junto — `DesempenhoShopeeScoreTest`, `Phase116/NpsFloorDesempenhoTest`, `Phase96/NpsInvalidacaoRespostaTest`, `V18/DesempenhoMetadadosCacheTest`
+  3. `cacheKey()` sobe uma versão (regra: **corrente + 1** — `v12`→`v13`, ou `v13`→`v14` se a Fase 119.1 chegar antes, ver nota acima) e as 4 suítes com a string hardcoded são atualizadas junto — `DesempenhoShopeeScoreTest`, `Phase116/NpsFloorDesempenhoTest`, `Phase96/NpsInvalidacaoRespostaTest`, `V18/DesempenhoMetadadosCacheTest`
   4. As chaves legadas continuam presentes (`empresas_carteira`, `empresas_com_baseline`, `margem_amostra`, `componentes_disponiveis`, `score_status`, `faixa_bonus`, `faixa_promovida`, `componentes.var_margem_pct`)
   5. Empresa sem baseline segue a decisão do discuss-phase, sem contradizer `DESEMP-06` nem a trava da Fase 109 — profissional só-Shopee continua produzindo `nota_final`
+
+
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 120-01-PLAN.md — Teste dourado de byte-equivalência (substituto do gate de hash das Fases 117-119), bump da chave de cache antes da mudança de shape, feature flag nascendo `false` e a superfície aditiva: parâmetro de shadow, `empresas_score` e `componentes.var_margem_pp` [AGRE-02, AGRE-03, AGRE-04]
+- [ ] 120-02-PLAN.md — Roteamento do shadow: `consolidar-mes` e `warm-cache` com o guard do `Cache::remember` (C-02), prova de contagem zero na leitura interativa (D-04) e de que o shadow não contamina nenhum número legado [AGRE-02]
+- [ ] 120-03-PLAN.md — A bifurcação: `computeNotaFinalPorEmpresa`/`computeScoreStatusPorEmpresa`, denominador só de empresas `complete` (D-01), cobertura de 70% governando `official`/`partial` (D-02/D-03), só-Shopee `official` sem código especial e os cenários espelho da D-05 [AGRE-01, AGRE-05, AGRE-06]
 
 ### Phase 121: Comparação antigo × novo e validação da régua em pp (v21.0)
 
