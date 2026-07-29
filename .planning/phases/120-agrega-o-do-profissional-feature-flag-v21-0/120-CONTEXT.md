@@ -63,9 +63,20 @@ O `--desde` é necessário porque o gate mede a **pior rodada**, e a rodada repr
   **Razão:** a memória do projeto registra dashboard de 70 segundos por chamada HTTP síncrona à Adman (`project_desempenho_compute_cache`). Rodar o caminho novo inteiro — dispatcher por empresa + NPS por empresa — em toda requisição de tela dobraria esse custo com a flag ainda desligada. Nos comandos o custo é aceitável e a auditoria fica preservada.
   Leitura literal da AGRE-02 ("shadow nos dois modos") fica **atendida no espírito**: o shadow existe e é auditável, só não paga o preço na tela.
 
+### Resoluções pós-pesquisa (verificadas no código)
+
+- **C-01 · Dois sinais independentes, nunca um só.** A **feature flag** (`config('metrics.performance_company_first_score')`) decide **qual resultado vira `nota_final`**. O **shadow** é um parâmetro separado que decide **se `CompanyScoreService` sequer roda**. Confundir os dois é o caminho direto para o custo vazar para a tela (D-04). Só `desempenho:warm-cache` e `desempenho:consolidar-mes` passam o shadow como `true`.
+
+- **C-02 · A armadilha do `Cache::remember` no warm — confirmada no código.** `computeCached()` envolve tudo em `Cache::remember` (`DesempenhoScoreService.php:57`) e `WarmDesempenhoCache` o chama na linha 122. **Se o cache já estiver quente, o closure não roda e o shadow é silenciosamente pulado naquele ciclo.** `desempenho:consolidar-mes` não sofre disso porque chama `compute()` direto (`ConsolidarMesDesempenho.php:139`).
+  **Solução escolhida — nem forçar sempre, nem aceitar o gap:** o warm lê a entrada cacheada e **recomputa apenas quando o payload em cache não contém `empresas_score`**. Custa uma leitura de cache por user e garante que o shadow popula, sem pagar ~70s de recomputação a cada 8 minutos.
+  Forçar `Cache::forget()` incondicionalmente foi **rejeitado**: recomputaria tudo em todo ciclo, exatamente o custo que o warm existe para evitar.
+
+- **C-03 · `componentes.var_margem_pp` é `null` quando o shadow não rodou.** Em leitura interativa com a flag desligada, o caminho novo não executa — então o campo não tem valor calculado. Reportar `null` é honesto; inventar um número agregado seria pior, e reaproveitar `var_margem_pct` confundiria as duas unidades, que é justamente o que a milestone existe para separar.
+
 ### Testes
 
 - **D-05 · `DesempenhoShopeeScoreTest` ganha cenários espelho para o modo flag-ligada, mantendo os 7 atuais intactos.**
+  **A pesquisa precisou o alvo:** dos 7 testes, **4 dependem de `margemPontos()`** (asserem `pontos_componentes.margem` vindo do blend por contagem) e por isso não generalizam para o caminho novo. Os outros 3 — fonte financeira, dispatcher e cacheKey — valem nos dois modos. Os cenários espelho cobrem os 4.
   **Razão:** enquanto a flag estiver desligada — e ela fica desligada até o gate aprovar e o delta da 121 ser aceito —, o caminho antigo **é** o de produção. Reescrever os invariantes validaria um caminho que não roda. A suíte passa a documentar as duas semânticas e a diferença entre elas, que é justamente o que a Fase 121 vai auditar.
 
 </decisions>

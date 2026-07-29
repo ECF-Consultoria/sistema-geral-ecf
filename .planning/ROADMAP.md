@@ -1371,6 +1371,12 @@ Plans:
 
 > ⚠ **Efeito na Fase 120:** o critério de sucesso 3 da Fase 120 previa subir a chave de cache de `v12` para `v13`. A Fase 119.1 entrou na frente e consumiu o `v13` — a Fase 120 deve subir para `v14`, atualizando junto os 4 arquivos de teste com a string hardcoded.
 
+> 🔁 **Resposta da Fase 120 (2026-07-29) — e um aviso de volta para a 119.1.**
+> A Fase 120 **não** fixou `v14`. Ela resolve a versão como **corrente + 1 em tempo de execução**, lendo o literal antes de editar e extraindo a versão anterior de `git show HEAD:` no gate — funciona em qualquer ordem de execução entre as duas fases.
+>
+> ⚠️ **O `119.1-03-PLAN.md` faz o bump HARDCODED `v12` → `v13`.** Se a Fase 120 executar primeiro, ela consome o `v13`, e o grep por `v12` do plano da 119.1 **não encontrará nada** — a mudança de shape/comportamento da 119.1 (4º ramo em `computeNpsMedio`) poderia ser deployada **sem bump próprio**, servindo payload velho do Redis por até 7 dias em mês fechado.
+> **Sugestão para a sessão da 119.1:** trocar o bump hardcoded pela mesma resolução dinâmica "corrente + 1" antes de executar, ou confirmar a ordem de execução entre as duas sessões. Achado do plan-check da Fase 120 — não alterei o plano de vocês.
+
 ### Phase 120: Agregação do profissional + feature flag (v21.0)
 
 **Goal:** A nota do profissional passa a ser a média das notas das empresas, atrás de feature flag, com `empresas_score` calculado em shadow nos dois modos e todas as chaves legadas do payload preservadas.
