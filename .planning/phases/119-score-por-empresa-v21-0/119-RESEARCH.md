@@ -435,7 +435,9 @@ $notaEmpresa          = $componentesPresentes === 3 ? $notaEmpresaParcial : null
 
 **Nenhum destes é uma claim de negócio/compliance** — são inferências de engenharia sobre código lido diretamente; risco é de retrabalho de design, não de dado incorreto indo pra produção (a fase é aditiva e não persiste nada).
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+> Ambas resolvidas em 2026-07-28: **Q1** (onde vivem as réguas) pela **C-03** do `119-CONTEXT.md` — duplicar byte a byte + teste de equivalência via Reflection, porque o gate de aditividade proíbe até trocar `private` por `protected`; unificação fica para a Fase 120. **Q2** (dispatcher com fonte nula) pela **C-04** — guard `if ($fonteFinanceira !== null)` ANTES da chamada, nunca `catch`, com teste dedicado.
 
 1. **Onde vivem `reguaFaturamento()`/`reguaMargem()` para o `CompanyScoreService` reusar sem duplicar os cortes?**
    - O que sabemos: hoje são métodos `private` de `DesempenhoScoreService` (linhas 1290/1311).

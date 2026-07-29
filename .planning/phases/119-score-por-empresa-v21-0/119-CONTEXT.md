@@ -43,6 +43,22 @@ Estado em 2026-07-28: apenas a leitura L1 (`pico_tarde`) registrada; faltam ≥4
 - **D-03 · Permanece listada em `empresas_score`**, com `nota_empresa = null`, `nota_empresa_parcial` = a própria nota de NPS, `componentes_presentes = 1`, `status = 'sem_fonte'` e `quality.motivos = ['sem_fonte_financeira']`.
   **Razão:** preserva a auditabilidade que a Fase 121 vai precisar para explicar deltas — sem isso não dá para distinguir "não tem fonte financeira" de "não está na carteira". O denominador fica para a Fase 120.
 
+### Correções e resoluções pós-pesquisa (verificadas no código — PREVALECEM sobre o `119-RESEARCH.md` onde divergirem)
+
+- **C-01 · Não existe gate de cobertura de margem ativo no `AdmanMetricDiffService`.** Verificado: `fallbackMargemPct()` (linha 349) e `coberturaMargem()` (linha 494) são **código morto** — zero call-sites desde o hotfix `a413e823` de 24/07. `MARGEM_COBERTURA_MINIMA = 0.8` (linha 70) só é lida hoje pelo `ProbeMargemPrevStability` da Fase 117, via Reflection.
+  O único gate de cobertura **vivo** é `ConsolidarMesDesempenho::MARGEM_COBERTURA_MINIMA_CONGELAMENTO = 0.7` (linha 76, usado na 164).
+  **Consequência para esta fase:** não existe patamar de cobertura a respeitar ao portar margem para o nível de empresa — não invente um, e não "restaure" o fallback morto.
+  **Consequência para a Fase 117 (registrar, não agir agora):** a justificativa da D-03 daquela fase ("reusa a constante para evitar dois conceitos concorrentes no mesmo serviço") está factualmente enfraquecida — não há conceito vivo ali. O patamar de 0,8 do probe segue defensável como critério próprio, mas por mérito, não por coerência com o serviço.
+
+- **C-02 · `computeVarMargem()` não tem guards próprios.** Verificado: é um loop fino que lê `metrics.contribution_margin_pct.diff_pct`, acumula os não-nulos e tira `avg()`. Os guards cicatrizados (dias-comuns, `diffPctGuardado`) vivem dentro do `AdmanMetricDiffService` e **já operam por empresa** — a tradução para o nível de empresa herda-os de graça.
+  O **único** trecho genuinamente agregado a **não** portar é o `$vars->avg()` e o blend de `margemPontos()` — que é exatamente o que a milestone existe para aposentar.
+
+- **C-03 · Réguas: duplicar com teste de equivalência, igual à Fase 118.** `reguaFaturamento()` (1290) e `reguaMargem()` (1311) são `private` em `DesempenhoScoreService`, e o gate de aditividade exige o arquivo **byte-a-byte intocado** — então não dá para torná-las públicas nesta fase.
+  **Decisão:** o `CompanyScoreService` replica os cortes **byte a byte**, com docblock explicando que a duplicação é intencional e temporária, e um **teste de equivalência via Reflection** comparando as duas implementações em todos os pontos de corte e nos boundaries (`-6, -5, -2, -1, 0, 1, 4, 5`, mais `null`).
+  É exatamente o padrão que a Fase 118 usou para `computeNpsWindow()` — consistência de projeto. A unificação fica para a Fase 120, quando o gate de aditividade sair (mesmo follow-up já registrado em `118-VALIDATION.md`).
+
+- **C-04 · Nunca chamar o dispatcher com fonte nula.** `MetricDiffDispatcher::compute()` lança `InvalidArgumentException` para `source` inválido. Empresa com `status = 'sem_fonte'` (D-03) **não** deve chegar ao dispatcher — o guard vem antes, não no `catch`.
+
 ### Claude's Discretion
 
 - **D-04 · O blend `margemPontos()` da Fase 109 fica INTOCADO nesta fase.** Área não selecionada pelo usuário; decisão minha.
