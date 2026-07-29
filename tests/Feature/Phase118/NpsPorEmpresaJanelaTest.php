@@ -147,6 +147,18 @@ class NpsPorEmpresaJanelaTest extends TestCase
         $analista = User::factory()->create(['role' => 'consultor', 'active' => true]);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $servicoPerf);
 
+        // Fase 119.1 (D1) — desde que o D-04 passou a filtrar por
+        // elegibilidade (`NpsElegibilidadeService`), os casos "sem_nps"
+        // (janela fechada, nenhuma nota) precisam de uma empresa REALMENTE
+        // elegível: estrategista atribuído + modelo automático aplicável ao
+        // serviço contratado. Sem isto, a empresa cairia em `nao_elegivel`
+        // em vez de `sem_nps` — correto por NPSMAN-07, mas não o que os
+        // casos 4/boundary/equivalência deste arquivo querem provar.
+        $estrategista = User::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', null);
+        $modelo = NpsTemplate::factory()->create(['active' => true, 'envio_automatico_mensal' => true]);
+        $modelo->serviceScopes()->attach($servicoPerf);
+
         return compact('empresa', 'analista', 'servicoPerf');
     }
 
@@ -287,17 +299,25 @@ class NpsPorEmpresaJanelaTest extends TestCase
         $this->assertSame('janela_aberta', $linha2->origem);
         $this->assertNull($linha2->nota);
 
-        // Caso 3 — mês fechado, M+1 encerrada: computeNpsWindow === 0.0 ⇔
-        // origem === 'sem_nps' com nota === 1.0. É AQUI que a milestone
-        // v21.0 muda de granularidade de propósito: o 0.0 do agregado vira
-        // 1.0 ponto pelo clamp de compute() (nível do profissional); aqui o
-        // clamp é aplicado NA EMPRESA (D3 da v21.0) — é o objetivo da
-        // milestone, não uma divergência acidental.
+        // Caso 3 — mês fechado, M+1 encerrada: origem === 'sem_nps' com
+        // nota === 1.0 em ambos os serviços.
+        //
+        // ATUALIZAÇÃO (Fase 119.1 · D1, 2026-07-29): até a Fase 118,
+        // `computeNpsWindow` retornava o sentinela `0.0` aqui (nenhum dos 3
+        // ramos originais produzia nota) — divergência ACEITA de propósito
+        // entre o agregado por profissional (0.0) e o piso por empresa
+        // (1.0). Com o 4º ramo (D) desta fase (`NpsSemLinkService`), a
+        // empresa ELEGÍVEL sem link também alimenta `computeNpsMedio` — os
+        // dois caminhos agora CONCORDAM em 1.0. Isto não é uma coincidência
+        // de fixture: é exatamente a coerência que a Task 3 deste plano
+        // existe para garantir (T-119.1-14) — o cenário deste teste só
+        // continua em `sem_nps`/`nota=1.0` porque a empresa é uma empresa
+        // ELEGÍVEL de verdade (estrategista + modelo automático aplicável).
         Carbon::setTestNow(Carbon::parse('2026-08-05 10:00:00'));
         $r3     = $this->invocarComputeNpsWindow($cenario['analista'], Carbon::parse('2026-06-01'), true);
         $notas3 = $this->service()->notasNpsPorEmpresa($cenario['analista'], Carbon::parse('2026-06-01'), true, collect());
         $linha3 = $notas3->get($cenario['empresa']->id);
-        $this->assertSame(0.0, $r3);
+        $this->assertSame(1.0, $r3, 'Fase 119.1 · D1 — empresa elegível sem link também alimenta o ramo (D) do bônus.');
         $this->assertSame('sem_nps', $linha3->origem);
         $this->assertSame(1.0, $linha3->nota);
     }

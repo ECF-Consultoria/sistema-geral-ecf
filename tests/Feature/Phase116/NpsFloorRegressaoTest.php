@@ -46,13 +46,21 @@ use Tests\TestCase;
  *  4. Ranking "Desempenho da equipe" (`DashboardController::buildRanking()`)
  *  5. Média da página da empresa (`CompanyController::show()` → nps_avg)
  *  6. Meta de NPS (`CalculateGoalResults::computeNps()`)
- *  7. EXCEÇÃO CONHECIDA — `NpsPorEmpresaService::notasNpsPorEmpresa()`
- *     (bônus por empresa, Fase 118, v21.0): DIVERGE deliberadamente da D3
- *     acima no cenário-espelho. Empresa da carteira sem NENHUM disparo
- *     vale 1.0 aqui (D-04 da Fase 118), enquanto os 6 consumidores
- *     acima continuam com a sentinela de vazio. A divergência é
- *     APROVADA e documentada em `118-CONTEXT.md` `<risks>` (opção 1) —
- *     ver `test_nps_por_empresa_do_bonus_diverge_deliberadamente_da_d3_no_cenario_vazio()`
+ *  7. `NpsPorEmpresaService::notasNpsPorEmpresa()` (bônus por empresa, Fase
+ *     118, v21.0) — ATUALIZAÇÃO (Fase 119.1 · D1, 2026-07-29): até a Fase
+ *     118, este consumidor DIVERGIA deliberadamente da D3 acima no
+ *     cenário-espelho (empresa da carteira sem NENHUM disparo valia 1.0
+ *     aqui, enquanto os 6 consumidores acima continuavam com a sentinela de
+ *     vazio — divergência APROVADA em `118-CONTEXT.md` `<risks>` opção 1).
+ *     A Fase 119.1 fecha essa divergência nos DOIS sentidos: (a) para
+ *     empresa GENUINAMENTE elegível a NPS, o novo 4º ramo (D) de
+ *     `computeNpsMedio()` (`NpsSemLinkService`) TAMBÉM passa a valer 1.0 —
+ *     bônus e D-04 CONCORDAM; (b) para empresa da carteira SEM
+ *     elegibilidade real (o cenário exato de `montarCenarioVazio()` abaixo
+ *     — sem modelo automático aplicável ao serviço contratado), o D-04
+ *     passou a filtrar por `NpsElegibilidadeService` e NÃO vale mais 1.0
+ *     sozinho — os DOIS ficam de fora, novamente CONCORDANDO. Ver
+ *     `test_nps_por_empresa_do_bonus_concorda_com_d3_apos_fase_119_1_quando_nao_elegivel()`
  *     no fim desta classe.
  *
  * IMPORTANTE — duas réguas de dedupe DIFERENTES e DELIBERADAS coexistem no
@@ -497,62 +505,65 @@ class NpsFloorRegressaoTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 7 — EXCEÇÃO CONHECIDA (Plano 118-02, NPSE-06): NpsPorEmpresaService
-    //     (bônus por empresa, Fase 118, v21.0) DIVERGE deliberadamente da
-    //     D3 acima no MESMO cenário-espelho e na MESMA janela de coleta.
+    // 7 — Fase 119.1 (D1) FECHOU a divergência do Plano 118-02/NPSE-06:
+    //     NpsPorEmpresaService (bônus por empresa) agora CONCORDA com os 6
+    //     consumidores acima quando a empresa NÃO É elegível a NPS.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_nps_por_empresa_do_bonus_diverge_deliberadamente_da_d3_no_cenario_vazio(): void
+    public function test_nps_por_empresa_do_bonus_concorda_com_d3_apos_fase_119_1_quando_nao_elegivel(): void
     {
-        // Este é o 7º consumidor da regra de piso — o ÚNICO que diverge — e
-        // a divergência é APROVADA e documentada em `118-CONTEXT.md`
-        // <risks> (opção 1) e na `REQUIREMENTS-v21.md` D6: o bônus responde
-        // "quanto esta empresa vale para o bônus deste profissional?"; a
-        // área de NPS (e os outros 5 consumidores acima) responde "o que o
-        // cliente respondeu?". AVISO EXPLÍCITO: quem "corrigir" esta
-        // divergência achando que é a mesma regressão do Pitfall 4 da Fase
-        // 96 estará revertendo uma decisão do usuário de 2026-07-28 — NÃO
-        // estender o fallback da D-04 a nenhum dos 6 consumidores acima.
+        // ATUALIZAÇÃO (Fase 119.1 · D1, 2026-07-29): até a Fase 118, este
+        // era o 7º consumidor — o ÚNICO que divergia da sentinela de vazio,
+        // por decisão aprovada em `118-CONTEXT.md` <risks> (opção 1). A
+        // Fase 119.1 fecha essa divergência: `NpsPorEmpresaService::
+        // notasNpsPorEmpresa()` (D-04) passou a filtrar por
+        // `NpsElegibilidadeService` — a MESMA régua que o novo 4º ramo (D)
+        // de `computeNpsMedio()` usa (`NpsSemLinkService`). O cenário deste
+        // teste (`montarCenarioVazio()`) tem estrategista + analista, mas
+        // NENHUM modelo NPS automático aplicável ao serviço contratado —
+        // portanto é uma empresa GENUINAMENTE NÃO ELEGÍVEL (NPSMAN-07), e
+        // os dois caminhos (bônus e D-04) agora concordam em "nada" para
+        // ela, em vez de divergir.
         $cenario = $this->montarCenarioVazio();
         $service = app(\App\Services\Desempenho\NpsPorEmpresaService::class);
 
         // 1) Janela ainda em COLETA (2026-07-15, a data que `montarCenarioVazio()`
-        //    já fixa): a empresa é EXCLUÍDA (nota null), NÃO punida —
-        //    asserção-âncora contra a leitura errada de que "a D-04 vale
-        //    sempre". Enquanto o cliente está dentro do prazo, a empresa
-        //    fica de fora do denominador, exatamente como nos 6
-        //    consumidores acima.
+        //    já fixa): a empresa é EXCLUÍDA (nota null) — janela vence sobre
+        //    elegibilidade (ordem fixa), exatamente como nos 6 consumidores
+        //    acima.
         $notasAberta = $service->notasNpsPorEmpresa($cenario['analista'], Carbon::parse('2026-06-01'), true, collect());
         $linhaAberta = $notasAberta->get($cenario['empresa']->id);
         $this->assertNull($linhaAberta->nota);
         $this->assertSame('janela_aberta', $linhaAberta->origem);
 
-        // 2) Janela ENCERRADA, MESMO cenário — agora sim a D-04 aplica o
-        //    piso 1.0 (D-04 da Fase 118), para os dois papéis.
+        // 2) Janela ENCERRADA, MESMO cenário — a empresa NÃO é elegível
+        //    (sem modelo automático aplicável), então o D-04 NÃO aplica o
+        //    piso 1.0: `origem = 'nao_elegivel'`, `nota = null`, para os
+        //    dois papéis (NPSMAN-07). Este é o comportamento NOVO — antes
+        //    da Fase 119.1, valia 1.0 aqui (a divergência aprovada).
         Carbon::setTestNow(Carbon::parse('2026-08-05 10:00:00'));
 
         $notasAnalista = $service->notasNpsPorEmpresa($cenario['analista'], Carbon::parse('2026-06-01'), true, collect());
         $linhaAnalista = $notasAnalista->get($cenario['empresa']->id);
-        $this->assertSame(1.0, $linhaAnalista->nota);
-        $this->assertSame('sem_nps', $linhaAnalista->origem);
+        $this->assertNull($linhaAnalista->nota, 'Fase 119.1 — empresa não elegível fica de fora do D-04 também.');
+        $this->assertSame('nao_elegivel', $linhaAnalista->origem);
 
         $notasEstrategista = $service->notasNpsPorEmpresa($cenario['estrategista'], Carbon::parse('2026-06-01'), true, collect());
         $linhaEstrategista = $notasEstrategista->get($cenario['empresa']->id);
-        $this->assertSame(1.0, $linhaEstrategista->nota);
-        $this->assertSame('sem_nps', $linhaEstrategista->origem);
+        $this->assertNull($linhaEstrategista->nota);
+        $this->assertSame('nao_elegivel', $linhaEstrategista->origem);
 
         // 3) O OUTRO LADO, lado a lado, na MESMA janela de julho: a
-        //    sentinela 0.0 da Fase 116 (DESEMP-03, asserção 2 do teste 7
-        //    acima) continua valendo para os DOIS papéis — o bônus
-        //    AGREGADO do profissional nunca vira 1.0 sem dado nenhum.
-        //    `invocarComputeNpsMedio()` recebe o mês de COLETA (julho,
-        //    mesma convenção dos 7 métodos acima); `notasNpsPorEmpresa()`
-        //    recebe a competência FINANCEIRA M (junho) e desloca
-        //    internamente — são a MESMA janela, argumentos DIFERENTES
-        //    (decisão 4 do Plano 118-02). Comparar os dois com o mesmo
-        //    argumento seria um teste que "passa" olhando janelas
-        //    diferentes — pior que não ter teste.
+        //    sentinela 0.0 da Fase 116 (DESEMP-03) continua valendo para os
+        //    DOIS papéis — o novo ramo (D) de `computeNpsMedio()` também
+        //    NÃO se aplica aqui, porque esta empresa não é elegível. Os
+        //    dois caminhos concordam em "nada" — é a coerência que a Fase
+        //    119.1 (T-119.1-14) existe para garantir. `invocarComputeNpsMedio()`
+        //    recebe o mês de COLETA (julho, mesma convenção dos 7 métodos
+        //    acima); `notasNpsPorEmpresa()` recebe a competência FINANCEIRA
+        //    M (junho) e desloca internamente — são a MESMA janela,
+        //    argumentos DIFERENTES (decisão 4 do Plano 118-02).
         $this->assertSame(0.0, $this->invocarComputeNpsMedio($cenario['analista'], Carbon::parse('2026-07-01')));
         $this->assertSame(0.0, $this->invocarComputeNpsMedio($cenario['estrategista'], Carbon::parse('2026-07-01')));
     }

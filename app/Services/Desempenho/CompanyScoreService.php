@@ -189,9 +189,17 @@ class CompanyScoreService
             // se faltar (T-119-01 — log só com IDs/competência).
             $npsMotivo = null;
             if ($notasNps->has($companyId)) {
-                $npsPontos = $notasNps->get($companyId)->nota ?? null;
+                $linhaNps  = $notasNps->get($companyId);
+                $npsPontos = $linhaNps->nota ?? null;
                 if ($npsPontos === null) {
-                    $npsMotivo = 'nps_janela_aberta';
+                    // Fase 119.1 (D1) — distinguir "não elegível" de "janela
+                    // aberta" pela `origem` da linha. Leitura defensiva
+                    // (`?? null`, mesmo espírito do guard T-119-01 acima):
+                    // vários testes mockam a linha sem essa chave — o
+                    // fallback cai no comportamento antigo (`nps_janela_aberta`).
+                    $npsMotivo = ($linhaNps->origem ?? null) === 'nao_elegivel'
+                        ? 'nps_nao_elegivel'
+                        : 'nps_janela_aberta';
                 }
             } else {
                 $npsPontos = null;

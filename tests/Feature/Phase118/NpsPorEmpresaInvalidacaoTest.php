@@ -165,6 +165,17 @@ class NpsPorEmpresaInvalidacaoTest extends TestCase
         $analista = User::factory()->create(['role' => 'consultor', 'active' => true]);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $s1);
 
+        // Fase 119.1 (D1) — desde que o D-04 passou a filtrar por
+        // elegibilidade (`NpsElegibilidadeService`), o cenário "sem_nps"
+        // precisa ser uma empresa REALMENTE elegível: estrategista atribuído
+        // + modelo automático aplicável ao serviço contratado. Sem isto, a
+        // empresa cairia em `nao_elegivel` em vez de `sem_nps` — o gate
+        // correto de NPSMAN-07, mas não o que este teste quer provar.
+        $estrategista = User::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', null);
+        $modelo = NpsTemplate::factory()->create(['active' => true, 'envio_automatico_mensal' => true]);
+        $modelo->serviceScopes()->attach($s1);
+
         return compact('empresa', 'analista', 's1');
     }
 
@@ -286,6 +297,17 @@ class NpsPorEmpresaInvalidacaoTest extends TestCase
 
         $analista = User::factory()->create(['role' => 'consultor', 'active' => true]);
         $this->inserirPivot($empresa->id, $analista->id, 'consultor', $s1); // SEM vínculo em s2
+
+        // Fase 119.1 (D1) — desde que o D-04 passou a filtrar por
+        // elegibilidade (`NpsElegibilidadeService`), esta empresa precisa ser
+        // REALMENTE elegível: estrategista atribuído + modelo automático
+        // aplicável a algum serviço contratado. Sem isto, ela cairia em
+        // `nao_elegivel` em vez de `sem_nps` — correto por NPSMAN-07, mas não
+        // o que este teste quer provar (o gap de atribuição, não a elegibilidade).
+        $estrategista = User::factory()->create(['active' => true]);
+        $this->inserirPivot($empresa->id, $estrategista->id, 'estrategista', null);
+        $modeloAutomatico = NpsTemplate::factory()->create(['active' => true, 'envio_automatico_mensal' => true]);
+        $modeloAutomatico->serviceScopes()->attach($s1);
 
         $templateShopee = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$s2]);
         $this->responder($empresa, $templateShopee, 4);

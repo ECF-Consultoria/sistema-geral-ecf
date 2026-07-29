@@ -352,6 +352,19 @@ class NpsPorEmpresaContratoTest extends TestCase
         $this->inserirPivot($empresaA->id, $analista->id, 'consultor', $servicoPerf);
         $this->inserirPivot($empresaB->id, $analista->id, 'consultor', $servicoPerf);
 
+        // Fase 119.1 (D1) — desde que o D-04 passou a filtrar por
+        // elegibilidade (`NpsElegibilidadeService`), as duas empresas deste
+        // teste precisam ser REALMENTE elegíveis: estrategista atribuído +
+        // modelo automático aplicável ao serviço contratado. Sem isto, ambas
+        // cairiam em `nao_elegivel` em vez de `sem_nps` — correto por
+        // NPSMAN-07, mas não o que este teste quer provar (a distinção entre
+        // "nunca disparou" e "gap de atribuição", não a elegibilidade).
+        $estrategista = User::factory()->create(['active' => true]);
+        $this->inserirPivot($empresaA->id, $estrategista->id, 'estrategista', null);
+        $this->inserirPivot($empresaB->id, $estrategista->id, 'estrategista', null);
+        $modeloAutomatico = NpsTemplate::factory()->create(['active' => true, 'envio_automatico_mensal' => true]);
+        $modeloAutomatico->serviceScopes()->attach($servicoPerf);
+
         // Empresa B: survey respondido, mas escopado num serviço de que o
         // analista NÃO é responsável — nem atribuição (ramo 1), nem legado
         // (template não é o principal), então ele fica sem nota — mas o

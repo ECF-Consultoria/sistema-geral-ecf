@@ -5,6 +5,7 @@ namespace App\Services\Desempenho;
 use App\Models\NpsScoreAssignment;
 use App\Models\NpsSurvey;
 use App\Models\User;
+use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsJanelaResolver;
 use App\Services\Nps\NpsScoreCalculator;
@@ -40,9 +41,14 @@ use Illuminate\Support\Facades\Log;
  *    NENHUM filtro de serviço se aplica — usa a média de TODAS as notas do
  *    papel na competência.
  *  - D-04 · empresa da carteira viva sem NENHUM NPS na competência entra com
- *    nota 1 (inclusive sem disparo) QUANDO a janela M+1 já encerrou; se a
- *    janela ainda está em coleta, a empresa é EXCLUÍDA (`nota = null`) — é
- *    um fallback de LEITURA, nunca materializado em `nps_imputed_assignments`.
+ *    nota 1 (inclusive sem disparo) QUANDO a janela M+1 já encerrou E a
+ *    empresa é ELEGÍVEL a NPS naquela competência (Fase 119.1 · D1 — ver
+ *    nota "Aditividade" abaixo); se a janela ainda está em coleta, a empresa
+ *    é EXCLUÍDA (`nota = null`), com o MESMO tratamento para elegível ou não
+ *    (a checagem de janela vem ANTES da de elegibilidade). Empresa NÃO
+ *    elegível com janela fechada também é EXCLUÍDA (`nota = null`,
+ *    `origem = 'nao_elegivel'`) — nunca "nota zero". É um fallback de
+ *    LEITURA, nunca materializado em `nps_imputed_assignments`.
  *
  * ─── Aditividade ──────────────────────────────────────────────────────────
  * `DesempenhoScoreService` é ESPELHADO, não substituído — nenhum número de
@@ -50,10 +56,25 @@ use Illuminate\Support\Facades\Log;
  * janela M+1) é consultado aqui, mas `computeNpsWindow()` NÃO foi refatorado
  * para chamá-lo (gate de hash da Fase 118 — ver `NpsJanelaResolver`).
  *
+ * ⚠ ATUALIZAÇÃO (Fase 119.1 · D1, 2026-07-29): a frase acima ("nenhum número
+ * de produção muda nesta fase") descrevia a Fase 118. A Fase 119.1 muda esse
+ * contrato DE PROPÓSITO — o D-04 passou a filtrar por elegibilidade
+ * (`NpsElegibilidadeService`) antes de atribuir `nota = 1.0`. Motivo: depois
+ * que o bônus (`DesempenhoScoreService::computeNpsMedio()` ramo (D), via
+ * `NpsSemLinkService`) passou a exigir elegibilidade para a mesma regra
+ * "sem link conta 1", uma empresa NÃO elegível continuaria valendo 1 aqui
+ * (relatório por empresa) e nada no bônus — divergência silenciosa entre as
+ * duas telas. Esta é a ÚNICA mudança de número de produção introduzida por
+ * este arquivo desde a Fase 118: empresa não elegível deixa de valer 1 no
+ * relatório por empresa. O ramo `mes_em_curso` (passo 3, abaixo) segue SEM
+ * filtro de elegibilidade, de propósito — não alimenta bônus fechado.
+ *
  * @see .planning/phases/118-nps-por-empresa-v21-0/118-CONTEXT.md
+ * @see .planning/phases/119.1-nps-manual-sem-duplicidade-e-por-grupo-de-empresas/119.1-CONTEXT.md D1
  * @see app/Services/DesempenhoScoreService.php:748-1063 (os 3 ramos + janela — reusados, não reescritos)
  * @see app/Services/Nps/NpsImputationService.php (ramo 3 — delegado, nunca reimplementado)
  * @see app/Services/Nps/NpsJanelaResolver.php (régua de leitura da janela M+1)
+ * @see app/Services/Nps/NpsElegibilidadeService.php (fonte única de elegibilidade — MESMA do ramo D do bônus)
  */
 class NpsPorEmpresaService
 {
@@ -62,6 +83,7 @@ class NpsPorEmpresaService
         private NpsImputationService $imputationService,
         private NpsScoreCalculator $npsCalculator,
         private NpsJanelaResolver $janela,
+        private NpsElegibilidadeService $elegibilidade,
     ) {
     }
 
@@ -81,7 +103,12 @@ class NpsPorEmpresaService
      *    diferentes.
      *  - `janela_aberta` — sem nota, M+1 ainda em coleta ⇒ `nota = null`
      *    (empresa EXCLUÍDA do denominador — NUNCA "nota zero").
-     *  - `sem_nps` — sem nota, M+1 encerrada ⇒ `nota = 1.0` (D-04).
+     *  - `sem_nps` — sem nota, M+1 encerrada, empresa ELEGÍVEL ⇒ `nota = 1.0` (D-04).
+     *  - `nao_elegivel` — sem nota, M+1 encerrada, mas a empresa NÃO era
+     *    elegível a NPS na competência (sem contrato ativo em serviço
+     *    coberto, sem modelo aplicável, sem estrategista, ou invalidada na
+     *    competência) ⇒ `nota = null`, EXCLUÍDA do denominador (Fase 119.1 ·
+     *    D1/NPSMAN-07) — mesmo tratamento de `janela_aberta`, nunca "nota zero".
      *
      * Semântica travada dos contadores (o Plano 118-02 depende disto):
      *  - `notas_brutas` guarda TODAS as notas coletadas pelos 3 ramos ANTES
@@ -124,6 +151,10 @@ class NpsPorEmpresaService
 
         // 3. Caso 1 da janela (NPSE-03): mês em curso — piso 1.0 para TODA a
         //    carteira, SEM consultar nenhum ramo (espelha computeNpsWindow:750-755).
+        //    Fase 119.1 (D1) — este ramo segue SEM filtro de elegibilidade,
+        //    DE PROPÓSITO: mês em curso nunca alimenta bônus fechado, então
+        //    a divergência que a Task 3 fecha (D-04, abaixo) não se aplica
+        //    aqui. Divergência conhecida e aceita (ver docblock de classe).
         if (! $mesFechado) {
             return $companiesUniverso->mapWithKeys(fn (int $companyId) => [
                 $companyId => $this->linhaSemNota($companyId, 1.0, 'mes_em_curso', false),
@@ -241,12 +272,30 @@ class NpsPorEmpresaService
             $houveSurveyMap = $this->houveSurveyPorEmpresa($semNota, $inicio, $fim);
             $janelaFechada  = $this->janela->fechada($mesNps);
 
+            // Fase 119.1 (D1) — elegibilidade calculada UMA ÚNICA VEZ, FORA
+            // do foreach abaixo (é query em companies/contratos — nunca
+            // repetir por empresa dentro do laço). Usa SEMPRE `$mesNps` (mês
+            // de COLETA, já calculado no passo 4) — NUNCA `$mes` (financeiro):
+            // é a convenção de argumento travada desta fase, a MESMA que
+            // `NpsSemLinkService` usa no ramo (D) do bônus. Um descasamento
+            // de mês aqui faria este serviço e o bônus discordarem sobre quem
+            // é elegível.
+            $elegiveis = $this->elegibilidade->empresasElegiveis($mesNps)
+                ->pluck('company_id')->unique()->flip();
+
             foreach ($semNota as $companyId) {
                 $houveSurvey = $houveSurveyMap[$companyId] ?? false;
 
-                $resultado[$companyId] = $janelaFechada
-                    ? $this->linhaSemNota($companyId, 1.0, 'sem_nps', $houveSurvey)
-                    : $this->linhaSemNota($companyId, null, 'janela_aberta', false);
+                // Ordem fixa (Fase 119.1 · D1): janela ABERTA vence sobre
+                // elegibilidade (inalterado) — senão os testes de janela da
+                // Fase 118 mudariam de veredito sem necessidade. Só depois de
+                // saber que a janela FECHOU é que a elegibilidade decide entre
+                // `sem_nps` (1.0) e `nao_elegivel` (null, NPSMAN-07).
+                $resultado[$companyId] = match (true) {
+                    ! $janelaFechada             => $this->linhaSemNota($companyId, null, 'janela_aberta', false),
+                    ! $elegiveis->has($companyId) => $this->linhaSemNota($companyId, null, 'nao_elegivel', $houveSurvey),
+                    default                       => $this->linhaSemNota($companyId, 1.0, 'sem_nps', $houveSurvey),
+                };
 
                 // T-118-03 (Plano 118-02) — gap de atribuição do responsável
                 // consolidado (memória `project_nps_assignment_consolidado_gap`,
@@ -261,6 +310,11 @@ class NpsPorEmpresaService
                 // falha de execução. Só o contexto interno (IDs/competência)
                 // é logado — nunca nome de empresa/cliente, e-mail, telefone
                 // ou texto de resposta de NPS (T-118-09).
+                //
+                // Fase 119.1 (D1) — este log é DELIBERADAMENTE independente
+                // da elegibilidade: continua disparando mesmo quando a
+                // empresa é `nao_elegivel`, porque é sobre outro problema (o
+                // gap de atribuição do responsável), não sobre a regra nova.
                 if ($janelaFechada && $houveSurvey) {
                     Log::warning('[NPS por Empresa] empresa com survey na janela mas sem nota para o usuário — possível gap de atribuição', [
                         'user_id'     => $user->id,
