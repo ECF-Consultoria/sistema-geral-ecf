@@ -11,6 +11,7 @@ use App\Services\Nps\NpsScoreCalculator;
 use App\Services\Portfolio\CarteiraContextService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Agregador de LEITURA que devolve a nota de NPS de um profissional POR
@@ -241,9 +242,33 @@ class NpsPorEmpresaService
             $janelaFechada  = $this->janela->fechada($mesNps);
 
             foreach ($semNota as $companyId) {
+                $houveSurvey = $houveSurveyMap[$companyId] ?? false;
+
                 $resultado[$companyId] = $janelaFechada
-                    ? $this->linhaSemNota($companyId, 1.0, 'sem_nps', $houveSurveyMap[$companyId] ?? false)
+                    ? $this->linhaSemNota($companyId, 1.0, 'sem_nps', $houveSurvey)
                     : $this->linhaSemNota($companyId, null, 'janela_aberta', false);
+
+                // T-118-03 (Plano 118-02) — gap de atribuição do responsável
+                // consolidado (memória `project_nps_assignment_consolidado_gap`,
+                // corrigido NA ORIGEM em 2026-07-22, com backfill de
+                // competências ANTERIORES a essa data ainda pendente): houve
+                // disparo/resposta na janela, mas nenhuma das 3 fontes
+                // produziu nota para ESTE usuário. A nota devolvida CONTINUA
+                // 1.0 — a D-04 é decisão do usuário e não admite exceção
+                // silenciosa — o que muda é que o sintoma passa a aparecer no
+                // log em vez de se esconder atrás de um número que parece
+                // normal. Nível warning (não error): é dado suspeito, não
+                // falha de execução. Só o contexto interno (IDs/competência)
+                // é logado — nunca nome de empresa/cliente, e-mail, telefone
+                // ou texto de resposta de NPS (T-118-09).
+                if ($janelaFechada && $houveSurvey) {
+                    Log::warning('[NPS por Empresa] empresa com survey na janela mas sem nota para o usuário — possível gap de atribuição', [
+                        'user_id'     => $user->id,
+                        'company_id'  => $companyId,
+                        'competencia' => $mes->format('Y-m'),
+                        'mes_coleta'  => $mesNps->format('Y-m'),
+                    ]);
+                }
             }
         }
 
