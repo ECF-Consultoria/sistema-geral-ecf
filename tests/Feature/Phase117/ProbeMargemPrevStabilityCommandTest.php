@@ -703,4 +703,85 @@ class ProbeMargemPrevStabilityCommandTest extends TestCase
         $this->assertSame(5, $veredito->total_leituras);
         $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $veredito->veredito);
     }
+
+    /**
+     * O gate avalia a cobertura da PIOR rodada. Sem recorte, uma rodada
+     * reprovada permanece para sempre como a pior e o veredito nunca mais
+     * poderia virar `aprovado` — nem depois de o problema ser CORRIGIDO.
+     *
+     * Foi exatamente o caso do fix de resiliência de 2026-07-29: a rodada de
+     * 11:02 reprovou com 64,2% de cobertura e, meia hora após o fix, a mesma
+     * medição sob contenção real deu 92,5% com zero falhas.
+     *
+     * `--desde=` recorta a janela, e o recorte fica AUDITÁVEL em
+     * `janela_desde` — nada é apagado.
+     */
+    public function test_desde_recorta_a_janela_e_registra_o_corte_no_veredito(): void
+    {
+        $empresas = Company::factory()->count(10)->create();
+
+        // Rodada ANTIGA (ruim): 6 de 10 com prev = 60%, abaixo do piso.
+        foreach ($empresas as $i => $empresa) {
+            $temPrev = $i < 6;
+            $this->gravarLeitura(
+                $empresa->id, '2026-06', '2026-07-20 11:10:0' . $i,
+                value: $temPrev ? 100.0 : null, prev: $temPrev ? 96.0 : null,
+                notaRegua: $temPrev ? 4 : null, janela: 'contencao_11h',
+                leituraHash: $temPrev ? "velha-{$i}" : null, httpFalhou: ! $temPrev,
+            );
+        }
+
+        // 5 rodadas NOVAS (boas): 10 de 10 com prev = 100%.
+        $novas = [
+            ['lida_em' => '2026-07-25 03:00', 'janela' => 'madrugada'],
+            ['lida_em' => '2026-07-25 11:15', 'janela' => 'contencao_11h'],
+            ['lida_em' => '2026-07-25 16:00', 'janela' => 'pico_tarde'],
+            ['lida_em' => '2026-07-26 03:00', 'janela' => 'repeticao_24h'],
+            ['lida_em' => '2026-07-26 11:20', 'janela' => 'contencao_11h'],
+        ];
+        foreach ($novas as $r => $rodada) {
+            foreach ($empresas as $i => $empresa) {
+                $this->gravarLeitura(
+                    $empresa->id, '2026-06', $rodada['lida_em'] . ':0' . $i,
+                    value: 100.0, prev: 96.0, notaRegua: 4,
+                    janela: $rodada['janela'], leituraHash: "nova-{$r}-{$i}",
+                );
+            }
+        }
+
+        // SEM recorte: a rodada velha de 60% domina e reprova.
+        $this->artisan('adman:probe-margem-prev', ['--mes' => '2026-06', '--relatorio' => true])->assertExitCode(0);
+        $semCorte = AdmanProbeMargemPrevVeredito::latest('id')->firstOrFail();
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_REPROVADO, $semCorte->veredito);
+        $this->assertNull($semCorte->janela_desde, 'Sem --desde, janela_desde tem de ficar nulo.');
+
+        // COM recorte a partir do fix: só as rodadas boas entram.
+        $this->artisan('adman:probe-margem-prev', [
+            '--mes' => '2026-06', '--relatorio' => true, '--desde' => '2026-07-25 00:00',
+        ])->assertExitCode(0);
+
+        $comCorte = AdmanProbeMargemPrevVeredito::latest('id')->firstOrFail();
+        $this->assertSame(AdmanProbeMargemPrevVeredito::VEREDITO_APROVADO, $comCorte->veredito);
+        $this->assertEqualsWithDelta(1.0, $comCorte->cobertura_prev, 0.0001);
+        $this->assertSame(5, $comCorte->total_rodadas);
+
+        // O corte tem de ficar registrado — é o que torna o recorte auditável
+        // em vez de uma forma silenciosa de esconder rodada ruim.
+        $this->assertNotNull($comCorte->janela_desde, 'O recorte PRECISA ficar registrado em janela_desde.');
+        $this->assertSame('2026-07-25 00:00:00', $comCorte->janela_desde->toDateTimeString());
+
+        // E nada foi apagado: as leituras da rodada velha continuam na tabela.
+        $this->assertSame(60, \App\Models\AdmanProbeMargemPrevLeitura::count());
+    }
+
+    public function test_desde_com_formato_invalido_falha_sem_gravar_veredito(): void
+    {
+        $antes = AdmanProbeMargemPrevVeredito::count();
+
+        $this->artisan('adman:probe-margem-prev', [
+            '--mes' => '2026-06', '--relatorio' => true, '--desde' => 'ontem de manha',
+        ])->assertExitCode(1);
+
+        $this->assertSame($antes, AdmanProbeMargemPrevVeredito::count());
+    }
 }

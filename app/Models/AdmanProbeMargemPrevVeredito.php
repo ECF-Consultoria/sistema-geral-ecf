@@ -30,6 +30,7 @@ class AdmanProbeMargemPrevVeredito extends Model
     protected $fillable = [
         'periodo_key',
         'gerado_em',
+        'janela_desde',
         'total_leituras',
         'total_empresas',
         'total_rodadas',
@@ -44,6 +45,7 @@ class AdmanProbeMargemPrevVeredito extends Model
 
     protected $casts = [
         'gerado_em'         => 'datetime',
+        'janela_desde'      => 'datetime',
         'cobertura_prev'    => 'float',
         'empresas_com_flip' => 'array',
         'motivos'           => 'array',

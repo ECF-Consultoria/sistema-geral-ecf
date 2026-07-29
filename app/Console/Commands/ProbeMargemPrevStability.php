@@ -81,7 +81,8 @@ class ProbeMargemPrevStability extends Command
     protected $signature = 'adman:probe-margem-prev
         {--mes= : competência fechada FIXA no formato YYYY-MM (OBRIGATÓRIO — nunca last_closed_month, ver docblock da classe)}
         {--janela= : rótulo humano da janela desta leitura (madrugada|contencao_11h|pico_tarde|repeticao_24h|manual)}
-        {--relatorio : agrega as leituras já persistidas e emite o veredito, sem tocar a Adman}';
+        {--relatorio : agrega as leituras já persistidas e emite o veredito, sem tocar a Adman}
+        {--desde= : recorta a avaliação a leituras a partir desta data/hora (YYYY-MM-DD ou "YYYY-MM-DD HH:MM") — fica registrado em janela_desde no veredito}';
 
     protected $description = 'Probe de estabilidade de percentageMargin.prev da Adman (gate MPP-04, Fase 117) — leitura sem cache ou agregação via --relatorio.';
 
@@ -330,11 +331,44 @@ class ProbeMargemPrevStability extends Command
             return self::FAILURE;
         }
 
+        // ── `--desde=`: recorta a janela de avaliação ──
+        //
+        //  O veredito usa a cobertura da PIOR rodada. Sem recorte, uma rodada
+        //  reprovada fica para sempre como a pior e o gate nunca mais poderia
+        //  virar `aprovado` — nem depois de o problema ser CORRIGIDO. Foi o
+        //  caso do fix de resiliência de 2026-07-29 (quick
+        //  20260729-adman-retry-resiliente): a rodada de 11:02 reprovou com
+        //  64,2% e, meia hora depois do fix, a mesma medição sob contenção real
+        //  deu 92,5% com zero falhas.
+        //
+        //  O recorte só é legítimo porque fica AUDITÁVEL: `janela_desde` é
+        //  persistido no veredito, então quem ler vê que a janela foi cortada e
+        //  a partir de quando. Nada é apagado — as leituras antigas continuam
+        //  na tabela, que é insert-only.
+        $desde = null;
+        if ($desdeOption = $this->option('desde')) {
+            try {
+                $desde = \Carbon\Carbon::parse($desdeOption);
+            } catch (\Throwable) {
+                $this->error("[AdmanProbeMargemPrev] Formato inválido para --desde: '{$desdeOption}' (esperado YYYY-MM-DD ou 'YYYY-MM-DD HH:MM').");
+
+                return self::FAILURE;
+            }
+        }
+
         $leituras = AdmanProbeMargemPrevLeitura::with('company:id,name')
             ->where('periodo_key', $mes)
+            ->when($desde, fn ($q) => $q->where('lida_em', '>=', $desde))
             ->orderBy('company_id')
             ->orderBy('lida_em')
             ->get();
+
+        if ($desde) {
+            $this->warn(sprintf(
+                '[AdmanProbeMargemPrev] JANELA RECORTADA: avaliando apenas leituras a partir de %s. Leituras anteriores permanecem na tabela e fora deste veredito — o recorte fica registrado em janela_desde.',
+                $desde->toDateTimeString()
+            ));
+        }
 
         if ($leituras->isEmpty()) {
             $this->error("[AdmanProbeMargemPrev] nenhuma leitura encontrada para periodo_key={$mes} — rode o modo de leitura antes de agregar. Nenhum veredito foi gravado.");
@@ -513,6 +547,7 @@ class ProbeMargemPrevStability extends Command
         $registro = AdmanProbeMargemPrevVeredito::create([
             'periodo_key'             => $mes,
             'gerado_em'               => now(),
+            'janela_desde'            => $desde,
             'total_leituras'          => $totalLeituras,
             'total_empresas'          => $porEmpresa->count(),
             'total_rodadas'           => $totalRodadas,
