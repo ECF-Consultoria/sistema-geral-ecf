@@ -200,11 +200,16 @@ class NpsPorEmpresaService
             $origem = count($ramos) === 1 ? $ramos[0] : 'misto';
 
             // servico_ids/consolidado no nível da EMPRESA (não do papel):
-            // empresa que veio só pela fonte B (nenhum vínculo vivo, decisão
-            // 3) é tratada como consolidada, sem serviço conhecido.
-            $vinculosDaEmpresa = $vinculos->where('company_id', $companyId);
-            $consolidado       = $vinculosDaEmpresa->isEmpty();
-            $servicoIds        = $consolidado
+            // duas situações levam ao mesmo fallback "sem serviço conhecido"
+            // (Plano 118-02, D-03): (a) empresa que veio só pela fonte B
+            // (nenhum vínculo vivo, decisão 3 do Plano 118-01), OU (b) o
+            // vínculo vivo é o slot CONSOLIDADO (`company_users.servico_id
+            // NULL`) — o caminho OBRIGATÓRIO da D-03, que não pode ficar
+            // marcado como "vínculo específico" só porque a linha existe.
+            $vinculosDaEmpresa    = $vinculos->where('company_id', $companyId);
+            $temVinculoConsolidado = $vinculosDaEmpresa->contains(fn (array $v) => $v['servico_id'] === null);
+            $consolidado          = $vinculosDaEmpresa->isEmpty() || $temVinculoConsolidado;
+            $servicoIds           = $consolidado
                 ? []
                 : $vinculosDaEmpresa->pluck('servico_id')->filter()->unique()->values()->all();
 
