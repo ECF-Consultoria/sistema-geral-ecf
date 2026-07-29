@@ -68,9 +68,9 @@ Cada requirement mapeia para exatamente uma phase no ROADMAP.md.
 
 - [ ] **EMPS-01**: `CompanyScoreService` produz uma linha por empresa com o contrato do plano §3.1 (`company_id`, `fonte_financeira`, `status`, componentes brutos, pontos, `nota_empresa`, `quality`)
 - [ ] **EMPS-02**: A régua de faturamento é aplicada **por empresa**, antes de qualquer média
-- [ ] **EMPS-03**: A régua de margem é aplicada sobre `margem_var_pp`, reusando os cortes atuais (D2), **nunca** sobre `diff_pct`
+- [x] **EMPS-03**: A régua de margem é aplicada sobre `margem_var_pp`, reusando os cortes atuais (D2), **nunca** sobre `diff_pct`
 - [ ] **EMPS-04**: `nota_empresa = round((nps_pontos + faturamento_pontos + margem_pontos) / 3, 2)`
-- [ ] **EMPS-05**: `MetricDiffDispatcher::compute()` é chamado **uma única vez por empresa** — hoje `computeVarFaturamento()` e `computeVarMargem()` chamam duas vezes indiretamente
+- [x] **EMPS-05**: `MetricDiffDispatcher::compute()` é chamado **uma única vez por empresa** — hoje `computeVarFaturamento()` e `computeVarMargem()` chamam duas vezes indiretamente
 - [ ] **EMPS-06**: Resolução de fonte financeira vencedora por empresa preservada (Adman vence Shopee); empresa Shopee usa `margem_pontos = 1.0` marcado como `quality.margin_source = placeholder_shopee`
 - [ ] **EMPS-07**: Cada linha expõe `status` e `quality` (fontes de diff e motivos), permitindo auditar por que uma empresa ficou incompleta
 

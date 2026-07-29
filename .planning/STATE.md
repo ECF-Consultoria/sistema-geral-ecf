@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v20.0
 milestone_name: Handoff Comercial HubSpot
 status: verifying
-stopped_at: Fase 116 executada 8/8 (NPS não respondido = nota 1). PENDÊNCIA ABERTA - backfill retroativo NÃO executado em produção (gate de negócio do usuário, adiado 2026-07-28); o histórico só passa a valer a regra depois de rodar `php artisan nps:materializar-nao-respondidos`
-last_updated: "2026-07-28T16:31:46.186Z"
+stopped_at: Completado 116-07-PLAN.md (UI da área NPS + Companies/Show.jsx explicam a regra do não respondido sem jargão) - falta 116-08
+last_updated: "2026-07-29T11:55:43.725Z"
 last_activity: 2026-07-28
 progress:
   total_phases: 6
@@ -71,11 +71,11 @@ Artefatos da 117: `117-CONTEXT.md` (13 decisões — D-01..D-08 do usuário, D-0
 > **A decisão é de vocês, não da Fase 117 — nada foi alterado no código da 116.** Evidência completa, com arquivo:linha e três caminhos possíveis, em `.planning/phases/117-.../deferred-items.md` § "Bloqueio de publicação".
 > Consequência aceita pelo usuário: o probe da 117 **não alcança o freeze de 31/07**; junho congela com a métrica de margem relativa atual.
 
-**Progresso em 2026-07-29:** Fases 117 e 118 **executadas**; Fase 119 **planejada** (4 planos em 4 waves) e **bloqueada na wave 1** pelo gate. 11 de 38 requirements da v21.0.
+**Progresso em 2026-07-29:** Fases 117 e 118 **executadas**; Fase 119 (Score por empresa) **em execução — waves 1 e 2 de 3 completas**. 13 de 38 requirements da v21.0.
 
 - **117** — executada, `GATE MPP-04 PENDENTE`. Deployada em 28/07.
 - **118** — **completa** (NPSE-01..06). `NpsJanelaResolver` + `NpsPorEmpresaService`. 36/36 testes verdes, teste de coerência com 8 métodos e zero linhas removidas das 7 originais, `DesempenhoScoreService` byte-a-byte intocado. Aditiva: nenhum número de produção mudou; o serviço ainda não tem consumidor.
-- **119** — planejada. O plano `119-01` é um `checkpoint:decision` bloqueante do GATE MPP-04. **Correção importante do plan-check:** o tipo original era `checkpoint:human-verify`, que sob o modo `end-of-phase` (default, porque `workflow.human_verify_mode` está ausente do config) **seria suprimido** — o gate viraria teatro e a wave 2 rodaria sem veredito. `checkpoint:decision` é imune ao modo.
+- **119** — em execução. O GATE MPP-04 foi **reposicionado para a Fase 120** em 2026-07-29 (decisão do usuário — a fase é aditiva, sem consumidor de produção, e não paga bônus; o gate volta a valer na ativação da flag). O plano `119-01` (`checkpoint:decision` do gate) deixou de bloquear. **Wave 1 (119-02) executada:** `CompanyScoreService::computeEmpresasScore()` completo — universo, fonte vencedora, guard C-04, chamada única ao NPS/dispatcher, réguas duplicadas byte a byte com teste de equivalência via Reflection; 12/12 testes verdes (commits `87a7df46`/`faceb77e`/`de25d5a3`). **Wave 2 (119-03) executada:** prova dura de EMPS-03 (margem sobre `diff_pp`, fixture MPP-06: 4 pontos, não os 5 que `diff_pct` daria) e EMPS-05 (dispatcher 1x por empresa por contador dublê, guard C-04 sem exceção) — zero mudança em `CompanyScoreService.php`, a Wave 1 já estava correta; 18/18 testes `Phase119` verdes (commits `b5d57680`/`5f31239d`). `DesempenhoScoreService.php` segue byte-a-byte intocado (hash `cfc16da2a8404fba…9edd`) e `--filter=Desempenho` segue na baseline de 14 falhas pré-existentes, sem regressão. Falta wave 3 (`119-04-PLAN.md`).
 
 **Coleta do probe (gate MPP-04), competência 2026-06:**
 
