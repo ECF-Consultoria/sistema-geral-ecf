@@ -1353,8 +1353,8 @@ Plans:
 ### Phase 119.1: NPS manual, sem duplicidade e por grupo de empresas (INSERTED)
 
 **Goal:** O NPS deixa de sair sozinho e passa a ser um ato deliberado do responsável. (a) O agendamento diário do disparo automático é desligado — o comando continua existindo para uso manual em massa. (b) Fica impedido gerar um segundo link para a mesma empresa + mesmo modelo + mesma competência, fechando a brecha do disparo manual (onde `month_reference` nasce NULL e o índice único da Fase 68 não pega). (c) Passa a existir NPS de GRUPO: um único link cuja nota replica para todas as empresas do grupo que tenham os mesmos responsáveis no serviço coberto; as demais não recebem nota e seguem valendo 1 até alguém gerar link individual. (d) Como contrapartida ao desligamento do automático, empresa ELEGÍVEL que passou a competência sem nenhum link gerado também conta nota 1 — o que **inverte deliberadamente o invariante D3 da Fase 116**.
-**Requirements**: TBD (a definir no plan-phase)
-**Depends on:** Fase 116 (regra "não respondido = 1", tabela de imputação e os ~9 consumidores já ligados). Independente das Fases 117-123 (v21.0).
+**Requirements**: NPSMAN-01, NPSMAN-02, NPSMAN-03, NPSMAN-04, NPSMAN-05, NPSMAN-06, NPSMAN-07, NPSMAN-08, NPSMAN-09, NPSMAN-10, NPSMAN-11, NPSMAN-12, NPSMAN-13
+**Depends on:** Fase 116 (regra "não respondido = 1", tabela de imputação e os ~9 consumidores já ligados) e Fase 118 (`NpsPorEmpresaService` — o padrão de leitura que o item (d) generaliza). Independente das Fases 120-123 (v21.0).
 **UI hint:** Sim — tela de geração de link (bloqueio de duplicidade + prévia de quais empresas do grupo serão cobertas) e a área NPS refletindo notas de grupo
 **Por que INSERTED:** trabalho urgente pedido em 2026-07-29, adiantado porque as Fases 120-123 estão bloqueadas até a atualização da Adman das 11h.
 **Plans:** 0 plans
