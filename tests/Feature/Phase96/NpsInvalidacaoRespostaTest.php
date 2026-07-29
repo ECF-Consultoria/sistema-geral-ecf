@@ -243,7 +243,7 @@ class NpsInvalidacaoRespostaTest extends TestCase
         // desloca a leitura do NPS +1 mês desde a 105-01 — maio lê o NPS de
         // junho). O bust tem que atingir a chave de MAIO, não a de junho.
         // Prefixo v12 (Fase 116: bump v11→v12, NPSFLOOR).
-        $cacheKey = sprintf('desempenho.compute.v12.%d.%s', $pessoa->id, '2026-05');
+        $cacheKey = sprintf('desempenho.compute.v13.%d.%s', $pessoa->id, '2026-05');
         Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
         $this->assertTrue(Cache::has($cacheKey), 'pré-condição: cache do bônus precisa existir antes da invalidação.');
 
@@ -345,7 +345,7 @@ class NpsInvalidacaoRespostaTest extends TestCase
         // Fase 105 (NPSWIN-03): idem — competência bustada é X−1 = maio/2026,
         // chave v12 (Fase 116: bump v11→v12, NPSFLOOR — ver comentário do
         // teste de invalidar acima).
-        $cacheKey = sprintf('desempenho.compute.v12.%d.%s', $pessoa->id, '2026-05');
+        $cacheKey = sprintf('desempenho.compute.v13.%d.%s', $pessoa->id, '2026-05');
         Cache::put($cacheKey, ['fake' => true], now()->addDays(7));
 
         $this->actingAs($admin)

@@ -40,7 +40,8 @@ class CompanyScoreServiceReconciliacaoTest extends TestCase
     use CriaCenarioResponsaveis;
 
     /** Hash de referência do gate de aditividade (119-VALIDATION.md). */
-    private const HASH_DESEMPENHO_SCORE_SERVICE = 'cfc16da2a8404fba0d4a9a2bc62cd1a6f668bd17fe390fe6405cebd4e71a9edd';
+    /** Rotacionado pela Fase 119.1 (D1) — 4º ramo (D) somado a DesempenhoScoreService.php. */
+    private const HASH_DESEMPENHO_SCORE_SERVICE = 'e5e65532ba990f17c481737daae5c8555dfbe0de765f7507b1cc587abb9cc917';
 
     protected function setUp(): void
     {

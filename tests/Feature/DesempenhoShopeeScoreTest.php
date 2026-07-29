@@ -360,7 +360,7 @@ class DesempenhoShopeeScoreTest extends TestCase
         $service = app(DesempenhoScoreService::class);
         $chave   = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v12.' . $user->id . '.current_month', $chave);
+        $this->assertSame('desempenho.compute.v13.' . $user->id . '.current_month', $chave);
     }
 }
 

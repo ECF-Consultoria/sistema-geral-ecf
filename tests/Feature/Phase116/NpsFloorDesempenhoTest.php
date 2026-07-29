@@ -385,7 +385,7 @@ class NpsFloorDesempenhoTest extends TestCase
 
         $chave = $service->cacheKey($user->id, Carbon::parse('2026-06-01'));
 
-        $this->assertStringStartsWith('desempenho.compute.v12.', $chave,
+        $this->assertStringStartsWith('desempenho.compute.v13.', $chave,
             'Sem o bump v11→v12 o Redis serviria o bônus antigo por até 7 dias com o código novo em prod.');
     }
 }

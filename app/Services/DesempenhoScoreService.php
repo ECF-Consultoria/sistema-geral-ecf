@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Services\Metrics\MetricDiffDispatcher;
 use App\Services\Metrics\MetricPeriodResolver;
 use App\Services\Metrics\MetricsProviderFactory;
+use App\Services\Desempenho\NpsSemLinkService;
 use App\Services\Nps\NpsImputationService;
 use App\Services\Nps\NpsScoreCalculator;
 use App\Services\Portfolio\CarteiraContextService;
@@ -122,6 +123,7 @@ class DesempenhoScoreService
         private MetricPeriodResolver $periodResolver,
         private MetricDiffDispatcher $diffDispatcher,
         private NpsImputationService $imputationService,
+        private NpsSemLinkService $npsSemLinkService,
     ) {
     }
 
@@ -332,7 +334,20 @@ class DesempenhoScoreService
         // fechado) mesmo com o código novo em prod. As chaves v11 viram
         // órfãs e expiram sozinhas por TTL — não precisa (nem deve) rodar
         // `cache:clear`.
-        return sprintf('desempenho.compute.v12.%d.%s', $userId, $periodKey);
+        // v13 (2026-07-29, Fase 119.1 · D1/NPSMAN-06/07): empresa ELEGÍVEL sem
+        // NENHUM link de NPS no mês passa a contar nota 1 na média do bônus
+        // (4º ramo `notasSemLink`) — supersede deliberado do D3 da Fase 116.
+        // O valor muda para toda empresa elegível sem disparo na competência.
+        // Sem este bump o Redis serviria o bônus antigo (empresa sem link
+        // ficando de fora) por até 7 dias mesmo com o código novo em prod. As
+        // chaves v12 viram órfãs e expiram sozinhas por TTL — não precisa
+        // (nem deve) rodar `cache:clear`.
+        //
+        // AVISO PARA A FASE 120 (critério 3 do ROADMAP previa consumir 'v13'
+        // para a agregação do profissional/feature flag): como a 119.1 entrou
+        // na frente e já consumiu 'v13' aqui, a Fase 120 deve subir para
+        // 'v14' quando tocar este método — não reusar 'v13'.
+        return sprintf('desempenho.compute.v13.%d.%s', $userId, $periodKey);
     }
 
     /**
@@ -772,9 +787,10 @@ class DesempenhoScoreService
     }
 
     /**
-     * NPS médio do user no mês — UNIÃO DISJUNTA de TRÊS caminhos POR RESPOSTA
-     * (Phase 80 v16.0 · DEC-80-A / DEC-80-B0 / DEC-80-B1 / DEC-80-B / DEC-80-D;
-     * Fase 116 · NPSFLOOR acrescenta o 3º ramo).
+     * NPS médio do user no mês — UNIÃO DISJUNTA de QUATRO caminhos POR
+     * RESPOSTA/EMPRESA (Phase 80 v16.0 · DEC-80-A / DEC-80-B0 / DEC-80-B1 /
+     * DEC-80-B / DEC-80-D; Fase 116 · NPSFLOOR acrescenta o 3º ramo; Fase
+     * 119.1 · D1 acrescenta o 4º).
      *
      * ┌─ (A) ATRIBUIÇÕES (Fase 79) ── `nps_score_assignments`, a lista congelada
      * │      de quem era responsável por qual serviço no dia da resposta. Soma
@@ -784,19 +800,31 @@ class DesempenhoScoreService
      * ├─ (B) LEGADO ── o cruzamento read-time histórico (carteira × dimensão do
      * │      cargo × modelo principal), preservado INTACTO para as respostas que
      * │      o snapshot da Fase 79 não cobriu. Também exige `status = 'completed'`.
-     * └─ (C) IMPUTADAS (Fase 116 · NPSFLOOR) ── `nps_imputed_assignments`, a
-     *        nota 1 (piso da escala) de todo NPS efetivamente disparado e NÃO
-     *        respondido. Mês vem de `competencia_nps` (mês do DISPARO), não de
-     *        `completed_at` — só existe linha aqui quando o survey NÃO é
-     *        `completed` (`NpsImputedAssignment::scopeVigentes()`).
+     * ├─ (C) IMPUTADAS (Fase 116 · NPSFLOOR) ── `nps_imputed_assignments`, a
+     * │      nota 1 (piso da escala) de todo NPS efetivamente disparado e NÃO
+     * │      respondido. Mês vem de `competencia_nps` (mês do DISPARO), não de
+     * │      `completed_at` — só existe linha aqui quando o survey NÃO é
+     * │      `completed` (`NpsImputedAssignment::scopeVigentes()`).
+     * └─ (D) SEM LINK (Fase 119.1 · D1) ── empresa ELEGÍVEL (`NpsElegibilidadeService`)
+     *        que não recebeu NENHUM link de NPS na competência conta nota 1,
+     *        DESDE QUE o mês de coleta (M+1) já tenha fechado. É a inversão
+     *        CONSCIENTE do invariante D3 da Fase 116 ("empresa sem disparo
+     *        nunca entra"): com o disparo automático desligado (Plan
+     *        119.1-01), aquele invariante viraria a brecha "não enviar sai
+     *        mais barato". Disjunto por construção dos 3 ramos acima — só
+     *        entra empresa+modelo sem NENHUM survey na competência
+     *        (`NpsElegibilidadeService::surveyExistenteNaCompetencia()` nulo);
+     *        ver `App\Services\Desempenho\NpsSemLinkService`.
      *
-     * Os TRÊS ramos são DISJUNTOS por construção: (A)/(B) só enxergam survey
+     * Os QUATRO ramos são DISJUNTOS por construção: (A)/(B) só enxergam survey
      * `completed`; (C) só enxerga survey que NUNCA chegou a `completed`
      * (`NpsImputationService::materializar()` limpa/nunca cria linha de survey
-     * respondido). Nenhuma resposta contribui por dois ramos ao mesmo tempo. A
-     * média é `$notas->avg()` — uma resposta contada 2× infla o bônus em
-     * silêncio (sem exception, sem log). Ver `notasLegado()` para o predicado
-     * de (A)/(B); `notasImputadas()` para o predicado de (C).
+     * respondido); (D) só enxerga empresa+modelo SEM NENHUM survey na
+     * competência (nem completed, nem pendente). Nenhuma resposta contribui
+     * por dois ramos ao mesmo tempo. A média é `$notas->avg()` — uma resposta
+     * contada 2× infla o bônus em silêncio (sem exception, sem log). Ver
+     * `notasLegado()` para o predicado de (A)/(B); `notasImputadas()` para o
+     * predicado de (C); `notasSemLink()` para o predicado de (D).
      *
      * ⚠ O ramo legado é FALLBACK PERMANENTE, **não** ponte temporária: empresas
      * sem contrato performance ativo ficaram com `company_users.servico_id = NULL`
@@ -806,9 +834,17 @@ class DesempenhoScoreService
      * essas pendências no dado.
      *
      * Regras preservadas (DESEMP-03): média aritmética das notas coletadas; sem
-     * respostas → `0.0` (PENALIZA por decisão da diretoria — nunca `null`). Com
-     * a Fase 116, "sem respostas" passa a incluir zero notas imputadas também —
-     * uma empresa sem NENHUM survey disparado no mês continua caindo aqui (D3).
+     * respostas → `0.0` (PENALIZA por decisão da diretoria — nunca `null`).
+     *
+     * ⚠ CORREÇÃO (Fase 119.1 · D1) da nota deste docblock antes desta fase: o
+     * texto aqui afirmava que "uma empresa sem NENHUM survey disparado no mês
+     * continua caindo aqui [no fallback 0.0] (D3)". Isso deixou de ser
+     * verdade para empresa ELEGÍVEL — ela agora entra pelo ramo (D) com nota
+     * 1.0, ANTES de chegar neste fallback. O fallback `0.0` abaixo só é
+     * atingido quando NENHUM dos 4 ramos produziu nota nenhuma — o que hoje só
+     * acontece quando a empresa NÃO é elegível (sem contrato ativo, sem
+     * modelo aplicável, sem estrategista, invalidada na competência —
+     * NPSMAN-07) e também não tem nenhuma nota real dos ramos (A)/(B)/(C).
      *
      * Assinatura `(User, Carbon): float` é contrato de fato — testes a invocam
      * por reflection com `assertSame`, que recusa `int`.
@@ -841,6 +877,16 @@ class DesempenhoScoreService
             ? $this->notasImputadas($user, $inicio, $fim, $invalidadas)
             : collect();
         $notas = $notas->merge($notasImputadas);
+
+        // ── (D) Sem link (Fase 119.1 · D1) — empresa elegível sem nenhum ────
+        // link no mês conta 1. MESMO toggle do ramo (C): o relatório de
+        // impacto do backfill (`nps:materializar-nao-respondidos`) precisa
+        // poder desligar os dois ramos juntos para montar a coluna "antes"
+        // (sem NENHUMA das duas regras de piso).
+        $notasSemLink = $this->incluirImputadas
+            ? $this->notasSemLink($user, $inicio, $fim, $invalidadas)
+            : collect();
+        $notas = $notas->merge($notasSemLink);
 
         if ($notas->isEmpty()) {
             // DESEMP-03 · Sem respostas no mês FORÇA nps = 0 (penaliza) por
@@ -1057,6 +1103,31 @@ class DesempenhoScoreService
     private function notasImputadas(User $user, Carbon $inicio, Carbon $fim, ?Collection $invalidadas = null): Collection
     {
         return $this->imputationService
+            ->notasDoUsuario($user, $inicio, $fim, $invalidadas)
+            ->pluck('nota');
+    }
+
+    /**
+     * (D) Notas SEM LINK (Fase 119.1 · D1) — empresa ELEGÍVEL que passou o
+     * mês sem NENHUM link de NPS conta nota 1 (inversão consciente do
+     * invariante D3 da Fase 116 — ver docblock de `computeNpsMedio()`).
+     *
+     * Delega 100% para `NpsSemLinkService::notasDoUsuario()` — a ÚNICA fonte
+     * de verdade de "quem é elegível e não recebeu link" (contrato ativo,
+     * modelo aplicável, estrategista atribuído, janela de coleta M+1 já
+     * fechada). Este método NUNCA reimplementa essa lógica, apenas adapta o
+     * shape (`->pluck('nota')`) pro formato que `computeNpsMedio` já mescla
+     * dos outros 3 ramos — mesmo molde de `notasImputadas()` acima.
+     *
+     * `$invalidadas` é OBRIGATÓRIO e repassado exatamente como nos outros 3
+     * ramos — sem isso, uma empresa invalidada na competência voltaria a
+     * puxar nota 1 pelo ramo novo mesmo excluída dos outros três.
+     *
+     * @return Collection<int, float>
+     */
+    private function notasSemLink(User $user, Carbon $inicio, Carbon $fim, ?Collection $invalidadas = null): Collection
+    {
+        return $this->npsSemLinkService
             ->notasDoUsuario($user, $inicio, $fim, $invalidadas)
             ->pluck('nota');
     }
