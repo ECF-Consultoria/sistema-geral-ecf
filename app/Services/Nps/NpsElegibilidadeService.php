@@ -33,6 +33,31 @@ use Illuminate\Support\Collection;
 class NpsElegibilidadeService
 {
     /**
+     * Memo por mês de `empresasElegiveis()` — Fase 119.1 Plan 09 (T-119.1-41).
+     *
+     * O método faz ~4 queries por empresa ativa (~168 empresas ≈ 670
+     * queries). A partir deste plano ele passa a ser chamado DENTRO de um
+     * `map()` por pessoa em `DashboardController::buildRanking()` — sem
+     * memo o custo vira 670×N pessoas do ranking, repetindo o precedente
+     * já registrado no projeto (dashboard de 70s síncrono).
+     *
+     * É memo de INSTÂNCIA — PROIBIDO `static`, PROIBIDO registrar esta
+     * classe como singleton no container. Vive só durante o request (o
+     * `DashboardController` injeta `NpsElegibilidadeService` por construtor
+     * e reusa a MESMA instância entre as pessoas do ranking); expirar com
+     * o processo é o comportamento certo, porque elegibilidade pode mudar
+     * de um request para o outro (contrato ativado, modelo ligado).
+     *
+     * `surveyExistenteNaCompetencia()` fica DE FORA deste memo DE PROPÓSITO
+     * — o guard de duplicidade do plano 119.1-02 depende de ler o estado
+     * VIVO do banco a cada checagem (criar um survey entre duas chamadas
+     * precisa mudar o resultado da segunda).
+     *
+     * @var array<string, Collection>
+     */
+    private array $memoElegiveisPorMes = [];
+
+    /**
      * Estrategista responsável pela empresa (slot consolidado) — guard
      * obrigatório da elegibilidade (D-07 Phase 31): empresa sem estrategista
      * nunca é elegível.
@@ -81,6 +106,12 @@ class NpsElegibilidadeService
      */
     public function empresasElegiveis(Carbon $mes): Collection
     {
+        $chaveMes = $mes->format('Y-m');
+
+        if (array_key_exists($chaveMes, $this->memoElegiveisPorMes)) {
+            return $this->memoElegiveisPorMes[$chaveMes];
+        }
+
         $itens = collect();
 
         Company::where('active', true)
@@ -119,7 +150,7 @@ class NpsElegibilidadeService
                 }
             });
 
-        return $itens;
+        return $this->memoElegiveisPorMes[$chaveMes] = $itens;
     }
 
     /**

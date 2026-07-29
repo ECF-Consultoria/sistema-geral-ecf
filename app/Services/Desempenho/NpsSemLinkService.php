@@ -2,6 +2,7 @@
 
 namespace App\Services\Desempenho;
 
+use App\Models\BonusInvalidacao;
 use App\Models\User;
 use App\Services\Nps\NpsElegibilidadeService;
 use App\Services\Nps\NpsJanelaResolver;
@@ -46,8 +47,20 @@ use Illuminate\Support\Collection;
  *     agregada por dimensão para a ÁREA NPS (`NpsController::index()`), em
  *     vez de por pessoa como `notasDoUsuario()`.
  *
+ * (f) `notasDoUsuarioNaJanela()` e `notasDaEmpresaSemLink(..., $piso)` (Fase
+ *     119.1 Plan 09) generalizam (a)/(e) para JANELA MULTI-MÊS, com PISO
+ *     RETROATIVO opcional (`pisoRetroativo()`) — DEC-09-B: `empresasElegiveis()`
+ *     lê o estado de HOJE e não reconstrói elegibilidade histórica, então
+ *     leitura em janela ROLANTE (início derivado de `now()`) é limitada a
+ *     mês anterior + corrente, a MESMA janela de
+ *     `nps:materializar-nao-respondidos`. DEC-09-C: o piso é PROIBIDO em
+ *     leitura de competência FIXA (bônus `notasDoUsuario()`, meta
+ *     `CalculateGoalResults::computeNps()`) — um piso relativo a `now()`
+ *     ali faria o resultado depender da hora do recompute.
+ *
  * @see .planning/phases/119.1-nps-manual-sem-duplicidade-e-por-grupo-de-empresas/119.1-CONTEXT.md D1, D5
  * @see .planning/phases/119.1-nps-manual-sem-duplicidade-e-por-grupo-de-empresas/119.1-03-PLAN.md
+ * @see .planning/phases/119.1-nps-manual-sem-duplicidade-e-por-grupo-de-empresas/119.1-09-PLAN.md (janela multi-mês + piso retroativo)
  * @see app/Services/Nps/NpsElegibilidadeService.php (fonte única de "quem é elegível")
  * @see app/Services/Desempenho/NpsPorEmpresaService.php (o precedente exato generalizado aqui — D-04 da Fase 118)
  */
@@ -158,6 +171,92 @@ class NpsSemLinkService
     }
 
     /**
+     * Limite retroativo das leituras de D1 em JANELA ROLANTE — Fase 119.1
+     * Plan 09 (DEC-09-B). `NpsElegibilidadeService::empresasElegiveis()` lê
+     * o estado de HOJE (contrato ativo, modelo com `envio_automatico_mensal`,
+     * estrategista atribuído) e NÃO reconstrói quem era elegível em meses
+     * antigos. Aplicar D1 a uma janela histórica ampla fabricaria nota 1 em
+     * competências onde o contrato nem existia, e reescreveria o histórico
+     * como efeito colateral de uma leitura — exatamente o que o backfill
+     * retroativo da Fase 116 recusa fazer sem o gate humano do usuário
+     * (C6 do 119.1-CONTEXT.md).
+     *
+     * Por isso: mesma janela da rotina diária `nps:materializar-nao-
+     * respondidos` (mês anterior + corrente, commit `23c809c0`), pelo
+     * mesmo motivo.
+     *
+     * ⚠ DEC-09-C — PROIBIDO aplicar este piso a leitura de competência
+     * FIXA (`notasDoUsuario()` do bônus, `CalculateGoalResults::
+     * computeNps()` da meta). Um piso relativo a `now()` ali faria o
+     * resultado de uma competência FECHADA depender da HORA em que o
+     * recompute roda — a mesma classe de bug já registrada no projeto em
+     * `project_adman_margem_diff_instavel_bonus`. Só quem lê JANELA
+     * ROLANTE (início derivado de `now()`) passa este piso.
+     */
+    public function pisoRetroativo(): Carbon
+    {
+        return now()->subMonthNoOverflow()->startOfMonth();
+    }
+
+    /**
+     * Generalização de `notasDoUsuario()` para JANELA MULTI-MÊS — Fase
+     * 119.1 Plan 09. Consumida pelos consumidores por PESSOA que precisam
+     * de série histórica (`PerformanceController::notasNpsDoUsuarioPorResposta()`,
+     * `PortfolioController` histórico mensal), ao invés de 1 único mês.
+     *
+     * ZERO regra de negócio nova: itera mês a mês (mesmo laço de
+     * `notasDaEmpresaSemLink()`) delegando cada mês a `notasDoUsuario()` —
+     * a dedupe por (empresa, modelo, papel) já acontece lá dentro; entre
+     * meses diferentes não há dedupe a fazer, porque as competências são
+     * disjuntas por construção.
+     *
+     * Quando `$piso` é informado, meses anteriores a ele são pulados ANTES
+     * de chamar `notasDoUsuario()` — é o guard que evita a chamada
+     * caríssima a `empresasElegiveis()` para meses fora da janela permitida
+     * (DEC-09-B).
+     *
+     * Quando `$invalidadas` é null, a invalidação é resolvida POR MÊS,
+     * dentro do laço, com o mesmo deslocamento M+1→M do precedente literal
+     * `NpsController.php:807` (`companyIdsInvalidadas($mes->
+     * subMonthNoOverflow()->startOfMonth())`). Quando informado
+     * explicitamente, é repassado como veio para TODOS os meses (DEC-09-E).
+     *
+     * @return Collection<int, object{
+     *   survey_id: null, company_id: int, servico_id: int, role: string,
+     *   service_setor: null, competencia_nps: Carbon, nota: float, origem: string,
+     * }>
+     */
+    public function notasDoUsuarioNaJanela(User $user, Carbon $de, Carbon $ate, ?Collection $invalidadas = null, ?Carbon $piso = null): Collection
+    {
+        $invalidadasExplicitas = $invalidadas;
+        $notas                 = collect();
+
+        $mesAtual  = $de->copy()->startOfMonth();
+        $fimJanela = $ate->copy()->endOfMonth();
+
+        while ($mesAtual->lte($fimJanela)) {
+            // Piso PRIMEIRO — evita a chamada caríssima a empresasElegiveis()
+            // (dentro de notasDoUsuario()) para meses fora da janela permitida.
+            if ($piso !== null && $mesAtual->lt($piso)) {
+                $mesAtual = $mesAtual->copy()->addMonthNoOverflow()->startOfMonth();
+
+                continue;
+            }
+
+            $invalidadasDoMes = $invalidadasExplicitas
+                ?? BonusInvalidacao::companyIdsInvalidadas($mesAtual->copy()->subMonthNoOverflow()->startOfMonth());
+
+            $notas = $notas->merge(
+                $this->notasDoUsuario($user, $mesAtual->copy(), $mesAtual->copy(), $invalidadasDoMes)
+            );
+
+            $mesAtual = $mesAtual->copy()->addMonthNoOverflow()->startOfMonth();
+        }
+
+        return $notas;
+    }
+
+    /**
      * Notas 1.0 (D1) por EMPRESA/dimensão — Fase 119.1 Plan 04. Consumido
      * pela ÁREA NPS (`NpsController::index()`), que agrega por dimensão
      * (estrategista/analista/empresa — D7), não por pessoa como
@@ -177,6 +276,20 @@ class NpsSemLinkService
      * `survey_id` do ramo (C)/`notasDaEmpresa()`, já que aqui não existe
      * survey algum.
      *
+     * `$piso` (Fase 119.1 Plan 09, DEC-09-B) — quando informado, meses
+     * anteriores a ele são pulados: leitura em janela ROLANTE (início
+     * derivado de `now()`) NUNCA alcança mais que mês anterior + corrente.
+     * Consumidores de competência FIXA (meta) não passam este parâmetro
+     * (DEC-09-C).
+     *
+     * `$invalidadas = null` (Fase 119.1 Plan 09, DEC-09-E) — quando o
+     * chamador NÃO informa, a invalidação é resolvida POR MÊS aqui dentro,
+     * com o mesmo deslocamento M+1→M do precedente literal
+     * `NpsController.php:807`. Antes desta mudança, `null` significava
+     * "sem filtro nenhum" — a armadilha que esta Task fecha. Quando
+     * informado explicitamente, o valor é repassado IDÊNTICO para todos os
+     * meses (comportamento do plano 04, área NPS, intocado).
+     *
      * @return Collection<int, object{
      *   survey_id: null, company_id: int, role: null, service_setor: null,
      *   competencia_nps: Carbon, nota: float, origem: string,
@@ -189,13 +302,14 @@ class NpsSemLinkService
         Carbon $ate,
         ?Collection $invalidadas = null,
         ?Collection $templateIds = null,
+        ?Carbon $piso = null,
     ): Collection {
         if ($companyIds->isEmpty()) {
             return collect();
         }
 
-        $invalidadas = $invalidadas ?? collect();
-        $notas       = collect();
+        $invalidadasExplicitas = $invalidadas;
+        $notas                 = collect();
 
         // Itera mês a mês a janela [$de, $ate] — na prática a área NPS
         // sempre chama com 1 único mês (card do mês filtrado, ou 1 mês por
@@ -205,6 +319,15 @@ class NpsSemLinkService
         $fimJanela = $ate->copy()->endOfMonth();
 
         while ($mesAtual->lte($fimJanela)) {
+            // 0. Piso retroativo (DEC-09-B) — PRIMEIRO, porque é o único
+            //    guard que evita a chamada caríssima a empresasElegiveis()
+            //    para meses fora da janela permitida.
+            if ($piso !== null && $mesAtual->lt($piso)) {
+                $mesAtual = $mesAtual->copy()->addMonthNoOverflow()->startOfMonth();
+
+                continue;
+            }
+
             // 1. Mês de coleta AINDA ABERTO ⇒ ninguém pesa (mesma régua de
             //    `notasDoUsuario()` acima).
             if (! $this->janela->fechada($mesAtual)) {
@@ -213,11 +336,15 @@ class NpsSemLinkService
                 continue;
             }
 
+            // DEC-09-E — invalidação resolvida POR MÊS quando não informada.
+            $invalidadasDoMes = $invalidadasExplicitas
+                ?? BonusInvalidacao::companyIdsInvalidadas($mesAtual->copy()->subMonthNoOverflow()->startOfMonth());
+
             $elegiveis = $this->elegibilidade->empresasElegiveis($mesAtual)
                 // 2. Só as empresas do universo que a tela decidiu mostrar.
                 ->filter(fn ($item) => $companyIds->contains($item->company_id))
                 // 3. Empresa invalidada para bônus na competência sai (NPSMAN-07).
-                ->reject(fn ($item) => $invalidadas->contains($item->company_id))
+                ->reject(fn ($item) => $invalidadasDoMes->contains($item->company_id))
                 // 4. Só entra se o TEMPLATE realmente mede esta dimensão —
                 //    mesma régua de `NpsImputationService::materializar()`
                 //    (linha 152), nunca reinventada aqui.
