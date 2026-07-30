@@ -342,12 +342,24 @@ class DesempenhoScoreService
         // ficando de fora) por até 7 dias mesmo com o código novo em prod. As
         // chaves v12 viram órfãs e expiram sozinhas por TTL — não precisa
         // (nem deve) rodar `cache:clear`.
-        //
-        // AVISO PARA A FASE 120 (critério 3 do ROADMAP previa consumir 'v13'
-        // para a agregação do profissional/feature flag): como a 119.1 entrou
-        // na frente e já consumiu 'v13' aqui, a Fase 120 deve subir para
-        // 'v14' quando tocar este método — não reusar 'v13'.
-        return sprintf('desempenho.compute.v13.%d.%s', $userId, $periodKey);
+        // v14 (2026-07-30, Fase 120 · AGRE-02/03/04): (1) o payload de
+        // `compute()` passa a ganhar `empresas_score` na raiz e
+        // `componentes.var_margem_pp` (aditivos, shadow via
+        // `CompanyScoreService`), e a feature flag
+        // `metrics.performance_company_first_score` (default `false`, Plano
+        // 03 desta fase) passa a poder trocar a origem de `nota_final`/
+        // `score_status`. (2) O valor cacheado sob v13 tem shape MENOR — sem
+        // as duas chaves novas — que os consumidores das Fases 122/123 vão
+        // esperar; servir esse payload antigo quebraria a leitura deles.
+        // (3) Sem este bump, o Redis serviria o payload v13 (sem
+        // `empresas_score`/`var_margem_pp`) por até 7 dias em mês fechado,
+        // sob a MESMA chave que o código novo passaria a escrever —
+        // inconsistência de shape entre requests concorrentes. O bump vem
+        // ANTES da mudança de shape de propósito (Task 3), nunca depois —
+        // nunca existe janela em que o código novo escreva shape novo sob a
+        // chave antiga (T-120-02). (4) As chaves v13 viram órfãs e expiram
+        // sozinhas por TTL — não precisa (nem deve) rodar `cache:clear`.
+        return sprintf('desempenho.compute.v14.%d.%s', $userId, $periodKey);
     }
 
     /**

@@ -413,18 +413,18 @@ class NpsFloorDesempenhoTest extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 7 — cacheKey() já reflete o bump v11→v12
+    // 7 — cacheKey() já reflete o bump (hoje v14, Fase 120 · AGRE-03)
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_cache_key_esta_na_v12(): void
+    public function test_cache_key_esta_na_v14(): void
     {
         $service = app(DesempenhoScoreService::class);
         $user    = User::factory()->create();
 
         $chave = $service->cacheKey($user->id, Carbon::parse('2026-06-01'));
 
-        $this->assertStringStartsWith('desempenho.compute.v13.', $chave,
-            'Sem o bump v11→v12 o Redis serviria o bônus antigo por até 7 dias com o código novo em prod.');
+        $this->assertStringStartsWith('desempenho.compute.v14.', $chave,
+            'Sem o bump o Redis serviria o bônus antigo por até 7 dias com o código novo em prod.');
     }
 }

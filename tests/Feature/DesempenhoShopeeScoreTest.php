@@ -349,18 +349,18 @@ class DesempenhoShopeeScoreTest extends TestCase
             'nShopeePlaceholder pós-invalidação=1 (só empresaB) — se a invalidada contasse, margemPontos seria 2.00.');
     }
 
-    // ═══ cacheKey v12 (Fase 116: bump v11→v12, NPSFLOOR) ═════════════════════
+    // ═══ cacheKey v14 (Fase 120: bump v13→v14, AGRE-03) ══════════════════════
 
     #[Test]
-    public function test_cache_key_bumpado_para_v12(): void
+    public function test_cache_key_bumpado_para_v14(): void
     {
-        $user = $this->criarUserComCargo('Cache V12 116');
+        $user = $this->criarUserComCargo('Cache V14 120');
         $mes  = Carbon::parse('2026-08-01');
 
         $service = app(DesempenhoScoreService::class);
         $chave   = $service->cacheKey($user->id, $mes);
 
-        $this->assertSame('desempenho.compute.v13.' . $user->id . '.current_month', $chave);
+        $this->assertSame('desempenho.compute.v14.' . $user->id . '.current_month', $chave);
     }
 }
 
