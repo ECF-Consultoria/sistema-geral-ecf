@@ -2267,10 +2267,29 @@ class PortfolioController extends Controller
             ->notasDoUsuario($user, Carbon::createFromDate(1970, 1, 1), now())
             ->groupBy(fn ($nota) => $nota->competencia_nps->format('Y-m'));
 
-        $mesesHistorico = $rowsPorMes->keys()->merge($notasImputadasPorMes->keys())->unique()->sort()->values();
+        // Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM link no mês
+        // também conta nota 1 no histórico mensal do profissional, mesma
+        // régua do bônus (`NpsSemLinkService`). Nenhuma regra de
+        // elegibilidade/responsável/invalidação é reimplementada aqui.
+        // Piso retroativo (DEC-09-B): esta é leitura em JANELA ROLANTE
+        // (início relativo a `now()`), então o piso INTERNO ao serviço
+        // garante que ela nunca alcance mais que mês anterior + corrente —
+        // o histórico antigo (a query 1970→now acima é só o teto superior
+        // da janela, o piso é quem corta o início de verdade) não é
+        // reescrito por este ramo.
+        $semLinkService     = app(\App\Services\Desempenho\NpsSemLinkService::class);
+        $pisoRetroativo     = $semLinkService->pisoRetroativo();
+        $notasSemLinkPorMes = $semLinkService
+            ->notasDoUsuarioNaJanela($user, Carbon::createFromDate(1970, 1, 1), now(), null, $pisoRetroativo)
+            ->groupBy(fn ($nota) => $nota->competencia_nps->format('Y-m'));
+
+        $mesesHistorico = $rowsPorMes->keys()
+            ->merge($notasImputadasPorMes->keys())
+            ->merge($notasSemLinkPorMes->keys())
+            ->unique()->sort()->values();
 
         $npsHistory = $mesesHistorico
-            ->map(function ($month) use ($rowsPorMes, $notasImputadasPorMes, $npsDim, $npsCalculator) {
+            ->map(function ($month) use ($rowsPorMes, $notasImputadasPorMes, $notasSemLinkPorMes, $npsDim, $npsCalculator) {
                 $rows = $rowsPorMes->get($month, collect());
                 $scoresReais = $rows
                     ->map(fn ($s) => $s->response ? $npsCalculator->compute($s->response, $npsDim) : null)
@@ -2280,11 +2299,16 @@ class PortfolioController extends Controller
                 $scoresImputados = $notasImputadasPorMes->get($month, collect())
                     ->map(fn ($nota) => (float) $nota->nota);
 
+                $scoresSemLink = $notasSemLinkPorMes->get($month, collect())
+                    ->map(fn ($nota) => (float) $nota->nota);
+
                 // Cast explícito pra Collection base ANTES do merge — Eloquent
                 // Collection::merge() assume itens com getKey() (Models) e
                 // quebra ao receber floats/nulls (armadilha corrigida no
                 // Plan 116-03, NpsController::index()).
-                $scores = collect($scoresReais->all())->merge($scoresImputados->all());
+                $scores = collect($scoresReais->all())
+                    ->merge($scoresImputados->all())
+                    ->merge($scoresSemLink->all());
 
                 return [
                     'month'       => $month,

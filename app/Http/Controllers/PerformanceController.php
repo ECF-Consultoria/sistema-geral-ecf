@@ -710,18 +710,24 @@ class PerformanceController extends Controller
      * daqui. Não promover este método a fonte de verdade nem alimentar bônus,
      * snapshot ou consolidação mensal com ele.
      *
-     * Espelha o dual-path do service, agora ampliado pra união DISJUNTA de TRÊS
-     * ramos (Fase 116):
+     * Espelha o dual-path do service, agora ampliado pra união DISJUNTA de QUATRO
+     * ramos (Fase 116 + Fase 119.1 Plan 09):
      *  - (A) atribuições congeladas da Fase 79 (`nps_score_assignments`) do user,
      *        deduped 1× por (`nps_response_id`, `role`) — qualquer modelo conta;
      *  - (B) legado: surveys `->principal()` da carteira, PULANDO as respostas que
      *        já têm atribuição no papel correspondente à dimensão do cargo do user
      *        (DEC-80-B1 — o snapshot é autoritativo por papel);
      *  - (C) Fase 116 (NPSFLOOR) — notas imputadas: NPS efetivamente disparado e
-     *        NUNCA respondido conta nota 1 (leitura via `NpsImputationService`).
+     *        NUNCA respondido conta nota 1 (leitura via `NpsImputationService`);
+     *  - (D) Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL que passou o mês sem
+     *        NENHUM link (nem disparado) também conta nota 1 (leitura via
+     *        `NpsSemLinkService`), com piso retroativo (DEC-09-B): a janela é
+     *        ROLANTE, então nunca alcança mais que mês anterior + corrente.
      * Disjunção por construção: (A)/(B) só existem para survey `status=completed`;
-     * (C) só existe para survey que nunca chegou a completed — nenhum survey pode
-     * contar duas vezes.
+     * (C) só existe para survey disparado que nunca chegou a completed; (D) só
+     * existe quando NÃO há survey algum na competência (garantido dentro do
+     * serviço, via `NpsElegibilidadeService::surveyExistenteNaCompetencia()`) —
+     * nenhum survey/competência pode contar duas vezes.
      *
      * DIFERENÇA DELIBERADA vs o service (e por que ela não vira divergência de
      * número): aqui o ramo (A) TAMBÉM é filtrado por `$companyIds` (a carteira ativa
@@ -731,14 +737,14 @@ class PerformanceController extends Controller
      * conta no bônus e não aparece aqui. Na prática `User::companies()` não filtra
      * por `servico_id`, então toda empresa com atribuição do user está na carteira;
      * o recorte só morde empresa INATIVA. É exatamente o tipo de assimetria que
-     * proíbe usar este helper como régua (T-80-11). O ramo (C) segue a mesma regra
-     * — filtrado por `$companyIds`.
+     * proíbe usar este helper como régua (T-80-11). Os ramos (C) e (D) seguem a
+     * mesma regra — filtrados por `$companyIds`.
      *
      * Mês/data vem SEMPRE de `nps_surveys.completed_at` (DEC-80-B0) — nunca de
      * `assigned_at` (data da gravação: um backfill migraria a resposta de mês).
-     * Exceção: o ramo (C) não tem `completed_at` (nunca houve resposta) — usa a
-     * data SINTÉTICA `competencia_nps->copy()->endOfMonth()` (fim do mês do
-     * disparo), documentado no próprio bloco do ramo.
+     * Exceção: os ramos (C) e (D) não têm `completed_at` (nunca houve resposta) —
+     * usam a data SINTÉTICA `competencia_nps->copy()->endOfMonth()` (fim do mês do
+     * disparo/da competência), documentado no próprio bloco do ramo.
      *
      * @param  \Illuminate\Support\Collection<int, int>  $companyIds  carteira ativa exibida
      * @param  Carbon  $desde  início da janela mais larga (heatmap: 6 meses)
@@ -877,6 +883,34 @@ class PerformanceController extends Controller
                 // usa a data SINTÉTICA `competencia_nps->endOfMonth()` (fim do
                 // mês do disparo) para ordenação/janela de 60d/heatmap, igual
                 // às demais notas.
+                'completed_at' => $nota->competencia_nps->copy()->endOfMonth(),
+                'nota'         => (float) $nota->nota,
+                'area'         => $nota->service_setor,
+                'imputada'     => true,
+            ]);
+        }
+
+        // ── (D) Fase 119.1 Plan 09 (D1) — empresa ELEGÍVEL sem NENHUM ────────
+        // link no mês conta nota 1, mesma régua do bônus. Delega 100% para
+        // `NpsSemLinkService` — nenhuma regra de elegibilidade/responsável/
+        // invalidação é reimplementada aqui. Existe SÓ quando não há survey
+        // algum na competência (garantido dentro do serviço, via
+        // `surveyExistenteNaCompetencia()`) — disjunto de (A)/(B) que exigem
+        // `completed` e de (C) que exige survey disparado sem resposta.
+        // Piso retroativo (DEC-09-B): esta é leitura em JANELA ROLANTE (início
+        // relativo a `now()`), então nunca alcança mais que mês anterior +
+        // corrente — o histórico antigo não é reescrito.
+        $semLink = app(\App\Services\Desempenho\NpsSemLinkService::class);
+        $piso    = $semLink->pisoRetroativo();
+        $notasSemLink = $semLink
+            ->notasDoUsuarioNaJanela($user, $desde, now(), null, $piso)
+            ->filter(fn ($nota) => $companyIds->contains((int) $nota->company_id));
+
+        foreach ($notasSemLink as $nota) {
+            $linhas->push([
+                'company_id'   => (int) $nota->company_id,
+                // Mesma data SINTÉTICA do ramo (C) — é o que faz a linha
+                // entrar no recorte de 60d da coluna NPS e no heatmap.
                 'completed_at' => $nota->competencia_nps->copy()->endOfMonth(),
                 'nota'         => (float) $nota->nota,
                 'area'         => $nota->service_setor,

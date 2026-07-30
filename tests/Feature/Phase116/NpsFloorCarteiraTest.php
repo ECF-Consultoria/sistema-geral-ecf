@@ -271,21 +271,22 @@ class NpsFloorCarteiraTest extends TestCase
 
     // ═══════════════════════════════════════════════════════════════════
     // 3b — empresa ELEGÍVEL (D1/Fase 119.1) sem survey: este call-site
-    //     AINDA mantém NPS null — GAP CONHECIDO, não é regressão
+    //     AGORA CONTA NOTA 1 — plano 119.1-09 fechou o gap, 2026-07-29
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_coluna_nps_performance_empresa_elegivel_sem_survey_ainda_continua_null_gap_conhecido(): void
+    public function test_coluna_nps_performance_empresa_elegivel_sem_survey_agora_conta_nota_1(): void
     {
-        // Fase 119.1 (D1) inverteu D3 DE PROPÓSITO para o BÔNUS e para a
-        // ÁREA NPS (`NpsController::index()`), mas
-        // `PerformanceController::dashboardCarteira()` ainda NÃO consome
-        // `NpsSemLinkService`. Mesmo com uma empresa GENUINAMENTE elegível
-        // (estrategista + contrato ativo + modelo automático aplicável), a
-        // coluna NPS da carteira continua null — divergência CONHECIDA,
-        // registrada no SUMMARY do 119.1-04 para o plano 08 fechar a
-        // coerência entre telas. NÃO é regressão: este call-site não foi
-        // tocado nesta fase.
+        // Fase 119.1 Plan 04 inverteu D3 DE PROPÓSITO para o BÔNUS e para a
+        // ÁREA NPS (`NpsController::index()`), mas deixou
+        // `PerformanceController::dashboardCarteira()` como GAP CONHECIDO
+        // (`NpsSemLinkService` ainda não era consumido aqui). O usuário foi
+        // consultado em 2026-07-29 e decidiu fechar os 4 consumidores
+        // restantes — Plano 119.1-09 é essa entrega. Esta asserção foi
+        // INVERTIDA (nunca apagada): a mesma empresa GENUINAMENTE elegível
+        // (estrategista + contrato ativo + modelo automático aplicável) que
+        // antes mantinha a coluna NPS em null agora conta nota 1, mesma
+        // régua do bônus.
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
 
         $analista     = $this->criarAnalista();
@@ -298,16 +299,17 @@ class NpsFloorCarteiraTest extends TestCase
 
         $template = $this->criarTemplateEscopado([NpsTemplateQuestion::DIMENSAO_ANALISTA], [$servicoPerf]);
         NpsTemplate::query()->where('id', $template->id)->update(['envio_automatico_mensal' => true]);
-        // Nenhum survey criado — a empresa é ELEGÍVEL, mas este consumidor
-        // ainda não conta D1.
+        // Nenhum survey criado — a empresa é ELEGÍVEL e, com "hoje" em
+        // 15/07/2026, o mês anterior (junho) já fechou e está dentro do
+        // piso retroativo (DEC-09-B) — D1 conta nota 1 para ele.
 
         $props = $this->propsDashboard($analista);
 
         $linha = collect($props['empresas'])->firstWhere('id', $empresa->id);
 
         $this->assertNotNull($linha);
-        $this->assertNull($linha['nps'],
-            'GAP CONHECIDO (119.1): dashboardCarteira ainda não consome D1 — pendente para o plano 08.');
+        $this->assertEquals(1.0, $linha['nps'],
+            'Plano 119.1-09 (2026-07-29): dashboardCarteira agora consome D1 — empresa elegível sem link no mês anterior fechado conta nota 1.');
     }
 
     // ═══════════════════════════════════════════════════════════════════
