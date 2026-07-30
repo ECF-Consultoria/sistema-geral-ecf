@@ -911,7 +911,7 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
                 não receberam link neste mês (dado vem pronto do servidor, já
                 respeitando os filtros de pessoa/empresa). */}
             {activeStatus === 'faltantes' ? (
-                <FaltantesView faltantes={faltantes} onGerarLink={onGerarLink} />
+                <FaltantesView faltantes={faltantes} onGerarLink={onGerarLink} contadores={contadores} />
             ) : (
               <>
             {/* Área rolável (header + linhas) — rola na horizontal em telas
@@ -1180,7 +1180,7 @@ function TableCard({ surveys, contadores = {}, faltantes = [], activeStatus, set
 // Renderizada no lugar da tabela quando o chip "Faltantes" está ativo. A lista
 // já chega filtrada do servidor (escopo de carteira + pessoa/empresa). Cada
 // linha oferece um atalho pra abrir o modal "Gerar link".
-function FaltantesView({ faltantes = [], onGerarLink }) {
+function FaltantesView({ faltantes = [], onGerarLink, contadores = {} }) {
     if (!faltantes.length) {
         return (
             <div style={{ padding: '48px 18px', textAlign: 'center' }}>
@@ -1191,6 +1191,10 @@ function FaltantesView({ faltantes = [], onGerarLink }) {
             </div>
         );
     }
+    // Fase 119.1 Plan 07 (D1/D5) — resumo de quantas empresas já estão
+    // contando nota 1 por falta de pesquisa/contato neste mês. Só aparece
+    // quando existe pelo menos 1 (nunca "0 empresas...").
+    const contamNota1 = contadores.contam_nota_1 ?? 0;
     return (
         <div>
             <div style={{
@@ -1203,46 +1207,89 @@ function FaltantesView({ faltantes = [], onGerarLink }) {
                     <strong style={{ color: '#eef' }}>{faltantes.length}</strong> NPS ainda sem link neste mês (por empresa e modelo)
                 </span>
             </div>
+            {contamNota1 > 0 && (
+                <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    padding: '10px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)',
+                    background: 'rgba(255,154,90,0.08)', color: '#ffb37a', fontSize: 12.5,
+                }}>
+                    <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                    <span>
+                        <strong>{contamNota1}</strong> empresa{contamNota1 === 1 ? '' : 's'} estão contando nota 1 por não terem recebido pesquisa neste mês.
+                    </span>
+                </div>
+            )}
             <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                {faltantes.map((c) => (
-                    <div key={`${c.company_id}-${c.template_id ?? 'x'}`} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-                        padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
-                    }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-                            <Building2 size={15} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
-                            <span style={{
-                                color: '#eef', fontSize: 13.5, fontWeight: 600,
-                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                            }}>{c.name}</span>
-                            {c.modelo && (
-                                <span title={c.modelo} style={{
-                                    flexShrink: 0, padding: '2px 8px', borderRadius: 6,
-                                    background: 'rgba(91,141,239,0.12)',
-                                    border: '1px solid rgba(91,141,239,0.25)',
-                                    color: '#9cc0ff', fontSize: 11, fontWeight: 600,
-                                    whiteSpace: 'nowrap',
-                                }}>{c.modelo}</span>
+                {faltantes.map((c) => {
+                    // Pitfall Rollup do projeto — flags derivadas do item
+                    // calculadas DENTRO do callback do .map(), nunca no
+                    // escopo do componente (bundle de produção estoura
+                    // ReferenceError se ficarem fora).
+                    const ehSemContato = c.motivo === 'sem_contato';
+                    const ehSemLink = c.motivo === 'sem_link';
+                    const jaContaUm = ehSemLink && c.conta_nota_1 === true;
+                    return (
+                        <div key={`${c.company_id}-${c.template_id ?? 'x'}`} style={{
+                            display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
+                            padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.04)',
+                        }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 9, minWidth: 0, flexWrap: 'wrap' }}>
+                                    <Building2 size={15} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
+                                    <span style={{
+                                        color: '#eef', fontSize: 13.5, fontWeight: 600,
+                                        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                                    }}>{c.name}</span>
+                                    {c.modelo && (
+                                        <span title={c.modelo} style={{
+                                            flexShrink: 0, padding: '2px 8px', borderRadius: 6,
+                                            background: 'rgba(91,141,239,0.12)',
+                                            border: '1px solid rgba(91,141,239,0.25)',
+                                            color: '#9cc0ff', fontSize: 11, fontWeight: 600,
+                                            whiteSpace: 'nowrap',
+                                        }}>{c.modelo}</span>
+                                    )}
+                                    {ehSemContato && (
+                                        <span style={{
+                                            flexShrink: 0, padding: '2px 8px', borderRadius: 6,
+                                            background: 'rgba(255,154,90,0.14)',
+                                            border: '1px solid rgba(255,154,90,0.3)',
+                                            color: '#ffb37a', fontSize: 11, fontWeight: 700,
+                                            whiteSpace: 'nowrap',
+                                        }}>Sem contato cadastrado</span>
+                                    )}
+                                </div>
+                                {ehSemContato ? (
+                                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, marginLeft: 24, lineHeight: 1.4 }}>
+                                        Esta empresa não tem e-mail nem WhatsApp cadastrado. Sem isso não dá para enviar a pesquisa — e ela fica com nota 1 no mês. Cadastre o contato na página da empresa.
+                                    </p>
+                                ) : ehSemLink ? (
+                                    <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, marginLeft: 24 }}>
+                                        {jaContaUm
+                                            ? 'Sem link neste mês — já está contando nota 1.'
+                                            : 'Sem link neste mês — ainda dá tempo de enviar.'}
+                                    </p>
+                                ) : null}
+                            </div>
+                            {onGerarLink && (
+                                <button
+                                    type="button"
+                                    onClick={onGerarLink}
+                                    style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                                        height: 30, padding: '0 12px', borderRadius: 8,
+                                        border: '1px solid rgba(91,141,239,0.35)',
+                                        background: 'rgba(91,141,239,0.14)', color: '#9cc0ff',
+                                        fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
+                                    }}
+                                    title="Gerar link de NPS"
+                                >
+                                    <Plus size={13} /> Gerar link
+                                </button>
                             )}
                         </div>
-                        {onGerarLink && (
-                            <button
-                                type="button"
-                                onClick={onGerarLink}
-                                style={{
-                                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                                    height: 30, padding: '0 12px', borderRadius: 8,
-                                    border: '1px solid rgba(91,141,239,0.35)',
-                                    background: 'rgba(91,141,239,0.14)', color: '#9cc0ff',
-                                    fontSize: 12, fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-                                }}
-                                title="Gerar link de NPS"
-                            >
-                                <Plus size={13} /> Gerar link
-                            </button>
-                        )}
-                    </div>
-                ))}
+                    );
+                })}
             </div>
         </div>
     );
@@ -1293,6 +1340,15 @@ export default function NpsIndex({
     const [linkDialog, setLinkDialog] = useState(false);
     const [generatedLink, setGeneratedLink] = useState('');
     const [copied, setCopied] = useState(false);
+    // Fase 119.1 Plan 07 — o flash pode trazer nps_link (gerado agora) OU
+    // nps_link_existente (bloqueio de duplicidade, Plan 02/06). Reusa o MESMO
+    // modal/estado — linkJaExistia só troca título/texto/cor (item 1 do
+    // contrato de UI), nunca um terceiro modal.
+    const [linkJaExistia, setLinkJaExistia] = useState(false);
+    // 'empresa' | 'grupo' — alterna o alvo do link no modal "Gerar link"
+    // (seletor de modo entra na Task 2 desta fase); usado aqui só para
+    // escolher a frase certa no aviso de link já existente.
+    const [modoGeracao, setModoGeracao] = useState('empresa');
     const [modalSurvey, setModalSurvey] = useState(null);
     // Fase 96 (AB-96-3) — form de motivo da invalidação, aberto sob demanda
     // dentro do modal de detalhe. Reseta sempre que um survey diferente é
@@ -1345,10 +1401,22 @@ export default function NpsIndex({
 
     useEffect(() => {
         if (flash?.nps_link) {
+            setLinkJaExistia(false);
             setGeneratedLink(flash.nps_link);
             setLinkDialog(true);
         }
     }, [flash?.nps_link]);
+
+    // Fase 119.1 Plan 07 — bloqueio de duplicidade (Plan 02 individual /
+    // Plan 06 grupo) devolve o link que JÁ EXISTE em vez de recusar sem
+    // alternativa. Abre o mesmo modal, com aviso em âmbar.
+    useEffect(() => {
+        if (flash?.nps_link_existente) {
+            setLinkJaExistia(true);
+            setGeneratedLink(flash.nps_link_existente);
+            setLinkDialog(true);
+        }
+    }, [flash?.nps_link_existente]);
 
     // ─── Filtros server-side ─────────────────────────────────────────────
     const mesOpcoes = useMemo(
@@ -1761,18 +1829,30 @@ export default function NpsIndex({
                 </DialogContent>
             </Dialog>
 
-            {/* Dialog: link gerado */}
+            {/* Dialog: link gerado — ou aviso de link já existente (Fase 119.1
+                Plan 07, item 1 do contrato de UI). Título/cor/texto trocam
+                conforme `linkJaExistia`; o bloco copiável e o botão de copiar
+                são os MESMOS nos dois casos. */}
             <Dialog open={linkDialog} onOpenChange={setLinkDialog}>
                 <DialogContent className="max-w-lg">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <CheckCircle className="h-5 w-5 text-emerald-400" /> Link NPS
+                            {linkJaExistia
+                                ? <><AlertCircle className="h-5 w-5 text-amber-400" /> Já existe um link deste mês</>
+                                : <><CheckCircle className="h-5 w-5 text-emerald-400" /> Link NPS</>}
                         </DialogTitle>
                         <DialogDescription>
-                            Copie e envie este link para o cliente via WhatsApp ou chat da reunião.
+                            {linkJaExistia
+                                ? (modoGeracao === 'grupo'
+                                    ? 'Este grupo já tem um link de NPS deste modelo neste mês. Enviar um segundo link pode fazer o cliente responder duas vezes. Use o link abaixo.'
+                                    : 'Esta empresa já tem um link de NPS deste modelo neste mês. Enviar um segundo link pode fazer o cliente responder duas vezes. Use o link abaixo.')
+                                : 'Copie e envie este link para o cliente via WhatsApp ou chat da reunião.'}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+                    <div className={cn(
+                        'flex items-center gap-2 p-3 rounded-lg',
+                        linkJaExistia ? 'bg-amber-500/10 border border-amber-500/25' : 'bg-muted',
+                    )}>
                         <p className="text-sm text-foreground flex-1 break-all">{generatedLink}</p>
                         <Button size="icon" variant="ghost" onClick={copyModal}>
                             {copied
