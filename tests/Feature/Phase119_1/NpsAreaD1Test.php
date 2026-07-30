@@ -21,8 +21,9 @@ use Tests\TestCase;
  * Fase 119.1 Plan 04 — Prova de D1 na ÁREA NPS (`NpsController::index()`):
  * empresa ELEGÍVEL sem NENHUM link no mês conta nota 1 nos cards por
  * dimensão (a MESMA régua do bônus, via `NpsSemLinkService`), e cada item de
- * `faltantes` diz o motivo (`sem_contato`/`sem_link`) e se está pesando na
- * média (`conta_nota_1`).
+ * `faltantes` diz se está pesando na média (`conta_nota_1`).
+ * Quick task 260730-jzx (ajuste 1) removeu a chave `motivo` do item — o
+ * envio é manual e contato cadastrado não muda nada (D5 continua valendo).
  *
  * Comentários e nomes de teste em pt-BR, conforme convenção do projeto.
  *
@@ -220,12 +221,15 @@ class NpsAreaD1Test extends TestCase
     }
 
     // ═══════════════════════════════════════════════════════════════════
-    // 5 — motivo do faltante: sem_contato (nem email nem Digisac) vs.
-    //     sem_link (contato cadastrado, só falta o link) — D5/NPSMAN-12
+    // 5 — quick task 260730-jzx (ajuste 1): o "motivo" (sem_contato/sem_link)
+    //     SAIU da tela — o envio é manual, contato cadastrado ou não não
+    //     muda nada. D5 continua valendo: falta de contato NÃO tira a
+    //     empresa da regra de nota 1. Testes reescritos (ex-motivo
+    //     sem_contato/sem_link) para provar exatamente isso.
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_faltante_traz_motivo_sem_contato_quando_falta_email_e_digisac(): void
+    public function test_faltante_sem_contato_nao_expoe_motivo_e_continua_contando_nota_1(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-05 09:00:00'));
         $admin = $this->admin();
@@ -240,13 +244,13 @@ class NpsAreaD1Test extends TestCase
         $faltante = collect($props['faltantes'])->firstWhere('company_id', $empresa->id);
 
         $this->assertNotNull($faltante);
-        $this->assertSame('sem_contato', $faltante['motivo']);
+        $this->assertArrayNotHasKey('motivo', $faltante);
         // D5 — falta de contato NÃO tira a empresa da regra: continua contando 1.
         $this->assertTrue($faltante['conta_nota_1']);
     }
 
     #[Test]
-    public function test_faltante_traz_motivo_sem_link_quando_ja_tem_email_cadastrado(): void
+    public function test_faltante_com_contato_cadastrado_tambem_nao_expoe_motivo(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-05 09:00:00'));
         $admin = $this->admin();
@@ -260,7 +264,7 @@ class NpsAreaD1Test extends TestCase
         $faltante = collect($props['faltantes'])->firstWhere('company_id', $empresa->id);
 
         $this->assertNotNull($faltante);
-        $this->assertSame('sem_link', $faltante['motivo']);
+        $this->assertArrayNotHasKey('motivo', $faltante);
     }
 
     // ═══════════════════════════════════════════════════════════════════

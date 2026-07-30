@@ -140,6 +140,19 @@ class NpsFaltantesPorModeloTest extends TestCase
             'updated_at'  => now(),
         ]);
 
+        // Quick task 260730-jzx (ajuste 4) — Faltantes agora exige estrategista
+        // atribuído (NpsElegibilidadeService::empresasElegiveis()); sem esta
+        // linha a empresa deste teste sairia da lista por não estar elegível,
+        // e não pelo motivo que este teste prova (dedup de setor).
+        DB::table('company_users')->insert([
+            'company_id' => $company->id,
+            'user_id'    => User::factory()->create()->id,
+            'role'       => 'estrategista',
+            'servico_id' => $servicoPerf,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
         // Sem survey no mês → a empresa é faltante de performance UMA vez só
         // (não uma por modelo). Todos = 0 surveys + 1 faltante = 1.
         $this->get(route('nps.index', ['template_id' => '__todos__']))

@@ -296,7 +296,7 @@ class NpsFloorAreaNpsTest extends TestCase
     // ═══════════════════════════════════════════════════════════════════
 
     #[Test]
-    public function test_empresa_nao_elegivel_sem_survey_no_mes_nao_altera_medias_e_aparece_em_faltantes(): void
+    public function test_empresa_nao_elegivel_sem_survey_no_mes_nao_altera_medias_e_nao_aparece_em_faltantes(): void
     {
         Carbon::setTestNow(Carbon::parse('2026-07-15 10:00:00'));
         $admin = $this->admin();
@@ -325,9 +325,11 @@ class NpsFloorAreaNpsTest extends TestCase
         $this->assertEquals(1.0, $props['cards']['empresa']['media']);
         $this->assertEquals(1, $props['cards']['empresa']['total']);
 
+        // Quick task 260730-jzx (ajuste 4) — empresa sem estrategista sai da
+        // lista de trabalho: ela ainda não entrou na operação, e a mesma
+        // régua (NpsElegibilidadeService) já a ignorava no cálculo da nota.
         $faltante = collect($props['faltantes'])->firstWhere('company_id', $empresaSemSurvey->id);
-        $this->assertNotNull($faltante, 'empresa sem NENHUM survey no mês deve continuar aparecendo em faltantes (D3).');
-        $this->assertFalse($faltante['conta_nota_1'], 'empresa NÃO elegível nunca conta nota 1 (NPSMAN-07).');
+        $this->assertNull($faltante, 'empresa sem estrategista não deve mais aparecer em Faltantes (ajuste 4).');
     }
 
     // ═══════════════════════════════════════════════════════════════════
