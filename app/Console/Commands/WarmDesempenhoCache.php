@@ -7,6 +7,7 @@ use App\Services\DesempenhoScoreService;
 use App\Services\Metrics\MetricPeriodResolver;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -119,7 +120,26 @@ class WarmDesempenhoCache extends Command
                 try {
                     // computeCached() faz Cache::remember internamente — se cache
                     // ainda quente do run anterior, retorna instantâneo.
-                    $this->scoreService->computeCached($user, $mesReferencia);
+                    //
+                    // Fase 120 (AGRE-02/C-02) — guard do Cache::remember: com
+                    // shadow ligado (`incluirEmpresasScore: true`), se o cache
+                    // já estiver quente com um payload ANTERIOR à Fase 120 (ou
+                    // populado por leitura interativa, shadow desligado), o
+                    // closure de `Cache::remember` NÃO roda e o shadow seria
+                    // SILENCIOSAMENTE pulado neste ciclo. Por isso: recomputa
+                    // só quando falta `empresas_score` no payload cacheado.
+                    // `Cache::forget()` incondicional foi REJEITADO — recomputaria
+                    // ~70s por user a cada ciclo de 8min, exatamente o custo que
+                    // este warm existe pra evitar. `desempenho:consolidar-mes`
+                    // não sofre desse problema porque chama `compute()` direto,
+                    // sem `Cache::remember`.
+                    $resultado = $this->scoreService->computeCached($user, $mesReferencia, null, incluirEmpresasScore: true);
+
+                    if (! array_key_exists('empresas_score', $resultado)) {
+                        Cache::forget($this->scoreService->cacheKey($user->id, $mesReferencia));
+                        $resultado = $this->scoreService->computeCached($user, $mesReferencia, null, incluirEmpresasScore: true);
+                    }
+
                     $elapsed = round(microtime(true) - $tUser, 2);
                     $this->line("  ✓ user={$user->id} ({$user->name}) mes={$mesReferencia->format('Y-m')} — {$elapsed}s");
                     $ok++;

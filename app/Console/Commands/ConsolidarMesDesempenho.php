@@ -136,7 +136,15 @@ class ConsolidarMesDesempenho extends Command
 
         foreach ($users as $user) {
             try {
-                $result = $this->scoreService->compute($user, $mes);
+                // Fase 120 (AGRE-02/D-04): `incluirEmpresasScore: true` liga o
+                // SHADOW — sinal independente da feature flag (C-01), que só
+                // decide qual número vira `nota_final`. Este comando chama
+                // `compute()` direto, sem `Cache::remember`, então o shadow
+                // roda com garantia em toda execução — é o registro canônico
+                // mensal. `empresas_score` passa a ser persistido no
+                // `breakdown_json` de graça; a persistência estruturada fica
+                // pra Fase 122.
+                $result = $this->scoreService->compute($user, $mes, null, incluirEmpresasScore: true);
 
                 // DESEMP-10 — sem carteira: pula (não grava row).
                 if (($result['sem_carteira'] ?? false) === true) {
