@@ -217,6 +217,22 @@ class WidgetNpsAtribuicoesTest extends TestCase
      */
     private function cenarioDecoral(): array
     {
+        // Fase 119.1 (D1, 2026-07-29) — os templates seed "NPS Padrão"/"NPS
+        // Shopee" (migrations 100004/79-02) nascem `envio_automatico_mensal
+        // = true` e cobrem os serviços catalogados de performance/shopee.
+        // Este teste (Fase 80) cria os SEUS PRÓPRIOS templates ad-hoc
+        // (`criarTemplateEscopado`, sempre `envio_automatico_mensal =
+        // false`) para exercitar SÓ a dedupe do widget — nunca teve a
+        // intenção de testar elegibilidade de NPS. Sem neutralizar os
+        // templates seed aqui, a Decoral (que reaproveita o serviço shopee
+        // catalogado via `inserirLinhaShopee()`) fica GENUINAMENTE elegível
+        // ao "NPS Shopee" seed, que nunca recebeu link nenhum neste
+        // cenário — e o ramo (D) do widget (Plano 119.1-09) soma uma nota
+        // fantasma de propósito, correta pela regra nova, mas fora do
+        // escopo deste teste (que quer só a dedupe A/B/C). Neutralizado
+        // aqui, não em produção — nenhuma regra de elegibilidade muda.
+        NpsTemplate::query()->update(['envio_automatico_mensal' => false]);
+
         $cenario     = $this->criarCenarioMlComResponsaveis();
         $company     = $cenario['company'];
         $servicoPerf = $cenario['servicoPerf'];
